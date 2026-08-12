@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { errorText, isConfirmRequired } from "../api/errors";
-import type { CommentStatus, DraftComment, EditCommentResult } from "../api/types";
+import type { ChatRef, CommentStatus, DraftComment, EditCommentResult } from "../api/types";
+import { QuoteButton } from "./ChatPanel";
 import { StatusChip } from "./FinishReview";
 
 export interface CommentTarget {
@@ -273,6 +274,7 @@ export function DraftsDrawer({
   onJump,
   onDelete,
   onEdit,
+  onQuote,
 }: {
   drafts: DraftComment[];
   deleting?: boolean;
@@ -280,6 +282,7 @@ export function DraftsDrawer({
   onJump: (draft: DraftComment) => void;
   onDelete?: (draft: DraftComment) => void;
   onEdit?: EditComment;
+  onQuote?: (ref: ChatRef) => void;
 }) {
   const local = drafts.filter((d) => (d.status ?? "draft") === "draft");
   const pushed = drafts.filter((d) => d.status === "pushed");
@@ -324,8 +327,22 @@ export function DraftsDrawer({
                   <StatusChip status={d.status ?? "draft"} />
                 </button>
                 <CommentBody comment={d} edit={onEdit} />
+                <div className="mt-1 flex items-center gap-1.5">
+                  {onQuote ? (
+                    <QuoteButton
+                      title="Ask Claude about this comment"
+                      onClick={() =>
+                        onQuote({
+                          kind: "comment",
+                          id: d.id,
+                          path: d.file,
+                          start: d.line,
+                          side: d.side === "LEFT" ? "old" : "new",
+                        })
+                      }
+                    />
+                  ) : null}
                 {onDelete && d.status !== "submitted" ? (
-                  <div className="mt-1 flex">
                     <button
                       type="button"
                       className="btn ml-auto"
@@ -339,8 +356,8 @@ export function DraftsDrawer({
                     >
                       delete
                     </button>
-                  </div>
                 ) : null}
+                </div>
               </li>
             ))}
           </ul>

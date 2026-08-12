@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import type { PrDetail } from "../api/types";
+import type { ChatRef, PrDetail } from "../api/types";
+import { QuoteButton } from "./ChatPanel";
 import { IconChevron, IconFile } from "./icons";
 import { MiddleTruncate } from "./Truncate";
 
@@ -43,10 +44,12 @@ export function FileTree({
   detail,
   selectedPath,
   onSelect,
+  onQuote,
 }: {
   detail: PrDetail;
   selectedPath: string | null;
   onSelect: (path: string) => void;
+  onQuote?: (ref: ChatRef) => void;
 }) {
   const tree = useMemo(
     () =>
@@ -90,8 +93,8 @@ export function FileTree({
         const selected = selectedPath === kid.file.path;
         const viewed = rollup?.viewed;
         out.push(
+          <div key={`f:${kid.path}`} className="group relative flex items-center">
           <button
-            key={`f:${kid.path}`}
             type="button"
             onClick={() => onSelect(kid.file!.path)}
             className="flex w-full items-center gap-1.5 border-l-2 py-[3px] pr-2 text-left font-mono text-2xs"
@@ -114,7 +117,19 @@ export function FileTree({
                 background: viewed ? "var(--ok)" : "var(--border-strong)",
               }}
             />
-          </button>,
+          </button>
+          {onQuote ? (
+            <span
+              className="absolute right-1 hidden rounded px-0.5 group-hover:block"
+              style={{ background: selected ? "var(--bg-hover)" : "var(--bg-raised)" }}
+            >
+              <QuoteButton
+                title={`Ask Claude about ${kid.file!.path}`}
+                onClick={() => onQuote({ kind: "file", path: kid.file!.path })}
+              />
+            </span>
+          ) : null}
+          </div>,
         );
       }
     }

@@ -42,6 +42,8 @@ export interface Settings {
   tabSize: 2 | 4 | 8;
   diffViewMode: DiffViewMode;
   diffWrap: boolean;
+  /** Width of the Claude chat panel in px (clamped to the range below). */
+  chatPanelWidth: number;
 }
 
 export const SETTINGS_KEY = "reviewer.settings";
@@ -52,6 +54,10 @@ export const CODE_FONT_FALLBACK =
   'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
 export const UI_FONT_FALLBACK =
   'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+
+export const MIN_CHAT_PANEL_WIDTH = 320;
+export const MAX_CHAT_PANEL_WIDTH = 760;
+export const DEFAULT_CHAT_PANEL_WIDTH = 420;
 
 export const MIN_CODE_FONT_SIZE = 11;
 export const MAX_CODE_FONT_SIZE = 16;
@@ -65,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   tabSize: 8,
   diffViewMode: "unified",
   diffWrap: true,
+  chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -97,6 +104,9 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   if (r.tabSize === 2 || r.tabSize === 4 || r.tabSize === 8) out.tabSize = r.tabSize;
   if (r.diffViewMode === "unified" || r.diffViewMode === "split") out.diffViewMode = r.diffViewMode;
   if (typeof r.diffWrap === "boolean") out.diffWrap = r.diffWrap;
+  if (typeof r.chatPanelWidth === "number" && Number.isFinite(r.chatPanelWidth)) {
+    out.chatPanelWidth = clampChatPanelWidth(r.chatPanelWidth);
+  }
   return out;
 }
 
@@ -162,6 +172,10 @@ export function fontStack(family: string, fallback: string): string {
   if (!name) return fallback;
   if (GENERIC_FAMILIES.has(name.toLowerCase())) return `${name}, ${fallback}`;
   return `"${name}", ${fallback}`;
+}
+
+export function clampChatPanelWidth(width: number): number {
+  return Math.min(MAX_CHAT_PANEL_WIDTH, Math.max(MIN_CHAT_PANEL_WIDTH, Math.round(width)));
 }
 
 export function lineHeightFor(fontSize: number): number {

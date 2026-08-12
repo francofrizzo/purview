@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import {
   useMutation,
   useQuery,
@@ -6,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { api } from "./client";
 import type {
+  AnalysisJob,
   DiffOfDiffs,
   DiscardPendingResult,
   DraftComment,
@@ -25,6 +27,7 @@ export const qk = {
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
   review: (key: string) => ["review", key] as const,
+  analysisJob: (key: string) => ["analysis-job", key] as const,
   diffOfDiffs: (key: string, hunkId: string) => ["dod", key, hunkId] as const,
 };
 
@@ -43,7 +46,18 @@ export function useDiffOfDiffs(key: string, hunkId: string | null) {
 }
 
 export function usePrs() {
-  return useQuery<PrListEntry[]>({ queryKey: qk.prs, queryFn: api.listPrs });
+  return useQuery<PrListEntry[]>({
+    queryKey: qk.prs,
+    queryFn: api.listPrs,
+    // The list has no event stream of its own; a slow poll keeps the analysis
+    // chips honest, and only while something is actually running.
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some(
+        (p) => p.analysisJob?.status === "queued" || p.analysisJob?.status === "running",
+      )
+        ? 3000
+        : false,
+  });
 }
 
 export function useAddPr() {
@@ -182,6 +196,9 @@ export function useRefresh(key: string): UseMutationResult<MigrationReport, Erro
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.pr(key) });
       void qc.invalidateQueries({ queryKey: qk.prs });
+      // A refresh that lands a new revision can auto-queue an analysis; pick
+      // that job up right away so the banner goes live without a reload.
+      void qc.invalidateQueries({ queryKey: qk.analysisJob(key) });
     },
   });
 }
@@ -306,6 +323,73 @@ export function useSubmitReview(
       void qc.invalidateQueries({ queryKey: qk.review(key) });
       void qc.invalidateQueries({ queryKey: qk.comments(key) });
       void qc.invalidateQueries({ queryKey: qk.pr(key) });
+    },
+  });
+}
+
+/* ------------------------------------------------------------ analysis job */
+
+/**
+ * The job for one PR. `/events` is the live source; this query seeds it and
+ * acts as the fallback when the event stream is unavailable (hence the modest
+ * polling interval while a job is in flight, and none at all when it is not).
+ */
+export function useAnalysisJob(key: string) {
+  return useQuery<AnalysisJob | null>({
+    queryKey: qk.analysisJob(key),
+    queryFn: () => api.getAnalysisJob(key),
+    enabled: Boolean(key),
+    retry: false,
+    refetchInterval: (query) => {
+      const job = query.state.data;
+      return job?.status === "queued" || job?.status === "running" ? 4000 : false;
+    },
+  });
+}
+
+/**
+ * Subscribe to job transitions. A job reaching `done` means new analysis
+ * landed, so the PR itself (and the list's unit counts) are refetched — that
+ * is what makes the units appear on their own.
+ */
+export function useAnalysisEvents(key: string) {
+  const qc = useQueryClient();
+  const previous = useRef<AnalysisJob["status"] | null>(null);
+
+  useEffect(() => {
+    if (!key) return;
+    previous.current = qc.getQueryData<AnalysisJob | null>(qk.analysisJob(key))?.status ?? null;
+    const unsubscribe = api.subscribeAnalysis(key, (job) => {
+      qc.setQueryData(qk.analysisJob(key), job);
+      const was = previous.current;
+      previous.current = job.status;
+      if (job.status === "done" && was !== "done") {
+        void qc.invalidateQueries({ queryKey: qk.pr(key) });
+        void qc.invalidateQueries({ queryKey: qk.prs });
+      }
+    });
+    return unsubscribe;
+  }, [key, qc]);
+}
+
+export function useStartAnalysis(key: string): UseMutationResult<AnalysisJob, Error, void> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.startAnalysis(key),
+    onSuccess: (job) => {
+      qc.setQueryData(qk.analysisJob(key), job);
+      void qc.invalidateQueries({ queryKey: qk.prs });
+    },
+  });
+}
+
+export function useCancelAnalysis(key: string): UseMutationResult<AnalysisJob, Error, void> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.cancelAnalysis(key),
+    onSuccess: (job) => {
+      qc.setQueryData(qk.analysisJob(key), job);
+      void qc.invalidateQueries({ queryKey: qk.prs });
     },
   });
 }

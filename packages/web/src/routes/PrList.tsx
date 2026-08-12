@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK } from "../api/client";
 import { useAddPr, usePrs } from "../api/hooks";
+import { AnalysisChip } from "../components/Analysis";
 import { Progress } from "../components/Chips";
 import { IconSettings } from "../components/icons";
 
@@ -86,8 +87,11 @@ export function PrList() {
                     className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--bg-hover)]"
                   >
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-[13px] font-medium">
-                        {pr.title ?? meta?.title ?? pr.key}
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-[13px] font-medium">
+                          {pr.title ?? meta?.title ?? pr.key}
+                        </span>
+                        <AnalysisChip job={pr.analysisJob} />
                       </div>
                       <div className="mt-0.5 font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
                         {meta?.owner ? `${meta.owner}/${meta.repo}#${meta.number}` : pr.key}

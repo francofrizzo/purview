@@ -1,15 +1,17 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
+import type { ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
+import { lineRangeRef } from "../lib/chatRefs";
 import { buildRows, buildSplitRows, hunkLabel } from "../lib/diffModel";
 import { useTokensForHunks } from "../lib/useHunkTokens";
 import { useSettings, type DiffViewMode } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 import { ChangedBadge } from "./Chips";
-import { DiffLine, SplitDiffLine } from "./DiffLine";
+import { QuoteButton } from "./ChatPanel";
+import { DiffLine, SplitDiffLine, type LineSide } from "./DiffLine";
 import { DiffOfDiffs } from "./DiffOfDiffs";
 import { MiddleTruncate } from "./Truncate";
-import { IconCheck, IconComment, IconSplit, IconUnified, IconWrap } from "./icons";
+import { IconCheck, IconComment, IconQuote, IconSplit, IconUnified, IconWrap } from "./icons";
 
 export interface HunkEntry {
   hunk: Hunk;
@@ -53,7 +55,32 @@ export interface DiffPaneProps {
   /** Files tab shows a single file and already names it in the pane header. */
   showFileRows?: boolean;
   emptyMessage?: string;
+  /** Quote affordances — omitted, the diff has no chat integration at all. */
+  onQuote?: (ref: ChatRef) => void;
 }
+
+/** A range being selected in one file, on one side of the diff. */
+interface LineSelection {
+  path: string;
+  side: LineSide;
+  anchor: number;
+  focus: number;
+}
+
+const inSelection = (
+  selection: LineSelection | null,
+  path: string,
+  side: LineSide,
+  line?: number,
+): boolean =>
+  Boolean(
+    selection &&
+      line !== undefined &&
+      selection.path === path &&
+      selection.side === side &&
+      line >= Math.min(selection.anchor, selection.focus) &&
+      line <= Math.max(selection.anchor, selection.focus),
+  );
 
 export function DiffPane({
   detail,
@@ -70,6 +97,7 @@ export function DiffPane({
   onNarrowChange,
   showFileRows = true,
   emptyMessage = "Nothing to show.",
+  onQuote,
 }: DiffPaneProps) {
   const { appearance } = useSettings();
   const theme = shikiThemeFor(appearance.theme);
@@ -288,6 +316,61 @@ export function DiffPane({
     if (stale) syncHalves(el, left);
   });
 
+  /* ------------------------------------------------- line-range selection */
+
+  const [selection, setSelection] = useState<LineSelection | null>(null);
+  const dragging = useRef(false);
+
+  const startSelect = useCallback(
+    (path: string, side: LineSide, line: number, shiftKey: boolean) => {
+      dragging.current = true;
+      setSelection((cur) =>
+        // Shift extends the existing range, but only within the same file and
+        // side — anything else starts fresh where the click landed.
+        shiftKey && cur && cur.path === path && cur.side === side
+          ? { ...cur, focus: line }
+          : { path, side, anchor: line, focus: line },
+      );
+    },
+    [],
+  );
+
+  const extendSelect = useCallback((path: string, side: LineSide, line: number) => {
+    if (!dragging.current) return;
+    setSelection((cur) =>
+      cur && cur.path === path && cur.side === side ? { ...cur, focus: line } : cur,
+    );
+  }, []);
+
+  useEffect(() => {
+    const stop = () => {
+      dragging.current = false;
+    };
+    window.addEventListener("mouseup", stop);
+    return () => window.removeEventListener("mouseup", stop);
+  }, []);
+
+  // A selection describes lines that are on screen; anything that replaces the
+  // shown set (or Escape) drops it.
+  useEffect(() => {
+    setSelection(null);
+  }, [setSignature]);
+
+  useEffect(() => {
+    if (!selection) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSelection(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selection]);
+
+  const quoteSelection = () => {
+    if (!selection || !onQuote) return;
+    onQuote(lineRangeRef(selection.path, selection.side, selection.anchor, selection.focus));
+    setSelection(null);
+  };
+
   /** Keyboard navigation moves focus AND the viewport; clicks only focus. */
   const focusAndScroll = useCallback(
     (id: string) => {
@@ -358,8 +441,40 @@ export function DiffPane({
 
   const items = virtualizer.getVirtualItems();
 
+  const selectionCount = selection ? Math.abs(selection.focus - selection.anchor) + 1 : 0;
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
+      {selection && onQuote ? (
+        <div
+          className="surface absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full px-2.5 py-1 shadow-2xl"
+          data-testid="quote-selection"
+        >
+          <span className="font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
+            {selection.path.split("/").pop()}:{Math.min(selection.anchor, selection.focus)}
+            {selectionCount > 1 ? `-${Math.max(selection.anchor, selection.focus)}` : ""}
+            {selection.side === "old" ? " (old)" : ""}
+          </span>
+          <button
+            type="button"
+            className="btn btn-primary"
+            data-testid="quote-selection-button"
+            onClick={quoteSelection}
+          >
+            <IconQuote width={10} height={10} />
+            quote in chat
+          </button>
+          <button
+            type="button"
+            className="text-2xs"
+            style={{ color: "var(--fg-faint)" }}
+            onClick={() => setSelection(null)}
+            title="Clear the selection (esc)"
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
       <span
         ref={measureRef}
         aria-hidden
@@ -441,9 +556,17 @@ export function DiffPane({
               </span>
             ) : null}
           </span>
-          <span className="ml-auto text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-            {row.file.additions !== undefined ? `+${row.file.additions}` : ""}{" "}
-            {row.file.deletions !== undefined ? `−${row.file.deletions}` : ""}
+          <span className="ml-auto flex flex-none items-center gap-2">
+            {onQuote ? (
+              <QuoteButton
+                title={`Ask Claude about ${row.path}`}
+                onClick={() => onQuote({ kind: "file", path: row.path })}
+              />
+            ) : null}
+            <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+              {row.file.additions !== undefined ? `+${row.file.additions}` : ""}{" "}
+              {row.file.deletions !== undefined ? `−${row.file.deletions}` : ""}
+            </span>
           </span>
         </div>
       );
@@ -484,6 +607,12 @@ export function DiffPane({
           >
             {st.viewed ? <IconCheck width={11} height={11} /> : null}
           </button>
+          {onQuote ? (
+            <QuoteButton
+              title="Ask Claude about this hunk"
+              onClick={() => onQuote({ kind: "hunk", id: row.hunkId, path: row.entry.file.path })}
+            />
+          ) : null}
           <span className="truncate font-mono text-2xs">{hunkLabel(row.entry.hunk)}</span>
           {st.changedSinceViewed ? (
             <ChangedBadge
@@ -540,6 +669,12 @@ export function DiffPane({
               ? undefined
               : () => onComment({ file: path, line: rightNo, side: "RIGHT" })
           }
+          selectedLeft={inSelection(selection, path, "old", left?.row.oldNumber)}
+          selectedRight={inSelection(selection, path, "new", right?.row.newNumber)}
+          onSelectDown={
+            onQuote ? (side, line, shift) => startSelect(path, side, line, shift) : undefined
+          }
+          onSelectEnter={onQuote ? (side, line) => extendSelect(path, side, line) : undefined}
         />
       );
     }
@@ -561,6 +696,14 @@ export function DiffPane({
             ? undefined
             : () => onComment({ file: row.entry.file.path, line: lineNo, side })
         }
+        selectedOld={inSelection(selection, row.entry.file.path, "old", line.oldNumber)}
+        selectedNew={inSelection(selection, row.entry.file.path, "new", line.newNumber)}
+        onSelectDown={
+          onQuote
+            ? (s, l, shift) => startSelect(row.entry.file.path, s, l, shift)
+            : undefined
+        }
+        onSelectEnter={onQuote ? (s, l) => extendSelect(row.entry.file.path, s, l) : undefined}
       />
     );
   }

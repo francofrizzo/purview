@@ -1,6 +1,10 @@
 import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import type {
+  AnalysisJob,
+  ChatMessage,
+  ChatRef,
+  ChatState,
   DiffOfDiffs,
   DiscardPendingResult,
   DraftComment,
@@ -8,6 +12,7 @@ import type {
   MigrationReport,
   PrDetail,
   PrListEntry,
+  RepoPathResult,
   ReviewEvent,
   ReviewStatus,
   ReviewUnit,
@@ -42,6 +47,113 @@ const drafts: DraftComment[] = structuredClone(mockDrafts);
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 
+/* ------------------------------------------------------------------------ */
+/* Analysis jobs                                                             */
+/*                                                                           */
+/* The second fixture PR ships with no analysis at all, which is what makes  */
+/* the live "queued → running → done" banner reachable in mock mode: running */
+/* a job on it fills in units/hunks (borrowed from the analyzed fixture) so   */
+/* the sidebar populates exactly the way it does against the real server.     */
+/* ------------------------------------------------------------------------ */
+
+const UNANALYZED_KEY = "github.com/acme/platform/1190";
+
+const unanalyzed: PrDetail = {
+  key: UNANALYZED_KEY,
+  meta: list[1].meta,
+  state: { revision: 1, summary: "", units: [], hunks: {}, files: {} },
+  files: { files: [] },
+  diff: "",
+  analysisJob: null,
+};
+
+const details: Record<string, PrDetail> = { [detail.key]: detail, [UNANALYZED_KEY]: unanalyzed };
+
+const jobs: Record<string, AnalysisJob | null> = {};
+const jobTimers: Record<string, ReturnType<typeof setTimeout>[]> = {};
+const jobSubscribers: Record<string, Set<(job: AnalysisJob) => void>> = {};
+
+const PROGRESS_STEPS = [
+  "reading revision 1 diff (9 hunks, 8 files)…",
+  "bucketing files: 3 must-read candidates…",
+  "deep-reading src/billing/charge.ts…",
+  "grouping hunks into review units…",
+];
+
+/** Flip this in the console/devtools to exercise the failure banner. */
+function failureRequested(): boolean {
+  try {
+    return localStorage.getItem("reviewer.mockAnalysisFail") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function emitJob(key: string, job: AnalysisJob) {
+  jobs[key] = job;
+  const entry = list.find((p) => p.key === key);
+  if (entry) entry.analysisJob = job;
+  const target = details[key];
+  if (target) target.analysisJob = job;
+  for (const fn of jobSubscribers[key] ?? []) fn(structuredClone(job));
+}
+
+function clearJobTimers(key: string) {
+  for (const t of jobTimers[key] ?? []) clearTimeout(t);
+  jobTimers[key] = [];
+}
+
+function schedule(key: string, ms: number, fn: () => void) {
+  (jobTimers[key] ??= []).push(setTimeout(fn, ms));
+}
+
+/** Copy the analyzed fixture's units/hunks onto a PR whose job just finished. */
+function applyAnalysisResult(key: string) {
+  const target = details[key];
+  if (!target || target.state.units.length) return;
+  const source = structuredClone(mockDetail);
+  target.state = { ...source.state, revision: target.state.revision };
+  target.files = source.files;
+  target.diff = source.diff;
+  const entry = list.find((p) => p.key === key);
+  if (entry) {
+    entry.unitCount = target.state.units.length;
+    entry.totalHunks = Object.keys(target.state.hunks).length;
+    entry.viewedHunks = 0;
+    entry.summary = target.state.summary;
+  }
+}
+
+function runJob(key: string) {
+  const revision = details[key]?.state.revision ?? 1;
+  const startedAt = new Date().toISOString();
+  emitJob(key, { revision, status: "queued", startedAt });
+  clearJobTimers(key);
+
+  schedule(key, 700, () =>
+    emitJob(key, { revision, status: "running", startedAt, progress: PROGRESS_STEPS[0] }),
+  );
+  PROGRESS_STEPS.slice(1).forEach((progress, i) => {
+    schedule(key, 1600 + i * 1100, () =>
+      emitJob(key, { revision, status: "running", startedAt, progress }),
+    );
+  });
+  schedule(key, 1600 + PROGRESS_STEPS.length * 1100, () => {
+    if (failureRequested()) {
+      emitJob(key, {
+        revision,
+        status: "failed",
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        error: "claude exited with status 1: no repo path configured for this PR",
+      });
+      return;
+    }
+    applyAnalysisResult(key);
+    emitJob(key, { revision, status: "done", startedAt, finishedAt: new Date().toISOString() });
+  });
+}
+
 /** Mock counterpart of review.json. */
 const review: {
   body: string;
@@ -61,6 +173,75 @@ function recomputeFileRollups() {
     };
   }
   detail.state.files = rollups;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Chat                                                                      */
+/* ------------------------------------------------------------------------ */
+
+const chats: Record<string, ChatMessage[]> = {};
+const repoPaths: Record<string, string> = {};
+
+/** A canned answer, written to exercise every markdown feature the panel renders. */
+const CANNED_REPLY = `The riskiest change here is the **ledger write ordering** in \`charge()\`. The
+idempotency key is derived before the gateway call, but the ledger row is only
+written *after* it returns — so a crash between the two leaves no record of an
+in-flight charge, and the retry wrapper will happily charge again.
+
+Three things I would push on:
+
+- \`idempotencyKey(order.id, order.total, order.currency)\` concatenates fields
+  with a separator that can itself appear in an id. Two different orders can
+  collide.
+- The retry wrapper's jitter is applied *after* the attempt counter check, so
+  the final attempt has no backoff at all.
+- \`charge_ledger\` has no index on \`key\`, and the replay lookup is on the hot
+  path of every payment.
+
+The write-before-call shape looks like this:
+
+\`\`\`typescript
+const key = idempotencyKey(order.id, order.total, order.currency);
+const existing = await this.ledger.findByKey(key);
+if (existing) return existing.result;
+
+await this.ledger.reserve(key);           // durable marker, before the call
+const res = await this.gateway.charge(order.total, order.currency, {
+  idempotencyKey: key,
+});
+await this.ledger.record(key, res);
+\`\`\`
+
+That turns a crash into a *stuck* charge (recoverable by reconciliation) rather
+than a *double* charge, which is the tradeoff you want on money paths. See the
+notes in [docs/billing.md](https://example.com/docs/billing) for the reconciliation
+job that would sweep reserved-but-unrecorded rows.`;
+
+const TOOL_CALLS: { name: string; detail: string; at: number }[] = [
+  { name: "read", detail: "src/billing/charge.ts", at: 0 },
+  { name: "grep", detail: "idempotencyKey — 6 matches", at: 3 },
+  { name: "read", detail: "src/billing/ledger.ts", at: 9 },
+];
+
+const encoder = new TextEncoder();
+
+const frame = (event: string, data: unknown) =>
+  encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+/** Split into delta-sized pieces the way a real token stream arrives. */
+function chunkReply(text: string): string[] {
+  const out: string[] = [];
+  const words = text.split(/(\s+)/);
+  let buf = "";
+  for (const w of words) {
+    buf += w;
+    if (buf.length >= 14) {
+      out.push(buf);
+      buf = "";
+    }
+  }
+  if (buf) out.push(buf);
+  return out;
 }
 
 export const mockApi = {
@@ -91,11 +272,13 @@ export const mockApi = {
 
   async getPr(key: string): Promise<PrDetail> {
     await delay(120);
-    if (key !== detail.key) {
-      throw new Error(`Mock mode only carries one fully analyzed PR (${detail.key}).`);
+    const target = details[key];
+    if (!target) {
+      throw new Error(`Mock mode carries only the two fixture PRs (asked for ${key}).`);
     }
-    recomputeFileRollups();
-    return structuredClone(detail);
+    if (target === detail) recomputeFileRollups();
+    target.analysisJob = jobs[key] ?? null;
+    return structuredClone(target);
   },
 
   async setHunkViewed(_key: string, hunkId: string, viewed: boolean): Promise<void> {
@@ -127,8 +310,13 @@ export const mockApi = {
     if (unit) Object.assign(unit, patch);
   },
 
-  async refresh(_key: string): Promise<MigrationReport> {
+  async refresh(key: string): Promise<MigrationReport> {
     await delay(700);
+    // Mirrors the server: a refresh that lands new hunks on a PR with no
+    // analysis auto-queues one, and the UI picks that up over /events.
+    if (details[key] && !details[key].state.units.length && !isLive(jobs[key])) {
+      runJob(key);
+    }
     return {
       revision: detail.state.revision,
       baseOnly: false,
@@ -332,4 +520,140 @@ export const mockApi = {
     review.pending = false;
     return { discarded, resetToDraft: reset.length };
   },
+
+  /* -------------------------------------------------------- analysis jobs */
+
+  async getAnalysisJob(key: string): Promise<AnalysisJob | null> {
+    await delay(50);
+    return jobs[key] ? structuredClone(jobs[key]!) : null;
+  },
+
+  async startAnalysis(key: string): Promise<AnalysisJob> {
+    await delay(120);
+    if (isLive(jobs[key])) {
+      throw new ApiError("already_running", 409, "An analysis is already queued for this PR");
+    }
+    runJob(key);
+    return structuredClone(jobs[key]!);
+  },
+
+  async cancelAnalysis(key: string): Promise<AnalysisJob> {
+    await delay(80);
+    clearJobTimers(key);
+    const current = jobs[key];
+    const cancelled: AnalysisJob = {
+      revision: current?.revision ?? details[key]?.state.revision ?? 1,
+      status: "cancelled",
+      startedAt: current?.startedAt,
+      finishedAt: new Date().toISOString(),
+    };
+    emitJob(key, cancelled);
+    return structuredClone(cancelled);
+  },
+
+  subscribeAnalysis(key: string, onJob: (job: AnalysisJob) => void): () => void {
+    (jobSubscribers[key] ??= new Set()).add(onJob);
+    return () => {
+      jobSubscribers[key]?.delete(onJob);
+    };
+  },
+
+  /* ------------------------------------------------------------------ chat */
+
+  async setRepoPath(key: string, path: string): Promise<RepoPathResult> {
+    await delay(150);
+    const value = path.trim();
+    if (!value) throw new ApiError("invalid_path", 400, "A repo path is required");
+    repoPaths[key] = value;
+    return {
+      ok: true,
+      warning: value.startsWith("/")
+        ? undefined
+        : "That looks like a relative path; it is resolved against the server's working directory.",
+    };
+  },
+
+  async getChat(key: string): Promise<ChatState> {
+    await delay(60);
+    const messages = chats[key] ?? [];
+    return {
+      messages: structuredClone(messages),
+      sessionId: messages.length ? `mock-session-${key}` : null,
+      busy: false,
+    };
+  },
+
+  async clearChat(key: string): Promise<void> {
+    await delay(90);
+    chats[key] = [];
+  },
+
+  /**
+   * The reply arrives as a real `text/event-stream` byte stream, so mock mode
+   * exercises the same parser (lib/sse.ts) as the server does. Sending a
+   * message containing "fail" streams an `error` event instead, which is how
+   * the composer's retry row is reachable without a broken backend.
+   */
+  streamChat(
+    key: string,
+    input: { text: string; refs?: ChatRef[] },
+    signal?: AbortSignal,
+  ): ReadableStream<Uint8Array> {
+    const store = (chats[key] ??= []);
+    store.push({
+      role: "user",
+      text: input.text,
+      ts: new Date().toISOString(),
+      refs: input.refs?.length ? structuredClone(input.refs) : undefined,
+    });
+
+    const shouldFail = /\bfail\b/i.test(input.text);
+    const chunks = chunkReply(CANNED_REPLY);
+    let cancelled = false;
+
+    return new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const stop = () => cancelled || signal?.aborted;
+        signal?.addEventListener("abort", () => {
+          cancelled = true;
+        });
+
+        await delay(320);
+        if (stop()) return controller.close();
+
+        if (shouldFail) {
+          controller.enqueue(
+            frame("error", { error: "claude-cli exited before answering (mock failure)" }),
+          );
+          controller.close();
+          store.pop();
+          return;
+        }
+
+        let text = "";
+        for (let i = 0; i < chunks.length; i++) {
+          for (const tool of TOOL_CALLS) {
+            if (tool.at === i) {
+              controller.enqueue(frame("tool", { name: tool.name, detail: tool.detail }));
+              await delay(420);
+            }
+          }
+          if (stop()) return controller.close();
+          text += chunks[i];
+          controller.enqueue(frame("delta", { text: chunks[i] }));
+          await delay(18 + Math.round(Math.random() * 26));
+        }
+
+        const message: ChatMessage = { role: "assistant", text, ts: new Date().toISOString() };
+        store.push(message);
+        controller.enqueue(frame("done", { message }));
+        controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+  },
 };
+
+const isLive = (job?: AnalysisJob | null) => job?.status === "queued" || job?.status === "running";

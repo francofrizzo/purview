@@ -1,6 +1,12 @@
 import { mockApi } from "../mocks/server";
+import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
 import type {
+  AnalysisJob,
+  ChatMessage,
+  ChatRef,
+  ChatState,
+  ChatStreamEvent,
   CommentStatus,
   DiffOfDiffs,
   DiscardPendingResult,
@@ -15,6 +21,7 @@ import type {
   PrListEntry,
   PrState,
   ReviewEvent,
+  RepoPathResult,
   ReviewStatus,
   ReviewUnit,
   SubmitReviewResult,
@@ -88,6 +95,7 @@ interface WireListEntry {
   currentRevision: number;
   summary: string;
   progress: WireProgress;
+  analysisJob?: AnalysisJob | null;
 }
 
 /** core's FileRollup — an array entry keyed by `path`, not a map. */
@@ -131,6 +139,7 @@ interface WirePrDetail {
   files: WireFile[];
   diff: string;
   meta: PrListEntry["meta"];
+  analysisJob?: AnalysisJob | null;
 }
 
 interface WireMigrationEntry {
@@ -256,6 +265,7 @@ function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
     state: adaptState(raw.state),
     files: { files: (raw.files ?? []).map(adaptFile) },
     diff: raw.diff ?? "",
+    analysisJob: raw.analysisJob ?? null,
   };
 }
 
@@ -351,6 +361,7 @@ export const api = {
       unitCount: e.progress?.units.total,
       viewedHunks: e.progress?.hunks.viewed,
       totalHunks: e.progress?.hunks.total,
+      analysisJob: e.analysisJob ?? null,
     }));
   },
 
@@ -484,4 +495,141 @@ export const api = {
     if (MOCK) return mockApi.discardPendingReview(key);
     return del<DiscardPendingResult>(`/prs/${encodeKey(key)}/review/pending`);
   },
+
+  /* -------------------------------------------------------- analysis jobs */
+
+  async getAnalysisJob(key: string): Promise<AnalysisJob | null> {
+    if (MOCK) return mockApi.getAnalysisJob(key);
+    const res = await request<{ job: AnalysisJob | null }>(`/prs/${encodeKey(key)}/analysis-job`);
+    return res.job ?? null;
+  },
+
+  /** 409 when one is already queued or running — the caller surfaces that as-is. */
+  async startAnalysis(key: string): Promise<AnalysisJob> {
+    if (MOCK) return mockApi.startAnalysis(key);
+    const res = await post<{ job: AnalysisJob }>(`/prs/${encodeKey(key)}/analyze`);
+    return res.job;
+  },
+
+  async cancelAnalysis(key: string): Promise<AnalysisJob> {
+    if (MOCK) return mockApi.cancelAnalysis(key);
+    const res = await del<{ job: AnalysisJob }>(`/prs/${encodeKey(key)}/analyze`);
+    return res.job;
+  },
+
+  /**
+   * Subscribe to job transitions for one PR. Returns the unsubscribe function.
+   * Reconnection is the browser's job for EventSource; the mock re-emits from
+   * its own in-memory job runner.
+   */
+  subscribeAnalysis(key: string, onJob: (job: AnalysisJob) => void): () => void {
+    if (MOCK) return mockApi.subscribeAnalysis(key, onJob);
+    if (typeof EventSource === "undefined") return () => {};
+    const source = new EventSource(`/api/prs/${encodeKey(key)}/events`);
+    const handler = (e: MessageEvent) => {
+      try {
+        const parsed = JSON.parse(e.data) as { job?: AnalysisJob } | AnalysisJob;
+        const job = (parsed as { job?: AnalysisJob }).job ?? (parsed as AnalysisJob);
+        if (job && typeof job.status === "string") onJob(job);
+      } catch {
+        /* a malformed frame is not worth breaking the subscription over */
+      }
+    };
+    source.addEventListener("analysis-job", handler as EventListener);
+    return () => {
+      source.removeEventListener("analysis-job", handler as EventListener);
+      source.close();
+    };
+  },
+
+  /* ------------------------------------------------------------------ chat */
+
+  async setRepoPath(key: string, path: string): Promise<RepoPathResult> {
+    if (MOCK) return mockApi.setRepoPath(key, path);
+    return post<RepoPathResult>(`/prs/${encodeKey(key)}/repo-path`, { path });
+  },
+
+  async getChat(key: string): Promise<ChatState> {
+    if (MOCK) return mockApi.getChat(key);
+    const res = await request<Partial<ChatState>>(`/prs/${encodeKey(key)}/chat`);
+    return {
+      messages: res.messages ?? [],
+      sessionId: res.sessionId ?? null,
+      busy: Boolean(res.busy),
+    };
+  },
+
+  async clearChat(key: string): Promise<void> {
+    if (MOCK) return mockApi.clearChat(key);
+    await del(`/prs/${encodeKey(key)}/chat`);
+  },
+
+  /**
+   * Send a message and consume the reply stream.
+   *
+   * This cannot use EventSource (it is a POST with a body), so the response is
+   * read as a byte stream and decoded by the parser in lib/sse.ts. Both the
+   * real server and the mock hand back a ReadableStream of the same wire text,
+   * so exactly one decoding path is exercised in either mode.
+   */
+  async streamChat(
+    key: string,
+    input: { text: string; refs?: ChatRef[] },
+    onEvent: (event: ChatStreamEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const body = MOCK
+      ? mockApi.streamChat(key, input, signal)
+      : await (async () => {
+          const res = await fetch(`/api/prs/${encodeKey(key)}/chat`, {
+            method: "POST",
+            headers: { "content-type": "application/json", accept: "text/event-stream" },
+            body: JSON.stringify(input),
+            signal,
+          });
+          if (!res.ok) {
+            const text = await res.text().catch(() => "");
+            throw new ApiError(text || `${res.status} ${res.statusText}`, res.status, text);
+          }
+          if (!res.body) throw new ApiError("The chat response carried no body", 500, null);
+          return res.body;
+        })();
+
+    for await (const frame of readSseStream(body, signal)) {
+      const event = decodeChatFrame(frame.event, frame.data);
+      if (event) onEvent(event);
+    }
+  },
 };
+
+/** Map one SSE frame onto the chat event union; unknown frames are ignored. */
+export function decodeChatFrame(event: string, data: string): ChatStreamEvent | null {
+  const payload = frameJson<Record<string, unknown>>({ event, data });
+  switch (event) {
+    case "delta": {
+      const text = typeof payload?.text === "string" ? payload.text : null;
+      return text === null ? null : { type: "delta", text };
+    }
+    case "tool": {
+      const name = typeof payload?.name === "string" ? payload.name : null;
+      if (!name) return null;
+      return {
+        type: "tool",
+        name,
+        detail: typeof payload?.detail === "string" ? payload.detail : undefined,
+      };
+    }
+    case "done": {
+      const message = payload?.message as ChatMessage | undefined;
+      if (!message || typeof message.text !== "string") return null;
+      return { type: "done", message: { ...message, role: message.role ?? "assistant" } };
+    }
+    case "error":
+      return {
+        type: "error",
+        error: typeof payload?.error === "string" ? payload.error : "The chat stream failed",
+      };
+    default:
+      return null;
+  }
+}

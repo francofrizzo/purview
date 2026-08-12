@@ -113,7 +113,61 @@ function CommentButton({ onComment, hasComment }: { onComment?: () => void; hasC
   );
 }
 
-export interface DiffLineProps {
+export type LineSide = "old" | "new";
+
+/**
+ * Line-number gutters double as the handle for selecting a range to quote:
+ * mouse down starts (or, with shift, extends) a selection, and dragging over
+ * further numbers grows it. The cursor only changes when a handler is wired,
+ * so nothing looks clickable where a range would be meaningless.
+ */
+export interface GutterSelectProps {
+  onSelectDown?: (side: LineSide, line: number, shiftKey: boolean) => void;
+  onSelectEnter?: (side: LineSide, line: number) => void;
+  selectedOld?: boolean;
+  selectedNew?: boolean;
+}
+
+function Gutter({
+  number,
+  side,
+  background,
+  selected,
+  onSelectDown,
+  onSelectEnter,
+}: {
+  number?: number;
+  side: LineSide;
+  background: string;
+  selected?: boolean;
+} & Pick<GutterSelectProps, "onSelectDown" | "onSelectEnter">) {
+  const interactive = Boolean(onSelectDown && number !== undefined);
+  return (
+    <span
+      className={`diff-gutter${interactive ? " cursor-pointer select-none" : ""}`}
+      style={{
+        background: selected ? "var(--accent-soft)" : background,
+        color: selected ? "var(--accent)" : undefined,
+        boxShadow: selected ? "inset -2px 0 0 var(--accent)" : undefined,
+      }}
+      onMouseDown={
+        interactive
+          ? (e) => {
+              e.preventDefault();
+              onSelectDown!(side, number!, e.shiftKey);
+            }
+          : undefined
+      }
+      onMouseEnter={
+        interactive && onSelectEnter ? () => onSelectEnter(side, number!) : undefined
+      }
+    >
+      {number ?? ""}
+    </span>
+  );
+}
+
+export interface DiffLineProps extends GutterSelectProps {
   row: DiffRow;
   tokens?: Tok[];
   onComment?: () => void;
@@ -125,24 +179,44 @@ export const DiffLine = memo(function DiffLine({
   tokens,
   onComment,
   hasComment,
+  onSelectDown,
+  onSelectEnter,
+  selectedOld,
+  selectedNew,
 }: DiffLineProps) {
   const intraBg = row.type === "add" ? "var(--add-bg-strong)" : "var(--del-bg-strong)";
   const marker = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
   const gutterBg = gutterBgFor(row.type);
+  const selected = Boolean(selectedOld || selectedNew);
 
   return (
     <div
       className="diff-line group relative"
       data-type={row.type}
-      style={{ background: bgFor(row.type), ["--intra-bg" as string]: intraBg }}
+      data-selected={selected ? "true" : undefined}
+      style={{
+        background: bgFor(row.type),
+        ["--intra-bg" as string]: intraBg,
+        boxShadow: selected ? "inset 0 0 0 9999px var(--accent-soft)" : undefined,
+      }}
     >
       <span className="diff-fixed">
-        <span className="diff-gutter" style={{ background: gutterBg }}>
-          {row.oldNumber ?? ""}
-        </span>
-        <span className="diff-gutter" style={{ background: gutterBg }}>
-          {row.newNumber ?? ""}
-        </span>
+        <Gutter
+          number={row.oldNumber}
+          side="old"
+          background={gutterBg}
+          selected={selectedOld}
+          onSelectDown={onSelectDown}
+          onSelectEnter={onSelectEnter}
+        />
+        <Gutter
+          number={row.newNumber}
+          side="new"
+          background={gutterBg}
+          selected={selectedNew}
+          onSelectDown={onSelectDown}
+          onSelectEnter={onSelectEnter}
+        />
         <CommentButton onComment={onComment} hasComment={hasComment} />
         <span className="diff-marker" style={{ color: markerColor(row.type) }}>
           {marker}
@@ -158,14 +232,26 @@ export const DiffLine = memo(function DiffLine({
 export interface SplitHalfProps {
   row: DiffRow | null;
   /** which gutter number this side shows */
-  side: "old" | "new";
+  side: LineSide;
   tokens?: Tok[];
   onComment?: () => void;
   hasComment?: boolean;
+  selected?: boolean;
+  onSelectDown?: GutterSelectProps["onSelectDown"];
+  onSelectEnter?: GutterSelectProps["onSelectEnter"];
 }
 
 /** One side of a side-by-side row; `row === null` renders an empty filler. */
-function SplitHalf({ row, side, tokens, onComment, hasComment }: SplitHalfProps) {
+function SplitHalf({
+  row,
+  side,
+  tokens,
+  onComment,
+  hasComment,
+  selected,
+  onSelectDown,
+  onSelectEnter,
+}: SplitHalfProps) {
   if (!row) {
     return (
       <div className="diff-half" data-type="none" style={{ background: "var(--bg-inset)" }}>
@@ -184,12 +270,22 @@ function SplitHalf({ row, side, tokens, onComment, hasComment }: SplitHalfProps)
     <div
       className="diff-half group/half"
       data-type={row.type}
-      style={{ background: bgFor(row.type), ["--intra-bg" as string]: intraBg }}
+      data-selected={selected ? "true" : undefined}
+      style={{
+        background: bgFor(row.type),
+        ["--intra-bg" as string]: intraBg,
+        boxShadow: selected ? "inset 0 0 0 9999px var(--accent-soft)" : undefined,
+      }}
     >
       <span className="diff-fixed">
-        <span className="diff-gutter" style={{ background: gutterBgFor(row.type) }}>
-          {(side === "old" ? row.oldNumber : row.newNumber) ?? ""}
-        </span>
+        <Gutter
+          number={side === "old" ? row.oldNumber : row.newNumber}
+          side={side}
+          background={gutterBgFor(row.type)}
+          selected={selected}
+          onSelectDown={onSelectDown}
+          onSelectEnter={onSelectEnter}
+        />
         <CommentButton onComment={onComment} hasComment={hasComment} />
         <span className="diff-marker" style={{ color: markerColor(row.type) }}>
           {marker}
@@ -211,6 +307,10 @@ export interface SplitDiffLineProps {
   onCommentRight?: () => void;
   hasCommentLeft?: boolean;
   hasCommentRight?: boolean;
+  selectedLeft?: boolean;
+  selectedRight?: boolean;
+  onSelectDown?: GutterSelectProps["onSelectDown"];
+  onSelectEnter?: GutterSelectProps["onSelectEnter"];
 }
 
 export const SplitDiffLine = memo(function SplitDiffLine({
@@ -222,6 +322,10 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   onCommentRight,
   hasCommentLeft,
   hasCommentRight,
+  selectedLeft,
+  selectedRight,
+  onSelectDown,
+  onSelectEnter,
 }: SplitDiffLineProps) {
   return (
     <div className="diff-split group flex">
@@ -231,6 +335,9 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         tokens={leftTokens}
         onComment={onCommentLeft}
         hasComment={hasCommentLeft}
+        selected={selectedLeft}
+        onSelectDown={onSelectDown}
+        onSelectEnter={onSelectEnter}
       />
       <div className="diff-split-divider" />
       <SplitHalf
@@ -239,6 +346,9 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         tokens={rightTokens}
         onComment={onCommentRight}
         hasComment={hasCommentRight}
+        selected={selectedRight}
+        onSelectDown={onSelectDown}
+        onSelectEnter={onSelectEnter}
       />
     </div>
   );

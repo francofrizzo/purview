@@ -142,6 +142,28 @@ export interface PrState {
   baseOnly?: boolean;
 }
 
+/* --------------------------------------------------------- analysis jobs */
+
+/**
+ * The lifecycle of the server-side automatic analysis of one revision.
+ * `queued`/`running` are live states; the other three are terminal.
+ */
+export type AnalysisJobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+
+/** GET /api/prs/:key/analysis-job → `{ job }` (null when none was ever run). */
+export interface AnalysisJob {
+  revision: number;
+  status: AnalysisJobStatus;
+  startedAt?: string;
+  finishedAt?: string;
+  error?: string;
+  /** free-form one-liner the runner reports while working */
+  progress?: string;
+}
+
+export const isJobLive = (job?: AnalysisJob | null): boolean =>
+  job?.status === "queued" || job?.status === "running";
+
 /** GET /api/prs — flattened by `client.ts` from the server's progress envelope. */
 export interface PrListEntry {
   key: string;
@@ -152,6 +174,7 @@ export interface PrListEntry {
   unitCount?: number;
   viewedHunks?: number;
   totalHunks?: number;
+  analysisJob?: AnalysisJob | null;
 }
 
 /** GET /api/prs/:key */
@@ -161,6 +184,7 @@ export interface PrDetail {
   state: PrState;
   files: FilesJson;
   diff: string;
+  analysisJob?: AnalysisJob | null;
 }
 
 export interface MigrationReportItem {
@@ -290,4 +314,52 @@ export interface SubmitReviewResult {
 export interface DiscardPendingResult {
   discarded: boolean;
   resetToDraft: number;
+}
+
+/* ------------------------------------------------------------------- chat */
+
+/**
+ * A pointer to something in the review the reader is asking about. The server
+ * resolves it into whatever context Claude needs (the unit's hunks, the file's
+ * diff, the quoted lines…), so the UI only ever carries the pointer.
+ */
+export type ChatRefKind = "unit" | "hunk" | "file" | "line-range" | "comment";
+
+export interface ChatRef {
+  kind: ChatRefKind;
+  /** unit id, hunk id or comment id, depending on `kind` */
+  id?: string;
+  path?: string;
+  /** 1-based, inclusive, for line-range refs (and the anchor line of a comment) */
+  start?: number;
+  end?: number;
+  /** which side of the diff the line numbers belong to */
+  side?: "old" | "new";
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  text: string;
+  ts: string;
+  refs?: ChatRef[];
+}
+
+/** GET /api/prs/:key/chat */
+export interface ChatState {
+  messages: ChatMessage[];
+  sessionId: string | null;
+  busy: boolean;
+}
+
+/** POST /api/prs/:key/chat, decoded from the SSE frames. */
+export type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "tool"; name: string; detail?: string }
+  | { type: "done"; message: ChatMessage }
+  | { type: "error"; error: string };
+
+/** POST /api/prs/:key/repo-path */
+export interface RepoPathResult {
+  ok: boolean;
+  warning?: string;
 }

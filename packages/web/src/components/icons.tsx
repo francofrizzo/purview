@@ -138,6 +138,53 @@ export const IconSettings = (p: P) => (
   </svg>
 );
 
+/** Speech bubble with a spark — the Claude chat panel. */
+export const IconChat = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M13.5 9.2A1.6 1.6 0 0 1 11.9 10.8H5.6L2.5 13.2V3.9A1.6 1.6 0 0 1 4.1 2.3h7.8a1.6 1.6 0 0 1 1.6 1.6z" />
+    <path d="M8 4.6 8.7 6.3 10.4 7 8.7 7.7 8 9.4 7.3 7.7 5.6 7 7.3 6.3z" />
+  </svg>
+);
+
+/** Quotation marks — attach something to the chat as a ref. */
+export const IconQuote = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M6 4.5C4.3 5.2 3.2 6.6 3.2 8.3v3.2h3.4V8.3H4.9c0-1 .5-1.9 1.6-2.4zM13 4.5c-1.7.7-2.8 2.1-2.8 3.8v3.2h3.4V8.3h-1.7c0-1 .5-1.9 1.6-2.4z" />
+  </svg>
+);
+
+/** Three dots — overflow menu. */
+export const IconMore = (p: P) => (
+  <svg {...base} {...p} strokeWidth={0} fill="currentColor">
+    <circle cx="3.5" cy="8" r="1.3" />
+    <circle cx="8" cy="8" r="1.3" />
+    <circle cx="12.5" cy="8" r="1.3" />
+  </svg>
+);
+
+/** An open arc that spins — a job in flight. */
+export const IconSpinner = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M8 2a6 6 0 1 1-4.2 1.75" opacity={0.85}>
+      <animateTransform
+        attributeName="transform"
+        type="rotate"
+        from="0 8 8"
+        to="360 8 8"
+        dur="0.9s"
+        repeatCount="indefinite"
+      />
+    </path>
+  </svg>
+);
+
+/** Downward arrow in a circle — jump to the latest message. */
+export const IconArrowDown = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M8 3v9M4.5 8.5 8 12l3.5-3.5" />
+  </svg>
+);
+
 export const RISK_META: Record<
   RiskFlag,
   { icon: (p: P) => JSX.Element; label: string }

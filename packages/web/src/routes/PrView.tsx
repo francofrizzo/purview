@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import type { MigrationReport, ReviewEvent, SubmitReviewResult, SyncResult } from "../api/types";
+import type { ChatRef, MigrationReport, ReviewEvent, SubmitReviewResult, SyncResult } from "../api/types";
+import { isJobLive } from "../api/types";
 import {
   useAddComment,
+  useAnalysisEvents,
+  useAnalysisJob,
+  useCancelAnalysis,
+  useStartAnalysis,
   useComments,
   useDeleteComment,
   useEditComment,
@@ -17,6 +22,8 @@ import {
   useSubmitReview,
   useSync,
 } from "../api/hooks";
+import { AnalysisBanner } from "../components/Analysis";
+import { ChatPanel } from "../components/ChatPanel";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
 import {
   DiffPane,
@@ -33,6 +40,7 @@ import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
 import { hunkIndex, unitProgress } from "../lib/diffModel";
 import { MiddleTruncate } from "../components/Truncate";
+import { useChatFor } from "../lib/chat";
 import { useDiffViewPrefs } from "../lib/settings";
 
 export function PrView() {
@@ -53,6 +61,14 @@ export function PrView() {
   const saveReviewBody = useSaveReviewBody(prKey);
   const submitReview = useSubmitReview(prKey);
   const discardPending = useDiscardPendingReview(prKey);
+  const startAnalysis = useStartAnalysis(prKey);
+  const cancelAnalysis = useCancelAnalysis(prKey);
+
+  // The event stream is what makes the banner live; the query is its seed and
+  // its fallback.
+  useAnalysisEvents(prKey);
+  const analysisJob = useAnalysisJob(prKey);
+  const chat = useChatFor(prKey);
 
   const [tab, setTab] = useState<"units" | "files">("units");
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
@@ -71,6 +87,27 @@ export function PrView() {
 
   // Only queried while the panel is open: it makes a live GitHub call.
   const review = useReview(prKey, reviewOpen);
+
+  // Both live in the same right-hand slot, and the chat is the one the reader
+  // just asked for, so it wins.
+  useEffect(() => {
+    if (chat.open) setReviewOpen(false);
+  }, [chat.open]);
+
+  // `c` toggles the chat, matching the single-letter shortcuts of the diff pane.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "c") {
+        e.preventDefault();
+        chat.toggleChat();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [chat]);
 
   const units = useMemo(
     () => (detail ? [...detail.state.units].sort((a, b) => a.order - b.order) : []),
@@ -122,6 +159,13 @@ export function PrView() {
   const progress = selectedUnit ? unitProgress(detail, selectedUnit) : null;
   const unsubmittedDrafts = drafts.filter((d) => d.status !== "submitted");
 
+  const job = analysisJob.data ?? detail.analysisJob ?? null;
+  const analysisPending = isJobLive(job);
+  // The banner is for the "nothing to read yet" case: once units exist, the
+  // job's state lives in the top bar chip and the overflow menu instead.
+  const showAnalysisBanner = units.length === 0 || analysisPending;
+  const quote = (ref: ChatRef) => chat.attachRef(ref);
+
   const jumpToFile = (file: string) => {
     setTab("files");
     setSelectedPath(file);
@@ -136,8 +180,15 @@ export function PrView() {
         refreshing={refresh.isPending}
         syncing={sync.isPending}
         summaryOpen={summaryOpen}
+        chatOpen={chat.open}
+        analysisJob={job}
+        analysisStarting={startAnalysis.isPending}
+        analysisCancelling={cancelAnalysis.isPending}
         onToggleSummary={() => setSummaryOpen((v) => !v)}
         onToggleDrafts={() => setDraftsOpen((v) => !v)}
+        onToggleChat={chat.toggleChat}
+        onAnalyze={() => startAnalysis.mutate()}
+        onCancelAnalysis={() => cancelAnalysis.mutate()}
         onFinishReview={() => {
           setSubmitResult(null);
           submitReview.reset();
@@ -155,7 +206,21 @@ export function PrView() {
       {syncResult ? (
         <SyncResultPanel result={syncResult} onDismiss={() => setSyncResult(null)} />
       ) : null}
-      {summaryOpen ? <SummaryPanel summary={detail.state.summary} /> : null}
+      {showAnalysisBanner ? (
+        <AnalysisBanner
+          job={job}
+          starting={startAnalysis.isPending}
+          cancelling={cancelAnalysis.isPending}
+          error={
+            (startAnalysis.error as Error | null)?.message ??
+            (cancelAnalysis.error as Error | null)?.message ??
+            null
+          }
+          onAnalyze={() => startAnalysis.mutate()}
+          onCancel={() => cancelAnalysis.mutate()}
+        />
+      ) : null}
+      {summaryOpen && units.length ? <SummaryPanel summary={detail.state.summary} /> : null}
 
       <div className="flex min-h-0 flex-1">
         <nav
@@ -185,9 +250,15 @@ export function PrView() {
                 selectedUnitId={selectedUnitId}
                 onSelect={setSelectedUnitId}
                 onReclassify={(unitId, patch) => patchUnit.mutate({ unitId, patch })}
+                onQuote={quote}
               />
             ) : (
-              <FileTree detail={detail} selectedPath={selectedPath} onSelect={setSelectedPath} />
+              <FileTree
+                detail={detail}
+                selectedPath={selectedPath}
+                onSelect={setSelectedPath}
+                onQuote={quote}
+              />
             )}
           </div>
           <div
@@ -199,7 +270,7 @@ export function PrView() {
             </div>
             <div>
               <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
-              {wrap ? "no wrap" : "wrap"}
+              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat
             </div>
           </div>
         </nav>
@@ -281,6 +352,7 @@ export function PrView() {
               wrap={wrap}
               onToggleWrap={toggleWrap}
               onNarrowChange={setNarrow}
+              onQuote={quote}
               showFileRows={tab === "units"}
               emptyMessage={
                 tab === "units"
@@ -313,10 +385,13 @@ export function PrView() {
             onJump={(d) => jumpToFile(d.file)}
             onDelete={(d) => deleteComment.mutate(d.id)}
             onEdit={(input) => editComment.mutateAsync(input)}
+            onQuote={quote}
           />
         ) : null}
 
-        {reviewOpen ? (
+        {chat.open ? <ChatPanel prKey={prKey} detail={detail} comments={drafts} /> : null}
+
+        {reviewOpen && !chat.open ? (
           <FinishReviewPanel
             review={review.data}
             loading={review.isLoading}

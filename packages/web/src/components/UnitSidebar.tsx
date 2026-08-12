@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Attention, PrDetail, ReviewUnit } from "../api/types";
+import type { Attention, ChatRef, PrDetail, ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
 import { ChangedBadge, KindChip, Progress, RiskFlags } from "./Chips";
 import { IconChevron } from "./icons";
@@ -16,11 +16,13 @@ export function UnitSidebar({
   selectedUnitId,
   onSelect,
   onReclassify,
+  onQuote,
 }: {
   detail: PrDetail;
   selectedUnitId: string | null;
   onSelect: (unitId: string) => void;
   onReclassify: (unitId: string, patch: Partial<ReviewUnit>) => void;
+  onQuote?: (ref: ChatRef) => void;
 }) {
   const [open, setOpen] = useState<Record<Attention, boolean>>({
     "must-read": true,
@@ -43,8 +45,7 @@ export function UnitSidebar({
   if (!units.length) {
     return (
       <div className="p-4 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
-        No analysis yet. Run the <span className="font-mono">pr-review</span> skill against this PR,
-        then refresh.
+        No review units yet — the banner above tracks the analysis of this revision.
       </div>
     );
   }
@@ -97,6 +98,7 @@ export function UnitSidebar({
                     selected={u.id === selectedUnitId}
                     onSelect={() => onSelect(u.id)}
                     onReclassify={(patch) => onReclassify(u.id, patch)}
+                    onQuote={onQuote ? () => onQuote({ kind: "unit", id: u.id }) : undefined}
                   />
                 ))}
               </ul>
@@ -115,6 +117,7 @@ function UnitRow({
   selected,
   onSelect,
   onReclassify,
+  onQuote,
 }: {
   detail: PrDetail;
   unit: ReviewUnit;
@@ -122,6 +125,7 @@ function UnitRow({
   selected: boolean;
   onSelect: () => void;
   onReclassify: (patch: Partial<ReviewUnit>) => void;
+  onQuote?: () => void;
 }) {
   const [popover, setPopover] = useState(false);
   const p = unitProgress(detail, unit);
@@ -169,7 +173,8 @@ function UnitRow({
       </button>
       <button
         type="button"
-        title="Reclassify"
+        title="Unit actions"
+        data-testid={`unit-menu-${unit.id}`}
         onClick={(e) => {
           e.stopPropagation();
           setPopover((v) => !v);
@@ -182,6 +187,7 @@ function UnitRow({
       {popover ? (
         <ReclassifyPopover
           unit={unit}
+          onAskClaude={onQuote}
           onClose={() => setPopover(false)}
           onApply={(patch) => {
             onReclassify(patch);
