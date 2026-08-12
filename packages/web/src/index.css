@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+
+    --bg: #0c0d10;
+    --bg-raised: #131519;
+    --bg-inset: #0a0b0e;
+    --bg-hover: #1a1d23;
+    --border: #23262e;
+    --border-strong: #333844;
+
+    --fg: #dfe3ea;
+    --fg-muted: #99a0ad;
+    --fg-faint: #6b7280;
+
+    --accent: #7aa2f7;
+    --accent-soft: rgba(122, 162, 247, 0.14);
+
+    --add-bg: rgba(63, 185, 80, 0.1);
+    --add-bg-strong: rgba(63, 185, 80, 0.26);
+    --add-gutter: rgba(63, 185, 80, 0.16);
+    --del-bg: rgba(248, 81, 73, 0.1);
+    --del-bg-strong: rgba(248, 81, 73, 0.26);
+    --del-gutter: rgba(248, 81, 73, 0.16);
+
+    --risk: #f0787a;
+    --risk-soft: rgba(240, 120, 122, 0.13);
+    --warn: #e3b341;
+    --warn-soft: rgba(227, 179, 65, 0.13);
+    --ok: #4ec27f;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+
+      --bg: #fbfbfc;
+      --bg-raised: #ffffff;
+      --bg-inset: #f3f4f6;
+      --bg-hover: #eef0f4;
+      --border: #e2e5ea;
+      --border-strong: #cdd2da;
+
+      --fg: #1c2027;
+      --fg-muted: #5b6270;
+      --fg-faint: #8b93a1;
+
+      --accent: #2f6feb;
+      --accent-soft: rgba(47, 111, 235, 0.1);
+
+      --add-bg: rgba(34, 134, 58, 0.09);
+      --add-bg-strong: rgba(34, 134, 58, 0.22);
+      --add-gutter: rgba(34, 134, 58, 0.13);
+      --del-bg: rgba(203, 36, 49, 0.08);
+      --del-bg-strong: rgba(203, 36, 49, 0.2);
+      --del-gutter: rgba(203, 36, 49, 0.12);
+
+      --risk: #c0403f;
+      --risk-soft: rgba(192, 64, 63, 0.1);
+      --warn: #a06a08;
+      --warn-soft: rgba(160, 106, 8, 0.12);
+      --ok: #1a7f45;
+    }
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv05" 1, "ss01" 1;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 6px;
+    border: 2px solid var(--bg);
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@layer components {
+  .surface {
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+  }
+
+  .btn {
+    @apply inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium transition-colors;
+    border: 1px solid var(--border);
+    background: var(--bg-raised);
+    color: var(--fg-muted);
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--bg-hover);
+    color: var(--fg);
+    border-color: var(--border-strong);
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .btn-primary {
+    background: var(--accent-soft);
+    border-color: transparent;
+    color: var(--accent);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs font-medium leading-4 tracking-tight;
+  }
+
+  .input {
+    @apply w-full rounded px-2.5 py-1.5 text-sm outline-none;
+    background: var(--bg-inset);
+    border: 1px solid var(--border);
+    color: var(--fg);
+  }
+  .input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .input::placeholder {
+    color: var(--fg-faint);
+  }
+
+  .diff-line {
+    @apply flex font-mono;
+    font-size: 12px;
+    line-height: 20px;
+    white-space: pre;
+  }
+  .diff-gutter {
+    @apply select-none text-right;
+    color: var(--fg-faint);
+    width: 3.25rem;
+    padding-right: 0.5rem;
+    flex: none;
+    font-variant-numeric: tabular-nums;
+  }
+  .intra {
+    border-radius: 2px;
+  }
+}

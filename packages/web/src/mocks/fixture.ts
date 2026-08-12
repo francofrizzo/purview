@@ -1,0 +1,470 @@
+import type {
+  DraftComment,
+  FilesJson,
+  Hunk,
+  PrDetail,
+  PrListEntry,
+  PrState,
+  ReviewUnit,
+} from "../api/types";
+
+const meta = {
+  host: "github.com",
+  owner: "acme",
+  repo: "billing",
+  number: 482,
+  url: "https://github.com/acme/billing/pull/482",
+  title: "Charge retries: idempotency keys + backoff",
+  author: "dana",
+  createdAt: "2026-08-09T10:12:00Z",
+};
+
+export const MOCK_KEY = "github.com/acme/billing/482";
+
+function h(
+  id: string,
+  file: string,
+  header: string,
+  oldStart: number,
+  oldLines: number,
+  newStart: number,
+  newLines: number,
+  lines: string[],
+): Hunk {
+  return { id, file, header, oldStart, oldLines, newStart, newLines, lines };
+}
+
+const hunks: Hunk[] = [
+  h(
+    "a1b2c3d4e5f60001",
+    "src/billing/charge.ts",
+    "@@ -18,10 +18,26 @@ export class ChargeService {",
+    18,
+    10,
+    18,
+    26,
+    [
+      "   private readonly gateway: Gateway;",
+      " ",
+      "   async charge(order: Order): Promise<ChargeResult> {",
+      "-    const res = await this.gateway.charge(order.total, order.currency);",
+      "-    if (!res.ok) throw new ChargeFailed(res.code);",
+      "-    return { id: res.id, status: \"captured\" };",
+      "+    const key = idempotencyKey(order.id, order.total, order.currency);",
+      "+    const existing = await this.ledger.findByKey(key);",
+      "+    if (existing) return existing.result;",
+      "+",
+      "+    const res = await this.retry(() =>",
+      "+      this.gateway.charge(order.total, order.currency, { idempotencyKey: key }),",
+      "+    );",
+      "+    if (!res.ok) {",
+      "+      await this.ledger.recordFailure(key, res.code);",
+      "+      throw new ChargeFailed(res.code);",
+      "+    }",
+      "+    const result = { id: res.id, status: \"captured\" as const };",
+      "+    await this.ledger.record(key, result);",
+      "+    return result;",
+      "   }",
+      " ",
+      "   async refund(chargeId: string): Promise<void> {",
+    ],
+  ),
+  h(
+    "a1b2c3d4e5f60002",
+    "src/billing/charge.ts",
+    "@@ -52,6 +68,24 @@ export class ChargeService {",
+    52,
+    6,
+    68,
+    24,
+    [
+      "     await this.gateway.refund(chargeId);",
+      "   }",
+      " ",
+      "+  private async retry<T>(fn: () => Promise<T>): Promise<T> {",
+      "+    let delay = 200;",
+      "+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {",
+      "+      try {",
+      "+        return await fn();",
+      "+      } catch (err) {",
+      "+        if (!isTransient(err) || attempt === MAX_ATTEMPTS - 1) throw err;",
+      "+        await sleep(delay + Math.random() * delay);",
+      "+        delay *= 2;",
+      "+      }",
+      "+    }",
+      "+    throw new Error(\"unreachable\");",
+      "+  }",
+      "+",
+      " }",
+    ],
+  ),
+  h(
+    "a1b2c3d4e5f60003",
+    "src/billing/idempotency.ts",
+    "@@ -0,0 +1,14 @@",
+    0,
+    0,
+    1,
+    14,
+    [
+      "+import { createHash } from \"node:crypto\";",
+      "+",
+      "+/** Stable key for a charge attempt. Must not include timestamps. */",
+      "+export function idempotencyKey(",
+      "+  orderId: string,",
+      "+  amount: number,",
+      "+  currency: string,",
+      "+): string {",
+      "+  return createHash(\"sha256\")",
+      "+    .update(`${orderId}:${amount}:${currency}`)",
+      "+    .digest(\"hex\")",
+      "+    .slice(0, 32);",
+      "+}",
+      "+",
+    ],
+  ),
+  h(
+    "a1b2c3d4e5f60004",
+    "migrations/0042_charge_ledger.sql",
+    "@@ -0,0 +1,11 @@",
+    0,
+    0,
+    1,
+    11,
+    [
+      "+CREATE TABLE charge_ledger (",
+      "+  key         TEXT PRIMARY KEY,",
+      "+  order_id    TEXT NOT NULL,",
+      "+  result      JSONB,",
+      "+  failure     TEXT,",
+      "+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()",
+      "+);",
+      "+",
+      "+CREATE INDEX charge_ledger_order_id_idx ON charge_ledger (order_id);",
+      "+",
+    ],
+  ),
+  h(
+    "a1b2c3d4e5f60005",
+    "src/billing/ledger.ts",
+    "@@ -1,4 +1,32 @@",
+    1,
+    4,
+    1,
+    32,
+    [
+      " import type { Pool } from \"pg\";",
+      "+import type { ChargeResult } from \"./types\";",
+      "+",
+      "+export class ChargeLedger {",
+      "+  constructor(private readonly pool: Pool) {}",
+      "+",
+      "+  async findByKey(key: string) {",
+      "+    const { rows } = await this.pool.query(",
+      "+      \"SELECT result FROM charge_ledger WHERE key = $1\",",
+      "+      [key],",
+      "+    );",
+      "+    return rows[0] ? { result: rows[0].result as ChargeResult } : null;",
+      "+  }",
+      "+",
+      "+  async record(key: string, result: ChargeResult) {",
+      "+    await this.pool.query(",
+      "+      \"INSERT INTO charge_ledger (key, result) VALUES ($1, $2) ON CONFLICT DO NOTHING\",",
+      "+      [key, result],",
+      "+    );",
+      "+  }",
+      "+}",
+      " ",
+    ],
+  ),
+  h(
+    "a1b2c3d4e5f60006",
+    "src/container.ts",
+    "@@ -12,6 +12,8 @@ export function buildContainer(pool: Pool) {",
+    12,
+    6,
+    12,
+    8,
+    [
+      "   const gateway = new StripeGateway(env.STRIPE_KEY);",
+      "+  const ledger = new ChargeLedger(pool);",
+      "   const charge = new ChargeService(gateway, ledger);",
+      " ",
+      "   return { gateway, charge };",
+      " }",
+    ],
+  ),
+  h(
+    "a1b2c3d4e5f60007",
+    "src/api/routes/orders.ts",
+    "@@ -44,7 +44,7 @@ router.post(\"/orders/:id/pay\", async (req, res) => {",
+    44,
+    7,
+    44,
+    7,
+    [
+      "   const order = await orders.get(req.params.id);",
+      "-  const charge = await chargeService.charge(order);",
+      "+  const charge = await chargeService.charge(order, { requestId: req.id });",
+      "   res.json({ charge });",
+      " });",
+    ],
+  ),
+  h(
+    "a1b2c3d4e5f60008",
+    "test/billing/charge.test.ts",
+    "@@ -30,6 +30,28 @@ describe(\"ChargeService\", () => {",
+    30,
+    6,
+    30,
+    28,
+    [
+      "     expect(res.status).toBe(\"captured\");",
+      "   });",
+      " ",
+      "+  it(\"is idempotent for the same order+amount\", async () => {",
+      "+    const first = await service.charge(order);",
+      "+    const second = await service.charge(order);",
+      "+    expect(second.id).toBe(first.id);",
+      "+    expect(gateway.calls).toHaveLength(1);",
+      "+  });",
+      "+",
+      "+  it(\"retries transient gateway errors with backoff\", async () => {",
+      "+    gateway.failNext(2, { transient: true });",
+      "+    const res = await service.charge(order);",
+      "+    expect(res.status).toBe(\"captured\");",
+      "+    expect(gateway.calls).toHaveLength(3);",
+      "+  });",
+      "+",
+      " });",
+    ],
+  ),
+  h(
+    "a1b2c3d4e5f60009",
+    "docs/billing.md",
+    "@@ -8,3 +8,9 @@ Charges go through the gateway adapter.",
+    8,
+    3,
+    8,
+    9,
+    [
+      " Charges go through the gateway adapter.",
+      " ",
+      "+## Idempotency",
+      "+",
+      "+Every charge attempt derives a key from `(orderId, amount, currency)`.",
+      "+Replays return the recorded result instead of hitting the gateway.",
+      "+",
+    ],
+  ),
+];
+
+const files: FilesJson = {
+  files: [
+    {
+      path: "src/billing/charge.ts",
+      status: "modified",
+      additions: 34,
+      deletions: 3,
+      hunks: [hunks[0], hunks[1]],
+    },
+    {
+      path: "src/billing/idempotency.ts",
+      status: "added",
+      additions: 14,
+      deletions: 0,
+      hunks: [hunks[2]],
+    },
+    {
+      path: "migrations/0042_charge_ledger.sql",
+      status: "added",
+      additions: 11,
+      deletions: 0,
+      hunks: [hunks[3]],
+    },
+    {
+      path: "src/billing/ledger.ts",
+      status: "modified",
+      additions: 28,
+      deletions: 0,
+      hunks: [hunks[4]],
+    },
+    {
+      path: "src/container.ts",
+      status: "modified",
+      additions: 2,
+      deletions: 0,
+      hunks: [hunks[5]],
+    },
+    {
+      path: "src/api/routes/orders.ts",
+      status: "modified",
+      additions: 1,
+      deletions: 1,
+      hunks: [hunks[6]],
+    },
+    {
+      path: "test/billing/charge.test.ts",
+      status: "modified",
+      additions: 22,
+      deletions: 0,
+      hunks: [hunks[7]],
+    },
+    {
+      path: "docs/billing.md",
+      status: "modified",
+      additions: 6,
+      deletions: 0,
+      hunks: [hunks[8]],
+    },
+  ],
+};
+
+const units: ReviewUnit[] = [
+  {
+    id: "idempotent-charge-path",
+    title: "Idempotent charge path with ledger-backed replay",
+    summary:
+      "charge() now derives a stable idempotency key, short-circuits on a recorded result, and persists both success and failure in a new charge_ledger table.",
+    kind: "core-logic",
+    attention: "must-read",
+    attentionWhy: "Encodes the money-safety decision: what counts as the same charge.",
+    riskFlags: ["money", "external-call"],
+    hunkIds: [
+      "a1b2c3d4e5f60001",
+      "a1b2c3d4e5f60003",
+      "a1b2c3d4e5f60005",
+      "a1b2c3d4e5f60004",
+    ],
+    order: 1,
+  },
+  {
+    id: "transient-retry-backoff",
+    title: "Retry wrapper with jittered exponential backoff",
+    summary:
+      "Transient gateway failures are retried up to MAX_ATTEMPTS with doubling delay plus jitter. Non-transient errors propagate immediately.",
+    kind: "core-logic",
+    attention: "must-read",
+    attentionWhy: "Retry semantics interact with the idempotency key; wrong here double-charges.",
+    riskFlags: ["concurrency", "external-call"],
+    hunkIds: ["a1b2c3d4e5f60002", "a1b2c3d4e5f60008"],
+    order: 2,
+  },
+  {
+    id: "wiring-and-docs",
+    title: "Container wiring, call-site threading and docs",
+    summary:
+      "ChargeLedger is constructed in the container and injected; the pay route threads a requestId through. Docs describe the new key derivation.",
+    kind: "wiring",
+    attention: "skip",
+    attentionWhy: "Mechanical: registration, one signature threading, prose.",
+    riskFlags: [],
+    hunkIds: ["a1b2c3d4e5f60006", "a1b2c3d4e5f60007", "a1b2c3d4e5f60009"],
+    order: 3,
+  },
+];
+
+const state: PrState = {
+  revision: 3,
+  summary:
+    "Payment charges become replay-safe. A key derived from (orderId, amount, currency) is recorded in a new charge_ledger table before the gateway call, so retries — whether from the client, the queue, or the new backoff wrapper — return the original result instead of charging twice. Two things deserve real attention: the key derivation (it must not include anything volatile) and the interaction between the retry loop and the ledger write ordering.",
+  units,
+  hunks: {
+    a1b2c3d4e5f60001: { viewed: true, viewedAtRevision: 2, changedSinceViewed: true, migration: "fuzzy", predecessorId: "a1b2c3d4e5f6ff01", diffOfDiffs: {
+      before: [
+        "  async charge(order: Order): Promise<ChargeResult> {",
+        "    const key = idempotencyKey(order.id, order.total);",
+        "    const existing = await this.ledger.findByKey(key);",
+        "    if (existing) return existing.result;",
+      ].join("\n"),
+      after: [
+        "  async charge(order: Order): Promise<ChargeResult> {",
+        "    const key = idempotencyKey(order.id, order.total, order.currency);",
+        "    const existing = await this.ledger.findByKey(key);",
+        "    if (existing) return existing.result;",
+      ].join("\n"),
+    } },
+    a1b2c3d4e5f60002: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false, migration: "identical" },
+    a1b2c3d4e5f60003: { viewed: false, changedSinceViewed: false, migration: "identical" },
+    a1b2c3d4e5f60004: { viewed: false, changedSinceViewed: false, migration: "new" },
+    a1b2c3d4e5f60005: { viewed: false, changedSinceViewed: false, migration: "identical" },
+    a1b2c3d4e5f60006: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false },
+    a1b2c3d4e5f60007: { viewed: false, changedSinceViewed: false },
+    a1b2c3d4e5f60008: { viewed: false, changedSinceViewed: false, migration: "new" },
+    a1b2c3d4e5f60009: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false },
+  },
+  files: {
+    "src/billing/charge.ts": { viewed: true, viewedHunks: 2, totalHunks: 2, syncedToGitHub: true },
+    "src/billing/idempotency.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
+    "migrations/0042_charge_ledger.sql": { viewed: false, viewedHunks: 0, totalHunks: 1 },
+    "src/billing/ledger.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
+    "src/container.ts": { viewed: true, viewedHunks: 1, totalHunks: 1 },
+    "src/api/routes/orders.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
+    "test/billing/charge.test.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
+    "docs/billing.md": { viewed: true, viewedHunks: 1, totalHunks: 1 },
+  },
+};
+
+function buildDiffText(): string {
+  const out: string[] = [];
+  for (const f of files.files) {
+    const old = f.status === "added" ? "/dev/null" : `a/${f.path}`;
+    out.push(`diff --git a/${f.path} b/${f.path}`);
+    if (f.status === "added") out.push("new file mode 100644");
+    out.push(`--- ${old}`);
+    out.push(`+++ b/${f.path}`);
+    for (const hk of f.hunks) {
+      out.push(hk.header);
+      out.push(...(hk.lines ?? []));
+    }
+  }
+  return out.join("\n") + "\n";
+}
+
+export const mockDetail: PrDetail = {
+  key: MOCK_KEY,
+  meta,
+  state,
+  files,
+  diff: buildDiffText(),
+};
+
+export const mockList: PrListEntry[] = [
+  {
+    key: MOCK_KEY,
+    meta,
+    title: meta.title,
+    unitCount: units.length,
+    viewedHunks: 4,
+    totalHunks: 9,
+    updatedAt: "2026-08-12T08:40:00Z",
+  },
+  {
+    key: "github.com/acme/platform/1190",
+    meta: {
+      host: "github.com",
+      owner: "acme",
+      repo: "platform",
+      number: 1190,
+      url: "https://github.com/acme/platform/pull/1190",
+      title: "Drop legacy session cookie fallback",
+    },
+    title: "Drop legacy session cookie fallback",
+    unitCount: 0,
+    viewedHunks: 0,
+    totalHunks: 0,
+    updatedAt: "2026-08-11T17:02:00Z",
+  },
+];
+
+export const mockDrafts: DraftComment[] = [
+  {
+    id: "draft-1",
+    file: "src/billing/charge.ts",
+    line: 24,
+    side: "RIGHT",
+    body: "Should the ledger write happen before the gateway call so a crash mid-flight is still replay-safe?",
+    createdAt: "2026-08-12T08:31:00Z",
+    status: "pending",
+  },
+];
