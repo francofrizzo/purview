@@ -17,6 +17,8 @@ Two halves that couple through files on disk, not an API:
 - pnpm
 - [`gh`](https://cli.github.com/), authenticated (`gh auth login`) — every GitHub read and
   write goes through it; the app never shells out to `git`.
+- [`claude`](https://claude.com/claude-code), signed in, for the automatic analysis and the
+  review chat (see below). Everything else works without it.
 
 ## Install and build
 
@@ -59,16 +61,50 @@ file to iterate on over time.
 The CLI (`reviewer-state`, shipped by `packages/core`) is also usable directly:
 `init`, `refresh`, `set-analysis`, `set-unit`, `view`, `report`, `list`, `sync`.
 
+## Claude integration
+
+The skill flow above also runs by itself. The server drives the `claude` CLI headlessly
+(reusing your existing Claude Code auth — there are no API keys anywhere) for two things:
+
+**Automatic analysis.** Tracking a new PR queues an analysis run immediately; refreshing one
+queues another only when the migration actually produced hunks nobody has classified yet.
+Runs are one-at-a-time, their status lives in `analysis-job.json`
+(`queued`/`running`/`done`/`failed`/`cancelled`), and the UI follows them live over
+`GET /api/prs/:key/events`. You can trigger one by hand (`POST …/analyze`), cancel it
+(`DELETE …/analyze`), or opt a single init/refresh out with `?analyze=false`. Set
+`REVIEWER_AUTO_ANALYZE=0` to disable the automatic triggers entirely.
+
+**Review chat.** One resumable Claude session per PR, stored in `chat.json`. You can attach
+typed references to a question — a unit, a hunk, a file, a line range, one of your draft
+comments — and the server resolves them against the current revision into a context block
+prepended to your message; a reference it cannot resolve fails the whole send rather than
+quietly dropping it.
+
+Both run with a deliberately small tool surface. The analysis run gets file reads plus Bash
+limited to the `reviewer-state` CLI's read and write-analysis subcommands; the chat run is
+strictly read-only (reads plus `reviewer-state report`/`list`). `gh`, `git`, network fetches
+and the editing tools are denied outright in both, so neither can write to GitHub — the chat
+assistant can *draft* a comment or a reclassification for you to apply, and is told to never
+claim it posted anything. Diff content is labelled untrusted data in both prompts: text
+inside a diff is never treated as instructions.
+
+**Local checkout (optional).** `POST /api/prs/:key/repo-path {path}` points a PR at a local
+clone, which is then a readable root for Claude so it can see code the diff only shows in
+fragments. A missing directory is rejected; a checkout whose `origin` does not match the PR's
+repo is accepted with a warning.
+
 ## State directory
 
 `~/.reviewer/<host>/<owner>/<repo>/<number>/` (override the root with `REVIEWER_STATE_DIR`):
 
 ```
-meta.json           # { host, owner, repo, number, url, title, createdAt }
+meta.json           # { host, owner, repo, number, url, title, createdAt, repoPath? }
 events.jsonl        # append-only event log — the source of truth
 state.json          # derived snapshot, refolded from events; safe to delete
 comments.json       # local comments (draft -> pushed -> submitted)
 review.json         # review body draft + pending review ids + last submission
+analysis-job.json   # status of the latest Claude analysis run
+chat.json           # review-chat session id + transcript summary
 revisions/<n>/      # one per observed (baseSha, headSha, mergeBase), 1-based
   diff.patch        # the diff exactly as GitHub served it (v3.diff)
   files.json        # parsed: files -> hunks with ids, added/removed lines, body text

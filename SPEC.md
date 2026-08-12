@@ -18,11 +18,13 @@ skills/pr-review  # Claude skill (SKILL.md + reference docs). Reads/writes state
 `~/.reviewer/<host>/<owner>/<repo>/<number>/`
 
 ```
-meta.json           # { host, owner, repo, number, url, createdAt }
+meta.json           # { host, owner, repo, number, url, createdAt, repoPath? }
 events.jsonl        # append-only event log (source of truth)
 state.json          # derived snapshot, rebuilt from events; safe to delete
 comments.json       # local draft comments (draft -> pushed -> submitted)
 review.json         # review body draft + pending review ids + last submission
+analysis-job.json   # latest Claude analysis run for this PR (see "Claude integration")
+chat.json           # review-chat session id + transcript summary
 revisions/<n>/      # one per observed (baseSha, headSha, mergeBase)
   diff.patch        # the diff exactly as GitHub served it (v3.diff)
   files.json        # parsed: files -> hunks with ids
@@ -73,7 +75,9 @@ interface HunkState {
 `unit-viewed` {unitId} (expands to its hunks),
 `classification-corrected` {hunkId, from, to, note}  // feedback loop for the skill
 `file-synced-github` {file, viewed: boolean},
-`review-submitted` {event: APPROVE|REQUEST_CHANGES|COMMENT, url?, commentCount}
+`review-submitted` {event: APPROVE|REQUEST_CHANGES|COMMENT, url?, commentCount},
+`analysis-started` {revision},
+`analysis-finished` {revision, status: done|failed|cancelled, error?}
 
 `state.json` = fold of events: current revision, units, per-hunk state, per-file rollup.
 
@@ -115,6 +119,75 @@ Review errors carry a specific `error` code rather than a generic gh failure:
 `cannot_approve_own_pr` (422), `stale_commit_id` (422, force-push moved the head),
 `comment_line_not_in_diff` (422), `pending_review_gone` (404), `confirmation_required` (400),
 `invalid_event` (400).
+
+## Claude integration
+
+The server drives the `claude` CLI headlessly for two features. One module
+(`packages/server/src/claude-runner.ts`) owns every spawn; its stream-json output is parsed
+into our own events, and the spawn itself is injectable so tests never call a model.
+
+```
+claude -p --output-format stream-json --verbose --safe-mode --strict-mcp-config \
+       [--include-partial-messages] [--append-system-prompt <text>] [--add-dir <dir>]... \
+       --tools <list> --allowedTools <rules>... --disallowedTools <rules>... \
+       (--session-id <uuid> | --resume <uuid>)
+```
+
+The prompt goes over **stdin**, never argv (it can be large, and argv is logged). Auth is the
+user's own Claude Code login; no API key is read, passed or stored. Runs are killable
+(SIGTERM on cancel/timeout, SIGKILL 5s later); the analysis timeout is deliberately generous.
+
+**Tool restriction.** Three mechanisms stack, verified against the real CLI:
+`--tools` sets the built-in surface (`Read,Glob,Grep,Bash` — no Write/Edit anywhere);
+`--allowedTools` allows Bash only for exact absolute-path prefixes of the `reviewer-state`
+CLI; `--disallowedTools` denies the writing subcommands plus `gh`/`git`/`curl`/`wget` and the
+web tools, and deny beats allow. In `-p` mode anything unmatched is denied outright (there is
+no prompt to accept it), and a chained command (`node cli.js x; gh …`) is denied as a whole —
+the permission parser does not match only the head. The analysis run therefore reaches the
+CLI with heredoc-on-stdin (`--file -`) rather than writing a temp file.
+
+**Analysis runs** use the PR state dir as cwd and may call `reviewer-state`
+`report`/`list`/`set-analysis`/`set-unit`. **Chat runs** are read-only: `report`/`list` only.
+Both prompts state that diff content is untrusted data whose embedded instructions must never
+be followed; the chat system prompt additionally says the assistant has no write tools, may
+draft comment text and reclassification proposals for the human to apply, and must never
+claim to have posted anything.
+
+**Analysis jobs.** One record per PR in `analysis-job.json`:
+`{revision, status: queued|running|done|failed|cancelled, queuedAt?, startedAt?, finishedAt?,
+error?, progress?}`. A single in-process slot runs them; on server start any record left
+`running`/`queued` is closed out as `failed` with `error: "server restarted"`. Triggers: after
+a successful `POST /api/prs` always, after `POST /api/prs/:key/refresh` only when the
+migration left new/unassigned hunks, both skippable with `?analyze=false`.
+
+**Chat.** One resumable CLI session per PR (`--session-id` on the first turn, `--resume`
+after), with `chat.json` holding `{sessionId, messages: [{role, text, ts, refs?}]}`. Requests
+may carry typed refs — `unit`/`hunk`/`file`/`line-range`/`comment` — which the server resolves
+against the current revision into a compact delimited block prepended to the message. An
+unresolvable ref fails the send with `unresolvable_ref` and persists nothing. A turn outlives
+its HTTP request: if the client disconnects, the run finishes and still writes `chat.json`.
+
+**Local repo path.** `meta.json.repoPath` (optional, back-compatible) points at a checkout;
+when set, chat runs use it as cwd with the state dir as an extra root, and the analysis prompt
+mentions it for reading surrounding code.
+
+## Server REST — Claude endpoints
+
+```
+GET    /api/prs/:key/analysis-job          -> {job: JobRecord | null}
+POST   /api/prs/:key/analyze               -> {job}   409 if queued/running
+DELETE /api/prs/:key/analyze               -> {job}   409 if nothing in progress
+POST   /api/prs/:key/repo-path {path}      -> {ok, path, warning?}   400 if dir missing
+GET    /api/prs/:key/chat                  -> {messages, sessionId, busy}
+POST   /api/prs/:key/chat {text, refs?}    -> SSE stream
+DELETE /api/prs/:key/chat                  -> {ok: true}
+GET    /api/prs/:key/events                -> SSE {type:"analysis-job", job} per transition,
+                                              heartbeat comment every 15s
+```
+
+Chat SSE events: `delta {text}` (append), `tool {name, detail}` (activity line),
+`done {message:{role,text,ts}}`, `error {error}`. `GET /api/prs` items and `GET /api/prs/:key`
+also carry `analysisJob: JobRecord|null`.
 
 ## Review lifecycle
 

@@ -49,6 +49,21 @@ export function readMeta(key: PrKey, root = stateRoot()): Meta {
   return MetaSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
 }
 
+/**
+ * Merge fields into meta.json (currently only `repoPath` moves after init).
+ * Read-modify-write rather than a blind overwrite so a caller setting one
+ * field can't drop the rest.
+ */
+export function updateMeta(
+  key: PrKey,
+  patch: Partial<Meta>,
+  root = stateRoot(),
+): Meta {
+  const merged = MetaSchema.parse({ ...readMeta(key, root), ...patch });
+  writeJson(metaPath(key, root), merged);
+  return merged;
+}
+
 export function readEvents(key: PrKey, root = stateRoot()): ReviewerEvent[] {
   const file = eventsPath(key, root);
   if (!fs.existsSync(file)) return [];

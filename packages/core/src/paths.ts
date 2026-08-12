@@ -33,6 +33,16 @@ export function statePath(key: PrKey, root = stateRoot()): string {
   return path.join(prDir(key, root), "state.json");
 }
 
+/** Persisted record of the latest Claude analysis run for this PR. */
+export function analysisJobPath(key: PrKey, root = stateRoot()): string {
+  return path.join(prDir(key, root), "analysis-job.json");
+}
+
+/** Chat session id + transcript summary for the review-assistant chat. */
+export function chatPath(key: PrKey, root = stateRoot()): string {
+  return path.join(prDir(key, root), "chat.json");
+}
+
 export function revisionDir(
   key: PrKey,
   revision: number,

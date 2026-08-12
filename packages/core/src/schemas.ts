@@ -135,8 +135,43 @@ export const MetaSchema = z.object({
   url: z.string(),
   title: z.string().optional(),
   createdAt: z.string(),
+  /**
+   * Absolute path to a local checkout of the PR's repo, when the reader has
+   * pointed us at one. Optional and purely additive: everything works without
+   * it, but Claude runs get the repo as an extra readable root so they can
+   * read code the diff only shows in fragments.
+   */
+  repoPath: z.string().optional(),
 });
 export type Meta = z.infer<typeof MetaSchema>;
+
+/* -------------------------------------------------------- analysis jobs */
+
+export const AnalysisJobStatusSchema = z.enum([
+  "queued",
+  "running",
+  "done",
+  "failed",
+  "cancelled",
+]);
+export type AnalysisJobStatus = z.infer<typeof AnalysisJobStatusSchema>;
+
+/**
+ * One Claude analysis run for a (PR, revision), persisted as
+ * `analysis-job.json` in the PR's state dir so its status survives a server
+ * restart (a "running" record with no process behind it is reconciled to
+ * "failed" on startup).
+ */
+export const AnalysisJobSchema = z.object({
+  revision: z.number().int(),
+  status: AnalysisJobStatusSchema,
+  queuedAt: z.string().optional(),
+  startedAt: z.string().optional(),
+  finishedAt: z.string().optional(),
+  error: z.string().optional(),
+  progress: z.string().optional(),
+});
+export type AnalysisJob = z.infer<typeof AnalysisJobSchema>;
 
 /* --------------------------------------------------------------- migration */
 
@@ -275,6 +310,26 @@ export const ReviewSubmittedEventSchema = z.object({
   commentCount: z.number().int().default(0),
 });
 
+/**
+ * A Claude analysis run started for a revision. Recorded in the log (rather
+ * than only in analysis-job.json) so the history of "when was this analyzed,
+ * and did it succeed" folds into state like everything else.
+ */
+export const AnalysisStartedEventSchema = z.object({
+  ...base,
+  type: z.literal("analysis-started"),
+  revision: z.number().int(),
+});
+
+export const AnalysisFinishedEventSchema = z.object({
+  ...base,
+  type: z.literal("analysis-finished"),
+  revision: z.number().int(),
+  /** terminal states only */
+  status: z.enum(["done", "failed", "cancelled"]),
+  error: z.string().optional(),
+});
+
 export const EventSchema = z.discriminatedUnion("type", [
   PrInitializedEventSchema,
   RevisionAddedEventSchema,
@@ -286,6 +341,8 @@ export const EventSchema = z.discriminatedUnion("type", [
   ClassificationCorrectedEventSchema,
   FileSyncedGithubEventSchema,
   ReviewSubmittedEventSchema,
+  AnalysisStartedEventSchema,
+  AnalysisFinishedEventSchema,
 ]);
 export type ReviewerEvent = z.infer<typeof EventSchema>;
 export type EventType = ReviewerEvent["type"];
@@ -363,6 +420,20 @@ export const StateSchema = z.object({
   archived: z.array(ArchivedHunkSchema).default([]),
   /** every review submitted from the app, oldest first (empty on old logs) */
   reviewSubmissions: z.array(ReviewSubmissionSchema).default([]),
+  /**
+   * The most recent Claude analysis run folded from the log. Absent on logs
+   * written before the analysis events existed — every consumer must treat
+   * "no analysis run on record" and "never analyzed" as the same thing.
+   */
+  analysisRun: z
+    .object({
+      revision: z.number().int(),
+      status: z.enum(["running", "done", "failed", "cancelled"]),
+      startedAt: z.string(),
+      finishedAt: z.string().optional(),
+      error: z.string().optional(),
+    })
+    .optional(),
   corrections: z
     .array(
       z.object({

@@ -238,6 +238,28 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       break;
     }
 
+    case "analysis-started": {
+      state.analysisRun = {
+        revision: event.revision,
+        status: "running",
+        startedAt: event.ts,
+      };
+      break;
+    }
+
+    case "analysis-finished": {
+      // A finish with no matching start (log truncated, or the start predates
+      // this event type) still records a terminal run rather than dropping it.
+      state.analysisRun = {
+        revision: event.revision,
+        status: event.status,
+        startedAt: state.analysisRun?.startedAt ?? event.ts,
+        finishedAt: event.ts,
+        error: event.error,
+      };
+      break;
+    }
+
     case "review-submitted": {
       // Append-only: a PR can be reviewed several times (approve, then a new
       // round after a force-push). `reviewSubmissions` may be absent on a

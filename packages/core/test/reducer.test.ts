@@ -213,3 +213,29 @@ describe("fold", () => {
     });
   });
 });
+
+describe("analysis run events", () => {
+  it("records a run as running, then terminal", () => {
+    const running = fold([...events, { ts, type: "analysis-started", revision: 1 }]);
+    expect(running.analysisRun).toEqual({ revision: 1, status: "running", startedAt: ts });
+
+    const finished = fold([
+      ...events,
+      { ts, type: "analysis-started", revision: 1 },
+      { ts, type: "analysis-finished", revision: 1, status: "failed", error: "boom" },
+    ]);
+    expect(finished.analysisRun).toMatchObject({
+      revision: 1,
+      status: "failed",
+      error: "boom",
+      finishedAt: ts,
+    });
+  });
+
+  it("is absent on logs that predate the events, and disturbs nothing else", () => {
+    const before = fold(events);
+    expect(before.analysisRun).toBeUndefined();
+    const after = fold([...events, { ts, type: "analysis-started", revision: 1 }]);
+    expect({ ...after, analysisRun: undefined }).toEqual({ ...before, analysisRun: undefined });
+  });
+});

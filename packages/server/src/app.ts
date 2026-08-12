@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { z } from "zod";
 import {
   analysisCoverage,
   hunkDiffOfDiffs,
@@ -46,6 +47,17 @@ import {
   type SubmitEvent,
 } from "./github-review.js";
 import { HttpError, classifyError } from "./http-error.js";
+import { streamSSE } from "hono/streaming";
+import {
+  cancelAnalysis,
+  jobEvents,
+  readJob,
+  reconcileStaleJobs,
+  startAnalysis,
+} from "./analysis.js";
+import { chatBusy, startChatTurn, type ChatStreamEvent } from "./chat-session.js";
+import { ChatRefSchema, clearChat, readChat } from "./chat.js";
+import { setRepoPath } from "./repo-path.js";
 
 const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
@@ -54,6 +66,10 @@ export interface AppOptions {
   stateDir?: string;
   /** Directory to serve statically at `/`; defaults to ../../web/dist relative to this file. */
   webDist?: string;
+  /** Skip the automatic Claude analysis triggers (tests, and `--no-analyze` runs). */
+  autoAnalyze?: boolean;
+  /** Timeout handed to analysis runs; tests shorten it. */
+  analysisTimeoutMs?: number;
 }
 
 function keyParam(c: { req: { param(name: string): string | undefined } }): PrKey {
@@ -94,6 +110,23 @@ function progressOf(state: State) {
 export function createApp(opts: AppOptions = {}): Hono {
   const app = new Hono();
   const root = opts.stateDir ?? stateRoot();
+  const autoAnalyze = opts.autoAnalyze ?? true;
+  // A "running" job record can only be stale at boot — nothing is running yet.
+  reconcileStaleJobs(root);
+
+  /** `?analyze=false` opts a single init/refresh out of the automatic run. */
+  const analyzeRequested = (c: { req: { query(k: string): string | undefined } }) =>
+    autoAnalyze && c.req.query("analyze") !== "false";
+
+  /** Auto-triggers are best-effort: a failed spawn must not fail the request. */
+  const triggerAnalysis = (key: PrKey) => {
+    try {
+      return startAnalysis(key, root, { timeoutMs: opts.analysisTimeoutMs });
+    } catch (err) {
+      console.warn(`[analysis] not started for ${keyToString(key)}: ${(err as Error).message}`);
+      return null;
+    }
+  };
   const webDist =
     opts.webDist ?? path.join(path.dirname(new URL(import.meta.url).pathname), "../../web/dist");
 
@@ -124,6 +157,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         currentRevision: state.currentRevision,
         summary: state.summary,
         progress: progressOf(state),
+        analysisJob: readJob(key, root),
       };
     });
     return c.json({ prs });
@@ -139,11 +173,15 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw classifyError(err);
     }
     const result = initPr(key, root);
+    // A freshly tracked PR has no analysis at all, so init always kicks one
+    // off (unless the caller opted out with ?analyze=false).
+    const job = analyzeRequested(c) ? triggerAnalysis(key) : null;
     return c.json({
       key: keyToString(result.key),
       created: result.created,
       revision: result.revision,
       state: result.state,
+      analysisJob: job,
     });
   });
 
@@ -152,6 +190,14 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/refresh", (c) => {
     const key = keyParam(c);
     const result = refreshPr(key, root);
+    // Re-analyzing costs real money and time, so a refresh only triggers one
+    // when the migration actually left work to do: hunks the existing analysis
+    // cannot already account for.
+    const hasNewWork =
+      !!result.report &&
+      (result.report.counts.new > 0 ||
+        loadState(key, root).unassignedHunkIds.length > 0);
+    const job = analyzeRequested(c) && hasNewWork ? triggerAnalysis(key) : null;
     return c.json({
       key: keyToString(key),
       revision: result.revision,
@@ -159,6 +205,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       baseOnly: result.baseOnly,
       report: result.report ?? null,
       state: result.state,
+      analysisJob: job,
     });
   });
 
@@ -168,7 +215,175 @@ export function createApp(opts: AppOptions = {}): Hono {
     const state = loadState(key, root);
     const filesJson = readFilesJson(key, state.currentRevision, root);
     const diff = readDiff(key, state.currentRevision, root);
-    return c.json({ state, files: filesJson.files, diff, meta });
+    return c.json({
+      state,
+      files: filesJson.files,
+      diff,
+      meta,
+      analysisJob: readJob(key, root),
+    });
+  });
+
+  /* ------------------------------------------------- Claude: analysis job */
+
+  app.get("/api/prs/:key/analysis-job", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root); // 404s for an unknown PR instead of reporting "no job"
+    return c.json({ job: readJob(key, root) });
+  });
+
+  app.post("/api/prs/:key/analyze", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    return c.json({ job: startAnalysis(key, root, { timeoutMs: opts.analysisTimeoutMs }) });
+  });
+
+  app.delete("/api/prs/:key/analyze", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    return c.json({ job: cancelAnalysis(key, root) });
+  });
+
+  app.post("/api/prs/:key/repo-path", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const body = (await readJsonBody(c)) as { path?: unknown };
+    const result = setRepoPath(key, body.path, root);
+    return c.json({ ok: true, path: result.path, warning: result.warning });
+  });
+
+  /**
+   * Server-sent job transitions. One stream per PR view; the UI does not have
+   * to poll to watch an analysis run.
+   */
+  app.get("/api/prs/:key/events", (c) => {
+    const key = keyParam(c);
+    const keyStr = keyToString(key);
+    return streamSSE(c, async (stream) => {
+      let closed = false;
+      stream.onAbort(() => {
+        closed = true;
+      });
+      const queue: string[] = [];
+      let wake: (() => void) | null = null;
+      const onJob = (payload: { key: PrKey; job: unknown }) => {
+        if (keyToString(payload.key) !== keyStr) return;
+        queue.push(JSON.stringify({ type: "analysis-job", job: payload.job }));
+        wake?.();
+        wake = null;
+      };
+      // Subscribe before the first write: a transition landing during that
+      // write would otherwise fall in the gap and never reach the client.
+      jobEvents.on("job", onJob);
+      await stream.writeSSE({
+        event: "analysis-job",
+        data: JSON.stringify({ type: "analysis-job", job: readJob(key, root) }),
+      });
+
+      try {
+        while (!closed) {
+          if (queue.length === 0) {
+            // Heartbeat doubles as the "is anyone still there" probe: writing
+            // to a dead socket is what surfaces the disconnect.
+            await Promise.race([
+              new Promise<void>((resolve) => {
+                wake = resolve;
+              }),
+              new Promise<void>((resolve) => setTimeout(resolve, 15_000)),
+            ]);
+            if (closed) break;
+            if (queue.length === 0) {
+              await stream.writeSSE({ data: "", event: "heartbeat" });
+              continue;
+            }
+          }
+          await stream.writeSSE({ event: "analysis-job", data: queue.shift()! });
+        }
+      } finally {
+        jobEvents.off("job", onJob);
+      }
+    });
+  });
+
+  /* -------------------------------------------------------- Claude: chat */
+
+  app.get("/api/prs/:key/chat", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const chat = readChat(key, root);
+    return c.json({
+      messages: chat.messages,
+      sessionId: chat.sessionId,
+      busy: chatBusy(key),
+    });
+  });
+
+  app.delete("/api/prs/:key/chat", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    clearChat(key, root);
+    return c.json({ ok: true });
+  });
+
+  /**
+   * A chat turn streams over SSE but does not depend on the stream: the run is
+   * started first and persists its answer to chat.json even if the client
+   * disconnects halfway through.
+   */
+  app.post("/api/prs/:key/chat", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const body = (await readJsonBody(c)) as { text?: string; refs?: unknown };
+    const refs = z.array(ChatRefSchema).default([]).parse(body.refs ?? []);
+    const turn = startChatTurn(key, { text: body.text ?? "", refs }, root);
+
+    return streamSSE(c, async (stream) => {
+      let closed = false;
+      stream.onAbort(() => {
+        closed = true;
+      });
+      const pending: ChatStreamEvent[] = [...turn.backlog];
+      let wake: (() => void) | null = null;
+      const onEvent = (event: ChatStreamEvent) => {
+        pending.push(event);
+        wake?.();
+        wake = null;
+      };
+      turn.emitter.on("event", onEvent);
+      try {
+        for (;;) {
+          if (pending.length === 0) {
+            if (closed) return;
+            const settled = await Promise.race([
+              new Promise<"event">((resolve) => {
+                wake = () => resolve("event");
+              }),
+              turn.done.then(() => "done" as const),
+            ]);
+            if (settled === "done" && pending.length === 0) return;
+          }
+          const event = pending.shift()!;
+          if (closed) continue; // drain silently; the run still persists
+          if (event.type === "delta") {
+            await stream.writeSSE({ event: "delta", data: JSON.stringify({ text: event.text }) });
+          } else if (event.type === "tool") {
+            await stream.writeSSE({
+              event: "tool",
+              data: JSON.stringify({ name: event.name, detail: event.detail }),
+            });
+          } else if (event.type === "done") {
+            await stream.writeSSE({
+              event: "done",
+              data: JSON.stringify({ message: event.message }),
+            });
+          } else {
+            await stream.writeSSE({ event: "error", data: JSON.stringify({ error: event.error }) });
+          }
+        }
+      } finally {
+        turn.emitter.off("event", onEvent);
+      }
+    });
   });
 
   app.post("/api/prs/:key/hunks/:id/viewed", async (c) => {
