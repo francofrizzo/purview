@@ -272,12 +272,14 @@ export function DraftsDrawer({
   onClose,
   onJump,
   onDelete,
+  onEdit,
 }: {
   drafts: DraftComment[];
   deleting?: boolean;
   onClose: () => void;
   onJump: (draft: DraftComment) => void;
   onDelete?: (draft: DraftComment) => void;
+  onEdit?: EditComment;
 }) {
   const local = drafts.filter((d) => (d.status ?? "draft") === "draft");
   const pushed = drafts.filter((d) => d.status === "pushed");
@@ -309,23 +311,21 @@ export function DraftsDrawer({
         ) : (
           <ul>
             {ordered.map((d) => (
-              <li key={d.id} className="border-b" style={{ borderColor: "var(--border)" }}>
+              <li key={d.id} className="border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
                 <button
                   type="button"
-                  className="w-full px-3 py-2 text-left"
+                  className="flex w-full items-center gap-1.5 text-left font-mono text-2xs"
+                  style={{ color: "var(--fg-muted)" }}
                   onClick={() => onJump(d)}
+                  title="Jump to this file"
                 >
-                  <div className="flex items-center gap-1.5 font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
-                    <span className="truncate">{d.file}</span>
-                    <span style={{ color: "var(--fg-faint)" }}>:{d.line}</span>
-                    <StatusChip status={d.status ?? "draft"} />
-                  </div>
-                  <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg)" }}>
-                    {d.body}
-                  </p>
+                  <span className="truncate">{d.file}</span>
+                  <span style={{ color: "var(--fg-faint)" }}>:{d.line}</span>
+                  <StatusChip status={d.status ?? "draft"} />
                 </button>
+                <CommentBody comment={d} edit={onEdit} />
                 {onDelete && d.status !== "submitted" ? (
-                  <div className="flex px-3 pb-2">
+                  <div className="mt-1 flex">
                     <button
                       type="button"
                       className="btn ml-auto"

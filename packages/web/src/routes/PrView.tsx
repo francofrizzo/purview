@@ -5,6 +5,7 @@ import {
   useAddComment,
   useComments,
   useDeleteComment,
+  useEditComment,
   useDiscardPendingReview,
   usePatchUnit,
   usePr,
@@ -41,6 +42,7 @@ export function PrView() {
   const sync = useSync(prKey);
   const addComment = useAddComment(prKey);
   const deleteComment = useDeleteComment(prKey);
+  const editComment = useEditComment(prKey);
   const saveReviewBody = useSaveReviewBody(prKey);
   const submitReview = useSubmitReview(prKey);
   const discardPending = useDiscardPendingReview(prKey);
@@ -284,6 +286,7 @@ export function PrView() {
             onClose={() => setDraftsOpen(false)}
             onJump={(d) => jumpToFile(d.file)}
             onDelete={(d) => deleteComment.mutate(d.id)}
+            onEdit={(input) => editComment.mutateAsync(input)}
           />
         ) : null}
 
@@ -303,6 +306,7 @@ export function PrView() {
             }
             onDiscardPending={() => discardPending.mutate()}
             onJumpToComment={(file) => jumpToFile(file)}
+            onEditComment={(input) => editComment.mutateAsync(input)}
           />
         ) : null}
       </div>

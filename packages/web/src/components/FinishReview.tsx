@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ReviewEvent, ReviewStatus, SubmitReviewResult } from "../api/types";
+import { CommentBody, type EditComment } from "./Drafts";
 
 const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }[] = [
   {
@@ -44,6 +45,7 @@ export function FinishReviewPanel({
   onSubmit,
   onDiscardPending,
   onJumpToComment,
+  onEditComment,
 }: {
   review?: ReviewStatus;
   loading: boolean;
@@ -57,6 +59,7 @@ export function FinishReviewPanel({
   onSubmit: (event: ReviewEvent, body: string) => void;
   onDiscardPending: () => void;
   onJumpToComment: (file: string, line: number) => void;
+  onEditComment?: EditComment;
 }) {
   const [body, setBody] = useState("");
   const [arming, setArming] = useState<ReviewEvent | null>(null);
@@ -179,7 +182,7 @@ export function FinishReviewPanel({
               </p>
             </div>
 
-            <IncludedComments review={review} onJump={onJumpToComment} />
+            <IncludedComments review={review} onJump={onJumpToComment} onEdit={onEditComment} />
 
             <div className="px-3 py-3">
               {arming ? (
@@ -336,9 +339,11 @@ function PendingBanner({
 function IncludedComments({
   review,
   onJump,
+  onEdit,
 }: {
   review: ReviewStatus;
   onJump: (file: string, line: number) => void;
+  onEdit?: EditComment;
 }) {
   return (
     <div className="border-b" style={{ borderColor: "var(--border)" }}>
@@ -357,24 +362,19 @@ function IncludedComments({
       ) : (
         <ul className="py-1">
           {review.included.map((c) => (
-            <li key={c.id}>
+            <li key={c.id} className="px-3 py-1.5">
               <button
                 type="button"
-                className="w-full px-3 py-1.5 text-left"
+                className="flex w-full items-center gap-1.5 text-left font-mono text-2xs"
+                style={{ color: "var(--fg-muted)" }}
                 onClick={() => onJump(c.file, c.line)}
+                title="Jump to this file"
               >
-                <div
-                  className="flex items-center gap-1.5 font-mono text-2xs"
-                  style={{ color: "var(--fg-muted)" }}
-                >
-                  <span className="truncate">{c.file}</span>
-                  <span style={{ color: "var(--fg-faint)" }}>:{c.line}</span>
-                  <StatusChip status={c.status} />
-                </div>
-                <p className="mt-0.5 line-clamp-2 text-xs leading-5" style={{ color: "var(--fg)" }}>
-                  {c.body}
-                </p>
+                <span className="truncate">{c.file}</span>
+                <span style={{ color: "var(--fg-faint)" }}>:{c.line}</span>
+                <StatusChip status={c.status} />
               </button>
+              <CommentBody comment={c} edit={onEdit} clamp />
             </li>
           ))}
         </ul>
