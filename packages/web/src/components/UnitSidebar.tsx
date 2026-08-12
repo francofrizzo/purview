@@ -30,6 +30,16 @@ export function UnitSidebar({
 
   const units = [...detail.state.units].sort((a, b) => a.order - b.order);
 
+  // The skill's `order` is global and gappy once units are bucketed by
+  // attention (must-read shows 1,2,…,15 and skim then restarts at 6), which
+  // reads as broken. Number by rendered position instead — the list is already
+  // in reading order — and leave `order` in state untouched.
+  const displayNumber = new Map<string, number>();
+  let n = 0;
+  for (const g of GROUPS) {
+    for (const u of units) if (u.attention === g.attention) displayNumber.set(u.id, ++n);
+  }
+
   if (!units.length) {
     return (
       <div className="p-4 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
@@ -83,6 +93,7 @@ export function UnitSidebar({
                     key={u.id}
                     detail={detail}
                     unit={u}
+                    number={displayNumber.get(u.id) ?? u.order}
                     selected={u.id === selectedUnitId}
                     onSelect={() => onSelect(u.id)}
                     onReclassify={(patch) => onReclassify(u.id, patch)}
@@ -100,12 +111,14 @@ export function UnitSidebar({
 function UnitRow({
   detail,
   unit,
+  number,
   selected,
   onSelect,
   onReclassify,
 }: {
   detail: PrDetail;
   unit: ReviewUnit;
+  number: number;
   selected: boolean;
   onSelect: () => void;
   onReclassify: (patch: Partial<ReviewUnit>) => void;
@@ -135,16 +148,17 @@ function UnitRow({
             className="mt-[3px] flex-none text-xs tabular-nums"
             style={{ color: "var(--fg-faint)" }}
           >
-            {unit.order}
+            {number}
           </span>
           <span
-            className="flex-1 text-[13px] font-medium leading-[18px]"
+            className="min-w-0 flex-1 break-words pr-3 text-[13px] font-medium leading-[18px]"
+            title={unit.title}
             style={{ color: p.total > 0 && p.viewed === p.total ? "var(--fg-muted)" : "var(--fg)" }}
           >
             {unit.title}
           </span>
         </div>
-        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-5">
+        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 pl-5">
           <KindChip kind={unit.kind} />
           <RiskFlags flags={unit.riskFlags} />
           {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}

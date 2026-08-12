@@ -121,6 +121,15 @@ export const IconSplit = (p: P) => (
   </svg>
 );
 
+/** Text-wrap glyph: a line that turns back on itself. */
+export const IconWrap = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M2 3.5h12" />
+    <path d="M2 8h9a2.25 2.25 0 0 1 0 4.5H6" />
+    <path d="M8 10.5 6 12.75l2 2.25" />
+  </svg>
+);
+
 export const RISK_META: Record<
   RiskFlag,
   { icon: (p: P) => JSX.Element; label: string }

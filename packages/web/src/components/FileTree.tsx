@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { PrDetail } from "../api/types";
 import { IconChevron, IconFile } from "./icons";
+import { MiddleTruncate } from "./Truncate";
 
 interface TreeNode {
   name: string;
@@ -80,7 +81,7 @@ export function FileTree({
             style={{ paddingLeft: 8 + depth * 10, color: "var(--fg-muted)" }}
           >
             <IconChevron open={!isCollapsed} width={9} height={9} />
-            <span className="truncate">{kid.name}</span>
+            <MiddleTruncate text={kid.name} tail={10} title={kid.path} />
           </button>,
         );
         if (!isCollapsed) out.push(...renderNode(kid, depth + 1));
@@ -102,7 +103,7 @@ export function FileTree({
             }}
           >
             <IconFile width={10} height={10} style={{ opacity: 0.6, flex: "none" }} />
-            <span className="truncate">{kid.name}</span>
+            <MiddleTruncate text={kid.name} tail={13} title={kid.file.path} />
             <span className="ml-auto flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
               {rollup ? `${rollup.viewedHunks}/${rollup.totalHunks}` : kid.file.hunkCount}
             </span>

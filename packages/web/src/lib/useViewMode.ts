@@ -48,3 +48,48 @@ export function useDiffViewMode(): [DiffViewMode, (mode: DiffViewMode) => void, 
 
   return [mode, setMode, toggle];
 }
+
+const WRAP_KEY = "reviewer.diffWrap";
+
+function readWrap(): boolean {
+  try {
+    return localStorage.getItem(WRAP_KEY) !== "off";
+  } catch {
+    return true;
+  }
+}
+
+function writeWrap(next: boolean) {
+  try {
+    localStorage.setItem(WRAP_KEY, next ? "on" : "off");
+  } catch {
+    /* private mode / storage disabled — keep the in-memory preference */
+  }
+}
+
+/** Long-line wrapping, persisted alongside the view mode. Defaults to on. */
+export function useWrapLines(): [boolean, (wrap: boolean) => void, () => void] {
+  const [wrap, setWrapState] = useState<boolean>(readWrap);
+
+  const setWrap = useCallback((next: boolean) => {
+    setWrapState(next);
+    writeWrap(next);
+  }, []);
+
+  const toggle = useCallback(() => {
+    setWrapState((cur) => {
+      writeWrap(!cur);
+      return !cur;
+    });
+  }, []);
+
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === WRAP_KEY) setWrapState(readWrap());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  return [wrap, setWrap, toggle];
+}

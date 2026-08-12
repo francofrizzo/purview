@@ -152,7 +152,10 @@
     @apply flex font-mono;
     font-size: 12px;
     line-height: 20px;
-    white-space: pre;
+    /* wrap rather than clip: the gutter/marker columns are flex items, so a
+       wrapped code column never drags them onto a line of their own */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .diff-gutter {
     @apply select-none text-right;
@@ -161,6 +164,23 @@
     padding-right: 0.5rem;
     flex: none;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* Leading indentation is a run of preserved spaces, i.e. a wrap opportunity.
+     Left wrappable, a deep indent can fill the first visual line on its own and
+     the marker then looks orphaned above its code. Keep it unbreakable. */
+  .diff-indent {
+    white-space: pre;
+  }
+  .diff-marker {
+    @apply flex-none select-none pl-1;
+    width: 0.75rem;
+    white-space: pre;
+  }
+  /* line numbers + comment affordance + marker: one fixed column, so they can
+     be pinned in one go when wrapping is off */
+  .diff-fixed {
+    @apply flex flex-none;
   }
   .intra {
     border-radius: 2px;
@@ -186,5 +206,48 @@
     flex: none;
     width: 1px;
     background: var(--border);
+  }
+
+  /* --- wrap off: horizontal scrolling with pinned gutters ---
+     Unified scrolls as one pane (the row container gets an explicit min-width
+     so backgrounds span the whole scroll width). Split scrolls per half, kept
+     in lockstep by DiffPane so the two sides always show the same columns. */
+  .diff-nowrap .diff-line,
+  .diff-nowrap .diff-half {
+    white-space: pre;
+    overflow-wrap: normal;
+  }
+  .diff-nowrap .diff-code {
+    flex: none;
+    min-width: max-content;
+  }
+  .diff-nowrap .diff-half {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .diff-nowrap .diff-half::-webkit-scrollbar {
+    height: 0;
+    display: none;
+  }
+  .diff-nowrap .diff-fixed {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background-color: var(--bg);
+  }
+  .diff-nowrap [data-type="add"] > .diff-fixed {
+    background-image: linear-gradient(var(--add-bg), var(--add-bg));
+  }
+  .diff-nowrap [data-type="del"] > .diff-fixed {
+    background-image: linear-gradient(var(--del-bg), var(--del-bg));
+  }
+  /* file / hunk header rows span the whole scroll width when wrap is off, so
+     pin their left half — otherwise the viewed checkbox scrolls out of reach */
+  .diff-nowrap .row-head-fixed {
+    position: sticky;
+    left: 0;
+  }
+  .diff-nowrap [data-type="none"] > .diff-fixed {
+    background-image: linear-gradient(var(--bg-inset), var(--bg-inset));
   }
 }

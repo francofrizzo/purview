@@ -211,13 +211,19 @@ export function FinishReviewPanel({
                       <button
                         key={e.event}
                         type="button"
-                        className="btn justify-start"
+                        className="btn w-full justify-start text-left"
                         style={{ color: e.tone }}
                         disabled={submitting}
+                        title={`${e.label} — ${e.blurb}`}
                         onClick={() => setArming(e.event)}
                       >
-                        {e.label}
-                        <span className="ml-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                        {/* fixed label column + single-line blurb: without them
+                            "Request changes" wraps, and the three rows go ragged */}
+                        <span className="w-[7rem] flex-none whitespace-nowrap">{e.label}</span>
+                        <span
+                          className="min-w-0 flex-1 truncate text-2xs"
+                          style={{ color: "var(--fg-faint)" }}
+                        >
                           {e.blurb}
                         </span>
                       </button>

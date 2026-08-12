@@ -8,59 +8,75 @@ function inRange(pos: number, ranges: CharRange[] | undefined): boolean {
   return false;
 }
 
+interface Seg {
+  text: string;
+  color?: string;
+  hi?: boolean;
+}
+
 /** Split shiki tokens further at word-diff boundaries so both survive. */
-function renderContent(content: string, toks: Tok[] | undefined, intra?: CharRange[]): ReactNode {
+function segments(content: string, toks: Tok[] | undefined, intra?: CharRange[]): Seg[] {
   const source: Tok[] = toks && toks.length ? toks : [{ content }];
   if (!intra || intra.length === 0) {
-    return source.map((t, i) => (
-      <span key={i} style={t.color ? { color: t.color } : undefined}>
-        {t.content}
-      </span>
-    ));
+    return source.map((t) => ({ text: t.content, color: t.color }));
   }
 
-  const out: ReactNode[] = [];
+  const out: Seg[] = [];
   let pos = 0;
-  let k = 0;
   for (const t of source) {
     let buf = "";
     let bufHi = inRange(pos, intra);
     for (const ch of t.content) {
       const hi = inRange(pos, intra);
       if (hi !== bufHi && buf) {
-        out.push(
-          <span
-            key={k++}
-            className={bufHi ? "intra" : undefined}
-            style={{
-              ...(t.color ? { color: t.color } : {}),
-              ...(bufHi ? { background: "var(--intra-bg)" } : {}),
-            }}
-          >
-            {buf}
-          </span>,
-        );
+        out.push({ text: buf, color: t.color, hi: bufHi });
         buf = "";
       }
       bufHi = hi;
       buf += ch;
       pos += ch.length;
     }
-    if (buf) {
-      out.push(
-        <span
-          key={k++}
-          className={bufHi ? "intra" : undefined}
-          style={{
-            ...(t.color ? { color: t.color } : {}),
-            ...(bufHi ? { background: "var(--intra-bg)" } : {}),
-          }}
-        >
-          {buf}
-        </span>,
-      );
-    }
+    if (buf) out.push({ text: buf, color: t.color, hi: bufHi });
   }
+  return out;
+}
+
+function renderContent(content: string, toks: Tok[] | undefined, intra?: CharRange[]): ReactNode {
+  const segs = segments(content, toks, intra);
+  const out: ReactNode[] = [];
+  let indentDone = false;
+  segs.forEach((s, i) => {
+    let text = s.text;
+    if (!indentDone) {
+      const m = /^[ \t]+/.exec(text);
+      if (m) {
+        out.push(
+          <span
+            key={`i${i}`}
+            className={s.hi ? "diff-indent intra" : "diff-indent"}
+            style={s.hi ? { background: "var(--intra-bg)" } : undefined}
+          >
+            {m[0]}
+          </span>,
+        );
+        text = text.slice(m[0].length);
+      }
+      if (text) indentDone = true;
+    }
+    if (!text) return;
+    out.push(
+      <span
+        key={i}
+        className={s.hi ? "intra" : undefined}
+        style={{
+          ...(s.color ? { color: s.color } : {}),
+          ...(s.hi ? { background: "var(--intra-bg)" } : {}),
+        }}
+      >
+        {text}
+      </span>,
+    );
+  });
   return out;
 }
 
@@ -117,19 +133,24 @@ export const DiffLine = memo(function DiffLine({
   return (
     <div
       className="diff-line group relative"
+      data-type={row.type}
       style={{ background: bgFor(row.type), ["--intra-bg" as string]: intraBg }}
     >
-      <span className="diff-gutter" style={{ background: gutterBg }}>
-        {row.oldNumber ?? ""}
+      <span className="diff-fixed">
+        <span className="diff-gutter" style={{ background: gutterBg }}>
+          {row.oldNumber ?? ""}
+        </span>
+        <span className="diff-gutter" style={{ background: gutterBg }}>
+          {row.newNumber ?? ""}
+        </span>
+        <CommentButton onComment={onComment} hasComment={hasComment} />
+        <span className="diff-marker" style={{ color: markerColor(row.type) }}>
+          {marker}
+        </span>
       </span>
-      <span className="diff-gutter" style={{ background: gutterBg }}>
-        {row.newNumber ?? ""}
+      <span className="diff-code min-w-0 flex-1 pr-4">
+        {renderContent(row.content, tokens, row.intra)}
       </span>
-      <CommentButton onComment={onComment} hasComment={hasComment} />
-      <span className="w-3 flex-none select-none pl-1" style={{ color: markerColor(row.type) }}>
-        {marker}
-      </span>
-      <span className="min-w-0 flex-1 pr-4">{renderContent(row.content, tokens, row.intra)}</span>
     </div>
   );
 });
@@ -147,11 +168,13 @@ export interface SplitHalfProps {
 function SplitHalf({ row, side, tokens, onComment, hasComment }: SplitHalfProps) {
   if (!row) {
     return (
-      <div className="diff-half" style={{ background: "var(--bg-inset)" }}>
-        <span className="diff-gutter" />
-        <span className="w-[15px] flex-none" />
-        <span className="w-3 flex-none" />
-        <span className="min-w-0 flex-1" />
+      <div className="diff-half" data-type="none" style={{ background: "var(--bg-inset)" }}>
+        <span className="diff-fixed">
+          <span className="diff-gutter" />
+          <span className="w-[15px] flex-none" />
+          <span className="diff-marker" />
+        </span>
+        <span className="diff-code min-w-0 flex-1" />
       </div>
     );
   }
@@ -160,16 +183,21 @@ function SplitHalf({ row, side, tokens, onComment, hasComment }: SplitHalfProps)
   return (
     <div
       className="diff-half group/half"
+      data-type={row.type}
       style={{ background: bgFor(row.type), ["--intra-bg" as string]: intraBg }}
     >
-      <span className="diff-gutter" style={{ background: gutterBgFor(row.type) }}>
-        {(side === "old" ? row.oldNumber : row.newNumber) ?? ""}
+      <span className="diff-fixed">
+        <span className="diff-gutter" style={{ background: gutterBgFor(row.type) }}>
+          {(side === "old" ? row.oldNumber : row.newNumber) ?? ""}
+        </span>
+        <CommentButton onComment={onComment} hasComment={hasComment} />
+        <span className="diff-marker" style={{ color: markerColor(row.type) }}>
+          {marker}
+        </span>
       </span>
-      <CommentButton onComment={onComment} hasComment={hasComment} />
-      <span className="w-3 flex-none select-none pl-1" style={{ color: markerColor(row.type) }}>
-        {marker}
+      <span className="diff-code min-w-0 flex-1 pr-3">
+        {renderContent(row.content, tokens, row.intra)}
       </span>
-      <span className="min-w-0 flex-1 pr-3">{renderContent(row.content, tokens, row.intra)}</span>
     </div>
   );
 }

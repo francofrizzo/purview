@@ -1,5 +1,5 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { buildRows, buildSplitRows, hunkLabel } from "../lib/diffModel";
 import { useTokensForHunks } from "../lib/useHunkTokens";
@@ -8,7 +8,8 @@ import type { DiffViewMode } from "../lib/useViewMode";
 import { ChangedBadge } from "./Chips";
 import { DiffLine, SplitDiffLine } from "./DiffLine";
 import { DiffOfDiffs } from "./DiffOfDiffs";
-import { IconCheck, IconComment, IconSplit, IconUnified } from "./icons";
+import { MiddleTruncate } from "./Truncate";
+import { IconCheck, IconComment, IconSplit, IconUnified, IconWrap } from "./icons";
 
 export interface HunkEntry {
   hunk: Hunk;
@@ -16,7 +17,18 @@ export interface HunkEntry {
 }
 
 /** Below this pane width side-by-side is unreadable, so we render unified. */
-export const SPLIT_MIN_WIDTH = 860;
+export const SPLIT_MIN_WIDTH = 700;
+
+/** px of chrome left of the code column in unified: 2 gutters + button + marker + right pad. */
+const UNIFIED_CHROME = 52 + 52 + 15 + 12 + 16;
+const TAB_SIZE = 8;
+
+/** Visual column count of a line, expanding tabs the way the browser renders them. */
+function columns(s: string): number {
+  let c = 0;
+  for (const ch of s) c = ch === "\t" ? c + (TAB_SIZE - (c % TAB_SIZE)) : c + 1;
+  return c;
+}
 
 type FlatRow =
   | { type: "file"; key: string; path: string; file: FileEntry }
@@ -35,6 +47,12 @@ export interface DiffPaneProps {
   onComment: (input: { file: string; line: number; side: "LEFT" | "RIGHT" }) => void;
   viewMode?: DiffViewMode;
   onToggleViewMode?: () => void;
+  wrap?: boolean;
+  onToggleWrap?: () => void;
+  /** Reports whether the pane is too narrow for side-by-side, so the host can note it. */
+  onNarrowChange?: (narrow: boolean) => void;
+  /** Files tab shows a single file and already names it in the pane header. */
+  showFileRows?: boolean;
   emptyMessage?: string;
 }
 
@@ -48,12 +66,18 @@ export function DiffPane({
   onComment,
   viewMode = "unified",
   onToggleViewMode,
+  wrap = true,
+  onToggleWrap,
+  onNarrowChange,
+  showFileRows = true,
   emptyMessage = "Nothing to show.",
 }: DiffPaneProps) {
   const theme = useTheme();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
   const [expandedDod, setExpandedDod] = useState<Set<string>>(new Set());
   const [wide, setWide] = useState(true);
+  const [charWidth, setCharWidth] = useState(7.2);
 
   // Narrow viewports fall back to unified rather than squeezing two panes.
   useEffect(() => {
@@ -66,7 +90,38 @@ export function DiffPane({
     return () => ro.disconnect();
   }, [entries.length === 0]);
 
+  useEffect(() => {
+    onNarrowChange?.(!wide);
+  }, [wide, onNarrowChange]);
+
   const mode: DiffViewMode = viewMode === "split" && wide ? "split" : "unified";
+
+  // Monospace, so one measurement gives every line's width.
+  useLayoutEffect(() => {
+    const w = measureRef.current?.getBoundingClientRect().width;
+    if (w && w > 0) setCharWidth(w / 100);
+  }, []);
+
+  /** Widest line in the shown set, in columns — only needed when wrap is off. */
+  const maxColumns = useMemo(() => {
+    if (wrap) return 0;
+    let max = 0;
+    for (const e of entries) {
+      for (const r of buildRows(e.hunk, detail.diff)) {
+        const c = columns(r.content);
+        if (c > max) max = c;
+      }
+    }
+    return max;
+  }, [wrap, entries, detail.diff]);
+
+  // Unified scrolls as a single pane: give the row container the full content
+  // width so row backgrounds (and the hunk headers) span the whole scroll
+  // range instead of stopping at the viewport edge.
+  const contentWidth =
+    !wrap && mode === "unified" && maxColumns
+      ? Math.ceil(UNIFIED_CHROME + maxColumns * charWidth)
+      : 0;
 
   const hunks = useMemo(() => entries.map((e) => e.hunk), [entries]);
   const tokens = useTokensForHunks(hunks, detail.diff, theme);
@@ -80,10 +135,16 @@ export function DiffPane({
   const rows = useMemo<FlatRow[]>(() => {
     const out: FlatRow[] = [];
     let lastFile: string | null = null;
+    // Row heights depend on the wrap mode as much as on unified/split, so the
+    // wrap flag is part of the key: it drops the virtualizer's stale
+    // measurement cache the same way the s:/l: prefixes do.
+    const w = wrap ? "w" : "n";
     for (const entry of entries) {
       const { hunk, file } = entry;
       if (file.path !== lastFile) {
-        out.push({ type: "file", key: `f:${file.path}:${hunk.id}`, path: file.path, file });
+        if (showFileRows) {
+          out.push({ type: "file", key: `f:${file.path}:${hunk.id}`, path: file.path, file });
+        }
         lastFile = file.path;
       }
       out.push({ type: "hunk", key: `h:${hunk.id}`, hunkId: hunk.id, entry });
@@ -93,17 +154,29 @@ export function DiffPane({
       if (mode === "split") {
         const pairs = buildSplitRows(hunk, detail.diff);
         for (let i = 0; i < pairs.length; i++) {
-          out.push({ type: "split", key: `s:${hunk.id}:${i}`, hunkId: hunk.id, entry, rowIdx: i });
+          out.push({
+            type: "split",
+            key: `${w}s:${hunk.id}:${i}`,
+            hunkId: hunk.id,
+            entry,
+            rowIdx: i,
+          });
         }
       } else {
         const lines = buildRows(hunk, detail.diff);
         for (let i = 0; i < lines.length; i++) {
-          out.push({ type: "line", key: `l:${hunk.id}:${i}`, hunkId: hunk.id, entry, lineIdx: i });
+          out.push({
+            type: "line",
+            key: `${w}l:${hunk.id}:${i}`,
+            hunkId: hunk.id,
+            entry,
+            lineIdx: i,
+          });
         }
       }
     }
     return out;
-  }, [entries, detail.diff, expandedDod, mode]);
+  }, [entries, detail.diff, expandedDod, mode, wrap, showFileRows]);
 
   const hunkRowIndex = useMemo(() => {
     const m = new Map<string, number>();
@@ -148,16 +221,69 @@ export function DiffPane({
   // meaningless afterwards: re-anchor on the focused hunk instead.
   const focusedRef = useRef(focusedHunkId);
   focusedRef.current = focusedHunkId;
-  const lastMode = useRef<DiffViewMode | null>(null);
+  const lastMode = useRef<string | null>(null);
   useEffect(() => {
+    const signature = `${mode}:${wrap}`;
     const prev = lastMode.current;
-    lastMode.current = mode;
-    if (prev === null || prev === mode) return; // first render / unrelated rerender
+    lastMode.current = signature;
+    if (prev === null || prev === signature) return; // first render / unrelated rerender
+    // Horizontal offset is meaningless once wrapping is back on.
+    if (wrap && scrollRef.current) scrollRef.current.scrollLeft = 0;
+    splitScrollLeft.current = 0;
     const id = focusedRef.current;
     if (!id) return;
     const raf = requestAnimationFrame(() => scrollToHunk(id));
     return () => cancelAnimationFrame(raf);
-  }, [mode, scrollToHunk]);
+  }, [mode, wrap, scrollToHunk]);
+
+  // --- split + wrap off: the two halves scroll in lockstep ---
+  // Independent scrolling would put line N's left side at column 0 and its
+  // right side at column 80, which defeats the point of side-by-side; keeping
+  // them synced means a horizontal move always compares like with like.
+  const splitScrollLeft = useRef(0);
+  const syncingHalves = useRef(false);
+
+  /** Push `left` onto every half. Halves holding a short line clamp to their own
+   *  maximum and echo that back as a scroll event; the flag keeps that echo from
+   *  becoming the new shared offset and dragging every other half back left. */
+  const syncHalves = useCallback((root: HTMLElement, left: number, except?: EventTarget | null) => {
+    syncingHalves.current = true;
+    for (const half of root.querySelectorAll<HTMLElement>(".diff-half")) {
+      if (half !== except && half.scrollLeft !== left) half.scrollLeft = left;
+    }
+    // Scroll events fire earlier in the frame than rAF callbacks, so by here
+    // every echo has been swallowed.
+    requestAnimationFrame(() => {
+      syncingHalves.current = false;
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || wrap || mode !== "split") return;
+    const onScroll = (e: Event) => {
+      if (syncingHalves.current) return;
+      const target = e.target as HTMLElement | null;
+      if (!target?.classList?.contains("diff-half")) return;
+      const left = target.scrollLeft;
+      if (left === splitScrollLeft.current) return;
+      splitScrollLeft.current = left;
+      syncHalves(el, left, target);
+    };
+    el.addEventListener("scroll", onScroll, true);
+    return () => el.removeEventListener("scroll", onScroll, true);
+  }, [wrap, mode, syncHalves]);
+
+  // Halves scrolled into view by the virtualizer mount at scrollLeft 0.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const left = splitScrollLeft.current;
+    if (!el || wrap || mode !== "split" || !left) return;
+    const stale = [...el.querySelectorAll<HTMLElement>(".diff-half")].some(
+      (h) => h.scrollLeft !== left && h.scrollWidth - h.clientWidth >= left,
+    );
+    if (stale) syncHalves(el, left);
+  });
 
   /** Keyboard navigation moves focus AND the viewport; clicks only focus. */
   const focusAndScroll = useCallback(
@@ -192,6 +318,10 @@ export function DiffPane({
         if (!onToggleViewMode) return;
         e.preventDefault();
         onToggleViewMode();
+      } else if (e.key === "w") {
+        if (!onToggleWrap) return;
+        e.preventDefault();
+        onToggleWrap();
       } else if (e.key === " ") {
         e.preventDefault();
         const start = cur + 1;
@@ -202,7 +332,15 @@ export function DiffPane({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [entries, focusedHunkId, focusAndScroll, onToggleViewed, onToggleViewMode, detail.state.hunks]);
+  }, [
+    entries,
+    focusedHunkId,
+    focusAndScroll,
+    onToggleViewed,
+    onToggleViewMode,
+    onToggleWrap,
+    detail.state.hunks,
+  ]);
 
   if (!entries.length) {
     return (
@@ -219,20 +357,26 @@ export function DiffPane({
 
   return (
     <div className="flex h-full flex-col">
-      {viewMode === "split" && !wide ? (
-        <div
-          className="flex-none border-b px-3 py-1 text-2xs"
-          style={{ background: "var(--warn-soft)", color: "var(--warn)", borderColor: "var(--border)" }}
-        >
-          pane too narrow for side-by-side — showing unified
-        </div>
-      ) : null}
+      <span
+        ref={measureRef}
+        aria-hidden
+        className="pointer-events-none absolute font-mono opacity-0"
+        style={{ fontSize: 12, whiteSpace: "pre", top: -9999, left: -9999 }}
+      >
+        {"0".repeat(100)}
+      </span>
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 overflow-auto"
+        className={`min-h-0 flex-1 overflow-auto${wrap ? "" : " diff-nowrap"}`}
         style={{ background: "var(--bg)" }}
       >
-        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+        <div
+          style={{
+            height: virtualizer.getTotalSize(),
+            position: "relative",
+            minWidth: contentWidth || undefined,
+          }}
+        >
         {items.map((vi) => {
           const row = rows[vi.index];
           return (
@@ -269,17 +413,25 @@ export function DiffPane({
             color: "var(--fg)",
           }}
         >
-          <span className="truncate">{row.path}</span>
-          {row.file.status && row.file.status !== "modified" ? (
-            <span className="chip" style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}>
-              {row.file.status}
-            </span>
-          ) : null}
-          {rollup ? (
-            <span className="text-2xs" style={{ color: rollup.viewed ? "var(--ok)" : "var(--fg-faint)" }}>
-              {rollup.viewedHunks}/{rollup.totalHunks} viewed
-            </span>
-          ) : null}
+          <span className="row-head-fixed flex min-w-0 items-center gap-2">
+            <MiddleTruncate text={row.path} tail={18} />
+            {row.file.status && row.file.status !== "modified" ? (
+              <span
+                className="chip"
+                style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+              >
+                {row.file.status}
+              </span>
+            ) : null}
+            {rollup ? (
+              <span
+                className="flex-none text-2xs"
+                style={{ color: rollup.viewed ? "var(--ok)" : "var(--fg-faint)" }}
+              >
+                {rollup.viewedHunks}/{rollup.totalHunks} viewed
+              </span>
+            ) : null}
+          </span>
           <span className="ml-auto text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
             {row.file.additions !== undefined ? `+${row.file.additions}` : ""}{" "}
             {row.file.deletions !== undefined ? `−${row.file.deletions}` : ""}
@@ -306,6 +458,7 @@ export function DiffPane({
           }}
           onClick={() => onFocusHunk(row.hunkId)}
         >
+          <span className="row-head-fixed flex min-w-0 items-center gap-2">
           <button
             type="button"
             onClick={(e) => {
@@ -340,6 +493,7 @@ export function DiffPane({
               new
             </span>
           ) : null}
+          </span>
           <span className="ml-auto font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
             {row.hunkId.slice(0, 8)}
           </span>
@@ -445,6 +599,52 @@ export function DiffViewToggle({
         );
       })}
     </div>
+  );
+}
+
+/** Wrap on/off, styled to match the unified/split control it sits next to. */
+export function WrapToggle({
+  wrap,
+  onChange,
+}: {
+  wrap: boolean;
+  onChange: (wrap: boolean) => void;
+}) {
+  return (
+    <div
+      className="inline-flex flex-none items-center rounded p-px"
+      style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
+    >
+      <button
+        type="button"
+        data-testid="toggle-wrap"
+        aria-pressed={wrap}
+        title={wrap ? "Line wrap on — click to scroll instead (w)" : "Line wrap off (w)"}
+        onClick={() => onChange(!wrap)}
+        className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium transition-colors"
+        style={{
+          background: wrap ? "var(--bg-raised)" : "transparent",
+          color: wrap ? "var(--fg)" : "var(--fg-faint)",
+          boxShadow: wrap ? "0 0 0 1px var(--border-strong)" : undefined,
+        }}
+      >
+        <IconWrap width={11} height={11} />
+        wrap
+      </button>
+    </div>
+  );
+}
+
+/** Quiet in-header note that side-by-side was downgraded for lack of room. */
+export function NarrowPaneNote() {
+  return (
+    <span
+      className="flex-none text-2xs"
+      style={{ color: "var(--fg-faint)" }}
+      title="The pane is too narrow for side-by-side, so this diff is shown unified. Close a panel or widen the window."
+    >
+      too narrow — unified
+    </span>
   );
 }
 

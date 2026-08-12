@@ -18,7 +18,13 @@ import {
   useSync,
 } from "../api/hooks";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
-import { DiffPane, DiffViewToggle, type HunkEntry } from "../components/DiffPane";
+import {
+  DiffPane,
+  DiffViewToggle,
+  NarrowPaneNote,
+  WrapToggle,
+  type HunkEntry,
+} from "../components/DiffPane";
 import { CommentComposer, DraftsDrawer, type CommentTarget } from "../components/Drafts";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
@@ -26,7 +32,8 @@ import { MigrationReportPanel, SummaryPanel, SyncResultPanel } from "../componen
 import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
 import { hunkIndex, unitProgress } from "../lib/diffModel";
-import { useDiffViewMode } from "../lib/useViewMode";
+import { MiddleTruncate } from "../components/Truncate";
+import { useDiffViewMode, useWrapLines } from "../lib/useViewMode";
 
 export function PrView() {
   const params = useParams();
@@ -59,6 +66,9 @@ export function PrView() {
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitReviewResult | null>(null);
   const [viewMode, setViewMode, toggleViewMode] = useDiffViewMode();
+  const [wrap, setWrap, toggleWrap] = useWrapLines();
+  const [narrow, setNarrow] = useState(false);
+  const showNarrowNote = narrow && viewMode === "split";
 
   // Only queried while the panel is open: it makes a live GitHub call.
   const review = useReview(prKey, reviewOpen);
@@ -169,7 +179,7 @@ export function PrView() {
               </button>
             ))}
           </div>
-          <div className="min-h-0 flex-1 overflow-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
             {tab === "units" ? (
               <UnitSidebar
                 detail={detail}
@@ -185,8 +195,13 @@ export function PrView() {
             className="flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
             style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
           >
-            <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>space</kbd> next unviewed ·{" "}
-            <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"}
+            <div>
+              <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>space</kbd> next unviewed
+            </div>
+            <div>
+              <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
+              {wrap ? "no wrap" : "wrap"}
+            </div>
           </div>
         </nav>
 
@@ -197,13 +212,19 @@ export function PrView() {
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
               <div className="flex items-center gap-2">
-                <h2 className="truncate text-[13px] font-semibold">{selectedUnit.title}</h2>
+                <MiddleTruncate
+                  text={selectedUnit.title}
+                  tail={16}
+                  className="text-[13px] font-semibold"
+                />
                 <KindChip kind={selectedUnit.kind} />
                 <AttentionChip attention={selectedUnit.attention} />
                 <RiskFlags flags={selectedUnit.riskFlags} />
                 {progress && progress.changed > 0 ? <ChangedBadge count={progress.changed} /> : null}
                 <div className="ml-auto flex flex-none items-center gap-2">
+                  {showNarrowNote ? <NarrowPaneNote /> : null}
                   <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                  <WrapToggle wrap={wrap} onChange={setWrap} />
                   {progress ? <Progress viewed={progress.viewed} total={progress.total} /> : null}
                   <button
                     type="button"
@@ -231,7 +252,7 @@ export function PrView() {
               className="flex flex-none items-center gap-2 border-b px-4 py-2 font-mono text-xs"
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
-              <span className="truncate">{selectedPath}</span>
+              <MiddleTruncate text={selectedPath} tail={20} />
               {detail.state.files?.[selectedPath] ? (
                 <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
                   {detail.state.files[selectedPath].viewedHunks}/
@@ -239,8 +260,10 @@ export function PrView() {
                   {detail.state.files[selectedPath].viewed ? " · synced when you press sync" : ""}
                 </span>
               ) : null}
-              <div className="ml-auto">
+              <div className="ml-auto flex flex-none items-center gap-2">
+                {showNarrowNote ? <NarrowPaneNote /> : null}
                 <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                <WrapToggle wrap={wrap} onChange={setWrap} />
               </div>
             </div>
           ) : null}
@@ -256,6 +279,10 @@ export function PrView() {
               onComment={(t) => setCommentTarget(t)}
               viewMode={viewMode}
               onToggleViewMode={toggleViewMode}
+              wrap={wrap}
+              onToggleWrap={toggleWrap}
+              onNarrowChange={setNarrow}
+              showFileRows={tab === "units"}
               emptyMessage={
                 tab === "units"
                   ? "Select a review unit to read its hunks."
