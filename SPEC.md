@@ -83,7 +83,7 @@ interface HunkState {
 ## Migration (on refresh: new headSha or mergeBase)
 
 1. Fetch new diff **from GitHub** (`gh api repos/{o}/{r}/pulls/{n} -H "Accept: application/vnd.github.v3.diff"`), store as new revision. Never use local `git diff`.
-2. Match old hunks → new hunks: (a) identical hunkId → carry all state; (b) same file, best fuzzy match (Jaccard over added+removed lines, threshold 0.6) → carry, mark `fuzzy`, set changedSinceViewed if was viewed; (c) file renamed (GitHub rename detection in diff) → recompute with new path, treat as (a)/(b); (d) unmatched old → archive (kept in events, listed in report); (e) unmatched new → `new`, attach to units by file adjacency if obvious, else leave unassigned for the skill.
+2. Match old hunks → new hunks: (a) identical hunkId → carry all state; (b) same file, best fuzzy match (Jaccard over added+removed lines, threshold 0.6; for small hunks — either side with ≤6 changed lines — blended with word-token Jaccard so single-line in-place edits still match) → carry, mark `fuzzy`, set changedSinceViewed if was viewed; (c) file renamed (GitHub rename detection in diff) → recompute with new path, treat as (a)/(b); (d) unmatched old → archive (kept in events, listed in report); (e) unmatched new → `new`, always left unassigned for the skill to classify.
 3. Distinguish base-moved vs head-moved: if headSha unchanged but mergeBase moved, mark revision `baseOnly: true`; new hunks in such revisions default attention `skip` with why="base moved".
 4. Emit migration report (carried/fuzzy/renamed/archived/new counts + per-hunk list) → stored in revision dir, printed by CLI.
 

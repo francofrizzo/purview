@@ -48,12 +48,54 @@ index 1111111..3333333 100644
 `;
 
 /**
+ * A wide first hunk, so that editing a single line still clears core's fuzzy
+ * threshold (Jaccard is over the *set* of added+removed lines, so a two-line
+ * hunk with one line edited scores only 0.33 and would be archived instead).
+ */
+const bigHunk = (line5: string) => `diff --git a/src/foo.ts b/src/foo.ts
+index 1111111..2222222 100644
+--- a/src/foo.ts
++++ b/src/foo.ts
+@@ -1,8 +1,8 @@
+ line1
+-old2
+-old3
+-old4
+-old5
++new2
++new3
++new4
++${line5}
+ line9
+@@ -20,3 +20,3 @@
+ line20
+-old21
++new21
+ line22
+`;
+
+/** revision 1: the reader views the wide hunk here. */
+export const DOD_REV1 = bigHunk("new5");
+/** revision 2: one line of that hunk changes -> fuzzy match, changedSinceViewed. */
+export const DOD_REV2 = bigHunk("newer5");
+/**
+ * revision 3: identical content to REV2, only the shas move — so the hunk
+ * carries over *identically* here. Diffing r3 against r2 would show nothing,
+ * which is what makes this the regression case for baselining diff-of-diffs
+ * on the revision the reader actually viewed.
+ */
+export const DOD_REV3 = bigHunk("newer5");
+
+/**
  * Build a PR state dir directly through @reviewer/core's store functions
  * (writeMeta / appendEvents / writeRevision), the way the SPEC describes
  * revisions/state being assembled — no network, no `gh`.
  */
-export function buildFixture(root: string): { key: PrKey; hunkIds: string[] } {
-  const files = parseDiff(REV1_PATCH);
+export function buildFixture(
+  root: string,
+  patch: string = REV1_PATCH,
+): { key: PrKey; hunkIds: string[] } {
+  const files = parseDiff(patch);
   const hunkIds = files.flatMap((f) => f.hunks.map((h) => h.id));
 
   writeMeta(
@@ -85,7 +127,7 @@ export function buildFixture(root: string): { key: PrKey; hunkIds: string[] } {
   writeRevision(
     key,
     1,
-    REV1_PATCH,
+    patch,
     files,
     { baseSha: "base1", headSha: "head1", mergeBase: "mb1" },
     root,

@@ -26,7 +26,11 @@ import type {
   ReviewUnitPatch,
   State,
 } from "./schemas.js";
-import { AnalysisSchema, ReviewUnitPatchSchema } from "./schemas.js";
+import {
+  AnalysisSchema,
+  ReviewUnitPatchSchema,
+  ReviewUnitSchema,
+} from "./schemas.js";
 
 export interface InitResult {
   key: PrKey;
@@ -216,6 +220,17 @@ export function setAnalysis(
 /**
  * Upsert one unit. Reclassifying kind/attention on an existing unit also logs
  * `classification-corrected` for each of its hunks (the skill's feedback loop).
+ *
+ * Semantics are explicit about which "mode" a call is in, because the two
+ * are dangerously easy to conflate: `unit-updated` events are always a merge
+ * patch (see reducer.ts), so a caller creating a brand-new unit but missing
+ * a field (e.g. forgetting `kind`) would otherwise silently get the
+ * reducer's fallback defaults (kind "wiring", attention "skim", ...) baked
+ * in instead of a validation error.
+ *   - unit does not exist yet -> payload must satisfy the full ReviewUnit
+ *     schema; missing/invalid fields are a hard error naming them.
+ *   - unit exists -> payload is a partial patch of only the provided
+ *     fields; no defaults are ever injected for fields left out.
  */
 export function setUnit(
   key: PrKey,
@@ -224,9 +239,32 @@ export function setUnit(
   opts: { note?: string } = {},
   root = stateRoot(),
 ): State {
-  const patch: ReviewUnitPatch = ReviewUnitPatchSchema.parse(patchInput);
   const state = loadState(key, root);
   const existing = state.units.find((u) => u.id === unitId);
+
+  let patch: ReviewUnitPatch;
+  if (!existing) {
+    const result = ReviewUnitSchema.safeParse({
+      ...(patchInput as Record<string, unknown>),
+      id: unitId,
+    });
+    if (!result.success) {
+      const fields = [
+        ...new Set(
+          result.error.issues
+            .map((i) => i.path.join(".") || "(root)")
+            .filter((p) => p !== "id"),
+        ),
+      ];
+      throw new Error(
+        `Unit "${unitId}" does not exist yet; creating a new unit requires ` +
+          `the full ReviewUnit schema. Missing/invalid field(s): ${fields.join(", ")}`,
+      );
+    }
+    patch = result.data;
+  } else {
+    patch = ReviewUnitPatchSchema.parse(patchInput);
+  }
 
   const events: NewEvent[] = [{ type: "unit-updated", unitId, patch }];
   if (existing && patch.kind && patch.kind !== existing.kind) {
@@ -280,7 +318,11 @@ export function setUnitViewed(
 ): State {
   const state = loadState(key, root);
   const unit = state.units.find((u) => u.id === unitId);
-  if (!unit) throw new Error(`No unit "${unitId}"`);
+  if (!unit) {
+    throw new Error(
+      `No unit "${unitId}" in the current analysis (revision ${state.currentRevision}); nothing was recorded.`,
+    );
+  }
   if (viewed) {
     return appendEvent(
       key,

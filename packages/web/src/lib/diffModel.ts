@@ -21,15 +21,19 @@ export interface DiffRow {
 const CACHE = new Map<string, DiffRow[]>();
 
 /**
- * Recover a hunk's body from the raw unified diff when files.json carries only
- * line numbers. We never re-derive structure — only the text between the
- * hunk's own @@ header and the next header.
+ * Fallback only. files.json normally carries each hunk's raw body (core's
+ * `text`, surfaced as `hunk.lines` by the API client), so this is used solely
+ * for state written before that field existed. We never re-derive structure —
+ * only the text between the hunk's own @@ header and the next header.
  */
 export function extractHunkBody(diffText: string, hunk: Hunk): string[] {
   if (!diffText) return [];
   const lines = diffText.split("\n");
   let inFile = false;
   const target = hunk.file;
+  // NB: core's `hunk.header` is only the section heading after the `@@ … @@`
+  // marker (often ""), so it can never be used to identify the hunk line.
+  // Match on the line/count ranges instead.
   const headerPrefix = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`;
   const shortPrefix = `@@ -${hunk.oldStart} +${hunk.newStart} @@`;
   const body: string[] = [];
@@ -44,11 +48,7 @@ export function extractHunkBody(diffText: string, hunk: Hunk): string[] {
     if (!inFile) continue;
     if (line.startsWith("@@")) {
       if (collecting) break;
-      collecting =
-        line === hunk.header ||
-        line.startsWith(headerPrefix) ||
-        line.startsWith(shortPrefix) ||
-        line.startsWith(hunk.header.slice(0, hunk.header.indexOf("@@", 2) + 2));
+      collecting = line.startsWith(headerPrefix) || line.startsWith(shortPrefix);
       continue;
     }
     if (collecting) {
@@ -140,6 +140,15 @@ function pairLines(del: DiffRow, add: DiffRow) {
   if (total === 0 || changed / total > 0.8) return;
   del.intra = delRanges;
   add.intra = addRanges;
+}
+
+/**
+ * A label for a hunk row. core stores only the section heading in `header`
+ * (frequently empty), so the `@@` range is reconstructed here for display.
+ */
+export function hunkLabel(hunk: Hunk): string {
+  const range = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`;
+  return hunk.header ? `${range} ${hunk.header}` : range;
 }
 
 export function fileOf(files: FilesJson, path: string): FileEntry | undefined {

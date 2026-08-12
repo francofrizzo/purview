@@ -9,7 +9,8 @@ import { loadState, readFilesJson, rebuildState } from "../src/store.js";
 import type { PrKey } from "../src/paths.js";
 import { parseDiff } from "../src/parse-diff.js";
 import { migrate } from "../src/migration.js";
-import type { FileDiff, State } from "../src/schemas.js";
+import { computeHunkId } from "../src/hunk-id.js";
+import type { FileDiff, Hunk, State } from "../src/schemas.js";
 
 const fixture = (name: string) =>
   fs.readFileSync(
@@ -325,6 +326,94 @@ describe("migrate (unit level)", () => {
       .filter((e) => e.status !== "archived")
       .map((e) => e.hunkId);
     expect(new Set(newIds).size).toBe(newIds.length);
+  });
+
+  /** Build a minimal synthetic hunk (id derived from content, like real ones). */
+  function mkHunk(
+    file: string,
+    added: string[],
+    removed: string[],
+  ): Hunk {
+    return {
+      id: computeHunkId(file, added, removed),
+      file,
+      oldStart: 1,
+      oldLines: removed.length,
+      newStart: 1,
+      newLines: added.length,
+      header: "",
+      addedLines: added,
+      removedLines: removed,
+      text: [
+        ...removed.map((l) => `-${l}`),
+        ...added.map((l) => `+${l}`),
+      ].join("\n"),
+    };
+  }
+
+  function mkFile(path: string, hunks: Hunk[]): FileDiff {
+    return { path, status: "modified", binary: false, hunks };
+  }
+
+  it("fuzzy-matches a small hunk with one edited line via token similarity", () => {
+    // Same shape as the bug report: a 2-line hunk (1 removed + 1 added) where
+    // only part of the added line changed further. Whole-line Jaccard is
+    // ~0.33 (only the unchanged removed line overlaps) — below the 0.6
+    // threshold — but the hunks are obviously the same edit continuing.
+    const oldHunk = mkHunk(
+      "src/util.ts",
+      ["  return a + b;"],
+      ["  return a;"],
+    );
+    const newHunk = mkHunk(
+      "src/util.ts",
+      ["  return a + b + c;"],
+      ["  return a;"],
+    );
+    const prev = [mkFile("src/util.ts", [oldHunk])];
+    const next = [mkFile("src/util.ts", [newHunk])];
+
+    const report = migrate({
+      revision: 2,
+      previousRevision: 1,
+      previousFiles: prev,
+      nextFiles: next,
+      hunkStates: { [oldHunk.id]: { viewed: true, changedSinceViewed: false } },
+    });
+
+    expect(report.counts).toMatchObject({ fuzzy: 1, archived: 0, new: 0 });
+    const entry = report.entries.find((e) => e.hunkId === newHunk.id)!;
+    expect(entry.status).toBe("fuzzy");
+    expect(entry.previousHunkId).toBe(oldHunk.id);
+    expect(entry.score).toBeGreaterThanOrEqual(0.6);
+    // viewed state and the changed-since-viewed badge are carried over.
+    expect(entry.wasViewed).toBe(true);
+    expect(entry.changedSinceViewed).toBe(true);
+  });
+
+  it("does not fuzzy-match a small hunk that was completely rewritten", () => {
+    const oldHunk = mkHunk(
+      "src/util.ts",
+      ["  return a + b;"],
+      ["  return a;"],
+    );
+    const newHunk = mkHunk(
+      "src/util.ts",
+      ["  anotherUnrelatedCall();"],
+      ["  totallyDifferentFn();"],
+    );
+    const prev = [mkFile("src/util.ts", [oldHunk])];
+    const next = [mkFile("src/util.ts", [newHunk])];
+
+    const report = migrate({
+      revision: 2,
+      previousRevision: 1,
+      previousFiles: prev,
+      nextFiles: next,
+      hunkStates: { [oldHunk.id]: { viewed: true, changedSinceViewed: false } },
+    });
+
+    expect(report.counts).toMatchObject({ fuzzy: 0, archived: 1, new: 1 });
   });
 
   it("does not fuzzy-match below the 0.6 threshold", () => {

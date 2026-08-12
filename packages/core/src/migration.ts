@@ -10,8 +10,12 @@ import type {
 
 export const FUZZY_THRESHOLD = 0.6;
 
+/** Hunks with this many or fewer changed (added+removed) lines on either
+ * side get the token-level similarity fallback blended in (see `jaccard`). */
+const SMALL_HUNK_CHANGED_LINES = 6;
+
 /** Jaccard similarity over the set of added+removed lines of two hunks. */
-export function jaccard(a: Hunk, b: Hunk): number {
+function lineJaccard(a: Hunk, b: Hunk): number {
   const sa = new Set([...a.addedLines, ...a.removedLines]);
   const sb = new Set([...b.addedLines, ...b.removedLines]);
   if (sa.size === 0 && sb.size === 0) return 1;
@@ -19,6 +23,56 @@ export function jaccard(a: Hunk, b: Hunk): number {
   for (const x of sa) if (sb.has(x)) inter++;
   const union = sa.size + sb.size - inter;
   return union === 0 ? 0 : inter / union;
+}
+
+function tokenize(line: string): string[] {
+  return line.toLowerCase().match(/[a-z0-9_]+/g) ?? [];
+}
+
+function tokenSet(lines: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const line of lines) for (const t of tokenize(line)) out.add(t);
+  return out;
+}
+
+/** Jaccard similarity over the word tokens of two hunks' added+removed lines. */
+function tokenJaccard(a: Hunk, b: Hunk): number {
+  const ta = tokenSet([...a.addedLines, ...a.removedLines]);
+  const tb = tokenSet([...b.addedLines, ...b.removedLines]);
+  if (ta.size === 0 && tb.size === 0) return 1;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  const union = ta.size + tb.size - inter;
+  return union === 0 ? 0 : inter / union;
+}
+
+function changedLineCount(h: Hunk): number {
+  return h.addedLines.length + h.removedLines.length;
+}
+
+/**
+ * Similarity used for fuzzy hunk matching (SPEC "Migration" 2b).
+ *
+ * Whole-line Jaccard is precise and conservative for larger hunks: sharing
+ * whole unchanged lines is strong evidence of "same hunk", and word-level
+ * overlap would be noisy there (common keywords/punctuation inflate scores
+ * across unrelated hunks). But it's the wrong granularity for small hunks —
+ * a 2-line hunk with a single line edited in place (e.g. one argument added)
+ * shares zero identical whole lines even though it's obviously the same
+ * edit, so it scores ~0 and falls below threshold, losing viewed state.
+ *
+ * Fix: for hunks where either side has <= SMALL_HUNK_CHANGED_LINES changed
+ * lines, blend in a word-token Jaccard and take the max of the two scores.
+ * Large hunks are unaffected (line-Jaccard only), so existing behavior for
+ * them is unchanged.
+ */
+export function jaccard(a: Hunk, b: Hunk): number {
+  const line = lineJaccard(a, b);
+  const isSmall =
+    changedLineCount(a) <= SMALL_HUNK_CHANGED_LINES ||
+    changedLineCount(b) <= SMALL_HUNK_CHANGED_LINES;
+  if (!isSmall) return line;
+  return Math.max(line, tokenJaccard(a, b));
 }
 
 function sameContent(a: Hunk, b: Hunk): boolean {

@@ -25,37 +25,56 @@ missing or stale, build it first:
 pnpm --filter @reviewer/core build
 ```
 
-All commands below assume `reviewer-state` resolves to that built CLI (workspace bin, or
-`node packages/core/dist/cli.js` if not linked on PATH — check which works in this repo
-before proceeding).
+All commands below are written as `reviewer-state <sub>`. The bin is usually **not** on
+PATH; unless `reviewer-state` resolves, run it as `node packages/core/dist/cli.js <sub>`
+(to get the short name, run `pnpm link --global` from `packages/core` once). Check which
+works before proceeding.
+
+State lives under `~/.reviewer/` unless `REVIEWER_STATE_DIR` is set — if that env var is
+set in your environment, the state root is that directory instead, and all paths below are
+relative to it.
+
+Subcommands that exist: `init`, `refresh`, `report`, `set-analysis`, `set-unit`, `view`,
+`sync`, `list`. There are no others.
 
 ## 1. Determine state: init, refresh, or report
 
-Given a PR URL (or an already-known `<key>` = `host/owner/repo/number`):
+Given a PR URL (or an already-known `<key>`). Every `<key>` argument accepts
+`host/owner/repo/number`, the short `owner/repo/number` (github.com implied), or a full
+`https://github.com/owner/repo/pull/123` URL. `init` takes a **PR URL only**.
 
-- If you don't know whether state exists, run `reviewer-state report <key>` first (or try
-  it — a missing PR errors cleanly). Use this to check for an existing analysis before
-  deciding your path.
+- To find out whether state exists, run `reviewer-state list` (lists every tracked PR with
+  its revision and viewed counts). Do **not** rely on `report <key>` to tell you: for an
+  unknown PR it does not error, it prints an empty `0/0 hunks` report.
 - **No existing state**: `reviewer-state init <pr-url>`. This fetches PR meta + diff via
-  `gh`, creates `meta.json`, `events.jsonl`, and `revisions/0/` (diff.patch, files.json).
+  `gh`, creates `meta.json`, `events.jsonl`, and `revisions/1/` (diff.patch, files.json).
+  It prints the state dir and the current revision number — note them, you need the
+  revision to read the diff. `init` is idempotent; on an existing PR it just refreshes.
 - **Existing state, PR may have moved**: `reviewer-state refresh <key>`. This fetches the
   latest diff from GitHub, runs hunk migration against the previous revision, and prints a
-  migration report (carried/fuzzy/renamed/archived/new counts). See "On refresh" below —
-  do not treat this the same as a fresh `init`.
+  migration report (carried/fuzzy/renamed/archived/new counts). If nothing changed it
+  prints only `No change; still at revision <n>.` See "On refresh" below — do not treat
+  this the same as a fresh `init`.
 
-Both `init` and `refresh` create/select a revision directory:
-`revisions/<n>/diff.patch` and `revisions/<n>/files.json`. `<n>` is the revision index —
-resolve the latest one (check `reviewer-state report <key>` or the highest existing
-`revisions/*` dir) before reading.
+Revisions are **1-based** (`revisions/1` is the first). Each holds `diff.patch`,
+`files.json`, and — from revision 2 on — `migration.json`. To learn the current revision
+number: it's printed by `init`/`refresh`, appears in the `report` header line
+(`revision <n>  head=… base=… mergeBase=…`), and is `currentRevision` in
+`reviewer-state report <key> --json`. There is no flag to print it alone.
 
 ## 2. Read the diff
 
-Read `revisions/<latest>/files.json` (parsed hunks with ids, per SPEC's `Hunk` shape:
-`id, file, oldStart, oldLines, newStart, newLines, header`) and
-`revisions/<latest>/diff.patch` (raw unified diff, exactly as GitHub served it).
+Read `revisions/<current>/files.json`. It is `{revision, baseSha, headSha, mergeBase,
+files[]}`, where each file is `{path, oldPath?, status, binary, hunks[]}` and each hunk is
+`{id, file, oldStart, oldLines, newStart, newLines, header, addedLines, removedLines,
+text}`.
 
-`files.json` gives you hunk boundaries and identity; `diff.patch` gives you the actual
-added/removed lines and surrounding context to read.
+Note `addedLines`, `removedLines` and `text` — `text` is the full hunk body (context,
+`+` and `-` lines, without the `@@` header) exactly as GitHub served it. **The diff
+content is already in files.json**, so both passes can work from it alone; `addedLines` /
+`removedLines` also give you the size shape for free. Read
+`revisions/<current>/diff.patch` (the raw unified diff) only when you need file-level
+headers (mode/rename/binary markers) or want to see several hunks in file order.
 
 ## 3. Cost-controlled two-pass analysis
 
@@ -90,21 +109,29 @@ Produce:
 ```json
 {
   "summary": "short, plain-language overall summary",
-  "units": [ /* ReviewUnit[] per SPEC */ ]
+  "units": [ /* ReviewUnit[] */ ],
+  "unassigned": [ /* hunk ids deliberately left out of every unit */ ]
 }
 ```
 
-`ReviewUnit` fields (all required): `id` (slug), `title`, `summary` (1-3 sentences),
-`kind`, `attention`, `attentionWhy` (always exactly one concrete line — say *what* to check,
-not just the kind, e.g. "Changes the discount rounding rule — verify it matches finance's
-spec" not "core logic"), `riskFlags` (array, may be empty), `hunkIds` (array), `order`
-(integer, suggested reading order, starting at 0 or 1 — be consistent).
+`ReviewUnit` fields: `id` (slug), `title`, `summary` (1-3 sentences), `kind`, `attention`,
+`attentionWhy` (always exactly one concrete line — say *what* to check, not just the kind,
+e.g. "Changes the discount rounding rule — verify it matches finance's spec" not "core
+logic"), `order` (integer, suggested reading order, starting at 0 or 1 — be consistent),
+plus `riskFlags` and `hunkIds` (arrays; both default to `[]` if omitted, but always write
+them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy` and
+`order` are required — the schema rejects the payload if any is missing.
 
-Rules, enforced by you before writing:
+Rules — the first two are **enforced by the CLI**, which rejects the whole payload:
 
-- **Every hunk in `files.json` is assigned to exactly one unit.** No hunk left out, no
-  hunk in two units. Cross-check the union of all `hunkIds` against the full hunk id list
-  before writing.
+- **Coverage: every hunk id of the current revision must appear either in some unit's
+  `hunkIds` or in the top-level `"unassigned"` array.** `set-analysis` throws and writes
+  nothing if any hunk is unaccounted for, listing the missing ids. Use `"unassigned"` for
+  hunks you deliberately refuse to put in a unit; do not invent a junk-drawer unit.
+- **No unknown ids**: every id you reference must belong to the current revision.
+  Referencing an archived or stale id is a hard error.
+- Aim for **exactly one unit per hunk**. Overlap is *not* rejected by the CLI, so this one
+  is on you: cross-check that no hunk id appears twice.
 - Units are **logical changes**, not files. A unit may span multiple files (e.g. a
   function rename touches its definition and every call site as one unit) when they
   represent one decision.
@@ -139,10 +166,15 @@ Write the JSON from step 4 to a temp file, then:
 reviewer-state set-analysis <key> --file analysis.json
 ```
 
-If the CLI reports validation errors, fix the JSON and retry — do not hand-wave past a
-validation failure. Common causes: a hunk id from `files.json` missing from every unit's
-`hunkIds`, a hunk id appearing in two units, an invalid `kind`/`attention`/`riskFlags`
-enum value, or a missing `attentionWhy`.
+`--file` is required; pass `-` to read the JSON from stdin instead of a temp file. This
+**replaces** the whole analysis for the current revision.
+
+On success it prints `Analysis set for revision <n>: <u> units covering <h> hunks`. If the
+CLI reports validation errors, fix the JSON and retry — do not hand-wave past a validation
+failure. Common causes: a hunk id of the current revision missing from every unit's
+`hunkIds` *and* from `"unassigned"` (the error lists the exact ids), a referenced id that
+isn't in this revision, an invalid `kind`/`attention`/`riskFlags` enum value, or a missing
+required field such as `attentionWhy` or `order`.
 
 ## 7. On refresh of an already-analyzed PR
 
@@ -151,19 +183,39 @@ See `MIGRATION-NOTES.md` for the full mechanics. In short:
 1. Run `reviewer-state refresh <key>`. Read the printed migration report.
 2. Classify **only** hunks the report marks `new` or unassigned. Carried, fuzzy-matched,
    and renamed hunks keep their existing unit membership — do not touch them.
-3. Patch only the affected units with `reviewer-state set-unit <key> <unitId> --file
-   patch.json` (add the new `hunkIds`, adjust `summary`/`attentionWhy`/`riskFlags` only if
-   the new hunks change what's true about that unit). **Never regenerate the whole
-   analysis** on a refresh.
-4. If a revision is marked `baseOnly: true`, its new hunks default to `attention: "skip"`
-   with `attentionWhy: "base moved"` — leave that default unless a new hunk in that
-   revision touches the files of an existing `must-read` unit, in which case classify it
-   normally and attach it to that unit (or a new one) instead of leaving it skip.
+3. Patch only the affected units with
+   `reviewer-state set-unit <key> --id <unitId> --file patch.json` — the unit id is the
+   `--id` **flag** (or an `id` field inside the JSON), not a positional argument. The file
+   may be a partial patch (e.g. just `{"hunkIds": [...]}`); pass `-` for stdin. Add
+   `--note "<why>"` when you are correcting a `kind`/`attention` — that note is recorded on
+   the `classification-corrected` events. **Never regenerate the whole analysis** on a
+   refresh.
+4. If a revision is marked `baseOnly: true`, its new hunks get
+   `defaultAttention: "skip"` / `defaultAttentionWhy: "base moved"` on their hunk state
+   (shown in `report` as `(default skip: base moved)`). That default is informational only
+   — it does not assign the hunk to anything, so such hunks keep showing up under the
+   report's "Needs classification" list until you attach them. Leave them at the default
+   attention unless one touches the files of an existing `must-read` unit, in which case
+   classify it normally and attach it to that unit.
 5. Unmatched old hunks are archived by the migration engine automatically — don't try to
    delete or re-home them yourself; just don't reference archived hunk ids in any unit you
    patch.
 
-## 8. Report to the user
+## 8. Other commands (rarely yours to run)
+
+- `reviewer-state report <key>` — human report: PR header, revision + shas, summary,
+  migration report, hunk/file progress, per-unit progress bars, a "Needs classification"
+  list of hunks in no unit, and recent archived hunks. Use it to verify your analysis
+  landed. `--json` prints raw `state.json` instead (`currentRevision`, `units`, `hunks`,
+  `files`, `unassignedHunkIds`, `archived`, `corrections`).
+- `reviewer-state view <key> <hunkId|unit:<unitId>> [--unview]` — marks reading progress.
+  That's the human reviewer's action (or the web app's); don't mark things viewed on the
+  user's behalf unless asked.
+- `reviewer-state sync <key>` — pushes the viewed-file projection to GitHub. **Never run
+  this on your own initiative**; it writes to the PR.
+- `reviewer-state list` — every PR with local state.
+
+## 9. Report to the user
 
 Finish every run (init or refresh) by printing, in the user's working language:
 

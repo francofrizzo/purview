@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { setGhRunner } from "@reviewer/core";
+import { loadState, refreshPr, setGhRunner, setHunkViewed } from "@reviewer/core";
 import { createApp } from "../src/app.js";
-import { buildFixture, key } from "./fixtures.js";
+import { DOD_REV1, DOD_REV2, DOD_REV3, buildFixture, key } from "./fixtures.js";
 
 const encodedKey = encodeURIComponent(`${key.host}/${key.owner}/${key.repo}/${key.number}`);
 
@@ -149,5 +149,79 @@ describe("comments CRUD", () => {
       body: JSON.stringify({ file: "src/foo.ts", line: 2, side: "RIGHT", body: "" }),
     });
     expect(res.status).toBe(400);
+  });
+});
+
+describe("GET /api/prs/:key/hunks/:id/diff-of-diffs", () => {
+  /** Advance the fixture PR by one revision, feeding `patch` through a stubbed gh. */
+  function refreshOnto(patch: string, headSha: string) {
+    setGhRunner((args) => {
+      const joined = args.join(" ");
+      if (joined.includes("Accept: application/vnd.github.v3.diff")) return patch;
+      if (joined.includes("/compare/")) {
+        return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
+      }
+      return JSON.stringify({
+        node_id: "PR_1",
+        number: key.number,
+        title: "Add widgets",
+        html_url: "https://example.invalid/pr",
+        state: "open",
+        base: { ref: "main", sha: "base1" },
+        head: { ref: "feature", sha: headSha },
+      });
+    });
+    return refreshPr(key, root);
+  }
+
+  it("diffs against the revision the hunk was viewed at, not merely the previous one", async () => {
+    const { hunkIds } = buildFixture(root, DOD_REV1);
+    const viewedId = hunkIds[0]; // the wide hunk, which changes in revision 2
+
+    // Read it at revision 1...
+    setHunkViewed(key, viewedId, true, root);
+
+    // ...it changes in revision 2...
+    const r2 = refreshOnto(DOD_REV2, "head2");
+    const successor = r2.report?.entries.find((e) => e.previousHunkId === viewedId);
+    expect(successor?.status).toBe("fuzzy");
+    const newId = successor!.hunkId;
+    expect(loadState(key, root).hunks[newId].changedSinceViewed).toBe(true);
+
+    // ...and carries over untouched into revision 3.
+    const r3 = refreshOnto(DOD_REV3, "head3");
+    expect(r3.revision).toBe(3);
+    expect(r3.report?.entries.find((e) => e.hunkId === newId)?.status).toBe("identical");
+
+    const state = loadState(key, root);
+    expect(state.hunks[newId].changedSinceViewed).toBe(true);
+
+    const res = await app.request(`/api/prs/${encodedKey}/hunks/${newId}/diff-of-diffs`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    // Naively diffing r3 against r2 would report no change at all.
+    expect(body.baselineRevision).toBe(1);
+    expect(body.changed).toBe(true);
+    const modified = body.lines.filter((l: { type: string }) => l.type !== "unchanged");
+    expect(modified.length).toBeGreaterThan(0);
+    expect(JSON.stringify(modified)).toContain("newer5");
+  });
+
+  it("falls back to the previous revision for a hunk that was never viewed", async () => {
+    const { hunkIds } = buildFixture(root, DOD_REV1);
+    const untouched = hunkIds[1]; // unchanged across revisions, never viewed
+    refreshOnto(DOD_REV2, "head2");
+
+    const res = await app.request(`/api/prs/${encodedKey}/hunks/${untouched}/diff-of-diffs`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.baselineRevision).toBe(1);
+    expect(body.changed).toBe(false);
+  });
+
+  it("404s for a hunk that is not in the current state", async () => {
+    const res = await app.request(`/api/prs/${encodedKey}/hunks/deadbeefdeadbeef/diff-of-diffs`);
+    expect(res.status).toBe(404);
   });
 });

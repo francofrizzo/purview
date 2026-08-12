@@ -1,7 +1,10 @@
 /**
- * Local mirrors of the core types described in SPEC.md.
- * Deliberately NOT imported from @reviewer/core: packages/web talks to the
- * server over REST only, and must stay compilable on its own.
+ * The view model packages/web renders.
+ *
+ * Deliberately NOT imported from @reviewer/core: the web app talks to the
+ * server over REST only and must stay compilable on its own. The server's
+ * actual wire shapes live in `client.ts`, which adapts them into the types
+ * below — this file is the UI's contract, `client.ts` owns the translation.
  */
 
 export type Kind =
@@ -43,11 +46,15 @@ export interface Hunk {
   newLines: number;
   header: string;
   /**
-   * Optional raw patch body for the hunk (the lines after the @@ header,
-   * each still carrying its leading ' ', '+' or '-').
-   * If the server omits it we recover it from the raw diff text.
+   * Raw patch body for the hunk (the lines after the @@ header, each still
+   * carrying its leading ' ', '+' or '-'). Derived by `client.ts` from the
+   * `text` field core writes into files.json; only absent for hunks that
+   * predate that field, in which case we recover it from the raw diff text.
    */
   lines?: string[];
+  /** Content lines only, as core computed hunk identity from. */
+  addedLines?: string[];
+  removedLines?: string[];
 }
 
 export interface FileEntry {
@@ -76,19 +83,27 @@ export interface ReviewUnit {
   order: number;
 }
 
-/** Word-level diff-of-diffs payload, when the server computes it. */
-export interface WordDiffPiece {
+/**
+ * Word-level diff-of-diffs, as computed by core and served by
+ * `GET /api/prs/:key/hunks/:id/diff-of-diffs`. It is line-oriented: each line
+ * is unchanged/added/removed, or `modified` with a word-level breakdown.
+ */
+export interface WordPart {
   value: string;
-  added?: boolean;
-  removed?: boolean;
+  type: "same" | "added" | "removed";
+}
+
+export interface DiffOfDiffsLine {
+  type: "unchanged" | "added" | "removed" | "modified";
+  oldLine?: string;
+  newLine?: string;
+  /** word-level breakdown, only for `modified` lines */
+  parts?: WordPart[];
 }
 
 export interface DiffOfDiffs {
-  /** Raw previous / current hunk bodies. Always safe to render. */
-  before?: string;
-  after?: string;
-  /** Optional precomputed word-level pieces. */
-  wordDiff?: WordDiffPiece[];
+  lines: DiffOfDiffsLine[];
+  changed: boolean;
 }
 
 export interface HunkState {
@@ -97,14 +112,13 @@ export interface HunkState {
   changedSinceViewed: boolean;
   predecessorId?: string;
   migration?: "identical" | "fuzzy" | "renamed" | "new";
-  /** Present when changedSinceViewed; shape tolerated loosely. */
-  diffOfDiffs?: DiffOfDiffs;
 }
 
 export interface FileRollup {
   viewed: boolean;
   viewedHunks: number;
   totalHunks: number;
+  changedSinceViewed?: boolean;
   syncedToGitHub?: boolean;
 }
 
@@ -128,16 +142,16 @@ export interface PrState {
   baseOnly?: boolean;
 }
 
-/** GET /api/prs */
+/** GET /api/prs — flattened by `client.ts` from the server's progress envelope. */
 export interface PrListEntry {
   key: string;
   meta: PrMeta;
-  /** optional convenience fields the server may add */
   title?: string;
+  currentRevision?: number;
+  summary?: string;
   unitCount?: number;
   viewedHunks?: number;
   totalHunks?: number;
-  updatedAt?: string;
 }
 
 /** GET /api/prs/:key */
@@ -156,7 +170,12 @@ export interface MigrationReportItem {
   note?: string;
 }
 
-/** POST /api/prs/:key/refresh */
+/**
+ * POST /api/prs/:key/refresh.
+ * Core reports one flat `entries` array tagged with a status (and calls
+ * carried-over-unchanged hunks `identical`); `client.ts` buckets it into the
+ * per-status lists this panel renders.
+ */
 export interface MigrationReport {
   revision?: number;
   baseOnly?: boolean;
@@ -172,6 +191,7 @@ export interface MigrationReport {
   renamed?: MigrationReportItem[];
   archived?: MigrationReportItem[];
   new?: MigrationReportItem[];
+  /** true when refresh found no new revision (head/base/mergeBase unchanged) */
   noChange?: boolean;
 }
 

@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { api } from "./client";
 import type {
+  DiffOfDiffs,
   DraftComment,
   MigrationReport,
   PrDetail,
@@ -18,7 +19,22 @@ export const qk = {
   prs: ["prs"] as const,
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
+  diffOfDiffs: (key: string, hunkId: string) => ["dod", key, hunkId] as const,
 };
+
+/**
+ * Fetched lazily, only when the reader expands a changed hunk's badge: the
+ * payload is per-hunk and the server computes it on demand.
+ */
+export function useDiffOfDiffs(key: string, hunkId: string | null) {
+  return useQuery<DiffOfDiffs>({
+    queryKey: qk.diffOfDiffs(key, hunkId ?? ""),
+    queryFn: () => api.diffOfDiffs(key, hunkId!),
+    enabled: Boolean(key && hunkId),
+    staleTime: Infinity,
+    retry: false,
+  });
+}
 
 export function usePrs() {
   return useQuery<PrListEntry[]>({ queryKey: qk.prs, queryFn: api.listPrs });

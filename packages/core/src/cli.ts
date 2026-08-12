@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import { Command } from "commander";
-import { parseKey, parsePrUrl, prDir, keyToString } from "./paths.js";
+import { parseKey, parsePrUrl, prDir, keyToString, type PrKey } from "./paths.js";
 import {
   initPr,
   refreshPr,
@@ -11,13 +11,29 @@ import {
   setUnitViewed,
   syncPr,
 } from "./service.js";
-import { loadState, readMigrationReport, listPrs } from "./store.js";
+import { loadState, prExists, readMigrationReport, listPrs } from "./store.js";
 import { formatReport } from "./report.js";
-import { ReviewUnitSchema } from "./schemas.js";
 
 function readJsonFile(file: string): unknown {
   if (file === "-") return JSON.parse(fs.readFileSync(0, "utf8"));
   return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+/**
+ * Parse a key and refuse to touch a PR that was never initialized.
+ * `loadState` happily folds an empty event log into a revision-0 state, so
+ * without this a typo'd key would silently create a bogus state directory
+ * instead of reporting the mistake.
+ */
+function requireExistingKey(keyArg: string): PrKey {
+  const key = parseKey(keyArg);
+  if (!prExists(key)) {
+    throw new Error(
+      `No local state for ${keyToString(key)}. ` +
+        `Run \`reviewer-state init <pr-url>\` first (\`reviewer-state list\` shows tracked PRs).`,
+    );
+  }
+  return key;
 }
 
 const program = new Command();
@@ -48,7 +64,7 @@ program
   .argument("<key>", "host/owner/repo/number or a PR URL")
   .description("fetch the latest diff and migrate state onto it")
   .action((keyArg: string) => {
-    const key = parseKey(keyArg);
+    const key = requireExistingKey(keyArg);
     const res = refreshPr(key);
     if (!res.added) {
       console.log(`No change; still at revision ${res.revision}.`);
@@ -67,7 +83,7 @@ program
   .option("--json", "print state.json instead of the human report")
   .description("print migration report and per-unit progress")
   .action((keyArg: string, opts: { json?: boolean }) => {
-    const key = parseKey(keyArg);
+    const key = requireExistingKey(keyArg);
     const state = loadState(key);
     if (opts.json) {
       console.log(JSON.stringify(state, null, 2));
@@ -84,7 +100,7 @@ program
   .requiredOption("--file <json>", 'JSON file with {summary, units} ("-" for stdin)')
   .description("replace the analysis for the current revision")
   .action((keyArg: string, opts: { file: string }) => {
-    const key = parseKey(keyArg);
+    const key = requireExistingKey(keyArg);
     const { state, coverage } = setAnalysis(key, readJsonFile(opts.file));
     console.log(
       `Analysis set for revision ${state.currentRevision}: ` +
@@ -103,15 +119,13 @@ program
   .option("--note <text>", "note recorded with any classification correction")
   .description("create or patch a single review unit")
   .action((keyArg: string, opts: { file: string; id?: string; note?: string }) => {
-    const key = parseKey(keyArg);
+    const key = requireExistingKey(keyArg);
     const raw = readJsonFile(opts.file) as Record<string, unknown>;
     const unitId = opts.id ?? (raw.id as string | undefined);
     if (!unitId)
       throw new Error("Unit id missing: pass --id or include `id` in the JSON");
-    // Full units are validated strictly; partial patches are validated by setUnit.
-    if (raw.title !== undefined && raw.kind !== undefined) {
-      ReviewUnitSchema.parse({ ...raw, id: unitId });
-    }
+    // setUnit validates strictly against the full schema for a brand-new
+    // unit id, and as a partial patch when the unit id already exists.
     const state = setUnit(key, unitId, raw, { note: opts.note });
     const unit = state.units.find((u) => u.id === unitId)!;
     console.log(
@@ -127,7 +141,7 @@ program
   .option("--unview", "mark as not viewed instead")
   .description("mark a hunk or a whole unit viewed")
   .action((keyArg: string, target: string, opts: { unview?: boolean }) => {
-    const key = parseKey(keyArg);
+    const key = requireExistingKey(keyArg);
     const viewed = !opts.unview;
     if (target.startsWith("unit:")) {
       const unitId = target.slice("unit:".length);
@@ -137,13 +151,14 @@ program
         `Unit ${unitId}: ${unit.hunkIds.length} hunks marked ${viewed ? "viewed" : "unviewed"}.`,
       );
     } else {
-      const state = setHunkViewed(key, target, viewed);
-      const st = state.hunks[target];
-      if (!st) {
-        console.log(
-          `Warning: ${target} is not a hunk of revision ${state.currentRevision}.`,
+      const before = loadState(key);
+      if (!before.hunks[target]) {
+        throw new Error(
+          `Hunk ${target} is not part of revision ${before.currentRevision}; ` +
+            `nothing was recorded.`,
         );
       }
+      setHunkViewed(key, target, viewed);
       console.log(`Hunk ${target} marked ${viewed ? "viewed" : "unviewed"}.`);
     }
     const state = loadState(key);
@@ -156,7 +171,7 @@ program
   .argument("<key>")
   .description("push the viewed-file projection to GitHub")
   .action((keyArg: string) => {
-    const key = parseKey(keyArg);
+    const key = requireExistingKey(keyArg);
     const res = syncPr(key);
     if (res.pushed.length === 0) console.log("Nothing to push; GitHub is up to date.");
     for (const p of res.pushed) {

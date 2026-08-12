@@ -203,6 +203,15 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /* --------------------------------------------------------------- diffs */
 
+  /**
+   * The UI presents this as "what changed since you viewed it", so the
+   * baseline is the revision at which the hunk was actually marked viewed —
+   * not simply the previous revision. `changedSinceViewed` is sticky across
+   * later revisions, so diffing only one revision back would report "no
+   * difference" for a hunk that genuinely changed since the reader saw it.
+   * We walk the per-revision migration reports back to that baseline,
+   * following the predecessor chain through renames and fuzzy matches.
+   */
   app.get("/api/prs/:key/hunks/:id/diff-of-diffs", (c) => {
     const key = keyParam(c);
     const hunkId = c.req.param("id");
@@ -211,30 +220,53 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (!hunkState) {
       return c.json({ error: "not_found", detail: `No hunk "${hunkId}" in current state` }, 404);
     }
-    if (!hunkState.predecessorId) {
-      return c.json(
-        { error: "no_predecessor", detail: "Hunk has no recorded predecessor to diff against" },
-        404,
-      );
-    }
-    const revisions = [...state.revisions].sort((a, b) => a.revision - b.revision);
-    const idx = revisions.findIndex((r) => r.revision === state.currentRevision);
-    const previous = idx > 0 ? revisions[idx - 1] : undefined;
-    if (!previous) {
+    const revisions = [...state.revisions]
+      .sort((a, b) => a.revision - b.revision)
+      .map((r) => r.revision);
+    const idx = revisions.indexOf(state.currentRevision);
+    const previousRevision = idx > 0 ? revisions[idx - 1] : undefined;
+    if (previousRevision === undefined) {
       return c.json(
         { error: "no_previous_revision", detail: "No previous revision on record" },
         404,
       );
     }
+    // Baseline: where the reader last saw it, clamped to a stored revision
+    // that is strictly older than the current one.
+    const viewedAt = hunkState.viewedAtRevision;
+    const baseline =
+      viewedAt !== undefined && viewedAt < state.currentRevision && revisions.includes(viewedAt)
+        ? viewedAt
+        : previousRevision;
+
+    // Walk the predecessor chain back from the current revision to `baseline`.
+    let ancestorId: string | undefined = hunkId;
+    for (let i = revisions.indexOf(state.currentRevision); i > revisions.indexOf(baseline); i--) {
+      const report = readMigrationReport(key, revisions[i], root);
+      const entry = report?.entries.find((e) => e.hunkId === ancestorId);
+      // No report (or the hunk is new here) => the chain ends before the baseline.
+      ancestorId = entry?.previousHunkId;
+      if (!ancestorId) break;
+    }
+    if (!ancestorId) {
+      return c.json(
+        {
+          error: "no_predecessor",
+          detail: `Hunk has no recorded predecessor back to revision ${baseline}`,
+        },
+        404,
+      );
+    }
+
     let currentHunk: Hunk | undefined;
     let previousHunk: Hunk | undefined;
     try {
       currentHunk = readFilesJson(key, state.currentRevision, root)
         .files.flatMap((f) => f.hunks)
         .find((h) => h.id === hunkId);
-      previousHunk = readFilesJson(key, previous.revision, root)
+      previousHunk = readFilesJson(key, baseline, root)
         .files.flatMap((f) => f.hunks)
-        .find((h) => h.id === hunkState.predecessorId);
+        .find((h) => h.id === ancestorId);
     } catch (err) {
       return c.json({ error: "not_found", detail: classifyError(err).detail }, 404);
     }
@@ -247,7 +279,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         404,
       );
     }
-    return c.json(hunkDiffOfDiffs(previousHunk, currentHunk));
+    return c.json({ ...hunkDiffOfDiffs(previousHunk, currentHunk), baselineRevision: baseline });
   });
 
   /* ------------------------------------------------------------ comments */

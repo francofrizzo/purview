@@ -370,20 +370,7 @@ const state: PrState = {
     "Payment charges become replay-safe. A key derived from (orderId, amount, currency) is recorded in a new charge_ledger table before the gateway call, so retries — whether from the client, the queue, or the new backoff wrapper — return the original result instead of charging twice. Two things deserve real attention: the key derivation (it must not include anything volatile) and the interaction between the retry loop and the ledger write ordering.",
   units,
   hunks: {
-    a1b2c3d4e5f60001: { viewed: true, viewedAtRevision: 2, changedSinceViewed: true, migration: "fuzzy", predecessorId: "a1b2c3d4e5f6ff01", diffOfDiffs: {
-      before: [
-        "  async charge(order: Order): Promise<ChargeResult> {",
-        "    const key = idempotencyKey(order.id, order.total);",
-        "    const existing = await this.ledger.findByKey(key);",
-        "    if (existing) return existing.result;",
-      ].join("\n"),
-      after: [
-        "  async charge(order: Order): Promise<ChargeResult> {",
-        "    const key = idempotencyKey(order.id, order.total, order.currency);",
-        "    const existing = await this.ledger.findByKey(key);",
-        "    if (existing) return existing.result;",
-      ].join("\n"),
-    } },
+    a1b2c3d4e5f60001: { viewed: true, viewedAtRevision: 2, changedSinceViewed: true, migration: "fuzzy", predecessorId: "a1b2c3d4e5f6ff01" },
     a1b2c3d4e5f60002: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false, migration: "identical" },
     a1b2c3d4e5f60003: { viewed: false, changedSinceViewed: false, migration: "identical" },
     a1b2c3d4e5f60004: { viewed: false, changedSinceViewed: false, migration: "new" },
@@ -437,7 +424,6 @@ export const mockList: PrListEntry[] = [
     unitCount: units.length,
     viewedHunks: 4,
     totalHunks: 9,
-    updatedAt: "2026-08-12T08:40:00Z",
   },
   {
     key: "github.com/acme/platform/1190",
@@ -453,7 +439,6 @@ export const mockList: PrListEntry[] = [
     unitCount: 0,
     viewedHunks: 0,
     totalHunks: 0,
-    updatedAt: "2026-08-11T17:02:00Z",
   },
 ];
 

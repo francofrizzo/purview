@@ -6,16 +6,22 @@ analysis.
 
 ## When migration runs
 
-Triggered by `refresh` when the PR's `headSha` or `mergeBase` has changed since the last
-recorded revision. The CLI fetches the diff fresh from GitHub (`gh api ... v3.diff`) —
-never from local git — and creates a new `revisions/<n+1>/` directory with its own
-`diff.patch` and `files.json`. Old revisions are kept, not overwritten.
+Triggered by `refresh` when the PR's `baseSha`, `headSha` or `mergeBase` has changed since
+the last recorded revision. The CLI fetches the diff fresh from GitHub (`gh api ... v3.diff`)
+— never from local git — and creates a new `revisions/<n+1>/` directory with its own
+`diff.patch`, `files.json` and `migration.json` (the machine-readable migration report).
+Old revisions are kept, not overwritten. When nothing moved, `refresh` prints
+`No change; still at revision <n>.` and does nothing else.
 
-## What carried / fuzzy / renamed / archived / new mean
+## What identical / fuzzy / renamed / archived / new mean
 
-- **carried** — the new revision has a hunk with the exact same `hunkId` (content-derived,
-  see SPEC's hunk identity formula) as an old hunk. All state (viewed, unit membership)
-  moves over unchanged.
+These are the five `status` values in `migration.json`. The report's header line groups the
+first three as "carried".
+
+- **identical** ("carried") — the new revision has a hunk with the exact same `hunkId`
+  (content-derived, see SPEC's hunk identity formula) as an old hunk. All state (viewed,
+  unit membership) moves over unchanged. Identical entries are **omitted** from the
+  per-hunk list the CLI prints; only the counts line mentions them.
 - **fuzzy** — same file, no exact `hunkId` match, but Jaccard similarity over
   added+removed lines ≥ 0.6 against an old hunk. State carries over, but
   `changedSinceViewed` is set to `true` if the old hunk was viewed, and the migration
@@ -24,25 +30,41 @@ never from local git — and creates a new `revisions/<n+1>/` directory with its
   is matched to its old counterpart under the new path and then treated as (a) or (b)
   above.
 - **archived** — an old hunk with no match in the new revision (removed/superseded).
-  Kept in `events.jsonl` for history, dropped from the current unit's active `hunkIds`,
-  listed in the migration report. Don't reference an archived hunk id when patching units.
-- **new** — a new-revision hunk with no old counterpart. Either auto-attached to an
-  existing unit by file adjacency (if the migration engine judged it obvious) or left
-  unassigned for the skill to classify.
+  Kept in `events.jsonl` for history, automatically dropped from every unit's active
+  `hunkIds` (and from `unassignedHunkIds`) when the revision is folded into state, listed
+  in the migration report and in `state.archived`. Don't reference an archived hunk id when
+  patching units — `set-analysis` rejects unknown ids outright.
+- **new** — a new-revision hunk with no old counterpart. It is **always left unassigned**;
+  despite what SPEC suggests, the engine does no file-adjacency auto-attachment. Every new
+  hunk is yours to classify, and shows up under "Needs classification" in
+  `reviewer-state report <key>` until it's in a unit.
 
 ## What the skill must do on refresh
 
 1. Run `refresh`, read the printed migration report (carried/fuzzy/renamed/archived/new
-   counts + per-hunk list).
+   counts + per-hunk list for everything except `identical`). The same report is on disk at
+   `revisions/<n>/migration.json`, and `reviewer-state report <key>` reprints the current
+   revision's one plus a "Needs classification" list.
 2. Classify **only** hunks marked `new` or left unassigned. Do not re-examine or
    reclassify carried/fuzzy/renamed hunks — their unit membership and attention already
    reflect prior human review context (including any `classification-corrected` events),
    and re-deriving them from scratch risks contradicting that history.
-3. Patch only the units affected by new hunks, via `reviewer-state set-unit <key>
-   <unitId> --file patch.json`. A "patch" here means updating that one unit's `hunkIds`
-   (adding the new hunk) and, only if the new hunk changes what's true about the unit,
-   its `summary` / `attentionWhy` / `riskFlags`. Units untouched by new hunks are not
-   patched at all.
+3. Patch only the units affected by new hunks, via
+   `reviewer-state set-unit <key> --id <unitId> --file patch.json` (unit id is the `--id`
+   flag or an `id` field in the JSON; `--file -` reads stdin; `--note "<why>"` annotates a
+   kind/attention correction). A "patch" here means updating that one unit's `hunkIds`
+   (adding the new hunk — send the **full** resulting array, the patch replaces the field,
+   it does not append) and, only if the new hunk changes what's true about the unit, its
+   `summary` / `attentionWhy` / `riskFlags`. Units untouched by new hunks are not patched
+   at all.
+
+   Two `set-unit` behaviors to know: patching an existing unit's `kind` or `attention` also
+   emits a `classification-corrected` event for each of its hunks (that's the learning
+   loop — pass `--note`), and a `--id` that matches no existing unit **creates** one — but
+   only if the JSON is a complete `ReviewUnit` (every required field present); the CLI
+   rejects a create with a missing field (e.g. no `kind`) instead of silently filling in
+   defaults. So when you create a unit this way, send all the fields. Only when the `--id`
+   already exists does the JSON act as a partial patch of just the fields you send.
 4. **Never regenerate the whole analysis.** Do not re-run the full two-pass process from
    SKILL.md step 3 over the entire diff on a refresh — that would silently discard
    accumulated viewed-state semantics and reviewer trust in the existing structure. The
@@ -51,10 +73,13 @@ never from local git — and creates a new `revisions/<n+1>/` directory with its
 
 ## `baseOnly` revisions
 
-If `headSha` is unchanged but `mergeBase` moved (target branch advanced under an
-unchanged PR head), the revision is marked `baseOnly: true`. New hunks in such a revision
-default to `attention: "skip"` with `attentionWhy: "base moved"` — this is deliberate,
-since these hunks aren't part of the PR author's actual changes, just base drift.
+If `headSha` is unchanged but `baseSha`/`mergeBase` moved (target branch advanced under an
+unchanged PR head), the revision is marked `baseOnly: true`, and the CLI says
+`(base moved only)`. New hunks in such a revision get `defaultAttention: "skip"` /
+`defaultAttentionWhy: "base moved"` recorded on their **hunk state** — this is a hint, not
+a unit assignment: they are still unassigned and still listed under "Needs classification".
+The hint is deliberate, since these hunks aren't part of the PR author's actual changes,
+just base drift.
 
 **Exception**: if a new hunk in a `baseOnly` revision touches a file that an existing
 `must-read` unit already covers, don't leave it at the default skip — classify it
@@ -64,7 +89,11 @@ code a reviewer is already scrutinizing closely.
 ## What the skill must never do on refresh
 
 - Never hand-edit `events.jsonl`, `state.json`, or any `revisions/*/files.json` /
-  `diff.patch` directly — only `reviewer-state` CLI commands mutate state.
+  `diff.patch` / `migration.json` directly — only `reviewer-state` CLI commands mutate
+  state. (`state.json` is a derived snapshot, folded from `events.jsonl`; edits to it are
+  silently discarded on the next rebuild.)
+- Never run `reviewer-state sync` off your own initiative — it writes viewed-state to the
+  real PR on GitHub.
 - Never delete or re-home archived hunks yourself; the migration engine already moved
   them out of active unit membership.
 - Never touch units that have no new/unassigned hunks in them.

@@ -1,7 +1,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
-import { buildRows } from "../lib/diffModel";
+import { buildRows, hunkLabel } from "../lib/diffModel";
 import { useTokensForHunks } from "../lib/useHunkTokens";
 import { useTheme } from "../lib/useTheme";
 import { ChangedBadge } from "./Chips";
@@ -224,7 +224,7 @@ export function DiffPane({
 
     if (row.type === "dod") {
       const st = detail.state.hunks[row.hunkId];
-      return st ? <DiffOfDiffs state={st} /> : null;
+      return st ? <DiffOfDiffs prKey={detail.key} hunkId={row.hunkId} state={st} /> : null;
     }
 
     if (row.type === "hunk") {
@@ -256,7 +256,7 @@ export function DiffPane({
           >
             {st.viewed ? <IconCheck width={11} height={11} /> : null}
           </button>
-          <span className="truncate font-mono text-2xs">{row.entry.hunk.header}</span>
+          <span className="truncate font-mono text-2xs">{hunkLabel(row.entry.hunk)}</span>
           {st.changedSinceViewed ? (
             <ChangedBadge
               onClick={() =>
