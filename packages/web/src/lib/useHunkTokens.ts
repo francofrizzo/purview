@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { cachedTokens, tokenizeLines, type ThemeName, type Tok } from "./highlight";
+import { cachedTokens, tokenizeLines, type ShikiTheme, type Tok } from "./highlight";
 import { buildRows, languageFor, type DiffRow } from "./diffModel";
 import type { Hunk } from "../api/types";
 
@@ -11,10 +11,10 @@ export function useHunkTokens(
   hunkId: string,
   rows: DiffRow[],
   lang: string | null,
-  theme: ThemeName,
+  theme: ShikiTheme,
 ): Tok[][] | null {
   const [tokens, setTokens] = useState<Tok[][] | null>(() =>
-    lang ? (cachedTokens(hunkId, lang, theme) ?? null) : null,
+    lang ? (cachedTokens(hunkId, lang, theme.name) ?? null) : null,
   );
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function useHunkTokens(
       setTokens(null);
       return;
     }
-    const hit = cachedTokens(hunkId, lang, theme);
+    const hit = cachedTokens(hunkId, lang, theme.name);
     if (hit) {
       setTokens(hit);
       return;
@@ -50,7 +50,7 @@ export type TokenMap = Record<string, Tok[][] | null>;
 export function useTokensForHunks(
   hunks: Hunk[],
   diffText: string,
-  theme: ThemeName,
+  theme: ShikiTheme,
 ): TokenMap {
   const signature = hunks.map((h) => h.id).join(",");
   const [map, setMap] = useState<TokenMap>({});
@@ -72,7 +72,7 @@ export function useTokensForHunks(
     const seeded: TokenMap = {};
     for (const j of jobs) {
       if (!j.lang) continue;
-      const hit = cachedTokens(j.id, j.lang, theme);
+      const hit = cachedTokens(j.id, j.lang, theme.name);
       if (hit) seeded[j.id] = hit;
     }
     setMap(seeded);

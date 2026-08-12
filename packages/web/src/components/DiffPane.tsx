@@ -3,8 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { buildRows, buildSplitRows, hunkLabel } from "../lib/diffModel";
 import { useTokensForHunks } from "../lib/useHunkTokens";
-import { useTheme } from "../lib/useTheme";
-import type { DiffViewMode } from "../lib/useViewMode";
+import { useSettings, type DiffViewMode } from "../lib/settings";
+import { shikiThemeFor } from "../lib/themes";
 import { ChangedBadge } from "./Chips";
 import { DiffLine, SplitDiffLine } from "./DiffLine";
 import { DiffOfDiffs } from "./DiffOfDiffs";
@@ -21,12 +21,11 @@ export const SPLIT_MIN_WIDTH = 700;
 
 /** px of chrome left of the code column in unified: 2 gutters + button + marker + right pad. */
 const UNIFIED_CHROME = 52 + 52 + 15 + 12 + 16;
-const TAB_SIZE = 8;
 
 /** Visual column count of a line, expanding tabs the way the browser renders them. */
-function columns(s: string): number {
+function columns(s: string, tabSize: number): number {
   let c = 0;
-  for (const ch of s) c = ch === "\t" ? c + (TAB_SIZE - (c % TAB_SIZE)) : c + 1;
+  for (const ch of s) c = ch === "\t" ? c + (tabSize - (c % tabSize)) : c + 1;
   return c;
 }
 
@@ -72,7 +71,9 @@ export function DiffPane({
   showFileRows = true,
   emptyMessage = "Nothing to show.",
 }: DiffPaneProps) {
-  const theme = useTheme();
+  const { appearance } = useSettings();
+  const theme = shikiThemeFor(appearance.theme);
+  const { codeFontSize, codeLineHeight, tabSize, codeFont } = appearance;
   const scrollRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
   const [expandedDod, setExpandedDod] = useState<Set<string>>(new Set());
@@ -96,11 +97,12 @@ export function DiffPane({
 
   const mode: DiffViewMode = viewMode === "split" && wide ? "split" : "unified";
 
-  // Monospace, so one measurement gives every line's width.
+  // Monospace, so one measurement gives every line's width. Re-measured when
+  // the code font or its size changes.
   useLayoutEffect(() => {
     const w = measureRef.current?.getBoundingClientRect().width;
     if (w && w > 0) setCharWidth(w / 100);
-  }, []);
+  }, [codeFont, codeFontSize]);
 
   /** Widest line in the shown set, in columns — only needed when wrap is off. */
   const maxColumns = useMemo(() => {
@@ -108,12 +110,12 @@ export function DiffPane({
     let max = 0;
     for (const e of entries) {
       for (const r of buildRows(e.hunk, detail.diff)) {
-        const c = columns(r.content);
+        const c = columns(r.content, tabSize);
         if (c > max) max = c;
       }
     }
     return max;
-  }, [wrap, entries, detail.diff]);
+  }, [wrap, entries, detail.diff, tabSize]);
 
   // Unified scrolls as a single pane: give the row container the full content
   // width so row backgrounds (and the hunk headers) span the whole scroll
@@ -138,7 +140,8 @@ export function DiffPane({
     // Row heights depend on the wrap mode as much as on unified/split, so the
     // wrap flag is part of the key: it drops the virtualizer's stale
     // measurement cache the same way the s:/l: prefixes do.
-    const w = wrap ? "w" : "n";
+    // Font size changes row heights too, so it joins the key for the same reason.
+    const w = `${wrap ? "w" : "n"}${codeFontSize}`;
     for (const entry of entries) {
       const { hunk, file } = entry;
       if (file.path !== lastFile) {
@@ -176,7 +179,7 @@ export function DiffPane({
       }
     }
     return out;
-  }, [entries, detail.diff, expandedDod, mode, wrap, showFileRows]);
+  }, [entries, detail.diff, expandedDod, mode, wrap, showFileRows, codeFontSize]);
 
   const hunkRowIndex = useMemo(() => {
     const m = new Map<string, number>();
@@ -191,10 +194,10 @@ export function DiffPane({
     getScrollElement: () => scrollRef.current,
     estimateSize: (i) => {
       const r = rows[i];
-      if (r.type === "line") return 20;
+      if (r.type === "line") return codeLineHeight;
       // split cells wrap, so rows are often taller than one line; measurement
       // corrects this, the estimate only needs to be in the right ballpark.
-      if (r.type === "split") return 20;
+      if (r.type === "split") return codeLineHeight;
       if (r.type === "dod") return 170;
       return 34;
     },
@@ -361,7 +364,13 @@ export function DiffPane({
         ref={measureRef}
         aria-hidden
         className="pointer-events-none absolute font-mono opacity-0"
-        style={{ fontSize: 12, whiteSpace: "pre", top: -9999, left: -9999 }}
+        style={{
+          fontSize: "var(--code-font-size)",
+          tabSize: "var(--tab-size)" as unknown as number,
+          whiteSpace: "pre",
+          top: -9999,
+          left: -9999,
+        }}
       >
         {"0".repeat(100)}
       </span>

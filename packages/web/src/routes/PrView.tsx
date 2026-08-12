@@ -33,7 +33,7 @@ import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
 import { hunkIndex, unitProgress } from "../lib/diffModel";
 import { MiddleTruncate } from "../components/Truncate";
-import { useDiffViewMode, useWrapLines } from "../lib/useViewMode";
+import { useDiffViewPrefs } from "../lib/settings";
 
 export function PrView() {
   const params = useParams();
@@ -65,8 +65,7 @@ export function PrView() {
   const [report, setReport] = useState<MigrationReport | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitReviewResult | null>(null);
-  const [viewMode, setViewMode, toggleViewMode] = useDiffViewMode();
-  const [wrap, setWrap, toggleWrap] = useWrapLines();
+  const { viewMode, setViewMode, toggleViewMode, wrap, setWrap, toggleWrap } = useDiffViewPrefs();
   const [narrow, setNarrow] = useState(false);
   const showNarrowNote = narrow && viewMode === "split";
 

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { MOCK } from "../api/client";
 import { useAddPr, usePrs } from "../api/hooks";
 import { Progress } from "../components/Chips";
+import { IconSettings } from "../components/icons";
 
 export function PrList() {
   const { data: prs = [], isLoading, error } = usePrs();
@@ -24,7 +25,8 @@ export function PrList() {
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col px-6 py-10">
-      <header className="mb-6">
+      <header className="mb-6 flex items-start">
+        <div className="min-w-0 flex-1">
         <h1 className="text-lg font-semibold tracking-tight">Reviewer</h1>
         <p className="mt-0.5 text-xs" style={{ color: "var(--fg-muted)" }}>
           Local-first pull request review.{" "}
@@ -34,6 +36,11 @@ export function PrList() {
             <span>talking to localhost:4779</span>
           )}
         </p>
+        </div>
+        <Link to="/settings" className="btn flex-none" title="Settings">
+          <IconSettings width={12} height={12} />
+          settings
+        </Link>
       </header>
 
       <form onSubmit={submit} className="mb-6 flex gap-2">

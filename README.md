@@ -131,3 +131,40 @@ Known failures are reported specifically rather than as a raw `gh` error: approv
 PR, a stale `commit_id` after a force-push (refresh and retry), a comment anchored to a line
 that has left the diff, and a pending review deleted from under you (recovered automatically,
 once).
+
+## Settings
+
+The gear in the header (both on the PR list and inside a PR) opens `/settings`, where the
+appearance lives. Every control applies immediately — there is no save button — and is stored
+in this browser under the single `reviewer.settings` localStorage key, so preferences survive
+reloads and stay in sync across open tabs. **Reset to defaults** puts everything back. The two
+older standalone preferences (diff layout and line wrapping) were folded into the same store
+and are migrated on first load, so nothing you had chosen is lost.
+
+**Typography.** Pick the family used for the diff and every other code surface, its size
+(11–16px), and the tab width (2/4/8, default 8). A checkbox extends the same family to the UI
+chrome. Whatever you pick is always followed by a sensible fallback chain, so a misspelled
+family degrades to the built-in monospace stack instead of to Times.
+
+**Choosing an installed font.** *Choose from installed fonts…* uses the Local Font Access API
+(`window.queryLocalFonts()`), which exists only in Chromium 103+ over a secure context —
+localhost counts — requires a click, and asks for permission the first time; you must confirm
+that browser prompt yourself. When it succeeds you get a filterable list of your font families,
+each name rendered in its own font. When the API is missing, the permission is denied, or the
+list comes back empty, the page says so inline and you still have (a) a curated list of common
+monospace families and (b) a free-text box that accepts any family installed on your machine
+by name.
+
+**Themes.** A theme is a single palette that drives *both* shiki's syntax colors and the app's
+own CSS custom properties — backgrounds, borders, diff add/remove tints, chips — which are
+derived from that palette with contrast floors, so nothing goes unreadable on a light or
+low-contrast theme. Shipped: the app's own dark and light look plus **Follow system** (the
+default, which keeps the old `prefers-color-scheme` behavior), a set of bundled editor themes
+(GitHub Dark/Light, One Dark Pro, Dracula, Nord, Tokyo Night, Catppuccin Mocha, Solarized
+Dark/Light, Monokai), and the five Monokai Pro variants.
+
+**Monokai Pro caveat.** The official Monokai Pro theme files are a commercial product, so they
+are neither vendored nor downloaded here. The Classic / Octagon / Machine / Ristretto /
+Spectrum entries are hand-authored TextMate themes built from each variant's widely published
+palette values, and are labelled *community palette* in the picker — approximations, not the
+real thing. Shiki's bundled `monokai` (the original, freely licensed) is offered separately.

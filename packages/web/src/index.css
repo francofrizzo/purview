@@ -3,8 +3,19 @@
 @tailwind utilities;
 
 @layer base {
+  /* Appearance defaults. The settings store (src/lib/settings.tsx) overwrites
+     every one of these as inline custom properties on <html> before React
+     mounts; what is written here is the "Reviewer Dark/Light" theme, so the
+     app looks identical if scripting or storage is unavailable. */
   :root {
     color-scheme: dark;
+
+    --font-code: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono",
+      monospace;
+    --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --code-font-size: 12px;
+    --code-line-height: 20px;
+    --tab-size: 8;
 
     --bg: #0c0d10;
     --bg-raised: #131519;
@@ -32,6 +43,19 @@
     --warn: #e3b341;
     --warn-soft: rgba(227, 179, 65, 0.13);
     --ok: #4ec27f;
+
+    --kind-core: #c4a7ff;
+    --kind-core-soft: rgba(160, 120, 255, 0.14);
+    --kind-glue: #7ec9d8;
+    --kind-glue-soft: rgba(94, 180, 200, 0.14);
+    --kind-wiring: #9aa4b4;
+    --kind-wiring-soft: rgba(150, 160, 180, 0.13);
+    --kind-ripple: #d8b98a;
+    --kind-ripple-soft: rgba(200, 160, 100, 0.13);
+    --kind-tests: #8fc99b;
+    --kind-tests-soft: rgba(100, 190, 130, 0.13);
+    --kind-docs: #a0a8bb;
+    --kind-docs-soft: rgba(140, 150, 175, 0.12);
   }
 
   @media (prefers-color-scheme: light) {
@@ -150,8 +174,9 @@
 
   .diff-line {
     @apply flex font-mono;
-    font-size: 12px;
-    line-height: 20px;
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    tab-size: var(--tab-size);
     /* wrap rather than clip: the gutter/marker columns are flex items, so a
        wrapped code column never drags them onto a line of their own */
     white-space: pre-wrap;
@@ -189,8 +214,9 @@
   /* --- side-by-side --- */
   .diff-split {
     @apply font-mono;
-    font-size: 12px;
-    line-height: 20px;
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    tab-size: var(--tab-size);
   }
   .diff-half {
     @apply flex min-w-0;

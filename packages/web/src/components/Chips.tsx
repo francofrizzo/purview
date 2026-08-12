@@ -1,19 +1,21 @@
 import type { Attention, Kind, RiskFlag } from "../api/types";
 import { RISK_META } from "./icons";
 
+// Colors come from the active theme (see src/lib/themes.ts), so the chips stay
+// distinguishable — and coherent with the syntax colors — on every theme.
 const KIND_STYLE: Record<Kind, { label: string; color: string; bg: string }> = {
-  "core-logic": { label: "core", color: "#c4a7ff", bg: "rgba(160, 120, 255, 0.14)" },
-  "connective-tissue": { label: "glue", color: "#7ec9d8", bg: "rgba(94, 180, 200, 0.14)" },
-  wiring: { label: "wiring", color: "#9aa4b4", bg: "rgba(150, 160, 180, 0.13)" },
-  ripple: { label: "ripple", color: "#d8b98a", bg: "rgba(200, 160, 100, 0.13)" },
-  tests: { label: "tests", color: "#8fc99b", bg: "rgba(100, 190, 130, 0.13)" },
-  docs: { label: "docs", color: "#a0a8bb", bg: "rgba(140, 150, 175, 0.12)" },
+  "core-logic": { label: "core", color: "var(--kind-core)", bg: "var(--kind-core-soft)" },
+  "connective-tissue": { label: "glue", color: "var(--kind-glue)", bg: "var(--kind-glue-soft)" },
+  wiring: { label: "wiring", color: "var(--kind-wiring)", bg: "var(--kind-wiring-soft)" },
+  ripple: { label: "ripple", color: "var(--kind-ripple)", bg: "var(--kind-ripple-soft)" },
+  tests: { label: "tests", color: "var(--kind-tests)", bg: "var(--kind-tests-soft)" },
+  docs: { label: "docs", color: "var(--kind-docs)", bg: "var(--kind-docs-soft)" },
 };
 
 const ATTENTION_STYLE: Record<Attention, { label: string; color: string; bg: string }> = {
   "must-read": { label: "must-read", color: "var(--risk)", bg: "var(--risk-soft)" },
   skim: { label: "skim", color: "var(--warn)", bg: "var(--warn-soft)" },
-  skip: { label: "skip", color: "var(--fg-faint)", bg: "rgba(128,128,128,0.1)" },
+  skip: { label: "skip", color: "var(--kind-wiring)", bg: "var(--kind-wiring-soft)" },
 };
 
 export function KindChip({ kind }: { kind: Kind }) {

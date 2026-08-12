@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import type { PrDetail } from "../api/types";
-import { IconComment, IconRefresh, IconUpload } from "./icons";
+import { IconComment, IconRefresh, IconSettings, IconUpload } from "./icons";
 
 export function TopBar({
   detail,
@@ -77,6 +77,9 @@ export function TopBar({
           <IconUpload width={11} height={11} />
           {syncing ? "syncing…" : "sync"}
         </button>
+        <Link to="/settings" className="btn" title="Settings" aria-label="Settings">
+          <IconSettings width={12} height={12} />
+        </Link>
         <button type="button" className="btn btn-primary" onClick={onFinishReview}>
           finish review
           {pendingReview ? (

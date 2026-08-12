@@ -4,23 +4,10 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        mono: [
-          "ui-monospace",
-          "SFMono-Regular",
-          "SF Mono",
-          "Menlo",
-          "Consolas",
-          "Liberation Mono",
-          "monospace",
-        ],
-        sans: [
-          "Inter",
-          "ui-sans-serif",
-          "system-ui",
-          "-apple-system",
-          "Segoe UI",
-          "sans-serif",
-        ],
+        // The full stacks live in the --font-* custom properties, which the
+        // settings store rewrites at runtime (see src/lib/settings.tsx).
+        mono: ["var(--font-code)"],
+        sans: ["var(--font-ui)"],
       },
       fontSize: {
         "2xs": ["0.6875rem", { lineHeight: "1rem" }],
