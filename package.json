@@ -1,0 +1,11 @@
+{
+  "name": "reviewer",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "dev": "pnpm --filter @reviewer/server dev"
+  }
+}
