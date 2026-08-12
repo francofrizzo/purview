@@ -76,12 +76,39 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
       return JSON.stringify({ login: state.login, id: 1 });
     }
 
-    // GraphQL: addPullRequestReviewThread
+    // GraphQL
     if (args[1] === "graphql") {
       const field = (name: string) => {
         const i = args.findIndex((a) => a.startsWith(`${name}=`));
         return i === -1 ? undefined : args[i].slice(name.length + 1);
       };
+      const query = field("query") ?? "";
+
+      // GraphQL: updatePullRequestReviewComment
+      if (query.includes("updatePullRequestReviewComment")) {
+        const commentId = field("commentId");
+        const newBody = field("body");
+        let found: FakeReview["comments"][number] | undefined;
+        for (const review of state.reviews) {
+          found = review.comments.find((cm) => String(cm.id) === commentId);
+          if (found) break;
+        }
+        if (!found) throw new Error(`gh ${joined} failed: HTTP 404 comment not found`);
+        if (newBody !== undefined) found.body = newBody;
+        return JSON.stringify({
+          data: {
+            updatePullRequestReviewComment: {
+              pullRequestReviewComment: {
+                id: `PRRC_${found.id}`,
+                databaseId: found.id,
+                body: found.body,
+              },
+            },
+          },
+        });
+      }
+
+      // GraphQL: addPullRequestReviewThread
       const reviewId = field("reviewId");
       const review = state.reviews.find((r) => r.node_id === reviewId);
       if (!review) throw new Error(`gh ${joined} failed: HTTP 404 review not found`);

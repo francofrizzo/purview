@@ -37,6 +37,8 @@ export const CommentSchema = z.object({
   githubThreadId: z.string().optional(),
   pushedAt: z.string().optional(),
   submittedAt: z.string().optional(),
+  /** Set whenever the body is edited after creation. Absent on untouched comments. */
+  updatedAt: z.string().optional(),
 });
 export type Comment = z.infer<typeof CommentSchema>;
 
@@ -156,6 +158,40 @@ export function deleteComment(
     root,
   );
   return { removed: true, remote };
+}
+
+export interface UpdateCommentBodyResult {
+  found: boolean;
+  /** false when the new body equals the stored one — caller should treat as a no-op. */
+  changed: boolean;
+  comment?: Comment;
+}
+
+/**
+ * Local-only body edit. Whether/how to reflect the change on GitHub is a
+ * routing decision that depends on the comment's status (draft/pushed/
+ * submitted), so that lives in the route handler; this just updates the
+ * source of truth on disk and reports whether anything actually changed, so
+ * callers can skip remote work on a true no-op edit.
+ */
+export function updateCommentBody(
+  key: PrKey,
+  id: string,
+  body: string,
+  root = stateRoot(),
+): UpdateCommentBodyResult {
+  const comments = readComments(key, root);
+  const idx = comments.findIndex((c) => c.id === id);
+  if (idx === -1) return { found: false, changed: false };
+  const target = comments[idx];
+  if (target.body === body) {
+    return { found: true, changed: false, comment: target };
+  }
+  const updated: Comment = { ...target, body, updatedAt: new Date().toISOString() };
+  const next = [...comments];
+  next[idx] = updated;
+  writeComments(key, next, root);
+  return { found: true, changed: true, comment: updated };
 }
 
 /** Mark comments as living in the pending review on GitHub. */

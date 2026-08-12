@@ -102,6 +102,7 @@ POST /api/prs/:key/units/:id/viewed
 POST /api/prs/:key/units/:id           # patch unit (reclassify -> also logs classification-corrected)
 POST /api/prs/:key/sync                # push viewed files + un-pushed draft comments to GitHub
 GET/POST /api/prs/:key/comments        # local drafts
+PATCH /api/prs/:key/comments/:id  {body, confirm?}  # edit body: draft = local only; pushed/submitted = local + best-effort GraphQL remote update (submitted requires confirm: true)
 DELETE /api/prs/:key/comments/:id      # delete locally; best-effort delete on GitHub if pushed
 GET  /api/prs/:key/review              # local draft body + remote pending status + counts + readiness
 POST /api/prs/:key/review   {body}     # save the review body locally

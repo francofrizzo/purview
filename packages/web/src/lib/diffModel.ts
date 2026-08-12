@@ -142,6 +142,61 @@ function pairLines(del: DiffRow, add: DiffRow) {
   add.intra = addRanges;
 }
 
+/** One side of a side-by-side row. `null` is a filler cell (nothing there). */
+export interface SplitCell {
+  row: DiffRow;
+  /** index into the hunk's unified rows — the key for shiki token lookup */
+  index: number;
+}
+
+export interface SplitRow {
+  left: SplitCell | null;
+  right: SplitCell | null;
+}
+
+const SPLIT_CACHE = new Map<string, SplitRow[]>();
+
+/**
+ * Pair the unified rows into side-by-side rows: context occupies both sides,
+ * and each del/add run is zipped positionally (left = removed, right = added)
+ * with the shorter side padded by filler cells. The zip is intentionally the
+ * same positional pairing `annotateIntraLine` uses, so the word-level ranges
+ * already on the rows line up with the pairs shown here.
+ */
+export function buildSplitRows(hunk: Hunk, diffText: string): SplitRow[] {
+  const cached = SPLIT_CACHE.get(hunk.id);
+  if (cached) return cached;
+
+  const rows = buildRows(hunk, diffText);
+  const out: SplitRow[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    const row = rows[i];
+    if (row.type !== "del" && row.type !== "add") {
+      out.push({ left: { row, index: i }, right: { row, index: i } });
+      i++;
+      continue;
+    }
+    let d = i;
+    while (d < rows.length && rows[d].type === "del") d++;
+    let a = d;
+    while (a < rows.length && rows[a].type === "add") a++;
+    const dels = rows.slice(i, d);
+    const adds = rows.slice(d, a);
+    const n = Math.max(dels.length, adds.length);
+    for (let p = 0; p < n; p++) {
+      out.push({
+        left: p < dels.length ? { row: dels[p], index: i + p } : null,
+        right: p < adds.length ? { row: adds[p], index: d + p } : null,
+      });
+    }
+    i = a;
+  }
+
+  SPLIT_CACHE.set(hunk.id, out);
+  return out;
+}
+
 /**
  * A label for a hunk row. core stores only the section heading in `header`
  * (frequently empty), so the `@@` range is reconstructed here for display.

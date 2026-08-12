@@ -159,6 +159,114 @@ describe("comment status transitions", () => {
   });
 });
 
+/* ------------------------------------------------------ PATCH comment body */
+
+const patchComment = (id: string, body: unknown) =>
+  app.request(`/api/prs/${encodedKey}/comments/${id}`, { ...json(body), method: "PATCH" });
+
+describe("PATCH /api/prs/:key/comments/:id", () => {
+  it("edits a draft comment locally with no gh calls", async () => {
+    const created = await addDraft("original");
+    const callsBefore = gh.calls.length;
+
+    const res = await patchComment(created.id, { body: "updated" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.comment.body).toBe("updated");
+    expect(body.comment.updatedAt).toBeTruthy();
+    expect(body.remote).toBeNull();
+    expect(gh.calls.length).toBe(callsBefore);
+    expect(readComments(key, root)[0].body).toBe("updated");
+  });
+
+  it("edits a pushed comment locally and mirrors it via GraphQL using the backfilled id", async () => {
+    const created = await addDraft("original");
+    await sync();
+    const remoteId = readComments(key, root)[0].githubCommentId!;
+
+    const res = await patchComment(created.id, { body: "revised" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.remote).toEqual({ ok: true });
+    expect(readComments(key, root)[0].body).toBe("revised");
+    expect(gh.reviews[0].comments[0].body).toBe("revised");
+
+    const mutationCall = gh.calls.find((c) =>
+      c.some((a) => a.includes("updatePullRequestReviewComment")),
+    );
+    expect(mutationCall).toBeTruthy();
+    expect(mutationCall).toContain(`commentId=${remoteId}`);
+    expect(mutationCall).toContain("body=revised");
+  });
+
+  it("saves locally and reports a structured remote failure when the comment id was never backfilled", async () => {
+    const created = await addDraft("original");
+    await sync();
+
+    // Simulate the known backfill gap: no githubCommentId on record.
+    const file = path.join(root, key.host, key.owner, key.repo, String(key.number), "comments.json");
+    const stored = JSON.parse(fs.readFileSync(file, "utf8"));
+    delete stored[0].githubCommentId;
+    fs.writeFileSync(file, JSON.stringify(stored));
+
+    const res = await patchComment(created.id, { body: "revised" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.remote.ok).toBe(false);
+    expect(body.remote.reason).toBeTruthy();
+    expect(readComments(key, root)[0].body).toBe("revised");
+  });
+
+  it("400s editing a submitted comment without confirm", async () => {
+    const created = await addDraft("original");
+    await sync();
+    await submit({ event: "COMMENT", body: "done", confirm: true });
+    expect(readComments(key, root)[0].status).toBe("submitted");
+
+    const res = await patchComment(created.id, { body: "revised" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("confirm_required_public_edit");
+    expect(readComments(key, root)[0].body).toBe("original");
+  });
+
+  it("edits a submitted comment remotely once confirmed", async () => {
+    const created = await addDraft("original");
+    await sync();
+    await submit({ event: "COMMENT", body: "done", confirm: true });
+
+    const res = await patchComment(created.id, { body: "revised", confirm: true });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.remote).toEqual({ ok: true });
+    expect(readComments(key, root)[0].body).toBe("revised");
+  });
+
+  it("400s an empty or whitespace-only body", async () => {
+    const created = await addDraft("original");
+    const res = await patchComment(created.id, { body: "   " });
+    expect(res.status).toBe(400);
+    expect(readComments(key, root)[0].body).toBe("original");
+  });
+
+  it("404s an unknown comment id", async () => {
+    const res = await patchComment("nope", { body: "x" });
+    expect(res.status).toBe(404);
+  });
+
+  it("no-ops an unchanged body without any gh call, even on a submitted comment", async () => {
+    const created = await addDraft("original");
+    await sync();
+    await submit({ event: "COMMENT", body: "done", confirm: true });
+    const callsBefore = gh.calls.length;
+
+    const res = await patchComment(created.id, { body: "original" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.remote).toBeNull();
+    expect(gh.calls.length).toBe(callsBefore);
+  });
+});
+
 /* ------------------------------------------------------------------- review */
 
 describe("GET/POST /api/prs/:key/review", () => {

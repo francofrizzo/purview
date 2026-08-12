@@ -334,6 +334,64 @@ export function listReviewComments(
   }
 }
 
+const UPDATE_COMMENT = `mutation($commentId:ID!,$body:String!){
+  updatePullRequestReviewComment(input:{
+    pullRequestReviewCommentId:$commentId, body:$body
+  }){
+    pullRequestReviewComment{ id databaseId body }
+  }
+}`;
+
+export interface UpdatedReviewComment {
+  id?: string;
+  databaseId?: number;
+  body?: string;
+}
+
+/**
+ * GraphQL `updatePullRequestReviewComment` — edits the body of an existing
+ * review comment, whether it is still sitting in a pending review or already
+ * part of a submitted one. Takes the id we have on file (`githubCommentId`,
+ * backfilled at push time — see comment-sync.ts for how, and its known gap
+ * when backfill fails).
+ */
+export function updatePullRequestReviewCommentBody(
+  key: PrKey,
+  commentId: number | string,
+  body: string,
+): UpdatedReviewComment {
+  let res: {
+    data?: {
+      updatePullRequestReviewComment?: {
+        pullRequestReviewComment?: { id?: string; databaseId?: number; body?: string } | null;
+      } | null;
+    };
+    errors?: { message?: string }[];
+  };
+  try {
+    res = JSON.parse(
+      gh([
+        "api",
+        "graphql",
+        ...hostArgs(key.host),
+        "-f",
+        `query=${UPDATE_COMMENT}`,
+        "-f",
+        `commentId=${commentId}`,
+        "-f",
+        `body=${body}`,
+      ]),
+    );
+  } catch (err) {
+    throw classifyGhReviewError(err);
+  }
+  if (res.errors?.length) {
+    throw classifyGhReviewError(new Error(res.errors.map((e) => e.message).join("; ")));
+  }
+  const c = res.data?.updatePullRequestReviewComment?.pullRequestReviewComment;
+  return { id: c?.id, databaseId: c?.databaseId, body: c?.body };
+}
+
 export type SubmitEvent = "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
 
 /** `POST /pulls/{n}/reviews/{id}/events` — submits an existing pending review. */

@@ -105,6 +105,22 @@ export const IconComment = (p: P) => (
   </svg>
 );
 
+/** Stacked rows — unified diff. */
+export const IconUnified = (p: P) => (
+  <svg {...base} {...p}>
+    <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+    <path d="M2 6h12M2 10h12" />
+  </svg>
+);
+
+/** Two columns — side-by-side diff. */
+export const IconSplit = (p: P) => (
+  <svg {...base} {...p}>
+    <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+    <path d="M8 2.5v11" />
+  </svg>
+);
+
 export const RISK_META: Record<
   RiskFlag,
   { icon: (p: P) => JSX.Element; label: string }

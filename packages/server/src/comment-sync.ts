@@ -108,16 +108,24 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       }
       const created = createPendingReview(key, commitId, drafts.map(toInput));
       // The create response carries no per-comment ids; this read backfills
-      // them so a later local delete can remove the right remote comment.
+      // them so a later local delete/edit can act on the right remote
+      // comment. Matching is by path+line, consumed once per match: two
+      // drafts can legitimately target the same file+line (e.g. a comment
+      // added after an earlier one at the same spot was deleted upstream),
+      // and reusing the same remote id for both would silently mis-attribute
+      // one of them. Removing each match as it's used keeps the pairing
+      // 1:1 even when path+line repeats.
       const remote = listReviewComments(key, created.databaseId);
+      const remaining = [...remote];
       markPushed(
         key,
-        drafts.map((c) => ({
-          id: c.id,
-          githubCommentId: remote.find(
+        drafts.map((c) => {
+          const idx = remaining.findIndex(
             (r) => r.path === c.file && (r.line ?? r.original_line) === c.line,
-          )?.id,
-        })),
+          );
+          const match = idx === -1 ? undefined : remaining.splice(idx, 1)[0];
+          return { id: c.id, githubCommentId: match?.id };
+        }),
         root,
       );
       patchReviewDraft(

@@ -165,4 +165,26 @@
   .intra {
     border-radius: 2px;
   }
+
+  /* --- side-by-side --- */
+  .diff-split {
+    @apply font-mono;
+    font-size: 12px;
+    line-height: 20px;
+  }
+  .diff-half {
+    @apply flex min-w-0;
+    width: 50%;
+    /* wrap instead of clipping: each pane is only half as wide as unified */
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .diff-split .diff-gutter {
+    width: 2.75rem;
+  }
+  .diff-split-divider {
+    flex: none;
+    width: 1px;
+    background: var(--border);
+  }
 }

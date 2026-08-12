@@ -25,7 +25,7 @@ import {
   type PrKey,
   type State,
 } from "@reviewer/core";
-import { addComment, deleteComment, readComments } from "./comments.js";
+import { addComment, deleteComment, readComments, updateCommentBody } from "./comments.js";
 import { syncCommentsToGithub } from "./comment-sync.js";
 import {
   SUBMIT_EVENTS,
@@ -34,7 +34,11 @@ import {
   saveReviewBody,
   submitReview,
 } from "./review.js";
-import type { SubmitEvent } from "./github-review.js";
+import {
+  classifyGhReviewError,
+  updatePullRequestReviewCommentBody,
+  type SubmitEvent,
+} from "./github-review.js";
 import { HttpError, classifyError } from "./http-error.js";
 
 const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -91,7 +95,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     "/api/*",
     cors({
       origin: (origin) => (origin && LOCALHOST_ORIGIN.test(origin) ? origin : ""),
-      allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+      allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
       allowHeaders: ["Content-Type"],
     }),
   );
@@ -315,6 +319,74 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (!result.removed) throw new HttpError(404, "not_found", `No comment "${id}"`);
     // A failed remote delete is reported, never fatal — see comments.ts.
     return c.json({ ok: true, remote: result.remote ?? null });
+  });
+
+  /**
+   * Editing a comment's body. What happens beyond the local write depends on
+   * status:
+   *   draft     — local only, no GitHub call.
+   *   pushed    — local write always happens, then a best-effort GraphQL
+   *               update via the stored githubCommentId. That id can be
+   *               missing (a known backfill gap, see comment-sync.ts); when
+   *               it is, we still save locally and report a structured
+   *               remote failure instead of hard-failing the request.
+   *   submitted — same remote update, but the edit is publicly visible so it
+   *               requires an explicit { confirm: true }.
+   * An unchanged body is a 200 no-op before any of the above, including the
+   * confirm requirement — nothing is being edited, so nothing needs a
+   * remote call or a confirmation.
+   */
+  app.patch("/api/prs/:key/comments/:id", async (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    const body = (await readJsonBody(c)) as { body?: unknown; confirm?: boolean };
+    if (typeof body.body !== "string" || body.body.trim() === "") {
+      throw new HttpError(400, "invalid_body", "Body must include a non-empty { body: string }");
+    }
+    const newBody = body.body;
+
+    const existing = readComments(key, root);
+    const target = existing.find((c2) => c2.id === id);
+    if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
+
+    if (target.body === newBody) {
+      return c.json({ comment: target, remote: null });
+    }
+
+    if (target.status === "submitted" && body.confirm !== true) {
+      throw new HttpError(
+        400,
+        "confirm_required_public_edit",
+        "Editing a submitted (public) comment is visible to others; resend with { confirm: true }",
+      );
+    }
+
+    const result = updateCommentBody(key, id, newBody, root);
+    if (!result.found || !result.comment) throw new HttpError(404, "not_found", `No comment "${id}"`);
+
+    if (target.status === "draft") {
+      return c.json({ comment: result.comment, remote: null });
+    }
+
+    // pushed or submitted: best-effort remote update, never fatal.
+    if (target.githubCommentId === undefined) {
+      return c.json({
+        comment: result.comment,
+        remote: {
+          ok: false,
+          reason:
+            "No GitHub comment id on record for this comment, so the edit could not be mirrored " +
+            "remotely. Discard the pending review and re-sync to pick up an id, then retry.",
+        },
+      });
+    }
+    try {
+      updatePullRequestReviewCommentBody(key, target.githubCommentId, newBody);
+      return c.json({ comment: result.comment, remote: { ok: true } });
+    } catch (err) {
+      const e = classifyGhReviewError(err);
+      return c.json({ comment: result.comment, remote: { ok: false, reason: e.message } });
+    }
   });
 
   /* -------------------------------------------------------------- review */

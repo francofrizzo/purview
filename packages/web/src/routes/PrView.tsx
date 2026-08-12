@@ -17,7 +17,7 @@ import {
   useSync,
 } from "../api/hooks";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
-import { DiffPane, type HunkEntry } from "../components/DiffPane";
+import { DiffPane, DiffViewToggle, type HunkEntry } from "../components/DiffPane";
 import { CommentComposer, DraftsDrawer, type CommentTarget } from "../components/Drafts";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
@@ -25,6 +25,7 @@ import { MigrationReportPanel, SummaryPanel, SyncResultPanel } from "../componen
 import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
 import { hunkIndex, unitProgress } from "../lib/diffModel";
+import { useDiffViewMode } from "../lib/useViewMode";
 
 export function PrView() {
   const params = useParams();
@@ -55,6 +56,7 @@ export function PrView() {
   const [report, setReport] = useState<MigrationReport | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitReviewResult | null>(null);
+  const [viewMode, setViewMode, toggleViewMode] = useDiffViewMode();
 
   // Only queried while the panel is open: it makes a live GitHub call.
   const review = useReview(prKey, reviewOpen);
@@ -181,7 +183,8 @@ export function PrView() {
             className="flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
             style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
           >
-            <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>space</kbd> next unviewed
+            <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>space</kbd> next unviewed ·{" "}
+            <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"}
           </div>
         </nav>
 
@@ -198,6 +201,7 @@ export function PrView() {
                 <RiskFlags flags={selectedUnit.riskFlags} />
                 {progress && progress.changed > 0 ? <ChangedBadge count={progress.changed} /> : null}
                 <div className="ml-auto flex flex-none items-center gap-2">
+                  <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                   {progress ? <Progress viewed={progress.viewed} total={progress.total} /> : null}
                   <button
                     type="button"
@@ -222,17 +226,20 @@ export function PrView() {
 
           {tab === "files" && selectedPath ? (
             <div
-              className="flex-none border-b px-4 py-2 font-mono text-xs"
+              className="flex flex-none items-center gap-2 border-b px-4 py-2 font-mono text-xs"
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
-              {selectedPath}
+              <span className="truncate">{selectedPath}</span>
               {detail.state.files?.[selectedPath] ? (
-                <span className="ml-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
                   {detail.state.files[selectedPath].viewedHunks}/
                   {detail.state.files[selectedPath].totalHunks} hunks viewed
                   {detail.state.files[selectedPath].viewed ? " · synced when you press sync" : ""}
                 </span>
               ) : null}
+              <div className="ml-auto">
+                <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+              </div>
             </div>
           ) : null}
 
@@ -245,6 +252,8 @@ export function PrView() {
               onFocusHunk={setFocusedHunkId}
               onToggleViewed={(hunkId, viewed) => setHunkViewed.mutate({ hunkId, viewed })}
               onComment={(t) => setCommentTarget(t)}
+              viewMode={viewMode}
+              onToggleViewMode={toggleViewMode}
               emptyMessage={
                 tab === "units"
                   ? "Select a review unit to read its hunks."
