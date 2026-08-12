@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { fold, unitProgress, viewedFiles } from "../src/reducer.js";
+import {
+  fold,
+  lastReviewSubmission,
+  readiness,
+  unitProgress,
+  viewedFiles,
+} from "../src/reducer.js";
 import type { ReviewerEvent } from "../src/schemas.js";
 
 const ts = "2026-01-01T00:00:00.000Z";
@@ -140,5 +146,70 @@ describe("fold", () => {
 
   it("is deterministic: folding twice yields the same state", () => {
     expect(fold(events)).toEqual(fold(events));
+  });
+
+  describe("review-submitted", () => {
+    it("records the submission with the revision it was made at", () => {
+      const s = fold([
+        ...events,
+        {
+          ts,
+          type: "review-submitted",
+          event: "APPROVE",
+          url: "https://github.com/acme/widgets/pull/7#pullrequestreview-1",
+          commentCount: 3,
+        },
+      ]);
+      expect(s.reviewSubmissions).toHaveLength(1);
+      expect(s.reviewSubmissions[0]).toEqual({
+        event: "APPROVE",
+        url: "https://github.com/acme/widgets/pull/7#pullrequestreview-1",
+        commentCount: 3,
+        ts,
+        revision: 1,
+      });
+      expect(lastReviewSubmission(s)!.event).toBe("APPROVE");
+    });
+
+    it("appends further rounds rather than replacing the first", () => {
+      const s = fold([
+        ...events,
+        { ts, type: "review-submitted", event: "REQUEST_CHANGES", commentCount: 2 },
+        { ts, type: "review-submitted", event: "APPROVE", commentCount: 0 },
+      ]);
+      expect(s.reviewSubmissions.map((r) => r.event)).toEqual(["REQUEST_CHANGES", "APPROVE"]);
+      expect(lastReviewSubmission(s)!.event).toBe("APPROVE");
+    });
+
+    it("leaves a log without any submission with an empty list", () => {
+      expect(fold(events).reviewSubmissions).toEqual([]);
+      expect(lastReviewSubmission(fold(events))).toBeUndefined();
+    });
+
+    it("does not disturb the rest of the fold", () => {
+      const before = fold(events);
+      const after = fold([...events, { ts, type: "review-submitted", event: "COMMENT" }]);
+      expect({ ...after, reviewSubmissions: [] }).toEqual(before);
+    });
+  });
+
+  describe("readiness", () => {
+    it("counts must-read units still unread", () => {
+      const r = readiness(fold(events));
+      expect(r.mustRead).toEqual({ complete: 0, total: 1, unviewed: 1 });
+      expect(r.ready).toBe(false);
+    });
+
+    it("is ready once every must-read unit is viewed", () => {
+      const r = readiness(
+        fold([
+          ...events,
+          { ts, type: "unit-viewed", unitId: "core", revision: 1 },
+        ]),
+      );
+      expect(r.mustRead).toEqual({ complete: 1, total: 1, unviewed: 0 });
+      expect(r.hunks).toEqual({ viewed: 2, total: 3 });
+      expect(r.ready).toBe(true);
+    });
   });
 });

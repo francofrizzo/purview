@@ -1,11 +1,15 @@
 import { diffWordsWithSpace } from "diff";
 import type {
   DiffOfDiffs,
+  DiscardPendingResult,
   DraftComment,
   MigrationReport,
   PrDetail,
   PrListEntry,
+  ReviewEvent,
+  ReviewStatus,
   ReviewUnit,
+  SubmitReviewResult,
   SyncResult,
 } from "../api/types";
 import { mockDetail, mockDrafts, mockList } from "./fixture";
@@ -35,6 +39,13 @@ const list: PrListEntry[] = structuredClone(mockList);
 const drafts: DraftComment[] = structuredClone(mockDrafts);
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
+
+/** Mock counterpart of review.json. */
+const review: {
+  body: string;
+  pending: boolean;
+  lastSubmission?: ReviewStatus["lastSubmission"];
+} = { body: "", pending: false };
 
 function recomputeFileRollups() {
   const rollups: PrDetail["state"]["files"] = {};
@@ -139,11 +150,12 @@ export const mockApi = {
 
   async sync(_key: string): Promise<SyncResult> {
     await delay(600);
-    const posted = drafts.filter((d) => d.status !== "posted").length;
-    for (const d of drafts) d.status = "posted";
+    const pushed = drafts.filter((d) => d.status === "draft").length;
+    for (const d of drafts) if (d.status === "draft") d.status = "pushed";
+    review.pending = true;
     return {
       filesSynced: Object.values(detail.state.files ?? {}).filter((f) => f.viewed).length,
-      commentsPosted: posted,
+      commentsPosted: pushed,
       reviewUrl: `${detail.meta.url}#pullrequestreview-mock`,
       message: "Mock sync: nothing left the machine.",
     };
@@ -185,10 +197,98 @@ export const mockApi = {
     const draft: DraftComment = {
       id: `draft-${drafts.length + 1}-${Date.now()}`,
       createdAt: new Date().toISOString(),
-      status: "pending",
+      status: "draft",
       ...input,
     };
     drafts.push(draft);
     return draft;
+  },
+
+  async deleteComment(_key: string, id: string): Promise<void> {
+    await delay(80);
+    const i = drafts.findIndex((d) => d.id === id);
+    if (i >= 0) drafts.splice(i, 1);
+  },
+
+  /* ------------------------------------------------------ review lifecycle */
+
+  async getReview(_key: string): Promise<ReviewStatus> {
+    await delay(80);
+    const units = detail.state.units;
+    const complete = (u: (typeof units)[number]) =>
+      u.hunkIds.length > 0 && u.hunkIds.every((id) => detail.state.hunks[id]?.viewed);
+    const mustRead = units.filter((u) => u.attention === "must-read");
+    const hunks = Object.values(detail.state.hunks);
+    const mustReadUnviewed = mustRead.filter((u) => !complete(u)).length;
+    return {
+      body: review.body,
+      counts: {
+        draft: drafts.filter((d) => d.status === "draft").length,
+        pushed: drafts.filter((d) => d.status === "pushed").length,
+        submitted: drafts.filter((d) => d.status === "submitted").length,
+      },
+      included: drafts
+        .filter((d) => d.status !== "submitted")
+        .map((d) => ({
+          id: d.id,
+          file: d.file,
+          line: d.line,
+          side: d.side,
+          body: d.body,
+          status: d.status ?? "draft",
+        })),
+      pending: { known: true, exists: review.pending },
+      readiness: {
+        hunks: { viewed: hunks.filter((h) => h.viewed).length, total: hunks.length },
+        units: { complete: units.filter(complete).length, total: units.length },
+        mustRead: {
+          complete: mustRead.filter(complete).length,
+          total: mustRead.length,
+          unviewed: mustReadUnviewed,
+        },
+        changedSinceViewed: hunks.filter((h) => h.changedSinceViewed).length,
+        ready: mustReadUnviewed === 0,
+      },
+      lastSubmission: review.lastSubmission,
+      submittedAt: review.lastSubmission?.ts,
+      submittedEvent: review.lastSubmission?.event,
+      submittedUrl: review.lastSubmission?.url,
+    };
+  },
+
+  async saveReviewBody(_key: string, body: string): Promise<void> {
+    await delay(60);
+    review.body = body;
+  },
+
+  async submitReview(
+    _key: string,
+    input: { event: ReviewEvent; body?: string },
+  ): Promise<SubmitReviewResult> {
+    await delay(500);
+    const included = drafts.filter((d) => d.status !== "submitted");
+    for (const d of included) d.status = "submitted";
+    review.pending = false;
+    review.lastSubmission = {
+      event: input.event,
+      url: `${detail.meta.url}#pullrequestreview-mock`,
+      commentCount: included.length,
+      ts: new Date().toISOString(),
+      revision: detail.state.revision,
+    };
+    return {
+      event: input.event,
+      url: review.lastSubmission.url,
+      commentCount: included.length,
+    };
+  },
+
+  async discardPendingReview(_key: string): Promise<DiscardPendingResult> {
+    await delay(200);
+    const reset = drafts.filter((d) => d.status === "pushed");
+    for (const d of reset) d.status = "draft";
+    const discarded = review.pending;
+    review.pending = false;
+    return { discarded, resetToDraft: reset.length };
   },
 };

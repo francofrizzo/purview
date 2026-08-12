@@ -67,7 +67,8 @@ The CLI (`reviewer-state`, shipped by `packages/core`) is also usable directly:
 meta.json           # { host, owner, repo, number, url, title, createdAt }
 events.jsonl        # append-only event log — the source of truth
 state.json          # derived snapshot, refolded from events; safe to delete
-comments.json       # local draft comments (push-only)
+comments.json       # local comments (draft -> pushed -> submitted)
+review.json         # review body draft + pending review ids + last submission
 revisions/<n>/      # one per observed (baseSha, headSha, mergeBase), 1-based
   diff.patch        # the diff exactly as GitHub served it (v3.diff)
   files.json        # parsed: files -> hunks with ids, added/removed lines, body text
@@ -101,3 +102,32 @@ it and the hunk as it is now, baselined on the revision you actually viewed rath
 the previous one. A file counts as viewed only when all of its hunks in the current revision
 are; that rollup is what `sync` pushes to GitHub as `markFileAsViewed`. Local state is always
 the source of truth — remote state is read only to report drift, never to overwrite you.
+
+## Finishing a review
+
+Comments you draft on a line stay on your disk until you sync. Syncing puts them into your
+**pending review** on GitHub — private, visible to nobody else, and still revocable — so a
+comment is in one of three states: `draft`, `pushed`, `submitted`.
+
+GitHub only allows one pending review per person per PR, so every sync reconciles first: it
+looks your pending review up, creates one if there is none, and otherwise *appends* to the
+existing one instead of trying (and failing) to create a second. That reconciliation is why
+syncing twice is safe.
+
+**Finish review** in the top bar opens the panel that ends the round. It shows the review body,
+every comment that will go out with it, and a readiness summary — how many must-read units you
+still have not read — right next to the three verdicts: **Approve**, **Request changes**,
+**Comment**. Choosing one does not post: it arms a confirmation step that restates what is
+about to happen, because submitting is public and cannot be undone. The server enforces the
+same thing, refusing any submit that does not carry `confirm: true`.
+
+Submitting pushes anything still in `draft` first, so your comments and your verdict land as a
+single review rather than a verdict plus loose threads. On success the panel links to the
+review on GitHub and a `review-submitted` event goes into the log. If you change your mind
+before submitting, **discard pending review** deletes it on GitHub and returns its comments to
+local drafts — nothing you wrote is lost.
+
+Known failures are reported specifically rather than as a raw `gh` error: approving your own
+PR, a stale `commit_id` after a force-push (refresh and retry), a comment anchored to a line
+that has left the diff, and a pending review deleted from under you (recovered automatically,
+once).

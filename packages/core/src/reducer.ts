@@ -16,6 +16,7 @@ export function initialState(): State {
     files: [],
     unassignedHunkIds: [],
     archived: [],
+    reviewSubmissions: [],
     corrections: [],
   };
 }
@@ -236,6 +237,23 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       if (f) f.syncedToGithub = event.viewed;
       break;
     }
+
+    case "review-submitted": {
+      // Append-only: a PR can be reviewed several times (approve, then a new
+      // round after a force-push). `reviewSubmissions` may be absent on a
+      // state built before this event existed, so default it here too.
+      state.reviewSubmissions = [
+        ...(state.reviewSubmissions ?? []),
+        {
+          event: event.event,
+          url: event.url,
+          commentCount: event.commentCount ?? 0,
+          ts: event.ts,
+          revision: state.currentRevision,
+        },
+      ];
+      break;
+    }
   }
 
   recomputeRollups(state);
@@ -277,6 +295,48 @@ export function unitProgress(state: State): UnitProgress[] {
         changed: states.some((s) => s!.changedSinceViewed),
       };
     });
+}
+
+/** The most recent submitted review, if the reader has finished one. */
+export function lastReviewSubmission(state: State) {
+  const all = state.reviewSubmissions ?? [];
+  return all.length > 0 ? all[all.length - 1] : undefined;
+}
+
+/**
+ * "Am I done reading?" — the numbers the finish-review panel shows before it
+ * lets the reader submit. must-read units are the ones worth blocking on.
+ */
+export interface ReadinessSummary {
+  hunks: { viewed: number; total: number };
+  units: { complete: number; total: number };
+  mustRead: { complete: number; total: number; unviewed: number };
+  changedSinceViewed: number;
+  ready: boolean;
+}
+
+export function readiness(state: State): ReadinessSummary {
+  const progress = unitProgress(state);
+  const mustRead = progress.filter((u) => u.attention === "must-read");
+  const hunkStates = Object.values(state.hunks);
+  const mustReadUnviewed = mustRead.filter((u) => !u.complete).length;
+  return {
+    hunks: {
+      viewed: hunkStates.filter((h) => h.viewed).length,
+      total: hunkStates.length,
+    },
+    units: {
+      complete: progress.filter((u) => u.complete).length,
+      total: progress.length,
+    },
+    mustRead: {
+      complete: mustRead.filter((u) => u.complete).length,
+      total: mustRead.length,
+      unviewed: mustReadUnviewed,
+    },
+    changedSinceViewed: hunkStates.filter((h) => h.changedSinceViewed).length,
+    ready: mustReadUnviewed === 0,
+  };
 }
 
 /** Files whose hunks are all viewed — the set to project onto GitHub. */

@@ -1,19 +1,25 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import type { MigrationReport, SyncResult } from "../api/types";
+import type { MigrationReport, ReviewEvent, SubmitReviewResult, SyncResult } from "../api/types";
 import {
   useAddComment,
   useComments,
+  useDeleteComment,
+  useDiscardPendingReview,
   usePatchUnit,
   usePr,
   useRefresh,
+  useReview,
+  useSaveReviewBody,
   useSetHunkViewed,
   useSetUnitViewed,
+  useSubmitReview,
   useSync,
 } from "../api/hooks";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
 import { DiffPane, type HunkEntry } from "../components/DiffPane";
 import { CommentComposer, DraftsDrawer, type CommentTarget } from "../components/Drafts";
+import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
 import { MigrationReportPanel, SummaryPanel, SyncResultPanel } from "../components/Panels";
 import { TopBar } from "../components/TopBar";
@@ -33,6 +39,10 @@ export function PrView() {
   const refresh = useRefresh(prKey);
   const sync = useSync(prKey);
   const addComment = useAddComment(prKey);
+  const deleteComment = useDeleteComment(prKey);
+  const saveReviewBody = useSaveReviewBody(prKey);
+  const submitReview = useSubmitReview(prKey);
+  const discardPending = useDiscardPendingReview(prKey);
 
   const [tab, setTab] = useState<"units" | "files">("units");
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
@@ -40,9 +50,14 @@ export function PrView() {
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [draftsOpen, setDraftsOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(null);
   const [report, setReport] = useState<MigrationReport | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [submitResult, setSubmitResult] = useState<SubmitReviewResult | null>(null);
+
+  // Only queried while the panel is open: it makes a live GitHub call.
+  const review = useReview(prKey, reviewOpen);
 
   const units = useMemo(
     () => (detail ? [...detail.state.units].sort((a, b) => a.order - b.order) : []),
@@ -92,18 +107,29 @@ export function PrView() {
   }
 
   const progress = selectedUnit ? unitProgress(detail, selectedUnit) : null;
-  const pendingDrafts = drafts.filter((d) => d.status !== "posted");
+  const unsubmittedDrafts = drafts.filter((d) => d.status !== "submitted");
+
+  const jumpToFile = (file: string) => {
+    setTab("files");
+    setSelectedPath(file);
+  };
 
   return (
     <div className="flex h-full flex-col">
       <TopBar
         detail={detail}
-        draftCount={pendingDrafts.length}
+        draftCount={unsubmittedDrafts.length}
+        pendingReview={review.data?.pending.exists}
         refreshing={refresh.isPending}
         syncing={sync.isPending}
         summaryOpen={summaryOpen}
         onToggleSummary={() => setSummaryOpen((v) => !v)}
         onToggleDrafts={() => setDraftsOpen((v) => !v)}
+        onFinishReview={() => {
+          setSubmitResult(null);
+          submitReview.reset();
+          setReviewOpen((v) => !v);
+        }}
         onRefresh={() => refresh.mutate(undefined, { onSuccess: setReport })}
         onSync={() => sync.mutate(undefined, { onSuccess: setSyncResult })}
       />
@@ -245,11 +271,29 @@ export function PrView() {
         {draftsOpen ? (
           <DraftsDrawer
             drafts={drafts}
+            deleting={deleteComment.isPending}
             onClose={() => setDraftsOpen(false)}
-            onJump={(d) => {
-              setTab("files");
-              setSelectedPath(d.file);
-            }}
+            onJump={(d) => jumpToFile(d.file)}
+            onDelete={(d) => deleteComment.mutate(d.id)}
+          />
+        ) : null}
+
+        {reviewOpen ? (
+          <FinishReviewPanel
+            review={review.data}
+            loading={review.isLoading}
+            error={review.error as Error | null}
+            submitting={submitReview.isPending}
+            discarding={discardPending.isPending}
+            result={submitResult}
+            submitError={submitReview.error as Error | null}
+            onClose={() => setReviewOpen(false)}
+            onSaveBody={(body) => saveReviewBody.mutate(body)}
+            onSubmit={(event: ReviewEvent, body: string) =>
+              submitReview.mutate({ event, body }, { onSuccess: setSubmitResult })
+            }
+            onDiscardPending={() => discardPending.mutate()}
+            onJumpToComment={(file) => jumpToFile(file)}
           />
         ) : null}
       </div>

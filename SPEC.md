@@ -21,6 +21,8 @@ skills/pr-review  # Claude skill (SKILL.md + reference docs). Reads/writes state
 meta.json           # { host, owner, repo, number, url, createdAt }
 events.jsonl        # append-only event log (source of truth)
 state.json          # derived snapshot, rebuilt from events; safe to delete
+comments.json       # local draft comments (draft -> pushed -> submitted)
+review.json         # review body draft + pending review ids + last submission
 revisions/<n>/      # one per observed (baseSha, headSha, mergeBase)
   diff.patch        # the diff exactly as GitHub served it (v3.diff)
   files.json        # parsed: files -> hunks with ids
@@ -70,7 +72,8 @@ interface HunkState {
 `hunk-viewed` / `hunk-unviewed` {hunkId, revision},
 `unit-viewed` {unitId} (expands to its hunks),
 `classification-corrected` {hunkId, from, to, note}  // feedback loop for the skill
-`file-synced-github` {file, viewed: boolean}
+`file-synced-github` {file, viewed: boolean},
+`review-submitted` {event: APPROVE|REQUEST_CHANGES|COMMENT, url?, commentCount}
 
 `state.json` = fold of events: current revision, units, per-hunk state, per-file rollup.
 
@@ -97,10 +100,63 @@ GET  /api/prs/:key                     # state.json + current revision files.jso
 POST /api/prs/:key/hunks/:id/viewed    {viewed: bool}
 POST /api/prs/:key/units/:id/viewed
 POST /api/prs/:key/units/:id           # patch unit (reclassify -> also logs classification-corrected)
-POST /api/prs/:key/sync                # push viewed files + pending draft comments to GitHub
-GET/POST /api/prs/:key/comments        # local drafts; sync posts as PENDING review via gh api graphql
+POST /api/prs/:key/sync                # push viewed files + un-pushed draft comments to GitHub
+GET/POST /api/prs/:key/comments        # local drafts
+DELETE /api/prs/:key/comments/:id      # delete locally; best-effort delete on GitHub if pushed
+GET  /api/prs/:key/review              # local draft body + remote pending status + counts + readiness
+POST /api/prs/:key/review   {body}     # save the review body locally
+POST /api/prs/:key/review/submit       # {event, body?, confirm: true} -> submit on GitHub
+DELETE /api/prs/:key/review/pending    # discard the remote pending review, reset comments to draft
 ```
 `:key` = `host/owner/repo/number` URL-encoded. Server executes `gh` (assume authenticated); errors surface as JSON.
+
+Review errors carry a specific `error` code rather than a generic gh failure:
+`cannot_approve_own_pr` (422), `stale_commit_id` (422, force-push moved the head),
+`comment_line_not_in_diff` (422), `pending_review_gone` (404), `confirmation_required` (400),
+`invalid_event` (400).
+
+## Review lifecycle
+
+A comment moves through three states, tracked in `comments.json`:
+
+```
+draft      local only, never sent anywhere
+pushed     lives in the viewer's PENDING review on GitHub; private, still revocable
+submitted  the review carrying it was submitted; public
+```
+
+GitHub allows **one pending review per user per PR**, so every push reconciles first:
+
+1. resolve the viewer's login (`gh api user`, cached per host);
+2. `GET /repos/{o}/{r}/pulls/{n}/reviews` and look for the viewer's `PENDING` review. REST is
+   used rather than GraphQL because it returns both ids we need in one call — `id`
+   (databaseId, taken by the submit/delete REST endpoints) and `node_id` (taken by the
+   GraphQL append mutation);
+3. **no pending review** -> `POST /pulls/{n}/reviews` with `{commit_id, comments}` and no
+   `event`, creating one;
+4. **pending review exists** -> append each draft with GraphQL
+   `addPullRequestReviewThread(pullRequestReviewId, path, line, side, body)`. REST has no way
+   to grow an existing pending review: creating another 422s, and `POST /pulls/{n}/comments`
+   posts publicly outside the review.
+
+Both ids, plus the review body, are persisted in `review.json`:
+
+```json
+{ "body": "", "pendingReviewId": "PRR_…", "pendingReviewDatabaseId": 123,
+  "lastSyncedAt": "…", "submittedAt": "…", "submittedEvent": "APPROVE", "submittedUrl": "…" }
+```
+
+Submitting pushes any un-pushed drafts first (so comments and verdict land as one review),
+then either `POST /pulls/{n}/reviews/{id}/events {event, body}` when a review is pending, or
+`POST /pulls/{n}/reviews {event, body, commit_id}` when there is nothing pending and nothing
+to attach. `confirm: true` is mandatory — submitting is public and irreversible. If GitHub
+answers 404 because the pending review was deleted out of band, the cached id is dropped, the
+comments revert to drafts and the submit is retried exactly once. On success every pushed
+comment becomes `submitted` and a `review-submitted {event, url, commentCount}` event is
+appended to the log.
+
+Discarding (`DELETE /api/prs/:key/review/pending`) deletes the pending review on GitHub and
+returns its comments to `draft`, so nothing the reader wrote is lost.
 
 ## Web UI (single PR view; PR list as landing)
 
@@ -108,7 +164,8 @@ GET/POST /api/prs/:key/comments        # local drafts; sync posts as PENDING rev
 - Main: unit-centric diff view — clicking a unit shows its hunks (possibly from several files, with file headers), syntax-highlighted (shiki), word-level intra-line diff, virtualized list.
 - Hunk actions: mark viewed (checkbox), view diff-of-diffs when changedSinceViewed, draft a comment on a line.
 - File tree tab as alternate navigation with per-file viewed rollup.
-- Top bar: PR title/link, refresh button (runs migration, shows migration report toast/panel), sync button, summary panel (skill's overall summary).
+- Top bar: PR title/link, refresh button (runs migration, shows migration report toast/panel), sync button, comments drawer, **finish review** panel, summary panel (skill's overall summary).
+- Finish review panel: review body textarea, the comments that will be included (file:line + status), readiness summary ("2 must-read units still unviewed"), and Approve / Request changes / Comment. Picking a verdict only arms an explicit confirmation step — it never posts directly. Shows the submitted review's link on success, and surfaces + allows discarding a pending review.
 - Keyboard: j/k next/prev hunk, v toggle viewed, space next unviewed.
 - Style: clean, dense, dark-mode-first. No component library bloat; Tailwind ok.
 
@@ -126,4 +183,4 @@ Attention: must-read = wrong here breaks things or encodes decisions; skim = ver
 
 ## Non-goals for v1
 
-No bidirectional comment-thread sync (drafts push-only), no stacked PRs, no multi-PR dashboards, no auth (localhost only), no GitLab.
+No bidirectional comment-thread sync (drafts push-only; threads authored elsewhere are never read back), no stacked PRs, no multi-PR dashboards, no auth (localhost only), no GitLab.

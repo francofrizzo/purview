@@ -14,6 +14,12 @@ export class HttpError extends Error {
 /** Best-effort classification of errors thrown by @reviewer/core. */
 export function classifyError(err: unknown): HttpError {
   if (err instanceof HttpError) return err;
+  // ReviewError already carries a specific code/status for the review
+  // lifecycle's known failure modes; pass it through verbatim.
+  if ((err as { name?: string } | null)?.name === "ReviewError") {
+    const e = err as { code: string; message: string; detail?: string; status: number };
+    return new HttpError(e.status, e.code, e.message);
+  }
   const message = err instanceof Error ? err.message : String(err);
 
   if (/^No PR state at /.test(message) || /^No files\.json for revision/.test(message)) {

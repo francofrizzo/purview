@@ -1,6 +1,8 @@
 import { mockApi } from "../mocks/server";
 import type {
+  CommentStatus,
   DiffOfDiffs,
+  DiscardPendingResult,
   DraftComment,
   FileEntry,
   FileRollup,
@@ -10,7 +12,10 @@ import type {
   PrDetail,
   PrListEntry,
   PrState,
+  ReviewEvent,
+  ReviewStatus,
   ReviewUnit,
+  SubmitReviewResult,
   SyncResult,
 } from "./types";
 
@@ -56,6 +61,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+
+const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
 export const encodeKey = (key: string) => encodeURIComponent(key);
 
@@ -173,8 +180,27 @@ interface WireComment {
   side: "LEFT" | "RIGHT";
   body: string;
   createdAt: string;
-  /** core-side vocabulary; the UI speaks pending/posted */
-  status: "draft" | "submitted";
+  status: CommentStatus;
+  githubCommentId?: number;
+}
+
+interface WireReviewStatus {
+  draft: {
+    body: string;
+    pendingReviewId?: string;
+    pendingReviewDatabaseId?: number;
+    lastSyncedAt?: string;
+    submittedAt?: string;
+    submittedEvent?: ReviewEvent;
+    submittedUrl?: string;
+  };
+  comments: {
+    counts: { draft: number; pushed: number; submitted: number };
+    included: ReviewStatus["included"];
+  };
+  pending: { known: boolean; exists: boolean; error?: string };
+  readiness: ReviewStatus["readiness"];
+  lastSubmission?: ReviewStatus["lastSubmission"];
 }
 
 /* ----------------------------------------------------------- adapters --- */
@@ -291,10 +317,30 @@ function adaptSync(res: WireSync): SyncResult {
   };
 }
 
+/**
+ * The server already speaks draft/pushed/submitted, so this is a pass-through
+ * that only defends against an older server (or a hand-edited comments.json)
+ * still sending the old binary vocabulary.
+ */
 const adaptComment = (c: WireComment): DraftComment => ({
   ...c,
-  status: c.status === "submitted" ? "posted" : "pending",
+  status: c.status === "pushed" || c.status === "submitted" ? c.status : "draft",
 });
+
+/** Flattens the server's nested review envelope into the panel's view model. */
+function adaptReview(raw: WireReviewStatus): ReviewStatus {
+  return {
+    body: raw.draft?.body ?? "",
+    counts: raw.comments?.counts ?? { draft: 0, pushed: 0, submitted: 0 },
+    included: raw.comments?.included ?? [],
+    pending: raw.pending ?? { known: false, exists: false },
+    readiness: raw.readiness,
+    lastSubmission: raw.lastSubmission,
+    submittedAt: raw.draft?.submittedAt,
+    submittedEvent: raw.draft?.submittedEvent,
+    submittedUrl: raw.draft?.submittedUrl,
+  };
+}
 
 export const api = {
   async listPrs(): Promise<PrListEntry[]> {
@@ -386,5 +432,43 @@ export const api = {
     if (MOCK) return mockApi.addComment(key, input);
     const res = await post<{ comment: WireComment }>(`/prs/${encodeKey(key)}/comments`, input);
     return adaptComment(res.comment);
+  },
+
+  async deleteComment(key: string, id: string): Promise<void> {
+    if (MOCK) return mockApi.deleteComment(key, id);
+    await del(`/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}`);
+  },
+
+  /* ------------------------------------------------------ review lifecycle */
+
+  async getReview(key: string): Promise<ReviewStatus> {
+    if (MOCK) return mockApi.getReview(key);
+    return adaptReview(await request<WireReviewStatus>(`/prs/${encodeKey(key)}/review`));
+  },
+
+  async saveReviewBody(key: string, body: string): Promise<void> {
+    if (MOCK) return mockApi.saveReviewBody(key, body);
+    await post(`/prs/${encodeKey(key)}/review`, { body });
+  },
+
+  /**
+   * `confirm: true` is required by the server; sending it is the API-level
+   * counterpart of the UI's explicit confirmation step. Never send it from a
+   * code path the reader did not deliberately trigger.
+   */
+  async submitReview(
+    key: string,
+    input: { event: ReviewEvent; body?: string },
+  ): Promise<SubmitReviewResult> {
+    if (MOCK) return mockApi.submitReview(key, input);
+    return post<SubmitReviewResult>(`/prs/${encodeKey(key)}/review/submit`, {
+      ...input,
+      confirm: true,
+    });
+  },
+
+  async discardPendingReview(key: string): Promise<DiscardPendingResult> {
+    if (MOCK) return mockApi.discardPendingReview(key);
+    return del<DiscardPendingResult>(`/prs/${encodeKey(key)}/review/pending`);
   },
 };

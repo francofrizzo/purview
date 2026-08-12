@@ -1,70 +1,179 @@
-import { gh, loadState, type PrKey } from "@reviewer/core";
-import { markSubmitted, readComments, type Comment } from "./comments.js";
+import { loadState, type PrKey } from "@reviewer/core";
+import { commentCounts, markPushed, readComments, type Comment } from "./comments.js";
+import {
+  ReviewError,
+  appendCommentToPendingReview,
+  classifyGhReviewError,
+  createPendingReview,
+  findPendingReview,
+  listReviewComments,
+  type PendingReview,
+  type ReviewCommentInput,
+} from "./github-review.js";
+import { clearPendingReview, patchReviewDraft, readReviewDraft } from "./review-store.js";
 
 export interface CommentSyncResult {
   ok: boolean;
+  /** comments moved draft -> pushed by this call */
   pushed: number;
+  /** how the pending review was reached */
+  mode?: "created" | "appended" | "noop";
   reviewUrl?: string;
+  pendingReviewId?: string;
+  pendingReviewDatabaseId?: number;
+  counts?: ReturnType<typeof commentCounts>;
   error?: string;
+  errorCode?: string;
 }
 
-function hostArgs(host: string): string[] {
-  return host && host !== "github.com" ? ["--hostname", host] : [];
-}
-
-/**
- * Push local draft comments as a single PENDING review via `gh api` (REST:
- * POST /repos/{owner}/{repo}/pulls/{number}/reviews). Leaving `event` unset
- * creates a pending review awaiting submission on GitHub — matches the
- * SPEC's "push-only, no bidirectional thread sync" model.
- */
-export function syncCommentsToGithub(key: PrKey, root?: string): CommentSyncResult {
-  const drafts: Comment[] = readComments(key, root).filter((c) => c.status === "draft");
-  if (drafts.length === 0) return { ok: true, pushed: 0 };
-
-  let commitId: string | undefined;
+export function headShaOf(key: PrKey, root?: string): string | undefined {
   try {
     const state = loadState(key, root);
-    commitId = state.revisions.find((r) => r.revision === state.currentRevision)?.headSha;
+    return state.revisions.find((r) => r.revision === state.currentRevision)?.headSha;
   } catch {
-    // fall through; missing commit id will surface as a gh error below
-  }
-  if (!commitId) {
-    return { ok: false, pushed: 0, error: "No head sha on record for the current revision" };
-  }
-
-  const body = {
-    commit_id: commitId,
-    comments: drafts.map((c) => ({
-      path: c.file,
-      line: c.line,
-      side: c.side,
-      body: c.body,
-    })),
-  };
-
-  try {
-    const raw = gh(
-      [
-        "api",
-        "--method",
-        "POST",
-        ...hostArgs(key.host),
-        `repos/${key.owner}/${key.repo}/pulls/${key.number}/reviews`,
-        "--input",
-        "-",
-      ],
-      JSON.stringify(body),
-    );
-    const parsed = JSON.parse(raw) as { html_url?: string };
-    markSubmitted(
-      key,
-      drafts.map((c) => c.id),
-      root,
-    );
-    return { ok: true, pushed: drafts.length, reviewUrl: parsed.html_url };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return { ok: false, pushed: 0, error: message };
+    return undefined;
   }
 }
+
+const toInput = (c: Comment): ReviewCommentInput => ({
+  path: c.file,
+  line: c.line,
+  side: c.side,
+  body: c.body,
+});
+
+/**
+ * Reconcile the viewer's pending review before writing to it.
+ *
+ * GitHub permits exactly one pending review per user per PR, so the naive
+ * "always POST /pulls/{n}/reviews" of the first implementation 422s on the
+ * second sync. We therefore look the pending review up first (see
+ * github-review.ts for why that lookup is REST and the append is GraphQL) and
+ * branch:
+ *
+ *   no pending review -> create one carrying all the drafts (one REST call)
+ *   pending review    -> append each draft to it via GraphQL
+ *
+ * Either way the review's ids are persisted to review.json so the submit and
+ * discard paths do not have to rediscover them.
+ */
+export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult {
+  const all = readComments(key, root);
+  const drafts = all.filter((c) => c.status === "draft");
+
+  let pending: PendingReview | undefined;
+  try {
+    pending = findPendingReview(key);
+  } catch (err) {
+    const e = classifyGhReviewError(err);
+    return { ok: false, pushed: 0, error: e.message, errorCode: e.code };
+  }
+
+  // Keep review.json honest even when there is nothing to push: a pending
+  // review may have been created or discarded outside this app.
+  if (pending) {
+    patchReviewDraft(
+      key,
+      {
+        pendingReviewId: pending.nodeId,
+        pendingReviewDatabaseId: pending.databaseId,
+      },
+      root,
+    );
+  } else if (readReviewDraft(key, root).pendingReviewId) {
+    clearPendingReview(key, root);
+  }
+
+  if (drafts.length === 0) {
+    return {
+      ok: true,
+      pushed: 0,
+      mode: "noop",
+      pendingReviewId: pending?.nodeId,
+      pendingReviewDatabaseId: pending?.databaseId,
+      counts: commentCounts(all),
+    };
+  }
+
+  try {
+    if (!pending) {
+      const commitId = headShaOf(key, root);
+      if (!commitId) {
+        return {
+          ok: false,
+          pushed: 0,
+          error: "No head sha on record for the current revision",
+          errorCode: "no_commit_id",
+        };
+      }
+      const created = createPendingReview(key, commitId, drafts.map(toInput));
+      // The create response carries no per-comment ids; this read backfills
+      // them so a later local delete can remove the right remote comment.
+      const remote = listReviewComments(key, created.databaseId);
+      markPushed(
+        key,
+        drafts.map((c) => ({
+          id: c.id,
+          githubCommentId: remote.find(
+            (r) => r.path === c.file && (r.line ?? r.original_line) === c.line,
+          )?.id,
+        })),
+        root,
+      );
+      patchReviewDraft(
+        key,
+        {
+          pendingReviewId: created.nodeId,
+          pendingReviewDatabaseId: created.databaseId,
+          lastSyncedAt: new Date().toISOString(),
+        },
+        root,
+      );
+      return {
+        ok: true,
+        pushed: drafts.length,
+        mode: "created",
+        reviewUrl: created.htmlUrl,
+        pendingReviewId: created.nodeId,
+        pendingReviewDatabaseId: created.databaseId,
+        counts: commentCounts(readComments(key, root)),
+      };
+    }
+
+    // Append one thread at a time; record each success as we go so a failure
+    // halfway through does not lose track of what already landed remotely.
+    let pushed = 0;
+    let failure: ReviewError | undefined;
+    for (const draft of drafts) {
+      try {
+        const res = appendCommentToPendingReview(key, pending.nodeId, toInput(draft));
+        markPushed(
+          key,
+          [{ id: draft.id, githubCommentId: res.commentId, githubThreadId: res.threadId }],
+          root,
+        );
+        pushed += 1;
+      } catch (err) {
+        failure = classifyGhReviewError(err);
+        break;
+      }
+    }
+    patchReviewDraft(key, { lastSyncedAt: new Date().toISOString() }, root);
+    return {
+      ok: !failure,
+      pushed,
+      mode: "appended",
+      pendingReviewId: pending.nodeId,
+      pendingReviewDatabaseId: pending.databaseId,
+      counts: commentCounts(readComments(key, root)),
+      error: failure?.message,
+      errorCode: failure?.code,
+    };
+  } catch (err) {
+    const e = classifyGhReviewError(err);
+    return { ok: false, pushed: 0, error: e.message, errorCode: e.code };
+  }
+}
+
+/** Back-compatible name used by POST /api/prs/:key/sync. */
+export const syncCommentsToGithub = pushDraftComments;

@@ -7,11 +7,15 @@ import {
 import { api } from "./client";
 import type {
   DiffOfDiffs,
+  DiscardPendingResult,
   DraftComment,
   MigrationReport,
   PrDetail,
   PrListEntry,
+  ReviewEvent,
+  ReviewStatus,
   ReviewUnit,
+  SubmitReviewResult,
   SyncResult,
 } from "./types";
 
@@ -19,6 +23,7 @@ export const qk = {
   prs: ["prs"] as const,
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
+  review: (key: string) => ["review", key] as const,
   diffOfDiffs: (key: string, hunkId: string) => ["dod", key, hunkId] as const,
 };
 
@@ -187,6 +192,7 @@ export function useSync(key: string): UseMutationResult<SyncResult, Error, void>
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.pr(key) });
       void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
     },
   });
 }
@@ -204,6 +210,72 @@ export function useAddComment(key: string) {
   return useMutation({
     mutationFn: (input: { file: string; line: number; side: "LEFT" | "RIGHT"; body: string }) =>
       api.addComment(key, input),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.comments(key) }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
+export function useDeleteComment(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteComment(key, id),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
+/* -------------------------------------------------------- review lifecycle */
+
+/**
+ * The review status includes a live GitHub lookup for the pending review, so
+ * it is deliberately not cached for long: it is opened on demand from the
+ * finish-review panel and re-read after anything that can change it.
+ */
+export function useReview(key: string, enabled = true) {
+  return useQuery<ReviewStatus>({
+    queryKey: qk.review(key),
+    queryFn: () => api.getReview(key),
+    enabled: Boolean(key) && enabled,
+    staleTime: 5_000,
+    retry: false,
+  });
+}
+
+export function useSaveReviewBody(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => api.saveReviewBody(key, body),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.review(key) }),
+  });
+}
+
+export function useSubmitReview(
+  key: string,
+): UseMutationResult<SubmitReviewResult, Error, { event: ReviewEvent; body?: string }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { event: ReviewEvent; body?: string }) => api.submitReview(key, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.pr(key) });
+    },
+  });
+}
+
+export function useDiscardPendingReview(
+  key: string,
+): UseMutationResult<DiscardPendingResult, Error, void> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.discardPendingReview(key),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+    },
   });
 }

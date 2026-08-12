@@ -256,6 +256,25 @@ export const FileSyncedGithubEventSchema = z.object({
   viewed: z.boolean(),
 });
 
+export const ReviewEventSchema = z.enum([
+  "APPROVE",
+  "REQUEST_CHANGES",
+  "COMMENT",
+]);
+export type ReviewEventKind = z.infer<typeof ReviewEventSchema>;
+
+/**
+ * The reader finished the review and submitted it on GitHub. Terminal for a
+ * round of review; a later round appends another one (the log keeps them all).
+ */
+export const ReviewSubmittedEventSchema = z.object({
+  ...base,
+  type: z.literal("review-submitted"),
+  event: ReviewEventSchema,
+  url: z.string().optional(),
+  commentCount: z.number().int().default(0),
+});
+
 export const EventSchema = z.discriminatedUnion("type", [
   PrInitializedEventSchema,
   RevisionAddedEventSchema,
@@ -266,6 +285,7 @@ export const EventSchema = z.discriminatedUnion("type", [
   UnitViewedEventSchema,
   ClassificationCorrectedEventSchema,
   FileSyncedGithubEventSchema,
+  ReviewSubmittedEventSchema,
 ]);
 export type ReviewerEvent = z.infer<typeof EventSchema>;
 export type EventType = ReviewerEvent["type"];
@@ -302,6 +322,17 @@ export const FileRollupSchema = z.object({
 });
 export type FileRollup = z.infer<typeof FileRollupSchema>;
 
+/** One entry per `review-submitted` event, oldest first. */
+export const ReviewSubmissionSchema = z.object({
+  event: ReviewEventSchema,
+  url: z.string().optional(),
+  commentCount: z.number().int().default(0),
+  ts: z.string(),
+  /** revision that was current when the review was submitted */
+  revision: z.number().int(),
+});
+export type ReviewSubmission = z.infer<typeof ReviewSubmissionSchema>;
+
 export const ArchivedHunkSchema = z.object({
   hunkId: z.string(),
   file: z.string(),
@@ -330,6 +361,8 @@ export const StateSchema = z.object({
   files: z.array(FileRollupSchema).default([]),
   unassignedHunkIds: z.array(z.string()).default([]),
   archived: z.array(ArchivedHunkSchema).default([]),
+  /** every review submitted from the app, oldest first (empty on old logs) */
+  reviewSubmissions: z.array(ReviewSubmissionSchema).default([]),
   corrections: z
     .array(
       z.object({

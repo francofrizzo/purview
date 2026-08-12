@@ -450,6 +450,6 @@ export const mockDrafts: DraftComment[] = [
     side: "RIGHT",
     body: "Should the ledger write happen before the gateway call so a crash mid-flight is still replay-safe?",
     createdAt: "2026-08-12T08:31:00Z",
-    status: "pending",
+    status: "draft",
   },
 ];

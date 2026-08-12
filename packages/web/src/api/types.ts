@@ -195,6 +195,14 @@ export interface MigrationReport {
   noChange?: boolean;
 }
 
+/**
+ * Three states, mirroring the server:
+ *   draft     — local only.
+ *   pushed    — in your PENDING review on GitHub; private, still revocable.
+ *   submitted — went out with a submitted review; public.
+ */
+export type CommentStatus = "draft" | "pushed" | "submitted";
+
 export interface DraftComment {
   id: string;
   file: string;
@@ -202,7 +210,7 @@ export interface DraftComment {
   side: "LEFT" | "RIGHT";
   body: string;
   createdAt?: string;
-  status?: "pending" | "posted";
+  status?: CommentStatus;
 }
 
 export interface SyncResult {
@@ -211,4 +219,61 @@ export interface SyncResult {
   reviewUrl?: string;
   drift?: string[];
   message?: string;
+}
+
+/* ------------------------------------------------------- review lifecycle */
+
+export type ReviewEvent = "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
+
+export interface ReadinessSummary {
+  hunks: { viewed: number; total: number };
+  units: { complete: number; total: number };
+  mustRead: { complete: number; total: number; unviewed: number };
+  changedSinceViewed: number;
+  ready: boolean;
+}
+
+export interface ReviewSubmission {
+  event: ReviewEvent;
+  url?: string;
+  commentCount: number;
+  ts: string;
+  revision: number;
+}
+
+/** GET /api/prs/:key/review */
+export interface ReviewStatus {
+  body: string;
+  counts: { draft: number; pushed: number; submitted: number };
+  /** everything a submit would carry, in file order */
+  included: {
+    id: string;
+    file: string;
+    line: number;
+    side: "LEFT" | "RIGHT";
+    body: string;
+    status: CommentStatus;
+  }[];
+  pending: {
+    /** false when we could not reach GitHub — status is then unknown, not "none" */
+    known: boolean;
+    exists: boolean;
+    error?: string;
+  };
+  readiness: ReadinessSummary;
+  lastSubmission?: ReviewSubmission;
+  submittedAt?: string;
+  submittedEvent?: ReviewEvent;
+  submittedUrl?: string;
+}
+
+export interface SubmitReviewResult {
+  event: ReviewEvent;
+  url?: string;
+  commentCount: number;
+}
+
+export interface DiscardPendingResult {
+  discarded: boolean;
+  resetToDraft: number;
 }

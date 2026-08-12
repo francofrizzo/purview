@@ -5,6 +5,7 @@ import { IconComment, IconRefresh, IconUpload } from "./icons";
 export function TopBar({
   detail,
   draftCount,
+  pendingReview,
   refreshing,
   syncing,
   summaryOpen,
@@ -12,9 +13,12 @@ export function TopBar({
   onRefresh,
   onSync,
   onToggleDrafts,
+  onFinishReview,
 }: {
   detail: PrDetail;
   draftCount: number;
+  /** true when a PENDING review exists on GitHub (undefined = not checked) */
+  pendingReview?: boolean;
   refreshing: boolean;
   syncing: boolean;
   summaryOpen: boolean;
@@ -22,6 +26,7 @@ export function TopBar({
   onRefresh: () => void;
   onSync: () => void;
   onToggleDrafts: () => void;
+  onFinishReview: () => void;
 }) {
   const { meta, state } = detail;
   return (
@@ -54,7 +59,7 @@ export function TopBar({
         </button>
         <button type="button" className="btn" onClick={onToggleDrafts}>
           <IconComment width={11} height={11} />
-          drafts
+          comments
           {draftCount ? (
             <span
               className="rounded-full px-1 text-2xs"
@@ -68,9 +73,21 @@ export function TopBar({
           <IconRefresh width={11} height={11} />
           {refreshing ? "refreshing…" : "refresh"}
         </button>
-        <button type="button" className="btn btn-primary" onClick={onSync} disabled={syncing}>
+        <button type="button" className="btn" onClick={onSync} disabled={syncing}>
           <IconUpload width={11} height={11} />
           {syncing ? "syncing…" : "sync"}
+        </button>
+        <button type="button" className="btn btn-primary" onClick={onFinishReview}>
+          finish review
+          {pendingReview ? (
+            <span
+              className="rounded-full px-1 text-2xs"
+              style={{ background: "var(--warn-soft)", color: "var(--warn)" }}
+              title="You have a pending review on GitHub"
+            >
+              pending
+            </span>
+          ) : null}
         </button>
       </div>
     </header>

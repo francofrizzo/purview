@@ -27,6 +27,14 @@ import {
 } from "@reviewer/core";
 import { addComment, deleteComment, readComments } from "./comments.js";
 import { syncCommentsToGithub } from "./comment-sync.js";
+import {
+  SUBMIT_EVENTS,
+  discardPendingReview,
+  reviewStatus,
+  saveReviewBody,
+  submitReview,
+} from "./review.js";
+import type { SubmitEvent } from "./github-review.js";
 import { HttpError, classifyError } from "./http-error.js";
 
 const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
@@ -303,9 +311,66 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.delete("/api/prs/:key/comments/:id", (c) => {
     const key = keyParam(c);
     const id = c.req.param("id");
-    const removed = deleteComment(key, id, root);
-    if (!removed) throw new HttpError(404, "not_found", `No comment "${id}"`);
-    return c.json({ ok: true });
+    const result = deleteComment(key, id, root);
+    if (!result.removed) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    // A failed remote delete is reported, never fatal — see comments.ts.
+    return c.json({ ok: true, remote: result.remote ?? null });
+  });
+
+  /* -------------------------------------------------------------- review */
+
+  app.get("/api/prs/:key/review", (c) => {
+    const key = keyParam(c);
+    const remote = c.req.query("remote") !== "0";
+    return c.json(reviewStatus(key, root, { checkRemote: remote }));
+  });
+
+  app.post("/api/prs/:key/review", async (c) => {
+    const key = keyParam(c);
+    const body = (await readJsonBody(c)) as { body?: unknown };
+    if (typeof body.body !== "string") {
+      throw new HttpError(400, "invalid_body", "Body must include { body: string }");
+    }
+    return c.json({ draft: saveReviewBody(key, body.body, root) });
+  });
+
+  /**
+   * Submitting posts publicly and cannot be undone, so `confirm: true` is
+   * mandatory: no accidental verdict can be produced by a stray POST or a
+   * double-submitting form.
+   */
+  app.post("/api/prs/:key/review/submit", async (c) => {
+    const key = keyParam(c);
+    const body = (await readJsonBody(c)) as {
+      event?: string;
+      body?: string;
+      confirm?: boolean;
+    };
+    if (!SUBMIT_EVENTS.includes(body.event as SubmitEvent)) {
+      throw new HttpError(
+        400,
+        "invalid_event",
+        `event must be one of ${SUBMIT_EVENTS.join(", ")}`,
+      );
+    }
+    if (body.confirm !== true) {
+      throw new HttpError(
+        400,
+        "confirmation_required",
+        "Submitting a review is public and irreversible; resend with { confirm: true }",
+      );
+    }
+    const result = submitReview(
+      key,
+      { event: body.event as SubmitEvent, body: body.body },
+      root,
+    );
+    return c.json({ ...result, state: loadState(key, root) });
+  });
+
+  app.delete("/api/prs/:key/review/pending", (c) => {
+    const key = keyParam(c);
+    return c.json(discardPendingReview(key, root));
   });
 
   /* -------------------------------------------------------- misc / debug */
