@@ -9,6 +9,7 @@ import type {
   DiffOfDiffs,
   DiscardPendingResult,
   DraftComment,
+  EditCommentResult,
   MigrationReport,
   PrDetail,
   PrListEntry,
@@ -211,6 +212,48 @@ export function useAddComment(key: string) {
     mutationFn: (input: { file: string; line: number; side: "LEFT" | "RIGHT"; body: string }) =>
       api.addComment(key, input),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
+/**
+ * Optimistic body edit. The new text lands in the drawer and the finish-review
+ * list immediately and is rolled back if the server refuses (empty body, a
+ * public comment awaiting confirmation, an unknown id…).
+ */
+export function useEditComment(
+  key: string,
+): UseMutationResult<EditCommentResult, Error, { id: string; body: string; confirm?: boolean }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; body: string; confirm?: boolean }) =>
+      api.editComment(key, input),
+    onMutate: async ({ id, body }) => {
+      await qc.cancelQueries({ queryKey: qk.comments(key) });
+      await qc.cancelQueries({ queryKey: qk.review(key) });
+      const previousComments = qc.getQueryData<DraftComment[]>(qk.comments(key));
+      const previousReview = qc.getQueryData<ReviewStatus>(qk.review(key));
+      if (previousComments) {
+        qc.setQueryData<DraftComment[]>(
+          qk.comments(key),
+          previousComments.map((c) => (c.id === id ? { ...c, body } : c)),
+        );
+      }
+      if (previousReview) {
+        qc.setQueryData<ReviewStatus>(qk.review(key), {
+          ...previousReview,
+          included: previousReview.included.map((c) => (c.id === id ? { ...c, body } : c)),
+        });
+      }
+      return { previousComments, previousReview };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previousComments) qc.setQueryData(qk.comments(key), ctx.previousComments);
+      if (ctx?.previousReview) qc.setQueryData(qk.review(key), ctx.previousReview);
+    },
+    onSettled: () => {
       void qc.invalidateQueries({ queryKey: qk.comments(key) });
       void qc.invalidateQueries({ queryKey: qk.review(key) });
     },

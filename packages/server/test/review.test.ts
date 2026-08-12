@@ -179,10 +179,15 @@ describe("PATCH /api/prs/:key/comments/:id", () => {
     expect(readComments(key, root)[0].body).toBe("updated");
   });
 
-  it("edits a pushed comment locally and mirrors it via GraphQL using the backfilled id", async () => {
+  it("edits a pushed comment locally and mirrors it via GraphQL using the node id, not the databaseId", async () => {
     const created = await addDraft("original");
     await sync();
-    const remoteId = readComments(key, root)[0].githubCommentId!;
+    const stored = readComments(key, root)[0];
+    const nodeId = stored.githubCommentNodeId!;
+    const databaseId = stored.githubCommentId!;
+    // The two ids must actually differ in shape for this test to mean
+    // anything (see FakeReviewComment.node_id in fake-gh.ts).
+    expect(nodeId).not.toBe(String(databaseId));
 
     const res = await patchComment(created.id, { body: "revised" });
     expect(res.status).toBe(200);
@@ -195,18 +200,46 @@ describe("PATCH /api/prs/:key/comments/:id", () => {
       c.some((a) => a.includes("updatePullRequestReviewComment")),
     );
     expect(mutationCall).toBeTruthy();
-    expect(mutationCall).toContain(`commentId=${remoteId}`);
+    expect(mutationCall).toContain(`commentId=${nodeId}`);
+    expect(mutationCall).not.toContain(`commentId=${databaseId}`);
     expect(mutationCall).toContain("body=revised");
   });
 
-  it("saves locally and reports a structured remote failure when the comment id was never backfilled", async () => {
+  it("recovers a missing node id via a read-only lookup and mirrors the edit remotely", async () => {
     const created = await addDraft("original");
     await sync();
 
-    // Simulate the known backfill gap: no githubCommentId on record.
+    // Simulate the backfill gap for the node id specifically (e.g. the
+    // create-response scrape found the databaseId but not the node id).
+    // The databaseId stays on record, so recovery via listReviewComments
+    // (a GET, never a write) should be able to fill it back in.
+    const file = path.join(root, key.host, key.owner, key.repo, String(key.number), "comments.json");
+    const stored = JSON.parse(fs.readFileSync(file, "utf8"));
+    const expectedNodeId = stored[0].githubCommentNodeId;
+    delete stored[0].githubCommentNodeId;
+    fs.writeFileSync(file, JSON.stringify(stored));
+    expect(readComments(key, root)[0].githubCommentNodeId).toBeUndefined();
+
+    const res = await patchComment(created.id, { body: "revised" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.remote).toEqual({ ok: true });
+    expect(body.comment.githubCommentNodeId).toBe(expectedNodeId);
+    // The recovered id is persisted for next time.
+    expect(readComments(key, root)[0].githubCommentNodeId).toBe(expectedNodeId);
+    expect(gh.reviews[0].comments[0].body).toBe("revised");
+  });
+
+  it("saves locally and reports a structured remote failure when no id can be recovered", async () => {
+    const created = await addDraft("original");
+    await sync();
+
+    // Simulate a total backfill failure: neither id is on record, so there
+    // is nothing to look up and nothing to recover.
     const file = path.join(root, key.host, key.owner, key.repo, String(key.number), "comments.json");
     const stored = JSON.parse(fs.readFileSync(file, "utf8"));
     delete stored[0].githubCommentId;
+    delete stored[0].githubCommentNodeId;
     fs.writeFileSync(file, JSON.stringify(stored));
 
     const res = await patchComment(created.id, { body: "revised" });

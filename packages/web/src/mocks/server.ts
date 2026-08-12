@@ -1,8 +1,10 @@
 import { diffWordsWithSpace } from "diff";
+import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import type {
   DiffOfDiffs,
   DiscardPendingResult,
   DraftComment,
+  EditCommentResult,
   MigrationReport,
   PrDetail,
   PrListEntry,
@@ -202,6 +204,45 @@ export const mockApi = {
     };
     drafts.push(draft);
     return draft;
+  },
+
+  /**
+   * Mirrors the server's PATCH semantics exactly: draft edits are local-only,
+   * pushed/submitted edits report a `remote` outcome, an already-public
+   * comment needs `confirm`, and an unchanged body is a no-op.
+   */
+  async editComment(
+    _key: string,
+    input: { id: string; body: string; confirm?: boolean },
+  ): Promise<EditCommentResult> {
+    await delay(180);
+    if (!input.body.trim()) throw new ApiError("invalid_body", 400, "Body must be non-empty");
+    const target = drafts.find((d) => d.id === input.id);
+    if (!target) throw new ApiError("not_found", 404, `No comment "${input.id}"`);
+    if (target.body === input.body) return { comment: structuredClone(target), remote: null };
+    if (target.status === "submitted" && input.confirm !== true) {
+      throw new ApiError(
+        CONFIRM_REQUIRED_PUBLIC_EDIT,
+        400,
+        "Editing a submitted (public) comment is visible to others; resend with { confirm: true }",
+      );
+    }
+    target.body = input.body;
+    const comment = structuredClone(target);
+    if (target.status === "draft") return { comment, remote: null };
+    // Mock GitHub: comments we never got an id back for cannot be mirrored.
+    if (target.githubCommentId === undefined) {
+      return {
+        comment,
+        remote: {
+          ok: false,
+          reason:
+            "No GitHub comment id on record for this comment, so the edit could not be mirrored " +
+            "remotely. Discard the pending review and re-sync to pick up an id, then retry.",
+        },
+      };
+    }
+    return { comment, remote: { ok: true } };
   },
 
   async deleteComment(_key: string, id: string): Promise<void> {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { DraftComment } from "../api/types";
+import { errorText, isConfirmRequired } from "../api/errors";
+import type { CommentStatus, DraftComment, EditCommentResult } from "../api/types";
 import { StatusChip } from "./FinishReview";
 
 export interface CommentTarget {
@@ -61,6 +62,199 @@ export function CommentComposer({
           onClick={() => onSubmit(body.trim())}
         >
           {pending ? "saving…" : "save draft"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export type EditComment = (input: {
+  id: string;
+  body: string;
+  confirm?: boolean;
+}) => Promise<EditCommentResult>;
+
+const EDIT_HINT: Record<CommentStatus, string> = {
+  draft: "Local only — nothing leaves the machine until you sync.",
+  pushed: "Also updates the comment in your pending review on GitHub.",
+  submitted: "This comment is already public on GitHub.",
+};
+
+/**
+ * A comment's body, with an inline editor. Handles the whole edit lifecycle:
+ * the explicit confirmation an already-public comment requires, and the
+ * "saved locally but GitHub was not updated" outcome the server can return.
+ */
+export function CommentBody({
+  comment,
+  edit,
+  clamp,
+}: {
+  comment: { id: string; body: string; status?: CommentStatus };
+  edit?: EditComment;
+  /** truncate the read-only body (the finish-review list is space-starved) */
+  clamp?: boolean;
+}) {
+  const status = comment.status ?? "draft";
+  const [mode, setMode] = useState<"view" | "edit" | "confirm">("view");
+  const [value, setValue] = useState(comment.body);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (mode === "edit") ref.current?.focus();
+  }, [mode]);
+
+  // Someone else (a sync, a refetch) changed the text while we were idle.
+  useEffect(() => {
+    if (mode === "view") setValue(comment.body);
+  }, [comment.body, mode]);
+
+  const cancel = () => {
+    setMode("view");
+    setValue(comment.body);
+    setError(null);
+  };
+
+  const save = async (confirm?: boolean) => {
+    if (!edit) return;
+    const body = value.trim();
+    if (!body) {
+      setError("A comment cannot be empty.");
+      return;
+    }
+    if (body === comment.body) {
+      cancel();
+      return;
+    }
+    if (status === "submitted" && !confirm) {
+      setMode("confirm");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await edit({ id: comment.id, body, confirm });
+      setWarning(res.remote && res.remote.ok === false ? res.remote.reason : null);
+      setMode("view");
+    } catch (err) {
+      // Defensive: the server is the authority on when confirmation is needed.
+      if (isConfirmRequired(err)) setMode("confirm");
+      else {
+        setError(errorText(err));
+        setMode("edit");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (mode === "view") {
+    return (
+      <div>
+        <p
+          className={`mt-0.5 whitespace-pre-wrap text-xs leading-5${clamp ? " line-clamp-3" : ""}`}
+          style={{ color: "var(--fg)" }}
+        >
+          {comment.body}
+        </p>
+        {warning ? (
+          <p
+            className="mt-1 rounded px-1.5 py-1 text-2xs leading-4"
+            style={{ background: "var(--warn-soft)", color: "var(--warn)" }}
+          >
+            Saved locally, but GitHub was not updated: {warning}
+          </p>
+        ) : null}
+        {edit ? (
+          <button
+            type="button"
+            data-testid={`edit-${comment.id}`}
+            className="btn mt-1"
+            onClick={() => {
+              setValue(comment.body);
+              setMode("edit");
+            }}
+          >
+            edit
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (mode === "confirm") {
+    return (
+      <div
+        className="mt-1 rounded p-2"
+        style={{ background: "var(--risk-soft)", border: "1px solid var(--risk)" }}
+      >
+        <p className="text-2xs leading-4" style={{ color: "var(--risk)" }}>
+          This comment is already <strong>submitted and publicly visible</strong> on GitHub. Editing
+          it changes what everyone else sees, and GitHub will show it as edited.
+        </p>
+        <div className="mt-1.5 flex items-center gap-1.5">
+          <button type="button" className="btn" disabled={busy} onClick={() => setMode("edit")}>
+            back
+          </button>
+          <button
+            type="button"
+            data-testid={`confirm-public-${comment.id}`}
+            className="btn ml-auto"
+            style={{ color: "var(--risk)", borderColor: "var(--risk)" }}
+            disabled={busy}
+            onClick={() => void save(true)}
+          >
+            {busy ? "saving…" : "edit publicly"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="mt-1"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          cancel();
+        }
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+          e.preventDefault();
+          void save();
+        }
+      }}
+    >
+      <textarea
+        ref={ref}
+        data-testid={`editor-${comment.id}`}
+        className="input h-24 resize-none font-mono text-xs"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
+      <p className="mt-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        {EDIT_HINT[status]} (esc to cancel, ⌘↵ to save)
+      </p>
+      {error ? (
+        <p className="mt-1 text-2xs leading-4" style={{ color: "var(--risk)" }}>
+          {error}
+        </p>
+      ) : null}
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <button type="button" className="btn" disabled={busy} onClick={cancel}>
+          cancel
+        </button>
+        <button
+          type="button"
+          data-testid={`save-${comment.id}`}
+          className="btn btn-primary ml-auto"
+          disabled={busy || !value.trim()}
+          onClick={() => void save()}
+        >
+          {busy ? "saving…" : "save"}
         </button>
       </div>
     </div>

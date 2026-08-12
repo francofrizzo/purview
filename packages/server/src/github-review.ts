@@ -260,7 +260,10 @@ const ADD_THREAD = `mutation($reviewId:ID!,$path:String!,$line:Int!,$side:DiffSi
 
 export interface AppendedComment {
   threadId?: string;
+  /** REST databaseId of the appended comment. */
   commentId?: number;
+  /** GraphQL node id of the appended comment itself (not the thread). */
+  commentNodeId?: string;
 }
 
 /** GraphQL `addPullRequestReviewThread` — the only way to grow a pending review. */
@@ -312,24 +315,50 @@ export function appendCommentToPendingReview(
   return {
     threadId: res.data?.addPullRequestReviewThread?.thread?.id,
     commentId: node?.databaseId,
+    commentNodeId: node?.id,
   };
+}
+
+export interface RemoteReviewComment {
+  id: number;
+  /** GraphQL node id — present on REST comment payloads as `node_id`. */
+  node_id?: string;
+  path: string;
+  line?: number;
+  original_line?: number;
+  side?: string;
+  body: string;
 }
 
 /**
  * `GET /pulls/{n}/reviews/{id}/comments` — pending review comments are not in
  * the PR-wide comment listing, but they are here. Read-only; used to backfill
- * REST ids after creating a review (whose response carries no comment ids).
+ * REST + GraphQL ids after creating a review (whose response carries neither).
  */
-export function listReviewComments(
-  key: PrKey,
-  reviewDatabaseId: number,
-): { id: number; path: string; line?: number; original_line?: number; side?: string; body: string }[] {
+export function listReviewComments(key: PrKey, reviewDatabaseId: number): RemoteReviewComment[] {
   try {
     return ghJson(key, [
       `repos/${key.owner}/${key.repo}/pulls/${key.number}/reviews/${reviewDatabaseId}/comments?per_page=100`,
     ]);
   } catch {
     // Purely an id-backfill nicety; never fail a push over it.
+    return [];
+  }
+}
+
+/**
+ * `GET /pulls/{n}/comments` — the PR-wide review comment listing. Unlike
+ * `listReviewComments` this only surfaces comments belonging to *submitted*
+ * reviews (a still-pending review's comments don't appear here), so it's the
+ * read-only fallback for recovering a submitted comment's GraphQL node id
+ * when the push-time backfill missed it.
+ */
+export function listPullRequestComments(key: PrKey): RemoteReviewComment[] {
+  try {
+    return ghJson(key, [
+      `repos/${key.owner}/${key.repo}/pulls/${key.number}/comments?per_page=100`,
+    ]);
+  } catch {
     return [];
   }
 }
@@ -351,13 +380,15 @@ export interface UpdatedReviewComment {
 /**
  * GraphQL `updatePullRequestReviewComment` — edits the body of an existing
  * review comment, whether it is still sitting in a pending review or already
- * part of a submitted one. Takes the id we have on file (`githubCommentId`,
- * backfilled at push time — see comment-sync.ts for how, and its known gap
- * when backfill fails).
+ * part of a submitted one. `pullRequestReviewCommentId` is typed `ID!` by
+ * GitHub, i.e. the comment's opaque GraphQL node id — NOT the REST
+ * databaseId stored in `githubCommentId`. Callers must pass
+ * `githubCommentNodeId` (backfilled at push time — see comment-sync.ts for
+ * how, and its known gap when backfill fails).
  */
 export function updatePullRequestReviewCommentBody(
   key: PrKey,
-  commentId: number | string,
+  commentNodeId: string,
   body: string,
 ): UpdatedReviewComment {
   let res: {
@@ -377,7 +408,7 @@ export function updatePullRequestReviewCommentBody(
         "-f",
         `query=${UPDATE_COMMENT}`,
         "-f",
-        `commentId=${commentId}`,
+        `commentId=${commentNodeId}`,
         "-f",
         `body=${body}`,
       ]),

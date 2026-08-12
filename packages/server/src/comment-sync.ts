@@ -6,6 +6,7 @@ import {
   classifyGhReviewError,
   createPendingReview,
   findPendingReview,
+  listPullRequestComments,
   listReviewComments,
   type PendingReview,
   type ReviewCommentInput,
@@ -108,13 +109,15 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       }
       const created = createPendingReview(key, commitId, drafts.map(toInput));
       // The create response carries no per-comment ids; this read backfills
-      // them so a later local delete/edit can act on the right remote
-      // comment. Matching is by path+line, consumed once per match: two
-      // drafts can legitimately target the same file+line (e.g. a comment
-      // added after an earlier one at the same spot was deleted upstream),
-      // and reusing the same remote id for both would silently mis-attribute
-      // one of them. Removing each match as it's used keeps the pairing
-      // 1:1 even when path+line repeats.
+      // both the REST databaseId (githubCommentId) and the GraphQL node id
+      // (githubCommentNodeId — REST comment payloads carry it as `node_id`)
+      // so a later local delete/edit can act on the right remote comment,
+      // via whichever API needs which id. Matching is by path+line, consumed
+      // once per match: two drafts can legitimately target the same
+      // file+line (e.g. a comment added after an earlier one at the same
+      // spot was deleted upstream), and reusing the same remote comment for
+      // both would silently mis-attribute one of them. Removing each match
+      // as it's used keeps the pairing 1:1 even when path+line repeats.
       const remote = listReviewComments(key, created.databaseId);
       const remaining = [...remote];
       markPushed(
@@ -124,7 +127,7 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
             (r) => r.path === c.file && (r.line ?? r.original_line) === c.line,
           );
           const match = idx === -1 ? undefined : remaining.splice(idx, 1)[0];
-          return { id: c.id, githubCommentId: match?.id };
+          return { id: c.id, githubCommentId: match?.id, githubCommentNodeId: match?.node_id };
         }),
         root,
       );
@@ -157,7 +160,14 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
         const res = appendCommentToPendingReview(key, pending.nodeId, toInput(draft));
         markPushed(
           key,
-          [{ id: draft.id, githubCommentId: res.commentId, githubThreadId: res.threadId }],
+          [
+            {
+              id: draft.id,
+              githubCommentId: res.commentId,
+              githubCommentNodeId: res.commentNodeId,
+              githubThreadId: res.threadId,
+            },
+          ],
           root,
         );
         pushed += 1;
@@ -185,3 +195,45 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
 
 /** Back-compatible name used by POST /api/prs/:key/sync. */
 export const syncCommentsToGithub = pushDraftComments;
+
+/**
+ * Best-effort, read-only recovery of a comment's GraphQL node id when the
+ * push-time backfill above missed it (e.g. `listReviewComments` failed, or
+ * the comment predates node-id backfilling). Never issues a write call.
+ *
+ *   pushed    -> `GET /pulls/{n}/reviews/{id}/comments` on the pending
+ *                review (comments still awaiting submission aren't visible
+ *                anywhere else).
+ *   submitted -> `GET /pulls/{n}/comments`, the PR-wide listing that only
+ *                surfaces comments belonging to already-submitted reviews.
+ *
+ * Returns undefined if recovery isn't possible (no databaseId to match on,
+ * no pending review on record, or the id genuinely isn't found).
+ */
+export function recoverCommentNodeId(
+  key: PrKey,
+  comment: Comment,
+  root?: string,
+): string | undefined {
+  if (comment.githubCommentId === undefined) return undefined;
+
+  if (comment.status === "pushed") {
+    let reviewDatabaseId = readReviewDraft(key, root).pendingReviewDatabaseId;
+    if (reviewDatabaseId === undefined) {
+      try {
+        reviewDatabaseId = findPendingReview(key)?.databaseId;
+      } catch {
+        return undefined;
+      }
+    }
+    if (reviewDatabaseId === undefined) return undefined;
+    return listReviewComments(key, reviewDatabaseId).find((r) => r.id === comment.githubCommentId)
+      ?.node_id;
+  }
+
+  if (comment.status === "submitted") {
+    return listPullRequestComments(key).find((r) => r.id === comment.githubCommentId)?.node_id;
+  }
+
+  return undefined;
+}

@@ -1,6 +1,20 @@
 import { setGhRunner, type GhRunner } from "@reviewer/core";
 import { resetViewerLoginCache } from "../src/github-review.js";
 
+export interface FakeReviewComment {
+  /** REST databaseId. */
+  id: number;
+  /** GraphQL node id — deliberately a different *shape* of value (a `PRRC_`
+   *  prefixed string) than `id` so a test that accidentally sends the
+   *  databaseId where the node id belongs fails to match, instead of
+   *  silently "working" because both stringify the same way. */
+  node_id: string;
+  path: string;
+  line: number;
+  side: string;
+  body: string;
+}
+
 export interface FakeReview {
   id: number;
   node_id: string;
@@ -8,7 +22,7 @@ export interface FakeReview {
   commit_id?: string;
   html_url?: string;
   user: { login: string };
-  comments: { id: number; path: string; line: number; side: string; body: string }[];
+  comments: FakeReviewComment[];
 }
 
 export interface FakeGh {
@@ -84,13 +98,15 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
       };
       const query = field("query") ?? "";
 
-      // GraphQL: updatePullRequestReviewComment
+      // GraphQL: updatePullRequestReviewComment — commentId must be the
+      // node id (`PRRC_...`); a bare databaseId will not match anything
+      // here, same as real GitHub would reject it.
       if (query.includes("updatePullRequestReviewComment")) {
         const commentId = field("commentId");
         const newBody = field("body");
-        let found: FakeReview["comments"][number] | undefined;
+        let found: FakeReviewComment | undefined;
         for (const review of state.reviews) {
-          found = review.comments.find((cm) => String(cm.id) === commentId);
+          found = review.comments.find((cm) => cm.node_id === commentId);
           if (found) break;
         }
         if (!found) throw new Error(`gh ${joined} failed: HTTP 404 comment not found`);
@@ -99,7 +115,7 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
           data: {
             updatePullRequestReviewComment: {
               pullRequestReviewComment: {
-                id: `PRRC_${found.id}`,
+                id: found.node_id,
                 databaseId: found.id,
                 body: found.body,
               },
@@ -115,6 +131,7 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
       const id = nextCommentId++;
       review.comments.push({
         id,
+        node_id: `PRRC_${id}`,
         path: field("path")!,
         line: Number(field("line")),
         side: field("side")!,
@@ -123,7 +140,10 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
       return JSON.stringify({
         data: {
           addPullRequestReviewThread: {
-            thread: { id: `PRRT_${id}`, comments: { nodes: [{ id: `PRRC_${id}`, databaseId: id }] } },
+            thread: {
+              id: `PRRT_${id}`,
+              comments: { nodes: [{ id: `PRRC_${id}`, databaseId: id }] },
+            },
           },
         },
       });
@@ -146,6 +166,13 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
     if (method === "GET" && listComments) {
       const review = state.reviews.find((r) => r.id === Number(listComments[1]));
       return JSON.stringify(review?.comments ?? []);
+    }
+
+    // GET /pulls/{n}/comments — PR-wide listing; only comments belonging to
+    // a submitted (non-PENDING) review show up here, matching real GitHub.
+    if (method === "GET" && /\/pulls\/\d+\/comments\?/.test(endpoint)) {
+      const flat = state.reviews.filter((r) => r.state !== "PENDING").flatMap((r) => r.comments);
+      return JSON.stringify(flat);
     }
 
     // POST /pulls/{n}/reviews/{id}/events  (submit)
@@ -202,13 +229,17 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
         commit_id: body.commit_id as string | undefined,
         html_url: `https://github.com/acme/widgets/pull/7#pullrequestreview-${id}`,
         user: { login: state.login },
-        comments: ((body.comments as Record<string, unknown>[]) ?? []).map((c) => ({
-          id: nextCommentId++,
-          path: String(c.path),
-          line: Number(c.line),
-          side: String(c.side),
-          body: String(c.body),
-        })),
+        comments: ((body.comments as Record<string, unknown>[]) ?? []).map((c) => {
+          const commentId = nextCommentId++;
+          return {
+            id: commentId,
+            node_id: `PRRC_${commentId}`,
+            path: String(c.path),
+            line: Number(c.line),
+            side: String(c.side),
+            body: String(c.body),
+          };
+        }),
       };
       state.reviews.push(review);
       return JSON.stringify(review);

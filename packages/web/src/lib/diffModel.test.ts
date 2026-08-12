@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRows, buildSplitRows } from "./diffModel";
+import { buildRows, buildSplitRows, hunkLabel } from "./diffModel";
 import type { Hunk } from "../api/types";
 
 let seq = 0;
@@ -15,6 +15,32 @@ function hunk(lines: string[]): Hunk {
     lines,
   } as Hunk;
 }
+
+describe("hunkLabel", () => {
+  const base = { ...hunk([" a"]), oldStart: 18, oldLines: 10, newStart: 18, newLines: 26 };
+
+  it("prints the range once when header is only the section heading", () => {
+    expect(hunkLabel({ ...base, header: "export class ChargeService {" })).toBe(
+      "@@ -18,10 +18,26 @@ export class ChargeService {",
+    );
+  });
+
+  it("does not repeat the range when header carries the whole @@ line", () => {
+    expect(
+      hunkLabel({ ...base, header: "@@ -18,10 +18,26 @@ export class ChargeService {" }),
+    ).toBe("@@ -18,10 +18,26 @@ export class ChargeService {");
+  });
+
+  it("drops a bare @@ line with no heading", () => {
+    expect(hunkLabel({ ...base, header: "@@ -0,0 +1,14 @@", oldStart: 0, oldLines: 0, newStart: 1, newLines: 14 })).toBe(
+      "@@ -0,0 +1,14 @@",
+    );
+  });
+
+  it("handles an empty header", () => {
+    expect(hunkLabel({ ...base, header: "" })).toBe("@@ -18,10 +18,26 @@");
+  });
+});
 
 describe("buildSplitRows", () => {
   it("puts context lines on both sides", () => {

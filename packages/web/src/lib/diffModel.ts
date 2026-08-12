@@ -203,7 +203,20 @@ export function buildSplitRows(hunk: Hunk, diffText: string): SplitRow[] {
  */
 export function hunkLabel(hunk: Hunk): string {
   const range = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`;
-  return hunk.header ? `${range} ${hunk.header}` : range;
+  const heading = sectionHeading(hunk.header);
+  return heading ? `${range} ${heading}` : range;
+}
+
+/**
+ * `header` is *supposed* to be just the section heading, but some producers
+ * (and our own mock fixture) store the whole `@@ … @@ heading` line. Appending
+ * that to the reconstructed range printed the range twice, so strip it.
+ */
+export function sectionHeading(header: string | undefined | null): string {
+  const trimmed = (header ?? "").trim();
+  if (!trimmed.startsWith("@@")) return trimmed;
+  const close = trimmed.indexOf("@@", 2);
+  return close === -1 ? "" : trimmed.slice(close + 2).trim();
 }
 
 export function fileOf(files: FilesJson, path: string): FileEntry | undefined {

@@ -211,6 +211,20 @@ export interface DraftComment {
   body: string;
   createdAt?: string;
   status?: CommentStatus;
+  /** set once the comment exists on GitHub; needed to mirror an edit remotely */
+  githubCommentId?: number;
+}
+
+/**
+ * PATCH /api/prs/:key/comments/:id
+ *
+ * `remote` is null for a purely local (draft) edit. For a pushed/submitted
+ * comment it reports whether GitHub was updated too — `ok: false` means the
+ * local edit is saved but GitHub still shows the old text.
+ */
+export interface EditCommentResult {
+  comment: DraftComment;
+  remote: { ok: true } | { ok: false; reason: string } | null;
 }
 
 export interface SyncResult {

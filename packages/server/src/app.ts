@@ -25,8 +25,14 @@ import {
   type PrKey,
   type State,
 } from "@reviewer/core";
-import { addComment, deleteComment, readComments, updateCommentBody } from "./comments.js";
-import { syncCommentsToGithub } from "./comment-sync.js";
+import {
+  addComment,
+  deleteComment,
+  readComments,
+  setCommentNodeId,
+  updateCommentBody,
+} from "./comments.js";
+import { recoverCommentNodeId, syncCommentsToGithub } from "./comment-sync.js";
 import {
   SUBMIT_EVENTS,
   discardPendingReview,
@@ -368,8 +374,17 @@ export function createApp(opts: AppOptions = {}): Hono {
       return c.json({ comment: result.comment, remote: null });
     }
 
-    // pushed or submitted: best-effort remote update, never fatal.
-    if (target.githubCommentId === undefined) {
+    // pushed or submitted: best-effort remote update, never fatal. The
+    // mutation needs the comment's GraphQL node id specifically — the REST
+    // databaseId in githubCommentId is the wrong id type for it — so if the
+    // node id was never backfilled, try a read-only recovery before giving
+    // up (see comment-sync.ts).
+    let nodeId = target.githubCommentNodeId;
+    if (nodeId === undefined) {
+      nodeId = recoverCommentNodeId(key, target, root);
+      if (nodeId) setCommentNodeId(key, id, nodeId, root);
+    }
+    if (nodeId === undefined) {
       return c.json({
         comment: result.comment,
         remote: {
@@ -381,8 +396,11 @@ export function createApp(opts: AppOptions = {}): Hono {
       });
     }
     try {
-      updatePullRequestReviewCommentBody(key, target.githubCommentId, newBody);
-      return c.json({ comment: result.comment, remote: { ok: true } });
+      updatePullRequestReviewCommentBody(key, nodeId, newBody);
+      return c.json({
+        comment: { ...result.comment, githubCommentNodeId: nodeId },
+        remote: { ok: true },
+      });
     } catch (err) {
       const e = classifyGhReviewError(err);
       return c.json({ comment: result.comment, remote: { ok: false, reason: e.message } });

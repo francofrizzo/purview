@@ -31,8 +31,18 @@ export const CommentSchema = z.object({
   body: z.string().min(1),
   createdAt: z.string(),
   status: CommentStatusSchema,
-  /** REST id of the review comment on GitHub, when GitHub gave us one. */
+  /**
+   * REST id (databaseId) of the review comment on GitHub. Used by the REST
+   * delete endpoint (`DELETE /pulls/comments/{id}`), which takes databaseId.
+   */
   githubCommentId: z.number().int().optional(),
+  /**
+   * GraphQL node id of the *comment itself* (not the thread). Distinct from
+   * `githubCommentId` — GraphQL mutations that take a comment id (e.g.
+   * `updatePullRequestReviewComment`) want this opaque node id, not the REST
+   * databaseId; sending the databaseId there fails against real GitHub.
+   */
+  githubCommentNodeId: z.string().optional(),
   /** GraphQL node id of the thread, when the comment was appended via GraphQL. */
   githubThreadId: z.string().optional(),
   pushedAt: z.string().optional(),
@@ -197,7 +207,12 @@ export function updateCommentBody(
 /** Mark comments as living in the pending review on GitHub. */
 export function markPushed(
   key: PrKey,
-  updates: { id: string; githubCommentId?: number; githubThreadId?: string }[],
+  updates: {
+    id: string;
+    githubCommentId?: number;
+    githubCommentNodeId?: string;
+    githubThreadId?: string;
+  }[],
   root = stateRoot(),
 ): void {
   if (updates.length === 0) return;
@@ -213,11 +228,27 @@ export function markPushed(
         status: "pushed" as const,
         pushedAt: now,
         githubCommentId: u.githubCommentId ?? c.githubCommentId,
+        githubCommentNodeId: u.githubCommentNodeId ?? c.githubCommentNodeId,
         githubThreadId: u.githubThreadId ?? c.githubThreadId,
       };
     }),
     root,
   );
+}
+
+/** Persist a recovered GraphQL node id for a comment without touching anything else. */
+export function setCommentNodeId(
+  key: PrKey,
+  id: string,
+  githubCommentNodeId: string,
+  root = stateRoot(),
+): void {
+  const comments = readComments(key, root);
+  const idx = comments.findIndex((c) => c.id === id);
+  if (idx === -1) return;
+  const next = [...comments];
+  next[idx] = { ...next[idx], githubCommentNodeId };
+  writeComments(key, next, root);
 }
 
 /** The review went public: every pushed comment went with it. */
@@ -244,7 +275,7 @@ export function resetPushedToDraft(key: PrKey, root = stateRoot()): number {
   const next = comments.map((c) => {
     if (c.status !== "pushed") return c;
     reset += 1;
-    const { githubCommentId, githubThreadId, pushedAt, ...rest } = c;
+    const { githubCommentId, githubCommentNodeId, githubThreadId, pushedAt, ...rest } = c;
     return { ...rest, status: "draft" as const };
   });
   if (reset > 0) writeComments(key, next, root);

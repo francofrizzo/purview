@@ -1,9 +1,11 @@
 import { mockApi } from "../mocks/server";
+import { ApiError } from "./errors";
 import type {
   CommentStatus,
   DiffOfDiffs,
   DiscardPendingResult,
   DraftComment,
+  EditCommentResult,
   FileEntry,
   FileRollup,
   Hunk,
@@ -21,16 +23,7 @@ import type {
 
 export const MOCK = import.meta.env.VITE_MOCK === "1";
 
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly detail?: unknown,
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
+export { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT, errorText, isConfirmRequired } from "./errors";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -61,6 +54,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: "POST", body: body === undefined ? undefined : JSON.stringify(body) });
+
+const patch = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: "PATCH", body: JSON.stringify(body) });
 
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
@@ -432,6 +428,23 @@ export const api = {
     if (MOCK) return mockApi.addComment(key, input);
     const res = await post<{ comment: WireComment }>(`/prs/${encodeKey(key)}/comments`, input);
     return adaptComment(res.comment);
+  },
+
+  /**
+   * `confirm` is only ever sent for an already-submitted (public) comment, and
+   * only after the reader confirmed in the UI — the server rejects it otherwise
+   * with `confirm_required_public_edit`.
+   */
+  async editComment(
+    key: string,
+    input: { id: string; body: string; confirm?: boolean },
+  ): Promise<EditCommentResult> {
+    if (MOCK) return mockApi.editComment(key, input);
+    const res = await patch<{ comment: WireComment; remote: EditCommentResult["remote"] }>(
+      `/prs/${encodeKey(key)}/comments/${encodeURIComponent(input.id)}`,
+      { body: input.body, ...(input.confirm ? { confirm: true } : {}) },
+    );
+    return { comment: adaptComment(res.comment), remote: res.remote ?? null };
   },
 
   async deleteComment(key: string, id: string): Promise<void> {
