@@ -1,11 +1,13 @@
 import { EventEmitter } from "node:events";
 import {
   keyToString,
+  loadState,
   prDir,
   readMeta,
   stateRoot,
   type PrKey,
 } from "@reviewer/core";
+import { resolveCheckout } from "./worktree.js";
 import { runClaude } from "./claude-runner.js";
 import { skillDir } from "./analysis.js";
 import {
@@ -86,11 +88,19 @@ export function startChatTurn(
   const stateDir = prDir(key, root);
   const flags = chatToolFlags();
   const addDirs = [skillDir()];
+  // Resolved per turn: a worktree for this PR's branch may have appeared (or
+  // been removed) since the previous message.
+  const state = loadState(key, root);
+  const headSha = state.revisions.find((r) => r.revision === state.currentRevision)?.headSha;
+  const checkout = resolveCheckout(meta?.repoPath, { headRef: meta?.headRef, headSha });
+  if (checkout.error) {
+    console.warn(`[chat] ${keyStr}: ${checkout.error}; running without a checkout`);
+  }
   let cwd = stateDir;
-  if (meta?.repoPath) {
+  if (checkout.path) {
     // The checkout is the more useful working directory (grep/glob land in the
     // code), so the state dir becomes the extra root instead.
-    cwd = meta.repoPath;
+    cwd = checkout.path;
     addDirs.push(stateDir);
   }
 
@@ -113,7 +123,7 @@ export function startChatTurn(
     ...flags,
     // The system prompt is re-sent on resume too: it is cheap, and it keeps
     // the read-only contract in force for every turn.
-    systemPrompt: chatSystemPrompt(key, root),
+    systemPrompt: chatSystemPrompt(key, root, { resolution: checkout, headSha }),
     sessionId: isFirstTurn ? sessionId : undefined,
     resumeSessionId: isFirstTurn ? undefined : sessionId,
     partialMessages: true,

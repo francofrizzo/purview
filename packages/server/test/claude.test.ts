@@ -11,6 +11,7 @@ import {
   readMeta,
   setGhRunner,
   toRevisionFiles,
+  updateMeta,
   appendEvents,
   writeRevision,
   type GhRunner,
@@ -23,6 +24,7 @@ import { ownerRepoFromRemote } from "../src/repo-path.js";
 import { HttpError } from "../src/http-error.js";
 import { buildFixture, key, DOD_REV1, DOD_REV2, REV1_PATCH } from "./fixtures.js";
 import { fakeClaude, scriptedRun, type FakeClaude } from "./fake-claude.js";
+import { addWorktree, makeRepo } from "./git-fixtures.js";
 
 const encodedKey = encodeURIComponent(keyToString(key));
 
@@ -286,43 +288,58 @@ index 0000000..4444444
 /* --------------------------------------------------------------- repo path */
 
 describe("POST /repo-path", () => {
+  /** meta.headRef is what worktree resolution keys off; fixtures don't set it. */
+  const setHeadRef = (headRef: string) => updateMeta(key, { headRef }, root);
+
   it("accepts a matching git checkout and stores it on meta", async () => {
     buildFixture(root);
-    const repo = path.join(root, "checkout");
-    fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
-    fs.writeFileSync(
-      path.join(repo, ".git", "config"),
-      `[remote "origin"]\n\turl = git@github.com:acme/widgets.git\n`,
-    );
+    const repo = makeRepo(path.join(root, "checkout"), {
+      origin: "git@github.com:acme/widgets.git",
+    });
     const res = await app.request(`/api/prs/${encodedKey}/repo-path`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: repo }),
+      body: JSON.stringify({ path: repo.path }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.ok).toBe(true);
     expect(body.warning).toBeUndefined();
-    expect(readMeta(key, root).repoPath).toBe(repo);
+    expect(readMeta(key, root).repoPath).toBe(repo.path);
+  });
+
+  it("accepts a path inside the checkout, not just its top level", async () => {
+    buildFixture(root);
+    const repo = makeRepo(path.join(root, "checkout"), {
+      origin: "git@github.com:acme/widgets.git",
+    });
+    const sub = path.join(repo.path, "src", "deep");
+    fs.mkdirSync(sub, { recursive: true });
+    const res = await app.request(`/api/prs/${encodedKey}/repo-path`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: sub }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).warning).toBeUndefined();
+    // Stored verbatim: resolution happens per run, not here.
+    expect(readMeta(key, root).repoPath).toBe(sub);
   });
 
   it("warns but accepts a checkout whose origin is a different repo", async () => {
     buildFixture(root);
-    const repo = path.join(root, "other");
-    fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
-    fs.writeFileSync(
-      path.join(repo, ".git", "config"),
-      `[remote "origin"]\n\turl = https://github.com/someone/else.git\n`,
-    );
+    const repo = makeRepo(path.join(root, "other"), {
+      origin: "https://github.com/someone/else.git",
+    });
     const res = await app.request(`/api/prs/${encodedKey}/repo-path`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: repo }),
+      body: JSON.stringify({ path: repo.path }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.warning).toContain("does not match acme/widgets");
-    expect(readMeta(key, root).repoPath).toBe(repo);
+    expect(readMeta(key, root).repoPath).toBe(repo.path);
   });
 
   it("rejects a missing directory", async () => {
@@ -342,16 +359,23 @@ describe("POST /repo-path", () => {
     expect(ownerRepoFromRemote("ssh://git@ghe.corp/acme/widgets.git")).toBe("acme/widgets");
   });
 
-  it("gives the chat run the checkout as cwd once set", async () => {
+  it("resolves the main checkout to the worktree holding the PR branch", async () => {
     buildFixture(root);
-    const repo = path.join(root, "checkout");
-    fs.mkdirSync(path.join(repo, ".git"), { recursive: true });
-    fs.writeFileSync(path.join(repo, ".git", "config"), `[remote "origin"]\n\turl = git@github.com:acme/widgets.git\n`);
-    await app.request(`/api/prs/${encodedKey}/repo-path`, {
+    setHeadRef("feature-x");
+    const repo = makeRepo(path.join(root, "checkout"), {
+      origin: "git@github.com:acme/widgets.git",
+    });
+    const wt = addWorktree(repo.path, path.join(root, "wt-feature"), "feature-x");
+
+    const set = await app.request(`/api/prs/${encodedKey}/repo-path`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: repo }),
+      body: JSON.stringify({ path: repo.path }),
     });
+    const setBody = await set.json();
+    expect(setBody.checkoutMismatch).toBeNull();
+    expect(setBody.warning).toContain("wt-feature");
+
     const res = await app.request(`/api/prs/${encodedKey}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -359,8 +383,107 @@ describe("POST /repo-path", () => {
     });
     await res.text();
     await chatTurnDone(key);
-    expect(claude.runs[0].cwd).toBe(repo);
-    expect(claude.runs[0].argv.join(" ")).toContain(`--add-dir ${path.join(root, key.host, key.owner, key.repo, String(key.number))}`);
+    // The run gets the worktree, not the stored main checkout.
+    expect(claude.runs[0].cwd).toBe(fs.realpathSync(wt.path));
+    expect(claude.runs[0].argv.join(" ")).toContain(
+      `--add-dir ${path.join(root, key.host, key.owner, key.repo, String(key.number))}`,
+    );
+  });
+
+  it("works when the reader pastes the worktree itself", async () => {
+    buildFixture(root);
+    setHeadRef("feature-x");
+    const repo = makeRepo(path.join(root, "checkout"), {
+      origin: "git@github.com:acme/widgets.git",
+    });
+    const wt = addWorktree(repo.path, path.join(root, "wt-feature"), "feature-x");
+
+    const set = await app.request(`/api/prs/${encodedKey}/repo-path`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: wt.path }),
+    });
+    expect((await set.json()).checkoutMismatch).toBeNull();
+
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    expect(claude.runs[0].argv.join(" ")).toContain(`--add-dir ${fs.realpathSync(wt.path)}`);
+    expect(claude.promptOf(0)).toContain("A local checkout with the PR's branch is available");
+  });
+
+  it("falls back with checkoutMismatch when no worktree has the PR branch", async () => {
+    buildFixture(root);
+    setHeadRef("feature-x");
+    const repo = makeRepo(path.join(root, "checkout"), {
+      origin: "git@github.com:acme/widgets.git",
+    });
+
+    const set = await app.request(`/api/prs/${encodedKey}/repo-path`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: repo.path }),
+    });
+    expect((await set.json()).checkoutMismatch).toEqual({
+      checkedOutBranch: "main",
+      prHeadRef: "feature-x",
+    });
+
+    const detail = await (await app.request(`/api/prs/${encodedKey}`)).json();
+    expect(detail.checkoutMismatch).toEqual({
+      checkedOutBranch: "main",
+      prHeadRef: "feature-x",
+    });
+
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    // The run still gets the checkout, but is told not to trust it.
+    expect(claude.runs[0].argv.join(" ")).toContain(`--add-dir ${fs.realpathSync(repo.path)}`);
+    expect(claude.promptOf(0)).toContain("but it is on branch main");
+    expect(claude.promptOf(0)).toContain("may not match the diff");
+  });
+
+  it("picks up a worktree created after the path was set", async () => {
+    buildFixture(root);
+    setHeadRef("feature-x");
+    const repo = makeRepo(path.join(root, "checkout"), {
+      origin: "git@github.com:acme/widgets.git",
+    });
+    await app.request(`/api/prs/${encodedKey}/repo-path`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: repo.path }),
+    });
+    // `wt feature-x` happens only now — resolution is per run, so it counts.
+    const wt = addWorktree(repo.path, path.join(root, "wt-feature"), "feature-x");
+
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    expect(claude.runs[0].argv.join(" ")).toContain(`--add-dir ${fs.realpathSync(wt.path)}`);
+  });
+
+  it("runs without a checkout when the stored path was deleted", async () => {
+    buildFixture(root);
+    setHeadRef("feature-x");
+    const repo = makeRepo(path.join(root, "checkout"), {
+      origin: "git@github.com:acme/widgets.git",
+    });
+    await app.request(`/api/prs/${encodedKey}/repo-path`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: repo.path }),
+    });
+    fs.rmSync(repo.path, { recursive: true, force: true });
+
+    // Neither the detail endpoint nor the run may fail over a deleted dir.
+    const detail = await app.request(`/api/prs/${encodedKey}`);
+    expect(detail.status).toBe(200);
+
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    expect(readJob(key, root)!.status).toBe("done");
+    expect(claude.runs[0].cwd).toBe(path.join(root, key.host, key.owner, key.repo, String(key.number)));
+    expect(claude.runs[0].argv.join(" ")).not.toContain(repo.path);
+    expect(claude.promptOf(0)).toContain("local checkout is unavailable");
   });
 });
 

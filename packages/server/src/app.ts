@@ -57,7 +57,8 @@ import {
 } from "./analysis.js";
 import { chatBusy, startChatTurn, type ChatStreamEvent } from "./chat-session.js";
 import { ChatRefSchema, clearChat, readChat } from "./chat.js";
-import { setRepoPath } from "./repo-path.js";
+import { prHead, setRepoPath } from "./repo-path.js";
+import { resolveCheckout } from "./worktree.js";
 
 const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
@@ -215,12 +216,17 @@ export function createApp(opts: AppOptions = {}): Hono {
     const state = loadState(key, root);
     const filesJson = readFilesJson(key, state.currentRevision, root);
     const diff = readDiff(key, state.currentRevision, root);
+    // Resolving here is what makes a stale checkout visible in the UI without
+    // waiting for a run to say so; it is additive, so a client that predates
+    // the field is unaffected.
+    const checkout = resolveCheckout(meta.repoPath, prHead(key, root));
     return c.json({
       state,
       files: filesJson.files,
       diff,
       meta,
       analysisJob: readJob(key, root),
+      checkoutMismatch: checkout.mismatch ?? null,
     });
   });
 
@@ -249,7 +255,12 @@ export function createApp(opts: AppOptions = {}): Hono {
     readMeta(key, root);
     const body = (await readJsonBody(c)) as { path?: unknown };
     const result = setRepoPath(key, body.path, root);
-    return c.json({ ok: true, path: result.path, warning: result.warning });
+    return c.json({
+      ok: true,
+      path: result.path,
+      warning: result.warning,
+      checkoutMismatch: result.checkoutMismatch ?? null,
+    });
   });
 
   /**

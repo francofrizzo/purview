@@ -93,12 +93,21 @@ clone, which is then a readable root for Claude so it can see code the diff only
 fragments. A missing directory is rejected; a checkout whose `origin` does not match the PR's
 repo is accepted with a warning.
 
+It is **worktree-aware**, for a worktree-per-branch workflow: give it any path inside the
+repository — the main checkout, a worktree, or a subdirectory of either — and before each run
+it asks git which worktree currently has the PR's branch (or its head commit) checked out and
+hands Claude that one. Worktrees you create later are picked up automatically, since nothing
+is resolved until a run starts. If no worktree matches, the stored checkout is used anyway,
+the response and `GET /api/prs/:key` carry `checkoutMismatch: {checkedOutBranch, prHeadRef}`,
+and Claude is told the surrounding code may not match the diff. A checkout that has been
+deleted or is no longer a git repo just means "no local checkout" — it never fails a run.
+
 ## State directory
 
 `~/.reviewer/<host>/<owner>/<repo>/<number>/` (override the root with `REVIEWER_STATE_DIR`):
 
 ```
-meta.json           # { host, owner, repo, number, url, title, createdAt, repoPath? }
+meta.json           # { host, owner, repo, number, url, title, createdAt, headRef?, repoPath? }
 events.jsonl        # append-only event log — the source of truth
 state.json          # derived snapshot, refolded from events; safe to delete
 comments.json       # local comments (draft -> pushed -> submitted)

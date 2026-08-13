@@ -15,6 +15,7 @@ import {
   prExists,
   readFilesJson,
   readMeta,
+  updateMeta,
   writeMeta,
   writeMigrationReport,
   writeRevision,
@@ -55,6 +56,7 @@ export function initPr(key: PrKey, root = stateRoot()): InitResult {
         number: key.number,
         url: pr.url,
         title: pr.title,
+        headRef: pr.headRef,
         createdAt: now,
       },
       root,
@@ -91,8 +93,11 @@ export interface RefreshResult {
  * store a revision, run migration and record it as a `revision-added` event.
  */
 export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
-  readMeta(key, root); // ensures the PR was initialized
+  const meta = readMeta(key, root); // ensures the PR was initialized
   const pr = fetchPullRequest(key);
+  // The head branch can be renamed (or was never recorded, on older state), and
+  // worktree resolution keys off it, so keep it current on every refresh.
+  if (meta.headRef !== pr.headRef) updateMeta(key, { headRef: pr.headRef }, root);
   const mergeBase = fetchMergeBase(key, pr.baseSha, pr.headSha);
   const state = loadState(key, root);
   const current = state.revisions.find(

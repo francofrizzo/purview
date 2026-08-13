@@ -136,6 +136,12 @@ export const MetaSchema = z.object({
   title: z.string().optional(),
   createdAt: z.string(),
   /**
+   * The PR's head branch name, refreshed from GitHub on every refresh. Used to
+   * pick the right git worktree out of a multi-worktree checkout; optional
+   * because state written before this existed simply doesn't have it.
+   */
+  headRef: z.string().optional(),
+  /**
    * Absolute path to a local checkout of the PR's repo, when the reader has
    * pointed us at one. Optional and purely additive: everything works without
    * it, but Claude runs get the repo as an extra readable root so they can

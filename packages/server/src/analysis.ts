@@ -15,6 +15,7 @@ import {
   type PrKey,
 } from "@reviewer/core";
 import { runClaude, type ClaudeRun } from "./claude-runner.js";
+import { resolveCheckout, type CheckoutResolution } from "./worktree.js";
 import { HttpError } from "./http-error.js";
 
 /**
@@ -122,10 +123,31 @@ export function cliCommand(): string {
 
 /* ------------------------------------------------------------------ prompt */
 
+/**
+ * The sentence that tells a run how much to trust the local checkout. Shared
+ * by the analysis prompt and the chat system prompt so both say the same
+ * thing, in the same words, about the same three situations.
+ */
+export function checkoutNote(resolution: CheckoutResolution, headSha?: string): string {
+  if (resolution.error) {
+    return `NOTE: the configured local checkout is unavailable (${resolution.error}). Work from the diff alone; do not guess at surrounding code.`;
+  }
+  if (!resolution.path) return "";
+  if (resolution.mismatch) {
+    return (
+      `A local checkout is available at ${resolution.path}, but it is on branch ` +
+      `${resolution.mismatch.checkedOutBranch}${headSha ? ` at ${headSha.slice(0, 12)}` : ""} ` +
+      `while the PR head is ${resolution.mismatch.prHeadRef} — surrounding code may not match the diff. ` +
+      `Treat anything you read there as possibly stale, and prefer the diff when they disagree. Never modify anything in it.`
+    );
+  }
+  return `A local checkout with the PR's branch is available at ${resolution.path}. Read from it when a must-read hunk's correctness depends on surrounding code the diff does not show. Never modify anything in it.`;
+}
+
 export function analysisPrompt(
   key: PrKey,
   root: string,
-  opts: { incremental: boolean; repoPath?: string },
+  opts: { incremental: boolean; checkout?: CheckoutResolution; headSha?: string },
 ): string {
   const dir = prDir(key, root);
   const skills = skillDir();
@@ -149,9 +171,7 @@ export function analysisPrompt(
     `  diff:  ${path.join(dir, "revisions", String(state.currentRevision), "diff.patch")}`,
     `  files: ${path.join(dir, "revisions", String(state.currentRevision), "files.json")}`,
     `  events (read \`classification-corrected\` entries and honor them as precedent): ${path.join(dir, "events.jsonl")}`,
-    opts.repoPath
-      ? `\nA local checkout of the repository is available at ${opts.repoPath}. Read from it when a must-read hunk's correctness depends on surrounding code the diff does not show. Never modify anything in it.`
-      : "",
+    opts.checkout ? "\n" + checkoutNote(opts.checkout, opts.headSha) : "",
     "",
     "Run the reviewer-state CLI as:",
     `  ${cmd} <subcommand> ...`,
@@ -409,13 +429,21 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
 
   const flags = analysisToolFlags();
   const addDirs = [skillDir(), path.dirname(cliPath())];
-  if (meta?.repoPath) addDirs.push(meta.repoPath);
+  // Resolved per run, not at set time: the worktree holding this PR's branch
+  // may have been created (or removed) since the reader configured the path.
+  const headSha = state.revisions.find((r) => r.revision === revision)?.headSha;
+  const checkout = resolveCheckout(meta?.repoPath, { headRef: meta?.headRef, headSha });
+  if (checkout.path) addDirs.push(checkout.path);
+  if (checkout.error) {
+    console.warn(`[analysis] ${keyToString(key)}: ${checkout.error}; running without a checkout`);
+  }
 
   const run = runClaude({
     label: "analysis",
     prompt: analysisPrompt(key, root, {
       incremental: state.units.length > 0,
-      repoPath: meta?.repoPath,
+      checkout,
+      headSha,
     }),
     cwd: prDir(key, root),
     addDirs,

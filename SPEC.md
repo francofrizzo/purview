@@ -18,7 +18,7 @@ skills/pr-review  # Claude skill (SKILL.md + reference docs). Reads/writes state
 `~/.reviewer/<host>/<owner>/<repo>/<number>/`
 
 ```
-meta.json           # { host, owner, repo, number, url, createdAt, repoPath? }
+meta.json           # { host, owner, repo, number, url, createdAt, headRef?, repoPath? }
 events.jsonl        # append-only event log (source of truth)
 state.json          # derived snapshot, rebuilt from events; safe to delete
 comments.json       # local draft comments (draft -> pushed -> submitted)
@@ -167,9 +167,16 @@ against the current revision into a compact delimited block prepended to the mes
 unresolvable ref fails the send with `unresolvable_ref` and persists nothing. A turn outlives
 its HTTP request: if the client disconnects, the run finishes and still writes `chat.json`.
 
-**Local repo path.** `meta.json.repoPath` (optional, back-compatible) points at a checkout;
-when set, chat runs use it as cwd with the state dir as an extra root, and the analysis prompt
-mentions it for reading surrounding code.
+**Local repo path.** `meta.json.repoPath` (optional, back-compatible) points at any path
+inside a checkout — main or worktree, validated with `git rev-parse --show-toplevel`, so a
+`.git` *file* works — and is stored verbatim. Which checkout it means is resolved **per run**
+(`git worktree list --porcelain`), so worktrees created or removed later are picked up: a
+worktree whose branch is the PR's head ref (`meta.headRef`) wins, else one whose HEAD is the
+current revision's `headSha`, else the stored checkout is used and flagged as
+`checkoutMismatch: {checkedOutBranch, prHeadRef}` — surfaced on the repo-path response and
+`GET /api/prs/:key`, and stated in the prompt ("surrounding code may not match the diff"). A
+deleted or de-gitted path degrades to "no local checkout" with a warning; runs never fail over
+it. When a checkout is used, chat runs take it as cwd with the state dir as an extra root.
 
 ## Server REST — Claude endpoints
 

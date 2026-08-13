@@ -14,7 +14,8 @@ import {
   type PrKey,
 } from "@reviewer/core";
 import { readComments } from "./comments.js";
-import { cliCommand, skillDir } from "./analysis.js";
+import { checkoutNote, cliCommand, skillDir } from "./analysis.js";
+import type { CheckoutResolution } from "./worktree.js";
 import { HttpError } from "./http-error.js";
 
 /**
@@ -203,7 +204,11 @@ export function resolveRefs(key: PrKey, refs: ChatRef[], root = stateRoot()): st
 
 /* ------------------------------------------------------------ chat prompts */
 
-export function chatSystemPrompt(key: PrKey, root = stateRoot()): string {
+export function chatSystemPrompt(
+  key: PrKey,
+  root = stateRoot(),
+  checkout?: { resolution: CheckoutResolution; headSha?: string },
+): string {
   const state = loadState(key, root);
   const meta = readMeta(key, root);
   const dir = prDir(key, root);
@@ -234,6 +239,7 @@ export function chatSystemPrompt(key: PrKey, root = stateRoot()): string {
     `  - parsed hunks: ${path.join(dir, "revisions", String(state.currentRevision), "files.json")}`,
     `  - review rubric: ${path.join(skillDir(), "RUBRIC.md")}`,
     `  - read-only status: \`${cmd} report ${keyToString(key)}\` (add --json for raw state), \`${cmd} list\``,
+    checkout ? `  - ${checkoutNote(checkout.resolution, checkout.headSha)}` : "",
     "",
     "HARD RULES:",
     "- You are READ-ONLY. You have no tools that write anything: no edits, no GitHub calls, no `gh`, no `git`, no reviewer-state sync/set-analysis/set-unit/view. Do not claim to have posted, submitted, applied or saved anything, ever.",

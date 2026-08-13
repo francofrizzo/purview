@@ -1,7 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import { keyToString, updateMeta, type PrKey } from "@reviewer/core";
+import {
+  keyToString,
+  loadState,
+  readMeta,
+  updateMeta,
+  type PrKey,
+} from "@reviewer/core";
 import { HttpError } from "./http-error.js";
+import { originUrl, repoToplevel, resolveCheckout } from "./worktree.js";
 
 /**
  * Pointing a PR at a local checkout is optional and only ever improves
@@ -10,14 +17,16 @@ import { HttpError } from "./http-error.js";
  * remote that doesn't look like this PR's repo is only a warning — worktrees,
  * forks, mirrors and SSH/HTTPS spellings are all legitimate.
  *
- * `.git/config` is parsed rather than shelling out to `git`, which keeps this
- * synchronous, dependency-free and testable without a real repository.
+ * Any path *inside* a checkout is accepted (git resolves it to the top level),
+ * including a worktree, whose `.git` is a file rather than a directory.
+ * The path is stored verbatim: which worktree it means is decided per run.
  */
 
 export interface RepoPathResult {
   ok: true;
   path: string;
   warning?: string;
+  checkoutMismatch?: { checkedOutBranch: string; prHeadRef: string };
 }
 
 /** `git@github.com:acme/widgets.git` / `https://github.com/acme/widgets` -> `acme/widgets` */
@@ -30,40 +39,15 @@ export function ownerRepoFromRemote(url: string): string | undefined {
   return parts.slice(-2).join("/").toLowerCase();
 }
 
-/** Resolves `.git`, following the `gitdir:` pointer a worktree/submodule uses. */
-function gitDir(repoPath: string): string | undefined {
-  const dotGit = path.join(repoPath, ".git");
-  if (!fs.existsSync(dotGit)) return undefined;
-  const stat = fs.statSync(dotGit);
-  if (stat.isDirectory()) return dotGit;
-  const pointer = fs.readFileSync(dotGit, "utf8").match(/^gitdir:\s*(.+)$/m);
-  if (!pointer) return undefined;
-  const target = pointer[1].trim();
-  return path.isAbsolute(target) ? target : path.resolve(repoPath, target);
+/** Head ref + head sha of the PR as currently known locally. */
+export function prHead(key: PrKey, root: string): { headRef?: string; headSha?: string } {
+  const meta = readMeta(key, root);
+  const state = loadState(key, root);
+  const current = state.revisions.find((r) => r.revision === state.currentRevision);
+  return { headRef: meta.headRef, headSha: current?.headSha };
 }
 
-function originUrl(gitDirPath: string): string | undefined {
-  // A worktree's gitdir points at `<main>/.git/worktrees/<name>`, whose config
-  // has no remotes — the real one is two levels up.
-  const candidates = [
-    path.join(gitDirPath, "config"),
-    path.join(gitDirPath, "..", "..", "config"),
-  ];
-  for (const file of candidates) {
-    if (!fs.existsSync(file)) continue;
-    const text = fs.readFileSync(file, "utf8");
-    const section = text.match(/\[remote "origin"\]([\s\S]*?)(?=\n\[|$)/);
-    const url = section?.[1].match(/^\s*url\s*=\s*(.+)$/m);
-    if (url) return url[1].trim();
-  }
-  return undefined;
-}
-
-export function setRepoPath(
-  key: PrKey,
-  input: unknown,
-  root: string,
-): RepoPathResult {
+export function setRepoPath(key: PrKey, input: unknown, root: string): RepoPathResult {
   if (typeof input !== "string" || input.trim() === "") {
     throw new HttpError(400, "invalid_body", "Body must include { path: string }");
   }
@@ -72,23 +56,33 @@ export function setRepoPath(
     throw new HttpError(400, "repo_path_missing", `No such directory: ${repoPath}`);
   }
 
-  const gd = gitDir(repoPath);
+  const top = repoToplevel(repoPath);
   let warning: string | undefined;
-  if (!gd) {
-    warning = `${repoPath} is not a git repository (no .git); it will still be readable, but it may not be the PR's code.`;
+  if (!top) {
+    warning = `${repoPath} is not a git repository; it will still be readable, but it may not be the PR's code.`;
   } else {
-    const remote = originUrl(gd);
+    const remote = originUrl(top);
     const expected = `${key.owner}/${key.repo}`.toLowerCase();
     const actual = remote ? ownerRepoFromRemote(remote) : undefined;
     if (!remote) {
-      warning = `${repoPath} has no \`origin\` remote, so it could not be matched against ${keyToString(key)}.`;
+      warning = `${top} has no \`origin\` remote, so it could not be matched against ${keyToString(key)}.`;
     } else if (actual !== expected) {
       warning =
-        `\`origin\` of ${repoPath} is ${remote} (${actual ?? "unrecognized"}), ` +
+        `\`origin\` of ${top} is ${remote} (${actual ?? "unrecognized"}), ` +
         `which does not match ${expected}. Accepted anyway — check it is the right checkout.`;
     }
   }
 
   updateMeta(key, { repoPath }, root);
-  return { ok: true, path: repoPath, warning };
+
+  // Report which checkout this path resolves to *right now*, so the reader
+  // finds out immediately if no worktree has the PR's branch — even though the
+  // real resolution happens again at run time.
+  const resolution = resolveCheckout(repoPath, prHead(key, root));
+  if (resolution.resolvedWorktree && resolution.path) {
+    warning =
+      (warning ? warning + " " : "") +
+      `Runs will use the worktree at ${resolution.path}, which has the PR's branch checked out.`;
+  }
+  return { ok: true, path: repoPath, warning, checkoutMismatch: resolution.mismatch };
 }
