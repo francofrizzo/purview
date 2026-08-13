@@ -52,6 +52,15 @@ describe("deriveTokens", () => {
     expect(alpha(tokens["add-bg-strong"])).toBeGreaterThan(alpha(tokens["add-bg"]));
   });
 
+  it("gives every theme a search mark whose active state is the stronger one", () => {
+    const alpha = (v: string) => Number(v.slice(v.lastIndexOf(",") + 1, -1));
+    for (const t of THEMES) {
+      const tokens = tokensFor(t);
+      expect(tokens["search-match"], t.id).toMatch(/^rgba\(/);
+      expect(alpha(tokens["search-active"]), t.id).toBeGreaterThan(alpha(tokens["search-match"]));
+    }
+  });
+
   it("does not regress the app's own dark theme", () => {
     const tokens = tokensFor(REVIEWER_DARK);
     expect(tokens.bg).toBe("#0c0d10");

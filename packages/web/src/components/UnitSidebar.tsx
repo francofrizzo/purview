@@ -17,12 +17,15 @@ export function UnitSidebar({
   onSelect,
   onReclassify,
   onQuote,
+  matchCounts,
 }: {
   detail: PrDetail;
   selectedUnitId: string | null;
   onSelect: (unitId: string) => void;
   onReclassify: (unitId: string, patch: Partial<ReviewUnit>) => void;
   onQuote?: (ref: ChatRef) => void;
+  /** search hits per unit; units with none render exactly as they always do */
+  matchCounts?: Map<string, number>;
 }) {
   const [open, setOpen] = useState<Record<Attention, boolean>>({
     "must-read": true,
@@ -99,6 +102,7 @@ export function UnitSidebar({
                     onSelect={() => onSelect(u.id)}
                     onReclassify={(patch) => onReclassify(u.id, patch)}
                     onQuote={onQuote ? () => onQuote({ kind: "unit", id: u.id }) : undefined}
+                    matches={matchCounts?.get(u.id)}
                   />
                 ))}
               </ul>
@@ -118,6 +122,7 @@ function UnitRow({
   onSelect,
   onReclassify,
   onQuote,
+  matches,
 }: {
   detail: PrDetail;
   unit: ReviewUnit;
@@ -126,6 +131,7 @@ function UnitRow({
   onSelect: () => void;
   onReclassify: (patch: Partial<ReviewUnit>) => void;
   onQuote?: () => void;
+  matches?: number;
 }) {
   const [popover, setPopover] = useState(false);
   const p = unitProgress(detail, unit);
@@ -166,6 +172,7 @@ function UnitRow({
           <KindChip kind={unit.kind} />
           <RiskFlags flags={unit.riskFlags} />
           {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}
+          {matches ? <MatchBadge count={matches} /> : null}
           <span className="ml-auto">
             <Progress viewed={p.viewed} total={p.total} />
           </span>
@@ -196,5 +203,19 @@ function UnitRow({
         />
       ) : null}
     </li>
+  );
+}
+
+/** Search-hit count for a sidebar row. Only rendered when there are hits. */
+export function MatchBadge({ count }: { count: number }) {
+  return (
+    <span
+      className="chip flex-none tabular-nums"
+      data-testid="match-badge"
+      title={`${count} search ${count === 1 ? "match" : "matches"}`}
+      style={{ background: "var(--search-match)", color: "var(--fg)" }}
+    >
+      {count}
+    </span>
   );
 }

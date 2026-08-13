@@ -185,6 +185,20 @@ export const IconArrowDown = (p: P) => (
   </svg>
 );
 
+export const IconSearch = (p: P) => (
+  <svg {...base} {...p}>
+    <circle cx="7" cy="7" r="4.2" />
+    <path d="m10.2 10.2 3.3 3.3" />
+  </svg>
+);
+
+/** Bare chevron, pointing up or down — used by the search bar's prev/next. */
+export const IconCaret = ({ up, ...p }: P & { up?: boolean }) => (
+  <svg {...base} {...p}>
+    <path d={up ? "M4 10 8 6l4 4" : "M4 6l4 4 4-4"} />
+  </svg>
+);
+
 export const RISK_META: Record<
   RiskFlag,
   { icon: (p: P) => JSX.Element; label: string }

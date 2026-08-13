@@ -8,53 +8,102 @@ function inRange(pos: number, ranges: CharRange[] | undefined): boolean {
   return false;
 }
 
+/** Search hits on one rendered row, and which of them is the current one. */
+export interface LineMarks {
+  ranges: CharRange[];
+  active?: CharRange;
+}
+
+const INTRA = 1;
+const MATCH = 2;
+const ACTIVE = 4;
+
 interface Seg {
   text: string;
   color?: string;
-  hi?: boolean;
+  /** bitmask of the overlays covering this run */
+  mask: number;
 }
 
-/** Split shiki tokens further at word-diff boundaries so both survive. */
-function segments(content: string, toks: Tok[] | undefined, intra?: CharRange[]): Seg[] {
+/**
+ * Split shiki tokens further at word-diff and search-match boundaries, so all
+ * three layers survive: color comes from the token, background from whichever
+ * overlay wins (active match > other match > word diff).
+ */
+function segments(
+  content: string,
+  toks: Tok[] | undefined,
+  intra?: CharRange[],
+  marks?: LineMarks,
+): Seg[] {
   const source: Tok[] = toks && toks.length ? toks : [{ content }];
-  if (!intra || intra.length === 0) {
-    return source.map((t) => ({ text: t.content, color: t.color }));
+  const hasIntra = Boolean(intra && intra.length);
+  const hasMarks = Boolean(marks && marks.ranges.length);
+  if (!hasIntra && !hasMarks) {
+    return source.map((t) => ({ text: t.content, color: t.color, mask: 0 }));
   }
+
+  const maskAt = (pos: number) =>
+    (hasIntra && inRange(pos, intra) ? INTRA : 0) |
+    (hasMarks && inRange(pos, marks!.ranges) ? MATCH : 0) |
+    (marks?.active && pos >= marks.active.start && pos < marks.active.end ? ACTIVE : 0);
 
   const out: Seg[] = [];
   let pos = 0;
   for (const t of source) {
     let buf = "";
-    let bufHi = inRange(pos, intra);
+    let bufMask = maskAt(pos);
     for (const ch of t.content) {
-      const hi = inRange(pos, intra);
-      if (hi !== bufHi && buf) {
-        out.push({ text: buf, color: t.color, hi: bufHi });
+      const mask = maskAt(pos);
+      if (mask !== bufMask && buf) {
+        out.push({ text: buf, color: t.color, mask: bufMask });
         buf = "";
       }
-      bufHi = hi;
+      bufMask = mask;
       buf += ch;
       pos += ch.length;
     }
-    if (buf) out.push({ text: buf, color: t.color, hi: bufHi });
+    if (buf) out.push({ text: buf, color: t.color, mask: bufMask });
   }
   return out;
 }
 
-function renderContent(content: string, toks: Tok[] | undefined, intra?: CharRange[]): ReactNode {
-  const segs = segments(content, toks, intra);
+/** Backgrounds stack, so only the winning overlay paints. */
+function overlayBg(mask: number): string | undefined {
+  if (mask & ACTIVE) return "var(--search-active)";
+  if (mask & MATCH) return "var(--search-match)";
+  if (mask & INTRA) return "var(--intra-bg)";
+  return undefined;
+}
+
+function overlayClass(mask: number): string | undefined {
+  if (mask & ACTIVE) return "search-mark search-mark-active";
+  if (mask & MATCH) return "search-mark";
+  if (mask & INTRA) return "intra";
+  return undefined;
+}
+
+function renderContent(
+  content: string,
+  toks: Tok[] | undefined,
+  intra?: CharRange[],
+  marks?: LineMarks,
+): ReactNode {
+  const segs = segments(content, toks, intra, marks);
   const out: ReactNode[] = [];
   let indentDone = false;
   segs.forEach((s, i) => {
     let text = s.text;
+    const bg = overlayBg(s.mask);
+    const cls = overlayClass(s.mask);
     if (!indentDone) {
       const m = /^[ \t]+/.exec(text);
       if (m) {
         out.push(
           <span
             key={`i${i}`}
-            className={s.hi ? "diff-indent intra" : "diff-indent"}
-            style={s.hi ? { background: "var(--intra-bg)" } : undefined}
+            className={cls ? `diff-indent ${cls}` : "diff-indent"}
+            style={bg ? { background: bg } : undefined}
           >
             {m[0]}
           </span>,
@@ -67,10 +116,10 @@ function renderContent(content: string, toks: Tok[] | undefined, intra?: CharRan
     out.push(
       <span
         key={i}
-        className={s.hi ? "intra" : undefined}
+        className={cls}
         style={{
           ...(s.color ? { color: s.color } : {}),
-          ...(s.hi ? { background: "var(--intra-bg)" } : {}),
+          ...(bg ? { background: bg } : {}),
         }}
       >
         {text}
@@ -172,6 +221,8 @@ export interface DiffLineProps extends GutterSelectProps {
   tokens?: Tok[];
   onComment?: () => void;
   hasComment?: boolean;
+  /** search hits on this row, if a search is running */
+  marks?: LineMarks;
 }
 
 export const DiffLine = memo(function DiffLine({
@@ -179,6 +230,7 @@ export const DiffLine = memo(function DiffLine({
   tokens,
   onComment,
   hasComment,
+  marks,
   onSelectDown,
   onSelectEnter,
   selectedOld,
@@ -223,7 +275,7 @@ export const DiffLine = memo(function DiffLine({
         </span>
       </span>
       <span className="diff-code min-w-0 flex-1 pr-4">
-        {renderContent(row.content, tokens, row.intra)}
+        {renderContent(row.content, tokens, row.intra, marks)}
       </span>
     </div>
   );
@@ -236,6 +288,7 @@ export interface SplitHalfProps {
   tokens?: Tok[];
   onComment?: () => void;
   hasComment?: boolean;
+  marks?: LineMarks;
   selected?: boolean;
   onSelectDown?: GutterSelectProps["onSelectDown"];
   onSelectEnter?: GutterSelectProps["onSelectEnter"];
@@ -248,6 +301,7 @@ function SplitHalf({
   tokens,
   onComment,
   hasComment,
+  marks,
   selected,
   onSelectDown,
   onSelectEnter,
@@ -292,7 +346,7 @@ function SplitHalf({
         </span>
       </span>
       <span className="diff-code min-w-0 flex-1 pr-3">
-        {renderContent(row.content, tokens, row.intra)}
+        {renderContent(row.content, tokens, row.intra, marks)}
       </span>
     </div>
   );
@@ -307,6 +361,8 @@ export interface SplitDiffLineProps {
   onCommentRight?: () => void;
   hasCommentLeft?: boolean;
   hasCommentRight?: boolean;
+  marksLeft?: LineMarks;
+  marksRight?: LineMarks;
   selectedLeft?: boolean;
   selectedRight?: boolean;
   onSelectDown?: GutterSelectProps["onSelectDown"];
@@ -322,6 +378,8 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   onCommentRight,
   hasCommentLeft,
   hasCommentRight,
+  marksLeft,
+  marksRight,
   selectedLeft,
   selectedRight,
   onSelectDown,
@@ -335,6 +393,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         tokens={leftTokens}
         onComment={onCommentLeft}
         hasComment={hasCommentLeft}
+        marks={marksLeft}
         selected={selectedLeft}
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}
@@ -346,6 +405,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         tokens={rightTokens}
         onComment={onCommentRight}
         hasComment={hasCommentRight}
+        marks={marksRight}
         selected={selectedRight}
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}

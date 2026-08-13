@@ -2,13 +2,14 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { lineRangeRef } from "../lib/chatRefs";
-import { buildRows, buildSplitRows, hunkLabel } from "../lib/diffModel";
+import { buildRows, buildSplitRows, hunkLabel, type CharRange } from "../lib/diffModel";
+import { lineKey, type SearchMatch } from "../lib/diffSearch";
 import { useTokensForHunks } from "../lib/useHunkTokens";
 import { useSettings, type DiffViewMode } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 import { ChangedBadge } from "./Chips";
 import { QuoteButton } from "./ChatPanel";
-import { DiffLine, SplitDiffLine, type LineSide } from "./DiffLine";
+import { DiffLine, SplitDiffLine, type LineMarks, type LineSide } from "./DiffLine";
 import { DiffOfDiffs } from "./DiffOfDiffs";
 import { MiddleTruncate } from "./Truncate";
 import { IconCheck, IconComment, IconQuote, IconSplit, IconUnified, IconWrap } from "./icons";
@@ -57,6 +58,10 @@ export interface DiffPaneProps {
   emptyMessage?: string;
   /** Quote affordances — omitted, the diff has no chat integration at all. */
   onQuote?: (ref: ChatRef) => void;
+  /** Search hits for every row of the whole diff, keyed `hunkId:lineIdx`. */
+  searchMarks?: Map<string, CharRange[]>;
+  /** The match being visited: highlighted strongly, scrolled to, flashed. */
+  activeMatch?: SearchMatch | null;
 }
 
 /** A range being selected in one file, on one side of the diff. */
@@ -98,6 +103,8 @@ export function DiffPane({
   showFileRows = true,
   emptyMessage = "Nothing to show.",
   onQuote,
+  searchMarks,
+  activeMatch,
 }: DiffPaneProps) {
   const { appearance } = useSettings();
   const theme = shikiThemeFor(appearance.theme);
@@ -241,11 +248,19 @@ export function DiffPane({
     [hunkRowIndex, virtualizer],
   );
 
-  // Reset scroll when the shown set changes wholesale.
+  // Reset scroll when the shown set changes wholesale — unless the set changed
+  // *because* a search match in it is being visited, in which case jumping to
+  // the top would only be undone (noisily) a frame later.
   const setSignature = entries.map((e) => e.hunk.id).join(",");
+  const activeMatchRef = useRef(activeMatch);
+  activeMatchRef.current = activeMatch;
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0 });
+    const target = activeMatchRef.current;
+    if (!(target && entries.some((e) => e.hunk.id === target.hunkId))) {
+      scrollRef.current?.scrollTo({ top: 0 });
+    }
     setExpandedDod(new Set());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSignature]);
 
   // Row heights change wholesale on a mode switch, so pixel scroll position is
@@ -380,6 +395,76 @@ export function DiffPane({
     [onFocusHunk, scrollToHunk],
   );
 
+  /* ------------------------------------------------------ search navigation */
+
+  const [flashKey, setFlashKey] = useState<string | null>(null);
+
+  /** Virtual-row index of a hunk's unified line, in whichever mode is showing. */
+  const findRowIndex = useCallback(
+    (hunkId: string, lineIdx: number) => {
+      if (mode === "split") {
+        const entry = entries.find((e) => e.hunk.id === hunkId);
+        if (!entry) return -1;
+        const pairs = buildSplitRows(entry.hunk, detail.diff);
+        const pairIdx = pairs.findIndex(
+          (p) => p.left?.index === lineIdx || p.right?.index === lineIdx,
+        );
+        if (pairIdx === -1) return -1;
+        return rows.findIndex(
+          (r) => r.type === "split" && r.hunkId === hunkId && r.rowIdx === pairIdx,
+        );
+      }
+      return rows.findIndex(
+        (r) => r.type === "line" && r.hunkId === hunkId && r.lineIdx === lineIdx,
+      );
+    },
+    [entries, detail.diff, mode, rows],
+  );
+
+  // Visiting a match: the host has already switched to the unit or file that
+  // contains it, so by the time `rows` holds that hunk this runs again and
+  // scrolls. A match outside the shown set simply finds nothing and waits.
+  const matchKey = activeMatch
+    ? `${activeMatch.hunkId}:${activeMatch.lineIdx}:${activeMatch.start}`
+    : null;
+  useEffect(() => {
+    if (!activeMatch) {
+      setFlashKey(null);
+      return;
+    }
+    const idx = findRowIndex(activeMatch.hunkId, activeMatch.lineIdx);
+    if (idx === -1) return;
+    onFocusHunk(activeMatch.hunkId);
+    setFlashKey(rows[idx].key);
+    // A frame late: the shown set may have just been replaced, and the
+    // virtualizer has yet to measure the rows it mounted for it.
+    const frame = requestAnimationFrame(() =>
+      virtualizer.scrollToIndex(idx, { align: "center" }),
+    );
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchKey, findRowIndex, rows, virtualizer, onFocusHunk]);
+
+  useEffect(() => {
+    if (!flashKey) return;
+    const t = setTimeout(() => setFlashKey(null), 1100);
+    return () => clearTimeout(t);
+  }, [flashKey]);
+
+  /** Search hits on one rendered row, plus the active one if it lives here. */
+  const marksFor = useCallback(
+    (hunkId: string, lineIdx: number): LineMarks | undefined => {
+      const ranges = searchMarks?.get(lineKey(hunkId, lineIdx));
+      if (!ranges) return undefined;
+      const active =
+        activeMatch && activeMatch.hunkId === hunkId && activeMatch.lineIdx === lineIdx
+          ? { start: activeMatch.start, end: activeMatch.end }
+          : undefined;
+      return { ranges, active };
+    },
+    [searchMarks, activeMatch],
+  );
+
   // --- keyboard: j/k next/prev hunk, v toggle viewed, space next unviewed ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -507,6 +592,7 @@ export function DiffPane({
             <div
               key={vi.key}
               data-index={vi.index}
+              data-flash={vi.key === flashKey ? "true" : undefined}
               ref={virtualizer.measureElement}
               style={{
                 position: "absolute",
@@ -657,6 +743,8 @@ export function DiffPane({
           right={right?.row ?? null}
           leftTokens={left ? hunkTokens?.[left.index] : undefined}
           rightTokens={right ? hunkTokens?.[right.index] : undefined}
+          marksLeft={left ? marksFor(row.hunkId, left.index) : undefined}
+          marksRight={right ? marksFor(row.hunkId, right.index) : undefined}
           hasCommentLeft={leftNo !== undefined && draftsByLine.has(`${path}:${leftNo}:LEFT`)}
           hasCommentRight={rightNo !== undefined && draftsByLine.has(`${path}:${rightNo}:RIGHT`)}
           onCommentLeft={
@@ -690,6 +778,7 @@ export function DiffPane({
       <DiffLine
         row={line}
         tokens={tokens[row.hunkId]?.[row.lineIdx]}
+        marks={marksFor(row.hunkId, row.lineIdx)}
         hasComment={hasComment}
         onComment={
           lineNo === undefined

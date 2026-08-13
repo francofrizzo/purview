@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import type { ChatRef, MigrationReport, ReviewEvent, SubmitReviewResult, SyncResult } from "../api/types";
 import { isJobLive } from "../api/types";
@@ -38,7 +38,10 @@ import { FileTree } from "../components/FileTree";
 import { MigrationReportPanel, SummaryPanel, SyncResultPanel } from "../components/Panels";
 import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
+import { DiffSearchBar } from "../components/DiffSearchBar";
 import { hunkIndex, unitProgress } from "../lib/diffModel";
+import { unitForHunk } from "../lib/diffSearch";
+import { useDiffSearch } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
 import { useDiffViewPrefs } from "../lib/settings";
@@ -94,25 +97,52 @@ export function PrView() {
     if (chat.open) setReviewOpen(false);
   }, [chat.open]);
 
-  // `c` toggles the chat, matching the single-letter shortcuts of the diff pane.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "c") {
-        e.preventDefault();
-        chat.toggleChat();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [chat]);
-
   const units = useMemo(
     () => (detail ? [...detail.state.units].sort((a, b) => a.order - b.order) : []),
     [detail],
   );
+
+  const search = useDiffSearch(detail, units);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const openSearch = useCallback(() => {
+    search.openSearch();
+    // Opening while already open means "start over": select what is there.
+    requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    });
+  }, [search]);
+
+  // `c` toggles the chat, `/` opens the find bar — both single-letter, both
+  // suppressed while typing. Cmd/Ctrl+F is taken over from the browser on
+  // purpose: rows are virtualized, so native find can only see what is mounted.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = Boolean(
+        t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable),
+      );
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        openSearch();
+        return;
+      }
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "c") {
+        e.preventDefault();
+        chat.toggleChat();
+      } else if (e.key === "/") {
+        e.preventDefault();
+        openSearch();
+      } else if (e.key === "Escape" && search.open) {
+        e.preventDefault();
+        search.close();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [chat, openSearch, search.open, search.close]);
 
   useEffect(() => {
     if (!detail) return;
@@ -144,6 +174,33 @@ export function PrView() {
       cur && entries.some((e) => e.hunk.id === cur) ? cur : (entries[0]?.hunk.id ?? null),
     );
   }, [entries]);
+
+  // Visiting a search match may mean leaving the unit or file on screen. Only
+  // a *change* of match moves the reader, so browsing the sidebar afterwards is
+  // not undone by this effect re-running.
+  const visited = useRef<string | null>(null);
+  useEffect(() => {
+    const m = search.current;
+    if (!m) {
+      visited.current = null;
+      return;
+    }
+    const key = `${search.index}:${m.hunkId}:${m.lineIdx}:${m.start}`;
+    if (key === visited.current) return;
+    visited.current = key;
+    if (tab === "units") {
+      const unit = unitForHunk(units, m.hunkId);
+      if (unit) {
+        if (unit.id !== selectedUnitId) setSelectedUnitId(unit.id);
+        return;
+      }
+      // A hunk no unit claims is only reachable through the files tab.
+      setTab("files");
+      setSelectedPath(m.path);
+      return;
+    }
+    if (m.path !== selectedPath) setSelectedPath(m.path);
+  }, [search.current, search.index, tab, units, selectedUnitId, selectedPath]);
 
   if (isLoading) {
     return <Centered>Loading {prKey}…</Centered>;
@@ -251,6 +308,7 @@ export function PrView() {
                 onSelect={setSelectedUnitId}
                 onReclassify={(unitId, patch) => patchUnit.mutate({ unitId, patch })}
                 onQuote={quote}
+                matchCounts={search.unitCounts}
               />
             ) : (
               <FileTree
@@ -258,6 +316,7 @@ export function PrView() {
                 selectedPath={selectedPath}
                 onSelect={setSelectedPath}
                 onQuote={quote}
+                matchCounts={search.fileCounts}
               />
             )}
           </div>
@@ -270,7 +329,7 @@ export function PrView() {
             </div>
             <div>
               <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
-              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat
+              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>/</kbd> search
             </div>
           </div>
         </nav>
@@ -338,6 +397,8 @@ export function PrView() {
             </div>
           ) : null}
 
+          {search.open ? <DiffSearchBar search={search} inputRef={searchInputRef} /> : null}
+
           <div className="min-h-0 flex-1">
             <DiffPane
               detail={detail}
@@ -353,6 +414,8 @@ export function PrView() {
               onToggleWrap={toggleWrap}
               onNarrowChange={setNarrow}
               onQuote={quote}
+              searchMarks={search.marksByLine}
+              activeMatch={search.current}
               showFileRows={tab === "units"}
               emptyMessage={
                 tab === "units"

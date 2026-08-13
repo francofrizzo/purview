@@ -3,6 +3,7 @@ import type { ChatRef, PrDetail } from "../api/types";
 import { QuoteButton } from "./ChatPanel";
 import { IconChevron, IconFile } from "./icons";
 import { MiddleTruncate } from "./Truncate";
+import { MatchBadge } from "./UnitSidebar";
 
 interface TreeNode {
   name: string;
@@ -45,11 +46,14 @@ export function FileTree({
   selectedPath,
   onSelect,
   onQuote,
+  matchCounts,
 }: {
   detail: PrDetail;
   selectedPath: string | null;
   onSelect: (path: string) => void;
   onQuote?: (ref: ChatRef) => void;
+  /** search hits per file path; files with none render unchanged */
+  matchCounts?: Map<string, number>;
 }) {
   const tree = useMemo(
     () =>
@@ -107,6 +111,9 @@ export function FileTree({
           >
             <IconFile width={10} height={10} style={{ opacity: 0.6, flex: "none" }} />
             <MiddleTruncate text={kid.name} tail={13} title={kid.file.path} />
+            {matchCounts?.get(kid.file.path) ? (
+              <MatchBadge count={matchCounts.get(kid.file.path)!} />
+            ) : null}
             <span className="ml-auto flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
               {rollup ? `${rollup.viewedHunks}/${rollup.totalHunks}` : kid.file.hunkCount}
             </span>

@@ -211,6 +211,32 @@
     border-radius: 2px;
   }
 
+  /* --- search marks ---
+     Backgrounds only, so shiki's token colors and the word-diff split both
+     survive underneath; the active hit adds a ring so it still reads as the
+     current one on a row that is already tinted green or red. */
+  .search-mark {
+    border-radius: 2px;
+  }
+  .search-mark-active {
+    box-shadow: 0 0 0 1px var(--search-active);
+    border-radius: 2px;
+  }
+  /* Brief pulse on the row a match was just scrolled to — the row itself may be
+     far down a long unit, and the mark alone is easy to miss. */
+  [data-flash="true"] {
+    animation: search-flash 1s ease-out;
+  }
+  @keyframes search-flash {
+    0%,
+    30% {
+      background: var(--search-active);
+    }
+    100% {
+      background: transparent;
+    }
+  }
+
   /* --- side-by-side --- */
   .diff-split {
     @apply font-mono;

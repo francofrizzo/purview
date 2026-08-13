@@ -46,6 +46,8 @@ export const TOKEN_NAMES = [
   "del-bg",
   "del-bg-strong",
   "del-gutter",
+  "search-match",
+  "search-active",
   "risk",
   "risk-soft",
   "warn",
@@ -141,6 +143,11 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     3.4,
   );
 
+  // Search marks are tints laid over rows that may already carry an add/del
+  // tint, so they borrow the one hue the diff never uses. A yellow that barely
+  // parts from a light background would read as nothing; orange stands in.
+  const searchTint = !dark && contrast(palette.yellow, base) < 2.0 ? palette.orange : palette.yellow;
+
   const kind = (c: string) => text(c, 3.2);
   const neutral = fade(0.42, 2.8);
 
@@ -165,6 +172,9 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "del-bg": rgba(palette.red, tint),
     "del-bg-strong": rgba(palette.red, tintStrong),
     "del-gutter": rgba(palette.red, tintGutter),
+
+    "search-match": rgba(searchTint, dark ? 0.24 : 0.28),
+    "search-active": rgba(palette.orange, dark ? 0.55 : 0.48),
 
     risk,
     "risk-soft": rgba(risk, softAlpha),
@@ -381,6 +391,8 @@ const REVIEWER_DARK: ThemeDef = {
     "del-bg": "rgba(248, 81, 73, 0.1)",
     "del-bg-strong": "rgba(248, 81, 73, 0.26)",
     "del-gutter": "rgba(248, 81, 73, 0.16)",
+    "search-match": "rgba(227, 179, 65, 0.22)",
+    "search-active": "rgba(255, 166, 87, 0.55)",
     risk: "#f0787a",
     "risk-soft": "rgba(240, 120, 122, 0.13)",
     warn: "#e3b341",
@@ -435,6 +447,8 @@ const REVIEWER_LIGHT: ThemeDef = {
     "del-bg": "rgba(203, 36, 49, 0.08)",
     "del-bg-strong": "rgba(203, 36, 49, 0.2)",
     "del-gutter": "rgba(203, 36, 49, 0.12)",
+    "search-match": "rgba(226, 168, 22, 0.3)",
+    "search-active": "rgba(247, 148, 30, 0.6)",
     risk: "#c0403f",
     "risk-soft": "rgba(192, 64, 63, 0.1)",
     warn: "#a06a08",
