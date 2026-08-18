@@ -50,6 +50,7 @@ import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
 import { DiffSearchBar } from "../components/DiffSearchBar";
 import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
+import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
 import { useDiffSearch } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
@@ -287,6 +288,15 @@ export function PrView() {
   const showAnalysisBanner = units.length === 0 || analysisPending;
   const quote = (ref: ChatRef) => chat.attachRef(ref);
 
+  // Everything the agent-facing markdown needs: the diff to slice snippets
+  // out of, and the PR identity for the bundle heading.
+  const exportCtx = { files: detail.files, diff: detail.diff };
+  const bundle = {
+    ctx: exportCtx,
+    repoLabel: repoLabel(detail.meta),
+    revision: detail.state.revision,
+  };
+
   const jumpToFile = (file: string) => {
     setTab("files");
     setSelectedPath(file);
@@ -514,6 +524,7 @@ export function PrView() {
             <CommentComposer
               target={commentTarget}
               pending={addComment.isPending}
+              exportCtx={exportCtx}
               onCancel={() => setCommentTarget(null)}
               onSubmit={(body) =>
                 addComment.mutate(
@@ -529,6 +540,7 @@ export function PrView() {
           <DraftsDrawer
             drafts={drafts}
             deleting={deleteComment.isPending}
+            bundle={bundle}
             onClose={() => setDraftsOpen(false)}
             onJump={(d) => jumpToFile(d.file)}
             onDelete={(d) => deleteComment.mutate(d.id)}
@@ -556,6 +568,7 @@ export function PrView() {
             onDiscardPending={() => discardPending.mutate()}
             onJumpToComment={(file) => jumpToFile(file)}
             onEditComment={(input) => editComment.mutateAsync(input)}
+            bundle={bundle}
           />
         ) : null}
       </div>

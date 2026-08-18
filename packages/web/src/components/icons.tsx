@@ -153,6 +153,14 @@ export const IconQuote = (p: P) => (
   </svg>
 );
 
+/** Two stacked sheets — copy to clipboard. */
+export const IconCopy = (p: P) => (
+  <svg {...base} {...p}>
+    <rect x="5.5" y="5.5" width="8" height="8" rx="1.2" />
+    <path d="M10.5 3.2A1.2 1.2 0 0 0 9.3 2.5H3.7a1.2 1.2 0 0 0-1.2 1.2v5.6c0 .5.3.9.7 1.1" />
+  </svg>
+);
+
 /** Three dots — overflow menu. */
 export const IconMore = (p: P) => (
   <svg {...base} {...p} strokeWidth={0} fill="currentColor">

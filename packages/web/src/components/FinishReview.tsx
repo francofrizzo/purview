@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ReviewEvent, ReviewStatus, SubmitReviewResult } from "../api/types";
+import type { BundleSource } from "./CopyForAgent";
+import { CopyBundleControls } from "./CopyForAgent";
 import { CommentBody, type EditComment } from "./Drafts";
 
 const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }[] = [
@@ -46,6 +48,7 @@ export function FinishReviewPanel({
   onDiscardPending,
   onJumpToComment,
   onEditComment,
+  bundle,
 }: {
   review?: ReviewStatus;
   loading: boolean;
@@ -60,6 +63,8 @@ export function FinishReviewPanel({
   onDiscardPending: () => void;
   onJumpToComment: (file: string, line: number) => void;
   onEditComment?: EditComment;
+  /** diff + PR identity for the agent-facing copy; omit to hide the action */
+  bundle?: Omit<BundleSource, "comments" | "reviewBody">;
 }) {
   const [body, setBody] = useState("");
   const [arming, setArming] = useState<ReviewEvent | null>(null);
@@ -182,7 +187,13 @@ export function FinishReviewPanel({
               </p>
             </div>
 
-            <IncludedComments review={review} onJump={onJumpToComment} onEdit={onEditComment} />
+            <IncludedComments
+              review={review}
+              onJump={onJumpToComment}
+              onEdit={onEditComment}
+              bundle={bundle}
+              reviewBody={body}
+            />
 
             <div className="px-3 py-3">
               {arming ? (
@@ -346,10 +357,15 @@ function IncludedComments({
   review,
   onJump,
   onEdit,
+  bundle,
+  reviewBody,
 }: {
   review: ReviewStatus;
   onJump: (file: string, line: number) => void;
   onEdit?: EditComment;
+  bundle?: Omit<BundleSource, "comments" | "reviewBody">;
+  /** the live textarea contents, so the copy matches what is on screen */
+  reviewBody?: string;
 }) {
   return (
     <div className="border-b" style={{ borderColor: "var(--border)" }}>
@@ -361,6 +377,13 @@ function IncludedComments({
           </span>
         ) : null}
       </div>
+      {bundle ? (
+        <CopyBundleControls
+          testId="copy-bundle-review"
+          className="px-3 pt-1.5"
+          source={{ ...bundle, comments: review.included, reviewBody }}
+        />
+      ) : null}
       {review.included.length === 0 ? (
         <p className="px-3 py-2 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
           No comments — the review will carry only the body above.

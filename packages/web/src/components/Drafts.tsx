@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { errorText, isConfirmRequired } from "../api/errors";
 import type { ChatRef, CommentStatus, DraftComment, EditCommentResult } from "../api/types";
+import { formatComment, type DiffContext } from "../lib/agentExport";
 import { QuoteButton } from "./ChatPanel";
+import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
 import { StatusChip } from "./FinishReview";
 
 export interface CommentTarget {
@@ -13,11 +15,14 @@ export interface CommentTarget {
 export function CommentComposer({
   target,
   pending,
+  exportCtx,
   onCancel,
   onSubmit,
 }: {
   target: CommentTarget;
   pending: boolean;
+  /** enables "copy for agent" straight from the composer, before saving */
+  exportCtx?: DiffContext;
   onCancel: () => void;
   onSubmit: (body: string) => void;
 }) {
@@ -53,9 +58,18 @@ export function CommentComposer({
         onChange={(e) => setBody(e.target.value)}
       />
       <div className="mt-1.5 flex items-center gap-2">
-        <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
+        <span className="min-w-0 flex-1 truncate text-2xs" style={{ color: "var(--fg-faint)" }}>
           Saved locally; pushed as a pending review on sync.
         </span>
+        {exportCtx ? (
+          <CopyForAgentButton
+            testId="copy-composer"
+            label="copy for agent"
+            title="Copy this comment, with the code it points at, as markdown"
+            disabled={!body.trim()}
+            text={() => formatComment({ ...target, body: body.trim() }, exportCtx)}
+          />
+        ) : null}
         <button
           type="button"
           className="btn btn-primary ml-auto"
@@ -270,6 +284,7 @@ export function CommentBody({
 export function DraftsDrawer({
   drafts,
   deleting,
+  bundle,
   onClose,
   onJump,
   onDelete,
@@ -278,6 +293,8 @@ export function DraftsDrawer({
 }: {
   drafts: DraftComment[];
   deleting?: boolean;
+  /** diff + PR identity the agent-facing markdown needs; omit to hide copying */
+  bundle?: Omit<BundleSource, "comments">;
   onClose: () => void;
   onJump: (draft: DraftComment) => void;
   onDelete?: (draft: DraftComment) => void;
@@ -294,17 +311,23 @@ export function DraftsDrawer({
       className="flex w-80 flex-none flex-col border-l"
       style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
     >
-      <div
-        className="flex flex-none items-center gap-2 border-b px-3 py-2"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <span className="text-xs font-semibold">Comments</span>
-        <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-          {local.length} draft · {pushed.length} pushed · {submitted.length} submitted
-        </span>
-        <button type="button" className="ml-auto text-xs" onClick={onClose} style={{ color: "var(--fg-faint)" }}>
-          ✕
-        </button>
+      <div className="flex-none border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold">Comments</span>
+          <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
+            {local.length} draft · {pushed.length} pushed · {submitted.length} submitted
+          </span>
+          <button type="button" className="ml-auto text-xs" onClick={onClose} style={{ color: "var(--fg-faint)" }}>
+            ✕
+          </button>
+        </div>
+        {bundle ? (
+          <CopyBundleControls
+            testId="copy-bundle-drawer"
+            className="mt-1.5"
+            source={{ ...bundle, comments: drafts }}
+          />
+        ) : null}
       </div>
       <div className="flex-1 overflow-auto">
         {drafts.length === 0 ? (
@@ -340,6 +363,14 @@ export function DraftsDrawer({
                           side: d.side === "LEFT" ? "old" : "new",
                         })
                       }
+                    />
+                  ) : null}
+                  {bundle ? (
+                    <CopyForAgentButton
+                      iconOnly
+                      testId={`copy-comment-${d.id}`}
+                      title="Copy this comment, with its code, for an agent"
+                      text={() => formatComment(d, bundle.ctx)}
                     />
                   ) : null}
                 {onDelete && d.status !== "submitted" ? (
