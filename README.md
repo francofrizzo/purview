@@ -41,6 +41,13 @@ separately: `pnpm dev` in one shell and `pnpm --filter @reviewer/web dev` in ano
 <http://localhost:5179> (Vite proxies `/api` to port 4779). `pnpm --filter @reviewer/web dev:mock`
 runs the UI against fixture data with no server at all.
 
+Reviewer is installable as a PWA: with the app open in Chrome, click the install icon in the
+address bar (or Menu → Install Reviewer...). It's served over `http://localhost`, which browsers
+treat as a secure context, so the service worker registers without HTTPS. Offline support is
+shell-only — the static app (JS/CSS/icons) is precached and loads without a network, but all
+`/api/*` calls (PR data, chat, SSE) still require the local server to be running; the service
+worker never caches or intercepts them.
+
 ## The skill
 
 `skills/pr-review` turns a PR into the analysis the UI renders. Point Claude at a PR
