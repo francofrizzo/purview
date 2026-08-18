@@ -1,8 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import type { ChatRef, MigrationReport, ReviewEvent, SubmitReviewResult, SyncResult } from "../api/types";
+import { useQueryClient } from "@tanstack/react-query";
+import type {
+  ChatRef,
+  MigrationReport,
+  PrDetail,
+  ReviewEvent,
+  SubmitReviewResult,
+  SyncResult,
+} from "../api/types";
 import { isJobLive } from "../api/types";
 import {
+  qk,
   useAddComment,
   useAnalysisEvents,
   useAnalysisJob,
@@ -40,7 +49,7 @@ import { SummaryStrip } from "../components/SummaryStrip";
 import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
 import { DiffSearchBar } from "../components/DiffSearchBar";
-import { hunkIndex, unitProgress } from "../lib/diffModel";
+import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { unitForHunk } from "../lib/diffSearch";
 import { useDiffSearch } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
@@ -53,6 +62,7 @@ export function PrView() {
 
   const { data: detail, isLoading, error } = usePr(prKey);
   const { data: drafts = [] } = useComments(prKey);
+  const qc = useQueryClient();
 
   const setHunkViewed = useSetHunkViewed(prKey);
   const setUnitViewed = useSetUnitViewed(prKey);
@@ -101,6 +111,42 @@ export function PrView() {
   const units = useMemo(
     () => (detail ? [...detail.state.units].sort((a, b) => a.order - b.order) : []),
     [detail],
+  );
+
+  // Whether every unit in the PR is fully viewed — drives the quiet "all units
+  // viewed" indicator next to the units-tab "mark unit viewed" button.
+  const allUnitsViewed = useMemo(() => {
+    if (!detail || units.length === 0) return false;
+    return units.every((u) => {
+      const p = unitProgress(detail, u);
+      return p.total === 0 || p.viewed === p.total;
+    });
+  }, [detail, units]);
+
+  // After marking a unit viewed (units tab only), advance to the next unit
+  // that still has unviewed hunks, in the sidebar's reading order
+  // (must-read → skim → skip, each by `order`), wrapping around the top.
+  // Reads the query cache directly rather than the render's `detail` closure
+  // so it sees the optimistic update the mutation just applied.
+  const advanceAfterUnitViewed = useCallback(
+    (viewedUnitId: string) => {
+      const latest = qc.getQueryData<PrDetail>(qk.pr(prKey));
+      if (!latest) return;
+      const ordered = sortUnitsForDisplay(latest.state.units);
+      const idx = ordered.findIndex((u) => u.id === viewedUnitId);
+      if (idx === -1 || ordered.length === 0) return;
+      for (let i = 1; i <= ordered.length; i++) {
+        const candidate = ordered[(idx + i) % ordered.length];
+        const p = unitProgress(latest, candidate);
+        if (p.total > 0 && p.viewed < p.total) {
+          setSelectedUnitId(candidate.id);
+          return;
+        }
+      }
+      // No unviewed unit remains anywhere — stay put; `allUnitsViewed` picks
+      // this up reactively and shows the quiet indicator.
+    },
+    [qc, prKey],
   );
 
   // Whole-PR reading progress, shown quietly on the summary strip.
@@ -385,10 +431,23 @@ export function PrView() {
                     type="button"
                     className="btn"
                     disabled={setUnitViewed.isPending || (progress?.viewed ?? 0) === (progress?.total ?? 0)}
-                    onClick={() => setUnitViewed.mutate(selectedUnit.id)}
+                    onClick={() =>
+                      setUnitViewed.mutate(selectedUnit.id, {
+                        onSuccess: () => advanceAfterUnitViewed(selectedUnit.id),
+                      })
+                    }
                   >
                     mark unit viewed
                   </button>
+                  {allUnitsViewed ? (
+                    <span
+                      className="text-2xs"
+                      data-testid="all-units-viewed"
+                      style={{ color: "var(--fg-faint)" }}
+                    >
+                      all units viewed
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
