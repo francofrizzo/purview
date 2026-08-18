@@ -137,20 +137,3 @@ export function SyncResultPanel({
     </DismissiblePanel>
   );
 }
-
-export function SummaryPanel({ summary }: { summary?: string }) {
-  return (
-    <div
-      className="flex-none border-b px-4 py-3"
-      style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
-    >
-      <div className="mb-1 text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
-        analysis summary
-      </div>
-      <p className="max-w-4xl text-[13px] leading-[20px]" style={{ color: "var(--fg-muted)" }}>
-        {summary?.trim() ||
-          "No summary recorded yet. Run the pr-review skill to analyze this pull request."}
-      </p>
-    </div>
-  );
-}

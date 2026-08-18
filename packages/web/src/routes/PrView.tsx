@@ -35,7 +35,8 @@ import {
 import { CommentComposer, DraftsDrawer, type CommentTarget } from "../components/Drafts";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
-import { MigrationReportPanel, SummaryPanel, SyncResultPanel } from "../components/Panels";
+import { MigrationReportPanel, SyncResultPanel } from "../components/Panels";
+import { SummaryStrip } from "../components/SummaryStrip";
 import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
 import { DiffSearchBar } from "../components/DiffSearchBar";
@@ -77,7 +78,7 @@ export function PrView() {
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
-  const [summaryOpen, setSummaryOpen] = useState(true);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(null);
@@ -102,6 +103,19 @@ export function PrView() {
     [detail],
   );
 
+  // Whole-PR reading progress, shown quietly on the summary strip.
+  const overall = useMemo(() => {
+    let viewed = 0;
+    let total = 0;
+    for (const file of detail?.files.files ?? []) {
+      for (const hunk of file.hunks) {
+        total++;
+        if (detail?.state.hunks[hunk.id]?.viewed) viewed++;
+      }
+    }
+    return { viewed, total };
+  }, [detail]);
+
   const search = useDiffSearch(detail, units);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -114,8 +128,8 @@ export function PrView() {
     });
   }, [search]);
 
-  // `c` toggles the chat, `/` opens the find bar — both single-letter, both
-  // suppressed while typing. Cmd/Ctrl+F is taken over from the browser on
+  // `c` toggles the chat, `s` the summary overlay, `/` opens the find bar — all
+  // single-letter, all suppressed while typing. Cmd/Ctrl+F is taken over from the browser on
   // purpose: rows are virtualized, so native find can only see what is mounted.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -132,6 +146,9 @@ export function PrView() {
       if (e.key === "c") {
         e.preventDefault();
         chat.toggleChat();
+      } else if (e.key === "s") {
+        e.preventDefault();
+        setSummaryOpen((v) => !v);
       } else if (e.key === "/") {
         e.preventDefault();
         openSearch();
@@ -213,6 +230,7 @@ export function PrView() {
     );
   }
 
+  const summary = detail.state.summary?.trim() ?? "";
   const progress = selectedUnit ? unitProgress(detail, selectedUnit) : null;
   const unsubmittedDrafts = drafts.filter((d) => d.status !== "submitted");
 
@@ -236,12 +254,10 @@ export function PrView() {
         pendingReview={review.data?.pending.exists}
         refreshing={refresh.isPending}
         syncing={sync.isPending}
-        summaryOpen={summaryOpen}
         chatOpen={chat.open}
         analysisJob={job}
         analysisStarting={startAnalysis.isPending}
         analysisCancelling={cancelAnalysis.isPending}
-        onToggleSummary={() => setSummaryOpen((v) => !v)}
         onToggleDrafts={() => setDraftsOpen((v) => !v)}
         onToggleChat={chat.toggleChat}
         onAnalyze={() => startAnalysis.mutate()}
@@ -277,7 +293,17 @@ export function PrView() {
           onCancel={() => cancelAnalysis.mutate()}
         />
       ) : null}
-      {summaryOpen && units.length ? <SummaryPanel summary={detail.state.summary} /> : null}
+      {summary ? (
+        <SummaryStrip
+          summary={summary}
+          revision={detail.state.revision}
+          viewed={overall.viewed}
+          total={overall.total}
+          open={summaryOpen}
+          onToggle={() => setSummaryOpen((v) => !v)}
+          onClose={() => setSummaryOpen(false)}
+        />
+      ) : null}
 
       <div className="flex min-h-0 flex-1">
         <nav
@@ -329,7 +355,7 @@ export function PrView() {
             </div>
             <div>
               <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
-              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>/</kbd> search
+              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>s</kbd> summary · <kbd>/</kbd> search
             </div>
           </div>
         </nav>

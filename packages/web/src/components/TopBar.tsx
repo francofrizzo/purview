@@ -12,12 +12,10 @@ export function TopBar({
   pendingReview,
   refreshing,
   syncing,
-  summaryOpen,
   chatOpen,
   analysisJob,
   analysisStarting,
   analysisCancelling,
-  onToggleSummary,
   onRefresh,
   onSync,
   onToggleDrafts,
@@ -32,12 +30,10 @@ export function TopBar({
   pendingReview?: boolean;
   refreshing: boolean;
   syncing: boolean;
-  summaryOpen: boolean;
   chatOpen: boolean;
   analysisJob?: AnalysisJob | null;
   analysisStarting: boolean;
   analysisCancelling: boolean;
-  onToggleSummary: () => void;
   onRefresh: () => void;
   onSync: () => void;
   onToggleDrafts: () => void;
@@ -75,9 +71,6 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex flex-none items-center gap-1.5">
-        <button type="button" className="btn" onClick={onToggleSummary}>
-          {summaryOpen ? "hide summary" : "summary"}
-        </button>
         <ChatButton open={chatOpen} onClick={onToggleChat} />
         <button type="button" className="btn" onClick={onToggleDrafts}>
           <IconComment width={11} height={11} />
