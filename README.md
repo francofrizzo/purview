@@ -1,4 +1,4 @@
-# Reviewer
+# Purview
 
 A local-first pull request review assistant. It splits a PR diff into **review units** —
 logical changes, each classified by kind and by how much attention it deserves — and gives

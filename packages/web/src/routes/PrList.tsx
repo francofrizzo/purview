@@ -28,7 +28,7 @@ export function PrList() {
     <div className="mx-auto flex h-full max-w-3xl flex-col px-6 py-10">
       <header className="mb-6 flex items-start">
         <div className="min-w-0 flex-1">
-        <h1 className="text-lg font-semibold tracking-tight">Reviewer</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Purview</h1>
         <p className="mt-0.5 text-xs" style={{ color: "var(--fg-muted)" }}>
           Local-first pull request review.{" "}
           {MOCK ? (

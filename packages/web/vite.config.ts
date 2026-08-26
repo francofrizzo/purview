@@ -21,8 +21,8 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//],
       },
       manifest: {
-        name: "Reviewer",
-        short_name: "Reviewer",
+        name: "Purview",
+        short_name: "Purview",
         description: "A local-first PR review assistant.",
         start_url: "/",
         display: "standalone",
