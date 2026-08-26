@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { PrKey } from "./paths.js";
+import type { PrState, ReviewDecision } from "./schemas.js";
 
 /**
  * Every `gh` invocation in the project funnels through here so the server
@@ -46,7 +47,12 @@ export interface PullRequestInfo {
   number: number;
   title: string;
   url: string;
+  /** raw REST state: "open" | "closed" */
   state: string;
+  draft: boolean;
+  merged: boolean;
+  /** the four-value state the UI shows */
+  prState: PrState;
   baseRef: string;
   headRef: string;
   baseSha: string;
@@ -59,8 +65,27 @@ interface RawPull {
   title: string;
   html_url: string;
   state: string;
+  draft?: boolean;
+  merged?: boolean;
+  merged_at?: string | null;
   base: { ref: string; sha: string };
   head: { ref: string; sha: string };
+}
+
+/**
+ * GitHub reports three orthogonal things (state, merged, draft); the UI wants
+ * one. Merged wins over closed (every merged PR is also closed), and draft is
+ * only meaningful while the PR is open.
+ */
+export function collapsePrState(raw: {
+  state?: string;
+  draft?: boolean;
+  merged?: boolean;
+  merged_at?: string | null;
+}): PrState {
+  if (raw.merged || raw.merged_at) return "merged";
+  if ((raw.state ?? "open").toLowerCase() === "closed") return "closed";
+  return raw.draft ? "draft" : "open";
 }
 
 /** `gh api repos/{owner}/{repo}/pulls/{number}` */
@@ -74,6 +99,9 @@ export function fetchPullRequest(key: PrKey): PullRequestInfo {
     title: raw.title,
     url: raw.html_url,
     state: raw.state,
+    draft: !!raw.draft,
+    merged: !!(raw.merged || raw.merged_at),
+    prState: collapsePrState(raw),
     baseRef: raw.base.ref,
     headRef: raw.head.ref,
     baseSha: raw.base.sha,
@@ -190,4 +218,88 @@ export function setFileViewedOnGithub(
     "-F",
     `path=${file}`,
   ]);
+}
+
+/* -------------------------------------------------------- review decision */
+
+const REVIEW_DECISION_QUERY = `query($owner:String!,$repo:String!,$number:Int!){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$number){ reviewDecision }
+  }
+}`;
+
+/**
+ * GitHub's aggregate review decision. Verified against the API: the REST pull
+ * payload has no `review_decision` field at all, so this needs GraphQL. It is
+ * one extra cheap query on init/refresh, and it is best-effort — a GHE that
+ * does not know the field, or any transport failure, yields `null` rather than
+ * failing the refresh that carries it.
+ */
+export function fetchReviewDecision(key: PrKey): ReviewDecision | null {
+  try {
+    const res = JSON.parse(
+      gh([
+        "api",
+        "graphql",
+        ...hostArgs(key.host),
+        "-f",
+        `query=${REVIEW_DECISION_QUERY}`,
+        "-F",
+        `owner=${key.owner}`,
+        "-F",
+        `repo=${key.repo}`,
+        "-F",
+        `number=${key.number}`,
+      ]),
+    ) as {
+      data?: { repository?: { pullRequest?: { reviewDecision?: string | null } } };
+    };
+    const raw = res.data?.repository?.pullRequest?.reviewDecision;
+    if (typeof raw !== "string" || raw === "") return null;
+    const normalized = raw.toLowerCase();
+    return normalized === "approved" ||
+      normalized === "changes_requested" ||
+      normalized === "review_required"
+      ? (normalized as ReviewDecision)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/* -------------------------------------------------- committed repo files */
+
+interface RawContents {
+  content?: string;
+  encoding?: string;
+  type?: string;
+}
+
+/**
+ * Read one file out of the target repo at a given ref, through
+ * `gh api repos/{o}/{r}/contents/<path>?ref=<sha>`. Returns `null` when the
+ * file does not exist (a 404 is the normal answer for a repo with no
+ * `.purview/` directory) or when anything else goes wrong — the caller treats
+ * "no committed config" and "could not read it" the same way.
+ */
+export function fetchRepoFile(
+  key: PrKey,
+  filePath: string,
+  ref?: string,
+): string | null {
+  const suffix = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+  try {
+    const raw = JSON.parse(
+      gh([
+        "api",
+        ...hostArgs(key.host),
+        `repos/${key.owner}/${key.repo}/contents/${filePath}${suffix}`,
+      ]),
+    ) as RawContents;
+    if (!raw || raw.type === "dir" || typeof raw.content !== "string") return null;
+    if (raw.encoding && raw.encoding !== "base64") return raw.content;
+    return Buffer.from(raw.content, "base64").toString("utf8");
+  } catch {
+    return null;
+  }
 }

@@ -37,7 +37,7 @@ Open <http://localhost:4779> and paste a PR URL to start tracking it.
 
 ## First run
 
-The first time the server starts in a terminal with no `~/.reviewer/config.json`, it runs a
+The first time the server starts in a terminal with no `~/.purview/config.json`, it runs a
 short onboarding before it listens:
 
 ```
@@ -50,7 +50,7 @@ short onboarding before it listens:
   ✓ Node.js >= 20 — v24.16.0
   ✓ gh installed + authenticated — logged in as octocat
   ✓ claude CLI available — 2.1.243 (Claude Code)
-  ✓ state directory writable — /Users/you/.reviewer
+  ✓ state directory writable — /Users/you/.purview
 ```
 
 Each check that fails prints a one-line fix (an install URL, `gh auth login`). A missing or
@@ -69,7 +69,7 @@ not a TTY (a service manager, a script, CI), where the defaults apply. `node
 packages/server/dist/index.js --onboard` re-runs it at any time. Colors follow `NO_COLOR`
 and are dropped off a TTY.
 
-`~/.reviewer/config.json` is the whole of it:
+`~/.purview/config.json` is the whole of it:
 
 ```jsonc
 {
@@ -126,9 +126,10 @@ Runs are one-at-a-time, their status lives in `analysis-job.json`
 (`queued`/`running`/`done`/`failed`/`cancelled`), and the UI follows them live over
 `GET /api/prs/:key/events`. You can trigger one by hand (`POST …/analyze`), cancel it
 (`DELETE …/analyze`), or opt a single init/refresh out with `?analyze=false`. Set
-The automatic triggers follow `autoAnalyze` in `~/.reviewer/config.json` (answered during
-onboarding, default on when there is no config). `REVIEWER_AUTO_ANALYZE=0` overrides whatever
-is stored and disables them for that run.
+The automatic triggers follow the layered `autoAnalyze` setting (repo, then the repo's
+committed config, then `~/.purview/config.json`, answered during onboarding and default on) —
+see [Per-repo configuration](#per-repo-configuration). `PURVIEW_AUTO_ANALYZE=0` overrides every
+layer and disables them for that run, and an archived PR never triggers one.
 
 **Review chat.** One resumable Claude session per PR, stored in `chat.json`. You can attach
 typed references to a question — a unit, a hunk, a file, a line range, one of your draft
@@ -158,14 +159,85 @@ the response and `GET /api/prs/:key` carry `checkoutMismatch: {checkedOutBranch,
 and Claude is told the surrounding code may not match the diff. A checkout that has been
 deleted or is no longer a git repo just means "no local checkout" — it never fails a run.
 
-## State directory
+## Per-repo configuration
 
-`~/.reviewer/<host>/<owner>/<repo>/<number>/` (override the root with `REVIEWER_STATE_DIR`).
-`~/.reviewer/config.json` sits beside the per-PR trees and holds the settings above; the rest
-is per PR:
+Settings live in four layers, most specific first:
+
+| Layer | Where | Sets |
+| --- | --- | --- |
+| PR | `meta.json` | `repoPath` only — the per-PR checkout override |
+| Repo (local) | `~/.purview/<host>/<owner>/<repo>/repo.json` | `autoAnalyze`, `repoPath` |
+| Team (committed) | `.purview/config.json` in the reviewed repo | `autoAnalyze` |
+| Global | `~/.purview/config.json` | `autoAnalyze`, `devOrigins` |
+
+Anything left `null` inherits from the layer below, down to the built-in defaults
+(`autoAnalyze: true`, no checkout). `PURVIEW_AUTO_ANALYZE=0` still beats every layer, and an
+archived PR never starts an analysis run on its own.
+
+The committed layer is the one your team shares. Put it in the repo you review:
 
 ```
-meta.json           # { host, owner, repo, number, url, title, createdAt, headRef?, repoPath? }
+.purview/config.json    { "autoAnalyze": false }     # unknown keys are ignored
+.purview/RUBRIC.md      # rubric refinements for this codebase
+```
+
+It is read from your local checkout when one is configured, and otherwise fetched with
+`gh api repos/{owner}/{repo}/contents/.purview/...` at the PR's head sha. Either way the
+result is cached per revision (`revisions/<n>/team-config.json`), so it costs one read per
+revision and is picked up again whenever you refresh.
+
+**Rubrics stack.** Analysis and chat runs get the built-in skill rubric first, then the
+committed `.purview/RUBRIC.md` ("refines the above"), then your own `RUBRIC.local.md`
+("highest precedence"), clearly delimited and in that order. Write house rules in the local
+overlay without touching the repo, or ship them to the team by committing them.
+
+```
+GET  /api/repos                 # every tracked repo: PR counts, which layers are set
+GET  /api/repos/:rkey/config    # local + committed + effective, with the source of each
+PUT  /api/repos/:rkey/config    # {autoAnalyze?, repoPath?, rubric?}; null re-inherits,
+                                # rubric: "" deletes RUBRIC.local.md
+```
+
+`:rkey` is `host/owner/repo`, URL-encoded. `POST /api/prs/:key/repo-path` is unchanged and
+still writes the **PR-level** checkout override; the repo-level default is written here.
+
+## PR status and archiving
+
+`GET /api/prs` carries each PR's `state` (`open`/`draft`/`merged`/`closed`), `reviewDecision`
+(`approved`/`changes_requested`/`review_required`/`null`), `addedAt`, `archived` and `title`.
+Both GitHub-side values are captured when you add a PR and on every refresh — there is no
+background polling, so a refresh is what moves them. The review decision comes from a small
+GraphQL query (REST has no such field); if it fails, it degrades to `null` instead of failing
+the refresh.
+
+`POST /api/prs/:key/archive {archived: boolean}` shelves a PR: it keeps every byte of its
+state and stays fully readable, it just leaves the active list and can no longer trigger an
+automatic analysis run.
+
+## State directory
+
+`~/.purview/<host>/<owner>/<repo>/<number>/` (override the root with `PURVIEW_STATE_DIR`;
+`REVIEWER_STATE_DIR` still works). `~/.purview/config.json` sits beside the per-repo trees and
+holds the settings above.
+
+The state directory used to be `~/.reviewer`. On startup — server or CLI — it is moved to
+`~/.purview` if the old one exists and the new one does not, taking `config.json` with it and
+logging one line. If both exist, `~/.purview` is used and the leftover is reported; nothing is
+merged behind your back.
+
+Per repo, beside the numbered PR directories (PR dirs are always digits, so they can never
+collide with these):
+
+```
+repo.json           # { autoAnalyze: boolean|null, repoPath: string|null }   null = inherit
+RUBRIC.local.md     # your own rubric overlay for this repo, optional
+```
+
+The rest is per PR:
+
+```
+meta.json           # { host, owner, repo, number, url, title, createdAt, headRef?, repoPath?,
+                    #   prState?, reviewDecision?, archived }
 events.jsonl        # append-only event log — the source of truth
 state.json          # derived snapshot, refolded from events; safe to delete
 comments.json       # local comments (draft -> pushed -> submitted)
@@ -176,6 +248,7 @@ revisions/<n>/      # one per observed (baseSha, headSha, mergeBase), 1-based
   diff.patch        # the diff exactly as GitHub served it (v3.diff)
   files.json        # parsed: files -> hunks with ids, added/removed lines, body text
   migration.json    # how the previous revision's hunks map onto this one (from r2 on)
+  team-config.json  # cached read of the repo's committed .purview/ config at this head sha
 ```
 
 Only `events.jsonl` is authoritative. `state.json` is a fold of it and is rebuilt on demand,

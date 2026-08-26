@@ -4,7 +4,7 @@ import { z } from "zod";
 import { configPath, stateRoot } from "@reviewer/core";
 
 /**
- * `~/.reviewer/config.json` — the one piece of global (not per-PR) state.
+ * `~/.purview/config.json` — the one piece of global (not per-PR) state.
  *
  * It is written by the first-run onboarding (see onboarding.ts) and read at
  * boot. Everything in it has a safe default, so a missing or corrupt file is
@@ -75,14 +75,23 @@ export function writeConfig(patch: Partial<ReviewerConfig>, root = stateRoot()):
 }
 
 /**
- * Effective auto-analysis setting. `REVIEWER_AUTO_ANALYZE=0` is an escape hatch
- * that wins over whatever consent is stored, so a user who wants a
- * guaranteed-no-spend run gets one without editing the config.
+ * The env kill switch for automatic analysis. `PURVIEW_AUTO_ANALYZE=0` (or the
+ * legacy `REVIEWER_AUTO_ANALYZE=0`) wins over every configuration layer, so a
+ * user who wants a guaranteed-no-spend run gets one without editing any file.
+ */
+export function autoAnalyzeEnvAllows(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.PURVIEW_AUTO_ANALYZE !== "0" && env.REVIEWER_AUTO_ANALYZE !== "0";
+}
+
+/**
+ * Effective auto-analysis setting for the *global* layer alone. The per-repo
+ * layering lives in repo-config.ts; this remains the answer for callers that
+ * only have the global config in hand.
  */
 export function resolveAutoAnalyze(
   config: Pick<ReviewerConfig, "autoAnalyze">,
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  if (env.REVIEWER_AUTO_ANALYZE === "0") return false;
+  if (!autoAnalyzeEnvAllows(env)) return false;
   return config.autoAnalyze;
 }

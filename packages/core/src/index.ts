@@ -2,6 +2,7 @@ export * from "./schemas.js";
 export * from "./hunk-id.js";
 export * from "./parse-diff.js";
 export * from "./paths.js";
+export * from "./state-dir.js";
 export * from "./reducer.js";
 export * from "./store.js";
 export * from "./migration.js";

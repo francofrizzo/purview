@@ -368,6 +368,13 @@ describe("resolveAutoAnalyze", () => {
     expect(resolveAutoAnalyze({ autoAnalyze: true }, { REVIEWER_AUTO_ANALYZE: "0" })).toBe(false);
   });
 
+  it("accepts PURVIEW_AUTO_ANALYZE=0 as well as the legacy name", () => {
+    expect(resolveAutoAnalyze({ autoAnalyze: true }, { PURVIEW_AUTO_ANALYZE: "0" })).toBe(false);
+    expect(
+      resolveAutoAnalyze({ autoAnalyze: true }, { PURVIEW_AUTO_ANALYZE: "1" }),
+    ).toBe(true);
+  });
+
   it("ignores other values of REVIEWER_AUTO_ANALYZE", () => {
     expect(resolveAutoAnalyze({ autoAnalyze: true }, { REVIEWER_AUTO_ANALYZE: "1" })).toBe(true);
   });

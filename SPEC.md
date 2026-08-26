@@ -15,7 +15,7 @@ skills/pr-review  # Claude skill (SKILL.md + reference docs). Reads/writes state
 
 ## State directory
 
-`~/.reviewer/config.json` — global settings, written by the first-run onboarding (see "First-run onboarding"):
+`~/.purview/config.json` — global settings, written by the first-run onboarding (see "First-run onboarding"):
 
 ```jsonc
 {
@@ -24,12 +24,31 @@ skills/pr-review  # Claude skill (SKILL.md + reference docs). Reads/writes state
   "devOrigins": ["http://localhost:5179", "http://localhost:5173"]  // extra allowed request origins
 }
 ```
-Every field defaults; a missing or invalid file yields the defaults and is never fatal. `REVIEWER_AUTO_ANALYZE=0` overrides `autoAnalyze` for one run.
+Every field defaults; a missing or invalid file yields the defaults and is never fatal. `PURVIEW_AUTO_ANALYZE=0` (legacy: `REVIEWER_AUTO_ANALYZE=0`) overrides `autoAnalyze` for one run.
 
-`~/.reviewer/<host>/<owner>/<repo>/<number>/`
+The root is `~/.purview`, overridable with `PURVIEW_STATE_DIR` (legacy alias: `REVIEWER_STATE_DIR`).
+It was `~/.reviewer` before the rename: on server and CLI startup, if `~/.reviewer` exists and
+`~/.purview` does not, the directory is moved (one log line). If both exist, `~/.purview` wins
+and the leftover is reported as a warning — nothing is merged automatically. The move carries
+the legacy `config.json` with it. A configured root (env var) is never migrated into.
+
+`~/.purview/<host>/<owner>/<repo>/` — per-repo, beside the numbered PR dirs:
 
 ```
-meta.json           # { host, owner, repo, number, url, createdAt, headRef?, repoPath? }
+repo.json           # { autoAnalyze: boolean|null, repoPath: string|null }  (null = inherit)
+RUBRIC.local.md     # free-form markdown overlay, may be absent
+<number>/           # one directory per PR (always digits, so it can never collide
+                    # with a repo-level file name)
+```
+
+`repo.json` is created empty (all nulls) with the first PR of a repo, and is parsed
+tolerantly: a corrupt file or a field of the wrong type falls back to `null`.
+
+`~/.purview/<host>/<owner>/<repo>/<number>/`
+
+```
+meta.json           # { host, owner, repo, number, url, createdAt, title?, headRef?, repoPath?,
+                    #   prState?, reviewDecision?, archived }
 events.jsonl        # append-only event log (source of truth)
 state.json          # derived snapshot, rebuilt from events; safe to delete
 comments.json       # local draft comments (draft -> pushed -> submitted)
@@ -39,7 +58,37 @@ chat.json           # review-chat session id + transcript summary
 revisions/<n>/      # one per observed (baseSha, headSha, mergeBase)
   diff.patch        # the diff exactly as GitHub served it (v3.diff)
   files.json        # parsed: files -> hunks with ids
+  team-config.json  # cached read of the repo's committed .purview/ config at this head sha
 ```
+
+## Configuration layering
+
+Four places can configure a review, highest precedence first:
+
+1. **PR meta** — `meta.json.repoPath` only (the per-PR checkout override);
+2. **repo local** — `~/.purview/<host>/<owner>/<repo>/repo.json`;
+3. **committed team config** — `.purview/config.json` in the *target* repo
+   (`{autoAnalyze?: boolean}`, unknown keys ignored);
+4. **global** — `~/.purview/config.json`;
+5. **built-in defaults** — `autoAnalyze: true`, no repo path.
+
+`null`/absent means "inherit", which is why `repo.json`'s fields are nullable rather than
+optional-with-a-default. One resolver (`packages/server/src/repo-config.ts`,
+`effectiveConfig`) implements this and is used by the auto-analysis triggers, the checkout
+resolution for Claude runs, and the config endpoints. It never makes a network call: the
+committed layer is read from the per-revision cache. `PURVIEW_AUTO_ANALYZE=0` still overrides
+every layer, and an **archived** PR never auto-analyzes at all.
+
+The committed config is read from the resolved local checkout when there is one (free, and
+already the right revision), otherwise via `gh api repos/{o}/{r}/contents/.purview/...` at the
+PR's head sha, and is cached in the revision dir as `team-config.json` — one fetch per
+revision, refreshed when a refresh creates a new revision.
+
+**Rubric layering.** The rubric handed to analysis and chat runs is a stack, delimited and
+ordered in the prompt: (1) the built-in skill `RUBRIC.md`, referenced by path; (2) the
+committed `.purview/RUBRIC.md` ("team rubric — refines the above"), inlined; (3)
+`RUBRIC.local.md` ("local overlay — highest precedence"), inlined. Later layers win where they
+disagree. With no overlays the block is empty and the prompt is unchanged.
 
 ## Hunk identity
 
@@ -108,13 +157,15 @@ interface HunkState {
 ## Server REST (localhost:4779)
 
 ```
-GET  /api/prs                          # list state dirs
+GET  /api/prs                          # list state dirs; items carry state/reviewDecision/
+                                       # addedAt/archived/title alongside meta
 POST /api/prs        {url}             # init: fetch PR meta + diff via gh, create state
 POST /api/prs/:key/refresh             # fetch latest, run migration
 GET  /api/prs/:key                     # state.json + current revision files.json + diff text
 POST /api/prs/:key/hunks/:id/viewed    {viewed: bool}
 POST /api/prs/:key/units/:id/viewed
 POST /api/prs/:key/units/:id           # patch unit (reclassify -> also logs classification-corrected)
+POST /api/prs/:key/archive {archived}  # shelve/unshelve a PR -> {ok, archived}
 POST /api/prs/:key/sync                # push viewed files + un-pushed draft comments to GitHub
 GET/POST /api/prs/:key/comments        # local drafts
 PATCH /api/prs/:key/comments/:id  {body, confirm?}  # edit body: draft = local only; pushed/submitted = local + best-effort GraphQL remote update (submitted requires confirm: true)
@@ -124,6 +175,21 @@ POST /api/prs/:key/review   {body}     # save the review body locally
 POST /api/prs/:key/review/submit       # {event, body?, confirm: true} -> submit on GitHub
 DELETE /api/prs/:key/review/pending    # discard the remote pending review, reset comments to draft
 ```
+```
+GET  /api/repos                        # {repos: [{host, owner, repo, prCount, archivedCount,
+                                       #  hasLocalConfig, hasCommittedConfig, repoPath}]}
+GET  /api/repos/:rkey/config           # {local:{autoAnalyze, repoPath, rubric},
+                                       #  committed:{present, config, rubric},
+                                       #  effective:{autoAnalyze, repoPath}, sources}
+PUT  /api/repos/:rkey/config           # {autoAnalyze?, repoPath?, rubric?} -> same shape
+```
+`:rkey` = `host/owner/repo` URL-encoded. `local.rubric` is `RUBRIC.local.md` ("" when absent);
+PUT with `rubric: ""` deletes the file, and `null` on a config field restores inheritance.
+`GET /api/repos` is network-free, so `hasCommittedConfig` reflects the latest *cached* team
+config. Note the split: `POST /api/prs/:key/repo-path` keeps writing the **PR-level**
+override (unchanged, for compatibility), while `PUT /api/repos/:rkey/config` writes the
+**repo-level** default.
+
 `:key` = `host/owner/repo/number` URL-encoded. Server executes `gh` (assume authenticated); errors surface as JSON.
 
 Review errors carry a specific `error` code rather than a generic gh failure:
@@ -143,7 +209,7 @@ The API is unauthenticated, so access control is entirely "who may talk to it". 
 
 ## First-run onboarding
 
-`packages/server/src/onboarding.ts`. Runs before `serve()` when `~/.reviewer/config.json` is absent **and** stdout is a TTY; `--onboard` forces a re-run. Non-TTY or config present -> skipped silently, defaults apply.
+`packages/server/src/onboarding.ts`. Runs before `serve()` when `~/.purview/config.json` is absent **and** stdout is a TTY; `--onboard` forces a re-run. Non-TTY or config present -> skipped silently, defaults apply.
 
 Order: banner (3-line box, accent color) -> environment checks printed one line at a time (Node >= 20; `gh --version` + `gh auth status` with the detected login; `claude --version`; state dir writable), each failure carrying a one-line fix hint -> `gh` failing is a hard stop offering `Continue anyway? [y/N]`, `claude` failing is a warning only -> a plain statement that analysis and chat runs cost against the user's own Claude account, then `Run an analysis automatically when you add a PR? [Y/n]` -> writes config.json -> summary box (state dir, port, URL, claude readiness).
 
@@ -195,6 +261,12 @@ may carry typed refs — `unit`/`hunk`/`file`/`line-range`/`comment` — which t
 against the current revision into a compact delimited block prepended to the message. An
 unresolvable ref fails the send with `unresolvable_ref` and persists nothing. A turn outlives
 its HTTP request: if the client disconnects, the run finishes and still writes `chat.json`.
+
+**PR state.** `prState` (`open`/`draft`/`merged`/`closed`, collapsed from GitHub's
+`state` + `merged` + `draft`) and `reviewDecision` (`approved`/`changes_requested`/
+`review_required`/`null`) are captured into `meta.json` on init and on every refresh — there
+is no background polling. REST does not expose a review decision, so it comes from one extra
+cheap GraphQL query whose failure degrades to `null` rather than failing the refresh.
 
 **Local repo path.** `meta.json.repoPath` (optional, back-compatible) points at any path
 inside a checkout — main or worktree, validated with `git rev-parse --show-toplevel`, so a

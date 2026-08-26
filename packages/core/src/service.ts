@@ -3,14 +3,16 @@ import {
   fetchPullDiff,
   fetchPullRequest,
   fetchRemoteViewedState,
+  fetchReviewDecision,
   setFileViewedOnGithub,
 } from "./github.js";
 import { migrate, toRevisionFiles } from "./migration.js";
 import { parseDiff } from "./parse-diff.js";
-import { stateRoot, type PrKey } from "./paths.js";
+import { repoKeyOf, stateRoot, type PrKey } from "./paths.js";
 import {
   appendEvent,
   appendEvents,
+  ensureRepoConfig,
   loadState,
   prExists,
   readFilesJson,
@@ -22,6 +24,7 @@ import {
 } from "./store.js";
 import type {
   Analysis,
+  Meta,
   MigrationReport,
   NewEvent,
   ReviewUnitPatch,
@@ -46,6 +49,10 @@ export function initPr(key: PrKey, root = stateRoot()): InitResult {
   const pr = fetchPullRequest(key);
   const now = new Date().toISOString();
 
+  // The repo's own config file is created with the first PR of that repo, so
+  // it is discoverable (and editable) from the moment the repo is tracked.
+  ensureRepoConfig(repoKeyOf(key), root);
+
   if (created) {
     writeMeta(
       key,
@@ -57,6 +64,9 @@ export function initPr(key: PrKey, root = stateRoot()): InitResult {
         url: pr.url,
         title: pr.title,
         headRef: pr.headRef,
+        prState: pr.prState,
+        reviewDecision: fetchReviewDecision(key),
+        archived: false,
         createdAt: now,
       },
       root,
@@ -97,7 +107,17 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   const pr = fetchPullRequest(key);
   // The head branch can be renamed (or was never recorded, on older state), and
   // worktree resolution keys off it, so keep it current on every refresh.
-  if (meta.headRef !== pr.headRef) updateMeta(key, { headRef: pr.headRef }, root);
+  // GitHub's PR state and review decision ride along on the same refresh:
+  // there is no background polling, so a refresh is the only moment they can
+  // move. Both are additive, and a failed decision query degrades to null.
+  const reviewDecision = fetchReviewDecision(key);
+  const metaPatch: Partial<Meta> = {};
+  if (meta.headRef !== pr.headRef) metaPatch.headRef = pr.headRef;
+  if (meta.prState !== pr.prState) metaPatch.prState = pr.prState;
+  if ((meta.reviewDecision ?? null) !== reviewDecision) {
+    metaPatch.reviewDecision = reviewDecision;
+  }
+  if (Object.keys(metaPatch).length > 0) updateMeta(key, metaPatch, root);
   const mergeBase = fetchMergeBase(key, pr.baseSha, pr.headSha);
   const state = loadState(key, root);
   const current = state.revisions.find(

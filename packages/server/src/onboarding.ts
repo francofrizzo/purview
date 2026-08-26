@@ -9,7 +9,7 @@ import { DEFAULT_CONFIG, configExists, writeConfig, type ReviewerConfig } from "
  * First-run onboarding for the terminal.
  *
  * Runs once, before the server starts listening, when there is no
- * `~/.reviewer/config.json` and stdout is a TTY. It exists to do three things a
+ * `~/.purview/config.json` and stdout is a TTY. It exists to do three things a
  * silent boot cannot: tell the user what has to be installed for the app to
  * work, get explicit consent for spending on their own Claude account, and show
  * them where to go next.
@@ -397,7 +397,7 @@ export async function runOnboarding(deps: OnboardingDeps): Promise<OnboardingRes
       "  there are no API keys here, and usage counts against your plan.\n\n" +
       p.dim("  You can change this later in ") +
       p.dim(configPath(root)) +
-      p.dim(",\n  or override it for one run with REVIEWER_AUTO_ANALYZE=0.\n\n"),
+      p.dim(",\n  per repo in the repo settings, or for one run with PURVIEW_AUTO_ANALYZE=0.\n\n"),
   );
 
   const answer = await io.question("  Run an analysis automatically when you add a PR? [Y/n] ");

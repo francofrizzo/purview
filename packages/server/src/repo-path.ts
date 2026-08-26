@@ -47,7 +47,12 @@ export function prHead(key: PrKey, root: string): { headRef?: string; headSha?: 
   return { headRef: meta.headRef, headSha: current?.headSha };
 }
 
-export function setRepoPath(key: PrKey, input: unknown, root: string): RepoPathResult {
+/**
+ * Normalize and validate a checkout path from a request body. Shared by the
+ * per-PR endpoint and the repo-level config endpoint so both accept exactly
+ * the same spellings (`~`, relative paths) and reject the same way.
+ */
+export function resolveRepoPathInput(input: unknown): string {
   if (typeof input !== "string" || input.trim() === "") {
     throw new HttpError(400, "invalid_body", "Body must include { path: string }");
   }
@@ -55,6 +60,16 @@ export function setRepoPath(key: PrKey, input: unknown, root: string): RepoPathR
   if (!fs.existsSync(repoPath) || !fs.statSync(repoPath).isDirectory()) {
     throw new HttpError(400, "repo_path_missing", `No such directory: ${repoPath}`);
   }
+  return repoPath;
+}
+
+/**
+ * Writes the PR-level override (`meta.json.repoPath`), which stays the most
+ * specific layer. The repo-level default is written by
+ * `PUT /api/repos/:rkey/config` instead.
+ */
+export function setRepoPath(key: PrKey, input: unknown, root: string): RepoPathResult {
+  const repoPath = resolveRepoPathInput(input);
 
   const top = repoToplevel(repoPath);
   let warning: string | undefined;

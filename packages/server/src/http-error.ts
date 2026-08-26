@@ -28,7 +28,11 @@ export function classifyError(err: unknown): HttpError {
   if (/^gh .* failed:/.test(message)) {
     return new HttpError(502, "gh_failed", message);
   }
-  if (/^Invalid PR key/.test(message) || /^Not a pull request URL/.test(message)) {
+  if (
+    /^Invalid PR key/.test(message) ||
+    /^Invalid repo key/.test(message) ||
+    /^Not a pull request URL/.test(message)
+  ) {
     return new HttpError(400, "invalid_key", message);
   }
   if (/does not cover \d+ hunk|references \d+ hunk id/.test(message)) {

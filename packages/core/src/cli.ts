@@ -12,7 +12,16 @@ import {
   syncPr,
 } from "./service.js";
 import { loadState, prExists, readMigrationReport, listPrs } from "./store.js";
+import { migrateStateDirOnStartup } from "./state-dir.js";
 import { formatReport } from "./report.js";
+
+// The state dir was renamed `~/.reviewer` -> `~/.purview`; whichever entry
+// point runs first does the one-time move. Logged on stderr so `--json` output
+// stays machine-readable.
+migrateStateDirOnStartup({
+  info: (s) => console.error(s),
+  warn: (s) => console.error(s),
+});
 
 function readJsonFile(file: string): unknown {
   if (file === "-") return JSON.parse(fs.readFileSync(0, "utf8"));

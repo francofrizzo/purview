@@ -9,7 +9,9 @@ import {
 } from "@reviewer/core";
 import { resolveCheckout } from "./worktree.js";
 import { runClaude } from "./claude-runner.js";
-import { skillDir } from "./analysis.js";
+import { skillDir } from "./skill-paths.js";
+import { effectiveRepoPath } from "./repo-config.js";
+import { loadCommittedConfig } from "./team-config.js";
 import {
   appendChatMessage,
   buildChatPrompt,
@@ -92,10 +94,15 @@ export function startChatTurn(
   // been removed) since the previous message.
   const state = loadState(key, root);
   const headSha = state.revisions.find((r) => r.revision === state.currentRevision)?.headSha;
-  const checkout = resolveCheckout(meta?.repoPath, { headRef: meta?.headRef, headSha });
+  const checkout = resolveCheckout(effectiveRepoPath(key, root, { meta: meta ?? null }), {
+    headRef: meta?.headRef,
+    headSha,
+  });
   if (checkout.error) {
     console.warn(`[chat] ${keyStr}: ${checkout.error}; running without a checkout`);
   }
+  // Cached per revision; the chat sees the same layered rubric as the analysis.
+  const committed = loadCommittedConfig(key, root);
   let cwd = stateDir;
   if (checkout.path) {
     // The checkout is the more useful working directory (grep/glob land in the
@@ -123,7 +130,7 @@ export function startChatTurn(
     ...flags,
     // The system prompt is re-sent on resume too: it is cheap, and it keeps
     // the read-only contract in force for every turn.
-    systemPrompt: chatSystemPrompt(key, root, { resolution: checkout, headSha }),
+    systemPrompt: chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed }),
     sessionId: isFirstTurn ? sessionId : undefined,
     resumeSessionId: isFirstTurn ? undefined : sessionId,
     partialMessages: true,

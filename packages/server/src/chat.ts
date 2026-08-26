@@ -14,7 +14,10 @@ import {
   type PrKey,
 } from "@reviewer/core";
 import { readComments } from "./comments.js";
-import { checkoutNote, cliCommand, skillDir } from "./analysis.js";
+import { checkoutNote } from "./analysis.js";
+import { cliCommand, skillDir } from "./skill-paths.js";
+import { rubricSection } from "./rubric.js";
+import type { CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
 import { HttpError } from "./http-error.js";
 
@@ -208,6 +211,7 @@ export function chatSystemPrompt(
   key: PrKey,
   root = stateRoot(),
   checkout?: { resolution: CheckoutResolution; headSha?: string },
+  opts: { committed?: CommittedConfig } = {},
 ): string {
   const state = loadState(key, root);
   const meta = readMeta(key, root);
@@ -238,6 +242,9 @@ export function chatSystemPrompt(
     `  - current diff: ${path.join(dir, "revisions", String(state.currentRevision), "diff.patch")}`,
     `  - parsed hunks: ${path.join(dir, "revisions", String(state.currentRevision), "files.json")}`,
     `  - review rubric: ${path.join(skillDir(), "RUBRIC.md")}`,
+    // Overlays are inlined rather than pointed at: the team rubric may only
+    // exist on GitHub, and the local one is outside the chat's roots.
+    rubricSection(key, root, { committed: opts.committed }),
     `  - read-only status: \`${cmd} report ${keyToString(key)}\` (add --json for raw state), \`${cmd} list\``,
     checkout ? `  - ${checkoutNote(checkout.resolution, checkout.headSha)}` : "",
     "",

@@ -69,6 +69,9 @@ beforeEach(() => {
   fs.mkdirSync(process.env.REVIEWER_SKILL_DIR, { recursive: true });
   claude = fakeClaude();
   claude.install();
+  // Analysis and chat runs read the repo's committed `.purview/` config; with
+  // no runner installed that would reach the real `gh`. Nothing here has one.
+  setGhRunner(() => "{}");
   app = createApp({
     stateDir: root,
     webDist: path.join(root, "__no-web-dist__"),

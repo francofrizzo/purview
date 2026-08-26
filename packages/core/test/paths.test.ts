@@ -4,11 +4,18 @@ import os from "node:os";
 import {
   diffPath,
   filesJsonPath,
+  isPrDirName,
   keyToString,
   parseKey,
+  parseRepoKey,
   parsePrUrl,
   prDir,
+  repoConfigPath,
+  repoDir,
+  repoKeyToString,
+  repoRubricPath,
   stateRoot,
+  teamConfigPath,
 } from "../src/paths.js";
 
 const key = {
@@ -20,11 +27,41 @@ const key = {
 
 afterEach(() => {
   delete process.env.REVIEWER_STATE_DIR;
+  delete process.env.PURVIEW_STATE_DIR;
 });
 
 describe("state dir layout", () => {
-  it("defaults to ~/.reviewer", () => {
-    expect(stateRoot()).toBe(path.join(os.homedir(), ".reviewer"));
+  it("defaults to ~/.purview", () => {
+    expect(stateRoot()).toBe(path.join(os.homedir(), ".purview"));
+  });
+
+  it("prefers PURVIEW_STATE_DIR over the legacy REVIEWER_STATE_DIR", () => {
+    process.env.REVIEWER_STATE_DIR = "/tmp/legacy";
+    expect(stateRoot()).toBe("/tmp/legacy");
+    process.env.PURVIEW_STATE_DIR = "/tmp/new";
+    expect(stateRoot()).toBe("/tmp/new");
+  });
+
+  it("puts repo-level files beside the numbered PR dirs, with no collision", () => {
+    process.env.PURVIEW_STATE_DIR = "/tmp/xyz";
+    const repo = { host: key.host, owner: key.owner, repo: key.repo };
+    expect(repoDir(repo)).toBe("/tmp/xyz/github.com/acme/widgets");
+    expect(repoConfigPath(repo)).toBe("/tmp/xyz/github.com/acme/widgets/repo.json");
+    expect(repoRubricPath(repo)).toBe(
+      "/tmp/xyz/github.com/acme/widgets/RUBRIC.local.md",
+    );
+    expect(prDir(key)).toBe(`${repoDir(repo)}/7`);
+    // Every PR dir name is digits only, so no PR can ever be named repo.json.
+    expect(isPrDirName("7")).toBe(true);
+    expect(isPrDirName("repo.json")).toBe(false);
+    expect(isPrDirName("RUBRIC.local.md")).toBe(false);
+  });
+
+  it("caches the committed team config per revision", () => {
+    process.env.PURVIEW_STATE_DIR = "/tmp/xyz";
+    expect(teamConfigPath(key, 3)).toBe(
+      "/tmp/xyz/github.com/acme/widgets/7/revisions/3/team-config.json",
+    );
   });
 
   it("is overridable with REVIEWER_STATE_DIR", () => {
@@ -59,6 +96,20 @@ describe("keys", () => {
       repo: "widgets",
       number: 12,
     });
+  });
+
+  it("round-trips repo keys and assumes github.com for a 2-part key", () => {
+    const repo = { host: "github.com", owner: "acme", repo: "widgets" };
+    expect(repoKeyToString(repo)).toBe("github.com/acme/widgets");
+    expect(parseRepoKey(repoKeyToString(repo))).toEqual(repo);
+    expect(parseRepoKey(encodeURIComponent(repoKeyToString(repo)))).toEqual(repo);
+    expect(parseRepoKey("acme/widgets")).toEqual(repo);
+    expect(parseRepoKey("git.corp.io/acme/widgets")).toEqual({
+      host: "git.corp.io",
+      owner: "acme",
+      repo: "widgets",
+    });
+    expect(() => parseRepoKey("nope")).toThrow();
   });
 
   it("rejects non-PR input", () => {

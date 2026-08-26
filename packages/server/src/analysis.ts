@@ -15,6 +15,10 @@ import {
   type PrKey,
 } from "@reviewer/core";
 import { runClaude, type ClaudeRun } from "./claude-runner.js";
+import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
+import { effectiveRepoPath } from "./repo-config.js";
+import { rubricSection } from "./rubric.js";
+import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
 import { resolveCheckout, type CheckoutResolution } from "./worktree.js";
 import { HttpError } from "./http-error.js";
 
@@ -95,31 +99,9 @@ export function reconcileStaleJobs(root = stateRoot()): PrKey[] {
 
 /* ------------------------------------------------------------------- paths */
 
-/** Repo root: `<root>/packages/server/{src,dist}/analysis.{ts,js}` -> `<root>`. */
-function repoRoot(): string {
-  return path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
-}
-
-export function skillDir(): string {
-  return process.env.REVIEWER_SKILL_DIR ?? path.join(repoRoot(), "skills", "pr-review");
-}
-
-/**
- * The `reviewer-state` bin is usually not on PATH, so runs invoke the built
- * CLI by absolute path through node. That absolute string is also what the
- * Bash allowlist pattern is built from, which is why it must be resolved once
- * here rather than assembled per call site.
- */
-export function cliPath(): string {
-  return (
-    process.env.REVIEWER_CLI_PATH ??
-    path.join(repoRoot(), "packages", "core", "dist", "cli.js")
-  );
-}
-
-export function cliCommand(): string {
-  return `${process.execPath} ${cliPath()}`;
-}
+// Skill/CLI locations live in their own module so prompt builders (rubric.ts)
+// can use them without importing this one back.
+export { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 
 /* ------------------------------------------------------------------ prompt */
 
@@ -147,13 +129,22 @@ export function checkoutNote(resolution: CheckoutResolution, headSha?: string): 
 export function analysisPrompt(
   key: PrKey,
   root: string,
-  opts: { incremental: boolean; checkout?: CheckoutResolution; headSha?: string },
+  opts: {
+    incremental: boolean;
+    checkout?: CheckoutResolution;
+    headSha?: string;
+    /** Already-loaded committed config; omitted, the cached one is used. */
+    committed?: CommittedConfig;
+  },
 ): string {
   const dir = prDir(key, root);
   const skills = skillDir();
   const cmd = cliCommand();
   const keyStr = keyToString(key);
   const state = loadState(key, root);
+  // The rubric is layered (built-in -> committed team -> local overlay); the
+  // block is empty unless something actually overlays the built-in one.
+  const rubric = rubricSection(key, root, { committed: opts.committed });
 
   return [
     `You are running the pr-review skill headlessly for PR ${keyStr}.`,
@@ -172,6 +163,7 @@ export function analysisPrompt(
     `  files: ${path.join(dir, "revisions", String(state.currentRevision), "files.json")}`,
     `  events (read \`classification-corrected\` entries and honor them as precedent): ${path.join(dir, "events.jsonl")}`,
     opts.checkout ? "\n" + checkoutNote(opts.checkout, opts.headSha) : "",
+    rubric ? "\n" + rubric : "",
     "",
     "Run the reviewer-state CLI as:",
     `  ${cmd} <subcommand> ...`,
@@ -432,7 +424,14 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   // Resolved per run, not at set time: the worktree holding this PR's branch
   // may have been created (or removed) since the reader configured the path.
   const headSha = state.revisions.find((r) => r.revision === revision)?.headSha;
-  const checkout = resolveCheckout(meta?.repoPath, { headRef: meta?.headRef, headSha });
+  // The checkout path comes from the layered config: the PR's own override
+  // first, then the repo-level one.
+  const checkout = resolveCheckout(effectiveRepoPath(key, root, { meta: meta ?? null }), {
+    headRef: meta?.headRef,
+    headSha,
+  });
+  // One read per revision (cached in the revision dir); best-effort.
+  const committed = loadCommittedConfig(key, root);
   if (checkout.path) addDirs.push(checkout.path);
   if (checkout.error) {
     console.warn(`[analysis] ${keyToString(key)}: ${checkout.error}; running without a checkout`);
@@ -444,6 +443,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
       incremental: state.units.length > 0,
       checkout,
       headSha,
+      committed,
     }),
     cwd: prDir(key, root),
     addDirs,

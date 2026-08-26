@@ -8,21 +8,31 @@ import {
   initPr,
   keyToString,
   listPrs,
+  listRepos,
   loadState,
   parseKey,
+  parseRepoKey,
   readDiff,
   readFilesJson,
   readMeta,
+  readLocalRubric,
   readMigrationReport,
+  readRepoConfig,
   refreshPr,
+  repoKeyToString,
   setHunkViewed,
   setUnit,
   setUnitViewed,
   stateRoot,
   syncPr,
   unitProgress,
+  updateMeta,
+  writeLocalRubric,
+  writeRepoConfig,
   type Hunk,
+  type Meta,
   type PrKey,
+  type RepoKey,
   type State,
 } from "@reviewer/core";
 import {
@@ -56,9 +66,16 @@ import {
 } from "./analysis.js";
 import { chatBusy, startChatTurn, type ChatStreamEvent } from "./chat-session.js";
 import { ChatRefSchema, clearChat, readChat } from "./chat.js";
-import { prHead, setRepoPath } from "./repo-path.js";
+import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
 import { localOnlyGuard } from "./security.js";
+import {
+  autoAnalyzeAllowed,
+  cachedCommittedConfigForRepo,
+  effectiveConfig,
+  effectiveRepoPath,
+} from "./repo-config.js";
+import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 
 export const DEFAULT_PORT = 4779;
 
@@ -119,9 +136,16 @@ export function createApp(opts: AppOptions = {}): Hono {
   // A "running" job record can only be stale at boot — nothing is running yet.
   reconcileStaleJobs(root);
 
-  /** `?analyze=false` opts a single init/refresh out of the automatic run. */
-  const analyzeRequested = (c: { req: { query(k: string): string | undefined } }) =>
-    autoAnalyze && c.req.query("analyze") !== "false";
+  /**
+   * `?analyze=false` opts a single init/refresh out of the automatic run.
+   * `autoAnalyze` is the process-wide kill switch (env / tests); the actual
+   * consent is layered per repo and resolved in `autoAnalyzeAllowed`, which
+   * also refuses to spend anything on an archived PR.
+   */
+  const analyzeRequested = (
+    c: { req: { query(k: string): string | undefined } },
+    key: PrKey,
+  ) => autoAnalyze && c.req.query("analyze") !== "false" && autoAnalyzeAllowed(key, root);
 
   /** Auto-triggers are best-effort: a failed spawn must not fail the request. */
   const triggerAnalysis = (key: PrKey) => {
@@ -162,6 +186,13 @@ export function createApp(opts: AppOptions = {}): Hono {
       return {
         key: keyToString(key),
         meta,
+        // Flattened onto the item because the list UI sorts and filters on
+        // them; `meta` keeps carrying the same values for older clients.
+        title: meta.title ?? state.pr?.title ?? "",
+        state: meta.prState ?? "open",
+        reviewDecision: meta.reviewDecision ?? null,
+        addedAt: meta.createdAt,
+        archived: meta.archived === true,
         currentRevision: state.currentRevision,
         summary: state.summary,
         progress: progressOf(state),
@@ -183,7 +214,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const result = initPr(key, root);
     // A freshly tracked PR has no analysis at all, so init always kicks one
     // off (unless the caller opted out with ?analyze=false).
-    const job = analyzeRequested(c) ? triggerAnalysis(key) : null;
+    const job = analyzeRequested(c, key) ? triggerAnalysis(key) : null;
     return c.json({
       key: keyToString(result.key),
       created: result.created,
@@ -205,7 +236,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       !!result.report &&
       (result.report.counts.new > 0 ||
         loadState(key, root).unassignedHunkIds.length > 0);
-    const job = analyzeRequested(c) && hasNewWork ? triggerAnalysis(key) : null;
+    const job = hasNewWork && analyzeRequested(c, key) ? triggerAnalysis(key) : null;
     return c.json({
       key: keyToString(key),
       revision: result.revision,
@@ -226,7 +257,10 @@ export function createApp(opts: AppOptions = {}): Hono {
     // Resolving here is what makes a stale checkout visible in the UI without
     // waiting for a run to say so; it is additive, so a client that predates
     // the field is unaffected.
-    const checkout = resolveCheckout(meta.repoPath, prHead(key, root));
+    const checkout = resolveCheckout(
+      effectiveRepoPath(key, root, { meta }),
+      prHead(key, root),
+    );
     return c.json({
       state,
       files: filesJson.files,
@@ -268,6 +302,22 @@ export function createApp(opts: AppOptions = {}): Hono {
       warning: result.warning,
       checkoutMismatch: result.checkoutMismatch ?? null,
     });
+  });
+
+  /**
+   * Archiving is a shelf, not a delete: an archived PR keeps every byte of its
+   * state and stays fully readable, it just drops out of the active list and
+   * can no longer trigger an automatic (paid) analysis run.
+   */
+  app.post("/api/prs/:key/archive", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const body = (await readJsonBody(c)) as { archived?: unknown };
+    if (typeof body.archived !== "boolean") {
+      throw new HttpError(400, "invalid_body", "Body must include { archived: boolean }");
+    }
+    const meta = updateMeta(key, { archived: body.archived }, root);
+    return c.json({ ok: true, archived: meta.archived === true });
   });
 
   /**
@@ -694,6 +744,167 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.delete("/api/prs/:key/review/pending", (c) => {
     const key = keyParam(c);
     return c.json(discardPendingReview(key, root));
+  });
+
+  /* --------------------------------------------------------------- repos */
+
+  /**
+   * The repo view of the same state tree. A repo exists here as soon as one of
+   * its PRs is tracked (or it has settings of its own), and every field is
+   * answered from disk: this endpoint must stay network-free, so the committed
+   * flag reports the latest *cached* team config rather than fetching one.
+   */
+  app.get("/api/repos", (c) => {
+    const repos = listRepos(root).map((repo) => {
+      const prs = listPrs(root).filter(
+        (k) => k.host === repo.host && k.owner === repo.owner && k.repo === repo.repo,
+      );
+      let archivedCount = 0;
+      for (const pr of prs) {
+        try {
+          if (readMeta(pr, root).archived === true) archivedCount++;
+        } catch {
+          /* an unreadable meta shouldn't hide the whole repo */
+        }
+      }
+      const local = readRepoConfig(repo, root);
+      return {
+        ...repo,
+        prCount: prs.length,
+        archivedCount,
+        // "Has local config" means something is actually set — the empty
+        // repo.json auto-created with the first PR is not configuration.
+        hasLocalConfig:
+          local.autoAnalyze !== null ||
+          local.repoPath !== null ||
+          readLocalRubric(repo, root).trim() !== "",
+        hasCommittedConfig: cachedCommittedConfigForRepo(repo, root)?.present ?? false,
+        repoPath: local.repoPath,
+      };
+    });
+    return c.json({ repos });
+  });
+
+  /** `:rkey` = URL-encoded `host/owner/repo`. */
+  function repoKeyParam(c: { req: { param(name: string): string | undefined } }): RepoKey {
+    const raw = c.req.param("rkey");
+    if (!raw) throw new HttpError(400, "missing_key", "Repo key is required");
+    try {
+      return parseRepoKey(raw);
+    } catch (err) {
+      throw classifyError(err);
+    }
+  }
+
+  /** The newest tracked PR of a repo — the one that speaks for it. */
+  function newestPr(repo: RepoKey): PrKey | undefined {
+    const prs = listPrs(root).filter(
+      (k) => k.host === repo.host && k.owner === repo.owner && k.repo === repo.repo,
+    );
+    let best: { key: PrKey; meta: Meta } | undefined;
+    for (const key of prs) {
+      let meta: Meta;
+      try {
+        meta = readMeta(key, root);
+      } catch {
+        continue;
+      }
+      if (!best || meta.createdAt > best.meta.createdAt) best = { key, meta };
+    }
+    return best?.key;
+  }
+
+  /**
+   * One shape for both GET and PUT: the caller always gets back the whole
+   * resolved picture (what is stored locally, what the team committed, what
+   * the two of them add up to), so a write needs no follow-up read.
+   */
+  function repoConfigPayload(repo: RepoKey) {
+    const local = readRepoConfig(repo, root);
+    const pr = newestPr(repo);
+    // Reading the committed config may go to GitHub; it is cached per
+    // revision, so this is one fetch per revision and free afterwards.
+    const committed = pr
+      ? (() => {
+          try {
+            return loadCommittedConfig(pr, root);
+          } catch {
+            return cachedCommitted(pr, root);
+          }
+        })()
+      : null;
+    const effective = effectiveConfig(repo, root, {
+      local,
+      committed: committed?.config ?? null,
+    });
+    return {
+      repo: repoKeyToString(repo),
+      local: {
+        autoAnalyze: local.autoAnalyze,
+        repoPath: local.repoPath,
+        rubric: readLocalRubric(repo, root),
+      },
+      committed: {
+        present: committed?.present ?? false,
+        config: committed?.config ?? null,
+        rubric: committed?.rubric ?? null,
+      },
+      effective: {
+        autoAnalyze: effective.autoAnalyze.value,
+        repoPath: effective.repoPath.value,
+      },
+      sources: {
+        autoAnalyze: effective.autoAnalyze.source,
+        repoPath: effective.repoPath.source,
+      },
+    };
+  }
+
+  app.get("/api/repos/:rkey/config", (c) => {
+    return c.json(repoConfigPayload(repoKeyParam(c)));
+  });
+
+  /**
+   * Partial by design: only the keys present in the body are written, and
+   * `null` means "inherit again" (which is not the same as `false`). An empty
+   * `rubric` deletes `RUBRIC.local.md`.
+   */
+  const RepoConfigPutSchema = z
+    .object({
+      autoAnalyze: z.boolean().nullable().optional(),
+      repoPath: z.string().nullable().optional(),
+      rubric: z.string().optional(),
+    })
+    .strict();
+
+  app.put("/api/repos/:rkey/config", async (c) => {
+    const repo = repoKeyParam(c);
+    const parsed = RepoConfigPutSchema.safeParse(await readJsonBody(c));
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      throw new HttpError(
+        400,
+        "invalid_body",
+        `${issue.path.join(".") || "(body)"}: ${issue.message}`,
+      );
+    }
+    const body = parsed.data;
+
+    const patch: { autoAnalyze?: boolean | null; repoPath?: string | null } = {};
+    if ("autoAnalyze" in body) patch.autoAnalyze = body.autoAnalyze ?? null;
+    if ("repoPath" in body) {
+      // Same validation as the per-PR endpoint: a path that isn't there is a
+      // typo, and storing it would only fail later, silently.
+      const raw = body.repoPath;
+      patch.repoPath =
+        raw === null || raw === undefined || raw.trim() === ""
+          ? null
+          : resolveRepoPathInput(raw);
+    }
+    if (Object.keys(patch).length > 0) writeRepoConfig(repo, patch, root);
+    if (body.rubric !== undefined) writeLocalRubric(repo, body.rubric, root);
+
+    return c.json(repoConfigPayload(repo));
   });
 
   /* -------------------------------------------------------- misc / debug */

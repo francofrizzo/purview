@@ -123,7 +123,7 @@ export function checkRequest(facts: RequestFacts, opts: GuardOptions): GuardVerd
     message:
       `Refusing a ${facts.method} from origin "${origin}". ` +
       `Only the app's own origin may change state; add trusted dev origins to ` +
-      `~/.reviewer/config.json under "devOrigins".`,
+      `~/.purview/config.json under "devOrigins".`,
   };
 }
 

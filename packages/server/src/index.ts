@@ -1,13 +1,16 @@
 import { serve } from "@hono/node-server";
-import { stateRoot } from "@reviewer/core";
+import { migrateStateDirOnStartup, stateRoot } from "@reviewer/core";
 import { createApp, DEFAULT_PORT } from "./app.js";
-import { readConfig, resolveAutoAnalyze } from "./config.js";
+import { autoAnalyzeEnvAllows, readConfig } from "./config.js";
 import { maybeOnboard } from "./onboarding.js";
 
-const PORT = Number(process.env.REVIEWER_PORT ?? DEFAULT_PORT);
-const ROOT = stateRoot();
+const PORT = Number(process.env.PURVIEW_PORT ?? process.env.REVIEWER_PORT ?? DEFAULT_PORT);
 
 async function main(): Promise<void> {
+  // The state directory was renamed `~/.reviewer` -> `~/.purview`. Do the
+  // one-time move before anything reads or writes state.
+  migrateStateDirOnStartup();
+  const ROOT = stateRoot();
   // First run on a terminal: check the environment and ask for cost consent
   // before anything can spend money. Skipped silently when config.json already
   // exists or stdout is not a TTY; `--onboard` forces a re-run.
@@ -18,9 +21,10 @@ async function main(): Promise<void> {
   const config = onboarding?.config ?? readConfig(ROOT);
 
   const app = createApp({
-    // Consent from config.json decides whether adding/refreshing a PR spawns
-    // Claude. REVIEWER_AUTO_ANALYZE=0 still overrides it for a single run.
-    autoAnalyze: resolveAutoAnalyze(config),
+    // The master switch is the env kill switch only: consent itself is
+    // layered (repo.json -> committed .purview/config.json -> global
+    // config.json), and is resolved per PR inside the app.
+    autoAnalyze: autoAnalyzeEnvAllows(),
     port: PORT,
     devOrigins: config.devOrigins,
   });

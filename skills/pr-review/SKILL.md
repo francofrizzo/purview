@@ -7,7 +7,7 @@ description: Analyze a GitHub PR into a reviewable meta-structure — summary + 
 
 You turn a GitHub PR diff into a structured review plan: a short summary plus a set of
 `ReviewUnit`s (logical changes, classified by kind and attention) that cover every hunk.
-State lives on disk under `~/.reviewer/<host>/<owner>/<repo>/<number>/` and is mutated
+State lives on disk under `~/.purview/<host>/<owner>/<repo>/<number>/` and is mutated
 only through the `reviewer-state` CLI — never edit state files directly.
 
 Read `RUBRIC.md` in this directory before classifying anything. It holds the kind
@@ -30,7 +30,7 @@ PATH; unless `reviewer-state` resolves, run it as `node packages/core/dist/cli.j
 (to get the short name, run `pnpm link --global` from `packages/core` once). Check which
 works before proceeding.
 
-State lives under `~/.reviewer/` unless `REVIEWER_STATE_DIR` is set — if that env var is
+State lives under `~/.purview/` unless `PURVIEW_STATE_DIR` (or the legacy `REVIEWER_STATE_DIR`) is set — if that env var is
 set in your environment, the state root is that directory instead, and all paths below are
 relative to it.
 

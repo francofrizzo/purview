@@ -127,6 +127,17 @@ export type HunkState = z.infer<typeof HunkStateSchema>;
 
 /* ---------------------------------------------------------------- metadata */
 
+/** open / draft / merged / closed — what the UI shows as the PR's status. */
+export const PrStateSchema = z.enum(["open", "draft", "merged", "closed"]);
+export type PrState = z.infer<typeof PrStateSchema>;
+
+export const ReviewDecisionSchema = z.enum([
+  "approved",
+  "changes_requested",
+  "review_required",
+]);
+export type ReviewDecision = z.infer<typeof ReviewDecisionSchema>;
+
 export const MetaSchema = z.object({
   host: z.string(),
   owner: z.string(),
@@ -148,8 +159,71 @@ export const MetaSchema = z.object({
    * read code the diff only shows in fragments.
    */
   repoPath: z.string().optional(),
+  /**
+   * GitHub PR state, collapsed from `state` + `merged` + `draft` into the four
+   * values the UI shows. Captured on init and on every refresh; absent on
+   * state written before it existed.
+   */
+  prState: PrStateSchema.optional(),
+  /**
+   * GitHub's aggregate review decision. Only GraphQL exposes it (the REST
+   * pull payload has no such field), so it is fetched with one extra cheap
+   * query and is `null` whenever GitHub has no decision — or whenever that
+   * query failed, which must never break a refresh.
+   */
+  reviewDecision: ReviewDecisionSchema.nullable().optional(),
+  /**
+   * Archived PRs stay fully readable; they are only kept out of the way (and
+   * out of the automatic analysis triggers, which cost money).
+   */
+  archived: z.boolean().default(false),
 });
 export type Meta = z.infer<typeof MetaSchema>;
+
+/* ------------------------------------------------------- repo-level config */
+
+/**
+ * `~/.purview/<host>/<owner>/<repo>/repo.json` — settings that apply to every
+ * PR of one repository.
+ *
+ * `null` means "inherit" and is not the same as `false`: it is what lets a
+ * repo sit between the committed team config and the global config without
+ * pinning a value. Every field is nullable-with-a-null-default, so an empty
+ * `{}` is a complete, valid, fully-inheriting config.
+ */
+export const RepoConfigSchema = z.object({
+  autoAnalyze: z.boolean().nullable().default(null),
+  repoPath: z.string().nullable().default(null),
+});
+export type RepoConfig = z.infer<typeof RepoConfigSchema>;
+
+export const EMPTY_REPO_CONFIG: RepoConfig = RepoConfigSchema.parse({});
+
+/**
+ * `.purview/config.json` committed in the *target* repo: the team's shared
+ * defaults. Unknown keys are ignored (zod strips them), so a newer team config
+ * never breaks an older client.
+ */
+export const TeamConfigSchema = z.object({
+  autoAnalyze: z.boolean().optional(),
+});
+export type TeamConfig = z.infer<typeof TeamConfigSchema>;
+
+/**
+ * `revisions/<n>/team-config.json` — the committed config as read for one
+ * revision, so the network round-trip happens once per revision rather than
+ * once per prompt. `ref` is the head sha it was read at; a mismatch (or an
+ * explicit refresh) invalidates it.
+ */
+export const TeamConfigCacheSchema = z.object({
+  ref: z.string().default(""),
+  fetchedAt: z.string(),
+  source: z.enum(["checkout", "github", "none"]).default("none"),
+  present: z.boolean().default(false),
+  config: TeamConfigSchema.nullable().default(null),
+  rubric: z.string().nullable().default(null),
+});
+export type TeamConfigCache = z.infer<typeof TeamConfigCacheSchema>;
 
 /* -------------------------------------------------------- analysis jobs */
 

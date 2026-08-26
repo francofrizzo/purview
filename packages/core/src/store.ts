@@ -1,11 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  EMPTY_REPO_CONFIG,
   EventSchema,
   FilesJsonSchema,
   MetaSchema,
   MigrationReportSchema,
+  RepoConfigSchema,
   StateSchema,
+  TeamConfigCacheSchema,
 } from "./schemas.js";
 import type {
   FileDiff,
@@ -13,21 +16,29 @@ import type {
   Meta,
   MigrationReport,
   NewEvent,
+  RepoConfig,
   ReviewerEvent,
   State,
+  TeamConfigCache,
 } from "./schemas.js";
 import { fold } from "./reducer.js";
 import {
   diffPath,
   eventsPath,
   filesJsonPath,
+  isPrDirName,
   metaPath,
   migrationReportPath,
   prDir,
+  repoConfigPath,
+  repoDir,
+  repoRubricPath,
   revisionDir,
   statePath,
   stateRoot,
+  teamConfigPath,
   type PrKey,
+  type RepoKey,
 } from "./paths.js";
 
 function writeJson(file: string, value: unknown): void {
@@ -193,6 +204,9 @@ export function listPrs(root = stateRoot()): PrKey[] {
     for (const owner of dirs(path.join(root, host))) {
       for (const repo of dirs(path.join(root, host, owner))) {
         for (const number of dirs(path.join(root, host, owner, repo))) {
+          // Repo-level files (repo.json, RUBRIC.local.md) live in this same
+          // directory; only digit-named entries can be PRs.
+          if (!isPrDirName(number)) continue;
           const key = { host, owner, repo, number: Number(number) };
           if (Number.isFinite(key.number) && prExists(key, root)) out.push(key);
         }
@@ -200,4 +214,131 @@ export function listPrs(root = stateRoot()): PrKey[] {
     }
   }
   return out;
+}
+
+/* --------------------------------------------------------- repo-level state */
+
+export function repoConfigExists(key: RepoKey, root = stateRoot()): boolean {
+  return fs.existsSync(repoConfigPath(key, root));
+}
+
+/**
+ * Read `repo.json`, tolerantly: a missing file, unparseable JSON, or a single
+ * field of the wrong type must never take the app down — the field falls back
+ * to `null` ("inherit") and everything else in the file is kept.
+ */
+export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
+  const file = repoConfigPath(key, root);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return { ...EMPTY_REPO_CONFIG };
+  }
+  const parsed = RepoConfigSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  // Salvage what is valid rather than discarding the whole file.
+  const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    autoAnalyze: typeof obj.autoAnalyze === "boolean" ? obj.autoAnalyze : null,
+    repoPath: typeof obj.repoPath === "string" ? obj.repoPath : null,
+  };
+}
+
+export function writeRepoConfig(
+  key: RepoKey,
+  patch: Partial<RepoConfig>,
+  root = stateRoot(),
+): RepoConfig {
+  const next = RepoConfigSchema.parse({
+    ...(repoConfigExists(key, root) ? readRepoConfig(key, root) : {}),
+    ...patch,
+  });
+  writeJson(repoConfigPath(key, root), next);
+  return next;
+}
+
+/**
+ * Create an all-null `repo.json` if the repo has none yet. Called when the
+ * first PR of a repo is initialized, so the file is there to be discovered
+ * (and edited) rather than materializing only once something is set.
+ */
+export function ensureRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
+  if (repoConfigExists(key, root)) return readRepoConfig(key, root);
+  return writeRepoConfig(key, {}, root);
+}
+
+/** `RUBRIC.local.md`, or "" when there is none. */
+export function readLocalRubric(key: RepoKey, root = stateRoot()): string {
+  const file = repoRubricPath(key, root);
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+/** Writing an empty rubric deletes the file: absent and empty are one state. */
+export function writeLocalRubric(
+  key: RepoKey,
+  content: string,
+  root = stateRoot(),
+): void {
+  const file = repoRubricPath(key, root);
+  if (content.trim() === "") {
+    if (fs.existsSync(file)) fs.rmSync(file);
+    return;
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content, "utf8");
+}
+
+/** Every repo that has state on disk (a PR dir or a repo.json of its own). */
+export function listRepos(root = stateRoot()): RepoKey[] {
+  const out: RepoKey[] = [];
+  if (!fs.existsSync(root)) return out;
+  const dirs = (p: string) =>
+    fs
+      .readdirSync(p, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name);
+  for (const host of dirs(root)) {
+    for (const owner of dirs(path.join(root, host))) {
+      for (const repo of dirs(path.join(root, host, owner))) {
+        const key = { host, owner, repo };
+        const hasPr = dirs(repoDir(key, root)).some(
+          (n) => isPrDirName(n) && prExists({ ...key, number: Number(n) }, root),
+        );
+        if (hasPr || repoConfigExists(key, root)) out.push(key);
+      }
+    }
+  }
+  return out;
+}
+
+/* ------------------------------------------- committed team-config cache */
+
+export function readTeamConfigCache(
+  key: PrKey,
+  revision: number,
+  root = stateRoot(),
+): TeamConfigCache | null {
+  const file = teamConfigPath(key, revision, root);
+  if (!fs.existsSync(file)) return null;
+  try {
+    return TeamConfigCacheSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+export function writeTeamConfigCache(
+  key: PrKey,
+  revision: number,
+  cache: TeamConfigCache,
+  root = stateRoot(),
+): TeamConfigCache {
+  const parsed = TeamConfigCacheSchema.parse(cache);
+  writeJson(teamConfigPath(key, revision, root), parsed);
+  return parsed;
 }
