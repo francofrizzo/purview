@@ -5,6 +5,8 @@ import type {
   PrDetail,
   PrListEntry,
   PrState,
+  RepoConfig,
+  RepoSummary,
   ReviewUnit,
 } from "../api/types";
 
@@ -416,7 +418,19 @@ export const mockDetail: PrDetail = {
   diff: buildDiffText(),
 };
 
+/**
+ * `addedAt` is anchored to load time rather than hard-coded, so the list always
+ * exercises both branches of the stamp: minutes/hours/days render relative, and
+ * the deliberately-old row (11 days) renders as an absolute date.
+ */
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+const START = Date.now();
+const ago = (ms: number) => new Date(START - ms).toISOString();
+
 export const mockList: PrListEntry[] = [
+  // --- acme/billing: several PRs, mixed states, one archived ---------------
   {
     key: MOCK_KEY,
     meta,
@@ -424,7 +438,69 @@ export const mockList: PrListEntry[] = [
     unitCount: units.length,
     viewedHunks: 4,
     totalHunks: 9,
+    state: "open",
+    reviewDecision: "changes_requested",
+    addedAt: ago(2 * DAY + 3 * HOUR),
+    archived: false,
   },
+  {
+    key: "github.com/acme/billing/491",
+    meta: {
+      host: "github.com",
+      owner: "acme",
+      repo: "billing",
+      number: 491,
+      url: "https://github.com/acme/billing/pull/491",
+      title: "WIP: split the ledger writer out of ChargeService",
+    },
+    title: "WIP: split the ledger writer out of ChargeService",
+    unitCount: 3,
+    viewedHunks: 0,
+    totalHunks: 6,
+    state: "draft",
+    reviewDecision: null,
+    addedAt: ago(40 * MINUTE),
+    archived: false,
+  },
+  {
+    key: "github.com/acme/billing/474",
+    meta: {
+      host: "github.com",
+      owner: "acme",
+      repo: "billing",
+      number: 474,
+      url: "https://github.com/acme/billing/pull/474",
+      title: "Add currency to the idempotency key derivation",
+    },
+    title: "Add currency to the idempotency key derivation",
+    unitCount: 2,
+    viewedHunks: 5,
+    totalHunks: 5,
+    state: "merged",
+    reviewDecision: "approved",
+    addedAt: ago(6 * DAY),
+    archived: false,
+  },
+  {
+    key: "github.com/acme/billing/468",
+    meta: {
+      host: "github.com",
+      owner: "acme",
+      repo: "billing",
+      number: 468,
+      url: "https://github.com/acme/billing/pull/468",
+      title: "Retire the v1 refunds endpoint",
+    },
+    title: "Retire the v1 refunds endpoint",
+    unitCount: 1,
+    viewedHunks: 1,
+    totalHunks: 4,
+    state: "closed",
+    reviewDecision: null,
+    addedAt: ago(11 * DAY),
+    archived: true,
+  },
+  // --- acme/platform: a single, never-analyzed PR --------------------------
   {
     key: "github.com/acme/platform/1190",
     meta: {
@@ -439,8 +515,124 @@ export const mockList: PrListEntry[] = [
     unitCount: 0,
     viewedHunks: 0,
     totalHunks: 0,
+    state: "open",
+    reviewDecision: "review_required",
+    addedAt: ago(5 * HOUR),
+    archived: false,
+  },
+  // --- a self-hosted repo, the one carrying a committed .purview/ config ---
+  {
+    key: "git.acme.dev/infra/terraform-modules/77",
+    meta: {
+      host: "git.acme.dev",
+      owner: "infra",
+      repo: "terraform-modules",
+      number: 77,
+      url: "https://git.acme.dev/infra/terraform-modules/pull/77",
+      title: "Pin the RDS module and drop the inline security group",
+    },
+    title: "Pin the RDS module and drop the inline security group",
+    unitCount: 4,
+    viewedHunks: 2,
+    totalHunks: 7,
+    state: "open",
+    reviewDecision: "approved",
+    addedAt: ago(26 * HOUR),
+    archived: false,
   },
 ];
+
+/**
+ * The committed rubric lives in the target repo's `.purview/` folder; the mock
+ * carries one so the repo settings page has a non-empty read-only pane.
+ */
+export const MOCK_COMMITTED_RUBRIC = `# Review rubric — infra/terraform-modules
+
+Everything in this repo ships to production infrastructure, so the bar is
+higher than for application code.
+
+## Always must-read
+
+- Any change under \`modules/rds/\` or \`modules/networking/\`.
+- Security group rules, IAM policies, and anything that widens a CIDR.
+- Version pins: an unpinned module source is a blocking finding.
+
+## Skim
+
+- Variable descriptions, outputs, and \`README.md\` regeneration.
+- \`.tflint.hcl\` and formatting-only churn.
+
+## Conventions
+
+1. Modules are versioned with \`?ref=vX.Y.Z\`, never a branch.
+2. State backends are configured per-environment, never inline.
+3. Every resource carries the standard \`owner\` / \`cost-center\` tags.
+
+Flag anything that would need a \`terraform state mv\` to land safely.
+`;
+
+const LOCAL_BILLING_RUBRIC = `Money paths first: charge, refund, ledger writes.
+Treat any change to idempotency key derivation as must-read even if it looks cosmetic.
+`;
+
+export const mockRepos: RepoSummary[] = [
+  {
+    host: "github.com",
+    owner: "acme",
+    repo: "billing",
+    prCount: 3,
+    archivedCount: 1,
+    hasLocalConfig: true,
+    hasCommittedConfig: false,
+    repoPath: "/Users/dana/code/billing",
+  },
+  {
+    host: "github.com",
+    owner: "acme",
+    repo: "platform",
+    prCount: 1,
+    archivedCount: 0,
+    hasLocalConfig: false,
+    hasCommittedConfig: false,
+    repoPath: null,
+  },
+  {
+    host: "git.acme.dev",
+    owner: "infra",
+    repo: "terraform-modules",
+    prCount: 1,
+    archivedCount: 0,
+    hasLocalConfig: false,
+    hasCommittedConfig: true,
+    repoPath: null,
+  },
+];
+
+export const mockRepoConfigs: Record<string, RepoConfig> = {
+  "github.com/acme/billing": {
+    local: {
+      autoAnalyze: true,
+      repoPath: "/Users/dana/code/billing",
+      rubric: LOCAL_BILLING_RUBRIC,
+    },
+    committed: { present: false, config: null, rubric: null },
+    effective: { autoAnalyze: true, repoPath: "/Users/dana/code/billing" },
+  },
+  "github.com/acme/platform": {
+    local: { autoAnalyze: null, repoPath: null, rubric: "" },
+    committed: { present: false, config: null, rubric: null },
+    effective: { autoAnalyze: false, repoPath: null },
+  },
+  "git.acme.dev/infra/terraform-modules": {
+    local: { autoAnalyze: null, repoPath: null, rubric: "" },
+    committed: {
+      present: true,
+      config: { autoAnalyze: true, model: "claude-opus-4-6" },
+      rubric: MOCK_COMMITTED_RUBRIC,
+    },
+    effective: { autoAnalyze: true, repoPath: null },
+  },
+};
 
 export const mockDrafts: DraftComment[] = [
   {

@@ -207,6 +207,15 @@ export const IconCaret = ({ up, ...p }: P & { up?: boolean }) => (
   </svg>
 );
 
+/** Box with a lid — "put this row away". Mirrored (arrow up) to bring it back. */
+export const IconArchive = ({ out, ...p }: P & { out?: boolean }) => (
+  <svg {...base} {...p}>
+    <rect x="2" y="2.5" width="12" height="3" rx="0.8" />
+    <path d="M3 5.5v7a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-7" />
+    <path d={out ? "M8 11.5V7.5M6.2 9.3 8 7.5l1.8 1.8" : "M8 7.5v4M6.2 9.7 8 11.5l1.8-1.8"} />
+  </svg>
+);
+
 export const RISK_META: Record<
   RiskFlag,
   { icon: (p: P) => JSX.Element; label: string }

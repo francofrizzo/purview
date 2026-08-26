@@ -43,6 +43,7 @@
     --warn: #e3b341;
     --warn-soft: rgba(227, 179, 65, 0.13);
     --ok: #4ec27f;
+    --ok-soft: rgba(78, 194, 127, 0.14);
 
     --kind-core: #c4a7ff;
     --kind-core-soft: rgba(160, 120, 255, 0.14);
@@ -88,6 +89,7 @@
       --warn: #a06a08;
       --warn-soft: rgba(160, 106, 8, 0.12);
       --ok: #1a7f45;
+      --ok-soft: rgba(26, 127, 69, 0.12);
     }
   }
 

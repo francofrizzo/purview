@@ -53,6 +53,7 @@ export const TOKEN_NAMES = [
   "warn",
   "warn-soft",
   "ok",
+  "ok-soft",
   "kind-core",
   "kind-core-soft",
   "kind-glue",
@@ -181,6 +182,7 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     warn,
     "warn-soft": rgba(warn, softAlpha),
     ok,
+    "ok-soft": rgba(ok, softAlpha),
 
     "kind-core": kind(palette.purple),
     "kind-core-soft": rgba(palette.purple, softAlpha),

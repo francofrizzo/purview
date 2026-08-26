@@ -18,8 +18,13 @@ import type {
   MigrationReport,
   MigrationReportItem,
   PrDetail,
+  PrGithubState,
   PrListEntry,
   PrState,
+  RepoConfig,
+  RepoConfigPatch,
+  RepoSummary,
+  ReviewDecision,
   ReviewEvent,
   RepoPathResult,
   ReviewStatus,
@@ -67,7 +72,17 @@ const patch = <T>(path: string, body: unknown) =>
 
 const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
+const put = <T>(path: string, body: unknown) =>
+  request<T>(path, { method: "PUT", body: JSON.stringify(body) });
+
 export const encodeKey = (key: string) => encodeURIComponent(key);
+
+/** `:rkey` on the repo routes is a URL-encoded `host/owner/repo`. */
+export const repoKey = (r: { host: string; owner: string; repo: string }) =>
+  `${r.host}/${r.owner}/${r.repo}`;
+
+export const encodeRepoKey = (r: { host: string; owner: string; repo: string }) =>
+  encodeURIComponent(repoKey(r));
 
 /** The server may answer with a bare array or an envelope; tolerate both. */
 function unwrap<T>(value: unknown, field: string): T[] {
@@ -92,10 +107,15 @@ interface WireProgress {
 interface WireListEntry {
   key: string;
   meta: PrListEntry["meta"];
+  title?: string;
   currentRevision: number;
   summary: string;
   progress: WireProgress;
   analysisJob?: AnalysisJob | null;
+  state?: PrGithubState;
+  reviewDecision?: ReviewDecision | null;
+  addedAt?: string;
+  archived?: boolean;
 }
 
 /** core's FileRollup — an array entry keyed by `path`, not a map. */
@@ -355,13 +375,19 @@ export const api = {
     return entries.map((e) => ({
       key: e.key,
       meta: e.meta,
-      title: e.meta?.title,
+      title: e.title ?? e.meta?.title,
       currentRevision: e.currentRevision,
       summary: e.summary,
       unitCount: e.progress?.units.total,
       viewedHunks: e.progress?.hunks.viewed,
       totalHunks: e.progress?.hunks.total,
       analysisJob: e.analysisJob ?? null,
+      // Defaults keep an older server (which does not send these yet) from
+      // blanking the row: it simply reads as a never-archived open PR.
+      state: e.state ?? "open",
+      reviewDecision: e.reviewDecision ?? null,
+      addedAt: e.addedAt ?? e.meta?.createdAt ?? new Date(0).toISOString(),
+      archived: Boolean(e.archived),
     }));
   },
 
@@ -380,7 +406,37 @@ export const api = {
       unitCount: state.units.length,
       totalHunks: Object.keys(state.hunks).length,
       viewedHunks: Object.values(state.hunks).filter((h) => h.viewed).length,
+      // POST /prs answers with the freshly created state, not a list row; the
+      // list refetch that follows replaces these placeholders.
+      state: "open",
+      reviewDecision: null,
+      addedAt: new Date().toISOString(),
+      archived: false,
     };
+  },
+
+  /** Local-only: nothing about the PR on GitHub changes. */
+  async setArchived(key: string, archived: boolean): Promise<void> {
+    if (MOCK) return mockApi.setArchived(key, archived);
+    await post(`/prs/${encodeKey(key)}/archive`, { archived });
+  },
+
+  /* ----------------------------------------------------------- repos */
+
+  async listRepos(): Promise<RepoSummary[]> {
+    if (MOCK) return mockApi.listRepos();
+    const res = await request<unknown>("/repos");
+    return unwrap<RepoSummary>(res, "repos");
+  },
+
+  async getRepoConfig(rkey: string): Promise<RepoConfig> {
+    if (MOCK) return mockApi.getRepoConfig(rkey);
+    return request<RepoConfig>(`/repos/${encodeURIComponent(rkey)}/config`);
+  },
+
+  async saveRepoConfig(rkey: string, patch: RepoConfigPatch): Promise<RepoConfig> {
+    if (MOCK) return mockApi.saveRepoConfig(rkey, patch);
+    return put<RepoConfig>(`/repos/${encodeURIComponent(rkey)}/config`, patch);
   },
 
   async getPr(key: string): Promise<PrDetail> {

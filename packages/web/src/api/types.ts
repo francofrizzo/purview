@@ -164,6 +164,12 @@ export interface AnalysisJob {
 export const isJobLive = (job?: AnalysisJob | null): boolean =>
   job?.status === "queued" || job?.status === "running";
 
+/** GitHub's own lifecycle state for the PR. */
+export type PrGithubState = "open" | "draft" | "merged" | "closed";
+
+/** GitHub's aggregated review decision; null when GitHub reports none. */
+export type ReviewDecision = "approved" | "changes_requested" | "review_required";
+
 /** GET /api/prs — flattened by `client.ts` from the server's progress envelope. */
 export interface PrListEntry {
   key: string;
@@ -175,6 +181,60 @@ export interface PrListEntry {
   viewedHunks?: number;
   totalHunks?: number;
   analysisJob?: AnalysisJob | null;
+  /** GitHub lifecycle state, as of the last fetch. */
+  state: PrGithubState;
+  reviewDecision: ReviewDecision | null;
+  /** ISO timestamp of when this PR was added locally. */
+  addedAt: string;
+  /** Local-only: hides the PR behind the repo group's archived disclosure. */
+  archived: boolean;
+}
+
+/* --------------------------------------------------------- repos & config */
+
+/** GET /api/repos → `{ repos }`. */
+export interface RepoSummary {
+  host: string;
+  owner: string;
+  repo: string;
+  prCount: number;
+  archivedCount: number;
+  hasLocalConfig: boolean;
+  hasCommittedConfig: boolean;
+  /** the local checkout the server resolved for this repo, if any */
+  repoPath: string | null;
+}
+
+/**
+ * GET/PUT /api/repos/:rkey/config.
+ *
+ * `local` is what this machine stores; `committed` mirrors the target repo's
+ * `.purview/` folder and is read-only here (the team maintains it via git);
+ * `effective` is the server's own layering of the two plus the built-in
+ * defaults, so the UI never has to recompute precedence.
+ */
+export interface RepoConfig {
+  local: {
+    /** null means "inherit the global default" */
+    autoAnalyze: boolean | null;
+    repoPath: string | null;
+    rubric: string;
+  };
+  committed: {
+    present: boolean;
+    config: Record<string, unknown> | null;
+    rubric: string | null;
+  };
+  effective: {
+    autoAnalyze: boolean;
+    repoPath: string | null;
+  };
+}
+
+export interface RepoConfigPatch {
+  autoAnalyze?: boolean | null;
+  repoPath?: string | null;
+  rubric?: string;
 }
 
 /** GET /api/prs/:key */

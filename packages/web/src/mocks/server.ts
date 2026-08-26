@@ -12,14 +12,17 @@ import type {
   MigrationReport,
   PrDetail,
   PrListEntry,
+  RepoConfig,
+  RepoConfigPatch,
   RepoPathResult,
+  RepoSummary,
   ReviewEvent,
   ReviewStatus,
   ReviewUnit,
   SubmitReviewResult,
   SyncResult,
 } from "../api/types";
-import { mockDetail, mockDrafts, mockList } from "./fixture";
+import { mockDetail, mockDrafts, mockList, mockRepoConfigs, mockRepos } from "./fixture";
 
 /** Stand-in for the previous revision's body of the one hunk that changed. */
 const MOCK_DOD_BEFORE: Record<string, string[]> = {
@@ -44,8 +47,48 @@ const MOCK_DOD_AFTER: Record<string, string[]> = {
 const detail: PrDetail = structuredClone(mockDetail);
 const list: PrListEntry[] = structuredClone(mockList);
 const drafts: DraftComment[] = structuredClone(mockDrafts);
+const repos: RepoSummary[] = structuredClone(mockRepos);
+const repoConfigs: Record<string, RepoConfig> = structuredClone(mockRepoConfigs);
 
 const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
+
+/** The built-in fallback the server applies when nothing overrides it. */
+const DEFAULT_AUTO_ANALYZE = false;
+
+/** Keep the repo rollups honest after an archive/unarchive or an added PR. */
+function syncRepoCounts() {
+  const seen = new Set<string>();
+  for (const pr of list) {
+    const { host, owner, repo } = pr.meta;
+    const rkey = `${host}/${owner}/${repo}`;
+    seen.add(rkey);
+    let summary = repos.find((r) => `${r.host}/${r.owner}/${r.repo}` === rkey);
+    if (!summary) {
+      summary = {
+        host,
+        owner,
+        repo,
+        prCount: 0,
+        archivedCount: 0,
+        hasLocalConfig: false,
+        hasCommittedConfig: false,
+        repoPath: null,
+      };
+      repos.push(summary);
+      repoConfigs[rkey] ??= {
+        local: { autoAnalyze: null, repoPath: null, rubric: "" },
+        committed: { present: false, config: null, rubric: null },
+        effective: { autoAnalyze: DEFAULT_AUTO_ANALYZE, repoPath: null },
+      };
+    }
+  }
+  for (const summary of repos) {
+    const rkey = `${summary.host}/${summary.owner}/${summary.repo}`;
+    const mine = list.filter((p) => `${p.meta.host}/${p.meta.owner}/${p.meta.repo}` === rkey);
+    summary.prCount = mine.filter((p) => !p.archived).length;
+    summary.archivedCount = mine.filter((p) => p.archived).length;
+  }
+}
 
 /* ------------------------------------------------------------------------ */
 /* Analysis jobs                                                             */
@@ -60,7 +103,7 @@ const UNANALYZED_KEY = "github.com/acme/platform/1190";
 
 const unanalyzed: PrDetail = {
   key: UNANALYZED_KEY,
-  meta: list[1].meta,
+  meta: list.find((p) => p.key === UNANALYZED_KEY)!.meta,
   state: { revision: 1, summary: "", units: [], hunks: {}, files: {} },
   files: { files: [] },
   diff: "",
@@ -265,16 +308,84 @@ export const mockApi = {
       unitCount: 0,
       viewedHunks: 0,
       totalHunks: 0,
+      state: "open",
+      reviewDecision: null,
+      addedAt: new Date().toISOString(),
+      archived: false,
     };
     list.unshift(entry);
+    syncRepoCounts();
     return entry;
+  },
+
+  /** Local-only, exactly as the tooltip in the UI claims. */
+  async setArchived(key: string, archived: boolean): Promise<void> {
+    await delay(120);
+    const entry = list.find((p) => p.key === key);
+    if (!entry) throw new ApiError("not_found", 404, `No PR "${key}"`);
+    entry.archived = archived;
+    syncRepoCounts();
+  },
+
+  /* ----------------------------------------------------------------- repos */
+
+  async listRepos(): Promise<RepoSummary[]> {
+    await delay(80);
+    syncRepoCounts();
+    return structuredClone(repos);
+  },
+
+  async getRepoConfig(rkey: string): Promise<RepoConfig> {
+    await delay(100);
+    const config = repoConfigs[rkey];
+    if (!config) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
+    return structuredClone(config);
+  },
+
+  /**
+   * A partial PUT, answered with the whole re-layered config — including the
+   * `effective` block, which is the server's job to recompute (local wins over
+   * committed, committed over the built-in default).
+   */
+  async saveRepoConfig(rkey: string, patch: RepoConfigPatch): Promise<RepoConfig> {
+    await delay(220);
+    const config = repoConfigs[rkey];
+    if (!config) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
+    if (patch.autoAnalyze !== undefined) config.local.autoAnalyze = patch.autoAnalyze;
+    if (patch.repoPath !== undefined) config.local.repoPath = patch.repoPath || null;
+    if (patch.rubric !== undefined) config.local.rubric = patch.rubric;
+    const committed = config.committed.config as { autoAnalyze?: boolean } | null;
+    config.effective = {
+      autoAnalyze: config.local.autoAnalyze ?? committed?.autoAnalyze ?? DEFAULT_AUTO_ANALYZE,
+      repoPath: config.local.repoPath,
+    };
+    const summary = repos.find((r) => `${r.host}/${r.owner}/${r.repo}` === rkey);
+    if (summary) {
+      summary.repoPath = config.effective.repoPath;
+      summary.hasLocalConfig =
+        config.local.autoAnalyze !== null ||
+        Boolean(config.local.repoPath) ||
+        Boolean(config.local.rubric.trim());
+    }
+    return structuredClone(config);
   },
 
   async getPr(key: string): Promise<PrDetail> {
     await delay(120);
-    const target = details[key];
+    let target = details[key];
     if (!target) {
-      throw new Error(`Mock mode carries only the two fixture PRs (asked for ${key}).`);
+      const entry = list.find((p) => p.key === key);
+      if (!entry) throw new Error(`No PR "${key}" in the fixture.`);
+      // The extra fixture rows exist to populate the home screen's groups; they
+      // get an empty detail so opening one is a no-op rather than an error.
+      target = details[key] = {
+        key,
+        meta: entry.meta,
+        state: { revision: 1, summary: "", units: [], hunks: {}, files: {} },
+        files: { files: [] },
+        diff: "",
+        analysisJob: null,
+      };
     }
     if (target === detail) recomputeFileRollups();
     target.analysisJob = jobs[key] ?? null;

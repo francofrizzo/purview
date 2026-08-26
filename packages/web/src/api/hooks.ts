@@ -6,6 +6,7 @@ import {
   type UseMutationResult,
 } from "@tanstack/react-query";
 import { api } from "./client";
+import { applyArchive } from "../lib/prList";
 import type {
   AnalysisJob,
   DiffOfDiffs,
@@ -15,6 +16,9 @@ import type {
   MigrationReport,
   PrDetail,
   PrListEntry,
+  RepoConfig,
+  RepoConfigPatch,
+  RepoSummary,
   ReviewEvent,
   ReviewStatus,
   ReviewUnit,
@@ -24,6 +28,8 @@ import type {
 
 export const qk = {
   prs: ["prs"] as const,
+  repos: ["repos"] as const,
+  repoConfig: (rkey: string) => ["repo-config", rkey] as const,
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
   review: (key: string) => ["review", key] as const,
@@ -65,6 +71,62 @@ export function useAddPr() {
   return useMutation({
     mutationFn: (url: string) => api.addPr(url),
     onSuccess: () => void qc.invalidateQueries({ queryKey: qk.prs }),
+  });
+}
+
+/**
+ * Archiving is local-only and instantaneous in the UI: the row jumps into (or
+ * out of) the repo group's disclosure before the request lands, and rolls back
+ * if the server refuses.
+ */
+export function useSetArchived() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ key, archived }: { key: string; archived: boolean }) =>
+      api.setArchived(key, archived),
+    onMutate: async ({ key, archived }) => {
+      await qc.cancelQueries({ queryKey: qk.prs });
+      const previous = qc.getQueryData<PrListEntry[]>(qk.prs);
+      if (previous) qc.setQueryData(qk.prs, applyArchive(previous, key, archived));
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) qc.setQueryData(qk.prs, ctx.previous);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: qk.repos });
+    },
+  });
+}
+
+/* ------------------------------------------------------------------ repos */
+
+export function useRepos() {
+  return useQuery<RepoSummary[]>({ queryKey: qk.repos, queryFn: api.listRepos });
+}
+
+export function useRepoConfig(rkey: string) {
+  return useQuery<RepoConfig>({
+    queryKey: qk.repoConfig(rkey),
+    queryFn: () => api.getRepoConfig(rkey),
+    enabled: Boolean(rkey),
+    retry: false,
+  });
+}
+
+/**
+ * A partial PUT. The server answers with the whole (re-layered) config, so the
+ * response seeds the cache directly instead of triggering a refetch.
+ */
+export function useSaveRepoConfig(rkey: string) {
+  const qc = useQueryClient();
+  return useMutation<RepoConfig, Error, RepoConfigPatch>({
+    mutationFn: (patch) => api.saveRepoConfig(rkey, patch),
+    onSuccess: (config) => {
+      qc.setQueryData(qk.repoConfig(rkey), config);
+      void qc.invalidateQueries({ queryKey: qk.repos });
+    },
   });
 }
 

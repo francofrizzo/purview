@@ -17,8 +17,7 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { api } from "../api/client";
-import { errorText } from "../api/errors";
+import { Link } from "react-router-dom";
 import type { ChatRef, DraftComment, PrDetail } from "../api/types";
 import { refContext, refKey, refLabel, refTitle } from "../lib/chatRefs";
 import { useChat, type LocalMessage, type ToolActivity } from "../lib/chat";
@@ -490,7 +489,11 @@ export function ChatPanel({
   );
 }
 
-/** Repo path is per-PR and server-side; this is the only place it is set. */
+/**
+ * The repo checkout moved to the per-repo settings page (it is shared by every
+ * PR in the repo, so a per-PR field was the wrong home for it); what is left
+ * here is the pointer to it plus the conversation controls.
+ */
 function ChatSettings({
   prKey,
   onClearConversation,
@@ -498,62 +501,26 @@ function ChatSettings({
   prKey: string;
   onClearConversation: () => void;
 }) {
-  const [path, setPath] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ tone: "ok" | "warn" | "error"; text: string } | null>(null);
-
-  const save = async () => {
-    if (!path.trim()) return;
-    setBusy(true);
-    setResult(null);
-    try {
-      const res = await api.setRepoPath(prKey, path.trim());
-      setResult(
-        res.warning
-          ? { tone: "warn", text: res.warning }
-          : { tone: "ok", text: "Repo path saved for this PR." },
-      );
-    } catch (err) {
-      setResult({ tone: "error", text: errorText(err) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const tone =
-    result?.tone === "error" ? "var(--risk)" : result?.tone === "warn" ? "var(--warn)" : "var(--ok)";
+  // prKey is `host/owner/repo/number`; the repo settings route takes the first three.
+  const [host, owner, repo] = prKey.split("/");
 
   return (
     <div className="flex-none border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
-      <label className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
+      <span className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
         local repo path
-      </label>
-      <div className="mt-1 flex items-center gap-1.5">
+      </span>
+      <p className="mt-1 flex items-center gap-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
         <IconFile width={11} height={11} />
-        <input
-          className="input font-mono text-2xs"
-          data-testid="chat-repo-path"
-          placeholder="/Users/you/code/repo"
-          value={path}
-          onChange={(e) => setPath(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void save();
-            e.stopPropagation();
-          }}
-        />
-        <button type="button" className="btn flex-none" disabled={busy || !path.trim()} onClick={() => void save()}>
-          {busy ? "saving…" : "save"}
-        </button>
-      </div>
-      <p className="mt-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        Claude reads the working tree there to answer questions about code the diff only touches
-        partially.
+        <Link
+          to={`/repo/${host}/${owner}/${repo}/settings`}
+          data-testid="chat-repo-settings-link"
+          className="underline underline-offset-2"
+          style={{ color: "var(--accent)" }}
+        >
+          set in repo settings
+        </Link>
+        <span>— it is shared by every PR in {owner}/{repo}.</span>
       </p>
-      {result ? (
-        <p className="mt-1 text-2xs leading-4" style={{ color: tone }}>
-          {result.text}
-        </p>
-      ) : null}
       <button type="button" className="btn mt-2" onClick={onClearConversation}>
         clear conversation
       </button>

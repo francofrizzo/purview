@@ -1,4 +1,4 @@
-import type { Attention, Kind, RiskFlag } from "../api/types";
+import type { Attention, Kind, PrGithubState, ReviewDecision, RiskFlag } from "../api/types";
 import { RISK_META } from "./icons";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
@@ -17,6 +17,60 @@ const ATTENTION_STYLE: Record<Attention, { label: string; color: string; bg: str
   skim: { label: "skim", color: "var(--warn)", bg: "var(--warn-soft)" },
   skip: { label: "skip", color: "var(--kind-wiring)", bg: "var(--kind-wiring-soft)" },
 };
+
+/**
+ * GitHub's own lifecycle state. The hues are the conventional ones (green /
+ * gray / purple / red) but every one of them is a theme token, so the chips
+ * track the active theme's palette instead of pinning GitHub's brand colors.
+ */
+const PR_STATE_STYLE: Record<PrGithubState, { label: string; color: string; bg: string }> = {
+  open: { label: "open", color: "var(--ok)", bg: "var(--ok-soft)" },
+  draft: { label: "draft", color: "var(--kind-wiring)", bg: "var(--kind-wiring-soft)" },
+  merged: { label: "merged", color: "var(--kind-core)", bg: "var(--kind-core-soft)" },
+  closed: { label: "closed", color: "var(--risk)", bg: "var(--risk-soft)" },
+};
+
+export function PrStateChip({ state }: { state: PrGithubState }) {
+  const s = PR_STATE_STYLE[state] ?? PR_STATE_STYLE.open;
+  return (
+    <span className="chip" style={{ color: s.color, background: s.bg }} title={`GitHub state: ${state}`}>
+      {s.label}
+    </span>
+  );
+}
+
+const DECISION_STYLE: Record<ReviewDecision, { label: string; color: string; title: string }> = {
+  approved: { label: "approved ✓", color: "var(--ok)", title: "Approved on GitHub" },
+  changes_requested: {
+    label: "changes requested",
+    color: "var(--warn)",
+    title: "Changes requested on GitHub",
+  },
+  review_required: {
+    label: "review required",
+    color: "var(--fg-faint)",
+    title: "GitHub is still waiting for a required review",
+  },
+};
+
+/**
+ * Deliberately quieter than the state chip: text-only, no fill, so it reads as
+ * a qualifier on the state rather than as a second status of equal weight.
+ */
+export function ReviewDecisionChip({ decision }: { decision: ReviewDecision | null }) {
+  if (!decision) return null;
+  const s = DECISION_STYLE[decision];
+  if (!s) return null;
+  return (
+    <span
+      className="chip px-0 font-normal"
+      style={{ color: s.color, background: "transparent" }}
+      title={s.title}
+    >
+      {s.label}
+    </span>
+  );
+}
 
 export function KindChip({ kind }: { kind: Kind }) {
   const s = KIND_STYLE[kind] ?? KIND_STYLE.wiring;
