@@ -28,6 +28,7 @@ import {
   useSettings,
 } from "../lib/settings";
 import { Markdown } from "./Markdown";
+import { useModalBackground } from "./Modal";
 import { IconArrowDown, IconChat, IconFile, IconQuote, IconSettings, IconSpinner } from "./icons";
 
 const STARTERS = [
@@ -503,6 +504,8 @@ function ChatSettings({
 }) {
   // prKey is `host/owner/repo/number`; the repo settings route takes the first three.
   const [host, owner, repo] = prKey.split("/");
+  // Opens over the PR the user is reviewing rather than navigating away.
+  const background = useModalBackground();
 
   return (
     <div className="flex-none border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
@@ -513,6 +516,7 @@ function ChatSettings({
         <IconFile width={11} height={11} />
         <Link
           to={`/repo/${host}/${owner}/${repo}/settings`}
+          state={{ background }}
           data-testid="chat-repo-settings-link"
           className="underline underline-offset-2"
           style={{ color: "var(--accent)" }}

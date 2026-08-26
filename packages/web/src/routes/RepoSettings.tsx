@@ -6,18 +6,20 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { repoKey } from "../api/client";
 import { errorText } from "../api/errors";
 import { useRepoConfig, useSaveRepoConfig, useRepos } from "../api/hooks";
 import type { RepoConfig } from "../api/types";
 import { Markdown } from "../components/Markdown";
+import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
 import { IconChevron, IconFile, IconSettings } from "../components/icons";
 
 /** Long committed rubrics start collapsed; short ones are shown whole. */
 const COLLAPSE_OVER_CHARS = 600;
 
-export function RepoSettingsPage() {
+/** Per-repo settings, floating over whatever route is underneath. */
+export function RepoSettingsModal() {
   const params = useParams();
   const host = params.host ?? "";
   const owner = params.owner ?? "";
@@ -28,26 +30,30 @@ export function RepoSettingsPage() {
   const { data: repos } = useRepos();
   const summary = repos?.find((r) => repoKey(r) === rkey);
 
-  return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col overflow-y-auto px-6 py-10">
-      <header className="mb-6 flex items-baseline gap-3">
-        <h1 className="flex flex-none items-center gap-2 whitespace-nowrap text-lg font-semibold tracking-tight">
-          <IconSettings width={15} height={15} className="flex-none" />
-          {owner}/{repo}
-        </h1>
-        <p className="min-w-0 flex-1 text-xs" style={{ color: "var(--fg-muted)" }}>
-          Repo settings. Stored by the server, shared by every PR in this repo.
-        </p>
-        <div className="ml-auto flex flex-none items-center gap-2">
-          <Link to="/settings" className="btn">
-            app settings
-          </Link>
-          <Link to="/" className="btn">
-            done
-          </Link>
-        </div>
-      </header>
+  const close = useCloseModal();
+  const navigate = useNavigate();
+  const background = useModalBackground();
 
+  return (
+    <Modal
+      testId="repo-settings-modal"
+      icon={<IconSettings width={14} height={14} className="flex-none" />}
+      title={`${owner}/${repo}`}
+      subtitle="Repo settings. Stored by the server, shared by every PR in this repo."
+      onClose={close}
+      actions={
+        <button
+          type="button"
+          className="btn"
+          data-testid="open-app-settings"
+          // Same backdrop, replacing this entry so closing lands where the
+          // user came from rather than back on the repo settings modal.
+          onClick={() => navigate("/settings", { state: { background }, replace: true })}
+        >
+          app settings
+        </button>
+      }
+    >
       {isLoading ? (
         <p className="surface rounded-md p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
           Loading repo settings…
@@ -67,7 +73,7 @@ export function RepoSettingsPage() {
           archivedCount={summary?.archivedCount}
         />
       )}
-    </div>
+    </Modal>
   );
 }
 
@@ -134,7 +140,7 @@ function RepoSettingsBody({
       <CheckoutSection config={config} save={save} />
       <RubricSection config={config} save={save} />
 
-      <p className="pb-8 text-2xs" style={{ color: "var(--fg-faint)" }}>
+      <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Saved on the server under <span className="font-mono">{rkey}</span>. The committed half is
         read-only here — edit it in the repo and commit.
       </p>

@@ -4,6 +4,7 @@ import type { AnalysisJob, PrDetail } from "../api/types";
 import { isJobLive } from "../api/types";
 import { AnalysisChip } from "./Analysis";
 import { ChatButton } from "./ChatPanel";
+import { useModalBackground } from "./Modal";
 import { IconComment, IconMore, IconRefresh, IconSettings, IconUpload } from "./icons";
 
 export function TopBar({
@@ -44,6 +45,8 @@ export function TopBar({
 }) {
   const { meta, state } = detail;
   const live = isJobLive(analysisJob);
+  // The gear opens settings over this PR view instead of leaving it.
+  const background = useModalBackground();
   return (
     <header
       className="flex flex-none items-center gap-3 border-b px-3 py-2"
@@ -110,7 +113,13 @@ export function TopBar({
                 },
           ]}
         />
-        <Link to="/settings" className="btn" title="Settings" aria-label="Settings">
+        <Link
+          to="/settings"
+          state={{ background }}
+          className="btn"
+          title="Settings"
+          aria-label="Settings"
+        >
           <IconSettings width={12} height={12} />
         </Link>
         <button type="button" className="btn btn-primary" onClick={onFinishReview}>

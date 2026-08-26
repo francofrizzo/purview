@@ -5,6 +5,7 @@ import { useAddPr, usePrs, useSetArchived } from "../api/hooks";
 import type { PrListEntry } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
+import { useModalBackground } from "../components/Modal";
 import { IconArchive, IconChevron, IconSettings } from "../components/icons";
 import {
   formatAddedAt,
@@ -15,6 +16,7 @@ import {
 
 export function PrList() {
   const { data: prs = [], isLoading, error } = usePrs();
+  const background = useModalBackground();
   const addPr = useAddPr();
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
@@ -47,7 +49,7 @@ export function PrList() {
             )}
           </p>
         </div>
-        <Link to="/settings" className="btn flex-none" title="Settings">
+        <Link to="/settings" state={{ background }} className="btn flex-none" title="Settings">
           <IconSettings width={12} height={12} />
           settings
         </Link>
@@ -106,6 +108,7 @@ export function PrList() {
 /** One repo: a header row, its PRs, and the archived disclosure at the bottom. */
 function RepoSection({ group }: { group: RepoGroup }) {
   const [showArchived, setShowArchived] = useState(false);
+  const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
 
   return (
@@ -131,6 +134,7 @@ function RepoSection({ group }: { group: RepoGroup }) {
         </span>
         <Link
           to={settingsHref}
+          state={{ background }}
           className="ml-auto flex-none rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
           title={`Settings for ${group.owner}/${group.repo}`}
           aria-label={`Settings for ${group.owner}/${group.repo}`}

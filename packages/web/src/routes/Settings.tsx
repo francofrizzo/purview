@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
+import { Modal, useCloseModal } from "../components/Modal";
 import { IconSettings } from "../components/icons";
 import { tokenizeLines, type Tok } from "../lib/highlight";
 import {
@@ -20,29 +20,24 @@ import {
 } from "../lib/settings";
 import { MONOKAI_PRO_NOTE, THEMES, previewColors, shikiThemeFor } from "../lib/themes";
 
-export function SettingsPage() {
+/** App-wide appearance settings, floating over whatever route is underneath. */
+export function SettingsModal() {
   const { settings, appearance, update, reset } = useSettings();
+  const close = useCloseModal();
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col overflow-y-auto px-6 py-10">
-      <header className="mb-6 flex items-baseline gap-3">
-        <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-          <IconSettings width={15} height={15} />
-          Settings
-        </h1>
-        <p className="text-xs" style={{ color: "var(--fg-muted)" }}>
-          Appearance only, for now. Every change applies immediately and is stored in this browser.
-        </p>
-        <div className="ml-auto flex flex-none items-center gap-2">
-          <button type="button" className="btn" onClick={reset}>
-            reset to defaults
-          </button>
-          <Link to="/" className="btn">
-            done
-          </Link>
-        </div>
-      </header>
-
+    <Modal
+      testId="settings-modal"
+      icon={<IconSettings width={14} height={14} />}
+      title="Settings"
+      subtitle="Appearance only, for now. Every change applies immediately and is stored in this browser."
+      onClose={close}
+      actions={
+        <button type="button" className="btn" onClick={reset}>
+          reset to defaults
+        </button>
+      }
+    >
       <Section
         title="Typography"
         hint="Applies to the diff and every other code surface. The UI font follows it only if you ask it to."
@@ -80,11 +75,11 @@ export function SettingsPage() {
         </div>
       </Section>
 
-      <p className="pb-8 text-2xs" style={{ color: "var(--fg-faint)" }}>
+      <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Stored under <span className="font-mono">reviewer.settings</span> in localStorage · active
         theme <span className="font-mono">{appearance.theme.id}</span>
       </p>
-    </div>
+    </Modal>
   );
 }
 
@@ -387,7 +382,12 @@ function ThemePreview() {
   }, [shiki]);
 
   return (
-    <div className="mt-4 overflow-hidden rounded" style={{ border: "1px solid var(--border)" }}>
+    // Sticky: the theme grid is taller than the modal, and the point of the
+    // grid is watching this card change.
+    <div
+      className="sticky bottom-0 mt-4 overflow-hidden rounded"
+      style={{ border: "1px solid var(--border)", background: "var(--bg-raised)" }}
+    >
       <div
         className="flex items-center gap-2 border-b px-2.5 py-1.5"
         style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
