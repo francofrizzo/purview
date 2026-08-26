@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
-import { cors } from "hono/cors";
 import { z } from "zod";
 import {
   analysisCoverage,
@@ -59,8 +58,9 @@ import { chatBusy, startChatTurn, type ChatStreamEvent } from "./chat-session.js
 import { ChatRefSchema, clearChat, readChat } from "./chat.js";
 import { prHead, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
+import { localOnlyGuard } from "./security.js";
 
-const LOCALHOST_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+export const DEFAULT_PORT = 4779;
 
 export interface AppOptions {
   /** Overrides @reviewer/core's REVIEWER_STATE_DIR-based default; mainly for tests. */
@@ -71,6 +71,10 @@ export interface AppOptions {
   autoAnalyze?: boolean;
   /** Timeout handed to analysis runs; tests shorten it. */
   analysisTimeoutMs?: number;
+  /** The port we are listening on — the Host/Origin guard validates against it. */
+  port?: number;
+  /** Extra origins the guard accepts (Vite dev proxy); see config.ts. */
+  devOrigins?: string[];
 }
 
 function keyParam(c: { req: { param(name: string): string | undefined } }): PrKey {
@@ -131,12 +135,15 @@ export function createApp(opts: AppOptions = {}): Hono {
   const webDist =
     opts.webDist ?? path.join(path.dirname(new URL(import.meta.url).pathname), "../../web/dist");
 
+  // No CORS middleware at all: the UI is served from this same origin, so it
+  // needs none, and emitting none is what stops a foreign page from reading any
+  // response. What replaces it is a Host + Origin guard — see security.ts for
+  // why CORS alone was never enough (it gates reads, not requests).
   app.use(
     "/api/*",
-    cors({
-      origin: (origin) => (origin && LOCALHOST_ORIGIN.test(origin) ? origin : ""),
-      allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type"],
+    localOnlyGuard({
+      port: opts.port ?? DEFAULT_PORT,
+      devOrigins: opts.devOrigins,
     }),
   );
 

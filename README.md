@@ -35,6 +35,53 @@ pnpm dev          # server on http://localhost:4779, serving the built web app
 
 Open <http://localhost:4779> and paste a PR URL to start tracking it.
 
+## First run
+
+The first time the server starts in a terminal with no `~/.reviewer/config.json`, it runs a
+short onboarding before it listens:
+
+```
+  ╭─ P U R V I E W ────────────────────────╮
+  │ a local-first pull request review desk │
+  ╰────────────────────────────────────────╯
+
+  Checking your environment
+
+  ✓ Node.js >= 20 — v24.16.0
+  ✓ gh installed + authenticated — logged in as octocat
+  ✓ claude CLI available — 2.1.243 (Claude Code)
+  ✓ state directory writable — /Users/you/.reviewer
+```
+
+Each check that fails prints a one-line fix (an install URL, `gh auth login`). A missing or
+logged-out `gh` is a hard stop — nothing loads without it — so it asks whether to continue
+anyway; a missing `claude` is only a warning, since it costs you the automatic analysis and
+the review chat and nothing else.
+
+Then it asks for consent about cost, plainly: adding a PR starts a Claude analysis run
+automatically and every chat message starts another, both on **your own Claude account or
+subscription** through the `claude` CLI you are already signed into. Answering the
+`[Y/n]` writes `autoAnalyze` to the config, and it finishes with a box telling you the state
+dir, the port and the URL to open.
+
+It only runs once. It is skipped silently when the config already exists or when stdout is
+not a TTY (a service manager, a script, CI), where the defaults apply. `node
+packages/server/dist/index.js --onboard` re-runs it at any time. Colors follow `NO_COLOR`
+and are dropped off a TTY.
+
+`~/.reviewer/config.json` is the whole of it:
+
+```jsonc
+{
+  "autoAnalyze": true,                       // start an analysis run when a PR is added
+  "onboardedAt": "2026-08-26T12:51:24.500Z",
+  "devOrigins": ["http://localhost:5179",    // origins allowed to send state-changing
+                 "http://localhost:5173"]    // requests, for the Vite dev proxy
+}
+```
+
+Every field has a safe default, so a missing or corrupt file just means "defaults".
+
 `pnpm dev` runs the server only, against `packages/web/dist` — so run `pnpm -r build` first,
 or rebuild the web app after changing it. For UI work with hot reload, run the two halves
 separately: `pnpm dev` in one shell and `pnpm --filter @reviewer/web dev` in another, then use
@@ -79,7 +126,9 @@ Runs are one-at-a-time, their status lives in `analysis-job.json`
 (`queued`/`running`/`done`/`failed`/`cancelled`), and the UI follows them live over
 `GET /api/prs/:key/events`. You can trigger one by hand (`POST …/analyze`), cancel it
 (`DELETE …/analyze`), or opt a single init/refresh out with `?analyze=false`. Set
-`REVIEWER_AUTO_ANALYZE=0` to disable the automatic triggers entirely.
+The automatic triggers follow `autoAnalyze` in `~/.reviewer/config.json` (answered during
+onboarding, default on when there is no config). `REVIEWER_AUTO_ANALYZE=0` overrides whatever
+is stored and disables them for that run.
 
 **Review chat.** One resumable Claude session per PR, stored in `chat.json`. You can attach
 typed references to a question — a unit, a hunk, a file, a line range, one of your draft
@@ -111,7 +160,9 @@ deleted or is no longer a git repo just means "no local checkout" — it never f
 
 ## State directory
 
-`~/.reviewer/<host>/<owner>/<repo>/<number>/` (override the root with `REVIEWER_STATE_DIR`):
+`~/.reviewer/<host>/<owner>/<repo>/<number>/` (override the root with `REVIEWER_STATE_DIR`).
+`~/.reviewer/config.json` sits beside the per-PR trees and holds the settings above; the rest
+is per PR:
 
 ```
 meta.json           # { host, owner, repo, number, url, title, createdAt, headRef?, repoPath? }
@@ -129,6 +180,34 @@ revisions/<n>/      # one per observed (baseSha, headSha, mergeBase), 1-based
 
 Only `events.jsonl` is authoritative. `state.json` is a fold of it and is rebuilt on demand,
 so hand-editing it does nothing; edit nothing here by hand at all — use the CLI.
+
+## Security model
+
+The server is unauthenticated by design — it is yours, on your machine — which makes *who is
+allowed to talk to it* the whole of the security model. It listens on `127.0.0.1` only, never
+on `0.0.0.0`, so nothing on your network can reach it.
+
+That still leaves the browser. Any page you have open can send a cross-origin request to
+`http://127.0.0.1:4779`; CORS only decides whether the *response* can be read, so the request
+runs either way. Here that would mean a random tab spawning Claude analysis runs on your
+account, posting comments, or submitting a review — and `confirm: true` protects nothing
+against that, because the attacker writes the body. So every `/api` request is checked twice:
+
+- **Host** must be `localhost`/`127.0.0.1`/`[::1]` on the port we are actually serving. That
+  is the DNS-rebinding defense: an attacker who repoints their own domain at 127.0.0.1 still
+  sends `Host: their-domain`, which browsers do not let them forge.
+- **Origin** must be our own origin for anything that changes state (POST/PATCH/PUT/DELETE).
+  A request with no `Origin` at all is allowed — that is `curl` and the CLI, and a browser
+  always attaches one to a cross-origin state-changing request. `Sec-Fetch-Site: cross-site`
+  or `same-site` is rejected outright. GETs are left to the Host check alone: they mutate
+  nothing, and with no CORS headers on the response a foreign page cannot read what came
+  back, so blocking them would buy nothing.
+
+There is no CORS middleware at all — same-origin needs none, and emitting none is what keeps
+responses unreadable to other pages. The one relaxation is `devOrigins` in `config.json`: the
+Vite dev proxy forwards the browser's original `Origin` (`http://localhost:5179`), so that
+origin is accepted as a *sender*. It adds no CORS response header — the proxy already makes
+everything same-origin as far as the browser is concerned.
 
 ## The review-unit and attention model
 

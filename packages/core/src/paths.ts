@@ -16,6 +16,15 @@ export function stateRoot(): string {
     : path.join(homedir(), ".reviewer");
 }
 
+/**
+ * `~/.reviewer/config.json` — machine-wide app settings (onboarding result,
+ * auto-analysis consent, extra dev origins). Lives beside the per-PR trees, not
+ * inside one, so it survives deleting any single PR's state.
+ */
+export function configPath(root = stateRoot()): string {
+  return path.join(root, "config.json");
+}
+
 /** `~/.reviewer/<host>/<owner>/<repo>/<number>/` */
 export function prDir(key: PrKey, root = stateRoot()): string {
   return path.join(root, key.host, key.owner, key.repo, String(key.number));

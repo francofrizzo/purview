@@ -15,6 +15,17 @@ skills/pr-review  # Claude skill (SKILL.md + reference docs). Reads/writes state
 
 ## State directory
 
+`~/.reviewer/config.json` — global settings, written by the first-run onboarding (see "First-run onboarding"):
+
+```jsonc
+{
+  "autoAnalyze": true,        // consent: start a Claude analysis run when a PR is added/refreshed
+  "onboardedAt": "<iso>",     // when onboarding produced this file
+  "devOrigins": ["http://localhost:5179", "http://localhost:5173"]  // extra allowed request origins
+}
+```
+Every field defaults; a missing or invalid file yields the defaults and is never fatal. `REVIEWER_AUTO_ANALYZE=0` overrides `autoAnalyze` for one run.
+
 `~/.reviewer/<host>/<owner>/<repo>/<number>/`
 
 ```
@@ -119,6 +130,24 @@ Review errors carry a specific `error` code rather than a generic gh failure:
 `cannot_approve_own_pr` (422), `stale_commit_id` (422, force-push moved the head),
 `comment_line_not_in_diff` (422), `pending_review_gone` (404), `confirmation_required` (400),
 `invalid_event` (400).
+
+### Hardening (all /api routes)
+
+The API is unauthenticated, so access control is entirely "who may talk to it". CORS is not that: it gates response *reading*, not request *execution*, so a permissive CORS policy left every side effect (spawning Claude runs, posting comments, submitting a review) reachable from any web page. `confirm: true` is no defense — the attacker writes the body.
+
+1. Bind `127.0.0.1` explicitly; never `0.0.0.0`.
+2. `Host` must be `localhost` / `127.0.0.1` / `[::1]`, on the configured port or with no port. Anything else -> 403 `forbidden_host`, on every method (DNS-rebinding defense; covers the `/events` SSE GET too).
+3. State-changing methods (POST/PATCH/PUT/DELETE): `Origin`, when present, must equal `http://localhost:<port>`, `http://127.0.0.1:<port>`, or a configured `devOrigins` entry -> else 403 `forbidden_origin`. Absent `Origin` passes (curl, the CLI). `Sec-Fetch-Site: cross-site|same-site` is rejected; `same-origin|none` corroborates a pass.
+4. No CORS middleware: same-origin needs none, and emitting none is what keeps responses unreadable cross-origin. `devOrigins` relaxes only the Origin *check* — it adds no CORS response header. It exists because the Vite dev proxy forwards the browser's original `Origin` (`http://localhost:5179`) while `changeOrigin` rewrites only `Host`.
+5. GETs carrying a foreign `Origin` are still served: they mutate nothing and, with no CORS headers, remain unreadable to the caller.
+
+## First-run onboarding
+
+`packages/server/src/onboarding.ts`. Runs before `serve()` when `~/.reviewer/config.json` is absent **and** stdout is a TTY; `--onboard` forces a re-run. Non-TTY or config present -> skipped silently, defaults apply.
+
+Order: banner (3-line box, accent color) -> environment checks printed one line at a time (Node >= 20; `gh --version` + `gh auth status` with the detected login; `claude --version`; state dir writable), each failure carrying a one-line fix hint -> `gh` failing is a hard stop offering `Continue anyway? [y/N]`, `claude` failing is a warning only -> a plain statement that analysis and chat runs cost against the user's own Claude account, then `Run an analysis automatically when you add a PR? [Y/n]` -> writes config.json -> summary box (state dir, port, URL, claude readiness).
+
+node:readline + ANSI only, no TUI framework. Colors off under `NO_COLOR` or off a TTY. Check functions take an injected `Exec`; the prompt loop takes an injected `OnboardingIo`, so the whole flow is unit-testable without a terminal.
 
 ## Claude integration
 
