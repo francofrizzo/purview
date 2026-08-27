@@ -217,6 +217,13 @@ export function PrView() {
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId) ?? null;
 
+  // The composer's auto-attach chip follows whatever unit is in context; the
+  // files tab has no such concept, so it sees null and shows nothing.
+  const { setUnitContext } = chat;
+  useEffect(() => {
+    setUnitContext(tab === "units" ? selectedUnitId : null);
+  }, [setUnitContext, tab, selectedUnitId]);
+
   const entries = useMemo<HunkEntry[]>(() => {
     if (!detail) return [];
     if (tab === "units") {

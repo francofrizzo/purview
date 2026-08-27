@@ -18,6 +18,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type ReactNode,
@@ -25,6 +26,12 @@ import {
 import { api } from "../api/client";
 import { errorText } from "../api/errors";
 import type { ChatMessage, ChatRef, ClaudeModel, ConfigSource } from "../api/types";
+import {
+  autoRefReducer,
+  effectiveRefs as deriveEffectiveRefs,
+  initialAutoRefState,
+  isAutoRef as deriveIsAutoRef,
+} from "./autoRef";
 import { addRef as addRefTo, refKey, removeRef as removeRefFrom } from "./chatRefs";
 
 export interface ToolActivity {
@@ -71,6 +78,15 @@ interface ChatContextValue {
   detachRef: (key: string) => void;
   clearRefs: () => void;
 
+  /** explicit refs, else the auto-attached unit ref unless suppressed/absent */
+  effectiveRefs: ChatRef[];
+  /** whether `ref` is the auto-attached chip rather than an explicit one */
+  isAutoRef: (ref: ChatRef) => boolean;
+  /** the unit currently in context (units tab) drives the auto chip; null elsewhere */
+  setUnitContext: (unitId: string | null) => void;
+  /** dismiss the auto chip until the unit changes or the panel reopens */
+  removeAutoRef: () => void;
+
   send: (text: string) => void;
   retry: () => void;
   clearConversation: () => Promise<void>;
@@ -87,6 +103,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<ChatFailure | null>(null);
   const [refs, setRefs] = useState<ChatRef[]>([]);
+  const [autoRefState, dispatchAutoRef] = useReducer(autoRefReducer, initialAutoRefState);
   // Seeded with the built-in default so the header never renders blank; the
   // real values arrive with the transcript.
   const [modelState, setModelState] = useState<{
@@ -119,6 +136,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setBusy(false);
       setFailure(null);
       setRefs([]);
+      dispatchAutoRef({ type: "reset" });
       setModelState({
         model: "sonnet",
         configuredModel: "sonnet",
@@ -128,6 +146,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return key;
     });
   }, []);
+
+  // Reopening the panel is one of the two ways the auto chip's dismissal
+  // lifts (the other is switching units) — watch `open` rather than routing
+  // this through every place that can set it true (openChat, toggleChat,
+  // attachRef's implicit open) so none of them have to remember it.
+  const prevOpenRef = useRef(open);
+  useEffect(() => {
+    if (open && !prevOpenRef.current) dispatchAutoRef({ type: "panel-opened" });
+    prevOpenRef.current = open;
+  }, [open]);
 
   // Load the transcript once per PR — the server owns the history.
   useEffect(() => {
@@ -169,6 +197,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearRefs = useCallback(() => setRefs([]), []);
+
+  const setUnitContext = useCallback((unitId: string | null) => {
+    dispatchAutoRef({ type: "select-unit", unitId });
+  }, []);
+
+  const removeAutoRef = useCallback(() => {
+    dispatchAutoRef({ type: "remove-auto" });
+  }, []);
+
+  const effectiveRefs = useMemo(() => deriveEffectiveRefs(refs, autoRefState), [refs, autoRefState]);
+  const isAutoRef = useCallback((ref: ChatRef) => deriveIsAutoRef(ref, refs, autoRefState), [refs, autoRefState]);
 
   const run = useCallback((key: string, text: string, sent: ChatRef[]) => {
     const controller = new AbortController();
@@ -239,7 +278,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const key = keyRef.current;
       const body = text.trim();
       if (!key || !body || busy) return;
-      const sent = refs;
+      // The auto ref rides along like any other — the server just sees a
+      // unit ref — but it is never *consumed*: clearing explicit refs after
+      // send leaves the auto chip to reappear (unless dismissed) for the
+      // next turn, same unit.
+      const sent = effectiveRefs;
       setMessages((cur) => [
         ...cur,
         { role: "user", text: body, ts: new Date().toISOString(), refs: sent.length ? sent : undefined },
@@ -247,7 +290,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setRefs([]);
       run(key, body, sent);
     },
-    [busy, refs, run],
+    [busy, effectiveRefs, run],
   );
 
   /** Re-send the message that failed, dropping the transcript entry it left. */
@@ -331,6 +374,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       attachRef,
       detachRef,
       clearRefs,
+      effectiveRefs,
+      isAutoRef,
+      setUnitContext,
+      removeAutoRef,
       send,
       retry,
       clearConversation,
@@ -350,6 +397,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       attachRef,
       detachRef,
       clearRefs,
+      effectiveRefs,
+      isAutoRef,
+      setUnitContext,
+      removeAutoRef,
       send,
       retry,
       clearConversation,

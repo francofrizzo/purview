@@ -51,21 +51,30 @@ export function RefChip({
   refValue,
   label,
   title,
+  auto,
   onRemove,
 }: {
   refValue: ChatRef;
   label: string;
   title?: string;
+  /** the auto-attached chip: dimmed/outline with an "auto" affix, same X */
+  auto?: boolean;
   onRemove?: () => void;
 }) {
   return (
     <span
       className="chip max-w-full"
+      data-testid={auto ? "chat-ref-auto" : undefined}
       title={title}
-      style={{ background: "var(--bg-inset)", color: "var(--fg-muted)", border: "1px solid var(--border)" }}
+      style={
+        auto
+          ? { background: "transparent", color: "var(--fg-faint)", border: "1px dashed var(--border)" }
+          : { background: "var(--bg-inset)", color: "var(--fg-muted)", border: "1px solid var(--border)" }
+      }
     >
-      <span style={{ color: "var(--accent)" }}>{KIND_GLYPH[refValue.kind]}</span>
+      <span style={{ color: auto ? "var(--fg-faint)" : "var(--accent)" }}>{KIND_GLYPH[refValue.kind]}</span>
       <span className="truncate font-mono">{label}</span>
+      {auto ? <span className="flex-none text-2xs italic">auto</span> : null}
       {onRemove ? (
         <button
           type="button"
@@ -446,25 +455,31 @@ export function ChatPanel({
       ) : null}
 
       <div className="flex-none border-t p-2" style={{ borderColor: "var(--border)" }}>
-        {chat.refs.length ? (
+        {chat.effectiveRefs.length ? (
           <div className="mb-1.5 flex flex-wrap items-center gap-1" data-testid="chat-refs">
-            {chat.refs.map((r) => (
-              <RefChip
-                key={refKey(r)}
-                refValue={r}
-                label={labelFor(r)}
-                title={titleFor(r)}
-                onRemove={() => chat.detachRef(refKey(r))}
-              />
-            ))}
-            <button
-              type="button"
-              className="text-2xs"
-              style={{ color: "var(--fg-faint)" }}
-              onClick={chat.clearRefs}
-            >
-              clear all
-            </button>
+            {chat.effectiveRefs.map((r) => {
+              const auto = chat.isAutoRef(r);
+              return (
+                <RefChip
+                  key={refKey(r)}
+                  refValue={r}
+                  label={labelFor(r)}
+                  title={auto ? `${titleFor(r)} (auto-attached from the selected unit)` : titleFor(r)}
+                  auto={auto}
+                  onRemove={() => (auto ? chat.removeAutoRef() : chat.detachRef(refKey(r)))}
+                />
+              );
+            })}
+            {chat.refs.length ? (
+              <button
+                type="button"
+                className="text-2xs"
+                style={{ color: "var(--fg-faint)" }}
+                onClick={chat.clearRefs}
+              >
+                clear all
+              </button>
+            ) : null}
           </div>
         ) : null}
         <textarea
@@ -480,7 +495,7 @@ export function ChatPanel({
         />
         <div className="mt-1.5 flex items-center gap-2">
           <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-            {chat.busy ? "streaming the reply…" : `${chat.refs.length || "no"} refs attached`}
+            {chat.busy ? "streaming the reply…" : `${chat.effectiveRefs.length || "no"} refs attached`}
           </span>
           <span
             className="font-mono text-2xs"
