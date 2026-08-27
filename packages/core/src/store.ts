@@ -34,6 +34,7 @@ import {
   repoConfigPath,
   repoDir,
   repoRubricPath,
+  repoChatInstructionsPath,
   revisionDir,
   statePath,
   stateRoot,
@@ -290,6 +291,31 @@ export function writeLocalRubric(
   root = stateRoot(),
 ): void {
   const file = repoRubricPath(key, root);
+  if (content.trim() === "") {
+    if (fs.existsSync(file)) fs.rmSync(file);
+    return;
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, content, "utf8");
+}
+
+/** `CHAT.local.md`, or "" when there is none. */
+export function readLocalChatInstructions(key: RepoKey, root = stateRoot()): string {
+  const file = repoChatInstructionsPath(key, root);
+  try {
+    return fs.readFileSync(file, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+/** Writing empty chat instructions deletes the file: absent and empty are one state. */
+export function writeLocalChatInstructions(
+  key: RepoKey,
+  content: string,
+  root = stateRoot(),
+): void {
+  const file = repoChatInstructionsPath(key, root);
   if (content.trim() === "") {
     if (fs.existsSync(file)) fs.rmSync(file);
     return;

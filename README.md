@@ -216,6 +216,7 @@ The committed layer is the one your team shares. Put it in the repo you review:
 ```
 .purview/config.json    { "autoAnalyze": false, "chatModel": "haiku" }   # unknown keys ignored
 .purview/RUBRIC.md      # rubric refinements for this codebase
+.purview/CHAT.md        # chat-only instructions for this codebase
 ```
 
 It is read from your local checkout when one is configured, and otherwise fetched with
@@ -228,11 +229,16 @@ committed `.purview/RUBRIC.md` ("refines the above"), then your own `RUBRIC.loca
 ("highest precedence"), clearly delimited and in that order. Write house rules in the local
 overlay without touching the repo, or ship them to the team by committing them.
 
+**Chat instructions stack.** The same idea, chat-only: committed `.purview/CHAT.md`, then your
+own `CHAT.local.md`, clearly delimited. No built-in base layer here, and the analysis prompt
+never sees it — with neither file present, the chat prompt is unchanged.
+
 ```
 GET  /api/repos                 # every tracked repo: PR counts, which layers are set
 GET  /api/repos/:rkey/config    # local + committed + effective, with the source of each
 PUT  /api/repos/:rkey/config    # {autoAnalyze?, repoPath?, analysisModel?, chatModel?,
-                                # rubric?}; null re-inherits, rubric: "" deletes RUBRIC.local.md
+                                # rubric?, chatInstructions?}; null re-inherits, rubric: ""
+                                # deletes RUBRIC.local.md, chatInstructions: "" deletes CHAT.local.md
 GET  /api/config                # the global layer: {analysisModel, chatModel, defaults}
 PUT  /api/config                # {analysisModel?, chatModel?}; null re-inherits
 ```
@@ -270,6 +276,7 @@ collide with these):
 ```
 repo.json           # { autoAnalyze, repoPath, analysisModel, chatModel }   null = inherit
 RUBRIC.local.md     # your own rubric overlay for this repo, optional
+CHAT.local.md       # your own chat-instructions overlay for this repo, optional
 ```
 
 The rest is per PR:

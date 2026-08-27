@@ -40,6 +40,7 @@ the legacy `config.json` with it. A configured root (env var) is never migrated 
 repo.json           # { autoAnalyze: boolean|null, repoPath: string|null,
                     #   analysisModel: Model|null, chatModel: Model|null }  (null = inherit)
 RUBRIC.local.md     # free-form markdown overlay, may be absent
+CHAT.local.md       # local chat-instructions overlay, may be absent
 <number>/           # one directory per PR (always digits, so it can never collide
                     # with a repo-level file name)
 ```
@@ -93,6 +94,13 @@ ordered in the prompt: (1) the built-in skill `RUBRIC.md`, referenced by path; (
 committed `.purview/RUBRIC.md` ("team rubric — refines the above"), inlined; (3)
 `RUBRIC.local.md` ("local overlay — highest precedence"), inlined. Later layers win where they
 disagree. With no overlays the block is empty and the prompt is unchanged.
+
+**Chat instructions layering.** Chat-only (the analysis prompt is untouched), mirroring the
+rubric layering but with no built-in base layer: (1) committed `.purview/CHAT.md` ("team chat
+instructions — repo-specific guidance"), inlined; (2) `CHAT.local.md` ("local overlay —
+highest precedence"), inlined. Read the same way as the rubric (checkout first, then the
+contents API, cached alongside it in `team-config.json`), same 24KB caps, and empty when
+neither overlay exists.
 
 **Model layering.** `analysisModel` and `chatModel` resolve through the same chain (repo
 local > committed > global > built-in `"sonnet"`); they are independent of each other, and the
@@ -199,15 +207,17 @@ GET  /api/repos                        # {repos: [{host, owner, repo, prCount, a
 GET  /api/config                       # {analysisModel, chatModel, defaults:{...}}
 PUT  /api/config                       # {analysisModel?, chatModel?} -> same shape
 GET  /api/repos/:rkey/config           # {local:{autoAnalyze, repoPath,
-                                       #   analysisModel, chatModel, rubric},
-                                       #  committed:{present, config, rubric},
+                                       #   analysisModel, chatModel, rubric, chatInstructions},
+                                       #  committed:{present, config, rubric, chat},
                                        #  effective:{autoAnalyze, repoPath,
                                        #    analysisModel, chatModel}, sources}
 PUT  /api/repos/:rkey/config           # {autoAnalyze?, repoPath?, analysisModel?,
-                                       #  chatModel?, rubric?} -> same shape
+                                       #  chatModel?, rubric?, chatInstructions?} -> same shape
 ```
 `:rkey` = `host/owner/repo` URL-encoded. `local.rubric` is `RUBRIC.local.md` ("" when absent);
 PUT with `rubric: ""` deletes the file, and `null` on a config field restores inheritance.
+`local.chatInstructions` is `CHAT.local.md` the same way; `committed.chat` is the committed
+`.purview/CHAT.md`, read-only here.
 `GET /api/repos` is network-free, so `hasCommittedConfig` reflects the latest *cached* team
 config. Note the split: `POST /api/prs/:key/repo-path` keeps writing the **PR-level**
 override (unchanged, for compatibility), while `PUT /api/repos/:rkey/config` writes the

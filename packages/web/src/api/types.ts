@@ -237,11 +237,13 @@ export interface RepoConfig {
     analysisModel: ClaudeModel | null;
     chatModel: ClaudeModel | null;
     rubric: string;
+    chatInstructions: string;
   };
   committed: {
     present: boolean;
     config: Record<string, unknown> | null;
     rubric: string | null;
+    chat: string | null;
   };
   effective: {
     autoAnalyze: boolean;
@@ -264,6 +266,7 @@ export interface RepoConfigPatch {
   analysisModel?: ClaudeModel | null;
   chatModel?: ClaudeModel | null;
   rubric?: string;
+  chatInstructions?: string;
 }
 
 /** GET/PUT /api/config — the machine-wide layer. */

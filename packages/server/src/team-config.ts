@@ -21,6 +21,7 @@ import { resolveCheckout } from "./worktree.js";
  *
  *   .purview/config.json   { "autoAnalyze": true }   (unknown keys ignored)
  *   .purview/RUBRIC.md     markdown, refines the built-in rubric
+ *   .purview/CHAT.md       markdown, refines the review-chat system prompt
  *
  * Two ways to read it, in this order:
  *   1. the resolved local checkout, when there is one — free, and already the
@@ -39,11 +40,13 @@ import { resolveCheckout } from "./worktree.js";
 
 export const TEAM_CONFIG_FILE = ".purview/config.json";
 export const TEAM_RUBRIC_FILE = ".purview/RUBRIC.md";
+export const TEAM_CHAT_FILE = ".purview/CHAT.md";
 
 export interface CommittedConfig {
   present: boolean;
   config: TeamConfig | null;
   rubric: string | null;
+  chatInstructions: string | null;
   source: "checkout" | "github" | "none";
   ref: string;
 }
@@ -52,6 +55,7 @@ const NONE: CommittedConfig = {
   present: false,
   config: null,
   rubric: null,
+  chatInstructions: null,
   source: "none",
   ref: "",
 };
@@ -66,7 +70,9 @@ function parseTeamConfig(raw: string | null): TeamConfig | null {
   }
 }
 
-function readFromCheckout(dir: string): { config: string | null; rubric: string | null } {
+function readFromCheckout(
+  dir: string,
+): { config: string | null; rubric: string | null; chatInstructions: string | null } {
   const read = (rel: string): string | null => {
     const file = path.join(dir, rel);
     try {
@@ -75,7 +81,11 @@ function readFromCheckout(dir: string): { config: string | null; rubric: string 
       return null;
     }
   };
-  return { config: read(TEAM_CONFIG_FILE), rubric: read(TEAM_RUBRIC_FILE) };
+  return {
+    config: read(TEAM_CONFIG_FILE),
+    rubric: read(TEAM_RUBRIC_FILE),
+    chatInstructions: read(TEAM_CHAT_FILE),
+  };
 }
 
 function toResult(cache: TeamConfigCache): CommittedConfig {
@@ -83,6 +93,7 @@ function toResult(cache: TeamConfigCache): CommittedConfig {
     present: cache.present,
     config: cache.config,
     rubric: cache.rubric,
+    chatInstructions: cache.chatInstructions,
     source: cache.source,
     ref: cache.ref,
   };
@@ -122,14 +133,16 @@ export function loadCommittedConfig(
   let source: CommittedConfig["source"] = "none";
   let rawConfig: string | null = null;
   let rubric: string | null = null;
+  let chatInstructions: string | null = null;
 
   const checkout = resolveCheckout(effectiveRepoPath(key, root), prHead(key, root));
   if (checkout.path) {
     const fromDisk = readFromCheckout(checkout.path);
-    if (fromDisk.config !== null || fromDisk.rubric !== null) {
+    if (fromDisk.config !== null || fromDisk.rubric !== null || fromDisk.chatInstructions !== null) {
       source = "checkout";
       rawConfig = fromDisk.config;
       rubric = fromDisk.rubric;
+      chatInstructions = fromDisk.chatInstructions;
     }
   }
 
@@ -137,7 +150,8 @@ export function loadCommittedConfig(
     try {
       rawConfig = fetchRepoFile(key, TEAM_CONFIG_FILE, headSha);
       rubric = fetchRepoFile(key, TEAM_RUBRIC_FILE, headSha);
-      if (rawConfig !== null || rubric !== null) source = "github";
+      chatInstructions = fetchRepoFile(key, TEAM_CHAT_FILE, headSha);
+      if (rawConfig !== null || rubric !== null || chatInstructions !== null) source = "github";
     } catch (err) {
       // Reading the team config is an enhancement; never let it break a run.
       console.warn(
@@ -156,6 +170,7 @@ export function loadCommittedConfig(
     present: source !== "none",
     config,
     rubric,
+    chatInstructions,
   };
   try {
     writeTeamConfigCache(key, revision, cache, root);

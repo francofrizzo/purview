@@ -12,12 +12,15 @@ import {
   repoConfigExists,
   repoConfigPath,
   setGhRunner,
+  writeLocalChatInstructions,
   writeLocalRubric,
   writeRepoConfig,
   type ClaudeModel,
   type GhRunner,
 } from "@reviewer/core";
 import { createApp } from "../src/app.js";
+import { chatInstructionsLayers, chatInstructionsSection } from "../src/chat-instructions.js";
+import { chatSystemPrompt } from "../src/chat.js";
 import { writeConfig } from "../src/config.js";
 import {
   autoAnalyzeAllowed,
@@ -291,6 +294,7 @@ describe("committed .purview/ config", () => {
       JSON.stringify({ autoAnalyze: false, somethingNew: "ignored" }),
     );
     fs.writeFileSync(path.join(checkout.path, ".purview/RUBRIC.md"), "# Team rules\n");
+    fs.writeFileSync(path.join(checkout.path, ".purview/CHAT.md"), "# Team chat rules\n");
     writeRepoConfig(repo, { repoPath: checkout.path }, root);
 
     const committed = loadCommittedConfig(key, root);
@@ -299,6 +303,7 @@ describe("committed .purview/ config", () => {
     expect(committed.present).toBe(true);
     expect(committed.config).toEqual({ autoAnalyze: false });
     expect(committed.rubric).toBe("# Team rules\n");
+    expect(committed.chatInstructions).toBe("# Team chat rules\n");
     expect(gh.calls.filter((c) => c.join(" ").includes("contents/"))).toHaveLength(0);
     // ...and it now decides autoAnalyze, since nothing more specific is set.
     expect(autoAnalyzeAllowed(key, root)).toBe(false);
@@ -309,6 +314,7 @@ describe("committed .purview/ config", () => {
       contents: {
         ".purview/config.json": JSON.stringify({ autoAnalyze: true }),
         ".purview/RUBRIC.md": "# Committed rubric\n",
+        ".purview/CHAT.md": "# Committed chat\n",
       },
     });
 
@@ -316,6 +322,7 @@ describe("committed .purview/ config", () => {
     expect(first.source).toBe("github");
     expect(first.config).toEqual({ autoAnalyze: true });
     expect(first.rubric).toBe("# Committed rubric\n");
+    expect(first.chatInstructions).toBe("# Committed chat\n");
 
     const fetches = () => gh.calls.filter((c) => c.join(" ").includes("contents/")).length;
     const afterFirst = fetches();
@@ -329,16 +336,74 @@ describe("committed .purview/ config", () => {
     loadCommittedConfig(key, root);
     expect(fetches()).toBe(afterFirst);
     expect(readTeamConfigCache(key, 1, root)?.present).toBe(true);
+    expect(readTeamConfigCache(key, 1, root)?.chatInstructions).toBe("# Committed chat\n");
 
     // ...unless it is explicitly refreshed.
     loadCommittedConfig(key, root, { refresh: true });
     expect(fetches()).toBeGreaterThan(afterFirst);
   });
 
+  it("reads CHAT.md from GitHub even when the checkout has only RUBRIC.md/config.json", () => {
+    // The checkout-preferred path only skips gh entirely when it found
+    // *something*; when it found something but not CHAT.md, the checkout is
+    // still the source of truth and an absent CHAT.md there stays absent —
+    // this test documents the checkout path does not also merge in gh.
+    const checkout = makeRepo(path.join(root, "checkout2"), {
+      origin: "git@github.com:acme/widgets.git",
+      branch: "feature",
+    });
+    fs.mkdirSync(path.join(checkout.path, ".purview"), { recursive: true });
+    fs.writeFileSync(path.join(checkout.path, ".purview/RUBRIC.md"), "# Team rules\n");
+    writeRepoConfig(repo, { repoPath: checkout.path }, root);
+
+    const committed = loadCommittedConfig(key, root);
+    expect(committed.source).toBe("checkout");
+    expect(committed.chatInstructions).toBeNull();
+  });
+
   it("treats a repo with no .purview/ as simply unconfigured", () => {
     ghFor();
     const committed = loadCommittedConfig(key, root);
-    expect(committed).toMatchObject({ present: false, config: null, rubric: null, source: "none" });
+    expect(committed).toMatchObject({
+      present: false,
+      config: null,
+      rubric: null,
+      chatInstructions: null,
+      source: "none",
+    });
+  });
+
+  it("reads an old cache file written before the chatInstructions field existed", () => {
+    // Simulates a team-config.json cached by a server build that predates
+    // this feature: no `chatInstructions` key at all. buildFixture() (in
+    // beforeEach) already created revision 1 for this PR.
+    const cachePath = path.join(
+      root,
+      key.host,
+      key.owner,
+      key.repo,
+      String(key.number),
+      "revisions",
+      "1",
+      "team-config.json",
+    );
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+    fs.writeFileSync(
+      cachePath,
+      JSON.stringify({
+        ref: "head1",
+        fetchedAt: new Date().toISOString(),
+        source: "github",
+        present: true,
+        config: { autoAnalyze: true },
+        rubric: "# Old cache rubric\n",
+      }),
+    );
+
+    const cache = readTeamConfigCache(key, 1, root);
+    expect(cache?.chatInstructions).toBeNull();
+    expect(cache?.rubric).toBe("# Old cache rubric\n");
+    expect(cache?.present).toBe(true);
   });
 });
 
@@ -380,6 +445,82 @@ describe("rubric layering", () => {
     const layers = rubricLayers(key, root);
     expect(layers.map((l) => l.level)).toEqual([1, 3]);
     expect(rubricSection(key, root)).toContain("LOCAL ONLY");
+  });
+});
+
+/* -------------------------------------------------------- chat instructions */
+
+describe("chat instructions layering", () => {
+  it("concatenates committed team chat instructions, then local overlay", () => {
+    ghFor({
+      contents: { ".purview/CHAT.md": "TEAM CHAT BODY" },
+    });
+    loadCommittedConfig(key, root);
+    writeLocalChatInstructions(repo, "LOCAL CHAT BODY", root);
+
+    const layers = chatInstructionsLayers(key, root);
+    expect(layers.map((l) => l.level)).toEqual([1, 2]);
+    expect(layers[0].content).toBe("TEAM CHAT BODY");
+    expect(layers[1].content).toBe("LOCAL CHAT BODY");
+
+    const section = chatInstructionsSection(key, root);
+    expect(section.indexOf("LAYER 1")).toBeLessThan(section.indexOf("LAYER 2"));
+    expect(section.indexOf("TEAM CHAT BODY")).toBeLessThan(section.indexOf("LOCAL CHAT BODY"));
+    expect(section).toContain("team chat instructions — repo-specific guidance");
+    expect(section).toContain("local overlay — highest precedence");
+  });
+
+  it("is empty when neither overlay exists", () => {
+    ghFor();
+    expect(chatInstructionsSection(key, root)).toBe("");
+    expect(chatInstructionsLayers(key, root)).toHaveLength(0);
+  });
+
+  it("keeps the local overlay even with no committed chat instructions", () => {
+    ghFor();
+    writeLocalChatInstructions(repo, "LOCAL ONLY", root);
+    const layers = chatInstructionsLayers(key, root);
+    expect(layers.map((l) => l.level)).toEqual([2]);
+    expect(chatInstructionsSection(key, root)).toContain("LOCAL ONLY");
+  });
+
+  it("does not appear in the analysis rubric prompt", () => {
+    ghFor({ contents: { ".purview/CHAT.md": "TEAM CHAT BODY" } });
+    loadCommittedConfig(key, root);
+    writeLocalChatInstructions(repo, "LOCAL CHAT BODY", root);
+    expect(rubricSection(key, root)).not.toContain("CHAT");
+  });
+
+  it("appears in the chat system prompt, after the rubric stack", () => {
+    ghFor({
+      contents: {
+        ".purview/RUBRIC.md": "TEAM RUBRIC BODY",
+        ".purview/CHAT.md": "TEAM CHAT BODY",
+      },
+    });
+    const committed = loadCommittedConfig(key, root);
+    writeLocalRubric(repo, "LOCAL RUBRIC BODY", root);
+    writeLocalChatInstructions(repo, "LOCAL CHAT BODY", root);
+
+    const prompt = chatSystemPrompt(key, root, undefined, { committed });
+
+    expect(prompt).toContain("TEAM RUBRIC BODY");
+    expect(prompt).toContain("LOCAL RUBRIC BODY");
+    expect(prompt).toContain("TEAM CHAT BODY");
+    expect(prompt).toContain("LOCAL CHAT BODY");
+    // The rubric stack (level markers "RUBRIC LAYER") comes entirely before
+    // the chat instructions stack ("CHAT LAYER").
+    expect(prompt.indexOf("END REVIEW RUBRIC")).toBeLessThan(
+      prompt.indexOf("CHAT INSTRUCTIONS — LAYERED"),
+    );
+    expect(prompt.indexOf("CHAT LAYER 1")).toBeLessThan(prompt.indexOf("CHAT LAYER 2"));
+  });
+
+  it("leaves the chat prompt byte-identical to today's when no overlay exists", () => {
+    ghFor();
+    const withNothing = chatSystemPrompt(key, root);
+    expect(withNothing).not.toContain("CHAT INSTRUCTIONS");
+    expect(withNothing).not.toContain("REVIEW RUBRIC");
   });
 });
 
@@ -560,6 +701,7 @@ describe("/api/repos/:rkey/config", () => {
       contents: {
         ".purview/config.json": JSON.stringify({ autoAnalyze: false }),
         ".purview/RUBRIC.md": "# Team\n",
+        ".purview/CHAT.md": "# Team chat\n",
       },
     });
     const body = await (await app.request(`/api/repos/${encodedRepo}/config`)).json();
@@ -569,11 +711,13 @@ describe("/api/repos/:rkey/config", () => {
       analysisModel: null,
       chatModel: null,
       rubric: "",
+      chatInstructions: "",
     });
     expect(body.committed).toEqual({
       present: true,
       config: { autoAnalyze: false },
       rubric: "# Team\n",
+      chat: "# Team chat\n",
     });
     expect(body.effective).toEqual({
       autoAnalyze: false,
@@ -590,7 +734,12 @@ describe("/api/repos/:rkey/config", () => {
     const put = await app.request(`/api/repos/${encodedRepo}/config`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ autoAnalyze: true, repoPath: checkout.path, rubric: "# Local\n" }),
+      body: JSON.stringify({
+        autoAnalyze: true,
+        repoPath: checkout.path,
+        rubric: "# Local\n",
+        chatInstructions: "# Local chat\n",
+      }),
     });
     expect(put.status).toBe(200);
     const body = await put.json();
@@ -600,6 +749,7 @@ describe("/api/repos/:rkey/config", () => {
       analysisModel: null,
       chatModel: null,
       rubric: "# Local\n",
+      chatInstructions: "# Local chat\n",
     });
     expect(body.effective.autoAnalyze).toBe(true);
     expect(body.sources.autoAnalyze).toBe("repo");
@@ -607,11 +757,12 @@ describe("/api/repos/:rkey/config", () => {
     const cleared = await app.request(`/api/repos/${encodedRepo}/config`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ autoAnalyze: null, rubric: "" }),
+      body: JSON.stringify({ autoAnalyze: null, rubric: "", chatInstructions: "" }),
     });
     const clearedBody = await cleared.json();
     expect(clearedBody.local.autoAnalyze).toBeNull();
     expect(clearedBody.local.rubric).toBe("");
+    expect(clearedBody.local.chatInstructions).toBe("");
     // repoPath was not in the body, so it was left alone.
     expect(clearedBody.local.repoPath).toBe(checkout.path);
     // ...and the committed layer takes over again.
@@ -671,6 +822,7 @@ describe("/api/repos/:rkey/config", () => {
     expect((await put({ autoAnalyze: "yes" })).status).toBe(400);
     expect((await put({ repoPath: 7 })).status).toBe(400);
     expect((await put({ rubric: 12 })).status).toBe(400);
+    expect((await put({ chatInstructions: 12 })).status).toBe(400);
     expect((await put({ nope: true })).status).toBe(400);
 
     const missing = await put({ repoPath: path.join(root, "does-not-exist") });

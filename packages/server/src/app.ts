@@ -17,6 +17,7 @@ import {
   readDiff,
   readFilesJson,
   readMeta,
+  readLocalChatInstructions,
   readLocalRubric,
   readMigrationReport,
   readRepoConfig,
@@ -29,6 +30,7 @@ import {
   syncPr,
   unitProgress,
   updateMeta,
+  writeLocalChatInstructions,
   writeLocalRubric,
   writeRepoConfig,
   type ClaudeModel,
@@ -830,7 +832,8 @@ export function createApp(opts: AppOptions = {}): Hono {
           local.repoPath !== null ||
           local.analysisModel !== null ||
           local.chatModel !== null ||
-          readLocalRubric(repo, root).trim() !== "",
+          readLocalRubric(repo, root).trim() !== "" ||
+          readLocalChatInstructions(repo, root).trim() !== "",
         hasCommittedConfig: cachedCommittedConfigForRepo(repo, root)?.present ?? false,
         repoPath: local.repoPath,
       };
@@ -898,11 +901,13 @@ export function createApp(opts: AppOptions = {}): Hono {
         analysisModel: local.analysisModel,
         chatModel: local.chatModel,
         rubric: readLocalRubric(repo, root),
+        chatInstructions: readLocalChatInstructions(repo, root),
       },
       committed: {
         present: committed?.present ?? false,
         config: committed?.config ?? null,
         rubric: committed?.rubric ?? null,
+        chat: committed?.chatInstructions ?? null,
       },
       effective: {
         autoAnalyze: effective.autoAnalyze.value,
@@ -981,6 +986,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisModel: ClaudeModelSchema.nullable().optional(),
       chatModel: ClaudeModelSchema.nullable().optional(),
       rubric: z.string().optional(),
+      chatInstructions: z.string().optional(),
     })
     .strict();
 
@@ -1017,6 +1023,9 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
     if (Object.keys(patch).length > 0) writeRepoConfig(repo, patch, root);
     if (body.rubric !== undefined) writeLocalRubric(repo, body.rubric, root);
+    if (body.chatInstructions !== undefined) {
+      writeLocalChatInstructions(repo, body.chatInstructions, root);
+    }
 
     return c.json(repoConfigPayload(repo));
   });

@@ -19,6 +19,7 @@ import { readComments } from "./comments.js";
 import { checkoutNote } from "./analysis.js";
 import { cliCommand, skillDir } from "./skill-paths.js";
 import { rubricSection } from "./rubric.js";
+import { chatInstructionsSection } from "./chat-instructions.js";
 import type { CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
 import { HttpError } from "./http-error.js";
@@ -256,6 +257,9 @@ export function chatSystemPrompt(
     rubricSection(key, root, { committed: opts.committed }),
     `  - read-only status: \`${cmd} report ${keyToString(key)}\` (add --json for raw state), \`${cmd} list\``,
     checkout ? `  - ${checkoutNote(checkout.resolution, checkout.headSha)}` : "",
+    // Repo-provided chat overlays, mirroring the rubric layering above; chat-
+    // only, so the analysis prompt (which never calls this) is unaffected.
+    chatInstructionsSection(key, root, { committed: opts.committed }),
     "",
     "HARD RULES:",
     "- You are READ-ONLY. You have no tools that write anything: no edits, no GitHub calls, no `gh`, no `git`, no reviewer-state sync/set-analysis/set-unit/view. Do not claim to have posted, submitted, applied or saved anything, ever.",

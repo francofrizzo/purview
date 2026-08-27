@@ -276,6 +276,11 @@ export const TeamConfigCacheSchema = z.object({
   present: z.boolean().default(false),
   config: TeamConfigSchema.nullable().default(null),
   rubric: z.string().nullable().default(null),
+  // Added after the initial cache shape shipped; a cache file written before
+  // this field existed simply has no chat instructions on record, which the
+  // default here reads as identical to "the committed repo has none" — a
+  // re-read on the next revision fills it in, no migration needed.
+  chatInstructions: z.string().nullable().default(null),
 });
 export type TeamConfigCache = z.infer<typeof TeamConfigCacheSchema>;
 

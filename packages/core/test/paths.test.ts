@@ -10,6 +10,7 @@ import {
   parseRepoKey,
   parsePrUrl,
   prDir,
+  repoChatInstructionsPath,
   repoConfigPath,
   repoDir,
   repoKeyToString,
@@ -50,11 +51,15 @@ describe("state dir layout", () => {
     expect(repoRubricPath(repo)).toBe(
       "/tmp/xyz/github.com/acme/widgets/RUBRIC.local.md",
     );
+    expect(repoChatInstructionsPath(repo)).toBe(
+      "/tmp/xyz/github.com/acme/widgets/CHAT.local.md",
+    );
     expect(prDir(key)).toBe(`${repoDir(repo)}/7`);
     // Every PR dir name is digits only, so no PR can ever be named repo.json.
     expect(isPrDirName("7")).toBe(true);
     expect(isPrDirName("repo.json")).toBe(false);
     expect(isPrDirName("RUBRIC.local.md")).toBe(false);
+    expect(isPrDirName("CHAT.local.md")).toBe(false);
   });
 
   it("caches the committed team config per revision", () => {

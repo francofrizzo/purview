@@ -604,6 +604,23 @@ const LOCAL_BILLING_RUBRIC = `Money paths first: charge, refund, ledger writes.
 Treat any change to idempotency key derivation as must-read even if it looks cosmetic.
 `;
 
+/**
+ * The committed chat instructions live in the target repo's `.purview/CHAT.md`;
+ * mirrors MOCK_COMMITTED_RUBRIC so the "Chat instructions" pane has a
+ * non-empty read-only example too.
+ */
+export const MOCK_COMMITTED_CHAT_INSTRUCTIONS = `# Chat instructions — infra/terraform-modules
+
+When asked about a module's blast radius, check \`modules/networking/\` and
+\`modules/rds/\` dependents before answering — most incidents here trace back
+to an unnoticed fan-out through those two.
+
+Keep answers short; this team reads chat on a phone during on-call.
+`;
+
+const LOCAL_BILLING_CHAT_INSTRUCTIONS = `When asked about tests, point at packages/billing/test/e2e first.
+`;
+
 export const mockRepos: RepoSummary[] = [
   {
     host: "github.com",
@@ -645,8 +662,9 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
       analysisModel: "opus",
       chatModel: null,
       rubric: LOCAL_BILLING_RUBRIC,
+      chatInstructions: LOCAL_BILLING_CHAT_INSTRUCTIONS,
     },
-    committed: { present: false, config: null, rubric: null },
+    committed: { present: false, config: null, rubric: null, chat: null },
     effective: {
       autoAnalyze: true,
       repoPath: "/Users/dana/code/billing",
@@ -661,8 +679,15 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
     },
   },
   "github.com/acme/platform": {
-    local: { autoAnalyze: null, repoPath: null, analysisModel: null, chatModel: null, rubric: "" },
-    committed: { present: false, config: null, rubric: null },
+    local: {
+      autoAnalyze: null,
+      repoPath: null,
+      analysisModel: null,
+      chatModel: null,
+      rubric: "",
+      chatInstructions: "",
+    },
+    committed: { present: false, config: null, rubric: null, chat: null },
     effective: {
       autoAnalyze: false,
       repoPath: null,
@@ -677,11 +702,19 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
     },
   },
   "git.acme.dev/infra/terraform-modules": {
-    local: { autoAnalyze: null, repoPath: null, analysisModel: null, chatModel: null, rubric: "" },
+    local: {
+      autoAnalyze: null,
+      repoPath: null,
+      analysisModel: null,
+      chatModel: null,
+      rubric: "",
+      chatInstructions: "",
+    },
     committed: {
       present: true,
       config: { autoAnalyze: true, analysisModel: "opus", chatModel: "haiku" },
       rubric: MOCK_COMMITTED_RUBRIC,
+      chat: MOCK_COMMITTED_CHAT_INSTRUCTIONS,
     },
     effective: {
       autoAnalyze: true,

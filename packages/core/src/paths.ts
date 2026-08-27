@@ -61,7 +61,7 @@ export function repoDir(key: RepoKey, root = stateRoot()): string {
  * PR directories are always `String(number)`, i.e. digits only, so no PR can
  * ever collide with one of these names — `isPrDirName` enforces that.
  */
-export const REPO_FILE_NAMES = ["repo.json", "RUBRIC.local.md"] as const;
+export const REPO_FILE_NAMES = ["repo.json", "RUBRIC.local.md", "CHAT.local.md"] as const;
 
 /** `~/.purview/<host>/<owner>/<repo>/repo.json` */
 export function repoConfigPath(key: RepoKey, root = stateRoot()): string {
@@ -71,6 +71,11 @@ export function repoConfigPath(key: RepoKey, root = stateRoot()): string {
 /** `~/.purview/<host>/<owner>/<repo>/RUBRIC.local.md` (may be absent) */
 export function repoRubricPath(key: RepoKey, root = stateRoot()): string {
   return path.join(repoDir(key, root), "RUBRIC.local.md");
+}
+
+/** `~/.purview/<host>/<owner>/<repo>/CHAT.local.md` (may be absent) */
+export function repoChatInstructionsPath(key: RepoKey, root = stateRoot()): string {
+  return path.join(repoDir(key, root), "CHAT.local.md");
 }
 
 /**

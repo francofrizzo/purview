@@ -6,14 +6,16 @@ import {
   ensureRepoConfig,
   listPrs,
   listRepos,
+  readLocalChatInstructions,
   readLocalRubric,
   readRepoConfig,
   repoConfigExists,
+  writeLocalChatInstructions,
   writeLocalRubric,
   writeMeta,
   writeRepoConfig,
 } from "../src/store.js";
-import { repoConfigPath, repoRubricPath } from "../src/paths.js";
+import { repoChatInstructionsPath, repoConfigPath, repoRubricPath } from "../src/paths.js";
 import { EMPTY_REPO_CONFIG } from "../src/schemas.js";
 
 const repo = { host: "github.com", owner: "acme", repo: "widgets" };
@@ -127,12 +129,25 @@ describe("RUBRIC.local.md", () => {
   });
 });
 
+describe("CHAT.local.md", () => {
+  it("reads as an empty string when absent, and an empty write deletes it", () => {
+    expect(readLocalChatInstructions(repo, root)).toBe("");
+    writeLocalChatInstructions(repo, "# House chat rules\n", root);
+    expect(readLocalChatInstructions(repo, root)).toBe("# House chat rules\n");
+    expect(fs.existsSync(repoChatInstructionsPath(repo, root))).toBe(true);
+    writeLocalChatInstructions(repo, "", root);
+    expect(fs.existsSync(repoChatInstructionsPath(repo, root))).toBe(false);
+    expect(readLocalChatInstructions(repo, root)).toBe("");
+  });
+});
+
 describe("listing", () => {
   it("lists repos, and repo-level files never look like a PR", () => {
     seedPr(7);
     seedPr(9);
     ensureRepoConfig(repo, root);
     writeLocalRubric(repo, "overlay", root);
+    writeLocalChatInstructions(repo, "chat overlay", root);
 
     expect(listRepos(root)).toEqual([repo]);
     expect(listPrs(root).map((k) => k.number).sort()).toEqual([7, 9]);

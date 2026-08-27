@@ -150,8 +150,9 @@ function syncRepoCounts() {
           analysisModel: null,
           chatModel: null,
           rubric: "",
+          chatInstructions: "",
         },
-        committed: { present: false, config: null, rubric: null },
+        committed: { present: false, config: null, rubric: null, chat: null },
         effective: {
           autoAnalyze: DEFAULT_AUTO_ANALYZE,
           repoPath: null,
@@ -464,6 +465,7 @@ export const mockApi = {
     if (patch.analysisModel !== undefined) config.local.analysisModel = patch.analysisModel;
     if (patch.chatModel !== undefined) config.local.chatModel = patch.chatModel;
     if (patch.rubric !== undefined) config.local.rubric = patch.rubric;
+    if (patch.chatInstructions !== undefined) config.local.chatInstructions = patch.chatInstructions;
     relayer(rkey);
     const summary = repos.find((r) => `${r.host}/${r.owner}/${r.repo}` === rkey);
     if (summary) {
@@ -473,7 +475,8 @@ export const mockApi = {
         Boolean(config.local.repoPath) ||
         Boolean(config.local.analysisModel) ||
         Boolean(config.local.chatModel) ||
-        Boolean(config.local.rubric.trim());
+        Boolean(config.local.rubric.trim()) ||
+        Boolean(config.local.chatInstructions.trim());
     }
     return structuredClone(config);
   },

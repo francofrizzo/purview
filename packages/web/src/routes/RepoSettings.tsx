@@ -140,6 +140,7 @@ function RepoSettingsBody({
       <AnalysisSection config={config} save={save} />
       <CheckoutSection config={config} save={save} />
       <RubricSection config={config} save={save} />
+      <ChatInstructionsSection config={config} save={save} />
 
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Saved on the server under <span className="font-mono">{rkey}</span>. The committed half is
@@ -360,6 +361,94 @@ function RubricSection({ config, save }: { config: RepoConfig; save: Save }) {
               onClick={() => save.mutate({ rubric }, { onSuccess: () => setFlash() })}
             >
               {save.isPending ? "saving…" : "save rubric"}
+            </button>
+            <SavedFlash shown={flash} error={save.error} />
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function ChatInstructionsSection({ config, save }: { config: RepoConfig; save: Save }) {
+  const [flash, setFlash] = useFlash();
+  const [chatInstructions, setChatInstructions] = useState(config.local.chatInstructions ?? "");
+  const committed = config.committed.chat ?? "";
+  const [expanded, setExpanded] = useState(committed.length <= COLLAPSE_OVER_CHARS);
+
+  useEffect(() => {
+    setChatInstructions(config.local.chatInstructions ?? "");
+  }, [config.local.chatInstructions]);
+
+  const dirty = chatInstructions !== (config.local.chatInstructions ?? "");
+
+  return (
+    <Section
+      title="Chat instructions"
+      hint="Guidance for the review chat only — not the analysis rubric. Layering: the local overlay refines the committed team chat instructions."
+    >
+      <div className="flex flex-col gap-4">
+        <div>
+          <PaneLabel>
+            team chat instructions (committed)
+            {committed ? (
+              <span className="ml-1.5 font-normal" style={{ color: "var(--fg-faint)" }}>
+                read-only · <span className="font-mono">.purview/CHAT.md</span>
+              </span>
+            ) : null}
+          </PaneLabel>
+          {committed ? (
+            <div
+              className="mt-1 rounded"
+              style={{ border: "1px solid var(--border)", background: "var(--bg-inset)" }}
+            >
+              <button
+                type="button"
+                data-testid="committed-chat-instructions-toggle"
+                aria-expanded={expanded}
+                onClick={() => setExpanded((v) => !v)}
+                className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-2xs transition-colors hover:bg-[var(--bg-hover)]"
+                style={{ color: "var(--fg-faint)" }}
+              >
+                <IconChevron open={expanded} width={10} height={10} />
+                {expanded ? "hide" : "show"} — {committed.split("\n").length} lines
+              </button>
+              {expanded ? (
+                <div
+                  className="max-h-80 overflow-y-auto px-2.5 pb-2.5"
+                  data-testid="committed-chat-instructions"
+                >
+                  <Markdown text={committed} />
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+              No committed chat instructions. Add <span className="font-mono">.purview/CHAT.md</span>{" "}
+              to the repo and everyone on the team picks it up.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <PaneLabel>local chat instructions overlay</PaneLabel>
+          <Autosize
+            value={chatInstructions}
+            rows={12}
+            onChange={setChatInstructions}
+            placeholder={"When asked about tests, point at the e2e suite under tests/e2e.\nPrefer short answers."}
+          />
+          <div className="mt-1.5 flex items-center gap-2">
+            <button
+              type="button"
+              className="btn"
+              data-testid="chat-instructions-save"
+              disabled={!dirty || save.isPending}
+              onClick={() =>
+                save.mutate({ chatInstructions }, { onSuccess: () => setFlash() })
+              }
+            >
+              {save.isPending ? "saving…" : "save chat instructions"}
             </button>
             <SavedFlash shown={flash} error={save.error} />
           </div>
