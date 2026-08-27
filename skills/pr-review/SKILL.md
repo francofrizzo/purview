@@ -122,6 +122,9 @@ plus `riskFlags` and `hunkIds` (arrays; both default to `[]` if omitted, but alw
 them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy` and
 `order` are required — the schema rejects the payload if any is missing.
 
+One more field, `findings`, is optional and is only ever filled in by the verification
+pass (step 5). Leave it off entirely here.
+
 Rules — the first two are **enforced by the CLI**, which rejects the whole payload:
 
 - **Coverage: every hunk id of the current revision must appear either in some unit's
@@ -149,7 +152,59 @@ Rules — the first two are **enforced by the CLI**, which rejects the whole pay
   that would otherwise be skim/skip — e.g. a one-line change to an auth check is
   must-read regardless of its size.
 
-## 5. Learn from corrections
+## 5. Verification pass (only with a local checkout)
+
+Classification tells the reviewer *where* to look. The verification pass answers the
+questions that classification raises, so the reviewer doesn't have to chase them by hand.
+
+**Gate — read this before doing anything else in this step.** The pass runs **only** when a
+local checkout of the repo is available. The prompt that started you states whether there
+is one and gives its path; if it says there is none, **skip this step entirely and produce
+no `findings` at all**. Do not substitute the diff, `gh api` file fetches, or your own
+recollection for a checkout: a finding is a claim you verified by reading code in a
+checkout, and there is no weaker version of it. With no checkout, the questions simply stay
+questions, phrased in `attentionWhy`.
+
+With a checkout, for each **must-read** unit, ask whether its `attentionWhy` raises a
+question that reading code could settle. The recurring shapes:
+
+- *Do the callers handle this?* — a function gains a new error/return path, a new nullable
+  field, a new thrown exception. Find every caller and check each one.
+- *Does anything else construct or consume this shape?* — a struct/DTO/enum gains or loses
+  a member; other constructors of the same shape may not have been updated.
+- *Is the old path still referenced?* — a function, flag, config key or code path is
+  replaced; check whether anything still reaches the old one.
+- *Was a parallel site missed?* — the change fixes one of N structurally identical places
+  (three handlers, five adapters); check the other N-1.
+
+For each such question, **actually check it**: `grep` for the symbol across the checkout,
+read the call sites you find. Then record one of two outcomes on that unit:
+
+- **verified OK → a `note` finding.** State the answer, not the question: "all 3 callers
+  map both error paths to 403" — with the files/lines you read as `evidence`. If that
+  question was the *only* reason the unit was `must-read`, downgrade it to `skim` and
+  rewrite `attentionWhy` to say what is left to check (e.g. "Shape only — the callers were
+  verified, see findings"). Do not leave a unit `must-read` on the strength of a question
+  you have already answered.
+- **something is off → a `warning` finding.** State what you found and where: "`handleRefund`
+  ignores the new `ErrRateLimited` and falls through to the success branch" with
+  `evidence: "internal/billing/refund.go:212"`. A warning never changes `attention`
+  downward, and may justify raising it.
+
+A finding is `{"severity": "warning" | "note", "text": "...", "evidence": "..."}`; at most
+5 per unit; `evidence` is required, non-empty, and is the concrete location(s) you read,
+e.g. `internal/api/handler.go:88, internal/vep/client.go:41`. Units where you verified
+nothing carry no `findings` key.
+
+Read **"Findings discipline" in RUBRIC.md before writing a single finding.** It is the
+guardrail against the failure mode this step invites: turning a verification pass into
+unsolicited code review. Findings are annotations for the human reader. They never block,
+never approve, and are never posted anywhere.
+
+Budget this pass like step 3: it covers must-read units, not every unit, and it stops when
+the checkable questions are answered — not when you run out of opinions.
+
+## 6. Learn from corrections
 
 **Before classifying**, read `events.jsonl` for recent `classification-corrected` events
 (`{hunkId, from, to, note}`). Treat each as authoritative precedent: if a new hunk looks
@@ -158,7 +213,7 @@ heuristics would naively suggest. If you see a pattern of similar corrections (s
 mistake repeated), add a worked example to RUBRIC.md's "Learned corrections" section so
 future runs don't repeat it — see RUBRIC.md for the format.
 
-## 6. Write the analysis
+## 7. Write the analysis
 
 Write the JSON from step 4 to a temp file, then:
 
@@ -176,7 +231,7 @@ failure. Common causes: a hunk id of the current revision missing from every uni
 isn't in this revision, an invalid `kind`/`attention`/`riskFlags` enum value, or a missing
 required field such as `attentionWhy` or `order`.
 
-## 7. On refresh of an already-analyzed PR
+## 8. On refresh of an already-analyzed PR
 
 See `MIGRATION-NOTES.md` for the full mechanics. In short:
 
@@ -200,8 +255,13 @@ See `MIGRATION-NOTES.md` for the full mechanics. In short:
 5. Unmatched old hunks are archived by the migration engine automatically — don't try to
    delete or re-home them yourself; just don't reference archived hunk ids in any unit you
    patch.
+6. Findings from the previous pass are kept only on units whose hunks all carried over
+   `identical`; migration drops them everywhere else, because the code they were verified
+   against moved. Re-run step 5's verification (checkout permitting) for the units you are
+   patching, and send the resulting `findings` array in the same `set-unit` patch. Don't
+   re-assert a dropped finding from memory — re-check it.
 
-## 8. Other commands (rarely yours to run)
+## 9. Other commands (rarely yours to run)
 
 - `reviewer-state report <key>` — human report: PR header, revision + shas, summary,
   migration report, hunk/file progress, per-unit progress bars, a "Needs classification"
@@ -215,7 +275,7 @@ See `MIGRATION-NOTES.md` for the full mechanics. In short:
   this on your own initiative**; it writes to the PR.
 - `reviewer-state list` — every PR with local state.
 
-## 9. Report to the user
+## 10. Report to the user
 
 Finish every run (init or refresh) by printing, in the user's working language:
 

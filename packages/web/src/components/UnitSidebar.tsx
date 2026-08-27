@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Attention, ChatRef, PrDetail, ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
 import { ChangedBadge, KindChip, Progress, RiskFlags } from "./Chips";
+import { FindingsBadge } from "./Findings";
 import { IconChevron } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
 
@@ -172,6 +173,7 @@ function UnitRow({
           <KindChip kind={unit.kind} />
           <RiskFlags flags={unit.riskFlags} />
           {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}
+          <FindingsBadge unit={unit} />
           {matches ? <MatchBadge count={matches} /> : null}
           <span className="ml-auto">
             <Progress viewed={p.viewed} total={p.total} />

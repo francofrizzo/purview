@@ -18,7 +18,7 @@ import {
   type GhRunner,
 } from "@reviewer/core";
 import { createApp } from "../src/app.js";
-import { analysisIdle, readJob, reconcileStaleJobs } from "../src/analysis.js";
+import { analysisIdle, findingsNote, readJob, reconcileStaleJobs } from "../src/analysis.js";
 import { chatTurnDone } from "../src/chat-session.js";
 import { resolveRefs } from "../src/chat.js";
 import { ownerRepoFromRemote } from "../src/repo-path.js";
@@ -90,6 +90,39 @@ afterEach(async () => {
 });
 
 /* ------------------------------------------------------------ job lifecycle */
+
+/* ------------------------------------------------------- verification gate */
+
+describe("findings gating text", () => {
+  it("switches the verification pass on only when a checkout resolved", () => {
+    const on = findingsNote({ path: "/src/widgets" });
+    expect(on).toContain("VERIFICATION PASS: RUN IT");
+    expect(on).toContain("at most 5 entries");
+    expect(on).toContain("never posted anywhere");
+
+    // A resolved-but-stale checkout is still a checkout.
+    expect(
+      findingsNote({
+        path: "/src/widgets",
+        mismatch: { checkedOutBranch: "main", prHeadRef: "feature-x" },
+      }),
+    ).toContain("VERIFICATION PASS: RUN IT");
+  });
+
+  it("forbids findings outright when there is no usable checkout", () => {
+    for (const resolution of [
+      undefined,
+      {},
+      { path: undefined },
+      { path: "/src/widgets", error: "no longer exists" },
+    ]) {
+      const off = findingsNote(resolution as Parameters<typeof findingsNote>[0]);
+      expect(off).toContain("VERIFICATION PASS: SKIPPED");
+      expect(off).toContain("Do NOT emit any findings");
+      expect(off).not.toContain("RUN IT");
+    }
+  });
+});
 
 describe("analysis job lifecycle", () => {
   it("runs queued -> running -> done and records the events", async () => {
@@ -220,6 +253,11 @@ describe("analysis job lifecycle", () => {
     expect(prompt).toContain("RUBRIC.md");
     expect(prompt).toContain("untrusted");
     expect(prompt).toContain("NEVER run `gh`");
+    // No checkout is configured in the base fixture, so the verification pass
+    // must be switched off explicitly rather than left to inference.
+    expect(prompt).toContain("VERIFICATION PASS: SKIPPED");
+    expect(prompt).toContain("Do NOT emit any findings");
+    expect(prompt).not.toContain("VERIFICATION PASS: RUN IT");
   });
 
   it("uses the incremental flow when an analysis already exists", async () => {
@@ -415,6 +453,12 @@ describe("POST /repo-path", () => {
     await analysisIdle();
     expect(claude.runs[0].argv.join(" ")).toContain(`--add-dir ${fs.realpathSync(wt.path)}`);
     expect(claude.promptOf(0)).toContain("A local checkout with the PR's branch is available");
+    // With a checkout the verification pass is on, and the prompt itself
+    // carries the findings schema (not only the skill it points at).
+    expect(claude.promptOf(0)).toContain("VERIFICATION PASS: RUN IT");
+    expect(claude.promptOf(0)).toContain('"severity": "warning" | "note"');
+    expect(claude.promptOf(0)).toContain("`evidence` is REQUIRED and non-empty");
+    expect(claude.promptOf(0)).not.toContain("VERIFICATION PASS: SKIPPED");
   });
 
   it("falls back with checkoutMismatch when no worktree has the PR branch", async () => {
@@ -445,6 +489,9 @@ describe("POST /repo-path", () => {
     // The run still gets the checkout, but is told not to trust it.
     expect(claude.runs[0].argv.join(" ")).toContain(`--add-dir ${fs.realpathSync(repo.path)}`);
     expect(claude.promptOf(0)).toContain("but it is on branch main");
+    // A stale checkout is still a checkout: SKILL.md tells the run to treat
+    // what it reads as possibly stale, which is a weaker claim, not no claim.
+    expect(claude.promptOf(0)).toContain("VERIFICATION PASS: RUN IT");
     expect(claude.promptOf(0)).toContain("may not match the diff");
   });
 
@@ -490,6 +537,9 @@ describe("POST /repo-path", () => {
     expect(claude.runs[0].cwd).toBe(path.join(root, key.host, key.owner, key.repo, String(key.number)));
     expect(claude.runs[0].argv.join(" ")).not.toContain(repo.path);
     expect(claude.promptOf(0)).toContain("local checkout is unavailable");
+    expect(claude.promptOf(0)).toContain("VERIFICATION PASS: SKIPPED");
+    expect(claude.promptOf(0)).toContain("Never");
+    expect(claude.promptOf(0)).toContain("speculate a finding from the diff alone");
   });
 });
 

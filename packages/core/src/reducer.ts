@@ -74,9 +74,14 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       const previousHunks = state.hunks;
       const nextHunks: Record<string, HunkState> = {};
       const idRemap = new Map<string, string>();
+      /** old hunk id -> how it migrated; used for the findings staleness rule */
+      const statusByOldId = new Map<string, string>();
 
       if (event.migration) {
         for (const entry of event.migration.entries) {
+          if (entry.status === "archived") statusByOldId.set(entry.hunkId, "archived");
+          else if (entry.previousHunkId)
+            statusByOldId.set(entry.previousHunkId, entry.status);
           if (entry.status === "archived") {
             state.archived.push({
               hunkId: entry.hunkId,
@@ -132,10 +137,23 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           Array.from(
             new Set(ids.map((id) => idRemap.get(id) ?? id).filter((id) => live.has(id))),
           );
-        state.units = state.units.map((u) => ({
-          ...u,
-          hunkIds: remap(u.hunkIds),
-        }));
+        // Findings are verified against a specific hunk body. A hunk that
+        // migrated `identical` is byte-for-byte the same code, so what was
+        // verified about it is still true and the findings carry. Anything
+        // else — fuzzy, renamed, archived, or a hunk the report never
+        // mentioned — means the code under the finding moved, so the finding
+        // is stale and is dropped rather than re-asserted; the incremental
+        // re-analysis of the new/changed hunks re-verifies it if it still
+        // holds. Simplest rule that can never leave a stale claim on screen.
+        const findingsSurvive = (unit: ReviewUnit): boolean =>
+          event.migration !== undefined &&
+          unit.hunkIds.every((id) => statusByOldId.get(id) === "identical");
+        state.units = state.units.map((u) => {
+          const keepFindings = u.findings?.length ? findingsSurvive(u) : false;
+          const next: ReviewUnit = { ...u, hunkIds: remap(u.hunkIds) };
+          if (!keepFindings) delete next.findings;
+          return next;
+        });
         state.unassignedHunkIds = remap(state.unassignedHunkIds);
       }
 

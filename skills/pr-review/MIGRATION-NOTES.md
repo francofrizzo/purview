@@ -71,6 +71,29 @@ first three as "carried".
    only exception is the very first `set-analysis` call on a PR that has no prior
    analysis at all (that's `init`'s flow, not `refresh`'s).
 
+## What happens to findings
+
+A unit's `findings` (see SKILL.md step 5) are claims verified against a *specific* hunk
+body, so migration treats them as perishable:
+
+- Every hunk of the unit carried over **`identical`** → the code is byte-for-byte what was
+  verified, so the findings carry over with the unit, untouched.
+- **Anything else** — one hunk came over `fuzzy` or `renamed`, one was `archived`, or the
+  unit picked up a hunk the report never mentioned → the whole unit's `findings` are
+  **dropped** when the revision folds into state.
+
+The rule is deliberately blunt: per-finding staleness would need to know which lines each
+finding depended on, which nothing records. Dropping the unit's findings and letting the
+incremental re-analysis of the new hunks re-verify them is the simplest rule that can never
+leave a stale claim on the reviewer's screen — and a stale `note` saying "all callers
+handle it" after the callers changed is worse than no note at all.
+
+For the skill this means: after a refresh, a unit you are patching may have lost findings
+it had before. Re-run the verification pass for it (checkout permitting) and send the fresh
+`findings` array in the `set-unit` patch. **Never re-assert a dropped finding from memory**
+— re-check it, or leave it off. Units you are not patching keep whatever survived; don't
+patch a unit just to restore findings on it.
+
 ## `baseOnly` revisions
 
 If `headSha` is unchanged but `baseSha`/`mergeBase` moved (target branch advanced under an

@@ -139,12 +139,70 @@ A unit can carry multiple risk flags. Risk flags are about the *surface area tou
 about whether the diff looks scary — a one-line change to a token expiry constant is
 `auth` and `must-read` even though it "looks trivial."
 
+## Findings discipline
+
+Findings come out of the verification pass (SKILL.md step 5) and are the one place this
+skill says something about the *code* rather than about how to read it. That is exactly
+why they are the easiest thing here to get wrong: the pull toward "while I'm in here, let
+me also mention…" is strong, and every sentence spent that way costs the reviewer trust in
+all the others. These are hard rules, not preferences.
+
+### The three tests every finding must pass
+
+- **Verified.** You read the code, in the local checkout, and the finding states what you
+  found there. Not what the diff implies, not what is usually true of code like this.
+- **Sourced.** `evidence` names the concrete location(s) you actually read —
+  `internal/api/handler.go:88, internal/vep/client.go:41`. Non-empty is enforced by the
+  schema; *accurate* is on you.
+- **Material.** It would change what the reviewer writes in their review. If knowing it
+  changes nothing they would say or do, it is not a finding.
+
+A candidate that fails any one of the three is not downgraded to a `note` — it is dropped.
+
+### Never a finding
+
+- **Style or taste.** Naming, formatting, "this could be a switch", preferred idioms,
+  file organization. Not yours, not here.
+- **Unchecked "might"/"could" concerns.** "This could race", "callers might not handle
+  this" — if you did not go and look, it is not a finding. Either check it or leave it.
+- **Restating the code.** "Adds a nil check before the write" is a summary, and the unit
+  already has one.
+- **Architecture editorializing.** "This would be cleaner as a middleware", "the repository
+  pattern would fit better here." The PR's shape is the author's decision.
+- **Anything the diff + checkout cannot demonstrate.** Runtime behavior you did not run,
+  performance you did not measure, product intent you inferred, "does the team want this?"
+
+**If a question cannot be settled by reading code — it needs runtime knowledge, data, or
+product intent — it stays a question in `attentionWhy`. It never becomes a finding.** A
+question in `attentionWhy` is honest work; the same question dressed as a finding is not.
+
+### Volume
+
+Cap: 5 findings per unit, enforced by the schema. If a unit has more than ~5 candidate
+warnings, that is a signal in itself — keep the most material ones and end the last one
+with "further issues of the same kind" rather than truncating silently. A unit with a
+single sharp `warning` is worth more than one with five diluted ones.
+
+A `note` earns its place only by closing a question the reviewer would otherwise have had
+to chase. "Checked, looks fine" about something nobody was going to check is noise.
+
+### Boundaries
+
+- Findings are **local annotations for the human reader**. They never block, never approve,
+  are never posted to GitHub, and are not review comments. Nothing downstream acts on them.
+- **`attentionWhy` stays exactly ONE line.** Verification outcomes live in `findings`, not
+  in the why. If a `note` answered the only question that made a unit `must-read`, downgrade
+  the unit to `skim` and rewrite `attentionWhy` to describe what is left — do not append the
+  verification result to it.
+- A `warning` never lowers `attention`; it may raise it. A `note` may lower it, per above.
+- No checkout, no findings. There is no partial credit for a well-reasoned guess.
+
 ## Learned corrections
 
 *(Empty — populate as `classification-corrected` events accumulate.)*
 
 When the skill reads `classification-corrected` events from `events.jsonl` (per SKILL.md
-step 5) and finds a pattern — the same kind of hunk gets corrected the same way more than
+step 6) and finds a pattern — the same kind of hunk gets corrected the same way more than
 once — add a worked example here, in this format:
 
 ```

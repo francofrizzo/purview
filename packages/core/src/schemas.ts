@@ -80,6 +80,39 @@ export type FilesJson = z.infer<typeof FilesJsonSchema>;
 
 /* ------------------------------------------------------------------- units */
 
+/**
+ * A verified observation the analysis made while reading the local checkout.
+ *
+ * Findings exist to answer the questions a `must-read` rationale raises, so
+ * the human does not have to chase them by hand: "do all callers handle the
+ * new error path?", "is the old code path still referenced anywhere?". They
+ * are *not* review comments — nothing is posted anywhere from them, they never
+ * block or approve, and they are only ever produced when a local checkout was
+ * available to check the claim in.
+ *
+ *  - `warning` — something is likely wrong (a caller mishandles a new error
+ *    path, a missed update, a real mismatch between the diff and its context).
+ *  - `note` — a verified-OK answer to a question the reviewer would otherwise
+ *    have had to chase ("all 3 callers map both paths to 403").
+ *
+ * `evidence` is required and non-empty on purpose: an unsourced finding is
+ * indistinguishable from speculation, and speculation is what the discipline
+ * in RUBRIC.md exists to keep out.
+ */
+export const FindingSeveritySchema = z.enum(["warning", "note"]);
+export type FindingSeverity = z.infer<typeof FindingSeveritySchema>;
+
+export const FindingSchema = z.object({
+  severity: FindingSeveritySchema,
+  text: z.string().min(1).max(300),
+  /** concrete location(s) checked, e.g. `internal/api/handler.go:88, internal/vep/client.go:41` */
+  evidence: z.string().min(1).max(200),
+});
+export type Finding = z.infer<typeof FindingSchema>;
+
+/** At most this many findings ride on one unit; beyond it, keep the material ones. */
+export const MAX_UNIT_FINDINGS = 5;
+
 export const ReviewUnitSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
@@ -90,6 +123,12 @@ export const ReviewUnitSchema = z.object({
   riskFlags: z.array(RiskFlagSchema).default([]),
   hunkIds: z.array(z.string()).default([]),
   order: z.number().int(),
+  /**
+   * Optional, and stays optional: every event and state file written before
+   * findings existed parses unchanged, and a unit with nothing verified says
+   * so by having no `findings` key rather than an empty array.
+   */
+  findings: z.array(FindingSchema).max(MAX_UNIT_FINDINGS).optional(),
 });
 export type ReviewUnit = z.infer<typeof ReviewUnitSchema>;
 

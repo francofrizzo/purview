@@ -126,6 +126,45 @@ export function checkoutNote(resolution: CheckoutResolution, headSha?: string): 
   return `A local checkout with the PR's branch is available at ${resolution.path}. Read from it when a must-read hunk's correctness depends on surrounding code the diff does not show. Never modify anything in it.`;
 }
 
+/**
+ * The verification-pass block. Gated on a usable checkout: without one there
+ * is nothing to verify a claim *in*, and a finding derived from the diff alone
+ * is exactly the speculation the findings discipline forbids — so the prompt
+ * says so outright rather than leaving the model to infer it.
+ *
+ * `resolution.mismatch` still counts as a checkout: SKILL.md tells the run to
+ * treat what it reads there as possibly stale, which is a weaker claim, not no
+ * claim at all.
+ */
+export function findingsNote(resolution?: CheckoutResolution): string {
+  const hasCheckout = !!resolution?.path && !resolution.error;
+  if (!hasCheckout) {
+    return [
+      "VERIFICATION PASS: SKIPPED. There is no local checkout for this PR, so nothing can be",
+      'verified. Do NOT emit any findings — leave `findings` off every unit entirely. Never',
+      "speculate a finding from the diff alone: an unverified finding is worse than none.",
+      "Questions the diff raises stay questions, phrased in the unit's one-line `attentionWhy`.",
+    ].join("\n");
+  }
+  return [
+    "VERIFICATION PASS: RUN IT. Follow the 'Verification pass' step of SKILL.md and the",
+    "'Findings discipline' section of RUBRIC.md, using the local checkout named above as the",
+    "only place a claim may be verified (grep/read it; never modify it).",
+    "",
+    "Each `ReviewUnit` may carry an optional `findings` array — at most 5 entries, each",
+    '`{"severity": "warning" | "note", "text": "<= 300 chars", "evidence": "<= 200 chars"}`:',
+    '  - `warning` — you checked and something is likely wrong (a caller mishandles a new error',
+    "    path, a missed update, a real mismatch).",
+    '  - `note` — you checked and it is fine; the finding is the answer to a question the',
+    '    reviewer would otherwise have had to chase ("all 3 callers map both paths to 403").',
+    "  - `evidence` is REQUIRED and non-empty: the concrete location(s) you actually read, e.g.",
+    '    "internal/api/handler.go:88, internal/vep/client.go:41". A finding without evidence is',
+    "    rejected by the CLI.",
+    "Findings are local annotations for the human reader. They never block, never approve, and",
+    "are never posted anywhere. Omit `findings` on units where you verified nothing.",
+  ].join("\n");
+}
+
 export function analysisPrompt(
   key: PrKey,
   root: string,
@@ -163,6 +202,7 @@ export function analysisPrompt(
     `  files: ${path.join(dir, "revisions", String(state.currentRevision), "files.json")}`,
     `  events (read \`classification-corrected\` entries and honor them as precedent): ${path.join(dir, "events.jsonl")}`,
     opts.checkout ? "\n" + checkoutNote(opts.checkout, opts.headSha) : "",
+    "\n" + findingsNote(opts.checkout),
     rubric ? "\n" + rubric : "",
     "",
     "Run the reviewer-state CLI as:",

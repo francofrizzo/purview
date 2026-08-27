@@ -122,6 +122,21 @@ honors `classification-corrected` events — reclassifying a unit in the UI feed
 future analyses. `RUBRIC.md` in the skill directory holds the category definitions and is the
 file to iterate on over time.
 
+**Findings.** When a local checkout is configured, the analysis also runs a *verification
+pass*: for each must-read unit whose rationale raises a question code could settle ("do all
+callers handle the new error path?", "is the old path still referenced?"), it goes and
+checks, then records the answer on the unit as a `finding` — a `warning` when something
+looks wrong, a `note` when it verified fine and closed a question the reviewer would
+otherwise have chased. Every finding cites the files and lines it was verified against, and
+the discipline around them is deliberately narrow: verified, sourced, and material enough to
+change what you write in your review — never style opinions, unchecked "might"s, restatements
+of the diff, or architecture editorializing. Questions that code *can't* settle stay
+questions in `attentionWhy`. Without a checkout there is no verification pass and no
+findings at all, because a finding derived from the diff alone is just a guess with a
+citation-shaped hole in it. Findings are local annotations: they never block, never approve,
+and are never posted to GitHub. A refresh drops them from any unit whose hunks changed, so
+a stale claim can't outlive the code it was checked against.
+
 The CLI (`reviewer-state`, shipped by `packages/core`) is also usable directly:
 `init`, `refresh`, `set-analysis`, `set-unit`, `view`, `report`, `list`, `sync`.
 

@@ -332,6 +332,18 @@ const units: ReviewUnit[] = [
     attention: "must-read",
     attentionWhy: "Encodes the money-safety decision: what counts as the same charge.",
     riskFlags: ["money", "external-call"],
+    findings: [
+      {
+        severity: "warning",
+        text: "refundCharge() still keys off the raw orderId, so a replayed refund after a partial capture will not find the ledger row written by charge().",
+        evidence: "src/payments/refund.ts:64, src/payments/ledger.ts:31",
+      },
+      {
+        severity: "note",
+        text: "All 3 callers of charge() propagate ChargeReplayed as a success; none treat it as an error.",
+        evidence: "src/api/pay.ts:88, src/jobs/retryQueue.ts:41, test/payments/charge.test.ts:120",
+      },
+    ],
     hunkIds: [
       "a1b2c3d4e5f60001",
       "a1b2c3d4e5f60003",
@@ -349,6 +361,23 @@ const units: ReviewUnit[] = [
     attention: "must-read",
     attentionWhy: "Retry semantics interact with the idempotency key; wrong here double-charges.",
     riskFlags: ["concurrency", "external-call"],
+    findings: [
+      {
+        severity: "note",
+        text: "isTransient() is only reachable from the retry wrapper; no other call site classifies gateway errors.",
+        evidence: "src/payments/retry.ts:22",
+      },
+      {
+        severity: "note",
+        text: "MAX_ATTEMPTS is read once at module load and is not overridden anywhere in the repo.",
+        evidence: "src/payments/retry.ts:9",
+      },
+      {
+        severity: "note",
+        text: "The old chargeWithRetry() helper has no remaining references outside its own test file.",
+        evidence: "src/payments/legacy.ts:14, test/payments/legacy.test.ts:3",
+      },
+    ],
     hunkIds: ["a1b2c3d4e5f60002", "a1b2c3d4e5f60008"],
     order: 2,
   },

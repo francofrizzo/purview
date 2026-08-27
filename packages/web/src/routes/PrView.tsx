@@ -42,6 +42,7 @@ import {
   type HunkEntry,
 } from "../components/DiffPane";
 import { CommentComposer, DraftsDrawer, type CommentTarget } from "../components/Drafts";
+import { UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
 import { MigrationReportPanel, SyncResultPanel } from "../components/Panels";
@@ -468,6 +469,7 @@ export function PrView() {
                   why {selectedUnit.attention}: {selectedUnit.attentionWhy}
                 </p>
               ) : null}
+              <UnitFindings findings={selectedUnit.findings} />
             </div>
           ) : null}
 

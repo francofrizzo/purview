@@ -65,6 +65,12 @@ export function formatReport(
           `${p.viewed}/${p.total}  [${p.attention}/${p.kind}] ${p.unitId}: ${p.title}` +
           (p.changed ? "  (changed)" : ""),
       );
+      // Findings are printed so an incremental run can see what a previous
+      // pass already verified (and what migration invalidated) without
+      // re-reading state.json.
+      for (const f of state.units.find((u) => u.id === p.unitId)?.findings ?? []) {
+        out.push(`      ${f.severity === "warning" ? "!" : "-"} ${f.text}  [${f.evidence}]`);
+      }
     }
   }
 

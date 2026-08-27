@@ -116,6 +116,11 @@ type Attention = "must-read" | "skim" | "skip";
 type RiskFlag = "auth" | "migration" | "concurrency" | "money" | "external-call" | "security";
 
 interface Hunk { id: string; file: string; oldStart: number; oldLines: number; newStart: number; newLines: number; header: string; }
+interface Finding {
+  severity: "warning" | "note";
+  text: string;          // <= 300 chars
+  evidence: string;      // <= 200 chars, required non-empty: the location(s) checked
+}
 interface ReviewUnit {
   id: string;            // slug
   title: string;
@@ -126,6 +131,7 @@ interface ReviewUnit {
   riskFlags: RiskFlag[];
   hunkIds: string[];     // may span files
   order: number;         // suggested reading order
+  findings?: Finding[];  // <= 5; only ever produced with a local checkout
 }
 interface HunkState {
   viewed: boolean;
@@ -164,6 +170,7 @@ interface HunkState {
 2. Match old hunks → new hunks: (a) identical hunkId → carry all state; (b) same file, best fuzzy match (Jaccard over added+removed lines, threshold 0.6; for small hunks — either side with ≤6 changed lines — blended with word-token Jaccard so single-line in-place edits still match) → carry, mark `fuzzy`, set changedSinceViewed if was viewed; (c) file renamed (GitHub rename detection in diff) → recompute with new path, treat as (a)/(b); (d) unmatched old → archive (kept in events, listed in report); (e) unmatched new → `new`, always left unassigned for the skill to classify.
 3. Distinguish base-moved vs head-moved: if headSha unchanged but mergeBase moved, mark revision `baseOnly: true`; new hunks in such revisions default attention `skip` with why="base moved".
 4. Emit migration report (carried/fuzzy/renamed/archived/new counts + per-hunk list) → stored in revision dir, printed by CLI.
+5. **Findings staleness**: a unit keeps its `findings` only if *every* one of its hunks carried over `identical`. Any `fuzzy`/`renamed`/`archived` hunk (or a hunk the report never mentions) strips the whole unit's findings — the code they were verified against moved, and the incremental re-analysis of the changed hunks re-verifies what still holds. Per-finding staleness would need line provenance nothing records; this is the simplest rule that can never leave a stale claim on screen.
 
 ## Server REST (localhost:4779)
 
@@ -397,6 +404,8 @@ Trigger: user asks to analyze/review a PR. Flow:
 
 Classification rubric (seed for RUBRIC.md): core-logic = behavior/domain decisions; connective-tissue = glue with logic (adapters, mappers, non-trivial plumbing); wiring = registrations, DI, exports, imports, config plumbing with no logic; ripple = mechanical fallout of a change (renames at call sites, signature threading); tests = tests/evals/fixtures; docs = docs/comments/README.
 Attention: must-read = wrong here breaks things or encodes decisions; skim = verify shape, don't trace; skip = mechanical, reviewed by construction. Risk flags override attention upward.
+
+**Verification pass → findings.** Gated on a local checkout being resolvable for the run (the analysis prompt states the path, or states there is none). With one: for each must-read unit whose `attentionWhy` raises a question code can settle — do the callers handle the new error path, does anything else construct this shape, is the old path still referenced, was a parallel site missed — the skill actually checks it in the checkout and records the outcome as a `Finding` on the unit: a `note` when verified OK (and, if that question was the only reason the unit was must-read, `attention` drops to `skim` with `attentionWhy` rewritten), a `warning` when something is off. Without a checkout the pass is skipped entirely and **no** findings are produced; nothing is ever inferred from the diff alone. A finding must be verified, cite its evidence, and be material enough to change what the reviewer writes; style opinions, unchecked "might"s, restatements of the code and architecture editorializing are never findings, and a question code cannot settle stays a question in `attentionWhy`. Findings never block, approve, or post anywhere — they are local annotations. `attentionWhy` stays one line; verification outcomes live in `findings`.
 
 ## Non-goals for v1
 

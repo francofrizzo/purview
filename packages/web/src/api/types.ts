@@ -71,6 +71,20 @@ export interface FilesJson {
   files: FileEntry[];
 }
 
+export type FindingSeverity = "warning" | "note";
+
+/**
+ * A claim the analysis verified in the local checkout: `warning` = something
+ * is likely wrong, `note` = a verified-OK answer to a question the reviewer
+ * would otherwise have had to chase. `evidence` is the location(s) read.
+ * Purely an annotation — nothing in the app acts on it.
+ */
+export interface Finding {
+  severity: FindingSeverity;
+  text: string;
+  evidence: string;
+}
+
 export interface ReviewUnit {
   id: string;
   title: string;
@@ -81,6 +95,8 @@ export interface ReviewUnit {
   riskFlags: RiskFlag[];
   hunkIds: string[];
   order: number;
+  /** absent on units that verified nothing, and on any state predating findings */
+  findings?: Finding[];
 }
 
 /**
