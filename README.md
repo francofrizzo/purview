@@ -30,10 +30,17 @@ pnpm -r build
 ## Run
 
 ```bash
-pnpm dev          # server on http://localhost:4779, serving the built web app
+pnpm start        # build if sources changed, (re)start the server on http://localhost:4779
 ```
 
+`pnpm start` detects stale builds, rebuilds what changed, stops a previously running
+Purview server on the port, and starts the new one. Use it both for first runs and
+after `git pull` — it is always safe to re-run.
+
 Open <http://localhost:4779> and paste a PR URL to start tracking it.
+
+For development, `pnpm dev` runs the server only (no rebuild) against the existing
+`packages/web/dist`.
 
 ## First run
 
