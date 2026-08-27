@@ -322,7 +322,11 @@ export function PrView() {
         onFinishReview={() => {
           setSubmitResult(null);
           submitReview.reset();
-          setReviewOpen((v) => !v);
+          const next = !reviewOpen;
+          setReviewOpen(next);
+          // Both live in the same right-hand slot: whichever was requested
+          // last wins, so opening finish-review closes the chat.
+          if (next) chat.closeChat();
         }}
         onRefresh={() => refresh.mutate(undefined, { onSuccess: setReport })}
         onSync={() => sync.mutate(undefined, { onSuccess: setSyncResult })}
@@ -423,17 +427,20 @@ export function PrView() {
               className="flex-none border-b px-4 py-2.5"
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
-              <div className="flex items-center gap-2">
-                <MiddleTruncate
-                  text={selectedUnit.title}
-                  tail={16}
-                  className="text-[13px] font-semibold"
-                />
-                <KindChip kind={selectedUnit.kind} />
-                <AttentionChip attention={selectedUnit.attention} />
-                <RiskFlags flags={selectedUnit.riskFlags} />
-                {progress && progress.changed > 0 ? <ChangedBadge count={progress.changed} /> : null}
-                <div className="ml-auto flex flex-none items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2
+                  className="line-clamp-2 min-w-0 flex-1 basis-64 text-[13px] font-semibold leading-tight"
+                  title={selectedUnit.title}
+                >
+                  {selectedUnit.title}
+                </h2>
+                <div className="flex flex-none flex-wrap items-center gap-2">
+                  <KindChip kind={selectedUnit.kind} />
+                  <AttentionChip attention={selectedUnit.attention} />
+                  <RiskFlags flags={selectedUnit.riskFlags} />
+                  {progress && progress.changed > 0 ? <ChangedBadge count={progress.changed} /> : null}
+                </div>
+                <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
                   {showNarrowNote ? <NarrowPaneNote /> : null}
                   <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                   <WrapToggle wrap={wrap} onChange={setWrap} />

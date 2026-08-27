@@ -157,7 +157,7 @@
   }
 
   .chip {
-    @apply inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs font-medium leading-4 tracking-tight;
+    @apply inline-flex flex-none items-center gap-1 whitespace-nowrap rounded px-1.5 py-px text-2xs font-medium leading-4 tracking-tight;
   }
 
   .input {

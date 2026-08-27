@@ -93,7 +93,10 @@ export function AttentionChip({ attention }: { attention: Attention }) {
 export function RiskFlags({ flags, size = 12 }: { flags: RiskFlag[]; size?: number }) {
   if (!flags?.length) return null;
   return (
-    <span className="inline-flex items-center gap-1" style={{ color: "var(--risk)" }}>
+    <span
+      className="inline-flex flex-none items-center gap-1 whitespace-nowrap"
+      style={{ color: "var(--risk)" }}
+    >
       {flags.map((f) => {
         const meta = RISK_META[f];
         if (!meta) return null;
@@ -102,7 +105,7 @@ export function RiskFlags({ flags, size = 12 }: { flags: RiskFlag[]; size?: numb
           <span
             key={f}
             title={`risk: ${meta.label}`}
-            className="inline-flex items-center rounded p-px"
+            className="inline-flex flex-none items-center rounded p-px"
             style={{ background: "var(--risk-soft)" }}
           >
             <Icon width={size} height={size} />

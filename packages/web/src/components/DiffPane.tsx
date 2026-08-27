@@ -825,17 +825,17 @@ export function DiffViewToggle({
             type="button"
             data-testid={`view-${value}`}
             aria-pressed={active}
-            title={`${label} diff (d)`}
+            aria-label={`${label} view`}
+            title={`${label} view · d`}
             onClick={() => onChange(value)}
-            className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium transition-colors"
+            className="inline-flex flex-none items-center justify-center rounded-sm px-1.5 py-0.5 transition-colors"
             style={{
               background: active ? "var(--bg-raised)" : "transparent",
               color: active ? "var(--fg)" : "var(--fg-faint)",
               boxShadow: active ? "0 0 0 1px var(--border-strong)" : undefined,
             }}
           >
-            <Icon width={11} height={11} />
-            {label}
+            <Icon width={13} height={13} />
           </button>
         );
       })}
@@ -860,17 +860,17 @@ export function WrapToggle({
         type="button"
         data-testid="toggle-wrap"
         aria-pressed={wrap}
-        title={wrap ? "Line wrap on — click to scroll instead (w)" : "Line wrap off (w)"}
+        aria-label="wrap long lines"
+        title="wrap long lines · w"
         onClick={() => onChange(!wrap)}
-        className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-2xs font-medium transition-colors"
+        className="inline-flex flex-none items-center justify-center rounded-sm px-1.5 py-0.5 transition-colors"
         style={{
           background: wrap ? "var(--bg-raised)" : "transparent",
           color: wrap ? "var(--fg)" : "var(--fg-faint)",
           boxShadow: wrap ? "0 0 0 1px var(--border-strong)" : undefined,
         }}
       >
-        <IconWrap width={11} height={11} />
-        wrap
+        <IconWrap width={13} height={13} />
       </button>
     </div>
   );
