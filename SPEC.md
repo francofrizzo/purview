@@ -20,6 +20,8 @@ skills/pr-review  # Claude skill (SKILL.md + reference docs). Reads/writes state
 ```jsonc
 {
   "autoAnalyze": true,        // consent: start a Claude analysis run when a PR is added/refreshed
+  "analysisModel": null,      // "sonnet" | "opus" | "haiku" | null (null = built-in default)
+  "chatModel": null,          // same, for review-chat turns
   "onboardedAt": "<iso>",     // when onboarding produced this file
   "devOrigins": ["http://localhost:5179", "http://localhost:5173"]  // extra allowed request origins
 }
@@ -35,7 +37,8 @@ the legacy `config.json` with it. A configured root (env var) is never migrated 
 `~/.purview/<host>/<owner>/<repo>/` — per-repo, beside the numbered PR dirs:
 
 ```
-repo.json           # { autoAnalyze: boolean|null, repoPath: string|null }  (null = inherit)
+repo.json           # { autoAnalyze: boolean|null, repoPath: string|null,
+                    #   analysisModel: Model|null, chatModel: Model|null }  (null = inherit)
 RUBRIC.local.md     # free-form markdown overlay, may be absent
 <number>/           # one directory per PR (always digits, so it can never collide
                     # with a repo-level file name)
@@ -54,7 +57,7 @@ state.json          # derived snapshot, rebuilt from events; safe to delete
 comments.json       # local draft comments (draft -> pushed -> submitted)
 review.json         # review body draft + pending review ids + last submission
 analysis-job.json   # latest Claude analysis run for this PR (see "Claude integration")
-chat.json           # review-chat session id + transcript summary
+chat.json           # review-chat session id + transcript summary + per-chat model pin
 revisions/<n>/      # one per observed (baseSha, headSha, mergeBase)
   diff.patch        # the diff exactly as GitHub served it (v3.diff)
   files.json        # parsed: files -> hunks with ids
@@ -68,9 +71,10 @@ Four places can configure a review, highest precedence first:
 1. **PR meta** — `meta.json.repoPath` only (the per-PR checkout override);
 2. **repo local** — `~/.purview/<host>/<owner>/<repo>/repo.json`;
 3. **committed team config** — `.purview/config.json` in the *target* repo
-   (`{autoAnalyze?: boolean}`, unknown keys ignored);
+   (`{autoAnalyze?, analysisModel?, chatModel?}`, unknown keys ignored);
 4. **global** — `~/.purview/config.json`;
-5. **built-in defaults** — `autoAnalyze: true`, no repo path.
+5. **built-in defaults** — `autoAnalyze: true`, no repo path, `analysisModel`/`chatModel`
+   both `"sonnet"`.
 
 `null`/absent means "inherit", which is why `repo.json`'s fields are nullable rather than
 optional-with-a-default. One resolver (`packages/server/src/repo-config.ts`,
@@ -89,6 +93,13 @@ ordered in the prompt: (1) the built-in skill `RUBRIC.md`, referenced by path; (
 committed `.purview/RUBRIC.md` ("team rubric — refines the above"), inlined; (3)
 `RUBRIC.local.md` ("local overlay — highest precedence"), inlined. Later layers win where they
 disagree. With no overlays the block is empty and the prompt is unchanged.
+
+**Model layering.** `analysisModel` and `chatModel` resolve through the same chain (repo
+local > committed > global > built-in `"sonnet"`); they are independent of each other, and the
+global layer is nullable, so it too can say "inherit". Values are the CLI's own aliases —
+`sonnet` | `opus` | `haiku` — never full model ids, which change with every release. Anything
+else is rejected at every entry point. A chat session may additionally pin its own model
+(`chat.json.model`), which outranks all of the above for that conversation only.
 
 ## Hunk identity
 
@@ -178,10 +189,15 @@ DELETE /api/prs/:key/review/pending    # discard the remote pending review, rese
 ```
 GET  /api/repos                        # {repos: [{host, owner, repo, prCount, archivedCount,
                                        #  hasLocalConfig, hasCommittedConfig, repoPath}]}
-GET  /api/repos/:rkey/config           # {local:{autoAnalyze, repoPath, rubric},
+GET  /api/config                       # {analysisModel, chatModel, defaults:{...}}
+PUT  /api/config                       # {analysisModel?, chatModel?} -> same shape
+GET  /api/repos/:rkey/config           # {local:{autoAnalyze, repoPath,
+                                       #   analysisModel, chatModel, rubric},
                                        #  committed:{present, config, rubric},
-                                       #  effective:{autoAnalyze, repoPath}, sources}
-PUT  /api/repos/:rkey/config           # {autoAnalyze?, repoPath?, rubric?} -> same shape
+                                       #  effective:{autoAnalyze, repoPath,
+                                       #    analysisModel, chatModel}, sources}
+PUT  /api/repos/:rkey/config           # {autoAnalyze?, repoPath?, analysisModel?,
+                                       #  chatModel?, rubric?} -> same shape
 ```
 `:rkey` = `host/owner/repo` URL-encoded. `local.rubric` is `RUBRIC.local.md` ("" when absent);
 PUT with `rubric: ""` deletes the file, and `null` on a config field restores inheritance.
@@ -211,7 +227,7 @@ The API is unauthenticated, so access control is entirely "who may talk to it". 
 
 `packages/server/src/onboarding.ts`. Runs before `serve()` when `~/.purview/config.json` is absent **and** stdout is a TTY; `--onboard` forces a re-run. Non-TTY or config present -> skipped silently, defaults apply.
 
-Order: banner (3-line box, accent color) -> environment checks printed one line at a time (Node >= 20; `gh --version` + `gh auth status` with the detected login; `claude --version`; state dir writable), each failure carrying a one-line fix hint -> `gh` failing is a hard stop offering `Continue anyway? [y/N]`, `claude` failing is a warning only -> a plain statement that analysis and chat runs cost against the user's own Claude account, then `Run an analysis automatically when you add a PR? [Y/n]` -> writes config.json -> summary box (state dir, port, URL, claude readiness).
+Order: banner (3-line box, accent color) -> environment checks printed one line at a time (Node >= 20; `gh --version` + `gh auth status` with the detected login; `claude --version`; state dir writable), each failure carrying a one-line fix hint -> `gh` failing is a hard stop offering `Continue anyway? [y/N]`, `claude` failing is a warning only -> a plain statement that analysis and chat runs cost against the user's own Claude account, then a line saying analysis and chat both default to Sonnet and where to change it, then `Run an analysis automatically when you add a PR? [Y/n]` -> writes config.json -> summary box (state dir, port, URL, claude readiness).
 
 node:readline + ANSI only, no TUI framework. Colors off under `NO_COLOR` or off a TTY. Check functions take an injected `Exec`; the prompt loop takes an injected `OnboardingIo`, so the whole flow is unit-testable without a terminal.
 
@@ -225,8 +241,17 @@ into our own events, and the spawn itself is injectable so tests never call a mo
 claude -p --output-format stream-json --verbose --safe-mode --strict-mcp-config \
        [--include-partial-messages] [--append-system-prompt <text>] [--add-dir <dir>]... \
        --tools <list> --allowedTools <rules>... --disallowedTools <rules>... \
+       --model <sonnet|opus|haiku> \
        (--session-id <uuid> | --resume <uuid>)
 ```
+
+**`--model` is always passed.** Inheriting the `claude` CLI's own default meant every analysis
+and every chat turn silently billed at whatever model the user had configured, which for an
+Opus default is an order of magnitude more than intended. Analysis uses the effective
+`analysisModel`; chat uses the session's pin, else the effective `chatModel`. Verified against
+the real CLI: the aliases resolve (`--model sonnet` -> `claude-sonnet-5`), and `--resume`
+accepts a **different** `--model` than the session was started with, so switching a
+conversation's model keeps its transcript.
 
 The prompt goes over **stdin**, never argv (it can be large, and argv is logged). Auth is the
 user's own Claude Code login; no API key is read, passed or stored. Runs are killable
@@ -256,7 +281,9 @@ a successful `POST /api/prs` always, after `POST /api/prs/:key/refresh` only whe
 migration left new/unassigned hunks, both skippable with `?analyze=false`.
 
 **Chat.** One resumable CLI session per PR (`--session-id` on the first turn, `--resume`
-after), with `chat.json` holding `{sessionId, messages: [{role, text, ts, refs?}]}`. Requests
+after), with `chat.json` holding `{sessionId, model, messages: [{role, text, ts, refs?}]}`.
+`model` (`null` = follow the layered `chatModel`) is the conversation's own pin; it takes
+effect on the **next** message and does not restart the session. Requests
 may carry typed refs — `unit`/`hunk`/`file`/`line-range`/`comment` — which the server resolves
 against the current revision into a compact delimited block prepended to the message. An
 unresolvable ref fails the send with `unresolvable_ref` and persists nothing. A turn outlives
@@ -286,9 +313,14 @@ GET    /api/prs/:key/analysis-job          -> {job: JobRecord | null}
 POST   /api/prs/:key/analyze               -> {job}   409 if queued/running
 DELETE /api/prs/:key/analyze               -> {job}   409 if nothing in progress
 POST   /api/prs/:key/repo-path {path}      -> {ok, path, warning?}   400 if dir missing
-GET    /api/prs/:key/chat                  -> {messages, sessionId, busy}
+GET    /api/prs/:key/chat                  -> {messages, sessionId, busy, model,
+                                              configuredModel, configuredModelSource,
+                                              sessionModel}
 POST   /api/prs/:key/chat {text, refs?}    -> SSE stream
-DELETE /api/prs/:key/chat                  -> {ok: true}
+POST   /api/prs/:key/chat/model {model}    -> {model, configuredModel, configuredModelSource,
+                                              sessionModel, restartedSession}
+                                              model: alias | null (null = inherit); 400 otherwise
+DELETE /api/prs/:key/chat                  -> {ok: true}   (drops the model pin too)
 GET    /api/prs/:key/events                -> SSE {type:"analysis-job", job} per transition,
                                               heartbeat comment every 15s
 ```

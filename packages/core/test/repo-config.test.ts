@@ -14,6 +14,7 @@ import {
   writeRepoConfig,
 } from "../src/store.js";
 import { repoConfigPath, repoRubricPath } from "../src/paths.js";
+import { EMPTY_REPO_CONFIG } from "../src/schemas.js";
 
 const repo = { host: "github.com", owner: "acme", repo: "widgets" };
 
@@ -42,16 +43,15 @@ function seedPr(number: number): void {
 
 describe("repo.json", () => {
   it("defaults every field to null (inherit) and creates an empty file on demand", () => {
-    expect(readRepoConfig(repo, root)).toEqual({ autoAnalyze: null, repoPath: null });
+    expect(readRepoConfig(repo, root)).toEqual(EMPTY_REPO_CONFIG);
     expect(repoConfigExists(repo, root)).toBe(false);
 
     ensureRepoConfig(repo, root);
 
     expect(repoConfigExists(repo, root)).toBe(true);
-    expect(JSON.parse(fs.readFileSync(repoConfigPath(repo, root), "utf8"))).toEqual({
-      autoAnalyze: null,
-      repoPath: null,
-    });
+    expect(JSON.parse(fs.readFileSync(repoConfigPath(repo, root), "utf8"))).toEqual(
+      EMPTY_REPO_CONFIG,
+    );
     // Idempotent: a second call must not clobber what was set meanwhile.
     writeRepoConfig(repo, { autoAnalyze: true }, root);
     ensureRepoConfig(repo, root);
@@ -62,6 +62,7 @@ describe("repo.json", () => {
     writeRepoConfig(repo, { repoPath: "/src/widgets" }, root);
     writeRepoConfig(repo, { autoAnalyze: false }, root);
     expect(readRepoConfig(repo, root)).toEqual({
+      ...EMPTY_REPO_CONFIG,
       autoAnalyze: false,
       repoPath: "/src/widgets",
     });
@@ -70,15 +71,46 @@ describe("repo.json", () => {
   it("parses tolerantly: garbage and wrong types fall back to inherit", () => {
     fs.mkdirSync(path.dirname(repoConfigPath(repo, root)), { recursive: true });
     fs.writeFileSync(repoConfigPath(repo, root), "{not json");
-    expect(readRepoConfig(repo, root)).toEqual({ autoAnalyze: null, repoPath: null });
+    expect(readRepoConfig(repo, root)).toEqual(EMPTY_REPO_CONFIG);
 
     fs.writeFileSync(
       repoConfigPath(repo, root),
       JSON.stringify({ autoAnalyze: "yes", repoPath: "/keep/me", extra: 1 }),
     );
     expect(readRepoConfig(repo, root)).toEqual({
+      ...EMPTY_REPO_CONFIG,
       autoAnalyze: null,
       repoPath: "/keep/me",
+    });
+  });
+});
+
+describe("model settings in repo.json", () => {
+  it("round-trips the CLI aliases and defaults them to inherit", () => {
+    expect(readRepoConfig(repo, root).analysisModel).toBeNull();
+    writeRepoConfig(repo, { analysisModel: "opus" }, root);
+    expect(readRepoConfig(repo, root).analysisModel).toBe("opus");
+    // Independent of each other, and of autoAnalyze.
+    expect(readRepoConfig(repo, root).chatModel).toBeNull();
+    writeRepoConfig(repo, { chatModel: "haiku" }, root);
+    expect(readRepoConfig(repo, root)).toMatchObject({
+      analysisModel: "opus",
+      chatModel: "haiku",
+    });
+  });
+
+  it("rejects anything that is not an alias, salvaging the rest of the file", () => {
+    fs.mkdirSync(path.dirname(repoConfigPath(repo, root)), { recursive: true });
+    // A pinned model id is exactly the mistake this guards against: it rots.
+    fs.writeFileSync(
+      repoConfigPath(repo, root),
+      JSON.stringify({ analysisModel: "claude-opus-4-6", chatModel: "haiku", repoPath: "/keep" }),
+    );
+    expect(readRepoConfig(repo, root)).toEqual({
+      ...EMPTY_REPO_CONFIG,
+      analysisModel: null,
+      chatModel: "haiku",
+      repoPath: "/keep",
     });
   });
 });

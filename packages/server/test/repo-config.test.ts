@@ -14,12 +14,15 @@ import {
   setGhRunner,
   writeLocalRubric,
   writeRepoConfig,
+  type ClaudeModel,
   type GhRunner,
 } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { writeConfig } from "../src/config.js";
 import {
   autoAnalyzeAllowed,
+  effectiveAnalysisModel,
+  effectiveChatModel,
   effectiveConfig,
   effectiveRepoPath,
 } from "../src/repo-config.js";
@@ -195,6 +198,76 @@ describe("effectiveConfig precedence", () => {
     expect(effectiveRepoPath(key, root, { meta })).toBe("/wt/pr-7");
   });
 
+  /**
+   * Model precedence, for both keys at once: repo.json > committed >
+   * ~/.purview/config.json > built-in "sonnet". Unlike autoAnalyze the global
+   * layer is nullable, so it can be present-but-inheriting.
+   */
+  const modelCases: {
+    name: string;
+    repoLocal?: ClaudeModel | null;
+    committed?: ClaudeModel;
+    global?: ClaudeModel | null;
+    expected: ClaudeModel;
+    source: string;
+  }[] = [
+    { name: "nothing set anywhere falls back to sonnet", expected: "sonnet", source: "default" },
+    { name: "global alone decides", global: "haiku", expected: "haiku", source: "global" },
+    {
+      name: "committed beats global",
+      committed: "opus",
+      global: "haiku",
+      expected: "opus",
+      source: "committed",
+    },
+    {
+      name: "repo.json beats committed and global",
+      repoLocal: "haiku",
+      committed: "opus",
+      global: "opus",
+      expected: "haiku",
+      source: "repo",
+    },
+    {
+      name: "explicit null in repo.json inherits rather than pinning",
+      repoLocal: null,
+      committed: "opus",
+      expected: "opus",
+      source: "committed",
+    },
+    {
+      name: "a null global is inherit, not a pin, so the built-in default wins",
+      global: null,
+      expected: "sonnet",
+      source: "default",
+    },
+  ];
+
+  for (const c of modelCases) {
+    for (const field of ["analysisModel", "chatModel"] as const) {
+      it(`${field}: ${c.name}`, () => {
+        if (c.repoLocal !== undefined) writeRepoConfig(repo, { [field]: c.repoLocal }, root);
+        if (c.global !== undefined) writeConfig({ [field]: c.global }, root);
+        const resolved = effectiveConfig(key, root, {
+          committed: c.committed === undefined ? null : { [field]: c.committed },
+        });
+        expect(resolved[field].value).toBe(c.expected);
+        expect(resolved[field].source).toBe(c.source);
+        // The two keys are independent: setting one must not move the other.
+        const other = field === "analysisModel" ? "chatModel" : "analysisModel";
+        if (c.repoLocal || c.committed || c.global) {
+          expect(resolved[other].source).toBe("default");
+        }
+      });
+    }
+  }
+
+  it("effectiveAnalysisModel / effectiveChatModel are the resolver's values", () => {
+    writeRepoConfig(repo, { analysisModel: "haiku", chatModel: "opus" }, root);
+    expect(effectiveAnalysisModel(key, root)).toBe("haiku");
+    expect(effectiveChatModel(key, root)).toBe("opus");
+  });
+
   it("an archived PR never auto-analyzes, whatever the layers say", () => {
     writeRepoConfig(repo, { autoAnalyze: true }, root);
     expect(autoAnalyzeAllowed(key, root)).toBe(true);
@@ -324,6 +397,8 @@ describe("init and refresh capture", () => {
     expect(JSON.parse(fs.readFileSync(repoConfigPath(other, root), "utf8"))).toEqual({
       autoAnalyze: null,
       repoPath: null,
+      analysisModel: null,
+      chatModel: null,
     });
   });
 
@@ -488,13 +563,24 @@ describe("/api/repos/:rkey/config", () => {
       },
     });
     const body = await (await app.request(`/api/repos/${encodedRepo}/config`)).json();
-    expect(body.local).toEqual({ autoAnalyze: null, repoPath: null, rubric: "" });
+    expect(body.local).toEqual({
+      autoAnalyze: null,
+      repoPath: null,
+      analysisModel: null,
+      chatModel: null,
+      rubric: "",
+    });
     expect(body.committed).toEqual({
       present: true,
       config: { autoAnalyze: false },
       rubric: "# Team\n",
     });
-    expect(body.effective).toEqual({ autoAnalyze: false, repoPath: null });
+    expect(body.effective).toEqual({
+      autoAnalyze: false,
+      repoPath: null,
+      analysisModel: "sonnet",
+      chatModel: "sonnet",
+    });
   });
 
   it("writes local values, and null re-inherits", async () => {
@@ -511,6 +597,8 @@ describe("/api/repos/:rkey/config", () => {
     expect(body.local).toEqual({
       autoAnalyze: true,
       repoPath: checkout.path,
+      analysisModel: null,
+      chatModel: null,
       rubric: "# Local\n",
     });
     expect(body.effective.autoAnalyze).toBe(true);
@@ -529,6 +617,47 @@ describe("/api/repos/:rkey/config", () => {
     // ...and the committed layer takes over again.
     expect(clearedBody.effective.autoAnalyze).toBe(false);
     expect(clearedBody.sources.autoAnalyze).toBe("committed");
+  });
+
+  it("stores model choices per repo and reports their source", async () => {
+    ghFor({ contents: { ".purview/config.json": JSON.stringify({ chatModel: "haiku" }) } });
+
+    const before = await (await app.request(`/api/repos/${encodedRepo}/config`)).json();
+    expect(before.effective.analysisModel).toBe("sonnet");
+    expect(before.sources.analysisModel).toBe("default");
+    expect(before.effective.chatModel).toBe("haiku");
+    expect(before.sources.chatModel).toBe("committed");
+
+    const put = await app.request(`/api/repos/${encodedRepo}/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisModel: "opus", chatModel: "opus" }),
+    });
+    const body = await put.json();
+    expect(body.local.analysisModel).toBe("opus");
+    expect(body.effective).toMatchObject({ analysisModel: "opus", chatModel: "opus" });
+    expect(body.sources).toMatchObject({ analysisModel: "repo", chatModel: "repo" });
+
+    const cleared = await app.request(`/api/repos/${encodedRepo}/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatModel: null }),
+    });
+    const clearedBody = await cleared.json();
+    expect(clearedBody.local.chatModel).toBeNull();
+    expect(clearedBody.effective.chatModel).toBe("haiku");
+    expect(clearedBody.sources.chatModel).toBe("committed");
+    // analysisModel was not in the body, so it kept its value.
+    expect(clearedBody.local.analysisModel).toBe("opus");
+  });
+
+  it("rejects an unknown model name", async () => {
+    const put = await app.request(`/api/repos/${encodedRepo}/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisModel: "claude-opus-4-6" }),
+    });
+    expect(put.status).toBe(400);
   });
 
   it("rejects bad types, unknown keys and a missing directory", async () => {
@@ -564,5 +693,63 @@ describe("/api/repos/:rkey/config", () => {
 
     const bad = await app.request(`/api/repos/${encodeURIComponent("justrepo")}/config`);
     expect(bad.status).toBe(400);
+  });
+});
+
+/* --------------------------------------------------------- global config */
+
+describe("/api/config", () => {
+  it("reports the machine-wide model settings and the built-in defaults", async () => {
+    const body = await (await app.request("/api/config")).json();
+    expect(body).toEqual({
+      analysisModel: null,
+      chatModel: null,
+      defaults: { analysisModel: "sonnet", chatModel: "sonnet" },
+    });
+  });
+
+  it("writes them, and they become the global layer of the resolver", async () => {
+    const put = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisModel: "haiku" }),
+    });
+    expect(put.status).toBe(200);
+    expect((await put.json()).analysisModel).toBe("haiku");
+
+    const resolved = effectiveConfig(key, root);
+    expect(resolved.analysisModel).toEqual({ value: "haiku", source: "global" });
+    // The other key was not written, so it still inherits the built-in default.
+    expect(resolved.chatModel).toEqual({ value: "sonnet", source: "default" });
+
+    // A partial PUT leaves the rest of config.json alone.
+    const second = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatModel: "opus" }),
+    });
+    expect(await second.json()).toMatchObject({ analysisModel: "haiku", chatModel: "opus" });
+  });
+
+  it("null re-inherits the built-in default", async () => {
+    writeConfig({ chatModel: "opus" }, root);
+    const put = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chatModel: null }),
+    });
+    expect((await put.json()).chatModel).toBeNull();
+    expect(effectiveConfig(key, root).chatModel.source).toBe("default");
+  });
+
+  it("400s on an unknown model or an unknown key", async () => {
+    for (const bad of [{ chatModel: "gpt-5" }, { autoAnalyze: true }, { chatModel: 3 }]) {
+      const res = await app.request("/api/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(bad),
+      });
+      expect(res.status).toBe(400);
+    }
   });
 });

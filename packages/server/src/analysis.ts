@@ -16,7 +16,7 @@ import {
 } from "@reviewer/core";
 import { runClaude, type ClaudeRun } from "./claude-runner.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
-import { effectiveRepoPath } from "./repo-config.js";
+import { effectiveAnalysisModel, effectiveRepoPath } from "./repo-config.js";
 import { rubricSection } from "./rubric.js";
 import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
 import { resolveCheckout, type CheckoutResolution } from "./worktree.js";
@@ -448,6 +448,9 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     cwd: prDir(key, root),
     addDirs,
     ...flags,
+    // Always explicit: an analysis must never inherit the `claude` CLI's own
+    // default model, which is whatever the user happens to have configured.
+    model: effectiveAnalysisModel(key, root, { meta: meta ?? null }),
     timeoutMs: opts.timeoutMs,
   });
   slot.run = run;

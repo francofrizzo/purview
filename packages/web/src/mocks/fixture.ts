@@ -613,24 +613,59 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
     local: {
       autoAnalyze: true,
       repoPath: "/Users/dana/code/billing",
+      analysisModel: "opus",
+      chatModel: null,
       rubric: LOCAL_BILLING_RUBRIC,
     },
     committed: { present: false, config: null, rubric: null },
-    effective: { autoAnalyze: true, repoPath: "/Users/dana/code/billing" },
+    effective: {
+      autoAnalyze: true,
+      repoPath: "/Users/dana/code/billing",
+      analysisModel: "opus",
+      chatModel: "sonnet",
+    },
+    sources: {
+      autoAnalyze: "repo",
+      repoPath: "repo",
+      analysisModel: "repo",
+      chatModel: "default",
+    },
   },
   "github.com/acme/platform": {
-    local: { autoAnalyze: null, repoPath: null, rubric: "" },
+    local: { autoAnalyze: null, repoPath: null, analysisModel: null, chatModel: null, rubric: "" },
     committed: { present: false, config: null, rubric: null },
-    effective: { autoAnalyze: false, repoPath: null },
+    effective: {
+      autoAnalyze: false,
+      repoPath: null,
+      analysisModel: "sonnet",
+      chatModel: "sonnet",
+    },
+    sources: {
+      autoAnalyze: "default",
+      repoPath: "default",
+      analysisModel: "default",
+      chatModel: "default",
+    },
   },
   "git.acme.dev/infra/terraform-modules": {
-    local: { autoAnalyze: null, repoPath: null, rubric: "" },
+    local: { autoAnalyze: null, repoPath: null, analysisModel: null, chatModel: null, rubric: "" },
     committed: {
       present: true,
-      config: { autoAnalyze: true, model: "claude-opus-4-6" },
+      config: { autoAnalyze: true, analysisModel: "opus", chatModel: "haiku" },
       rubric: MOCK_COMMITTED_RUBRIC,
     },
-    effective: { autoAnalyze: true, repoPath: null },
+    effective: {
+      autoAnalyze: true,
+      repoPath: null,
+      analysisModel: "opus",
+      chatModel: "haiku",
+    },
+    sources: {
+      autoAnalyze: "committed",
+      repoPath: "default",
+      analysisModel: "committed",
+      chatModel: "committed",
+    },
   },
 };
 

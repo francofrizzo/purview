@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  ClaudeModelSchema,
   EMPTY_REPO_CONFIG,
   EventSchema,
   FilesJsonSchema,
@@ -239,9 +240,13 @@ export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
   if (parsed.success) return parsed.data;
   // Salvage what is valid rather than discarding the whole file.
   const obj = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const model = (v: unknown) =>
+    ClaudeModelSchema.safeParse(v).data ?? null;
   return {
     autoAnalyze: typeof obj.autoAnalyze === "boolean" ? obj.autoAnalyze : null,
     repoPath: typeof obj.repoPath === "string" ? obj.repoPath : null,
+    analysisModel: model(obj.analysisModel),
+    chatModel: model(obj.chatModel),
   };
 }
 

@@ -3,6 +3,8 @@ import path from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  CLAUDE_MODELS,
+  ClaudeModelSchema,
   analysisCoverage,
   hunkDiffOfDiffs,
   initPr,
@@ -29,6 +31,7 @@ import {
   updateMeta,
   writeLocalRubric,
   writeRepoConfig,
+  type ClaudeModel,
   type Hunk,
   type Meta,
   type PrKey,
@@ -65,7 +68,7 @@ import {
   startAnalysis,
 } from "./analysis.js";
 import { chatBusy, startChatTurn, type ChatStreamEvent } from "./chat-session.js";
-import { ChatRefSchema, clearChat, readChat } from "./chat.js";
+import { ChatRefSchema, clearChat, readChat, setChatModel } from "./chat.js";
 import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
 import { localOnlyGuard } from "./security.js";
@@ -75,6 +78,8 @@ import {
   effectiveConfig,
   effectiveRepoPath,
 } from "./repo-config.js";
+import { BUILTIN_DEFAULTS } from "./repo-config.js";
+import { readConfig, writeConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 
 export const DEFAULT_PORT = 4779;
@@ -375,14 +380,60 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /* -------------------------------------------------------- Claude: chat */
 
+  /** `null` means "follow the repo/global default again", not "no model". */
+  const ChatModelPutSchema = z
+    .object({ model: ClaudeModelSchema.nullable() })
+    .strict();
+
   app.get("/api/prs/:key/chat", (c) => {
     const key = keyParam(c);
-    readMeta(key, root);
+    const meta = readMeta(key, root);
     const chat = readChat(key, root);
+    const configuredModel = effectiveConfig(key, root, { meta }).chatModel;
     return c.json({
       messages: chat.messages,
       sessionId: chat.sessionId,
       busy: chatBusy(key),
+      /** what the next message will actually be sent with */
+      model: chat.model ?? configuredModel.value,
+      /** the layered default, shown as the "inherit" option's meaning */
+      configuredModel: configuredModel.value,
+      configuredModelSource: configuredModel.source,
+      /** null when the session simply follows `configuredModel` */
+      sessionModel: chat.model,
+    });
+  });
+
+  /**
+   * Pin the model for this conversation. It applies to the next message: the
+   * turn in flight (if any) keeps the model it was spawned with, and the
+   * session is *not* restarted — `claude --resume` accepts a different
+   * `--model`, so the transcript survives the switch.
+   */
+  app.post("/api/prs/:key/chat/model", async (c) => {
+    const key = keyParam(c);
+    const meta = readMeta(key, root);
+    const parsed = ChatModelPutSchema.safeParse(await readJsonBody(c));
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        "invalid_body",
+        `model must be one of ${CLAUDE_MODELS.join(", ")}, or null to inherit`,
+      );
+    }
+    const chat = setChatModel(key, parsed.data.model, root);
+    const configuredModel = effectiveConfig(key, root, { meta }).chatModel;
+    return c.json({
+      model: chat.model ?? configuredModel.value,
+      configuredModel: configuredModel.value,
+      configuredModelSource: configuredModel.source,
+      sessionModel: chat.model,
+      /**
+       * The session id is kept, so the conversation continues. Clients read
+       * this rather than assuming: if a future CLI stops allowing a resume
+       * across models, this flips to true and the UI can warn.
+       */
+      restartedSession: false,
     });
   });
 
@@ -777,6 +828,8 @@ export function createApp(opts: AppOptions = {}): Hono {
         hasLocalConfig:
           local.autoAnalyze !== null ||
           local.repoPath !== null ||
+          local.analysisModel !== null ||
+          local.chatModel !== null ||
           readLocalRubric(repo, root).trim() !== "",
         hasCommittedConfig: cachedCommittedConfigForRepo(repo, root)?.present ?? false,
         repoPath: local.repoPath,
@@ -842,6 +895,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       local: {
         autoAnalyze: local.autoAnalyze,
         repoPath: local.repoPath,
+        analysisModel: local.analysisModel,
+        chatModel: local.chatModel,
         rubric: readLocalRubric(repo, root),
       },
       committed: {
@@ -852,13 +907,63 @@ export function createApp(opts: AppOptions = {}): Hono {
       effective: {
         autoAnalyze: effective.autoAnalyze.value,
         repoPath: effective.repoPath.value,
+        analysisModel: effective.analysisModel.value,
+        chatModel: effective.chatModel.value,
       },
       sources: {
         autoAnalyze: effective.autoAnalyze.source,
         repoPath: effective.repoPath.source,
+        analysisModel: effective.analysisModel.source,
+        chatModel: effective.chatModel.source,
       },
     };
   }
+
+  /* ------------------------------------------------- global (machine) config */
+
+  /**
+   * `~/.purview/config.json`, the outermost layer. Only the settings a UI has
+   * any business changing are exposed; onboarding owns the rest of the file.
+   */
+  function globalConfigPayload() {
+    const config = readConfig(root);
+    return {
+      analysisModel: config.analysisModel,
+      chatModel: config.chatModel,
+      /** what `null` resolves to here — the end of the inheritance chain */
+      defaults: {
+        analysisModel: BUILTIN_DEFAULTS.analysisModel,
+        chatModel: BUILTIN_DEFAULTS.chatModel,
+      },
+    };
+  }
+
+  const GlobalConfigPutSchema = z
+    .object({
+      analysisModel: ClaudeModelSchema.nullable().optional(),
+      chatModel: ClaudeModelSchema.nullable().optional(),
+    })
+    .strict();
+
+  app.get("/api/config", (c) => c.json(globalConfigPayload()));
+
+  app.put("/api/config", async (c) => {
+    const parsed = GlobalConfigPutSchema.safeParse(await readJsonBody(c));
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      throw new HttpError(
+        400,
+        "invalid_body",
+        `${issue.path.join(".") || "(body)"}: ${issue.message}`,
+      );
+    }
+    const body = parsed.data;
+    const patch: { analysisModel?: ClaudeModel | null; chatModel?: ClaudeModel | null } = {};
+    if ("analysisModel" in body) patch.analysisModel = body.analysisModel ?? null;
+    if ("chatModel" in body) patch.chatModel = body.chatModel ?? null;
+    if (Object.keys(patch).length > 0) writeConfig(patch, root);
+    return c.json(globalConfigPayload());
+  });
 
   app.get("/api/repos/:rkey/config", (c) => {
     return c.json(repoConfigPayload(repoKeyParam(c)));
@@ -873,6 +978,8 @@ export function createApp(opts: AppOptions = {}): Hono {
     .object({
       autoAnalyze: z.boolean().nullable().optional(),
       repoPath: z.string().nullable().optional(),
+      analysisModel: ClaudeModelSchema.nullable().optional(),
+      chatModel: ClaudeModelSchema.nullable().optional(),
       rubric: z.string().optional(),
     })
     .strict();
@@ -890,8 +997,15 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
     const body = parsed.data;
 
-    const patch: { autoAnalyze?: boolean | null; repoPath?: string | null } = {};
+    const patch: {
+      autoAnalyze?: boolean | null;
+      repoPath?: string | null;
+      analysisModel?: ClaudeModel | null;
+      chatModel?: ClaudeModel | null;
+    } = {};
     if ("autoAnalyze" in body) patch.autoAnalyze = body.autoAnalyze ?? null;
+    if ("analysisModel" in body) patch.analysisModel = body.analysisModel ?? null;
+    if ("chatModel" in body) patch.chatModel = body.chatModel ?? null;
     if ("repoPath" in body) {
       // Same validation as the per-PR endpoint: a path that isn't there is a
       // typo, and storing it would only fail later, silently.

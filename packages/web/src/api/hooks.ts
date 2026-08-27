@@ -13,6 +13,8 @@ import type {
   DiscardPendingResult,
   DraftComment,
   EditCommentResult,
+  GlobalConfig,
+  GlobalConfigPatch,
   MigrationReport,
   PrDetail,
   PrListEntry,
@@ -30,6 +32,7 @@ export const qk = {
   prs: ["prs"] as const,
   repos: ["repos"] as const,
   repoConfig: (rkey: string) => ["repo-config", rkey] as const,
+  config: ["config"] as const,
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
   review: (key: string) => ["review", key] as const,
@@ -126,6 +129,27 @@ export function useSaveRepoConfig(rkey: string) {
     onSuccess: (config) => {
       qc.setQueryData(qk.repoConfig(rkey), config);
       void qc.invalidateQueries({ queryKey: qk.repos });
+    },
+  });
+}
+
+/* ----------------------------------------------------------- global config */
+
+export function useGlobalConfig() {
+  return useQuery<GlobalConfig>({ queryKey: qk.config, queryFn: api.getConfig, retry: false });
+}
+
+/**
+ * Writing the machine-wide defaults moves what every repo inherits, so the
+ * per-repo configs are invalidated along with this one.
+ */
+export function useSaveGlobalConfig() {
+  const qc = useQueryClient();
+  return useMutation<GlobalConfig, Error, GlobalConfigPatch>({
+    mutationFn: (patch) => api.saveConfig(patch),
+    onSuccess: (config) => {
+      qc.setQueryData(qk.config, config);
+      void qc.invalidateQueries({ queryKey: ["repo-config"] });
     },
   });
 }

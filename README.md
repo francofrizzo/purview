@@ -67,8 +67,9 @@ the review chat and nothing else.
 
 Then it asks for consent about cost, plainly: adding a PR starts a Claude analysis run
 automatically and every chat message starts another, both on **your own Claude account or
-subscription** through the `claude` CLI you are already signed into. Answering the
-`[Y/n]` writes `autoAnalyze` to the config, and it finishes with a box telling you the state
+subscription** through the `claude` CLI you are already signed into, both on Sonnet unless you
+change it (settings → Claude, or per repo). Answering the `[Y/n]` writes `autoAnalyze` to the
+config, and it finishes with a box telling you the state
 dir, the port and the URL to open.
 
 It only runs once. It is skipped silently when the config already exists or when stdout is
@@ -81,6 +82,8 @@ and are dropped off a TTY.
 ```jsonc
 {
   "autoAnalyze": true,                       // start an analysis run when a PR is added
+  "analysisModel": null,                     // "sonnet" | "opus" | "haiku" | null (= sonnet)
+  "chatModel": null,                         // same, for review chat
   "onboardedAt": "2026-08-26T12:51:24.500Z",
   "devOrigins": ["http://localhost:5179",    // origins allowed to send state-changing
                  "http://localhost:5173"]    // requests, for the Vite dev proxy
@@ -144,6 +147,18 @@ comments — and the server resolves them against the current revision into a co
 prepended to your message; a reference it cannot resolve fails the whole send rather than
 quietly dropping it.
 
+**Which model.** Both kinds of run pass `--model` explicitly, so nothing inherits whatever
+your `claude` CLI happens to default to — a habit that quietly billed every analysis and every
+chat turn at an Opus rate. The default for both is **Sonnet**. Set them per repo (repo
+settings → Analysis), for the whole machine (settings → Claude), or for your team by
+committing them; the layering is the one described in
+[Per-repo configuration](#per-repo-configuration). Only the CLI aliases `sonnet`, `opus` and
+`haiku` are accepted — full model ids change with every release.
+
+A single conversation can also override the model from the chat panel's header, which applies
+from your next message on. The conversation is kept: the CLI resumes a session happily under a
+different model.
+
 Both run with a deliberately small tool surface. The analysis run gets file reads plus Bash
 limited to the `reviewer-state` CLI's read and write-analysis subcommands; the chat run is
 strictly read-only (reads plus `reviewer-state report`/`list`). `gh`, `git`, network fetches
@@ -173,18 +188,18 @@ Settings live in four layers, most specific first:
 | Layer | Where | Sets |
 | --- | --- | --- |
 | PR | `meta.json` | `repoPath` only — the per-PR checkout override |
-| Repo (local) | `~/.purview/<host>/<owner>/<repo>/repo.json` | `autoAnalyze`, `repoPath` |
-| Team (committed) | `.purview/config.json` in the reviewed repo | `autoAnalyze` |
-| Global | `~/.purview/config.json` | `autoAnalyze`, `devOrigins` |
+| Repo (local) | `~/.purview/<host>/<owner>/<repo>/repo.json` | `autoAnalyze`, `repoPath`, `analysisModel`, `chatModel` |
+| Team (committed) | `.purview/config.json` in the reviewed repo | `autoAnalyze`, `analysisModel`, `chatModel` |
+| Global | `~/.purview/config.json` | `autoAnalyze`, `analysisModel`, `chatModel`, `devOrigins` |
 
 Anything left `null` inherits from the layer below, down to the built-in defaults
-(`autoAnalyze: true`, no checkout). `PURVIEW_AUTO_ANALYZE=0` still beats every layer, and an
+(`autoAnalyze: true`, no checkout, both models `sonnet`). `PURVIEW_AUTO_ANALYZE=0` still beats every layer, and an
 archived PR never starts an analysis run on its own.
 
 The committed layer is the one your team shares. Put it in the repo you review:
 
 ```
-.purview/config.json    { "autoAnalyze": false }     # unknown keys are ignored
+.purview/config.json    { "autoAnalyze": false, "chatModel": "haiku" }   # unknown keys ignored
 .purview/RUBRIC.md      # rubric refinements for this codebase
 ```
 
@@ -201,8 +216,10 @@ overlay without touching the repo, or ship them to the team by committing them.
 ```
 GET  /api/repos                 # every tracked repo: PR counts, which layers are set
 GET  /api/repos/:rkey/config    # local + committed + effective, with the source of each
-PUT  /api/repos/:rkey/config    # {autoAnalyze?, repoPath?, rubric?}; null re-inherits,
-                                # rubric: "" deletes RUBRIC.local.md
+PUT  /api/repos/:rkey/config    # {autoAnalyze?, repoPath?, analysisModel?, chatModel?,
+                                # rubric?}; null re-inherits, rubric: "" deletes RUBRIC.local.md
+GET  /api/config                # the global layer: {analysisModel, chatModel, defaults}
+PUT  /api/config                # {analysisModel?, chatModel?}; null re-inherits
 ```
 
 `:rkey` is `host/owner/repo`, URL-encoded. `POST /api/prs/:key/repo-path` is unchanged and
@@ -236,7 +253,7 @@ Per repo, beside the numbered PR directories (PR dirs are always digits, so they
 collide with these):
 
 ```
-repo.json           # { autoAnalyze: boolean|null, repoPath: string|null }   null = inherit
+repo.json           # { autoAnalyze, repoPath, analysisModel, chatModel }   null = inherit
 RUBRIC.local.md     # your own rubric overlay for this repo, optional
 ```
 
@@ -250,7 +267,7 @@ state.json          # derived snapshot, refolded from events; safe to delete
 comments.json       # local comments (draft -> pushed -> submitted)
 review.json         # review body draft + pending review ids + last submission
 analysis-job.json   # status of the latest Claude analysis run
-chat.json           # review-chat session id + transcript summary
+chat.json           # review-chat session id + transcript summary + model pin
 revisions/<n>/      # one per observed (baseSha, headSha, mergeBase), 1-based
   diff.patch        # the diff exactly as GitHub served it (v3.diff)
   files.json        # parsed: files -> hunks with ids, added/removed lines, body text
@@ -346,8 +363,10 @@ once).
 ## Settings
 
 The gear in the header (both on the PR list and inside a PR) opens `/settings`, where the
-appearance lives. Every control applies immediately — there is no save button — and is stored
-in this browser under the single `reviewer.settings` localStorage key, so preferences survive
+appearance lives, plus a **Claude** section with the machine-wide analysis and chat model
+defaults (those two are stored on the server, not in the browser). Every control applies
+immediately — there is no save button — and the appearance half is stored in this browser
+under the single `reviewer.settings` localStorage key, so preferences survive
 reloads and stay in sync across open tabs. **Reset to defaults** puts everything back. The two
 older standalone preferences (diff layout and line wrapping) were folded into the same store
 and are migrated on first load, so nothing you had chosen is lost.

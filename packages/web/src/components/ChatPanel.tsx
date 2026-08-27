@@ -18,7 +18,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { Link } from "react-router-dom";
-import type { ChatRef, DraftComment, PrDetail } from "../api/types";
+import { CLAUDE_MODELS } from "../api/types";
+import type { ChatRef, ClaudeModel, DraftComment, PrDetail } from "../api/types";
 import { refContext, refKey, refLabel, refTitle } from "../lib/chatRefs";
 import { useChat, type LocalMessage, type ToolActivity } from "../lib/chat";
 import {
@@ -290,9 +291,15 @@ export function ChatPanel({
             thinking…
           </span>
         ) : null}
+        <ModelSelect
+          className="ml-auto"
+          value={chat.model}
+          configured={chat.configuredModel}
+          pinned={chat.sessionModel !== null}
+          onChange={(m) => void chat.setModel(m)}
+        />
         <button
           type="button"
-          className="ml-auto"
           title="Claude settings for this PR"
           aria-label="Claude settings"
           onClick={() => setSettingsOpen((v) => !v)}
@@ -475,6 +482,18 @@ export function ChatPanel({
           <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
             {chat.busy ? "streaming the reply…" : `${chat.refs.length || "no"} refs attached`}
           </span>
+          <span
+            className="font-mono text-2xs"
+            data-testid="chat-active-model"
+            title={
+              chat.sessionModel
+                ? `Pinned for this conversation (the repo default is ${chat.configuredModel})`
+                : `From the ${chat.configuredModelSource} setting`
+            }
+            style={{ color: "var(--fg-faint)" }}
+          >
+            {chat.model}
+          </span>
           <button
             type="button"
             data-testid="chat-send"
@@ -487,6 +506,55 @@ export function ChatPanel({
         </div>
       </div>
     </aside>
+  );
+}
+
+/**
+ * The model the next message will use.
+ *
+ * A native select rather than a segmented control: three options plus the
+ * "inherit" row do not fit a 320px panel header side by side, and the current
+ * value is what matters at a glance — the alternatives only when asked for.
+ *
+ * Switching applies from the next message on; the conversation is kept, because
+ * the CLI resumes a session happily under a different model.
+ */
+function ModelSelect({
+  value,
+  configured,
+  pinned,
+  onChange,
+  className,
+}: {
+  value: ClaudeModel;
+  configured: ClaudeModel;
+  pinned: boolean;
+  onChange: (model: ClaudeModel | null) => void;
+  className?: string;
+}) {
+  return (
+    <label className={`flex items-center ${className ?? ""}`}>
+      <span className="sr-only">Model for the next message</span>
+      <select
+        data-testid="chat-model-select"
+        className="cursor-pointer rounded px-1 py-px text-2xs font-medium outline-none"
+        title={`Model for the next message${pinned ? " (pinned for this conversation)" : ""}`}
+        value={pinned ? value : "inherit"}
+        onChange={(e) => onChange(e.target.value === "inherit" ? null : (e.target.value as ClaudeModel))}
+        style={{
+          background: "var(--bg-inset)",
+          border: "1px solid var(--border)",
+          color: pinned ? "var(--fg)" : "var(--fg-muted)",
+        }}
+      >
+        <option value="inherit">{configured} (default)</option>
+        {CLAUDE_MODELS.map((m) => (
+          <option key={m} value={m}>
+            {m}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

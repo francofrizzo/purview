@@ -24,7 +24,7 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { errorText } from "../api/errors";
-import type { ChatMessage, ChatRef } from "../api/types";
+import type { ChatMessage, ChatRef, ClaudeModel, ConfigSource } from "../api/types";
 import { addRef as addRefTo, refKey, removeRef as removeRefFrom } from "./chatRefs";
 
 export interface ToolActivity {
@@ -56,6 +56,16 @@ interface ChatContextValue {
   busy: boolean;
   failure: ChatFailure | null;
 
+  /** the model the next message will use */
+  model: ClaudeModel;
+  /** what the repo/global layers say, i.e. what "inherit" means here */
+  configuredModel: ClaudeModel;
+  configuredModelSource: ConfigSource;
+  /** non-null only while this conversation overrides the configured model */
+  sessionModel: ClaudeModel | null;
+  /** pin (or unpin, with null) the model; applies from the next message on */
+  setModel: (model: ClaudeModel | null) => Promise<void>;
+
   refs: ChatRef[];
   attachRef: (ref: ChatRef, options?: { open?: boolean }) => void;
   detachRef: (key: string) => void;
@@ -77,10 +87,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<ChatFailure | null>(null);
   const [refs, setRefs] = useState<ChatRef[]>([]);
+  // Seeded with the built-in default so the header never renders blank; the
+  // real values arrive with the transcript.
+  const [modelState, setModelState] = useState<{
+    model: ClaudeModel;
+    configuredModel: ClaudeModel;
+    configuredModelSource: ConfigSource;
+    sessionModel: ClaudeModel | null;
+  }>({
+    model: "sonnet",
+    configuredModel: "sonnet",
+    configuredModelSource: "default",
+    sessionModel: null,
+  });
 
   const abortRef = useRef<AbortController | null>(null);
   const keyRef = useRef<string | null>(null);
   keyRef.current = prKey;
+  const modelStateRef = useRef(modelState);
+  modelStateRef.current = modelState;
 
   // Switching PRs is a different conversation: drop everything, including any
   // stream still running for the PR we just left.
@@ -94,6 +119,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setBusy(false);
       setFailure(null);
       setRefs([]);
+      setModelState({
+        model: "sonnet",
+        configuredModel: "sonnet",
+        configuredModelSource: "default",
+        sessionModel: null,
+      });
       return key;
     });
   }, []);
@@ -109,6 +140,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (!alive) return;
         setMessages(state.messages);
         setBusy(state.busy);
+        setModelState({
+          model: state.model,
+          configuredModel: state.configuredModel,
+          configuredModelSource: state.configuredModelSource,
+          sessionModel: state.sessionModel,
+        });
       })
       .catch(() => {
         /* an unreachable chat endpoint leaves an empty transcript, not an error
@@ -230,6 +267,37 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     run(key, text, sent);
   }, [busy, failure, run]);
 
+  /**
+   * The switch is optimistic: the header should move the instant it is
+   * clicked. The server's answer is authoritative and replaces it, and a
+   * failure puts the old value back rather than leaving a lie on screen.
+   */
+  const setModel = useCallback(
+    async (model: ClaudeModel | null) => {
+      const key = keyRef.current;
+      if (!key) return;
+      const previous = modelStateRef.current;
+      setModelState((cur) => ({
+        ...cur,
+        sessionModel: model,
+        model: model ?? cur.configuredModel,
+      }));
+      try {
+        const result = await api.setChatModel(key, model);
+        if (keyRef.current !== key) return;
+        setModelState({
+          model: result.model,
+          configuredModel: result.configuredModel,
+          configuredModelSource: result.configuredModelSource,
+          sessionModel: result.sessionModel,
+        });
+      } catch {
+        if (keyRef.current === key) setModelState(previous);
+      }
+    },
+    [],
+  );
+
   const clearConversation = useCallback(async () => {
     const key = keyRef.current;
     if (!key) return;
@@ -240,6 +308,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setStreaming(null);
     setBusy(false);
     setFailure(null);
+    // The server drops the pin with the transcript; mirror it.
+    setModelState((cur) => ({ ...cur, sessionModel: null, model: cur.configuredModel }));
   }, []);
 
   const value = useMemo<ChatContextValue>(
@@ -255,6 +325,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       streaming,
       busy,
       failure,
+      ...modelState,
+      setModel,
       refs,
       attachRef,
       detachRef,
@@ -264,6 +336,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       clearConversation,
     }),
     [
+      modelState,
+      setModel,
       prKey,
       open,
       setPrKey,

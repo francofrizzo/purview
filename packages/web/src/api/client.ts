@@ -5,7 +5,11 @@ import type {
   AnalysisJob,
   ChatMessage,
   ChatRef,
+  ChatModelResult,
   ChatState,
+  ClaudeModel,
+  GlobalConfig,
+  GlobalConfigPatch,
   ChatStreamEvent,
   CommentStatus,
   DiffOfDiffs,
@@ -429,6 +433,16 @@ export const api = {
     return unwrap<RepoSummary>(res, "repos");
   },
 
+  async getConfig(): Promise<GlobalConfig> {
+    if (MOCK) return mockApi.getConfig();
+    return request<GlobalConfig>("/config");
+  },
+
+  async saveConfig(patch: GlobalConfigPatch): Promise<GlobalConfig> {
+    if (MOCK) return mockApi.saveConfig(patch);
+    return put<GlobalConfig>("/config", patch);
+  },
+
   async getRepoConfig(rkey: string): Promise<RepoConfig> {
     if (MOCK) return mockApi.getRepoConfig(rkey);
     return request<RepoConfig>(`/repos/${encodeURIComponent(rkey)}/config`);
@@ -608,11 +622,26 @@ export const api = {
   async getChat(key: string): Promise<ChatState> {
     if (MOCK) return mockApi.getChat(key);
     const res = await request<Partial<ChatState>>(`/prs/${encodeKey(key)}/chat`);
+    // A server too old to report a model still has one — the built-in default.
+    const configuredModel = res.configuredModel ?? "sonnet";
     return {
       messages: res.messages ?? [],
       sessionId: res.sessionId ?? null,
       busy: Boolean(res.busy),
+      model: res.model ?? configuredModel,
+      configuredModel,
+      configuredModelSource: res.configuredModelSource ?? "default",
+      sessionModel: res.sessionModel ?? null,
     };
+  },
+
+  /**
+   * Pin the conversation's model. It applies to the next message; the server
+   * resumes the same session with the new model, so nothing is lost.
+   */
+  async setChatModel(key: string, model: ClaudeModel | null): Promise<ChatModelResult> {
+    if (MOCK) return mockApi.setChatModel(key, model);
+    return post<ChatModelResult>(`/prs/${encodeKey(key)}/chat/model`, { model });
   },
 
   async clearChat(key: string): Promise<void> {

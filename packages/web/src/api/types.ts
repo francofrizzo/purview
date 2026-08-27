@@ -218,6 +218,8 @@ export interface RepoConfig {
     /** null means "inherit the global default" */
     autoAnalyze: boolean | null;
     repoPath: string | null;
+    analysisModel: ClaudeModel | null;
+    chatModel: ClaudeModel | null;
     rubric: string;
   };
   committed: {
@@ -228,13 +230,37 @@ export interface RepoConfig {
   effective: {
     autoAnalyze: boolean;
     repoPath: string | null;
+    analysisModel: ClaudeModel;
+    chatModel: ClaudeModel;
+  };
+  /** which layer each effective value came from */
+  sources?: {
+    autoAnalyze: ConfigSource;
+    repoPath: ConfigSource;
+    analysisModel: ConfigSource;
+    chatModel: ConfigSource;
   };
 }
 
 export interface RepoConfigPatch {
   autoAnalyze?: boolean | null;
   repoPath?: string | null;
+  analysisModel?: ClaudeModel | null;
+  chatModel?: ClaudeModel | null;
   rubric?: string;
+}
+
+/** GET/PUT /api/config — the machine-wide layer. */
+export interface GlobalConfig {
+  /** null = inherit, which at this layer means `defaults` */
+  analysisModel: ClaudeModel | null;
+  chatModel: ClaudeModel | null;
+  defaults: { analysisModel: ClaudeModel; chatModel: ClaudeModel };
+}
+
+export interface GlobalConfigPatch {
+  analysisModel?: ClaudeModel | null;
+  chatModel?: ClaudeModel | null;
 }
 
 /** GET /api/prs/:key */
@@ -404,11 +430,39 @@ export interface ChatMessage {
   refs?: ChatRef[];
 }
 
+/**
+ * The Claude model a run uses, named by the CLI's own aliases. Full model ids
+ * are deliberately not offered: they change with every release.
+ */
+export type ClaudeModel = "sonnet" | "opus" | "haiku";
+
+export const CLAUDE_MODELS: ClaudeModel[] = ["sonnet", "opus", "haiku"];
+
+/** Which configuration layer an effective value came from. */
+export type ConfigSource = "pr" | "repo" | "committed" | "global" | "default";
+
 /** GET /api/prs/:key/chat */
 export interface ChatState {
   messages: ChatMessage[];
   sessionId: string | null;
   busy: boolean;
+  /** what the next message will be sent with */
+  model: ClaudeModel;
+  /** the repo/global default, i.e. what "inherit" resolves to */
+  configuredModel: ClaudeModel;
+  configuredModelSource: ConfigSource;
+  /** non-null only when this conversation pins a model of its own */
+  sessionModel: ClaudeModel | null;
+}
+
+/** POST /api/prs/:key/chat/model */
+export interface ChatModelResult {
+  model: ClaudeModel;
+  configuredModel: ClaudeModel;
+  configuredModelSource: ConfigSource;
+  sessionModel: ClaudeModel | null;
+  /** true only if the switch had to abandon the transcript */
+  restartedSession: boolean;
 }
 
 /** POST /api/prs/:key/chat, decoded from the SSE frames. */

@@ -11,6 +11,7 @@ import {
   readMeta,
   setGhRunner,
   toRevisionFiles,
+  writeRepoConfig,
   updateMeta,
   appendEvents,
   writeRevision,
@@ -205,6 +206,8 @@ describe("analysis job lifecycle", () => {
     expect(argv).toContain("--safe-mode");
     expect(argv).toContain("--strict-mcp-config");
     expect(argv).toContain("--tools Read,Glob,Grep,Bash");
+    // Never inherited from the user's CLI default: the model is always explicit.
+    expect(argv).toContain("--model sonnet");
     // Bash is allowed only for the reviewer-state CLI; gh/git are denied outright.
     expect(argv).toContain(`Bash(${process.execPath} ${process.env.REVIEWER_CLI_PATH} report:*)`);
     expect(argv).toContain("Bash(gh:*)");
@@ -701,6 +704,148 @@ describe("chat", () => {
     expect(prompt).toContain("REFERENCED CONTEXT");
     expect(prompt).toContain(hunkIds[0]);
     expect(prompt.trimEnd().endsWith("is this right?")).toBe(true);
+  });
+});
+
+describe("model selection", () => {
+  const modelOf = (argv: string[]) => argv[argv.indexOf("--model") + 1];
+
+  const sendChat = async (text: string) => {
+    const res = await app.request(`/api/prs/${encodedKey}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    await res.text();
+    await chatTurnDone(key);
+  };
+
+  it("passes --model on every spawn, defaulting to sonnet for both kinds of run", async () => {
+    buildFixture(root);
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    await sendChat("hi");
+
+    expect(claude.runs).toHaveLength(2);
+    for (const run of claude.runs) {
+      expect(run.argv).toContain("--model");
+      expect(modelOf(run.argv)).toBe("sonnet");
+    }
+  });
+
+  it("uses the repo's configured models, analysis and chat independently", async () => {
+    buildFixture(root);
+    writeRepoConfig(
+      { host: key.host, owner: key.owner, repo: key.repo },
+      { analysisModel: "opus", chatModel: "haiku" },
+      root,
+    );
+
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    await sendChat("hi");
+
+    expect(modelOf(claude.runs[0].argv)).toBe("opus");
+    expect(modelOf(claude.runs[1].argv)).toBe("haiku");
+  });
+
+  it("POST /chat/model pins the session, and the next spawn uses it", async () => {
+    buildFixture(root);
+    await sendChat("first");
+    expect(modelOf(claude.runs[0].argv)).toBe("sonnet");
+
+    const res = await app.request(`/api/prs/${encodedKey}/chat/model`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "opus" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({
+      model: "opus",
+      sessionModel: "opus",
+      configuredModel: "sonnet",
+      // `claude --resume` accepts a different --model, so the transcript stays.
+      restartedSession: false,
+    });
+
+    await sendChat("second");
+    const second = claude.runs[1];
+    expect(modelOf(second.argv)).toBe("opus");
+    // ...on the same session: switching models does not start a new one.
+    expect(second.argv).toContain("--resume");
+
+    const state = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
+    expect(state.model).toBe("opus");
+    expect(state.sessionModel).toBe("opus");
+    expect(state.messages).toHaveLength(4);
+  });
+
+  it("GET /chat reports the layered default until the session pins one", async () => {
+    buildFixture(root);
+    writeRepoConfig(
+      { host: key.host, owner: key.owner, repo: key.repo },
+      { chatModel: "haiku" },
+      root,
+    );
+    const before = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
+    expect(before).toMatchObject({
+      model: "haiku",
+      configuredModel: "haiku",
+      configuredModelSource: "repo",
+      sessionModel: null,
+    });
+
+    await app.request(`/api/prs/${encodedKey}/chat/model`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "opus" }),
+    });
+    const pinned = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
+    expect(pinned).toMatchObject({ model: "opus", configuredModel: "haiku", sessionModel: "opus" });
+
+    // null un-pins and falls back to the repo setting again.
+    await app.request(`/api/prs/${encodedKey}/chat/model`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: null }),
+    });
+    const cleared = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
+    expect(cleared).toMatchObject({ model: "haiku", sessionModel: null });
+  });
+
+  it("400s on an unknown model, a missing field or an extra key", async () => {
+    buildFixture(root);
+    const post = (body: unknown) =>
+      app.request(`/api/prs/${encodedKey}/chat/model`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    for (const bad of [
+      { model: "gpt-5" },
+      { model: "claude-sonnet-5" },
+      {},
+      { model: "sonnet", restart: true },
+    ]) {
+      expect((await post(bad)).status).toBe(400);
+    }
+    // ...and the session is untouched by a rejected write.
+    const state = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
+    expect(state.sessionModel).toBeNull();
+  });
+
+  it("clearing the conversation drops the pin along with the transcript", async () => {
+    buildFixture(root);
+    await app.request(`/api/prs/${encodedKey}/chat/model`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "opus" }),
+    });
+    await app.request(`/api/prs/${encodedKey}/chat`, { method: "DELETE" });
+    const after = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
+    expect(after.sessionModel).toBeNull();
+    expect(after.model).toBe("sonnet");
   });
 });
 

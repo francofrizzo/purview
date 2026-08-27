@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { configPath, stateRoot } from "@reviewer/core";
+import { ClaudeModelSchema, configPath, stateRoot } from "@reviewer/core";
 
 /**
  * `~/.purview/config.json` — the one piece of global (not per-PR) state.
@@ -34,6 +34,14 @@ export const ConfigSchema = z.object({
    * foreign page read a response.
    */
   devOrigins: z.array(z.string()).default(DEFAULT_DEV_ORIGINS),
+  /**
+   * Machine-wide model defaults for the two kinds of Claude run. `null` means
+   * "inherit", which at this (outermost) layer means the built-in default in
+   * repo-config.ts — never the `claude` CLI's own default, which is exactly
+   * what these settings exist to stop us from picking up.
+   */
+  analysisModel: ClaudeModelSchema.nullable().default(null),
+  chatModel: ClaudeModelSchema.nullable().default(null),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;

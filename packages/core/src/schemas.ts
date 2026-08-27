@@ -183,6 +183,17 @@ export type Meta = z.infer<typeof MetaSchema>;
 /* ------------------------------------------------------- repo-level config */
 
 /**
+ * Which Claude model a run uses. Only the CLI's own aliases are accepted: they
+ * are stable across model releases, whereas a pinned `claude-sonnet-5` id rots.
+ * `--model` is always passed, so a run never silently inherits whatever the
+ * user's `claude` CLI happens to default to (which may be an expensive model).
+ */
+export const ClaudeModelSchema = z.enum(["sonnet", "opus", "haiku"]);
+export type ClaudeModel = z.infer<typeof ClaudeModelSchema>;
+
+export const CLAUDE_MODELS = ClaudeModelSchema.options;
+
+/**
  * `~/.purview/<host>/<owner>/<repo>/repo.json` — settings that apply to every
  * PR of one repository.
  *
@@ -194,6 +205,8 @@ export type Meta = z.infer<typeof MetaSchema>;
 export const RepoConfigSchema = z.object({
   autoAnalyze: z.boolean().nullable().default(null),
   repoPath: z.string().nullable().default(null),
+  analysisModel: ClaudeModelSchema.nullable().default(null),
+  chatModel: ClaudeModelSchema.nullable().default(null),
 });
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 
@@ -206,6 +219,8 @@ export const EMPTY_REPO_CONFIG: RepoConfig = RepoConfigSchema.parse({});
  */
 export const TeamConfigSchema = z.object({
   autoAnalyze: z.boolean().optional(),
+  analysisModel: ClaudeModelSchema.optional(),
+  chatModel: ClaudeModelSchema.optional(),
 });
 export type TeamConfig = z.infer<typeof TeamConfigSchema>;
 

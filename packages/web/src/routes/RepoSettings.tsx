@@ -10,7 +10,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { repoKey } from "../api/client";
 import { errorText } from "../api/errors";
 import { useRepoConfig, useSaveRepoConfig, useRepos } from "../api/hooks";
-import type { RepoConfig } from "../api/types";
+import { CLAUDE_MODELS } from "../api/types";
+import type { ClaudeModel, ConfigSource, RepoConfig } from "../api/types";
 import { Markdown } from "../components/Markdown";
 import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
 import { IconChevron, IconFile, IconSettings } from "../components/icons";
@@ -197,6 +198,31 @@ function AnalysisSection({ config, save }: { config: RepoConfig; save: Save }) {
           — from {source}.
         </p>
         <SavedFlash shown={flash} error={save.error} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-end gap-4">
+        <ModelField
+          label="Analysis model"
+          testId="analysis-model"
+          value={config.local.analysisModel}
+          effective={config.effective.analysisModel}
+          source={config.sources?.analysisModel}
+          disabled={save.isPending}
+          onChange={(m) => save.mutate({ analysisModel: m }, { onSuccess: () => setFlash() })}
+        />
+        <ModelField
+          label="Chat model"
+          testId="chat-model"
+          value={config.local.chatModel}
+          effective={config.effective.chatModel}
+          source={config.sources?.chatModel}
+          disabled={save.isPending}
+          onChange={(m) => save.mutate({ chatModel: m }, { onSuccess: () => setFlash() })}
+        />
+        <p className="pb-1 max-w-xs text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+          Every run passes the model explicitly, so nothing inherits whatever your{" "}
+          <span className="font-mono">claude</span> CLI happens to default to.
+        </p>
       </div>
     </Section>
   );
@@ -450,6 +476,69 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
         {label}
       </dt>
       <dd className="flex items-baseline">{children}</dd>
+    </div>
+  );
+}
+
+const SOURCE_LABEL: Record<ConfigSource, string> = {
+  pr: "this PR's override",
+  repo: "this repo",
+  committed: "the committed team config",
+  global: "your global settings",
+  default: "the built-in default",
+};
+
+/**
+ * One model choice, with what it resolves to underneath it. `inherit` is a
+ * real option, not an absence: it is what lets the repo sit between the team's
+ * committed config and the machine-wide setting.
+ */
+export function ModelField({
+  label,
+  testId,
+  value,
+  effective,
+  source,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  testId: string;
+  value: ClaudeModel | null;
+  effective: ClaudeModel;
+  source?: ConfigSource;
+  disabled?: boolean;
+  onChange: (model: ClaudeModel | null) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Field label={label}>
+        <select
+          data-testid={`${testId}-select`}
+          className="rounded px-2 py-1 text-xs outline-none"
+          value={value ?? "inherit"}
+          disabled={disabled}
+          onChange={(e) =>
+            onChange(e.target.value === "inherit" ? null : (e.target.value as ClaudeModel))
+          }
+          style={{
+            background: "var(--bg-inset)",
+            border: "1px solid var(--border)",
+            color: "var(--fg)",
+          }}
+        >
+          <option value="inherit">inherit</option>
+          {CLAUDE_MODELS.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        Effective: <span style={{ color: "var(--fg-muted)" }}>{effective}</span>
+        {source ? ` — from ${SOURCE_LABEL[source]}.` : "."}
+      </p>
     </div>
   );
 }

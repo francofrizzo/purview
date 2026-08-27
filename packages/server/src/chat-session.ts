@@ -10,7 +10,7 @@ import {
 import { resolveCheckout } from "./worktree.js";
 import { runClaude } from "./claude-runner.js";
 import { skillDir } from "./skill-paths.js";
-import { effectiveRepoPath } from "./repo-config.js";
+import { effectiveChatModel, effectiveRepoPath } from "./repo-config.js";
 import { loadCommittedConfig } from "./team-config.js";
 import {
   appendChatMessage,
@@ -131,6 +131,9 @@ export function startChatTurn(
     // The system prompt is re-sent on resume too: it is cheap, and it keeps
     // the read-only contract in force for every turn.
     systemPrompt: chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed }),
+    // Session pin first, then the layered repo/global default. Never absent:
+    // an unset model would fall through to the CLI's own default.
+    model: chat.model ?? effectiveChatModel(key, root, { meta: meta ?? null }),
     sessionId: isFirstTurn ? sessionId : undefined,
     resumeSessionId: isFirstTurn ? undefined : sessionId,
     partialMessages: true,
@@ -179,6 +182,7 @@ export function startChatTurn(
       writeChat(
         key,
         {
+          ...current,
           sessionId: resolvedSessionId,
           messages: [...current.messages, { role: "assistant", text: full, ts }],
         },

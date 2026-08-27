@@ -11,6 +11,7 @@ import {
   type RepoConfig,
   type RepoKey,
   type TeamConfig,
+  type ClaudeModel,
   type TeamConfigCache,
 } from "@reviewer/core";
 import { configExists, readConfig, type ReviewerConfig } from "./config.js";
@@ -49,6 +50,10 @@ export interface Resolved<T> {
 export interface EffectiveConfig {
   autoAnalyze: Resolved<boolean>;
   repoPath: Resolved<string | null>;
+  /** model for automated/manual analysis runs */
+  analysisModel: Resolved<ClaudeModel>;
+  /** model for review-chat turns, unless the chat session pins its own */
+  chatModel: Resolved<ClaudeModel>;
 }
 
 /** Every layer, already read. Injectable so callers can avoid re-reading. */
@@ -60,7 +65,15 @@ export interface ConfigLayers {
   globalIsExplicit: boolean;
 }
 
-export const BUILTIN_DEFAULTS = { autoAnalyze: true, repoPath: null } as const;
+export const BUILTIN_DEFAULTS = {
+  autoAnalyze: true,
+  repoPath: null,
+  // Sonnet, not "whatever the CLI defaults to". Inheriting the user's Claude
+  // Code default silently billed every analysis and every chat turn at that
+  // model's rate, which for an Opus default is an order of magnitude more.
+  analysisModel: "sonnet",
+  chatModel: "sonnet",
+} as const satisfies { autoAnalyze: boolean; repoPath: string | null; analysisModel: ClaudeModel; chatModel: ClaudeModel };
 
 function isPrKey(key: PrKey | RepoKey): key is PrKey {
   return typeof (key as PrKey).number === "number";
@@ -155,13 +168,27 @@ export function effectiveConfig(
           ? { value: layers.global.autoAnalyze, source: "global" }
           : { value: BUILTIN_DEFAULTS.autoAnalyze, source: "default" };
 
+  const model = (key: "analysisModel" | "chatModel"): Resolved<ClaudeModel> =>
+    layers.local[key] !== null
+      ? { value: layers.local[key], source: "repo" }
+      : layers.committed?.[key] !== undefined
+        ? { value: layers.committed[key], source: "committed" }
+        : layers.global[key] !== null
+          ? { value: layers.global[key], source: "global" }
+          : { value: BUILTIN_DEFAULTS[key], source: "default" };
+
   const repoPath: Resolved<string | null> = layers.meta?.repoPath
     ? { value: layers.meta.repoPath, source: "pr" }
     : layers.local.repoPath
       ? { value: layers.local.repoPath, source: "repo" }
       : { value: BUILTIN_DEFAULTS.repoPath, source: "default" };
 
-  return { autoAnalyze, repoPath };
+  return {
+    autoAnalyze,
+    repoPath,
+    analysisModel: model("analysisModel"),
+    chatModel: model("chatModel"),
+  };
 }
 
 /**
@@ -190,4 +217,22 @@ export function autoAnalyzeAllowed(
   const layers = readLayers(key, root, overrides);
   if (layers.meta?.archived) return false;
   return effectiveConfig(key, root, layers).autoAnalyze.value;
+}
+
+/** The model an analysis run for this PR (or repo) should be spawned with. */
+export function effectiveAnalysisModel(
+  key: PrKey | RepoKey,
+  root = stateRoot(),
+  overrides: Partial<ConfigLayers> = {},
+): ClaudeModel {
+  return effectiveConfig(key, root, overrides).analysisModel.value;
+}
+
+/** The model a chat turn should use when the session has not pinned one. */
+export function effectiveChatModel(
+  key: PrKey | RepoKey,
+  root = stateRoot(),
+  overrides: Partial<ConfigLayers> = {},
+): ClaudeModel {
+  return effectiveConfig(key, root, overrides).chatModel.value;
 }

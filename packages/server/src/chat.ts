@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  ClaudeModelSchema,
   chatPath,
   keyToString,
   loadState,
@@ -10,6 +11,7 @@ import {
   readFilesJson,
   readMeta,
   stateRoot,
+  type ClaudeModel,
   type Hunk,
   type PrKey,
 } from "@reviewer/core";
@@ -50,16 +52,23 @@ export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 export const ChatFileSchema = z.object({
   sessionId: z.string().nullable().default(null),
   messages: z.array(ChatMessageSchema).default([]),
+  /**
+   * Model pinned for this conversation, or `null` to follow the repo/global
+   * `chatModel`. It takes effect on the next message: every turn passes
+   * `--model` explicitly, and the CLI accepts a `--resume` with a different
+   * model, so switching never costs the transcript.
+   */
+  model: ClaudeModelSchema.nullable().default(null),
 });
 export type ChatFile = z.infer<typeof ChatFileSchema>;
 
 export function readChat(key: PrKey, root = stateRoot()): ChatFile {
   const file = chatPath(key, root);
-  if (!fs.existsSync(file)) return { sessionId: null, messages: [] };
+  if (!fs.existsSync(file)) return { sessionId: null, messages: [], model: null };
   try {
     return ChatFileSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
   } catch {
-    return { sessionId: null, messages: [] };
+    return { sessionId: null, messages: [], model: null };
   }
 }
 
@@ -302,6 +311,19 @@ export function buildChatPrompt(
 ): string {
   const block = resolveRefs(key, refs, root);
   return block ? `${block}\n\n${text}` : text;
+}
+
+/**
+ * Pin (or unpin, with `null`) the model for this PR's conversation. The
+ * session id is deliberately left alone: a resumed session happily switches
+ * models, so the reader keeps their history across a switch.
+ */
+export function setChatModel(
+  key: PrKey,
+  model: ClaudeModel | null,
+  root = stateRoot(),
+): ChatFile {
+  return writeChat(key, { ...readChat(key, root), model }, root);
 }
 
 export function newSessionId(): string {

@@ -395,6 +395,7 @@ export async function runOnboarding(deps: OnboardingDeps): Promise<OnboardingRes
       p.bold("your own Claude account or\n  subscription") +
       " through the claude CLI you are already signed into —\n" +
       "  there are no API keys here, and usage counts against your plan.\n\n" +
+      p.dim("  Analysis and chat both run on Sonnet by default — change the model in\n  Settings → Claude, or per repo in the repo settings.\n") +
       p.dim("  You can change this later in ") +
       p.dim(configPath(root)) +
       p.dim(",\n  per repo in the repo settings, or for one run with PURVIEW_AUTO_ANALYZE=0.\n\n"),

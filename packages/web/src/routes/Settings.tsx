@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { errorText } from "../api/errors";
+import { useGlobalConfig, useSaveGlobalConfig } from "../api/hooks";
+import { CLAUDE_MODELS } from "../api/types";
+import type { ClaudeModel } from "../api/types";
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
 import { Modal, useCloseModal } from "../components/Modal";
 import { IconSettings } from "../components/icons";
@@ -30,7 +34,7 @@ export function SettingsModal() {
       testId="settings-modal"
       icon={<IconSettings width={14} height={14} />}
       title="Settings"
-      subtitle="Appearance only, for now. Every change applies immediately and is stored in this browser."
+      subtitle="Appearance is stored in this browser; the Claude defaults are stored on the server. Every change applies immediately."
       onClose={close}
       actions={
         <button type="button" className="btn" onClick={reset}>
@@ -49,6 +53,8 @@ export function SettingsModal() {
         <ThemeSection themeId={settings.themeId} update={update} />
         <ThemePreview />
       </Section>
+
+      <ClaudeSection />
 
       <Section title="Diff defaults" hint="The same preferences the d / w keys toggle while reviewing.">
         <div className="flex flex-wrap items-center gap-6">
@@ -450,6 +456,104 @@ function ThemePreview() {
 // ---------------------------------------------------------------------------
 // small shared bits
 // ---------------------------------------------------------------------------
+
+/**
+ * The machine-wide half of the model layering: what every repo inherits when
+ * it, and the team's committed config, say nothing. "inherit" here is the end
+ * of the chain — it means the built-in default.
+ */
+function ClaudeSection() {
+  const config = useGlobalConfig();
+  const save = useSaveGlobalConfig();
+
+  return (
+    <Section
+      title="Claude"
+      hint="Which model analysis runs and review chats use, for every repo that does not override it. Runs go through your own claude CLI, so this is what they cost you."
+    >
+      {config.isLoading ? (
+        <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
+          Loading…
+        </p>
+      ) : config.error || !config.data ? (
+        <p className="text-2xs" style={{ color: "var(--risk)" }}>
+          {errorText(config.error) || "Could not read the server's settings."}
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-end gap-6">
+          <GlobalModelField
+            label="Analysis model"
+            testId="global-analysis-model"
+            value={config.data.analysisModel}
+            fallback={config.data.defaults.analysisModel}
+            disabled={save.isPending}
+            onChange={(m) => save.mutate({ analysisModel: m })}
+          />
+          <GlobalModelField
+            label="Chat model"
+            testId="global-chat-model"
+            value={config.data.chatModel}
+            fallback={config.data.defaults.chatModel}
+            disabled={save.isPending}
+            onChange={(m) => save.mutate({ chatModel: m })}
+          />
+          {save.error ? (
+            <p className="pb-1 text-2xs" style={{ color: "var(--risk)" }}>
+              {errorText(save.error)}
+            </p>
+          ) : null}
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function GlobalModelField({
+  label,
+  testId,
+  value,
+  fallback,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  testId: string;
+  value: ClaudeModel | null;
+  fallback: ClaudeModel;
+  disabled?: boolean;
+  onChange: (model: ClaudeModel | null) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Field label={label}>
+        <select
+          data-testid={`${testId}-select`}
+          className="rounded px-2 py-1 text-xs outline-none"
+          value={value ?? "inherit"}
+          disabled={disabled}
+          onChange={(e) =>
+            onChange(e.target.value === "inherit" ? null : (e.target.value as ClaudeModel))
+          }
+          style={{
+            background: "var(--bg-inset)",
+            border: "1px solid var(--border)",
+            color: "var(--fg)",
+          }}
+        >
+          <option value="inherit">inherit ({fallback})</option>
+          {CLAUDE_MODELS.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        {value ? `Every repo without its own setting uses ${value}.` : `Built-in default: ${fallback}.`}
+      </p>
+    </div>
+  );
+}
 
 function Section({
   title,

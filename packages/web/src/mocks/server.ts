@@ -12,6 +12,10 @@ import type {
   MigrationReport,
   PrDetail,
   PrListEntry,
+  ChatModelResult,
+  ClaudeModel,
+  GlobalConfig,
+  GlobalConfigPatch,
   RepoConfig,
   RepoConfigPatch,
   RepoPathResult,
@@ -55,6 +59,70 @@ const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 /** The built-in fallback the server applies when nothing overrides it. */
 const DEFAULT_AUTO_ANALYZE = false;
 
+/** The real server's built-in model default; `null` anywhere resolves to it. */
+const DEFAULT_MODEL: ClaudeModel = "sonnet";
+
+/** `~/.purview/config.json`, the outermost layer. */
+const globalConfig: { analysisModel: ClaudeModel | null; chatModel: ClaudeModel | null } = {
+  analysisModel: null,
+  chatModel: null,
+};
+
+/** Per-conversation model pins, keyed like the transcripts. */
+const chatModels: Record<string, ClaudeModel | null> = {};
+
+type Source = NonNullable<RepoConfig["sources"]>["chatModel"];
+
+/** Mirrors repo-config.ts: repo local > committed > global > built-in. */
+function resolveModel(
+  rkey: string,
+  field: "analysisModel" | "chatModel",
+): { value: ClaudeModel; source: Source } {
+  const config = repoConfigs[rkey];
+  const local = config?.local[field] ?? null;
+  const committed = (config?.committed.config as Record<string, ClaudeModel> | null)?.[field];
+  const global = globalConfig[field];
+  if (local) return { value: local, source: "repo" };
+  if (committed) return { value: committed, source: "committed" };
+  if (global) return { value: global, source: "global" };
+  return { value: DEFAULT_MODEL, source: "default" };
+}
+
+/**
+ * Recompute a repo's `effective`/`sources` blocks. On the real server this is
+ * the resolver's job, so the mock has to do it too — the UI reads these
+ * fields and never re-derives precedence itself.
+ */
+function relayer(rkey: string): void {
+  const config = repoConfigs[rkey];
+  if (!config) return;
+  const committed = config.committed.config as { autoAnalyze?: boolean } | null;
+  const analysisModel = resolveModel(rkey, "analysisModel");
+  const chatModel = resolveModel(rkey, "chatModel");
+  config.effective = {
+    autoAnalyze: config.local.autoAnalyze ?? committed?.autoAnalyze ?? DEFAULT_AUTO_ANALYZE,
+    repoPath: config.local.repoPath,
+    analysisModel: analysisModel.value,
+    chatModel: chatModel.value,
+  };
+  config.sources = {
+    autoAnalyze:
+      config.local.autoAnalyze !== null
+        ? "repo"
+        : committed?.autoAnalyze !== undefined
+          ? "committed"
+          : "default",
+    repoPath: config.local.repoPath ? "repo" : "default",
+    analysisModel: analysisModel.source,
+    chatModel: chatModel.source,
+  };
+}
+
+/** `host/owner/repo` out of a `host/owner/repo/number` PR key. */
+function repoKeyOfPr(key: string): string {
+  return key.split("/").slice(0, 3).join("/");
+}
+
 /** Keep the repo rollups honest after an archive/unarchive or an added PR. */
 function syncRepoCounts() {
   const seen = new Set<string>();
@@ -76,9 +144,26 @@ function syncRepoCounts() {
       };
       repos.push(summary);
       repoConfigs[rkey] ??= {
-        local: { autoAnalyze: null, repoPath: null, rubric: "" },
+        local: {
+          autoAnalyze: null,
+          repoPath: null,
+          analysisModel: null,
+          chatModel: null,
+          rubric: "",
+        },
         committed: { present: false, config: null, rubric: null },
-        effective: { autoAnalyze: DEFAULT_AUTO_ANALYZE, repoPath: null },
+        effective: {
+          autoAnalyze: DEFAULT_AUTO_ANALYZE,
+          repoPath: null,
+          analysisModel: DEFAULT_MODEL,
+          chatModel: DEFAULT_MODEL,
+        },
+        sources: {
+          autoAnalyze: "default",
+          repoPath: "default",
+          analysisModel: "default",
+          chatModel: "default",
+        },
       };
     }
   }
@@ -339,7 +424,30 @@ export const mockApi = {
     await delay(100);
     const config = repoConfigs[rkey];
     if (!config) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
+    // The global layer may have moved since this repo was last written.
+    relayer(rkey);
     return structuredClone(config);
+  },
+
+  /* ---------------------------------------------------------- global config */
+
+  async getConfig(): Promise<GlobalConfig> {
+    await delay(80);
+    return {
+      ...globalConfig,
+      defaults: { analysisModel: DEFAULT_MODEL, chatModel: DEFAULT_MODEL },
+    };
+  },
+
+  async saveConfig(patch: GlobalConfigPatch): Promise<GlobalConfig> {
+    await delay(180);
+    if (patch.analysisModel !== undefined) globalConfig.analysisModel = patch.analysisModel;
+    if (patch.chatModel !== undefined) globalConfig.chatModel = patch.chatModel;
+    for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
+    return {
+      ...globalConfig,
+      defaults: { analysisModel: DEFAULT_MODEL, chatModel: DEFAULT_MODEL },
+    };
   },
 
   /**
@@ -353,18 +461,18 @@ export const mockApi = {
     if (!config) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
     if (patch.autoAnalyze !== undefined) config.local.autoAnalyze = patch.autoAnalyze;
     if (patch.repoPath !== undefined) config.local.repoPath = patch.repoPath || null;
+    if (patch.analysisModel !== undefined) config.local.analysisModel = patch.analysisModel;
+    if (patch.chatModel !== undefined) config.local.chatModel = patch.chatModel;
     if (patch.rubric !== undefined) config.local.rubric = patch.rubric;
-    const committed = config.committed.config as { autoAnalyze?: boolean } | null;
-    config.effective = {
-      autoAnalyze: config.local.autoAnalyze ?? committed?.autoAnalyze ?? DEFAULT_AUTO_ANALYZE,
-      repoPath: config.local.repoPath,
-    };
+    relayer(rkey);
     const summary = repos.find((r) => `${r.host}/${r.owner}/${r.repo}` === rkey);
     if (summary) {
       summary.repoPath = config.effective.repoPath;
       summary.hasLocalConfig =
         config.local.autoAnalyze !== null ||
         Boolean(config.local.repoPath) ||
+        Boolean(config.local.analysisModel) ||
+        Boolean(config.local.chatModel) ||
         Boolean(config.local.rubric.trim());
     }
     return structuredClone(config);
@@ -687,16 +795,38 @@ export const mockApi = {
   async getChat(key: string): Promise<ChatState> {
     await delay(60);
     const messages = chats[key] ?? [];
+    const configured = resolveModel(repoKeyOfPr(key), "chatModel");
+    const sessionModel = chatModels[key] ?? null;
     return {
       messages: structuredClone(messages),
       sessionId: messages.length ? `mock-session-${key}` : null,
       busy: false,
+      model: sessionModel ?? configured.value,
+      configuredModel: configured.value,
+      configuredModelSource: configured.source,
+      sessionModel,
+    };
+  },
+
+  async setChatModel(key: string, model: ClaudeModel | null): Promise<ChatModelResult> {
+    await delay(140);
+    chatModels[key] = model;
+    const configured = resolveModel(repoKeyOfPr(key), "chatModel");
+    return {
+      model: model ?? configured.value,
+      configuredModel: configured.value,
+      configuredModelSource: configured.source,
+      sessionModel: model,
+      // The real CLI resumes a session under a different model, so the
+      // transcript survives; the mock says the same thing.
+      restartedSession: false,
     };
   },
 
   async clearChat(key: string): Promise<void> {
     await delay(90);
     chats[key] = [];
+    chatModels[key] = null;
   },
 
   /**
