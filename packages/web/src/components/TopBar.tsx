@@ -12,6 +12,8 @@ export function TopBar({
   draftCount,
   pendingReview,
   refreshing,
+  stale,
+  staleTooltip,
   syncing,
   chatOpen,
   analysisJob,
@@ -30,6 +32,9 @@ export function TopBar({
   /** true when a PENDING review exists on GitHub (undefined = not checked) */
   pendingReview?: boolean;
   refreshing: boolean;
+  /** upstream moved since the last fetch — marks the refresh button */
+  stale?: boolean;
+  staleTooltip?: string | null;
   syncing: boolean;
   chatOpen: boolean;
   analysisJob?: AnalysisJob | null;
@@ -87,9 +92,25 @@ export function TopBar({
             </span>
           ) : null}
         </button>
-        <button type="button" className="btn" onClick={onRefresh} disabled={refreshing}>
+        <button
+          type="button"
+          className="btn relative"
+          data-testid="topbar-refresh"
+          data-stale={stale ? "1" : undefined}
+          title={staleTooltip ?? undefined}
+          onClick={onRefresh}
+          disabled={refreshing}
+        >
           <IconRefresh width={11} height={11} />
           {refreshing ? "refreshing…" : "refresh"}
+          {stale ? (
+            <span
+              data-testid="staleness-dot"
+              aria-label="This PR changed upstream"
+              className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
+              style={{ background: "var(--accent)" }}
+            />
+          ) : null}
         </button>
         <button type="button" className="btn" onClick={onSync} disabled={syncing}>
           <IconUpload width={11} height={11} />

@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
-import type { MigrationReport, SyncResult } from "../api/types";
+import type { MigrationReport, Staleness, SyncResult } from "../api/types";
+import { stalenessReasonText } from "../lib/staleness";
+import { IconRefresh } from "./icons";
 
 export function DismissiblePanel({
   tone = "neutral",
@@ -35,6 +37,60 @@ export function DismissiblePanel({
         </button>
       </div>
       {children ? <div className="mt-1.5">{children}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * The loud half of the staleness signal: a slim bar under the top bar, with
+ * the refresh it is asking for inline. Dismissing it is remembered per
+ * upstream revision by the caller — the dot on the refresh button is what
+ * stays behind.
+ */
+export function StalenessHint({
+  result,
+  refreshing,
+  onRefresh,
+  onDismiss,
+}: {
+  result: Staleness;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      data-testid="staleness-hint"
+      className="flex flex-none items-center gap-2 border-b px-3 py-1.5 text-xs"
+      style={{ background: "var(--accent-soft)", borderColor: "var(--border)" }}
+    >
+      <span style={{ color: "var(--accent)" }}>
+        This PR changed upstream — refresh to fetch the latest
+      </span>
+      {result.reasons.length > 0 ? (
+        <span className="text-2xs" style={{ color: "var(--fg-muted)" }}>
+          {stalenessReasonText(result.reasons)}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="btn ml-auto"
+        data-testid="staleness-refresh"
+        disabled={refreshing}
+        onClick={onRefresh}
+      >
+        <IconRefresh width={11} height={11} />
+        {refreshing ? "refreshing…" : "refresh"}
+      </button>
+      <button
+        type="button"
+        className="rounded px-1.5 py-px text-2xs"
+        data-testid="staleness-dismiss"
+        style={{ color: "var(--fg-muted)" }}
+        onClick={onDismiss}
+      >
+        dismiss ✕
+      </button>
     </div>
   );
 }

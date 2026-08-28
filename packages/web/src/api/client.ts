@@ -33,6 +33,7 @@ import type {
   RepoPathResult,
   ReviewStatus,
   ReviewUnit,
+  Staleness,
   SubmitReviewResult,
   SyncResult,
 } from "./types";
@@ -461,6 +462,15 @@ export const api = {
   async refresh(key: string): Promise<MigrationReport> {
     if (MOCK) return mockApi.refresh(key);
     return adaptMigrationReport(await post<WireRefresh>(`/prs/${encodeKey(key)}/refresh`));
+  },
+
+  /**
+   * Cheap "did this PR move upstream?" check. The server caches it and never
+   * fails the request, so this is safe to poll.
+   */
+  async staleness(key: string): Promise<Staleness> {
+    if (MOCK) return mockApi.staleness(key);
+    return request<Staleness>(`/prs/${encodeKey(key)}/staleness`);
   },
 
   async sync(key: string): Promise<SyncResult> {

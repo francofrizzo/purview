@@ -255,6 +255,12 @@ background polling, so a refresh is what moves them. The review decision comes f
 GraphQL query (REST has no such field); if it fails, it degrades to `null` instead of failing
 the refresh.
 
+**Upstream drift.** While a PR is open in the app, `GET /api/prs/:key/staleness` checks it
+against GitHub with one cheap `gh` call (cached 60s per PR, never failing the request) on
+mount, on tab focus, and every 5 minutes; when the head or base sha moved or the state
+changed, the refresh button grows an accent dot and a dismissible bar offers the refresh.
+The home page does no such polling.
+
 `POST /api/prs/:key/archive {archived: boolean}` shelves a PR: it keeps every byte of its
 state and stays fully readable, it just leaves the active list and can no longer trigger an
 automatic analysis run.

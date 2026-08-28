@@ -74,6 +74,7 @@ import { ChatRefSchema, clearChat, readChat, setChatModel } from "./chat.js";
 import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
 import { localOnlyGuard } from "./security.js";
+import { checkStaleness, clearStalenessCache } from "./staleness.js";
 import {
   autoAnalyzeAllowed,
   cachedCommittedConfigForRepo,
@@ -236,6 +237,9 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/refresh", (c) => {
     const key = keyParam(c);
     const result = refreshPr(key, root);
+    // We just fetched the truth; any cached "this PR moved" answer is now
+    // about a revision we hold, so it must not outlive the refresh.
+    clearStalenessCache(key, root);
     // Re-analyzing costs real money and time, so a refresh only triggers one
     // when the migration actually left work to do: hunks the existing analysis
     // cannot already account for.
@@ -1038,6 +1042,17 @@ export function createApp(opts: AppOptions = {}): Hono {
     const report = readMigrationReport(key, revision, root);
     if (!report) throw new HttpError(404, "not_found", `No migration report for revision ${revision}`);
     return c.json(report);
+  });
+
+  /**
+   * "Has this PR moved since we last fetched it?" — one cheap `gh` call,
+   * cached per PR (see staleness.ts), answering 200 even when `gh` fails so a
+   * polling client can never break the view.
+   */
+  app.get("/api/prs/:key/staleness", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root); // 404s for an unknown PR before spending a gh call
+    return c.json(checkStaleness(key, root));
   });
 
   app.get("/api/prs/:key/coverage", (c) => {

@@ -186,6 +186,24 @@ export type PrGithubState = "open" | "draft" | "merged" | "closed";
 /** GitHub's aggregated review decision; null when GitHub reports none. */
 export type ReviewDecision = "approved" | "changes_requested" | "review_required";
 
+/**
+ * GET /api/prs/:key/staleness — has the PR moved on GitHub since we last
+ * fetched it? `error` is set when the `gh` call failed; the server still
+ * answers 200 with `stale: false`, so a failing check is simply silent.
+ */
+export type StalenessReason = "new-commits" | "base-moved" | "state-changed";
+
+export interface Staleness {
+  stale: boolean;
+  reasons: StalenessReason[];
+  upstreamHeadSha: string | null;
+  localHeadSha: string | null;
+  upstreamState: PrGithubState | null;
+  localState: PrGithubState | null;
+  checkedAt: string;
+  error?: string;
+}
+
 /** GET /api/prs — flattened by `client.ts` from the server's progress envelope. */
 export interface PrListEntry {
   key: string;

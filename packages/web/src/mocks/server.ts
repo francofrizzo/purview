@@ -23,6 +23,8 @@ import type {
   ReviewEvent,
   ReviewStatus,
   ReviewUnit,
+  Staleness,
+  StalenessReason,
   SubmitReviewResult,
   SyncResult,
 } from "../api/types";
@@ -208,6 +210,38 @@ const PROGRESS_STEPS = [
   "deep-reading src/billing/charge.ts…",
   "grouping hunks into review units…",
 ];
+
+/* ------------------------------------------------------------- staleness */
+
+/**
+ * Upstream drift is faked from two localStorage keys, in the same spirit as
+ * `reviewer.mockAnalysisFail`:
+ *
+ *   reviewer.mockStale     "1" (⇒ new-commits) or a comma-separated reason list
+ *   reviewer.mockStaleSha  optional upstream head sha; changing it is what
+ *                          makes the result *distinct* again after a dismiss
+ */
+function readStaleFlag(): { reasons: StalenessReason[]; sha: string } | null {
+  let raw: string | null = null;
+  let sha: string | null = null;
+  try {
+    raw = localStorage.getItem("reviewer.mockStale");
+    sha = localStorage.getItem("reviewer.mockStaleSha");
+  } catch {
+    return null;
+  }
+  if (!raw || raw === "0") return null;
+  const reasons = (raw === "1" ? ["new-commits"] : raw.split(","))
+    .map((r) => r.trim())
+    .filter((r): r is StalenessReason =>
+      r === "new-commits" || r === "base-moved" || r === "state-changed",
+    );
+  if (reasons.length === 0) return null;
+  return { reasons, sha: sha || `upstream-${reasons.join("-")}` };
+}
+
+/** Shas a mock refresh has already "fetched"; they stop reading as stale. */
+const acknowledgedSha: Record<string, string> = {};
 
 /** Flip this in the console/devtools to exercise the failure banner. */
 function failureRequested(): boolean {
@@ -539,6 +573,10 @@ export const mockApi = {
     if (details[key] && !details[key].state.units.length && !isLive(jobs[key])) {
       runJob(key);
     }
+    // A real refresh fetches whatever upstream had, so the drift it was
+    // reporting is gone until upstream moves again.
+    const flag = readStaleFlag();
+    if (flag) acknowledgedSha[key] = flag.sha;
     return {
       revision: detail.state.revision,
       baseOnly: false,
@@ -557,6 +595,28 @@ export const mockApi = {
       new: [
         { hunkId: "a1b2c3d4e5f60004", file: "migrations/0042_charge_ledger.sql", note: "unassigned" },
       ],
+    };
+  },
+
+  async staleness(key: string): Promise<Staleness> {
+    await delay(80);
+    const flag = readStaleFlag();
+    const localState = list.find((p) => p.key === key)?.state ?? "open";
+    const base: Staleness = {
+      stale: false,
+      reasons: [],
+      upstreamHeadSha: flag?.sha ?? "local-head",
+      localHeadSha: "local-head",
+      upstreamState: localState,
+      localState,
+      checkedAt: new Date().toISOString(),
+    };
+    if (!flag || acknowledgedSha[key] === flag.sha) return base;
+    return {
+      ...base,
+      stale: true,
+      reasons: flag.reasons,
+      upstreamState: flag.reasons.includes("state-changed") ? "merged" : localState,
     };
   },
 

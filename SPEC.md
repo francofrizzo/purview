@@ -200,7 +200,36 @@ GET  /api/prs/:key/review              # local draft body + remote pending statu
 POST /api/prs/:key/review   {body}     # save the review body locally
 POST /api/prs/:key/review/submit       # {event, body?, confirm: true} -> submit on GitHub
 DELETE /api/prs/:key/review/pending    # discard the remote pending review, reset comments to draft
+GET  /api/prs/:key/staleness           # has the PR moved upstream since the last fetch?
 ```
+
+### Staleness check
+
+`GET /api/prs/:key/staleness` answers
+
+```
+{stale, reasons: ("new-commits"|"base-moved"|"state-changed")[],
+ upstreamHeadSha, localHeadSha, upstreamBaseSha, localBaseSha,
+ upstreamState, localState, upstreamReviewDecision, localReviewDecision,
+ checkedAt, error?}
+```
+
+off one `gh api repos/{o}/{r}/pulls/{n}` (plus the best-effort GraphQL review-decision
+query), compared against the current revision's shas and meta's stored state.
+`new-commits` = head sha differs, `base-moved` = base sha differs, `state-changed` =
+`prState` or `reviewDecision` differs. Reasons are deliberately count-free: one REST
+call cannot say *how many* commits landed.
+
+The answer is cached in-process for 60s per PR — the PR view polls this, and repeated
+calls inside the window spend no `gh` call at all. Failures are cached too and reported
+as `{stale: false, ..., error}` with **200**: a staleness hint is an affordance, and a
+broken `gh` must never take the PR view down. A refresh clears the PR's cache entry.
+
+Read-only with one deliberate exception: when the PR's state or review decision moved,
+meta is patched in place, so the home page's chips stay honest without a full refresh.
+Revisions, hunks, diffs and the event log are never touched here — that stays `refreshPr`'s
+job, and so does *clearing* a review decision (a `null` from the decision query is
+indistinguishable from a failed one, so it is treated as unknown, never as "cleared").
 ```
 GET  /api/repos                        # {repos: [{host, owner, repo, prCount, archivedCount,
                                        #  hasLocalConfig, hasCommittedConfig, repoPath}]}

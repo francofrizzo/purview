@@ -28,6 +28,7 @@ import {
   useSaveReviewBody,
   useSetHunkViewed,
   useSetUnitViewed,
+  useStaleness,
   useSubmitReview,
   useSync,
 } from "../api/hooks";
@@ -45,7 +46,7 @@ import { CommentComposer, DraftsDrawer, type CommentTarget } from "../components
 import { UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
-import { MigrationReportPanel, SyncResultPanel } from "../components/Panels";
+import { MigrationReportPanel, StalenessHint, SyncResultPanel } from "../components/Panels";
 import { SummaryStrip } from "../components/SummaryStrip";
 import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
@@ -57,6 +58,7 @@ import { useDiffSearch } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
 import { useDiffViewPrefs } from "../lib/settings";
+import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
 
 export function PrView() {
   const params = useParams();
@@ -85,6 +87,17 @@ export function PrView() {
   useAnalysisEvents(prKey);
   const analysisJob = useAnalysisJob(prKey);
   const chat = useChatFor(prKey);
+
+  // Dismissing the hint bar is remembered against the upstream head sha it was
+  // raised for, so the bar comes back the next time the PR really moves.
+  const [dismissedStaleKey, setDismissedStaleKey] = useState<string | null>(null);
+  // The PR's own lifecycle state only reaches us through the check itself, and
+  // that is enough: it decides whether the 5-minute interval is worth running
+  // (a merged or closed PR grows no commits, so it is mount + focus only).
+  const staleness = useStaleness(prKey);
+  const stale = staleness.data?.stale === true;
+  const showStalenessHint =
+    stale && shouldShowStalenessHint(staleness.data, dismissedStaleKey);
 
   const [tab, setTab] = useState<"units" | "files">("units");
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
@@ -317,6 +330,8 @@ export function PrView() {
         draftCount={unsubmittedDrafts.length}
         pendingReview={review.data?.pending.exists}
         refreshing={refresh.isPending}
+        stale={stale}
+        staleTooltip={stalenessTooltip(staleness.data)}
         syncing={sync.isPending}
         chatOpen={chat.open}
         analysisJob={job}
@@ -339,6 +354,14 @@ export function PrView() {
         onSync={() => sync.mutate(undefined, { onSuccess: setSyncResult })}
       />
 
+      {showStalenessHint && staleness.data ? (
+        <StalenessHint
+          result={staleness.data}
+          refreshing={refresh.isPending}
+          onRefresh={() => refresh.mutate(undefined, { onSuccess: setReport })}
+          onDismiss={() => setDismissedStaleKey(stalenessDismissKey(staleness.data))}
+        />
+      ) : null}
       {refresh.error ? (
         <ErrorBar message={`refresh failed: ${(refresh.error as Error).message}`} />
       ) : null}

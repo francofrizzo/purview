@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { api } from "./client";
 import { applyArchive } from "../lib/prList";
+import { stalenessPollInterval } from "../lib/staleness";
 import type {
   AnalysisJob,
   DiffOfDiffs,
@@ -20,10 +21,12 @@ import type {
   PrListEntry,
   RepoConfig,
   RepoConfigPatch,
+  PrGithubState,
   RepoSummary,
   ReviewEvent,
   ReviewStatus,
   ReviewUnit,
+  Staleness,
   SubmitReviewResult,
   SyncResult,
 } from "./types";
@@ -37,6 +40,7 @@ export const qk = {
   comments: (key: string) => ["comments", key] as const,
   review: (key: string) => ["review", key] as const,
   analysisJob: (key: string) => ["analysis-job", key] as const,
+  staleness: (key: string) => ["staleness", key] as const,
   diffOfDiffs: (key: string, hunkId: string) => ["dod", key, hunkId] as const,
 };
 
@@ -285,8 +289,49 @@ export function useRefresh(key: string): UseMutationResult<MigrationReport, Erro
       // A refresh that lands a new revision can auto-queue an analysis; pick
       // that job up right away so the banner goes live without a reload.
       void qc.invalidateQueries({ queryKey: qk.analysisJob(key) });
+      // We just fetched upstream, so whatever the check last said is spent.
+      void qc.invalidateQueries({ queryKey: qk.staleness(key) });
     },
   });
+}
+
+/**
+ * "Did this PR move upstream?" — checked on mount, whenever the tab becomes
+ * visible again, and on a slow interval for PRs that can still grow commits.
+ *
+ * The server caches the answer for a minute and never fails the request, so
+ * the cost of the extra checks is bounded and a broken `gh` stays invisible.
+ * React Query pauses `refetchInterval` while the document is hidden, which is
+ * exactly the "while visible" the interval is meant to be.
+ */
+export function useStaleness(key: string, prState?: PrGithubState | null) {
+  const query = useQuery<Staleness>({
+    queryKey: qk.staleness(key),
+    queryFn: () => api.staleness(key),
+    enabled: Boolean(key),
+    // The window-focus refetch is done by hand below so it keys off
+    // visibilitychange only, and never fires twice for one return to the tab.
+    refetchOnWindowFocus: false,
+    // The PR's lifecycle state usually arrives *in* the answer, so the
+    // interval is decided per tick off whatever the last one reported.
+    refetchInterval: (query) =>
+      stalenessPollInterval(
+        prState ?? query.state.data?.upstreamState ?? query.state.data?.localState ?? null,
+      ),
+    retry: false,
+  });
+
+  const refetch = query.refetch;
+  useEffect(() => {
+    if (!key) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refetch();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [key, refetch]);
+
+  return query;
 }
 
 export function useSync(key: string): UseMutationResult<SyncResult, Error, void> {
