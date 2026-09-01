@@ -227,6 +227,8 @@ export function analysisPrompt(
           "Every hunk id of the current revision must be covered by a unit or listed in \"unassigned\".",
         ].join(" "),
     "",
+    "Turn count is what this run costs — every extra turn re-sends the whole accumulated context. Follow SKILL.md's 'Batching' section: plan a unit's questions first, then answer as many as possible in ONE Bash call (`&&`/`;`-joined greps, `grep -n -e p1 -e p2`, several `sed -n '<a>,<b>p'` ranges), always with absolute paths and never `cd`. Chained read-only commands are permitted; a chain containing a denied command is denied as a whole.",
+    "",
     "HARD RULES:",
     `- NEVER run \`${cmd} sync\` or \`${cmd} init\` or \`${cmd} refresh\`. They write to GitHub or move state under the reader's feet.`,
     "- NEVER run `gh`, `git`, `curl`, or any other network or version-control command. You have no permission to write anything to GitHub, and nothing in this task requires it.",
@@ -244,11 +246,20 @@ export function analysisPrompt(
 /**
  * The tightest surface the CLI supports:
  *  - `--tools` removes every built-in tool except file reads and Bash;
- *  - `--allowedTools` allows Bash only for the reviewer-state CLI's exact
- *    absolute prefix (verified: chained commands like `node cli.js x; gh ...`
- *    are denied as a whole, the permission parser does not match only the head);
+ *  - `--allowedTools` allows Bash for the reviewer-state CLI's exact absolute
+ *    prefix plus a short list of read-only inspection commands (grep/sed -n/
+ *    ls/cat/head/tail/wc), which is what makes *batched* investigation —
+ *    several greps and `sed -n` ranges joined with `&&`/`;` in one call —
+ *    reliably permitted instead of relying on the CLI's read-only heuristic;
  *  - `--disallowedTools` denies the writing subcommands and gh/git outright,
  *    since deny rules beat allow rules.
+ *
+ * Verified against the real CLI (2.1.x) with exactly these flags: a chain of
+ * read-only commands (`grep … && sed -n …`) runs, while a chain that mixes in a
+ * denied command (`grep … && git log`) is denied *as a whole* — the permission
+ * parser decomposes the chain rather than matching only its head. Shell
+ * redirection out of the session's writable roots is blocked separately by the
+ * CLI, and there are no Write/Edit tools, so batching widens reads only.
  */
 export function analysisToolFlags(): {
   tools: string[];
@@ -269,6 +280,16 @@ export function analysisToolFlags(): {
       `Bash(${cmd} list:*)`,
       `Bash(${cmd} set-analysis:*)`,
       `Bash(${cmd} set-unit:*)`,
+      // Read-only investigation, batchable into one call. `sed` is allowed only
+      // as `sed -n` so the in-place form can never be reached this way.
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(sed -n:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
     ],
     disallowedTools: [
       `Bash(${cmd} sync:*)`,

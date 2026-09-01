@@ -76,6 +76,47 @@ content is already in files.json**, so both passes can work from it alone; `adde
 `revisions/<current>/diff.patch` (the raw unified diff) only when you need file-level
 headers (mode/rename/binary markers) or want to see several hunks in file order.
 
+## Batching (applies to every investigation step below — 3, 5 and 8)
+
+**Why: every extra assistant turn re-sends the whole accumulated context to the model.
+Turn count, not tool time, is what an analysis run costs — batching your reads is the
+single biggest lever on that cost.** A measured run spent 83% of its wall time waiting on
+model latency across 130 turns while the tools themselves took ~23 seconds total.
+
+Rules:
+
+- **Plan the questions for a unit first, then answer as many as possible in ONE Bash
+  call.** Join them with `&&` or `;`, use `grep -n -e pat1 -e pat2`, pass several files to
+  one `grep`, stack several `sed -n '<a>,<b>p' file` ranges. Read the combined output in a
+  single turn. Prefer over-fetching a little to paying a second round-trip: a few hundred
+  extra output lines are far cheaper than another turn.
+- **Never `cd`. Always use absolute paths.** Each Bash call is a fresh shell, so `cd` buys
+  nothing and costs characters.
+  - Bad (three turns, three `cd`s):
+    ```
+    cd /repo && grep -rn "renderTotal" src/
+    cd /repo && sed -n '40,80p' src/billing/total.ts
+    cd /repo && grep -rn "ErrRateLimited" src/
+    ```
+  - Good (one turn):
+    ```
+    grep -rn -e "renderTotal" -e "ErrRateLimited" /repo/src/; sed -n '40,80p' /repo/src/billing/total.ts
+    ```
+- **Group by file, not by unit.** When several units need checks in the same file (or the
+  same symbol set), do them together in one pass instead of revisiting the file per unit.
+- **Exploratory paging of `diff.patch` is a smell.** The full hunk text is already in
+  `files.json` — read it from there instead of re-slicing the patch. Go to `diff.patch`
+  only for file-level headers (mode/rename/binary).
+- Chained read-only commands (`grep`, `sed -n`, `ls`, `cat`, `head`, `tail`, `wc`, plus the
+  `reviewer-state` CLI) pass the permission allowlist. A chain that mixes in a denied
+  command (`git`, `gh`, `curl`, a redirect that writes) is denied **as a whole** — so never
+  put one of those in a chain, they will take the rest of the batch down with them.
+- **Soft budget: finish a typical incremental analysis in under ~40 assistant turns.** If
+  you are past that and still exploring, stop: write the analysis with what you have and
+  record the unresolved question in that unit's `attentionWhy` (a question is a perfectly
+  good deliverable — an unverified finding is not). Digging past the budget buys the
+  reviewer less than getting the map on time.
+
 ## 3. Cost-controlled two-pass analysis
 
 Do not deep-read every hunk in a large PR. Two passes:
@@ -96,7 +137,9 @@ from the patch) for:
 
 For very large PRs where a must-read hunk's correctness depends on code not shown in the
 diff (e.g. a call site's full function, a type definition), read that surrounding context
-from the repo. You do not need to check out the branch: use the diff's context lines first,
+from the repo. Collect the whole pass's context needs first and fetch them in as few calls
+as possible (see "Batching" above) rather than one file per turn. You do not need to check
+out the branch: use the diff's context lines first,
 and fall back to `gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` (or
 `gh api repos/{owner}/{repo}/git/blobs/{sha}`) to fetch specific files at the PR's head SHA
 when the diff's own context is insufficient. Don't fetch whole-file context for
@@ -178,7 +221,17 @@ question that reading code could settle. The recurring shapes:
   (three handlers, five adapters); check the other N-1.
 
 For each such question, **actually check it**: `grep` for the symbol across the checkout,
-read the call sites you find. Then record one of two outcomes on that unit:
+read the call sites you find.
+
+Do this in batches, not one grep per turn (see "Batching" above). Concretely: list the
+symbols every must-read unit raises, `grep -rn` for all of them in **one** call
+(`-e sym1 -e sym2 …`), then in a **second** call `sed -n` the line ranges around every hit
+you need to read — several ranges, several files, one command. Two or three turns should
+cover the evidence for a whole verification pass; a dozen means you are round-tripping.
+Thoroughness is unaffected — check every question you would have checked, just fetch the
+answers together.
+
+Then record one of two outcomes on that unit:
 
 - **verified OK → a `note` finding.** State the answer, not the question: "all 3 callers
   map both error paths to 403" — with the files/lines you read as `evidence`. If that
@@ -202,7 +255,8 @@ unsolicited code review. Findings are annotations for the human reader. They nev
 never approve, and are never posted anywhere.
 
 Budget this pass like step 3: it covers must-read units, not every unit, and it stops when
-the checkable questions are answered — not when you run out of opinions.
+the checkable questions are answered — not when you run out of opinions, and not past the
+~40-turn soft budget.
 
 ## 6. Learn from corrections
 
@@ -233,7 +287,9 @@ required field such as `attentionWhy` or `order`.
 
 ## 8. On refresh of an already-analyzed PR
 
-See `MIGRATION-NOTES.md` for the full mechanics. In short:
+See `MIGRATION-NOTES.md` for the full mechanics. This is the flow the ~40-turn budget in
+"Batching" is sized for — an incremental run touches a handful of units, so batch its
+re-verification reads the same way. In short:
 
 1. Run `reviewer-state refresh <key>`. Read the printed migration report.
 2. Classify **only** hunks the report marks `new` or unassigned. Carried, fuzzy-matched,

@@ -305,12 +305,18 @@ user's own Claude Code login; no API key is read, passed or stored. Runs are kil
 
 **Tool restriction.** Three mechanisms stack, verified against the real CLI:
 `--tools` sets the built-in surface (`Read,Glob,Grep,Bash` — no Write/Edit anywhere);
-`--allowedTools` allows Bash only for exact absolute-path prefixes of the `reviewer-state`
-CLI; `--disallowedTools` denies the writing subcommands plus `gh`/`git`/`curl`/`wget` and the
-web tools, and deny beats allow. In `-p` mode anything unmatched is denied outright (there is
-no prompt to accept it), and a chained command (`node cli.js x; gh …`) is denied as a whole —
-the permission parser does not match only the head. The analysis run therefore reaches the
-CLI with heredoc-on-stdin (`--file -`) rather than writing a temp file.
+`--allowedTools` allows Bash for exact absolute-path prefixes of the `reviewer-state` CLI
+plus a fixed set of read-only inspection commands (`grep`, `rg`, `sed -n`, `ls`, `cat`,
+`head`, `tail`, `wc` — analysis runs only, so batched investigation is permitted explicitly
+rather than by the CLI's read-only heuristic; `sed` is allowed only in its `-n` form, and
+`sed -i` is blocked by the CLI's own edit guard regardless); `--disallowedTools` denies the
+writing subcommands plus `gh`/`git`/`curl`/`wget` and the web tools, and deny beats allow.
+In `-p` mode anything unmatched is denied outright (there is no prompt to accept it), and a
+chained command is decomposed: `grep … && sed -n …` runs, while `node cli.js x; gh …` or
+`grep … ; gh pr list` is denied **as a whole** — the permission parser does not match only
+the head. Shell redirection and in-place edits outside the session's writable roots are
+blocked separately by the CLI. The analysis run therefore reaches the CLI with
+heredoc-on-stdin (`--file -`) rather than writing a temp file.
 
 **Analysis runs** use the PR state dir as cwd and may call `reviewer-state`
 `report`/`list`/`set-analysis`/`set-unit`. **Chat runs** are read-only: `report`/`list` only.

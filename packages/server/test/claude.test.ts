@@ -18,7 +18,13 @@ import {
   type GhRunner,
 } from "@reviewer/core";
 import { createApp } from "../src/app.js";
-import { analysisIdle, findingsNote, readJob, reconcileStaleJobs } from "../src/analysis.js";
+import {
+  analysisIdle,
+  analysisToolFlags,
+  findingsNote,
+  readJob,
+  reconcileStaleJobs,
+} from "../src/analysis.js";
 import { chatTurnDone } from "../src/chat-session.js";
 import { resolveRefs } from "../src/chat.js";
 import { ownerRepoFromRemote } from "../src/repo-path.js";
@@ -120,6 +126,23 @@ describe("findings gating text", () => {
       expect(off).toContain("VERIFICATION PASS: SKIPPED");
       expect(off).toContain("Do NOT emit any findings");
       expect(off).not.toContain("RUN IT");
+    }
+  });
+});
+
+describe("analysis tool allowlist", () => {
+  it("permits batched read-only investigation but never writes, gh or git", () => {
+    const { tools, allowedTools, disallowedTools } = analysisToolFlags();
+    expect(tools).not.toContain("Write");
+    expect(tools).not.toContain("Edit");
+    // Batched investigation (`grep … && sed -n …`) needs these allowed outright.
+    for (const rule of ["Bash(grep:*)", "Bash(sed -n:*)", "Bash(ls:*)", "Bash(cat:*)"]) {
+      expect(allowedTools).toContain(rule);
+    }
+    // In-place sed must not be reachable through the `sed` allowance.
+    expect(allowedTools).not.toContain("Bash(sed:*)");
+    for (const rule of ["Bash(gh:*)", "Bash(git:*)", "Edit"]) {
+      expect(disallowedTools).toContain(rule);
     }
   });
 });
