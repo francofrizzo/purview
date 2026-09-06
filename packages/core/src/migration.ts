@@ -87,6 +87,7 @@ export function toRevisionFiles(files: FileDiff[]): RevisionFiles[] {
   return files.map((f) => ({
     path: f.path,
     oldPath: f.oldPath,
+    generatedReason: f.generatedReason,
     hunkIds: f.hunks.map((h) => h.id),
   }));
 }

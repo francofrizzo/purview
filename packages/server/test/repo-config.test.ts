@@ -845,6 +845,20 @@ describe("POST /api/repos/:rkey/import-reviews", () => {
 });
 
 describe("/api/repos/:rkey/config", () => {
+  it("persists and clears generated path rules", async () => {
+    ghFor({ contents: {} });
+    const url = `/api/repos/${encodedRepo}/config`;
+    for (const generatedPaths of [["**/*.gen.ts", "pnpm-lock.yaml"], []]) {
+      const response = await app.request(url, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ generatedPaths }),
+      });
+      expect(response.status).toBe(200);
+      expect((await response.json()).local.generatedPaths).toEqual(generatedPaths);
+      expect((await (await app.request(url)).json()).local.generatedPaths).toEqual(generatedPaths);
+    }
+  });
+
   it("returns local, committed and effective layers", async () => {
     ghFor({
       contents: {
@@ -855,6 +869,7 @@ describe("/api/repos/:rkey/config", () => {
     });
     const body = await (await app.request(`/api/repos/${encodedRepo}/config`)).json();
     expect(body.local).toEqual({
+      generatedPaths: [],
       autoAnalyze: null,
       repoPath: null,
       analysisModel: null,
@@ -896,6 +911,7 @@ describe("/api/repos/:rkey/config", () => {
     expect(put.status).toBe(200);
     const body = await put.json();
     expect(body.local).toEqual({
+      generatedPaths: [],
       autoAnalyze: true,
       repoPath: checkout.path,
       analysisModel: null,

@@ -385,6 +385,28 @@ the previous one. A file counts as viewed only when all of its hunks in the curr
 are; that rollup is what `sync` pushes to GitHub as `markFileAsViewed`. Local state is always
 the source of truth — remote state is read only to report drift, never to overwrite you.
 
+## Generated files
+
+Generated hunks are collected into one **Generated files** unit under **skip** and
+marked viewed locally before analysis. The **Auto-viewed** badge distinguishes this
+from manual review. Open the unit to inspect its diffs; **mark unviewed** opts its
+files out of automatic viewing for this PR, including new hunks and detected renames.
+Individual hunk unview actions also opt that file out. GitHub updates still require sync.
+
+Detection uses explicit comment headers such as `@generated` and
+`Code generated … DO NOT EDIT` within the first 30 lines, when present in the diff.
+For files whose headers are outside the diff, or generated output without markers,
+add `generatedPaths` to `~/.purview/<host>/<owner>/<repo>/repo.json`, for example:
+
+```json
+{ "generatedPaths": ["**/*.gen.ts", "internal/api/generated/**"] }
+```
+
+Patterns match repository-relative paths; `*` matches within a directory, `**`
+crosses directories, and `?` matches one character. Lockfiles are opt-in through
+these rules. Refresh or re-analyze to apply rules to an already tracked PR.
+Generated hunks remain in their dedicated unit when AI analysis is replaced.
+
 ## Finishing a review
 
 Comments you draft on a line — or on a whole file, which GitHub supports as its own kind of

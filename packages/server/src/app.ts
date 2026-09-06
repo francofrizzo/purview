@@ -1139,6 +1139,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     return {
       repo: repoKeyToString(repo),
       local: {
+        generatedPaths: local.generatedPaths ?? [],
         autoAnalyze: local.autoAnalyze,
         repoPath: local.repoPath,
         analysisModel: local.analysisModel,
@@ -1274,6 +1275,7 @@ export function createApp(opts: AppOptions = {}): Hono {
    */
   const RepoConfigPutSchema = z
     .object({
+      generatedPaths: z.array(z.string().min(1)).optional(),
       autoAnalyze: z.boolean().nullable().optional(),
       repoPath: z.string().nullable().optional(),
       analysisModel: ClaudeModelSchema.nullable().optional(),
@@ -1299,6 +1301,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const body = parsed.data;
 
     const patch: {
+      generatedPaths?: string[];
       autoAnalyze?: boolean | null;
       repoPath?: string | null;
       analysisModel?: ClaudeModel | null;
@@ -1306,6 +1309,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisEffort?: AnalysisEffort | null;
       watchReviews?: boolean | null;
     } = {};
+    if ("generatedPaths" in body) patch.generatedPaths = body.generatedPaths;
     if ("autoAnalyze" in body) patch.autoAnalyze = body.autoAnalyze ?? null;
     if ("analysisModel" in body) patch.analysisModel = body.analysisModel ?? null;
     if ("chatModel" in body) patch.chatModel = body.chatModel ?? null;
