@@ -13,7 +13,7 @@ import { ReclassifyPopover } from "./ReclassifyPopover";
 import { InlineMarkdown } from "./Markdown";
 
 const HIDE_REVIEWED_TITLE =
-  "Drop fully-viewed units out of the list. The unit you are reading stays put, so the diff pane never changes under you.";
+  "Drop fully-viewed units out of the list. Changed units and the unit you are reading stay visible, so the diff pane never changes under you.";
 
 export const UNPLACED_TITLE =
   "Hunks the analysis hasn't placed in a unit yet — usually new commits since the last analysis.";
@@ -60,7 +60,7 @@ export function UnitSidebar({
   // "reviewed", it is empty — hiding those would make them unreachable.
   const isFullyViewed = (u: ReviewUnit) => {
     const p = unitProgress(detail, u);
-    return p.total > 0 && p.viewed === p.total;
+    return p.total > 0 && p.viewed === p.total && p.changed === 0;
   };
 
   // The skill's `order` is global and gappy once units are bucketed by
