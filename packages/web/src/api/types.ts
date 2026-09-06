@@ -92,6 +92,7 @@ export interface UnitChangelogEntry {
 }
 
 export interface ReviewUnit {
+  generated?: boolean;
   id: string;
   title: string;
   summary: string;
@@ -196,6 +197,7 @@ export interface RevisionLineChanges {
 }
 
 export interface HunkState {
+  autoViewed?: boolean;
   viewed: boolean;
   viewedAtRevision?: number;
   changedSinceViewed: boolean;

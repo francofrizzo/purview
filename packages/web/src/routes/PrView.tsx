@@ -843,7 +843,7 @@ export function PrView() {
   const analysisPending = isJobLive(job);
   // The banner is for the "nothing to read yet" case: once units exist, the
   // job's state lives in the top bar chip and the overflow menu instead.
-  const showAnalysisBanner = units.length === 0 || analysisPending;
+  const showAnalysisBanner = (!units.some((u) => !u.generated) && !summary) || analysisPending;
   // A refresh of this archived PR landed work and auto-analysis skipped it.
   // Hidden while a run is live: the explicit analyze clears the note server-
   // side, and the detail catches up when the run finishes.
@@ -1373,7 +1373,7 @@ export function PrView() {
                   <InlineMarkdown text={selectedUnit.title} />
                 </h2>
                 <div className="flex flex-none flex-wrap items-center gap-2">
-                  <KindChip kind={selectedUnit.kind} />
+                  {selectedUnit.generated ? <span className="text-2xs">{selectedUnit.hunkIds.every((id) => detail.state.hunks[id]?.autoViewed) ? "Auto-viewed" : "Generated"}</span> : <KindChip kind={selectedUnit.kind} />}
                   {/* The expanded header's "why must-read:" line already names it. */}
                   {headerCollapsed || !selectedUnit.attentionWhy ? (
                     <AttentionChip attention={selectedUnit.attention} />
@@ -1412,6 +1412,12 @@ export function PrView() {
                   >
                     mark unit viewed
                   </button>
+                  {selectedUnit.generated && (progress?.viewed ?? 0) > 0 ? (
+                    <button type="button" className="btn" disabled={setUnitViewed.isPending}
+                      onClick={() => setUnitViewed.mutate({ unitId: selectedUnit.id, viewed: false })}>
+                      mark unviewed
+                    </button>
+                  ) : null}
                   {allUnitsViewed ? (
                     <span
                       className="text-2xs"

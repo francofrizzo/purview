@@ -374,8 +374,7 @@ function UnitRow({
           </span>
         </div>
         <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 pl-5">
-          {/* Core logic is what most units are; only the exceptions get a chip. */}
-          {unit.kind !== "core-logic" ? <KindChip kind={unit.kind} /> : null}
+          {unit.generated ? <span className="text-2xs">{unit.hunkIds.every((id) => detail.state.hunks[id]?.autoViewed) ? "Auto-viewed" : "Generated"}</span> : unit.kind !== "core-logic" ? <KindChip kind={unit.kind} /> : null}
           <RiskFlags flags={unit.riskFlags} compact />
           {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}
           <FindingsBadge unit={unit} />
@@ -385,7 +384,7 @@ function UnitRow({
           </span>
         </div>
       </button>
-      <button
+      {!unit.generated ? <button
         type="button"
         title="Unit actions"
         data-testid={`unit-menu-${unit.id}`}
@@ -399,7 +398,7 @@ function UnitRow({
         style={{ color: "var(--fg-muted)" }}
       >
         ⋯
-      </button>
+      </button> : null}
       {popover ? (
         <ReclassifyPopover
           unit={unit}

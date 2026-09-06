@@ -1569,6 +1569,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     return {
       repo: repoKeyToString(repo),
       local: {
+        generatedPaths: local.generatedPaths ?? [],
         autoAnalyze: local.autoAnalyze,
         repoPath: local.repoPath,
         analysisAgent: local.analysisAgent,
@@ -1802,6 +1803,7 @@ export function createApp(opts: AppOptions = {}): Hono {
    */
   const RepoConfigPutSchema = z
     .object({
+      generatedPaths: z.array(z.string().min(1)).optional(),
       autoAnalyze: z.boolean().nullable().optional(),
       repoPath: z.string().nullable().optional(),
       analysisAgent: AgentSelectionSchema.strict().nullable().optional(),
@@ -1826,6 +1828,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const body = parsed.data;
 
     const patch: Partial<RepoConfig> = {};
+    if ("generatedPaths" in body) patch.generatedPaths = body.generatedPaths;
     if ("autoAnalyze" in body) patch.autoAnalyze = body.autoAnalyze ?? null;
     if (body.analysisAgent !== undefined) {
       patch.analysisAgent = checkAgentSelection(body.analysisAgent, "analysisAgent");
