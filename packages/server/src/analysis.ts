@@ -198,6 +198,7 @@ export function analysisPrompt(
     "State directory (already initialized; this is your working directory):",
     `  ${dir}`,
     `Current revision: ${state.currentRevision}`,
+    "Generated files are deterministically grouped by core into purview:generated. Leave hunks in that unit out of your analysis; core preserves their coverage. Focus on authored changes.",
     `  diff:  ${path.join(dir, "revisions", String(state.currentRevision), "diff.patch")}`,
     `  files: ${path.join(dir, "revisions", String(state.currentRevision), "files.json")}`,
     `  events (read \`classification-corrected\` entries and honor them as precedent): ${path.join(dir, "events.jsonl")}`,
@@ -503,7 +504,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   const run = runClaude({
     label: "analysis",
     prompt: analysisPrompt(key, root, {
-      incremental: state.units.length > 0,
+      incremental: state.analysisRevision !== undefined || state.units.some((u) => !u.generated),
       checkout,
       headSha,
       committed,

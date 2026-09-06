@@ -352,7 +352,7 @@ export function PrView() {
   const analysisPending = isJobLive(job);
   // The banner is for the "nothing to read yet" case: once units exist, the
   // job's state lives in the top bar chip and the overflow menu instead.
-  const showAnalysisBanner = units.length === 0 || analysisPending;
+  const showAnalysisBanner = (!units.some((u) => !u.generated) && !summary) || analysisPending;
   const quote = (ref: ChatRef) => chat.attachRef(ref);
 
   // Everything the agent-facing markdown needs: the diff to slice snippets
@@ -552,7 +552,7 @@ export function PrView() {
                   {selectedUnit.title}
                 </h2>
                 <div className="flex flex-none flex-wrap items-center gap-2">
-                  <KindChip kind={selectedUnit.kind} />
+                  {selectedUnit.generated ? <span className="text-2xs">{selectedUnit.hunkIds.every((id) => detail.state.hunks[id]?.autoViewed) ? "Auto-viewed" : "Generated"}</span> : <KindChip kind={selectedUnit.kind} />}
                   <AttentionChip attention={selectedUnit.attention} />
                   <RiskFlags flags={selectedUnit.riskFlags} />
                   {progress && progress.changed > 0 ? <ChangedBadge count={progress.changed} /> : null}
@@ -577,6 +577,12 @@ export function PrView() {
                   >
                     mark unit viewed
                   </button>
+                  {selectedUnit.generated && (progress?.viewed ?? 0) > 0 ? (
+                    <button type="button" className="btn" disabled={setUnitViewed.isPending}
+                      onClick={() => setUnitViewed.mutate({ unitId: selectedUnit.id, viewed: false })}>
+                      mark unviewed
+                    </button>
+                  ) : null}
                   {allUnitsViewed ? (
                     <span
                       className="text-2xs"

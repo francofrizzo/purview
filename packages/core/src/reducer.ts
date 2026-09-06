@@ -1,3 +1,4 @@
+import { normalizeGeneratedUnits } from "./generated.js";
 import type {
   ReviewUnit,
   ReviewerEvent,
@@ -157,9 +158,37 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
         state.unassignedHunkIds = remap(state.unassignedHunkIds);
       }
 
+      const manualPaths = new Set(state.generatedManualPaths ?? []);
+      for (const f of event.files) {
+        if (f.oldPath && manualPaths.has(f.oldPath)) manualPaths.add(f.path);
+        if (!f.generatedReason) {
+          for (const id of f.hunkIds) {
+            const h = state.hunks[id];
+            if (h.autoViewed) {
+              h.viewed = false;
+              h.autoViewed = false;
+              h.viewedAtRevision = undefined;
+              h.changedSinceViewed = false;
+            }
+          }
+          continue;
+        }
+        if (manualPaths.has(f.path)) continue;
+        for (const id of f.hunkIds) {
+          const h = state.hunks[id];
+          if (!h.viewed || h.autoViewed) {
+            h.viewed = true;
+            h.autoViewed = true;
+            h.viewedAtRevision = event.revision;
+            h.changedSinceViewed = false;
+          }
+        }
+      }
+      state.generatedManualPaths = [...manualPaths];
       const previousRollups = new Map(state.files.map((f) => [f.path, f]));
       state.files = event.files.map((f) => ({
         path: f.path,
+        generatedReason: f.generatedReason,
         hunkIds: f.hunkIds,
         viewedCount: 0,
         total: f.hunkIds.length,
@@ -168,6 +197,32 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
         syncedToGithub: previousRollups.get(f.path)?.syncedToGithub,
       }));
       state.lastMigration = event.migration;
+      break;
+    }
+
+    case "generated-files-classified": {
+      if (event.revision !== state.currentRevision) break;
+      for (const file of state.files) {
+        const classification = event.files.find((f) => f.path === file.path);
+        if (!classification) continue;
+        file.generatedReason = classification.generatedReason;
+        for (const id of file.hunkIds) {
+          const h = state.hunks[id];
+          if (!file.generatedReason) {
+            if (h.autoViewed) {
+              h.viewed = false;
+              h.autoViewed = false;
+              h.viewedAtRevision = undefined;
+              h.changedSinceViewed = false;
+            }
+          } else if (!(state.generatedManualPaths ?? []).includes(file.path) && !h.viewed) {
+            h.viewed = true;
+            h.autoViewed = true;
+            h.viewedAtRevision = event.revision;
+            h.changedSinceViewed = false;
+          }
+        }
+      }
       break;
     }
 
@@ -206,6 +261,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       state.hunks[event.hunkId] = {
         ...s,
         viewed: true,
+        autoViewed: false,
         viewedAtRevision: event.revision,
         changedSinceViewed: false,
       };
@@ -214,8 +270,11 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
 
     case "hunk-unviewed": {
       const s = state.hunks[event.hunkId] ?? freshHunkState();
+      const file = state.files.find((f) => f.generatedReason && f.hunkIds.includes(event.hunkId));
+      if (file) state.generatedManualPaths = [...new Set([...(state.generatedManualPaths ?? []), file.path])];
       state.hunks[event.hunkId] = {
         ...s,
+        autoViewed: false,
         viewed: false,
         viewedAtRevision: undefined,
         changedSinceViewed: false,
@@ -231,6 +290,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           state.hunks[id] = {
             ...s,
             viewed: true,
+            autoViewed: false,
             viewedAtRevision: event.revision ?? state.currentRevision,
             changedSinceViewed: false,
           };
@@ -296,6 +356,9 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
     }
   }
 
+  state.units = normalizeGeneratedUnits(state.files, state.units);
+  const generatedIds = new Set(state.files.filter((f) => f.generatedReason).flatMap((f) => f.hunkIds));
+  state.unassignedHunkIds = state.unassignedHunkIds.filter((id) => !generatedIds.has(id));
   recomputeRollups(state);
   return state;
 }

@@ -504,9 +504,9 @@ export const api = {
     await post(`/prs/${encodeKey(key)}/hunks/${encodeURIComponent(hunkId)}/viewed`, { viewed });
   },
 
-  async setUnitViewed(key: string, unitId: string): Promise<void> {
-    if (MOCK) return mockApi.setUnitViewed(key, unitId);
-    await post(`/prs/${encodeKey(key)}/units/${encodeURIComponent(unitId)}/viewed`);
+  async setUnitViewed(key: string, unitId: string, viewed = true): Promise<void> {
+    if (MOCK) return mockApi.setUnitViewed(key, unitId, viewed);
+    await post(`/prs/${encodeKey(key)}/units/${encodeURIComponent(unitId)}/viewed`, { viewed });
   },
 
   async patchUnit(key: string, unitId: string, patch: Partial<ReviewUnit>): Promise<void> {
