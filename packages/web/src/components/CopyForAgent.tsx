@@ -5,7 +5,7 @@ import {
   type DiffContext,
   type ExportableComment,
 } from "../lib/agentExport";
-import { IconCopy } from "./icons";
+import { IconCheck, IconClose, IconCopy } from "./icons";
 
 /**
  * Copy-to-clipboard for the agent-facing markdown.
@@ -70,7 +70,7 @@ export function CopyForAgentButton({
   const button = iconOnly ? (
     <button
       type="button"
-      title={copied ? "copied ✓" : title}
+      title={copied ? "copied" : title}
       aria-label={title}
       data-testid={testId}
       data-copied={copied ? "1" : undefined}
@@ -82,7 +82,7 @@ export function CopyForAgentButton({
         void copy(text());
       }}
     >
-      {copied ? <span className="text-2xs leading-none">✓</span> : <IconCopy width={11} height={11} />}
+      {copied ? <IconCheck width={11} height={11} /> : <IconCopy width={11} height={11} />}
     </button>
   ) : (
     <button
@@ -98,7 +98,14 @@ export function CopyForAgentButton({
         void copy(text());
       }}
     >
-      {copied ? "copied ✓" : (label ?? "copy for agent")}
+      {copied ? (
+        <>
+          <IconCheck width={11} height={11} />
+          copied
+        </>
+      ) : (
+        (label ?? "copy for agent")
+      )}
     </button>
   );
 
@@ -190,7 +197,7 @@ function CopyFallback({ text, onClose }: { text: string; onClose: () => void }) 
       onClick={onClose}
     >
       <div
-        className="surface w-full max-w-2xl rounded-md p-3 shadow-2xl"
+        className="surface w-full max-w-2xl rounded-md p-3 elev-3"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose();
@@ -202,7 +209,7 @@ function CopyFallback({ text, onClose }: { text: string; onClose: () => void }) 
             The clipboard was not available — the text is selected, press ⌘C.
           </span>
           <button type="button" className="ml-auto text-xs" onClick={onClose} style={{ color: "var(--fg-faint)" }}>
-            ✕
+            <IconClose width={10} height={10} />
           </button>
         </div>
         <textarea

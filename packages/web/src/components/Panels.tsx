@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { MigrationReport, Staleness, SyncResult } from "../api/types";
 import { stalenessReasonText } from "../lib/staleness";
-import { IconRefresh } from "./icons";
+import { IconClose, IconRefresh } from "./icons";
 
 export function DismissiblePanel({
   tone = "neutral",
@@ -29,11 +29,11 @@ export function DismissiblePanel({
         </span>
         <button
           type="button"
-          className="ml-auto rounded px-1.5 py-px text-2xs"
+          className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs"
           style={{ color: "var(--fg-muted)" }}
           onClick={onDismiss}
         >
-          dismiss ✕
+          dismiss <IconClose width={10} height={10} />
         </button>
       </div>
       {children ? <div className="mt-1.5">{children}</div> : null}
@@ -84,12 +84,12 @@ export function StalenessHint({
       </button>
       <button
         type="button"
-        className="rounded px-1.5 py-px text-2xs"
+        className="inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs"
         data-testid="staleness-dismiss"
         style={{ color: "var(--fg-muted)" }}
         onClick={onDismiss}
       >
-        dismiss ✕
+        dismiss <IconClose width={10} height={10} />
       </button>
     </div>
   );

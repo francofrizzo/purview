@@ -13,6 +13,7 @@ import { compareCommentOrder } from "../lib/comments";
 import { QuoteButton } from "./ChatPanel";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
 import { StatusChip } from "./FinishReview";
+import { IconClose } from "./icons";
 import { Markdown } from "./Markdown";
 
 /**
@@ -79,7 +80,7 @@ export function CommentComposer({
 
   return (
     <div
-      className="surface absolute bottom-3 right-4 z-40 w-[26rem] rounded-md p-2.5 shadow-2xl"
+      className="surface absolute bottom-3 right-4 z-40 w-[26rem] rounded-md p-2.5 elev-3"
       onKeyDown={(e) => {
         if (e.key === "Escape") onCancel();
         if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && body.trim()) onSubmit(body.trim());
@@ -91,7 +92,7 @@ export function CommentComposer({
           {fileLevel ? "whole file" : `:${target.line} ${target.side === "LEFT" ? "(old)" : "(new)"}`}
         </span>
         <button type="button" className="ml-auto" onClick={onCancel} style={{ color: "var(--fg-faint)" }}>
-          ✕
+          <IconClose width={10} height={10} />
         </button>
       </div>
       <textarea
@@ -393,7 +394,7 @@ export function DraftsDrawer({
             {local.length} draft · {pushed.length} pushed · {submitted.length} submitted
           </span>
           <button type="button" className="ml-auto text-xs" onClick={onClose} style={{ color: "var(--fg-faint)" }}>
-            ✕
+            <IconClose width={10} height={10} />
           </button>
         </div>
         {bundle ? (

@@ -30,7 +30,16 @@ import {
 } from "../lib/settings";
 import { Markdown } from "./Markdown";
 import { useModalBackground } from "./Modal";
-import { IconArrowDown, IconChat, IconFile, IconQuote, IconSettings, IconSpinner } from "./icons";
+import {
+  IconArrowDown,
+  IconChat,
+  IconChevron,
+  IconClose,
+  IconFile,
+  IconQuote,
+  IconSettings,
+  IconSpinner,
+} from "./icons";
 
 const STARTERS = [
   "Summarize the riskiest changes in this PR.",
@@ -83,7 +92,7 @@ export function RefChip({
           className="-mr-0.5 flex-none px-0.5 leading-none"
           style={{ color: "var(--fg-faint)" }}
         >
-          ✕
+          <IconClose width={9} height={9} />
         </button>
       ) : null}
     </span>
@@ -147,12 +156,12 @@ function MessageBlock({
             <div className="mb-1.5">
               <button
                 type="button"
-                className="text-2xs"
+                className="inline-flex items-center gap-1 text-2xs"
                 style={{ color: "var(--fg-faint)" }}
                 onClick={() => setToolsOpen((v) => !v)}
               >
-                {toolsOpen ? "▾" : "▸"} {message.tools.length} tool{" "}
-                {message.tools.length === 1 ? "call" : "calls"}
+                <IconChevron open={toolsOpen} width={9} height={9} />
+                {message.tools.length} tool {message.tools.length === 1 ? "call" : "calls"}
               </button>
               {toolsOpen ? (
                 <div className="mt-0.5 space-y-0.5">
@@ -324,7 +333,7 @@ export function ChatPanel({
           aria-label="Close chat"
           style={{ color: "var(--fg-faint)" }}
         >
-          ✕
+          <IconClose width={11} height={11} />
         </button>
       </header>
 
@@ -446,7 +455,7 @@ export function ChatPanel({
             setPinned(true);
             scrollToBottom("smooth");
           }}
-          className="absolute bottom-24 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-1 text-2xs shadow-lg"
+          className="absolute bottom-24 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-1 text-2xs elev-2"
           style={{ background: "var(--bg-hover)", border: "1px solid var(--border-strong)", color: "var(--fg)" }}
         >
           <IconArrowDown width={10} height={10} />

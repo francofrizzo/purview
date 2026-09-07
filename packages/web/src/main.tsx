@@ -3,6 +3,9 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { registerSW } from "virtual:pwa-register";
+// Bundled UI face: served by Purview itself, so the chrome looks the same on a
+// machine with no fonts installed. Weight axis only — width stays default.
+import "@fontsource-variable/ibm-plex-sans/index.css";
 import { App } from "./App";
 import { bootstrapAppearance, SettingsProvider } from "./lib/settings";
 import "./index.css";

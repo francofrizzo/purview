@@ -5,7 +5,14 @@ import { isJobLive } from "../api/types";
 import { AnalysisChip } from "./Analysis";
 import { ChatButton } from "./ChatPanel";
 import { useModalBackground } from "./Modal";
-import { IconComment, IconMore, IconRefresh, IconSettings, IconUpload } from "./icons";
+import {
+  IconArrowLeft,
+  IconComment,
+  IconMore,
+  IconRefresh,
+  IconSettings,
+  IconUpload,
+} from "./icons";
 
 export function TopBar({
   detail,
@@ -57,8 +64,13 @@ export function TopBar({
       className="flex flex-none items-center gap-3 border-b px-3 py-2"
       style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
     >
-      <Link to="/" className="text-xs" style={{ color: "var(--fg-faint)" }} title="All pull requests">
-        ←
+      <Link
+        to="/"
+        className="rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
+        style={{ color: "var(--fg-faint)" }}
+        title="All pull requests"
+      >
+        <IconArrowLeft width={12} height={12} />
       </Link>
       <div className="flex min-w-0 items-baseline gap-2">
         <a
@@ -203,7 +215,7 @@ function OverflowMenu({ items }: { items: MenuItem[] }) {
         <IconMore width={12} height={12} />
       </button>
       {open ? (
-        <div className="surface absolute right-0 top-7 z-40 w-60 rounded-md p-1 shadow-xl">
+        <div className="surface absolute right-0 top-7 z-40 w-60 rounded-md p-1 elev-2">
           {items.map((item) => (
             <button
               key={item.label}

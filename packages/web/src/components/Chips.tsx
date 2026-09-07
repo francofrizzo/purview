@@ -1,5 +1,5 @@
 import type { Attention, Kind, PrGithubState, ReviewDecision, RiskFlag } from "../api/types";
-import { RISK_META } from "./icons";
+import { IconCheck, RISK_META } from "./icons";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
 // distinguishable — and coherent with the syntax colors — on every theme.
@@ -39,8 +39,11 @@ export function PrStateChip({ state }: { state: PrGithubState }) {
   );
 }
 
-const DECISION_STYLE: Record<ReviewDecision, { label: string; color: string; title: string }> = {
-  approved: { label: "approved ✓", color: "var(--ok)", title: "Approved on GitHub" },
+const DECISION_STYLE: Record<
+  ReviewDecision,
+  { label: string; check?: boolean; color: string; title: string }
+> = {
+  approved: { label: "approved", check: true, color: "var(--ok)", title: "Approved on GitHub" },
   changes_requested: {
     label: "changes requested",
     color: "var(--warn)",
@@ -68,6 +71,7 @@ export function ReviewDecisionChip({ decision }: { decision: ReviewDecision | nu
       title={s.title}
     >
       {s.label}
+      {s.check ? <IconCheck width={10} height={10} /> : null}
     </span>
   );
 }

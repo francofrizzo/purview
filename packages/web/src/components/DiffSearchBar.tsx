@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import type { DiffSearch } from "../lib/useDiffSearch";
-import { IconCaret, IconSearch } from "./icons";
+import { IconCaret, IconClose, IconSearch } from "./icons";
 
 /**
  * Compact find bar docked above the diff. It deliberately hijacks Cmd/Ctrl+F:
@@ -99,7 +99,7 @@ export function DiffSearchBar({
         style={{ color: "var(--fg-faint)" }}
         onClick={search.close}
       >
-        ✕
+        <IconClose width={10} height={10} />
       </button>
     </div>
   );

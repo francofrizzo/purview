@@ -35,7 +35,7 @@ export function ReclassifyPopover({
   return (
     <div
       ref={ref}
-      className="surface absolute right-1 top-6 z-30 w-56 rounded-md p-2 shadow-xl"
+      className="surface absolute right-1 top-6 z-30 w-56 rounded-md p-2 elev-2"
       onClick={(e) => e.stopPropagation()}
     >
       {onAskClaude ? (

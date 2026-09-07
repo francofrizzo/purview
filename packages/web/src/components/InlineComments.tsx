@@ -16,7 +16,7 @@ import { QuoteButton } from "./ChatPanel";
 import { CopyForAgentButton } from "./CopyForAgent";
 import { CommentBody, commentRef, type EditComment } from "./Drafts";
 import { StatusChip } from "./FinishReview";
-import { IconComment } from "./icons";
+import { IconClose, IconComment } from "./icons";
 
 /** The actions an inline comment offers; all optional, all reused from elsewhere. */
 export interface InlineCommentActions {
@@ -143,7 +143,7 @@ export function InlineCommentList({
           title="Collapse these comments"
           onClick={onCollapse}
         >
-          ✕
+          <IconClose width={10} height={10} />
         </button>
       </div>
       <ul className="flex flex-col gap-2">

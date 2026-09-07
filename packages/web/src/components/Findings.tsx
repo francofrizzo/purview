@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Finding, ReviewUnit } from "../api/types";
 import { findingsBadge, sortFindings } from "../lib/diffModel";
+import { IconCheck, IconWarning } from "./icons";
 
 /**
  * Findings are what the analysis *verified* in the local checkout, as opposed
@@ -10,11 +11,11 @@ import { findingsBadge, sortFindings } from "../lib/diffModel";
  */
 
 const SEVERITY = {
-  warning: { icon: "⚠", color: "var(--warn)", bg: "var(--warn-soft)", label: "warning" },
-  note: { icon: "✓", color: "var(--ok)", bg: "var(--ok-soft)", label: "verified" },
+  warning: { icon: IconWarning, color: "var(--warn)", bg: "var(--warn-soft)", label: "warning" },
+  note: { icon: IconCheck, color: "var(--ok)", bg: "var(--ok-soft)", label: "verified" },
 } as const;
 
-/** Sidebar badge: `⚠ n` when anything is a warning, else the quieter `✓n`. */
+/** Sidebar badge: warning-triangle + n when anything is a warning, else the quieter check + n. */
 export function FindingsBadge({ unit }: { unit: Pick<ReviewUnit, "findings"> }) {
   const badge = findingsBadge(unit);
   if (!badge) return null;
@@ -38,7 +39,8 @@ export function FindingsBadge({ unit }: { unit: Pick<ReviewUnit, "findings"> }) 
           : { color: s.color, background: "transparent", opacity: 0.8 }
       }
     >
-      {badge.severity === "warning" ? `${s.icon} ${badge.count}` : `${s.icon}${badge.count}`}
+      <s.icon width={10} height={10} />
+      {badge.count}
     </span>
   );
 }
@@ -64,8 +66,13 @@ export function UnitFindings({ findings }: { findings: Finding[] | undefined }) 
         const s = SEVERITY[f.severity] ?? SEVERITY.note;
         return (
           <li key={`${f.severity}-${i}-${f.evidence}`} className="flex items-start gap-1.5 text-2xs leading-4">
-            <span className="flex-none" style={{ color: s.color }} title={s.label} aria-label={s.label}>
-              {s.icon}
+            <span
+              className="flex-none pt-[3px]"
+              style={{ color: s.color }}
+              title={s.label}
+              aria-label={s.label}
+            >
+              <s.icon width={10} height={10} />
             </span>
             <span className="min-w-0">
               <span style={{ color: "var(--fg-muted)" }}>{f.text}</span>{" "}

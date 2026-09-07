@@ -25,7 +25,7 @@ import { DiffOfDiffs } from "./DiffOfDiffs";
 import type { CommentTarget } from "./Drafts";
 import { CommentBubble, InlineCommentList, type InlineCommentActions } from "./InlineComments";
 import { MiddleTruncate } from "./Truncate";
-import { IconCheck, IconChevron, IconComment, IconQuote, IconSplit, IconUnified, IconWrap } from "./icons";
+import { IconCheck, IconChevron, IconClose, IconComment, IconQuote, IconSplit, IconUnified, IconWrap } from "./icons";
 
 export interface HunkEntry {
   hunk: Hunk;
@@ -774,7 +774,7 @@ export function DiffPane({
     <div className="relative flex h-full flex-col">
       {selection && onQuote ? (
         <div
-          className="surface absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full px-2.5 py-1 shadow-2xl"
+          className="surface absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full px-2.5 py-1 elev-2"
           data-testid="quote-selection"
         >
           <span className="font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
@@ -798,7 +798,7 @@ export function DiffPane({
             onClick={() => setSelection(null)}
             title="Clear the selection (esc)"
           >
-            ✕
+            <IconClose width={10} height={10} />
           </button>
         </div>
       ) : null}

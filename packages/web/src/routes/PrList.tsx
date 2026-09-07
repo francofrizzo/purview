@@ -112,7 +112,7 @@ function RepoSection({ group }: { group: RepoGroup }) {
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
 
   return (
-    <section className="surface overflow-hidden rounded-md">
+    <section className="surface elev-1 overflow-hidden rounded-md">
       <header
         className="flex items-center gap-2 border-b px-3 py-1.5"
         style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}

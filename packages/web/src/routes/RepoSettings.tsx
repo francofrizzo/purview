@@ -14,7 +14,7 @@ import { CLAUDE_MODELS } from "../api/types";
 import type { ClaudeModel, ConfigSource, RepoConfig } from "../api/types";
 import { Markdown } from "../components/Markdown";
 import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
-import { IconChevron, IconFile, IconSettings } from "../components/icons";
+import { IconCheck, IconChevron, IconFile, IconSettings } from "../components/icons";
 
 /** Long committed rubrics start collapsed; short ones are shown whole. */
 const COLLAPSE_OVER_CHARS = 600;
@@ -520,8 +520,13 @@ function SavedFlash({ shown, error }: { shown: boolean; error: unknown }) {
   }
   if (!shown) return null;
   return (
-    <span className="text-2xs" style={{ color: "var(--ok)" }} data-testid="saved-flash">
-      saved ✓
+    <span
+      className="inline-flex items-center gap-1 text-2xs"
+      style={{ color: "var(--ok)" }}
+      data-testid="saved-flash"
+    >
+      <IconCheck width={10} height={10} />
+      saved
     </span>
   );
 }

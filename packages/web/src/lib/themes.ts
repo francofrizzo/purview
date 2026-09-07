@@ -66,6 +66,9 @@ export const TOKEN_NAMES = [
   "kind-tests-soft",
   "kind-docs",
   "kind-docs-soft",
+  "shadow-1",
+  "shadow-2",
+  "shadow-3",
 ] as const;
 
 export type TokenName = (typeof TOKEN_NAMES)[number];
@@ -196,6 +199,19 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "kind-tests-soft": rgba(palette.green, softAlpha),
     "kind-docs": fade(0.3, 3.0),
     "kind-docs-soft": rgba(fade(0.3, 3.0), dark ? 0.12 : 0.1),
+
+    // Elevation. One scale for the whole app: 1 = resting card, 2 = popover /
+    // floating pill, 3 = modal / drawer. Dark surfaces need much stronger
+    // shadow alphas to register at all; light ones go blue-gray and soft.
+    "shadow-1": dark
+      ? "0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.22)"
+      : "0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.07)",
+    "shadow-2": dark
+      ? "0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.35)"
+      : "0 4px 12px rgba(16, 24, 40, 0.1), 0 2px 4px rgba(16, 24, 40, 0.06)",
+    "shadow-3": dark
+      ? "0 16px 40px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.4)"
+      : "0 16px 40px rgba(16, 24, 40, 0.16), 0 4px 12px rgba(16, 24, 40, 0.08)",
   };
 }
 

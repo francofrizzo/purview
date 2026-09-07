@@ -68,6 +68,24 @@ export const IconChevron = ({ open, ...p }: P & { open?: boolean }) => (
   </svg>
 );
 
+export const IconClose = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="m4 4 8 8M12 4l-8 8" />
+  </svg>
+);
+
+export const IconArrowLeft = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M13 8H3M7 3.5 2.5 8 7 12.5" />
+  </svg>
+);
+
+export const IconWarning = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M8 2.2 14.6 13.4H1.4zM8 6.5v3.2M8 12v.1" />
+  </svg>
+);
+
 export const IconCheck = (p: P) => (
   <svg {...base} {...p}>
     <path d="M3 8.5 6.5 12 13 4.5" />

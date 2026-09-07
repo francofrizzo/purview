@@ -56,8 +56,10 @@ export const LEGACY_WRAP_KEY = "reviewer.diffWrap";
 
 export const CODE_FONT_FALLBACK =
   'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace';
+// "IBM Plex Sans Variable" is bundled (see main.tsx); the plain name catches a
+// locally installed Plex during the flash before the bundled face loads.
 export const UI_FONT_FALLBACK =
-  'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
+  '"IBM Plex Sans Variable", "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif';
 
 export const MIN_CHAT_PANEL_WIDTH = 320;
 export const MAX_CHAT_PANEL_WIDTH = 760;

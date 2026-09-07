@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate, type Location } from "react-router-dom";
+import { IconClose } from "./icons";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -56,7 +57,7 @@ export function Modal({
   title: ReactNode;
   subtitle?: ReactNode;
   icon?: ReactNode;
-  /** Buttons rendered next to the close ✕. */
+  /** Buttons rendered next to the close button. */
   actions?: ReactNode;
   onClose: () => void;
   children: ReactNode;
@@ -164,7 +165,7 @@ export function Modal({
           marginTop: "clamp(0px, 6vh, 4rem)",
           background: "var(--bg-raised)",
           border: "1px solid var(--border-strong)",
-          boxShadow: "0 24px 60px -12px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,0,0,0.25)",
+          boxShadow: "var(--shadow-3)",
           opacity: entered ? 1 : 0,
           transform: entered ? "scale(1)" : "scale(0.985)",
           transition: "opacity 120ms ease-out, transform 120ms ease-out",
@@ -195,7 +196,7 @@ export function Modal({
               aria-label="Close"
               onClick={onClose}
             >
-              ✕
+              <IconClose width={11} height={11} />
             </button>
           </div>
         </header>
