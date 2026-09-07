@@ -35,8 +35,10 @@ export interface ReviewStatus {
     included: {
       id: string;
       file: string;
-      line: number;
-      side: "LEFT" | "RIGHT";
+      /** "file" comments carry no line/side. */
+      subjectType: "line" | "file";
+      line?: number;
+      side?: "LEFT" | "RIGHT";
       body: string;
       status: string;
     }[];
@@ -85,10 +87,13 @@ export function reviewStatus(
       counts: commentCounts(comments),
       included: comments
         .filter((c) => c.status !== "submitted")
-        .sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line)
+        // File-level comments sort ahead of the file's line comments: they are
+        // about the file as a whole.
+        .sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? -1) - (b.line ?? -1))
         .map((c) => ({
           id: c.id,
           file: c.file,
+          subjectType: c.subjectType,
           line: c.line,
           side: c.side,
           body: c.body,

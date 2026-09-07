@@ -201,7 +201,9 @@ export function resolveRefs(key: PrKey, refs: ChatRef[], root = stateRoot()): st
         const comment = readComments(key, root).find((c) => c.id === ref.id);
         if (!comment) fail(`no local comment "${ref.id}"`);
         blocks.push(
-          `### Draft comment on ${comment!.file}:${comment!.line} (${comment!.side}, ${comment!.status})\n${comment!.body}`,
+          comment!.subjectType === "file"
+            ? `### Draft comment on ${comment!.file} (file-level, ${comment!.status})\n${comment!.body}`
+            : `### Draft comment on ${comment!.file}:${comment!.line} (${comment!.side}, ${comment!.status})\n${comment!.body}`,
         );
         break;
       }

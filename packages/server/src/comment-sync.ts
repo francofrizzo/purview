@@ -9,6 +9,7 @@ import {
   listPullRequestComments,
   listReviewComments,
   type PendingReview,
+  type LineReviewCommentInput,
   type ReviewCommentInput,
 } from "./github-review.js";
 import { clearPendingReview, patchReviewDraft, readReviewDraft } from "./review-store.js";
@@ -36,12 +37,62 @@ export function headShaOf(key: PrKey, root?: string): string | undefined {
   }
 }
 
-const toInput = (c: Comment): ReviewCommentInput => ({
+/** Narrowed variant for the REST create payload, which takes line comments only. */
+const toLineInput = (c: Comment): LineReviewCommentInput => ({
+  subjectType: "line",
   path: c.file,
-  line: c.line,
-  side: c.side,
+  line: c.line!,
+  side: c.side!,
   body: c.body,
 });
+
+const toInput = (c: Comment): ReviewCommentInput =>
+  c.subjectType === "file"
+    ? { subjectType: "file", path: c.file, body: c.body }
+    : {
+        subjectType: "line",
+        path: c.file,
+        line: c.line!,
+        side: c.side!,
+        body: c.body,
+      };
+
+/**
+ * Append drafts to an existing pending review one thread at a time, recording
+ * each success as it lands so a failure halfway through does not lose track of
+ * what already exists remotely. Shared by both branches of the push: the
+ * "created" branch also comes through here for its file-level drafts, which
+ * the REST create payload cannot express (see github-review.ts).
+ */
+function appendDrafts(
+  key: PrKey,
+  reviewNodeId: string,
+  drafts: Comment[],
+  root?: string,
+): { pushed: number; failure?: ReviewError } {
+  let pushed = 0;
+  for (const draft of drafts) {
+    try {
+      const res = appendCommentToPendingReview(key, reviewNodeId, toInput(draft));
+      markPushed(
+        key,
+        [
+          {
+            id: draft.id,
+            githubCommentId: res.commentId,
+            githubCommentNodeId: res.commentNodeId,
+            githubThreadId: res.threadId,
+          },
+        ],
+        root,
+      );
+      pushed += 1;
+    } catch (err) {
+      return { pushed, failure: classifyGhReviewError(err) };
+    }
+  }
+  return { pushed };
+}
 
 /**
  * Reconcile the viewer's pending review before writing to it.
@@ -107,7 +158,13 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
           errorCode: "no_commit_id",
         };
       }
-      const created = createPendingReview(key, commitId, drafts.map(toInput));
+      // The REST create payload has no `subject_type`, so file-level drafts
+      // cannot ride along in it; they are appended to the review it creates,
+      // via the GraphQL mutation that can express them. Line drafts still go
+      // out in the single create call.
+      const lineDrafts = drafts.filter((c) => c.subjectType === "line");
+      const fileDrafts = drafts.filter((c) => c.subjectType === "file");
+      const created = createPendingReview(key, commitId, lineDrafts.map(toLineInput));
       // The create response carries no per-comment ids; this read backfills
       // both the REST databaseId (githubCommentId) and the GraphQL node id
       // (githubCommentNodeId — REST comment payloads carry it as `node_id`)
@@ -119,10 +176,13 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       // both would silently mis-attribute one of them. Removing each match
       // as it's used keeps the pairing 1:1 even when path+line repeats.
       const remote = listReviewComments(key, created.databaseId);
-      const remaining = [...remote];
+      // File-level remote comments can never be the match for a line draft,
+      // and carry no line to match on anyway — exclude them explicitly so a
+      // null line never pairs with a line draft by accident.
+      const remaining = remote.filter((r) => r.subject_type !== "file");
       markPushed(
         key,
-        drafts.map((c) => {
+        lineDrafts.map((c) => {
           const idx = remaining.findIndex(
             (r) => r.path === c.file && (r.line ?? r.original_line) === c.line,
           );
@@ -140,42 +200,21 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
         },
         root,
       );
+      const appended = appendDrafts(key, created.nodeId, fileDrafts, root);
       return {
-        ok: true,
-        pushed: drafts.length,
+        ok: !appended.failure,
+        pushed: lineDrafts.length + appended.pushed,
         mode: "created",
         reviewUrl: created.htmlUrl,
         pendingReviewId: created.nodeId,
         pendingReviewDatabaseId: created.databaseId,
         counts: commentCounts(readComments(key, root)),
+        error: appended.failure?.message,
+        errorCode: appended.failure?.code,
       };
     }
 
-    // Append one thread at a time; record each success as we go so a failure
-    // halfway through does not lose track of what already landed remotely.
-    let pushed = 0;
-    let failure: ReviewError | undefined;
-    for (const draft of drafts) {
-      try {
-        const res = appendCommentToPendingReview(key, pending.nodeId, toInput(draft));
-        markPushed(
-          key,
-          [
-            {
-              id: draft.id,
-              githubCommentId: res.commentId,
-              githubCommentNodeId: res.commentNodeId,
-              githubThreadId: res.threadId,
-            },
-          ],
-          root,
-        );
-        pushed += 1;
-      } catch (err) {
-        failure = classifyGhReviewError(err);
-        break;
-      }
-    }
+    const { pushed, failure } = appendDrafts(key, pending.nodeId, drafts, root);
     patchReviewDraft(key, { lastSyncedAt: new Date().toISOString() }, root);
     return {
       ok: !failure,

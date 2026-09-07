@@ -150,6 +150,124 @@ describe("comments CRUD", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  /* --------------------------------------------------- file-level comments */
+
+  const post = (body: unknown) =>
+    app.request(`/api/prs/${encodedKey}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  it("creates a file-level comment from {file, body} with no line", async () => {
+    const res = await post({ file: "src/foo.ts", body: "This module needs a header doc" });
+    expect(res.status).toBe(201);
+    const created = (await res.json()).comment;
+    expect(created.subjectType).toBe("file");
+    expect(created.line).toBeUndefined();
+    expect(created.side).toBeUndefined();
+    expect(created.status).toBe("draft");
+
+    const listed = (await (await app.request(`/api/prs/${encodedKey}/comments`)).json()).comments;
+    expect(listed).toEqual([expect.objectContaining({ id: created.id, subjectType: "file" })]);
+  });
+
+  it("creates a file-level comment from an explicit subjectType", async () => {
+    const res = await post({ file: "src/foo.ts", subjectType: "file", body: "whole file" });
+    expect(res.status).toBe(201);
+    expect((await res.json()).comment.subjectType).toBe("file");
+  });
+
+  it("still tags an ordinary {file, line, side} comment as a line comment", async () => {
+    const res = await post({ file: "src/foo.ts", line: 2, side: "RIGHT", body: "Why?" });
+    expect(res.status).toBe(201);
+    const created = (await res.json()).comment;
+    expect(created.subjectType).toBe("line");
+    expect(created.line).toBe(2);
+  });
+
+  it("edits and deletes a file-level draft like any other comment", async () => {
+    const created = (await (await post({ file: "src/foo.ts", body: "first" })).json()).comment;
+
+    const patched = await app.request(`/api/prs/${encodedKey}/comments/${created.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: "second" }),
+    });
+    expect(patched.status).toBe(200);
+    const edited = (await patched.json()).comment;
+    expect(edited.body).toBe("second");
+    expect(edited.subjectType).toBe("file");
+    expect(edited.line).toBeUndefined();
+
+    const del = await app.request(`/api/prs/${encodedKey}/comments/${created.id}`, {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(200);
+    const listed = (await (await app.request(`/api/prs/${encodedKey}/comments`)).json()).comments;
+    expect(listed).toHaveLength(0);
+  });
+
+  /** subjectType is the discriminator, so every mismatch with line/side is a 400. */
+  it.each([
+    ["file + line", { file: "src/foo.ts", subjectType: "file", line: 2, body: "x" }],
+    [
+      "file + line + side",
+      { file: "src/foo.ts", subjectType: "file", line: 2, side: "RIGHT", body: "x" },
+    ],
+    ["file + side", { file: "src/foo.ts", subjectType: "file", side: "RIGHT", body: "x" }],
+    ["line comment with no side", { file: "src/foo.ts", line: 2, body: "x" }],
+    ["explicit line with no line number", { file: "src/foo.ts", subjectType: "line", body: "x" }],
+    [
+      "explicit line with no side",
+      { file: "src/foo.ts", subjectType: "line", line: 2, body: "x" },
+    ],
+    ["side but no line", { file: "src/foo.ts", side: "RIGHT", body: "x" }],
+    ["no file", { body: "x" }],
+    ["empty body, file-level", { file: "src/foo.ts", body: "" }],
+    ["bogus subjectType", { file: "src/foo.ts", subjectType: "hunk", body: "x" }],
+  ])("rejects %s", async (_label, body) => {
+    const res = await post(body);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("validation_error");
+  });
+
+  it("reads a pre-file-level comments.json as line comments (no subjectType on disk)", async () => {
+    const file = path.join(root, key.host, key.owner, key.repo, String(key.number), "comments.json");
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      JSON.stringify([
+        {
+          id: "legacy-1",
+          file: "src/foo.ts",
+          line: 2,
+          side: "RIGHT",
+          body: "old comment",
+          createdAt: "2024-01-01T00:00:00.000Z",
+          status: "draft",
+        },
+        {
+          id: "legacy-2",
+          file: "src/foo.ts",
+          line: 3,
+          side: "LEFT",
+          body: "old pushed comment",
+          createdAt: "2024-01-01T00:00:00.000Z",
+          status: "submitted",
+          githubCommentId: 99,
+        },
+      ]),
+    );
+
+    const listed = (await (await app.request(`/api/prs/${encodedKey}/comments`)).json()).comments;
+    expect(listed).toEqual([
+      expect.objectContaining({ id: "legacy-1", subjectType: "line", line: 2, side: "RIGHT" }),
+      // status normalization (submitted without submittedAt -> pushed) still applies
+      expect.objectContaining({ id: "legacy-2", subjectType: "line", status: "pushed" }),
+    ]);
+  });
 });
 
 describe("GET /api/prs/:key/hunks/:id/diff-of-diffs", () => {

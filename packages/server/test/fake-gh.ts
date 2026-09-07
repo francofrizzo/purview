@@ -10,8 +10,11 @@ export interface FakeReviewComment {
    *  silently "working" because both stringify the same way. */
   node_id: string;
   path: string;
-  line: number;
-  side: string;
+  /** absent on a file-level comment, exactly as GitHub returns it */
+  line?: number;
+  side?: string;
+  /** GitHub's `subject_type`: "line" or "file". */
+  subject_type: string;
   body: string;
 }
 
@@ -38,6 +41,8 @@ export interface FakeGh {
   fail: (match: string, message: string, once?: boolean, after?: () => void) => void;
   /** convenience: how many `POST .../pulls/{n}/reviews` calls were made */
   createReviewCalls: () => number;
+  /** parsed request bodies of the `POST .../pulls/{n}/reviews` calls, in order */
+  createReviewPayloads: () => Record<string, unknown>[];
   deletedCommentIds: number[];
   install: () => void;
 }
@@ -63,8 +68,20 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
           c.includes("POST") &&
           c.some((a) => /\/pulls\/\d+\/reviews$/.test(a)),
       ).length,
+    createReviewPayloads: () =>
+      sent
+        .filter(
+          (e) =>
+            e.args.includes("--method") &&
+            e.args.includes("POST") &&
+            e.args.some((a) => /\/pulls\/\d+\/reviews$/.test(a)),
+        )
+        .map((e) => (e.input ? (JSON.parse(e.input) as Record<string, unknown>) : {})),
     install: () => setGhRunner(runner),
   };
+
+  /** argv + stdin of every call, so tests can assert on outgoing payloads. */
+  const sent: { args: string[]; input?: string }[] = [];
 
   const failures: {
     match: string;
@@ -77,6 +94,7 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
 
   const runner: GhRunner = (args, input) => {
     state.calls.push([...args]);
+    sent.push({ args: [...args], input });
     const joined = args.join(" ");
 
     const failure = failures.find((f) => joined.includes(f.match));
@@ -129,12 +147,19 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
       const review = state.reviews.find((r) => r.node_id === reviewId);
       if (!review) throw new Error(`gh ${joined} failed: HTTP 404 review not found`);
       const id = nextCommentId++;
+      // subjectType FILE => no line/side, mirroring the real mutation, which
+      // types both as nullable and ignores them for a file-level thread.
+      const fileLevel = field("subjectType") === "FILE";
+      const rawLine = field("line");
+      if (!fileLevel && rawLine === undefined) {
+        throw new Error(`gh ${joined} failed: HTTP 422 line is required for a LINE thread`);
+      }
       review.comments.push({
         id,
         node_id: `PRRC_${id}`,
         path: field("path")!,
-        line: Number(field("line")),
-        side: field("side")!,
+        subject_type: fileLevel ? "file" : "line",
+        ...(fileLevel ? {} : { line: Number(rawLine), side: field("side")! }),
         body: field("body")!,
       });
       return JSON.stringify({
@@ -230,11 +255,26 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
         html_url: `https://github.com/acme/widgets/pull/7#pullrequestreview-${id}`,
         user: { login: state.login },
         comments: ((body.comments as Record<string, unknown>[]) ?? []).map((c) => {
+          // The REST create payload has no `subject_type` (see the published
+          // schema for this endpoint), so `line` is effectively required —
+          // reject a file-level entry here the way GitHub would, rather than
+          // letting a wrong payload pass unnoticed.
+          if (c.line === undefined || c.line === null) {
+            throw new Error(
+              `gh ${joined} failed: HTTP 422 Unprocessable Entity: Validation Failed — comments[].line is required`,
+            );
+          }
+          if (c.subject_type !== undefined) {
+            throw new Error(
+              `gh ${joined} failed: HTTP 422 Unprocessable Entity: comments[].subject_type is not a permitted key`,
+            );
+          }
           const commentId = nextCommentId++;
           return {
             id: commentId,
             node_id: `PRRC_${commentId}`,
             path: String(c.path),
+            subject_type: "line",
             line: Number(c.line),
             side: String(c.side),
             body: String(c.body),

@@ -193,7 +193,9 @@ POST /api/prs/:key/units/:id/viewed
 POST /api/prs/:key/units/:id           # patch unit (reclassify -> also logs classification-corrected)
 POST /api/prs/:key/archive {archived}  # shelve/unshelve a PR -> {ok, archived}
 POST /api/prs/:key/sync                # push viewed files + un-pushed draft comments to GitHub
-GET/POST /api/prs/:key/comments        # local drafts
+GET/POST /api/prs/:key/comments        # local drafts; POST {file, line, side, body} for a line
+                                       #   comment, {file, body} (or subjectType:"file") for a
+                                       #   file-level one
 PATCH /api/prs/:key/comments/:id  {body, confirm?}  # edit body: draft = local only; pushed/submitted = local + best-effort GraphQL remote update (submitted requires confirm: true)
 DELETE /api/prs/:key/comments/:id      # delete locally; best-effort delete on GitHub if pushed
 GET  /api/prs/:key/review              # local draft body + remote pending status + counts + readiness
@@ -383,6 +385,19 @@ also carry `analysisJob: JobRecord|null`.
 
 ## Review lifecycle
 
+A comment is anchored either to a diff line or to a whole file — GitHub's own `subject_type`
+distinction — and `comments.json` records it as an explicit discriminator:
+
+```jsonc
+{ "subjectType": "line", "file": "src/a.ts", "line": 12, "side": "RIGHT", "body": "…" }
+{ "subjectType": "file", "file": "src/a.ts", "body": "…" }            // no line, no side
+```
+
+`subjectType: "file"` requires `file` and forbids `line`/`side`; `"line"` requires both. It is
+optional on the wire (`POST /comments` infers `"file"` when no `line` is given) and optional on
+disk: a stored comment without it is read as a line comment, so pre-existing `comments.json`
+files keep working untouched.
+
 A comment moves through three states, tracked in `comments.json`:
 
 ```
@@ -401,9 +416,23 @@ GitHub allows **one pending review per user per PR**, so every push reconciles f
 3. **no pending review** -> `POST /pulls/{n}/reviews` with `{commit_id, comments}` and no
    `event`, creating one;
 4. **pending review exists** -> append each draft with GraphQL
-   `addPullRequestReviewThread(pullRequestReviewId, path, line, side, body)`. REST has no way
-   to grow an existing pending review: creating another 422s, and `POST /pulls/{n}/comments`
-   posts publicly outside the review.
+   `addPullRequestReviewThread(pullRequestReviewId, path, line, side, body, subjectType)`. REST
+   has no way to grow an existing pending review: creating another 422s, and `POST
+   /pulls/{n}/comments` posts publicly outside the review.
+
+**File-level comments go out over GraphQL in both cases.** The create-review endpoint's
+`comments[]` items are documented as `{path, position, body, line, side, start_line,
+start_side}` — no `subject_type` (unlike the standalone `POST /pulls/{n}/comments`, which does
+take `subject_type: line|file`), so a whole-file comment cannot ride in the create payload.
+`addPullRequestReviewThread` *can* express one: `subjectType` is a
+`PullRequestReviewThreadSubjectType` (`LINE|FILE`) and `line`/`side` are nullable. So a mixed
+batch with no pending review creates the review with only the line comments (an empty
+`comments: []` when there are none) and then appends each file-level comment to it; with a
+pending review, every draft takes the append path as before. Line comments still backfill their
+ids from `GET /pulls/{n}/reviews/{id}/comments`, matching on path+line and skipping remote
+entries with `subject_type: "file"`; appended comments get their ids straight from the
+mutation. Edit (GraphQL `updatePullRequestReviewComment`) and delete (`DELETE
+/pulls/comments/{id}`) are id-based and need no special casing for file-level comments.
 
 Both ids, plus the review body, are persisted in `review.json`:
 
@@ -428,7 +457,7 @@ returns its comments to `draft`, so nothing the reader wrote is lost.
 
 - Left sidebar: review units ordered by `order`, grouped by attention (must-read / skim / skip collapsed), each with kind chip, risk flags, progress (viewed hunks / total), changed badge.
 - Main: unit-centric diff view — clicking a unit shows its hunks (possibly from several files, with file headers), syntax-highlighted (shiki), word-level intra-line diff, virtualized list.
-- Hunk actions: mark viewed (checkbox), view diff-of-diffs when changedSinceViewed, draft a comment on a line.
+- Hunk actions: mark viewed (checkbox), view diff-of-diffs when changedSinceViewed, draft a comment on a line. File headers additionally offer a file-level comment (`subjectType: "file"`), rendered without a line reference or code snippet.
 - File tree tab as alternate navigation with per-file viewed rollup.
 - Top bar: PR title/link, refresh button (runs migration, shows migration report toast/panel), sync button, comments drawer, **finish review** panel, summary panel (skill's overall summary).
 - Finish review panel: review body textarea, the comments that will be included (file:line + status), readiness summary ("2 must-read units still unviewed"), and Approve / Request changes / Comment. Picking a verdict only arms an explicit confirmation step — it never posts directly. Shows the submitted review's link on success, and surfaces + allows discarding a pending review.

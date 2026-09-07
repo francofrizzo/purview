@@ -23,11 +23,28 @@ export type CommentSide = z.infer<typeof CommentSideSchema>;
 export const CommentStatusSchema = z.enum(["draft", "pushed", "submitted"]);
 export type CommentStatus = z.infer<typeof CommentStatusSchema>;
 
-export const CommentSchema = z.object({
+/**
+ * What the comment is attached to. GitHub calls this `subject_type` and models
+ * the same two cases: a diff line, or the file as a whole. It is an explicit
+ * discriminator rather than "line is absent -> file-level" so that a malformed
+ * line comment can be rejected instead of silently becoming a file comment.
+ */
+export const CommentSubjectTypeSchema = z.enum(["line", "file"]);
+export type CommentSubjectType = z.infer<typeof CommentSubjectTypeSchema>;
+
+/**
+ * The stored/exposed shape *without* the subject invariant, so `.pick`/`.omit`
+ * stay available (a refined schema is a ZodEffects and loses them). Everything
+ * that validates rather than merely types goes through `subjectInvariant`.
+ */
+const CommentObjectSchema = z.object({
   id: z.string(),
   file: z.string(),
-  line: z.number().int(),
-  side: CommentSideSchema,
+  subjectType: CommentSubjectTypeSchema,
+  /** Absent on file-level comments. */
+  line: z.number().int().optional(),
+  /** Absent on file-level comments. */
+  side: CommentSideSchema.optional(),
   body: z.string().min(1),
   createdAt: z.string(),
   status: CommentStatusSchema,
@@ -50,24 +67,89 @@ export const CommentSchema = z.object({
   /** Set whenever the body is edited after creation. Absent on untouched comments. */
   updatedAt: z.string().optional(),
 });
-export type Comment = z.infer<typeof CommentSchema>;
+
+/** `subjectType` decides which of `line`/`side` are legal — both, or neither. */
+function subjectInvariant(
+  v: { subjectType: CommentSubjectType; line?: number; side?: CommentSide },
+  ctx: z.RefinementCtx,
+): void {
+  if (v.subjectType === "file") {
+    if (v.line !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["line"],
+        message: "A file-level comment must not carry a line",
+      });
+    }
+    if (v.side !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["side"],
+        message: "A file-level comment must not carry a side",
+      });
+    }
+    return;
+  }
+  if (v.line === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["line"],
+      message: "A line comment requires a line",
+    });
+  }
+  if (v.side === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["side"],
+      message: "A line comment requires a side (LEFT or RIGHT)",
+    });
+  }
+}
+
+export const CommentSchema = CommentObjectSchema.superRefine(subjectInvariant);
+export type Comment = z.infer<typeof CommentObjectSchema>;
+
+/** Narrow helper for the many call sites that only care about the two cases. */
+export function isFileLevel(c: Pick<Comment, "subjectType">): boolean {
+  return c.subjectType === "file";
+}
 
 /**
  * What's actually on disk may predate the three-state vocabulary, where
- * "submitted" meant "pushed into a pending review". Parse loosely, then
- * normalize. `submittedAt` is the discriminator: only a genuine submit (which
- * always stamps it) keeps the "submitted" status through a read.
+ * "submitted" meant "pushed into a pending review" — and may predate
+ * `subjectType` entirely. Parse loosely, then normalize. `submittedAt` is the
+ * status discriminator: only a genuine submit (which always stamps it) keeps
+ * the "submitted" status through a read.
  */
-const StoredCommentSchema = CommentSchema.omit({ status: true }).extend({
+const StoredCommentSchema = CommentObjectSchema.omit({
+  status: true,
+  subjectType: true,
+}).extend({
   status: z.string(),
+  /** Absent in every comments.json written before file-level comments existed. */
+  subjectType: CommentSubjectTypeSchema.optional(),
 });
 
-export const NewCommentSchema = CommentSchema.pick({
-  file: true,
-  line: true,
-  side: true,
-  body: true,
-});
+/**
+ * Creation input. `subjectType` may be omitted, in which case it is inferred
+ * from the presence of `line` — so the pre-existing `{file, line, side, body}`
+ * body keeps working unchanged, and `{file, body}` means "the whole file".
+ * An explicit `subjectType` is authoritative and is validated against the
+ * other fields rather than quietly overridden.
+ */
+export const NewCommentSchema = z
+  .object({
+    file: z.string().min(1),
+    subjectType: CommentSubjectTypeSchema.optional(),
+    line: z.number().int().optional(),
+    side: CommentSideSchema.optional(),
+    body: z.string().min(1),
+  })
+  .transform((v) => ({
+    ...v,
+    subjectType: v.subjectType ?? (v.line === undefined ? ("file" as const) : ("line" as const)),
+  }))
+  .superRefine(subjectInvariant);
 export type NewComment = z.infer<typeof NewCommentSchema>;
 
 function commentsPath(key: PrKey, root = stateRoot()): string {
@@ -84,7 +166,19 @@ function normalize(raw: z.infer<typeof StoredCommentSchema>): Comment {
   } else {
     status = "draft";
   }
-  return { ...raw, status };
+
+  // Migration: comments written before file-level support have no
+  // `subjectType` but always have a `line`, so "has a line" is the safe
+  // reading. A stored comment that claims to be a line comment yet carries no
+  // line is unrepresentable — degrade it to file-level rather than throwing
+  // and taking the whole file down.
+  const subjectType: CommentSubjectType =
+    raw.subjectType === "file" || raw.line === undefined ? "file" : "line";
+  if (subjectType === "file") {
+    const { line: _line, side: _side, ...rest } = raw;
+    return { ...rest, subjectType, status };
+  }
+  return { ...raw, subjectType, line: raw.line, side: raw.side ?? "RIGHT", status };
 }
 
 export function readComments(key: PrKey, root = stateRoot()): Comment[] {

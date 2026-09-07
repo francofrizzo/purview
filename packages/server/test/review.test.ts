@@ -46,6 +46,26 @@ async function addDraft(body: string, line = 2) {
 
 const sync = () => app.request(`/api/prs/${encodedKey}/sync`, { method: "POST" });
 
+async function addFileDraft(body: string, file = "src/foo.ts") {
+  const res = await app.request(`/api/prs/${encodedKey}/comments`, {
+    ...json({ file, body }),
+  });
+  expect(res.status).toBe(201);
+  const comment = (await res.json()).comment as { id: string; subjectType: string };
+  expect(comment.subjectType).toBe("file");
+  return comment;
+}
+
+/** argv of the `addPullRequestReviewThread` calls, as name=value lookups. */
+function addThreadCalls(): ((name: string) => string | undefined)[] {
+  return gh.calls
+    .filter((c) => c[1] === "graphql" && c.some((a) => a.includes("addPullRequestReviewThread")))
+    .map((c) => (name: string) => {
+      const i = c.findIndex((a) => a.startsWith(`${name}=`));
+      return i === -1 ? undefined : c[i].slice(name.length + 1);
+    });
+}
+
 const submit = (body: unknown) =>
   app.request(`/api/prs/${encodedKey}/review/submit`, { ...json(body) });
 
@@ -471,5 +491,151 @@ describe("DELETE /api/prs/:key/review/pending", () => {
     const res = await app.request(`/api/prs/${encodedKey}/review/pending`, { method: "DELETE" });
     expect(res.status).toBe(200);
     expect(readComments(key, root)[0].status).toBe("draft");
+  });
+});
+
+/* ------------------------------------------------------- file-level comments */
+
+describe("syncing file-level comments", () => {
+  /**
+   * The REST create-review payload has no `subject_type`, so a mixed batch
+   * splits: line comments ride in the create call, the file-level one is
+   * appended to the review that call just created, via GraphQL.
+   */
+  it("creates with the line comments and appends the file-level one", async () => {
+    await addDraft("line one", 2);
+    await addDraft("line two", 3);
+    const fileDraft = await addFileDraft("this file needs a header");
+
+    const res = await (await sync()).json();
+    expect(res.comments.ok).toBe(true);
+    expect(res.comments.pushed).toBe(3);
+    expect(res.comments.mode).toBe("created");
+
+    // Outgoing REST payload: only the two line comments, each with line+side,
+    // and no subject_type key at all.
+    const payloads = gh.createReviewPayloads();
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].comments).toEqual([
+      { path: "src/foo.ts", line: 2, side: "RIGHT", body: "line one" },
+      { path: "src/foo.ts", line: 3, side: "RIGHT", body: "line two" },
+    ]);
+
+    // Outgoing GraphQL: one FILE thread, with no line and no side.
+    const threads = addThreadCalls();
+    expect(threads).toHaveLength(1);
+    expect(threads[0]("subjectType")).toBe("FILE");
+    expect(threads[0]("path")).toBe("src/foo.ts");
+    expect(threads[0]("body")).toBe("this file needs a header");
+    expect(threads[0]("line")).toBeUndefined();
+    expect(threads[0]("side")).toBeUndefined();
+
+    // Remote state: three comments in the one pending review.
+    expect(gh.reviews).toHaveLength(1);
+    expect(gh.reviews[0].comments.map((c) => [c.subject_type, c.body])).toEqual([
+      ["line", "line one"],
+      ["line", "line two"],
+      ["file", "this file needs a header"],
+    ]);
+
+    // Every draft is pushed and carries the ids needed to edit/delete it.
+    const stored = readComments(key, root);
+    expect(stored.every((c) => c.status === "pushed")).toBe(true);
+    const storedFile = stored.find((c) => c.id === fileDraft.id)!;
+    expect(storedFile.subjectType).toBe("file");
+    expect(storedFile.githubCommentId).toBe(gh.reviews[0].comments[2].id);
+    expect(storedFile.githubCommentNodeId).toBe(gh.reviews[0].comments[2].node_id);
+    expect(storedFile.githubThreadId).toBeTruthy();
+  });
+
+  it("creates an empty pending review when every draft is file-level", async () => {
+    await addFileDraft("whole file");
+    const res = await (await sync()).json();
+    expect(res.comments.ok).toBe(true);
+    expect(res.comments.pushed).toBe(1);
+    expect(gh.createReviewPayloads()[0].comments).toEqual([]);
+    expect(gh.reviews[0].comments.map((c) => c.subject_type)).toEqual(["file"]);
+  });
+
+  /**
+   * The append path (an existing pending review) expresses file-level threads
+   * natively — `addPullRequestReviewThread` takes `subjectType: FILE` — so
+   * there is no fallback here: it is the same mutation with line/side omitted.
+   */
+  it("appends a file-level comment to an existing pending review", async () => {
+    await addDraft("first", 2);
+    await sync();
+    expect(gh.reviews).toHaveLength(1);
+
+    await addFileDraft("second, about the file");
+    const second = await (await sync()).json();
+    expect(second.comments.ok).toBe(true);
+    expect(second.comments.pushed).toBe(1);
+    expect(second.comments.mode).toBe("appended");
+    expect(gh.createReviewCalls()).toBe(1);
+
+    const threads = addThreadCalls();
+    expect(threads).toHaveLength(1);
+    expect(threads[0]("subjectType")).toBe("FILE");
+    expect(threads[0]("line")).toBeUndefined();
+    expect(gh.reviews[0].comments.map((c) => c.subject_type)).toEqual(["line", "file"]);
+  });
+
+  it("does not pair a line draft with a file-level remote comment when backfilling", async () => {
+    await addFileDraft("about the file");
+    await addDraft("about line 2", 2);
+    await sync();
+
+    const stored = readComments(key, root);
+    const line = stored.find((c) => c.subjectType === "line")!;
+    const fileLevel = stored.find((c) => c.subjectType === "file")!;
+    const remoteLine = gh.reviews[0].comments.find((c) => c.subject_type === "line")!;
+    const remoteFile = gh.reviews[0].comments.find((c) => c.subject_type === "file")!;
+    expect(line.githubCommentId).toBe(remoteLine.id);
+    expect(fileLevel.githubCommentId).toBe(remoteFile.id);
+  });
+
+  it("edits and deletes a pushed file-level comment on GitHub", async () => {
+    const created = await addFileDraft("first");
+    await sync();
+
+    const patched = await patchComment(created.id, { body: "revised" });
+    expect(patched.status).toBe(200);
+    expect((await patched.json()).remote).toEqual({ ok: true });
+    expect(gh.reviews[0].comments[0].body).toBe("revised");
+
+    const del = await app.request(`/api/prs/${encodedKey}/comments/${created.id}`, {
+      method: "DELETE",
+    });
+    expect(del.status).toBe(200);
+    expect((await del.json()).remote).toEqual({ attempted: true, ok: true });
+    expect(gh.deletedCommentIds).toEqual([gh.reviews[0].comments[0].id]);
+  });
+
+  it("reports a failed file-level append while keeping the line comments pushed", async () => {
+    await addDraft("line one", 2);
+    await addFileDraft("file-level");
+    gh.fail("addPullRequestReviewThread", "HTTP 422 Unprocessable Entity");
+
+    const res = await (await sync()).json();
+    expect(res.comments.ok).toBe(false);
+    expect(res.comments.pushed).toBe(1);
+    expect(res.comments.errorCode).toBeTruthy();
+
+    const stored = readComments(key, root);
+    expect(stored.find((c) => c.subjectType === "line")!.status).toBe("pushed");
+    // The local file-level comment is untouched and still pushable.
+    expect(stored.find((c) => c.subjectType === "file")!.status).toBe("draft");
+  });
+
+  it("lists a file-level comment in the review status without a line", async () => {
+    await addFileDraft("about the file");
+    const res = await app.request(`/api/prs/${encodedKey}/review?remote=0`);
+    const included = (await res.json()).comments.included;
+    expect(included).toEqual([
+      expect.objectContaining({ subjectType: "file", file: "src/foo.ts" }),
+    ]);
+    expect(included[0].line).toBeUndefined();
+    expect(included[0].side).toBeUndefined();
   });
 });

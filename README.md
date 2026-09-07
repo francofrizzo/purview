@@ -361,14 +361,17 @@ the source of truth — remote state is read only to report drift, never to over
 
 ## Finishing a review
 
-Comments you draft on a line stay on your disk until you sync. Syncing puts them into your
+Comments you draft on a line — or on a whole file, which GitHub supports as its own kind of
+review comment — stay on your disk until you sync. Syncing puts them into your
 **pending review** on GitHub — private, visible to nobody else, and still revocable — so a
 comment is in one of three states: `draft`, `pushed`, `submitted`.
 
 GitHub only allows one pending review per person per PR, so every sync reconciles first: it
 looks your pending review up, creates one if there is none, and otherwise *appends* to the
 existing one instead of trying (and failing) to create a second. That reconciliation is why
-syncing twice is safe.
+syncing twice is safe. File-level comments always travel over GitHub's GraphQL
+`addPullRequestReviewThread` (the REST create-review payload has no way to express one), so a
+mixed batch creates the review with your line comments and then appends the file-level ones.
 
 **Finish review** in the top bar opens the panel that ends the round. It shows the review body,
 every comment that will go out with it, and a readiness summary — how many must-read units you

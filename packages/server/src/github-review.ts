@@ -209,12 +209,17 @@ export function findPendingReview(key: PrKey): PendingReview | undefined {
   };
 }
 
-export interface ReviewCommentInput {
-  path: string;
-  line: number;
-  side: "LEFT" | "RIGHT";
-  body: string;
-}
+/**
+ * A comment to place in a review. `subjectType: "file"` is GitHub's
+ * whole-file comment (`subject_type`/`PullRequestReviewThreadSubjectType`);
+ * it carries no line or side.
+ */
+export type ReviewCommentInput =
+  | { subjectType: "line"; path: string; line: number; side: "LEFT" | "RIGHT"; body: string }
+  | { subjectType: "file"; path: string; body: string };
+
+/** REST create-review `comments[]` entries — line comments only (see below). */
+export type LineReviewCommentInput = Extract<ReviewCommentInput, { subjectType: "line" }>;
 
 export interface CreatedReview {
   databaseId: number;
@@ -227,17 +232,34 @@ export interface CreatedReview {
  * `POST /pulls/{n}/reviews` with no `event` — creates a PENDING review holding
  * the given comments. 422s if the viewer already has one pending, which is why
  * callers must reconcile first.
+ *
+ * **Line comments only.** GitHub's published schema for this endpoint's
+ * `comments[]` items is `{path, position, body, line, side, start_line,
+ * start_side}` — there is no `subject_type` there, unlike the standalone
+ * `POST /pulls/{n}/comments`, which does document `subject_type: line|file`.
+ * So a whole-file comment cannot ride along in the create payload; callers
+ * append those with `appendCommentToPendingReview` (GraphQL, which *does*
+ * express them) after the review exists. Passing an empty `comments` array is
+ * fine — it creates an empty pending review to append into.
  */
 export function createPendingReview(
   key: PrKey,
   commitId: string,
-  comments: ReviewCommentInput[],
+  comments: LineReviewCommentInput[],
 ): CreatedReview {
   try {
     const raw = ghJson<{ id: number; node_id: string; html_url?: string; state?: string }>(
       key,
       ["--method", "POST", `repos/${key.owner}/${key.repo}/pulls/${key.number}/reviews`, "--input", "-"],
-      JSON.stringify({ commit_id: commitId, comments }),
+      JSON.stringify({
+        commit_id: commitId,
+        comments: comments.map((c) => ({
+          path: c.path,
+          line: c.line,
+          side: c.side,
+          body: c.body,
+        })),
+      }),
     );
     return {
       databaseId: raw.id,
@@ -250,9 +272,18 @@ export function createPendingReview(
   }
 }
 
-const ADD_THREAD = `mutation($reviewId:ID!,$path:String!,$line:Int!,$side:DiffSide!,$body:String!){
+/**
+ * `line`/`side` are nullable here on purpose: with
+ * `subjectType: FILE` the thread hangs off the file rather than a diff line,
+ * and GitHub's schema types both as optional
+ * (`AddPullRequestReviewThreadInput.line: Int`, `.side: DiffSide`,
+ * `.subjectType: PullRequestReviewThreadSubjectType` = `LINE | FILE`).
+ * Omitted variables are simply absent from the request, i.e. null.
+ */
+const ADD_THREAD = `mutation($reviewId:ID!,$path:String!,$line:Int,$side:DiffSide,$body:String!,$subjectType:PullRequestReviewThreadSubjectType){
   addPullRequestReviewThread(input:{
-    pullRequestReviewId:$reviewId, path:$path, line:$line, side:$side, body:$body
+    pullRequestReviewId:$reviewId, path:$path, line:$line, side:$side, body:$body,
+    subjectType:$subjectType
   }){
     thread{ id comments(first:1){ nodes{ id databaseId } } }
   }
@@ -266,7 +297,11 @@ export interface AppendedComment {
   commentNodeId?: string;
 }
 
-/** GraphQL `addPullRequestReviewThread` — the only way to grow a pending review. */
+/**
+ * GraphQL `addPullRequestReviewThread` — the only way to grow a pending
+ * review, and (see `createPendingReview`) the only API that can place a
+ * whole-file comment inside a review at all.
+ */
 export function appendCommentToPendingReview(
   key: PrKey,
   reviewNodeId: string,
@@ -297,10 +332,13 @@ export function appendCommentToPendingReview(
         `reviewId=${reviewNodeId}`,
         "-f",
         `path=${comment.path}`,
-        "-F",
-        `line=${comment.line}`,
+        // Enum variables travel as strings; GitHub coerces them.
         "-f",
-        `side=${comment.side}`,
+        `subjectType=${comment.subjectType === "file" ? "FILE" : "LINE"}`,
+        // Line/side are omitted entirely for a file-level thread.
+        ...(comment.subjectType === "line"
+          ? ["-F", `line=${comment.line}`, "-f", `side=${comment.side}`]
+          : []),
         "-f",
         `body=${comment.body}`,
       ]),
@@ -327,6 +365,8 @@ export interface RemoteReviewComment {
   line?: number;
   original_line?: number;
   side?: string;
+  /** GitHub's own discriminator: "line" (or absent, on older payloads) vs "file". */
+  subject_type?: string;
   body: string;
 }
 
