@@ -62,7 +62,19 @@ export interface DiffPaneProps {
   searchMarks?: Map<string, CharRange[]>;
   /** The match being visited: highlighted strongly, scrolled to, flashed. */
   activeMatch?: SearchMatch | null;
+  /**
+   * Fires when the reader leaves (or returns to) the top of the diff, so the
+   * host can shrink its header out of the way. Hysteretic: true past
+   * {@link COLLAPSE_PAST}px, false again only under {@link EXPAND_UNDER}px.
+   */
+  onScrolledAway?: (scrolled: boolean) => void;
 }
+
+/** Past this many px from the top, the host header may collapse. */
+const COLLAPSE_PAST = 40;
+/** Under this many px, it expands again. The gap between the two is the
+ *  hysteresis that keeps a header parked on the boundary from flickering. */
+const EXPAND_UNDER = 10;
 
 /** A range being selected in one file, on one side of the diff. */
 interface LineSelection {
@@ -105,12 +117,15 @@ export function DiffPane({
   onQuote,
   searchMarks,
   activeMatch,
+  onScrolledAway,
 }: DiffPaneProps) {
   const { appearance } = useSettings();
   const theme = shikiThemeFor(appearance.theme);
   const { codeFontSize, codeLineHeight, tabSize, codeFont } = appearance;
   const scrollRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLSpanElement>(null);
+  const pastTopRef = useRef<HTMLDivElement>(null);
+  const nearTopRef = useRef<HTMLDivElement>(null);
   const [expandedDod, setExpandedDod] = useState<Set<string>>(new Set());
   const [wide, setWide] = useState(true);
   const [charWidth, setCharWidth] = useState(7.2);
@@ -129,6 +144,39 @@ export function DiffPane({
   useEffect(() => {
     onNarrowChange?.(!wide);
   }, [wide, onNarrowChange]);
+
+  // Two zero-cost sentinels pinned to the top of the scrolled content, watched
+  // against the scroller itself: the tall one stops intersecting once we are
+  // past COLLAPSE_PAST, the short one starts intersecting again under
+  // EXPAND_UNDER, and the band between them is dead air where neither fires —
+  // which *is* the hysteresis. No scroll handler, no scrollTop read per frame.
+  const empty = entries.length === 0;
+  useEffect(() => {
+    if (!onScrolledAway) return;
+    const root = scrollRef.current;
+    const past = pastTopRef.current;
+    const near = nearTopRef.current;
+    if (!root || !past || !near || typeof IntersectionObserver === "undefined") {
+      // Nothing to scroll (or no observer): the header stays whole.
+      onScrolledAway(false);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (records) => {
+        for (const r of records) {
+          if (r.target === past && !r.isIntersecting) onScrolledAway(true);
+          else if (r.target === near && r.isIntersecting) onScrolledAway(false);
+        }
+      },
+      { root },
+    );
+    io.observe(past);
+    io.observe(near);
+    return () => {
+      io.disconnect();
+      onScrolledAway(false);
+    };
+  }, [onScrolledAway, empty]);
 
   const mode: DiffViewMode = viewMode === "split" && wide ? "split" : "unified";
 
@@ -576,6 +624,7 @@ export function DiffPane({
       </span>
       <div
         ref={scrollRef}
+        data-diff-scroller=""
         className={`min-h-0 flex-1 overflow-auto${wrap ? "" : " diff-nowrap"}`}
         style={{ background: "var(--bg)" }}
       >
@@ -586,6 +635,20 @@ export function DiffPane({
             minWidth: contentWidth || undefined,
           }}
         >
+          {/* Full width so a horizontally scrolled (nowrap) pane never reads as
+              "scrolled away" just because the sentinel slid off to the left. */}
+          <div
+            ref={pastTopRef}
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-0 w-full"
+            style={{ height: COLLAPSE_PAST + 1 }}
+          />
+          <div
+            ref={nearTopRef}
+            aria-hidden
+            className="pointer-events-none absolute left-0 top-0 w-full"
+            style={{ height: EXPAND_UNDER }}
+          />
         {items.map((vi) => {
           const row = rows[vi.index];
           return (

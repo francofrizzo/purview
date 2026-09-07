@@ -43,9 +43,10 @@ import {
   type HunkEntry,
 } from "../components/DiffPane";
 import { CommentComposer, DraftsDrawer, type CommentTarget } from "../components/Drafts";
-import { UnitFindings } from "../components/Findings";
+import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
+import { IconChevron } from "../components/icons";
 import { MigrationReportPanel, StalenessHint, SyncResultPanel } from "../components/Panels";
 import { SummaryStrip } from "../components/SummaryStrip";
 import { TopBar } from "../components/TopBar";
@@ -113,6 +114,36 @@ export function PrView() {
   const { viewMode, setViewMode, toggleViewMode, wrap, setWrap, toggleWrap } = useDiffViewPrefs();
   const [narrow, setNarrow] = useState(false);
   const showNarrowNote = narrow && viewMode === "split";
+
+  // --- header collapse ---------------------------------------------------
+  // Once the reader is into the diff, the prose above it has done its job and
+  // is only costing rows. `diffScrolled` is the pane's hysteretic report of
+  // where it is; `peek` is a manual, temporary override for a reader who wants
+  // the prose back without scrolling up. Neither is persisted: this is a
+  // property of where you are, not a preference.
+  const [diffScrolled, setDiffScrolled] = useState(false);
+  const [peek, setPeek] = useState(false);
+  const mainRef = useRef<HTMLElement>(null);
+  const onScrolledAway = useCallback((scrolled: boolean) => {
+    setDiffScrolled(scrolled);
+    setPeek(false);
+  }, []);
+  const headerCollapsed = diffScrolled && !peek;
+
+  // A peek is a glance, not a mode: the next real scroll ends it. The listener
+  // only exists while peeking, and the 8px floor ignores the scroll the
+  // re-expansion itself can provoke when the pane is near its bottom.
+  useEffect(() => {
+    if (!peek) return;
+    const el = mainRef.current?.querySelector<HTMLElement>("[data-diff-scroller]");
+    if (!el) return;
+    const from = el.scrollTop;
+    const onScroll = () => {
+      if (Math.abs(el.scrollTop - from) > 8) setPeek(false);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [peek]);
 
   // Only queried while the panel is open: it makes a live GitHub call.
   const review = useReview(prKey, reviewOpen);
@@ -451,15 +482,45 @@ export function PrView() {
           </div>
         </nav>
 
-        <main className="relative flex min-w-0 flex-1 flex-col">
+        <main ref={mainRef} className="relative flex min-w-0 flex-1 flex-col">
           {tab === "units" && selectedUnit ? (
             <div
-              className="flex-none border-b px-4 py-2.5"
+              data-testid="unit-header"
+              data-collapsed={headerCollapsed ? "true" : "false"}
+              className={`flex-none border-b px-4 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
+                headerCollapsed ? "cursor-pointer py-1" : "py-2.5"
+              }`}
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
+              // The whole condensed row is the target that brings the prose
+              // back — except where a control already owns the click.
+              onClick={(e) => {
+                if (!headerCollapsed) return;
+                if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+                setPeek(true);
+              }}
             >
-              <div className="flex flex-wrap items-center gap-2">
+              <div
+                className={`flex items-center gap-2 ${
+                  headerCollapsed ? "flex-nowrap overflow-hidden" : "flex-wrap"
+                }`}
+              >
+                {diffScrolled ? (
+                  <button
+                    type="button"
+                    data-testid="unit-header-toggle"
+                    className="flex-none"
+                    style={{ color: "var(--fg-faint)" }}
+                    aria-expanded={!headerCollapsed}
+                    title={headerCollapsed ? "Show unit details" : "Hide unit details"}
+                    onClick={() => setPeek((v) => !v)}
+                  >
+                    <IconChevron open={!headerCollapsed} width={11} height={11} />
+                  </button>
+                ) : null}
                 <h2
-                  className="line-clamp-2 min-w-0 flex-1 basis-64 text-[13px] font-semibold leading-tight"
+                  className={`min-w-0 flex-1 basis-64 text-[13px] font-semibold leading-tight ${
+                    headerCollapsed ? "truncate" : "line-clamp-2"
+                  }`}
                   title={selectedUnit.title}
                 >
                   {selectedUnit.title}
@@ -469,6 +530,9 @@ export function PrView() {
                   <AttentionChip attention={selectedUnit.attention} />
                   <RiskFlags flags={selectedUnit.riskFlags} />
                   {progress && progress.changed > 0 ? <ChangedBadge count={progress.changed} /> : null}
+                  {/* Collapsed, the findings list is gone — the badge is what
+                      keeps a warning from disappearing with it. */}
+                  {headerCollapsed ? <FindingsBadge unit={selectedUnit} /> : null}
                 </div>
                 <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
                   {showNarrowNote ? <NarrowPaneNote /> : null}
@@ -498,21 +562,43 @@ export function PrView() {
                   ) : null}
                 </div>
               </div>
-              <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
-                {selectedUnit.summary}
-              </p>
-              {selectedUnit.attentionWhy ? (
-                <p className="mt-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  why {selectedUnit.attention}: {selectedUnit.attentionWhy}
-                </p>
-              ) : null}
-              <UnitFindings findings={selectedUnit.findings} />
+              {/* 0fr -> 1fr animates to the content's real height without
+                  anyone having to measure it. */}
+              <div
+                className="grid transition-[grid-template-rows,opacity,visibility] duration-[140ms] ease-out motion-reduce:transition-none"
+                style={{
+                  gridTemplateRows: headerCollapsed ? "0fr" : "1fr",
+                  opacity: headerCollapsed ? 0 : 1,
+                  // Clipped is not hidden: without this the summary's "show all"
+                  // button stays in the tab order behind a 0px row. `visibility`
+                  // flips at the *end* of the transition on the way out and at
+                  // the start on the way in, so it costs nothing visually.
+                  visibility: headerCollapsed ? "hidden" : "visible",
+                }}
+                aria-hidden={headerCollapsed}
+              >
+                <div className="min-h-0 overflow-hidden">
+                  <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
+                    {selectedUnit.summary}
+                  </p>
+                  {selectedUnit.attentionWhy ? (
+                    <p className="mt-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                      why {selectedUnit.attention}: {selectedUnit.attentionWhy}
+                    </p>
+                  ) : null}
+                  <UnitFindings findings={selectedUnit.findings} />
+                </div>
+              </div>
             </div>
           ) : null}
 
           {tab === "files" && selectedPath ? (
             <div
-              className="flex flex-none items-center gap-2 border-b px-4 py-2 font-mono text-xs"
+              data-testid="file-header"
+              data-collapsed={headerCollapsed ? "true" : "false"}
+              className={`flex flex-none items-center gap-2 overflow-hidden border-b px-4 font-mono text-xs transition-[padding] duration-[140ms] motion-reduce:transition-none ${
+                headerCollapsed ? "py-1" : "py-2"
+              }`}
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
               <MiddleTruncate text={selectedPath} tail={20} />
@@ -520,7 +606,9 @@ export function PrView() {
                 <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
                   {detail.state.files[selectedPath].viewedHunks}/
                   {detail.state.files[selectedPath].totalHunks} hunks viewed
-                  {detail.state.files[selectedPath].viewed ? " · synced when you press sync" : ""}
+                  {detail.state.files[selectedPath].viewed && !headerCollapsed
+                    ? " · synced when you press sync"
+                    : ""}
                 </span>
               ) : null}
               <div className="ml-auto flex flex-none items-center gap-2">
@@ -550,6 +638,7 @@ export function PrView() {
               onQuote={quote}
               searchMarks={search.marksByLine}
               activeMatch={search.current}
+              onScrolledAway={onScrolledAway}
               showFileRows={tab === "units"}
               emptyMessage={
                 tab === "units"
