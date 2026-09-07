@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MOCK } from "../api/client";
-import { useAddPr, useImportReviews, usePrs, useRepos, useSetArchived } from "../api/hooks";
-import type { PrListEntry, RepoSummary } from "../api/types";
+import { MOCK, errorText } from "../api/client";
+import { useAddPr, useImportReviews, useImportPrs, usePrs, useRepos, useSetArchived } from "../api/hooks";
+import type { ImportScope, PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
 import { EffortChip, Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
@@ -22,6 +22,8 @@ export function PrList() {
   const { data: repos = [] } = useRepos();
   const background = useModalBackground();
   const addPr = useAddPr();
+  const importPrs = useImportPrs();
+  const [importScope, setImportScope] = useState<ImportScope>("all");
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
 
@@ -81,6 +83,53 @@ export function PrList() {
         </button>
       </form>
 
+      <div className="mb-6 text-xs">
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="input min-w-0 flex-1 text-xs"
+            aria-label="GitHub PRs to import"
+            value={importScope}
+            onChange={(e) => { setImportScope(e.target.value as ImportScope); importPrs.reset(); }}
+            disabled={importPrs.isPending}
+          >
+            <option value="all">All my open PRs</option>
+            <option value="created">Created by me</option>
+            <option value="assigned">Assigned to me</option>
+            <option value="review-requested">Review requested</option>
+          </select>
+          <button
+            type="button"
+            className="btn flex-none"
+            disabled={importPrs.isPending || MOCK}
+            onClick={() => importPrs.mutate(importScope)}
+          >
+            {importPrs.isPending ? "Importing…" : "Import from GitHub"}
+          </button>
+        </div>
+        <p className="mt-2 leading-5" style={{ color: "var(--fg-muted)" }}>
+          Import open PRs you created, are assigned to, or are requested to review.
+          New PRs are analyzed using your analysis settings. Already tracked PRs are skipped.
+        </p>
+        <div role="status" aria-live="polite" className="mt-2 leading-5">
+          {importPrs.isPending ? "Fetching your GitHub PRs and adding them for analysis…" : null}
+          {!importPrs.isPending && importPrs.data ? (
+            <>
+              <p>
+                {importPrs.data.login}: {importPrs.data.added.length} added,
+                {" "}{importPrs.data.queued} queued for analysis,
+                {" "}{importPrs.data.skipped.length} already tracked,
+                {" "}{importPrs.data.failed.length} failed.
+              </p>
+              {importPrs.data.warnings.map((warning) => <p key={warning} style={{ color: "var(--warn)" }}>{warning}</p>)}
+              {importPrs.data.failed.map((failure) => (
+                <p key={failure.url} style={{ color: "var(--risk)" }}>{failure.url}: {failure.error}</p>
+              ))}
+            </>
+          ) : null}
+        </div>
+        {importPrs.error ? <p role="alert" style={{ color: "var(--risk)" }}>{errorText(importPrs.error)}</p> : null}
+      </div>
+
       {addPr.error ? (
         <div
           className="mb-4 rounded px-3 py-2 text-xs"
@@ -104,8 +153,7 @@ export function PrList() {
             className="surface rounded-md p-4 text-xs leading-5"
             style={{ color: "var(--fg-faint)" }}
           >
-            No pull requests tracked yet. Paste a GitHub PR URL above; the server fetches it with{" "}
-            <span className="font-mono">gh</span> and creates the local state directory.
+            No pull requests tracked yet. Paste a GitHub PR URL above or import your open PRs from GitHub.
           </p>
         ) : (
           <div className="flex flex-col gap-3 pb-6">
