@@ -1,15 +1,55 @@
 import { useEffect, useRef, useState } from "react";
 import { errorText, isConfirmRequired } from "../api/errors";
-import type { ChatRef, CommentStatus, DraftComment, EditCommentResult } from "../api/types";
+import {
+  isFileComment,
+  type AddCommentInput,
+  type ChatRef,
+  type CommentStatus,
+  type DraftComment,
+  type EditCommentResult,
+} from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
 import { QuoteButton } from "./ChatPanel";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
 import { StatusChip } from "./FinishReview";
+import { Markdown } from "./Markdown";
 
-export interface CommentTarget {
+/**
+ * What the composer is pointed at. A file-level target carries no line and no
+ * side, which is exactly what the POST body will look like.
+ */
+export type CommentTarget =
+  | { subjectType: "line"; file: string; line: number; side: "LEFT" | "RIGHT" }
+  | { subjectType: "file"; file: string };
+
+/** The chat ref for a comment — file-level ones carry no line to point at. */
+export function commentRef(c: DraftComment): ChatRef {
+  if (isFileComment(c)) return { kind: "comment", id: c.id, path: c.file };
+  return {
+    kind: "comment",
+    id: c.id,
+    path: c.file,
+    start: c.line ?? undefined,
+    side: c.side === "LEFT" ? "old" : "new",
+  };
+}
+
+/** The comment a target would create, once a body is typed. */
+export function targetToInput(target: CommentTarget, body: string): AddCommentInput {
+  return target.subjectType === "file"
+    ? { subjectType: "file", file: target.file, body }
+    : { subjectType: "line", file: target.file, line: target.line, side: target.side, body };
+}
+
+/** "src/a.ts:24 (new)" or "src/a.ts (whole file)" — used wherever a comment is labelled. */
+export function commentAnchorLabel(c: {
   file: string;
-  line: number;
-  side: "LEFT" | "RIGHT";
+  line?: number | null;
+  side?: "LEFT" | "RIGHT" | null;
+  subjectType?: "line" | "file";
+}): string {
+  if (isFileComment(c)) return `${c.file} (file)`;
+  return `${c.file}:${c.line}${c.side === "LEFT" ? " (old)" : ""}`;
 }
 
 export function CommentComposer({
@@ -29,9 +69,12 @@ export function CommentComposer({
   const [body, setBody] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
+  const fileLevel = target.subjectType === "file";
+  const anchorKey = fileLevel ? target.file : `${target.file}:${target.line}:${target.side}`;
+
   useEffect(() => {
     ref.current?.focus();
-  }, [target.file, target.line, target.side]);
+  }, [anchorKey]);
 
   return (
     <div
@@ -43,8 +86,8 @@ export function CommentComposer({
     >
       <div className="mb-1.5 flex items-center gap-2 font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
         <span className="truncate">{target.file}</span>
-        <span style={{ color: "var(--fg-faint)" }}>
-          :{target.line} {target.side === "LEFT" ? "(old)" : "(new)"}
+        <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
+          {fileLevel ? "whole file" : `:${target.line} ${target.side === "LEFT" ? "(old)" : "(new)"}`}
         </span>
         <button type="button" className="ml-auto" onClick={onCancel} style={{ color: "var(--fg-faint)" }}>
           ✕
@@ -53,7 +96,12 @@ export function CommentComposer({
       <textarea
         ref={ref}
         className="input h-24 resize-none font-mono text-xs"
-        placeholder="Draft a comment… (⌘↵ to save)"
+        data-testid="composer-textarea"
+        placeholder={
+          fileLevel
+            ? "Draft a comment about this whole file… (⌘↵ to save)"
+            : "Draft a comment… (⌘↵ to save)"
+        }
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
@@ -67,12 +115,20 @@ export function CommentComposer({
             label="copy for agent"
             title="Copy this comment, with the code it points at, as markdown"
             disabled={!body.trim()}
-            text={() => formatComment({ ...target, body: body.trim() }, exportCtx)}
+            text={() =>
+              formatComment(
+                fileLevel
+                  ? { file: target.file, line: null, side: null, subjectType: "file", body: body.trim() }
+                  : { file: target.file, line: target.line, side: target.side, body: body.trim() },
+                exportCtx,
+              )
+            }
           />
         ) : null}
         <button
           type="button"
           className="btn btn-primary ml-auto"
+          data-testid="composer-save"
           disabled={!body.trim() || pending}
           onClick={() => onSubmit(body.trim())}
         >
@@ -104,11 +160,17 @@ export function CommentBody({
   comment,
   edit,
   clamp,
+  markdown,
+  editLabel,
 }: {
   comment: { id: string; body: string; status?: CommentStatus };
   edit?: EditComment;
   /** truncate the read-only body (the finish-review list is space-starved) */
   clamp?: boolean;
+  /** render the body as markdown instead of preformatted text */
+  markdown?: boolean;
+  /** the edit trigger, when the caller wants it in its own action row */
+  editLabel?: string;
 }) {
   const status = comment.status ?? "draft";
   const [mode, setMode] = useState<"view" | "edit" | "confirm">("view");
@@ -169,12 +231,21 @@ export function CommentBody({
   if (mode === "view") {
     return (
       <div>
-        <p
-          className={`mt-0.5 whitespace-pre-wrap text-xs leading-5${clamp ? " line-clamp-3" : ""}`}
-          style={{ color: "var(--fg)" }}
-        >
-          {comment.body}
-        </p>
+        {markdown ? (
+          <div
+            className={`mt-0.5 text-xs leading-5${clamp ? " line-clamp-3" : ""}`}
+            style={{ color: "var(--fg)" }}
+          >
+            <Markdown text={comment.body} />
+          </div>
+        ) : (
+          <p
+            className={`mt-0.5 whitespace-pre-wrap text-xs leading-5${clamp ? " line-clamp-3" : ""}`}
+            style={{ color: "var(--fg)" }}
+          >
+            {comment.body}
+          </p>
+        )}
         {warning ? (
           <p
             className="mt-1 rounded px-1.5 py-1 text-2xs leading-4"
@@ -193,7 +264,7 @@ export function CommentBody({
               setMode("edit");
             }}
           >
-            edit
+            {editLabel ?? "edit"}
           </button>
         ) : null}
       </div>
@@ -332,7 +403,8 @@ export function DraftsDrawer({
       <div className="flex-1 overflow-auto">
         {drafts.length === 0 ? (
           <p className="p-3 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
-            No comments yet. Hover a diff line and press the + button to write one.
+            No comments yet. Hover a diff line and press the + button to write one, or use the
+            file header to comment on a whole file.
           </p>
         ) : (
           <ul>
@@ -346,7 +418,9 @@ export function DraftsDrawer({
                   title="Jump to this file"
                 >
                   <span className="truncate">{d.file}</span>
-                  <span style={{ color: "var(--fg-faint)" }}>:{d.line}</span>
+                  <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
+                    {isFileComment(d) ? "(file)" : `:${d.line}`}
+                  </span>
                   <StatusChip status={d.status ?? "draft"} />
                 </button>
                 <CommentBody comment={d} edit={onEdit} />
@@ -355,13 +429,7 @@ export function DraftsDrawer({
                     <QuoteButton
                       title="Ask Claude about this comment"
                       onClick={() =>
-                        onQuote({
-                          kind: "comment",
-                          id: d.id,
-                          path: d.file,
-                          start: d.line,
-                          side: d.side === "LEFT" ? "old" : "new",
-                        })
+                        onQuote(commentRef(d))
                       }
                     />
                   ) : null}

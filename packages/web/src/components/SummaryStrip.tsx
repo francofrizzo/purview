@@ -9,7 +9,7 @@
  * never reflow when it opens.
  */
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Markdown } from "./Markdown";
 import { IconChevron } from "./icons";
 
@@ -41,6 +41,21 @@ export function withoutHeadings(text: string): string {
   return text.replace(/^(\s{0,3})#{1,6}\s+/gm, "$1");
 }
 
+/** How long the pointer must rest on the strip before it opens. */
+export const HOVER_OPEN_MS = 250;
+/**
+ * Grace period after the pointer leaves. The overlay hangs *below* the strip,
+ * so a reader moving into it necessarily crosses a sliver of neither — this is
+ * the window that lets that diagonal move succeed.
+ */
+export const HOVER_CLOSE_MS = 150;
+
+/** Touch and pen have no hover state to speak of; peeking would be a trap. */
+function hoverCapable(): boolean {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return true;
+  return !window.matchMedia("(hover: none)").matches;
+}
+
 export function SummaryStrip({
   summary,
   revision,
@@ -59,14 +74,57 @@ export function SummaryStrip({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const timer = useRef<number | null>(null);
+  const [peeking, setPeeking] = useState(false);
+
+  // `open` is the *pinned* state, owned by the host (a click, or the `s` key).
+  // `peeking` is this component's own transient hover state. Pinned always
+  // wins, so leaving the strip cannot close something the reader clicked open.
+  const shown = open || peeking;
+
+  const clearTimer = () => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = null;
+  };
+
+  const scheduleOpen = useCallback(() => {
+    if (!hoverCapable()) return;
+    clearTimer();
+    timer.current = window.setTimeout(() => setPeeking(true), HOVER_OPEN_MS);
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    if (!hoverCapable()) return;
+    clearTimer();
+    timer.current = window.setTimeout(() => setPeeking(false), HOVER_CLOSE_MS);
+  }, []);
+
+  useEffect(() => clearTimer, []);
+
+  // A pinned overlay is not a peek any more; drop the transient state so the
+  // pin is the only thing holding it open.
+  useEffect(() => {
+    if (open) {
+      clearTimer();
+      setPeeking(false);
+    }
+  }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!shown) return;
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        clearTimer();
+        setPeeking(false);
+        onClose();
+      }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        clearTimer();
+        setPeeking(false);
+        onClose();
+      }
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -74,16 +132,31 @@ export function SummaryStrip({
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose]);
+  }, [shown, onClose]);
 
   return (
-    <div className="relative flex-none" ref={ref}>
+    <div
+      className="relative flex-none"
+      ref={ref}
+      data-peeking={peeking ? "true" : "false"}
+      onMouseEnter={scheduleOpen}
+      onMouseLeave={scheduleClose}
+    >
       <button
         type="button"
         data-testid="summary-strip"
-        aria-expanded={open}
-        title={open ? "Hide the analysis summary" : "Show the analysis summary (s)"}
-        onClick={onToggle}
+        aria-expanded={shown}
+        data-pinned={open ? "true" : "false"}
+        title={
+          open
+            ? "Hide the analysis summary"
+            : "Show the analysis summary (s) — hover to peek, click to pin"
+        }
+        onClick={() => {
+          clearTimer();
+          setPeeking(false);
+          onToggle();
+        }}
         className="flex w-full items-center gap-2 border-b px-3 py-1 text-left transition-colors"
         style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
       >
@@ -109,13 +182,14 @@ export function SummaryStrip({
         <IconChevron
           width={11}
           height={11}
-          style={{ color: "var(--fg-faint)", transform: open ? "rotate(90deg)" : "none" }}
+          style={{ color: "var(--fg-faint)", transform: shown ? "rotate(90deg)" : "none" }}
         />
       </button>
 
-      {open ? (
+      {shown ? (
         <div
           data-testid="summary-overlay"
+          data-pinned={open ? "true" : "false"}
           className="absolute inset-x-0 top-full z-40 max-h-[40vh] overflow-y-auto border-b"
           style={{
             background: "var(--bg-raised)",

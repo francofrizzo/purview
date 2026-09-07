@@ -78,7 +78,22 @@ export function SettingsModal() {
               onChange={(v) => update({ diffWrap: v === "wrap" })}
             />
           </Field>
+          <Field label="Viewed hunks">
+            <Segmented
+              value={settings.autoCollapseViewedHunks ? "fold" : "keep"}
+              options={[
+                { value: "fold", label: "fold shut" },
+                { value: "keep", label: "leave open" },
+              ]}
+              onChange={(v) => update({ autoCollapseViewedHunks: v === "fold" })}
+            />
+          </Field>
         </div>
+        <p className="mt-2 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+          Folding a viewed hunk clears it out of the way; un-viewing brings it back. You can always
+          fold or unfold a hunk by hand from its <span className="font-mono">@@</span> header, and
+          that choice sticks until its viewed state next changes.
+        </p>
       </Section>
 
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>

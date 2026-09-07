@@ -141,3 +141,22 @@ describe("resolveAppearance", () => {
     );
   });
 });
+
+describe("diff behaviour defaults", () => {
+  it("folds viewed hunks out of the box, and hides nothing", () => {
+    expect(DEFAULT_SETTINGS.autoCollapseViewedHunks).toBe(true);
+    expect(DEFAULT_SETTINGS.hideReviewedUnits).toBe(false);
+  });
+
+  it("round-trips both flags through the parser", () => {
+    const parsed = parseSettings({ autoCollapseViewedHunks: false, hideReviewedUnits: true });
+    expect(parsed.autoCollapseViewedHunks).toBe(false);
+    expect(parsed.hideReviewedUnits).toBe(true);
+  });
+
+  it("ignores non-boolean values rather than storing them", () => {
+    const parsed = parseSettings({ autoCollapseViewedHunks: "no", hideReviewedUnits: 1 });
+    expect(parsed.autoCollapseViewedHunks).toBe(true);
+    expect(parsed.hideReviewedUnits).toBe(false);
+  });
+});

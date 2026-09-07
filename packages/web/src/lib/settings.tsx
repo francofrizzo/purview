@@ -42,6 +42,10 @@ export interface Settings {
   tabSize: 2 | 4 | 8;
   diffViewMode: DiffViewMode;
   diffWrap: boolean;
+  /** Marking a hunk viewed folds it shut (and un-viewing unfolds it). */
+  autoCollapseViewedHunks: boolean;
+  /** Drop fully-viewed units out of the sidebar (except the selected one). */
+  hideReviewedUnits: boolean;
   /** Width of the Claude chat panel in px (clamped to the range below). */
   chatPanelWidth: number;
 }
@@ -71,6 +75,8 @@ export const DEFAULT_SETTINGS: Settings = {
   tabSize: 8,
   diffViewMode: "unified",
   diffWrap: true,
+  autoCollapseViewedHunks: true,
+  hideReviewedUnits: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
 };
 
@@ -104,6 +110,10 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   if (r.tabSize === 2 || r.tabSize === 4 || r.tabSize === 8) out.tabSize = r.tabSize;
   if (r.diffViewMode === "unified" || r.diffViewMode === "split") out.diffViewMode = r.diffViewMode;
   if (typeof r.diffWrap === "boolean") out.diffWrap = r.diffWrap;
+  if (typeof r.autoCollapseViewedHunks === "boolean") {
+    out.autoCollapseViewedHunks = r.autoCollapseViewedHunks;
+  }
+  if (typeof r.hideReviewedUnits === "boolean") out.hideReviewedUnits = r.hideReviewedUnits;
   if (typeof r.chatPanelWidth === "number" && Number.isFinite(r.chatPanelWidth)) {
     out.chatPanelWidth = clampChatPanelWidth(r.chatPanelWidth);
   }

@@ -42,7 +42,14 @@ import {
   WrapToggle,
   type HunkEntry,
 } from "../components/DiffPane";
-import { CommentComposer, DraftsDrawer, type CommentTarget } from "../components/Drafts";
+import {
+  CommentComposer,
+  DraftsDrawer,
+  targetToInput,
+  type CommentTarget,
+} from "../components/Drafts";
+import { CommentBubble, InlineCommentList } from "../components/InlineComments";
+import { groupComments } from "../lib/comments";
 import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
@@ -108,6 +115,9 @@ export function PrView() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(null);
+  // The files tab names the file in its own header rather than in the pane, so
+  // that header is where its file-level comments live too.
+  const [fileCommentsOpen, setFileCommentsOpen] = useState(false);
   const [report, setReport] = useState<MigrationReport | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitReviewResult | null>(null);
@@ -259,6 +269,10 @@ export function PrView() {
     setSelectedPath((cur) => cur ?? detail.files.files[0]?.path ?? null);
   }, [detail, units]);
 
+  useEffect(() => {
+    setFileCommentsOpen(false);
+  }, [selectedPath]);
+
   const selectedUnit = units.find((u) => u.id === selectedUnitId) ?? null;
 
   // The composer's auto-attach chip follows whatever unit is in context; the
@@ -330,6 +344,7 @@ export function PrView() {
   }
 
   const summary = detail.state.summary?.trim() ?? "";
+  const fileComments = selectedPath ? groupComments(drafts).byFile.get(selectedPath) : undefined;
   const progress = selectedUnit ? unitProgress(detail, selectedUnit) : null;
   const unsubmittedDrafts = drafts.filter((d) => d.status !== "submitted");
 
@@ -347,6 +362,17 @@ export function PrView() {
     ctx: exportCtx,
     repoLabel: repoLabel(detail.meta),
     revision: detail.state.revision,
+  };
+
+  // Everything an inline comment can do, assembled once: the same handlers the
+  // drawer and the finish-review panel already use.
+  const commentActions = {
+    onEdit: (input: { id: string; body: string; confirm?: boolean }) =>
+      editComment.mutateAsync(input),
+    onDelete: (c: { id: string }) => deleteComment.mutate(c.id),
+    deleting: deleteComment.isPending,
+    onQuote: quote,
+    exportCtx,
   };
 
   const jumpToFile = (file: string) => {
@@ -612,10 +638,42 @@ export function PrView() {
                 </span>
               ) : null}
               <div className="ml-auto flex flex-none items-center gap-2">
+                {fileComments?.length ? (
+                  <CommentBubble
+                    comments={fileComments}
+                    expanded={fileCommentsOpen}
+                    onToggle={() => setFileCommentsOpen((v) => !v)}
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  data-testid="add-file-comment-header"
+                  className="btn"
+                  title={`Comment on ${selectedPath} as a whole`}
+                  onClick={() =>
+                    setCommentTarget({ subjectType: "file", file: selectedPath })
+                  }
+                >
+                  + file
+                </button>
                 {showNarrowNote ? <NarrowPaneNote /> : null}
                 <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                 <WrapToggle wrap={wrap} onChange={setWrap} />
               </div>
+            </div>
+          ) : null}
+
+          {/* The pane below is virtualized and shows no file row in this tab,
+              so the file's own comments hang off the header instead. */}
+          {tab === "files" && selectedPath && fileCommentsOpen && fileComments?.length ? (
+            <div className="max-h-[38vh] flex-none overflow-y-auto">
+              <InlineCommentList
+                comments={fileComments}
+                label={`${selectedPath} (whole file)`}
+                onCollapse={() => setFileCommentsOpen(false)}
+                onAdd={() => setCommentTarget({ subjectType: "file", file: selectedPath })}
+                actions={commentActions}
+              />
             </div>
           ) : null}
 
@@ -630,6 +688,7 @@ export function PrView() {
               onFocusHunk={setFocusedHunkId}
               onToggleViewed={(hunkId, viewed) => setHunkViewed.mutate({ hunkId, viewed })}
               onComment={(t) => setCommentTarget(t)}
+              commentActions={commentActions}
               viewMode={viewMode}
               onToggleViewMode={toggleViewMode}
               wrap={wrap}
@@ -655,10 +714,9 @@ export function PrView() {
               exportCtx={exportCtx}
               onCancel={() => setCommentTarget(null)}
               onSubmit={(body) =>
-                addComment.mutate(
-                  { ...commentTarget, body },
-                  { onSuccess: () => setCommentTarget(null) },
-                )
+                addComment.mutate(targetToInput(commentTarget, body), {
+                  onSuccess: () => setCommentTarget(null),
+                })
               }
             />
           ) : null}

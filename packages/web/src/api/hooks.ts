@@ -12,6 +12,7 @@ import type {
   AnalysisJob,
   DiffOfDiffs,
   DiscardPendingResult,
+  AddCommentInput,
   DraftComment,
   EditCommentResult,
   GlobalConfig,
@@ -357,8 +358,7 @@ export function useComments(key: string) {
 export function useAddComment(key: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { file: string; line: number; side: "LEFT" | "RIGHT"; body: string }) =>
-      api.addComment(key, input),
+    mutationFn: (input: AddCommentInput) => api.addComment(key, input),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.comments(key) });
       void qc.invalidateQueries({ queryKey: qk.review(key) });

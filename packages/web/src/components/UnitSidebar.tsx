@@ -1,10 +1,15 @@
 import { useState } from "react";
 import type { Attention, ChatRef, PrDetail, ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
+import { useSettings } from "../lib/settings";
+import { filterUnits, hiddenHint } from "../lib/unitFilter";
 import { ChangedBadge, KindChip, Progress, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { IconChevron } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
+
+const HIDE_REVIEWED_TITLE =
+  "Drop fully-viewed units out of the list. The unit you are reading stays put, so the diff pane never changes under you.";
 
 const GROUPS: { attention: Attention; label: string; defaultOpen: boolean }[] = [
   { attention: "must-read", label: "must read", defaultOpen: true },
@@ -33,8 +38,17 @@ export function UnitSidebar({
     skim: true,
     skip: false,
   });
+  const { settings, update } = useSettings();
+  const hide = settings.hideReviewedUnits;
 
   const units = [...detail.state.units].sort((a, b) => a.order - b.order);
+
+  // "Reviewed" is every hunk viewed. A unit with no hunks at all is not
+  // "reviewed", it is empty — hiding those would make them unreachable.
+  const isFullyViewed = (u: ReviewUnit) => {
+    const p = unitProgress(detail, u);
+    return p.total > 0 && p.viewed === p.total;
+  };
 
   // The skill's `order` is global and gappy once units are bucketed by
   // attention (must-read shows 1,2,…,15 and skim then restarts at 6), which
@@ -46,6 +60,10 @@ export function UnitSidebar({
     for (const u of units) if (u.attention === g.attention) displayNumber.set(u.id, ++n);
   }
 
+  const totalHidden = hide
+    ? filterUnits(units, { hide, isFullyViewed, selectedId: selectedUnitId }).hidden
+    : 0;
+
   if (!units.length) {
     return (
       <div className="p-4 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
@@ -56,9 +74,34 @@ export function UnitSidebar({
 
   return (
     <div className="py-1">
+      <div
+        className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-2xs"
+        style={{ color: "var(--fg-faint)" }}
+      >
+        <label className="flex cursor-pointer items-center gap-1.5" title={HIDE_REVIEWED_TITLE}>
+          <input
+            type="checkbox"
+            data-testid="hide-reviewed-units"
+            checked={hide}
+            onChange={(e) => update({ hideReviewedUnits: e.target.checked })}
+          />
+          hide reviewed
+        </label>
+        {hide && totalHidden > 0 ? (
+          <span className="ml-auto tabular-nums" data-testid="hidden-total">
+            {totalHidden} hidden
+          </span>
+        ) : null}
+      </div>
       {GROUPS.map((g) => {
-        const groupUnits = units.filter((u) => u.attention === g.attention);
-        if (!groupUnits.length) return null;
+        const all = units.filter((u) => u.attention === g.attention);
+        if (!all.length) return null;
+        const { shown: groupUnits, hidden } = filterUnits(all, {
+          hide,
+          isFullyViewed,
+          selectedId: selectedUnitId,
+        });
+        if (!groupUnits.length && hidden === 0) return null;
         const isOpen = open[g.attention];
         const groupViewed = groupUnits.reduce(
           (acc, u) => {
@@ -87,6 +130,11 @@ export function UnitSidebar({
               <IconChevron open={isOpen} width={10} height={10} />
               {g.label}
               <span style={{ color: "var(--fg-faint)" }}>({groupUnits.length})</span>
+              {hidden > 0 ? (
+                <span data-testid={`hidden-${g.attention}`} style={{ color: "var(--fg-faint)" }}>
+                  {hiddenHint(hidden)}
+                </span>
+              ) : null}
               <span className="ml-auto tabular-nums" style={{ color: "var(--fg-faint)" }}>
                 {groupViewed.viewed}/{groupViewed.total}
               </span>

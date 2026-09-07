@@ -1,6 +1,8 @@
 import { memo, type ReactNode } from "react";
+import type { DraftComment } from "../api/types";
 import type { Tok } from "../lib/highlight";
 import type { CharRange, DiffRow } from "../lib/diffModel";
+import { CommentBubble } from "./InlineComments";
 
 function inRange(pos: number, ranges: CharRange[] | undefined): boolean {
   if (!ranges) return false;
@@ -143,22 +145,56 @@ function markerColor(type: DiffRow["type"]) {
   return type === "add" ? "var(--ok)" : type === "del" ? "var(--risk)" : "var(--fg-faint)";
 }
 
-function CommentButton({ onComment, hasComment }: { onComment?: () => void; hasComment?: boolean }) {
-  if (!onComment) return <span className="w-[15px] flex-none" />;
+/**
+ * The comment column: a bubble when the line already has comments (always
+ * visible — that is the whole point), and the `+` add affordance, still
+ * hover-only. Two slots, one fixed width, so every line in the pane keeps the
+ * same code column no matter what hangs off it.
+ */
+export const COMMENT_COL_WIDTH = 30;
+
+export interface LineCommentProps {
+  /** comments anchored to this line; undefined/empty renders no bubble */
+  comments?: DraftComment[];
+  expanded?: boolean;
+  onToggleComments?: () => void;
+}
+
+function CommentColumn({
+  onComment,
+  comments,
+  expanded,
+  onToggleComments,
+}: { onComment?: () => void } & LineCommentProps) {
+  const has = Boolean(comments && comments.length);
   return (
-    <button
-      type="button"
-      onClick={onComment}
-      title="Draft a comment on this line"
-      className="mx-0.5 my-[3px] h-[14px] w-[14px] flex-none rounded text-[10px] leading-[13px] opacity-0 transition-opacity group-hover:opacity-100"
-      style={{
-        background: hasComment ? "var(--accent)" : "var(--bg-hover)",
-        color: hasComment ? "var(--bg)" : "var(--fg-muted)",
-        opacity: hasComment ? 1 : undefined,
-      }}
+    <span
+      className="flex flex-none items-start justify-end gap-[1px]"
+      style={{ width: COMMENT_COL_WIDTH }}
     >
-      +
-    </button>
+      {has && onToggleComments ? (
+        <CommentBubble
+          compact
+          comments={comments!}
+          expanded={Boolean(expanded)}
+          onToggle={onToggleComments}
+        />
+      ) : null}
+      {onComment ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onComment();
+          }}
+          title={has ? "Add another comment on this line" : "Draft a comment on this line"}
+          className="my-[2px] h-[13px] w-[13px] flex-none rounded text-[10px] leading-[12px] opacity-0 transition-opacity group-hover:opacity-100 group-hover/half:opacity-100"
+          style={{ background: "var(--bg-hover)", color: "var(--fg-muted)" }}
+        >
+          +
+        </button>
+      ) : null}
+    </span>
   );
 }
 
@@ -216,11 +252,10 @@ function Gutter({
   );
 }
 
-export interface DiffLineProps extends GutterSelectProps {
+export interface DiffLineProps extends GutterSelectProps, LineCommentProps {
   row: DiffRow;
   tokens?: Tok[];
   onComment?: () => void;
-  hasComment?: boolean;
   /** search hits on this row, if a search is running */
   marks?: LineMarks;
 }
@@ -229,7 +264,9 @@ export const DiffLine = memo(function DiffLine({
   row,
   tokens,
   onComment,
-  hasComment,
+  comments,
+  expanded,
+  onToggleComments,
   marks,
   onSelectDown,
   onSelectEnter,
@@ -269,7 +306,12 @@ export const DiffLine = memo(function DiffLine({
           onSelectDown={onSelectDown}
           onSelectEnter={onSelectEnter}
         />
-        <CommentButton onComment={onComment} hasComment={hasComment} />
+        <CommentColumn
+          onComment={onComment}
+          comments={comments}
+          expanded={expanded}
+          onToggleComments={onToggleComments}
+        />
         <span className="diff-marker" style={{ color: markerColor(row.type) }}>
           {marker}
         </span>
@@ -281,13 +323,12 @@ export const DiffLine = memo(function DiffLine({
   );
 });
 
-export interface SplitHalfProps {
+export interface SplitHalfProps extends LineCommentProps {
   row: DiffRow | null;
   /** which gutter number this side shows */
   side: LineSide;
   tokens?: Tok[];
   onComment?: () => void;
-  hasComment?: boolean;
   marks?: LineMarks;
   selected?: boolean;
   onSelectDown?: GutterSelectProps["onSelectDown"];
@@ -300,7 +341,9 @@ function SplitHalf({
   side,
   tokens,
   onComment,
-  hasComment,
+  comments,
+  expanded,
+  onToggleComments,
   marks,
   selected,
   onSelectDown,
@@ -311,7 +354,7 @@ function SplitHalf({
       <div className="diff-half" data-type="none" style={{ background: "var(--bg-inset)" }}>
         <span className="diff-fixed">
           <span className="diff-gutter" />
-          <span className="w-[15px] flex-none" />
+          <span className="flex-none" style={{ width: COMMENT_COL_WIDTH }} />
           <span className="diff-marker" />
         </span>
         <span className="diff-code min-w-0 flex-1" />
@@ -340,7 +383,12 @@ function SplitHalf({
           onSelectDown={onSelectDown}
           onSelectEnter={onSelectEnter}
         />
-        <CommentButton onComment={onComment} hasComment={hasComment} />
+        <CommentColumn
+          onComment={onComment}
+          comments={comments}
+          expanded={expanded}
+          onToggleComments={onToggleComments}
+        />
         <span className="diff-marker" style={{ color: markerColor(row.type) }}>
           {marker}
         </span>
@@ -359,8 +407,12 @@ export interface SplitDiffLineProps {
   rightTokens?: Tok[];
   onCommentLeft?: () => void;
   onCommentRight?: () => void;
-  hasCommentLeft?: boolean;
-  hasCommentRight?: boolean;
+  commentsLeft?: DraftComment[];
+  commentsRight?: DraftComment[];
+  expandedLeft?: boolean;
+  expandedRight?: boolean;
+  onToggleCommentsLeft?: () => void;
+  onToggleCommentsRight?: () => void;
   marksLeft?: LineMarks;
   marksRight?: LineMarks;
   selectedLeft?: boolean;
@@ -376,8 +428,12 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   rightTokens,
   onCommentLeft,
   onCommentRight,
-  hasCommentLeft,
-  hasCommentRight,
+  commentsLeft,
+  commentsRight,
+  expandedLeft,
+  expandedRight,
+  onToggleCommentsLeft,
+  onToggleCommentsRight,
   marksLeft,
   marksRight,
   selectedLeft,
@@ -392,7 +448,9 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         side="old"
         tokens={leftTokens}
         onComment={onCommentLeft}
-        hasComment={hasCommentLeft}
+        comments={commentsLeft}
+        expanded={expandedLeft}
+        onToggleComments={onToggleCommentsLeft}
         marks={marksLeft}
         selected={selectedLeft}
         onSelectDown={onSelectDown}
@@ -404,7 +462,9 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         side="new"
         tokens={rightTokens}
         onComment={onCommentRight}
-        hasComment={hasCommentRight}
+        comments={commentsRight}
+        expanded={expandedRight}
+        onToggleComments={onToggleCommentsRight}
         marks={marksRight}
         selected={selectedRight}
         onSelectDown={onSelectDown}

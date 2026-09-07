@@ -7,7 +7,7 @@
  * only — the UI owns the clipboard, this file owns the text.
  */
 
-import type { CommentStatus, FilesJson, Hunk } from "../api/types";
+import { isFileComment, type CommentStatus, type CommentSubject, type FilesJson, type Hunk } from "../api/types";
 import { buildRows, languageFor } from "./diffModel";
 
 /** How much of the surrounding hunk travels with the anchored line. */
@@ -26,10 +26,14 @@ export interface DiffContext {
  */
 export interface ExportableComment {
   file: string;
-  line: number;
-  side: "LEFT" | "RIGHT";
+  /** null for a file-level comment */
+  line: number | null;
+  /** null for a file-level comment */
+  side: "LEFT" | "RIGHT" | null;
   body: string;
   status?: CommentStatus;
+  /** absent → "line", so older payloads export exactly as they always did */
+  subjectType?: CommentSubject;
 }
 
 export interface BundleOptions {
@@ -51,8 +55,15 @@ export const STALE_NOTE = "(line no longer in current diff)";
  * byte-identical text, which matters when the reader re-pastes after an edit.
  */
 export function sortComments<T extends ExportableComment>(comments: T[]): T[] {
+  // File-level comments sort to -1, i.e. ahead of every line in their file:
+  // they are the "about this file as a whole" preamble to what follows.
+  const lineOf = (c: T) => (isFileComment(c) ? -1 : (c.line as number));
+  const sideOf = (c: T) => c.side ?? "";
   return [...comments].sort(
-    (a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.side.localeCompare(b.side),
+    (a, b) =>
+      a.file.localeCompare(b.file) ||
+      lineOf(a) - lineOf(b) ||
+      sideOf(a).localeCompare(sideOf(b)),
   );
 }
 
@@ -86,6 +97,8 @@ export interface Snippet {
  * revision still has that line — a stale comment.
  */
 export function snippetFor(comment: ExportableComment, ctx: DiffContext): Snippet | null {
+  // A file-level comment points at no line, so there is no code to carry.
+  if (isFileComment(comment)) return null;
   const file = ctx.files.files.find((f) => f.path === comment.file);
   if (!file) return null;
 
@@ -126,8 +139,9 @@ export function blockquote(body: string): string {
 }
 
 function heading(comment: ExportableComment, index?: number): string {
-  const side = comment.side === "LEFT" ? "old side" : "new side";
   const number = index === undefined ? "" : `${index}. `;
+  if (isFileComment(comment)) return `### ${number}\`${comment.file}\` (file-level)`;
+  const side = comment.side === "LEFT" ? "old side" : "new side";
   return `### ${number}\`${comment.file}:${comment.line}\` (${side})`;
 }
 
@@ -141,6 +155,10 @@ export function formatComment(
   index?: number,
 ): string {
   const parts: string[] = [heading(comment, index)];
+  // File-level: the heading already says which file, so the body is the whole
+  // payload — no fence, and no stale note either (a file cannot go stale in
+  // the way a line number can).
+  if (isFileComment(comment)) return [parts[0], blockquote(comment.body)].join("\n");
   const snippet = snippetFor(comment, ctx);
   if (snippet) {
     parts.push(["```" + snippet.lang, ...snippet.lines, "```"].join("\n"));

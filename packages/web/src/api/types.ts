@@ -350,17 +350,44 @@ export interface MigrationReport {
  */
 export type CommentStatus = "draft" | "pushed" | "submitted";
 
+/**
+ * What a comment is attached to. `"line"` is the historical shape (and the
+ * default when the server omits the field); `"file"` comments hang off the
+ * whole file and carry no line or side at all.
+ */
+export type CommentSubject = "line" | "file";
+
 export interface DraftComment {
   id: string;
   file: string;
-  line: number;
-  side: "LEFT" | "RIGHT";
+  /** null for file-level comments */
+  line: number | null;
+  /** null for file-level comments */
+  side: "LEFT" | "RIGHT" | null;
   body: string;
   createdAt?: string;
   status?: CommentStatus;
+  /** absent on older servers — treat as "line" */
+  subjectType?: CommentSubject;
   /** set once the comment exists on GitHub; needed to mirror an edit remotely */
   githubCommentId?: number;
 }
+
+/** The one predicate the whole UI branches on. Tolerant of older payloads. */
+export function isFileComment(c: {
+  subjectType?: CommentSubject;
+  line?: number | null;
+}): boolean {
+  return c.subjectType === "file" || c.line === null || c.line === undefined;
+}
+
+/**
+ * POST /api/prs/:key/comments — one shape for both kinds, so callers can pass
+ * a target around without branching until the wire.
+ */
+export type AddCommentInput =
+  | { subjectType?: "line"; file: string; line: number; side: "LEFT" | "RIGHT"; body: string }
+  | { subjectType: "file"; file: string; body: string };
 
 /**
  * PATCH /api/prs/:key/comments/:id
@@ -410,10 +437,11 @@ export interface ReviewStatus {
   included: {
     id: string;
     file: string;
-    line: number;
-    side: "LEFT" | "RIGHT";
+    line: number | null;
+    side: "LEFT" | "RIGHT" | null;
     body: string;
     status: CommentStatus;
+    subjectType?: CommentSubject;
   }[];
   pending: {
     /** false when we could not reach GitHub — status is then unknown, not "none" */

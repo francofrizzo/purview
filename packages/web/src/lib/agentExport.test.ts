@@ -100,6 +100,91 @@ describe("formatComment", () => {
   });
 });
 
+const fileComment = (over: Partial<ExportableComment> = {}): ExportableComment => ({
+  file: "src/a.ts",
+  line: null,
+  side: null,
+  subjectType: "file",
+  body: "this file is doing too much",
+  ...over,
+});
+
+describe("file-level comments", () => {
+  const ctx = ctxOf(file("src/a.ts", [hunk("src/a.ts", 1, [" a", " b", " c"])]));
+
+  it("heads with the bare path and carries no code at all", () => {
+    expect(formatComment(fileComment(), ctx)).toBe(
+      ["### `src/a.ts` (file-level)", "> this file is doing too much"].join("\n"),
+    );
+  });
+
+  it("emits no fence and no stale note — a file cannot go stale", () => {
+    const out = formatComment(fileComment({ file: "src/gone.ts" }), ctx);
+    expect(out).toBe(["### `src/gone.ts` (file-level)", "> this file is doing too much"].join("\n"));
+    expect(out).not.toContain("```");
+    expect(out).not.toContain(STALE_NOTE);
+  });
+
+  it("has no snippet to look up", () => {
+    expect(snippetFor(fileComment(), ctx)).toBeNull();
+  });
+
+  it("numbers its heading like any other comment in a bundle", () => {
+    expect(formatComment(fileComment(), ctx, 2)).toContain("### 2. `src/a.ts` (file-level)");
+  });
+
+  it("quotes a multi-line body whole", () => {
+    const out = formatComment(fileComment({ body: "one\n\ntwo" }), ctx);
+    expect(out.endsWith("> one\n>\n> two")).toBe(true);
+  });
+
+  it("is recognised without an explicit subjectType, from the null line alone", () => {
+    const legacy: ExportableComment = { file: "src/a.ts", line: null, side: null, body: "hm" };
+    expect(formatComment(legacy, ctx)).toBe("### `src/a.ts` (file-level)\n> hm");
+  });
+
+  it("sorts ahead of every line comment in the same file, and stays in path order", () => {
+    const set: ExportableComment[] = [
+      comment({ file: "src/z.ts", line: 1, body: "z1" }),
+      comment({ file: "src/a.ts", line: 9, body: "a9" }),
+      fileComment({ file: "src/z.ts", body: "zFile" }),
+      comment({ file: "src/a.ts", line: 2, body: "a2" }),
+      fileComment({ file: "src/a.ts", body: "aFile" }),
+    ];
+    expect(sortComments(set).map((c) => c.body)).toEqual(["aFile", "a2", "a9", "zFile", "z1"]);
+  });
+
+  it("rides along in a bundle, numbered before its file's line comments", () => {
+    const bundleCtx = ctxOf(
+      file("src/a.ts", [hunk("src/a.ts", 1, [" a1", " a2", " a3"])]),
+      file("src/z.ts", [hunk("src/z.ts", 1, [" z1"])]),
+    );
+    const out = formatBundle(
+      [
+        comment({ file: "src/z.ts", line: 1, body: "onZ" }),
+        comment({ file: "src/a.ts", line: 2, body: "onA" }),
+        fileComment({ file: "src/a.ts", body: "wholeA" }),
+      ],
+      bundleCtx,
+      { repoLabel: "acme/billing#482" },
+    );
+    expect(out).toContain("### 1. `src/a.ts` (file-level)");
+    expect(out).toContain("### 2. `src/a.ts:2` (new side)");
+    expect(out).toContain("### 3. `src/z.ts:1` (new side)");
+    // The file-level block runs heading straight into the quote.
+    expect(out).toContain("### 1. `src/a.ts` (file-level)\n> wholeA");
+  });
+
+  it("is filtered by status like any other comment", () => {
+    const mixed = [
+      fileComment({ file: "a", status: "submitted", body: "s" }),
+      fileComment({ file: "b", status: "draft", body: "d" }),
+    ];
+    expect(selectForBundle(mixed).map((c) => c.body)).toEqual(["d"]);
+    expect(selectForBundle(mixed, true).map((c) => c.body)).toEqual(["s", "d"]);
+  });
+});
+
 describe("context slicing", () => {
   const lines = [" l1", " l2", " l3", " l4", " l5", " l6", " l7"];
 

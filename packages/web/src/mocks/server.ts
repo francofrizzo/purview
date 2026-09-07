@@ -7,6 +7,7 @@ import type {
   ChatState,
   DiffOfDiffs,
   DiscardPendingResult,
+  AddCommentInput,
   DraftComment,
   EditCommentResult,
   MigrationReport,
@@ -661,16 +662,24 @@ export const mockApi = {
     return structuredClone(drafts);
   },
 
-  async addComment(
-    _key: string,
-    input: { file: string; line: number; side: "LEFT" | "RIGHT"; body: string },
-  ): Promise<DraftComment> {
+  /**
+   * Mirrors the real endpoint's subject handling: a POST with no line is a
+   * file-level comment, and file-level comments carry a null line *and* a null
+   * side so nothing downstream can mistake them for line 0.
+   */
+  async addComment(_key: string, input: AddCommentInput): Promise<DraftComment> {
     await delay(120);
+    if (!input.body.trim()) throw new ApiError("invalid_body", 400, "Body must be non-empty");
+    const fileLevel = input.subjectType === "file";
     const draft: DraftComment = {
       id: `draft-${drafts.length + 1}-${Date.now()}`,
+      file: input.file,
+      body: input.body,
+      line: fileLevel ? null : input.line,
+      side: fileLevel ? null : input.side,
+      subjectType: fileLevel ? "file" : "line",
       createdAt: new Date().toISOString(),
       status: "draft",
-      ...input,
     };
     drafts.push(draft);
     return draft;
@@ -747,6 +756,7 @@ export const mockApi = {
           side: d.side,
           body: d.body,
           status: d.status ?? "draft",
+          subjectType: d.subjectType ?? "line",
         })),
       pending: { known: true, exists: review.pending },
       readiness: {

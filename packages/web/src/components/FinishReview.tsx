@@ -61,7 +61,7 @@ export function FinishReviewPanel({
   onSaveBody: (body: string) => void;
   onSubmit: (event: ReviewEvent, body: string) => void;
   onDiscardPending: () => void;
-  onJumpToComment: (file: string, line: number) => void;
+  onJumpToComment: (file: string, line: number | null) => void;
   onEditComment?: EditComment;
   /** diff + PR identity for the agent-facing copy; omit to hide the action */
   bundle?: Omit<BundleSource, "comments" | "reviewBody">;
@@ -361,7 +361,7 @@ function IncludedComments({
   reviewBody,
 }: {
   review: ReviewStatus;
-  onJump: (file: string, line: number) => void;
+  onJump: (file: string, line: number | null) => void;
   onEdit?: EditComment;
   bundle?: Omit<BundleSource, "comments" | "reviewBody">;
   /** the live textarea contents, so the copy matches what is on screen */
@@ -400,7 +400,9 @@ function IncludedComments({
                 title="Jump to this file"
               >
                 <span className="truncate">{c.file}</span>
-                <span style={{ color: "var(--fg-faint)" }}>:{c.line}</span>
+                <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
+                  {c.line === null || c.subjectType === "file" ? "(file)" : `:${c.line}`}
+                </span>
                 <StatusChip status={c.status} />
               </button>
               <CommentBody comment={c} edit={onEdit} clamp />

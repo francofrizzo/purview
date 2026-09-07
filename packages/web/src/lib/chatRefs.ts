@@ -56,7 +56,8 @@ export function lineRangeRef(
 export interface RefLabelContext {
   unitTitle?: (id: string) => string | undefined;
   hunk?: (id: string) => { file: string; oldStart: number; oldLines: number; newStart: number; newLines: number } | undefined;
-  comment?: (id: string) => { file: string; line: number } | undefined;
+  /** `line` is null for a file-level comment */
+  comment?: (id: string) => { file: string; line: number | null } | undefined;
 }
 
 /** The file's basename — chips are narrow, and the directory is rarely the point. */
@@ -92,7 +93,7 @@ export function refLabel(ref: ChatRef, ctx: RefLabelContext = {}): string {
     case "comment": {
       const c = ref.id ? ctx.comment?.(ref.id) : undefined;
       const where = c
-        ? `${baseName(c.file)}:${c.line}`
+        ? `${baseName(c.file)}${c.line === null ? " (file)" : `:${c.line}`}`
         : ref.path
           ? `${baseName(ref.path)}${ref.start !== undefined ? `:${ref.start}` : ""}`
           : shortId(ref.id ?? "");
@@ -118,7 +119,7 @@ export function refTitle(ref: ChatRef, ctx: RefLabelContext = {}): string {
       return `${ref.path ?? ""} lines ${ref.start ?? "?"}–${ref.end ?? "?"} (${ref.side ?? "new"} side)`;
     case "comment": {
       const c = ref.id ? ctx.comment?.(ref.id) : undefined;
-      return c ? `Comment on ${c.file}:${c.line}` : "Comment";
+      return c ? `Comment on ${c.file}${c.line === null ? " (whole file)" : `:${c.line}`}` : "Comment";
     }
     default:
       return "";

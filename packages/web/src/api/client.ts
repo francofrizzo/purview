@@ -2,6 +2,7 @@ import { mockApi } from "../mocks/server";
 import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
 import type {
+  AddCommentInput,
   AnalysisJob,
   ChatMessage,
   ChatRef,
@@ -206,11 +207,12 @@ interface WireSync {
 interface WireComment {
   id: string;
   file: string;
-  line: number;
-  side: "LEFT" | "RIGHT";
+  line: number | null;
+  side: "LEFT" | "RIGHT" | null;
   body: string;
   createdAt: string;
   status: CommentStatus;
+  subjectType?: "line" | "file";
   githubCommentId?: number;
 }
 
@@ -353,10 +355,18 @@ function adaptSync(res: WireSync): SyncResult {
  * that only defends against an older server (or a hand-edited comments.json)
  * still sending the old binary vocabulary.
  */
-const adaptComment = (c: WireComment): DraftComment => ({
-  ...c,
-  status: c.status === "pushed" || c.status === "submitted" ? c.status : "draft",
-});
+const adaptComment = (c: WireComment): DraftComment => {
+  // A server that predates file-level comments sends neither `subjectType` nor
+  // a null line, so everything it sends parses as the line comment it is.
+  const fileLevel = c.subjectType === "file" || c.line === null || c.line === undefined;
+  return {
+    ...c,
+    subjectType: fileLevel ? "file" : "line",
+    line: fileLevel ? null : c.line,
+    side: fileLevel ? null : (c.side ?? "RIGHT"),
+    status: c.status === "pushed" || c.status === "submitted" ? c.status : "draft",
+  };
+};
 
 /** Flattens the server's nested review envelope into the panel's view model. */
 function adaptReview(raw: WireReviewStatus): ReviewStatus {
@@ -512,12 +522,18 @@ export const api = {
     ).map(adaptComment);
   },
 
-  async addComment(
-    key: string,
-    input: { file: string; line: number; side: "LEFT" | "RIGHT"; body: string },
-  ): Promise<DraftComment> {
+  /**
+   * A file-level comment is a POST with no line at all — the server reads the
+   * absence as the subject. `subjectType` rides along explicitly so a reader
+   * of the request log does not have to infer it.
+   */
+  async addComment(key: string, input: AddCommentInput): Promise<DraftComment> {
     if (MOCK) return mockApi.addComment(key, input);
-    const res = await post<{ comment: WireComment }>(`/prs/${encodeKey(key)}/comments`, input);
+    const body =
+      input.subjectType === "file"
+        ? { file: input.file, body: input.body, subjectType: "file" as const }
+        : { file: input.file, line: input.line, side: input.side, body: input.body };
+    const res = await post<{ comment: WireComment }>(`/prs/${encodeKey(key)}/comments`, body);
     return adaptComment(res.comment);
   },
 

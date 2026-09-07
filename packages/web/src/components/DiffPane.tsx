@@ -2,17 +2,30 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { lineRangeRef } from "../lib/chatRefs";
+import { groupComments, lineAnchor } from "../lib/comments";
 import { buildRows, buildSplitRows, hunkLabel, type CharRange } from "../lib/diffModel";
 import { lineKey, type SearchMatch } from "../lib/diffSearch";
+import {
+  EMPTY_COLLAPSED,
+  isCollapsed,
+  pruneCollapsed,
+  reconcileViewed,
+  setCollapsed,
+  toggleCollapsed,
+  viewedSnapshot,
+  type CollapsedMap,
+} from "../lib/hunkCollapse";
 import { useTokensForHunks } from "../lib/useHunkTokens";
 import { useSettings, type DiffViewMode } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 import { ChangedBadge } from "./Chips";
 import { QuoteButton } from "./ChatPanel";
-import { DiffLine, SplitDiffLine, type LineMarks, type LineSide } from "./DiffLine";
+import { COMMENT_COL_WIDTH, DiffLine, SplitDiffLine, type LineMarks, type LineSide } from "./DiffLine";
 import { DiffOfDiffs } from "./DiffOfDiffs";
+import type { CommentTarget } from "./Drafts";
+import { CommentBubble, InlineCommentList, type InlineCommentActions } from "./InlineComments";
 import { MiddleTruncate } from "./Truncate";
-import { IconCheck, IconComment, IconQuote, IconSplit, IconUnified, IconWrap } from "./icons";
+import { IconCheck, IconChevron, IconComment, IconQuote, IconSplit, IconUnified, IconWrap } from "./icons";
 
 export interface HunkEntry {
   hunk: Hunk;
@@ -22,8 +35,8 @@ export interface HunkEntry {
 /** Below this pane width side-by-side is unreadable, so we render unified. */
 export const SPLIT_MIN_WIDTH = 700;
 
-/** px of chrome left of the code column in unified: 2 gutters + button + marker + right pad. */
-const UNIFIED_CHROME = 52 + 52 + 15 + 12 + 16;
+/** px of chrome left of the code column in unified: 2 gutters + comment column + marker + right pad. */
+const UNIFIED_CHROME = 52 + 52 + COMMENT_COL_WIDTH + 12 + 16;
 
 /** Visual column count of a line, expanding tabs the way the browser renders them. */
 function columns(s: string, tabSize: number): number {
@@ -37,7 +50,19 @@ type FlatRow =
   | { type: "hunk"; key: string; hunkId: string; entry: HunkEntry }
   | { type: "dod"; key: string; hunkId: string }
   | { type: "line"; key: string; hunkId: string; entry: HunkEntry; lineIdx: number }
-  | { type: "split"; key: string; hunkId: string; entry: HunkEntry; rowIdx: number };
+  | { type: "split"; key: string; hunkId: string; entry: HunkEntry; rowIdx: number }
+  /** expanded comments hanging off one line anchor; height is whatever it is */
+  | {
+      type: "comments";
+      key: string;
+      hunkId: string;
+      anchor: string;
+      path: string;
+      line: number;
+      side: "LEFT" | "RIGHT";
+    }
+  /** expanded comments hanging off a whole file */
+  | { type: "filecomments"; key: string; path: string };
 
 export interface DiffPaneProps {
   detail: PrDetail;
@@ -46,7 +71,12 @@ export interface DiffPaneProps {
   focusedHunkId: string | null;
   onFocusHunk: (id: string | null) => void;
   onToggleViewed: (hunkId: string, viewed: boolean) => void;
-  onComment: (input: { file: string; line: number; side: "LEFT" | "RIGHT" }) => void;
+  onComment: (target: CommentTarget) => void;
+  /**
+   * Edit / delete / quote / copy for comments read inline. Omitted, the
+   * bubbles still expand — they just become read-only.
+   */
+  commentActions?: InlineCommentActions;
   viewMode?: DiffViewMode;
   onToggleViewMode?: () => void;
   wrap?: boolean;
@@ -107,6 +137,7 @@ export function DiffPane({
   onFocusHunk,
   onToggleViewed,
   onComment,
+  commentActions,
   viewMode = "unified",
   onToggleViewMode,
   wrap = true,
@@ -119,7 +150,7 @@ export function DiffPane({
   activeMatch,
   onScrolledAway,
 }: DiffPaneProps) {
-  const { appearance } = useSettings();
+  const { appearance, settings } = useSettings();
   const theme = shikiThemeFor(appearance.theme);
   const { codeFontSize, codeLineHeight, tabSize, codeFont } = appearance;
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -211,11 +242,58 @@ export function DiffPane({
   const hunks = useMemo(() => entries.map((e) => e.hunk), [entries]);
   const tokens = useTokensForHunks(hunks, detail.diff, theme);
 
-  const draftsByLine = useMemo(() => {
-    const s = new Set<string>();
-    for (const d of drafts) s.add(`${d.file}:${d.line}:${d.side}`);
-    return s;
-  }, [drafts]);
+  const grouped = useMemo(() => groupComments(drafts), [drafts]);
+
+  /**
+   * Which comment blocks are open, keyed by anchor rather than by row index:
+   * the anchor survives a unified/split switch, a wrap toggle and a font
+   * change, so a block the reader opened stays open through all of them.
+   */
+  const [expandedAnchors, setExpandedAnchors] = useState<Set<string>>(() => new Set());
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(() => new Set());
+
+  const toggleAnchor = useCallback((anchor: string) => {
+    captureAnchorPosition();
+    setExpandedAnchors((prev) => {
+      const next = new Set(prev);
+      if (next.has(anchor)) next.delete(anchor);
+      else next.add(anchor);
+      return next;
+    });
+  }, []);
+
+  const toggleFileComments = useCallback((path: string) => {
+    captureAnchorPosition();
+    setExpandedFiles((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  /* ------------------------------------------------------- hunk collapsing */
+
+  const { autoCollapseViewedHunks } = settings;
+  const [collapsed, setCollapsedState] = useState<CollapsedMap>(EMPTY_COLLAPSED);
+
+  const toggleHunkCollapsed = useCallback((hunkId: string) => {
+    captureAnchorPosition();
+    setCollapsedState((prev) => toggleCollapsed(prev, hunkId));
+  }, []);
+
+  // Auto-collapse follows *changes* to the viewed flags, wherever they come
+  // from — the checkbox, `v`, or "mark unit viewed" ticking a dozen at once.
+  // Comparing against the previous snapshot (rather than reacting to the flag
+  // itself) is what lets a manual unfold survive until the state next moves.
+  const viewedNow = useMemo(() => viewedSnapshot(detail.state.hunks), [detail.state.hunks]);
+  const prevViewed = useRef(viewedNow);
+  useEffect(() => {
+    const previous = prevViewed.current;
+    prevViewed.current = viewedNow;
+    if (previous === viewedNow) return;
+    setCollapsedState((prev) => reconcileViewed(prev, previous, viewedNow, autoCollapseViewedHunks));
+  }, [viewedNow, autoCollapseViewedHunks]);
 
   const rows = useMemo<FlatRow[]>(() => {
     const out: FlatRow[] = [];
@@ -230,6 +308,9 @@ export function DiffPane({
       if (file.path !== lastFile) {
         if (showFileRows) {
           out.push({ type: "file", key: `f:${file.path}:${hunk.id}`, path: file.path, file });
+          if (expandedFiles.has(file.path) && grouped.byFile.has(file.path)) {
+            out.push({ type: "filecomments", key: `xf:${file.path}`, path: file.path });
+          }
         }
         lastFile = file.path;
       }
@@ -237,6 +318,27 @@ export function DiffPane({
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
       }
+      // A folded hunk contributes its header and nothing else. Dropping the
+      // rows (rather than hiding them) is what makes folding actually cheap:
+      // the virtualizer never mounts or measures them at all.
+      if (isCollapsed(collapsed, hunk.id)) continue;
+
+      /** Push the comment block for one anchor, when it is open. */
+      const pushComments = (path: string, line: number, side: "LEFT" | "RIGHT") => {
+        const anchor = lineAnchor(path, line, side);
+        if (!expandedAnchors.has(anchor)) return;
+        if (!grouped.byLine.has(anchor)) return;
+        out.push({
+          type: "comments",
+          key: `x:${anchor}`,
+          hunkId: hunk.id,
+          anchor,
+          path,
+          line,
+          side,
+        });
+      };
+
       if (mode === "split") {
         const pairs = buildSplitRows(hunk, detail.diff);
         for (let i = 0; i < pairs.length; i++) {
@@ -247,6 +349,12 @@ export function DiffPane({
             entry,
             rowIdx: i,
           });
+          const pair = pairs[i];
+          const leftNo =
+            pair.left && pair.left.row.type === "del" ? pair.left.row.oldNumber : undefined;
+          const rightNo = pair.right ? pair.right.row.newNumber : undefined;
+          if (leftNo !== undefined) pushComments(file.path, leftNo, "LEFT");
+          if (rightNo !== undefined) pushComments(file.path, rightNo, "RIGHT");
         }
       } else {
         const lines = buildRows(hunk, detail.diff);
@@ -258,11 +366,27 @@ export function DiffPane({
             entry,
             lineIdx: i,
           });
+          const line = lines[i];
+          const side = line.type === "del" ? "LEFT" : "RIGHT";
+          const no = line.type === "del" ? line.oldNumber : line.newNumber;
+          if (no !== undefined) pushComments(file.path, no, side);
         }
       }
     }
     return out;
-  }, [entries, detail.diff, expandedDod, mode, wrap, showFileRows, codeFontSize]);
+  }, [
+    entries,
+    detail.diff,
+    expandedDod,
+    expandedAnchors,
+    expandedFiles,
+    grouped,
+    collapsed,
+    mode,
+    wrap,
+    showFileRows,
+    codeFontSize,
+  ]);
 
   const hunkRowIndex = useMemo(() => {
     const m = new Map<string, number>();
@@ -282,11 +406,72 @@ export function DiffPane({
       // corrects this, the estimate only needs to be in the right ballpark.
       if (r.type === "split") return codeLineHeight;
       if (r.type === "dod") return 170;
+      // Comment blocks are the one genuinely variable row. The estimate only
+      // has to be in the right order of magnitude — measureElement's
+      // ResizeObserver corrects it on mount and again on every edit, expand or
+      // markdown reflow inside it.
+      if (r.type === "comments") {
+        return 56 + 78 * (grouped.byLine.get(r.anchor)?.length ?? 1);
+      }
+      if (r.type === "filecomments") {
+        return 56 + 78 * (grouped.byFile.get(r.path)?.length ?? 1);
+      }
       return 34;
     },
     overscan: 30,
     getItemKey: (i) => rows[i].key,
   });
+
+  /* ------------------------------------------- keeping the reader in place */
+  // Folding a hunk, or closing a comment block, deletes rows that may be
+  // *above* the viewport — after which the pixel scroll offset points
+  // somewhere else entirely. So: note where the focused hunk's header sits
+  // relative to the scroller before the change, and put it back afterwards.
+  // Nothing is scrolled when the header was off-screen, or when it did not
+  // move: this only ever undoes displacement, it never navigates.
+  const anchorPos = useRef<{ id: string; top: number } | null>(null);
+
+  function captureAnchorPosition() {
+    const scroller = scrollRef.current;
+    const id = focusedRef.current;
+    if (!scroller || !id) return;
+    const idx = hunkRowIndexRef.current.get(id);
+    if (idx === undefined) return;
+    const el = scroller.querySelector<HTMLElement>(`[data-index="${idx}"]`);
+    if (!el) return;
+    anchorPos.current = {
+      id,
+      top: el.getBoundingClientRect().top - scroller.getBoundingClientRect().top,
+    };
+  }
+
+  const hunkRowIndexRef = useRef(hunkRowIndex);
+  hunkRowIndexRef.current = hunkRowIndex;
+
+  const layoutSignature = `${Object.keys(collapsed)
+    .filter((k) => collapsed[k])
+    .join(",")}|${[...expandedAnchors].join(",")}|${[...expandedFiles].join(",")}`;
+
+  useEffect(() => {
+    const target = anchorPos.current;
+    anchorPos.current = null;
+    if (!target) return;
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    // A frame late: the virtualizer has to mount and measure the new rows
+    // before their offsets mean anything.
+    const raf = requestAnimationFrame(() => {
+      const idx = hunkRowIndexRef.current.get(target.id);
+      if (idx === undefined) return;
+      const el = scroller.querySelector<HTMLElement>(`[data-index="${idx}"]`);
+      if (!el) return;
+      const now = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      const drift = now - target.top;
+      if (Math.abs(drift) > 1) scroller.scrollTop += drift;
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layoutSignature]);
 
   const scrollToHunk = useCallback(
     (id: string) => {
@@ -308,6 +493,10 @@ export function DiffPane({
       scrollRef.current?.scrollTo({ top: 0 });
     }
     setExpandedDod(new Set());
+    // Collapse is per hunk and per sitting; hunks that left the pane have no
+    // state worth keeping. Comment expansion is keyed by file anchor, not by
+    // hunk, so it deliberately survives — the reader comes back to it open.
+    setCollapsedState((prev) => pruneCollapsed(prev, entries.map((e) => e.hunk.id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSignature]);
 
@@ -480,6 +669,11 @@ export function DiffPane({
       setFlashKey(null);
       return;
     }
+    // A match inside a folded hunk is unreachable; unfold before looking.
+    if (isCollapsed(collapsed, activeMatch.hunkId)) {
+      setCollapsedState((prev) => setCollapsed(prev, activeMatch.hunkId, false));
+      return;
+    }
     const idx = findRowIndex(activeMatch.hunkId, activeMatch.lineIdx);
     if (idx === -1) return;
     onFocusHunk(activeMatch.hunkId);
@@ -491,7 +685,7 @@ export function DiffPane({
     );
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchKey, findRowIndex, rows, virtualizer, onFocusHunk]);
+  }, [matchKey, findRowIndex, rows, virtualizer, onFocusHunk, collapsed]);
 
   useEffect(() => {
     if (!flashKey) return;
@@ -674,9 +868,23 @@ export function DiffPane({
     </div>
   );
 
+  /** Every comment anchored to a line this hunk contains, in row order. */
+  function commentsInHunk(entry: HunkEntry): DraftComment[] {
+    const out: DraftComment[] = [];
+    for (const r of buildRows(entry.hunk, detail.diff)) {
+      const side = r.type === "del" ? "LEFT" : "RIGHT";
+      const no = r.type === "del" ? r.oldNumber : r.newNumber;
+      if (no === undefined) continue;
+      const list = grouped.byLine.get(lineAnchor(entry.file.path, no, side));
+      if (list) out.push(...list);
+    }
+    return out;
+  }
+
   function renderRow(row: FlatRow) {
     if (row.type === "file") {
       const rollup = detail.state.files?.[row.path];
+      const fileComments = grouped.byFile.get(row.path);
       return (
         <div
           className="flex items-center gap-2 border-y px-3 py-1.5 font-mono text-xs"
@@ -706,6 +914,25 @@ export function DiffPane({
             ) : null}
           </span>
           <span className="ml-auto flex flex-none items-center gap-2">
+            {fileComments ? (
+              <CommentBubble
+                comments={fileComments}
+                expanded={expandedFiles.has(row.path)}
+                onToggle={() => toggleFileComments(row.path)}
+              />
+            ) : null}
+            <button
+              type="button"
+              data-testid={`add-file-comment-${row.path}`}
+              className="btn"
+              title={`Comment on ${row.path} as a whole`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onComment({ subjectType: "file", file: row.path });
+              }}
+            >
+              + file
+            </button>
             {onQuote ? (
               <QuoteButton
                 title={`Ask Claude about ${row.path}`}
@@ -721,6 +948,41 @@ export function DiffPane({
       );
     }
 
+    if (row.type === "comments") {
+      const list = grouped.byLine.get(row.anchor);
+      if (!list?.length) return null;
+      return (
+        <InlineCommentList
+          comments={list}
+          label={`${row.path}:${row.line}${row.side === "LEFT" ? " (old)" : ""}`}
+          onCollapse={() => toggleAnchor(row.anchor)}
+          onAdd={() =>
+            onComment({
+              subjectType: "line",
+              file: row.path,
+              line: row.line,
+              side: row.side,
+            })
+          }
+          actions={commentActions ?? {}}
+        />
+      );
+    }
+
+    if (row.type === "filecomments") {
+      const list = grouped.byFile.get(row.path);
+      if (!list?.length) return null;
+      return (
+        <InlineCommentList
+          comments={list}
+          label={`${row.path} (whole file)`}
+          onCollapse={() => toggleFileComments(row.path)}
+          onAdd={() => onComment({ subjectType: "file", file: row.path })}
+          actions={commentActions ?? {}}
+        />
+      );
+    }
+
     if (row.type === "dod") {
       const st = detail.state.hunks[row.hunkId];
       return st ? <DiffOfDiffs prKey={detail.key} hunkId={row.hunkId} state={st} /> : null;
@@ -729,17 +991,35 @@ export function DiffPane({
     if (row.type === "hunk") {
       const st = detail.state.hunks[row.hunkId] ?? { viewed: false, changedSinceViewed: false };
       const focused = focusedHunkId === row.hunkId;
+      const folded = isCollapsed(collapsed, row.hunkId);
+      const lineCount = row.entry.hunk.lines?.length ?? buildRows(row.entry.hunk, detail.diff).length;
+      // Folded, the hunk's own comments would vanish with its lines. Rolling
+      // them up onto the header keeps them reachable — and clicking the bubble
+      // unfolds, which is the only sensible place to read them.
+      const inside = folded ? commentsInHunk(row.entry) : null;
       return (
         <div
-          className="flex items-center gap-2 px-3 py-1"
+          data-testid={`hunk-header-${row.hunkId}`}
+          data-collapsed={folded ? "true" : "false"}
+          className="flex cursor-pointer items-center gap-2 px-3 py-1"
           style={{
             background: focused ? "var(--accent-soft)" : "var(--bg-inset)",
             borderLeft: `2px solid ${focused ? "var(--accent)" : "transparent"}`,
             color: "var(--fg-muted)",
           }}
-          onClick={() => onFocusHunk(row.hunkId)}
+          title={folded ? "Unfold this hunk" : "Fold this hunk"}
+          onClick={() => {
+            onFocusHunk(row.hunkId);
+            toggleHunkCollapsed(row.hunkId);
+          }}
         >
           <span className="row-head-fixed flex min-w-0 items-center gap-2">
+          <IconChevron
+            open={!folded}
+            width={10}
+            height={10}
+            style={{ color: "var(--fg-faint)", flex: "none" }}
+          />
           <button
             type="button"
             onClick={(e) => {
@@ -763,6 +1043,22 @@ export function DiffPane({
             />
           ) : null}
           <span className="truncate font-mono text-2xs">{hunkLabel(row.entry.hunk)}</span>
+          {folded ? (
+            <span
+              className="flex-none whitespace-nowrap text-2xs"
+              data-testid="collapsed-hint"
+              style={{ color: "var(--fg-faint)" }}
+            >
+              {lineCount} {lineCount === 1 ? "line" : "lines"} folded
+            </span>
+          ) : null}
+          {inside?.length ? (
+            <CommentBubble
+              comments={inside}
+              expanded={false}
+              onToggle={() => toggleHunkCollapsed(row.hunkId)}
+            />
+          ) : null}
           {st.changedSinceViewed ? (
             <ChangedBadge
               onClick={() =>
@@ -808,17 +1104,37 @@ export function DiffPane({
           rightTokens={right ? hunkTokens?.[right.index] : undefined}
           marksLeft={left ? marksFor(row.hunkId, left.index) : undefined}
           marksRight={right ? marksFor(row.hunkId, right.index) : undefined}
-          hasCommentLeft={leftNo !== undefined && draftsByLine.has(`${path}:${leftNo}:LEFT`)}
-          hasCommentRight={rightNo !== undefined && draftsByLine.has(`${path}:${rightNo}:RIGHT`)}
+          commentsLeft={
+            leftNo === undefined ? undefined : grouped.byLine.get(lineAnchor(path, leftNo, "LEFT"))
+          }
+          commentsRight={
+            rightNo === undefined
+              ? undefined
+              : grouped.byLine.get(lineAnchor(path, rightNo, "RIGHT"))
+          }
+          expandedLeft={
+            leftNo !== undefined && expandedAnchors.has(lineAnchor(path, leftNo, "LEFT"))
+          }
+          expandedRight={
+            rightNo !== undefined && expandedAnchors.has(lineAnchor(path, rightNo, "RIGHT"))
+          }
+          onToggleCommentsLeft={
+            leftNo === undefined ? undefined : () => toggleAnchor(lineAnchor(path, leftNo, "LEFT"))
+          }
+          onToggleCommentsRight={
+            rightNo === undefined
+              ? undefined
+              : () => toggleAnchor(lineAnchor(path, rightNo, "RIGHT"))
+          }
           onCommentLeft={
             leftNo === undefined
               ? undefined
-              : () => onComment({ file: path, line: leftNo, side: "LEFT" })
+              : () => onComment({ subjectType: "line", file: path, line: leftNo, side: "LEFT" })
           }
           onCommentRight={
             rightNo === undefined
               ? undefined
-              : () => onComment({ file: path, line: rightNo, side: "RIGHT" })
+              : () => onComment({ subjectType: "line", file: path, line: rightNo, side: "RIGHT" })
           }
           selectedLeft={inSelection(selection, path, "old", left?.row.oldNumber)}
           selectedRight={inSelection(selection, path, "new", right?.row.newNumber)}
@@ -833,20 +1149,22 @@ export function DiffPane({
     const lineRows = buildRows(row.entry.hunk, detail.diff);
     const line = lineRows[row.lineIdx];
     if (!line) return null;
-    const side = line.type === "del" ? "LEFT" : "RIGHT";
+    const side: "LEFT" | "RIGHT" = line.type === "del" ? "LEFT" : "RIGHT";
     const lineNo = line.type === "del" ? line.oldNumber : line.newNumber;
-    const hasComment =
-      lineNo !== undefined && draftsByLine.has(`${row.entry.file.path}:${lineNo}:${side}`);
+    const anchor = lineNo === undefined ? null : lineAnchor(row.entry.file.path, lineNo, side);
     return (
       <DiffLine
         row={line}
         tokens={tokens[row.hunkId]?.[row.lineIdx]}
         marks={marksFor(row.hunkId, row.lineIdx)}
-        hasComment={hasComment}
+        comments={anchor ? grouped.byLine.get(anchor) : undefined}
+        expanded={anchor ? expandedAnchors.has(anchor) : false}
+        onToggleComments={anchor ? () => toggleAnchor(anchor) : undefined}
         onComment={
           lineNo === undefined
             ? undefined
-            : () => onComment({ file: row.entry.file.path, line: lineNo, side })
+            : () =>
+                onComment({ subjectType: "line", file: row.entry.file.path, line: lineNo, side })
         }
         selectedOld={inSelection(selection, row.entry.file.path, "old", line.oldNumber)}
         selectedNew={inSelection(selection, row.entry.file.path, "new", line.newNumber)}
