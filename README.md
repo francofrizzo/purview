@@ -39,6 +39,26 @@ after `git pull` — it is always safe to re-run.
 
 Open <http://localhost:4779> and paste a PR URL to start tracking it.
 
+You can also click **Import from GitHub** on the home page to add your open PRs in
+bulk using your existing `gh` login for github.com. Choose **All my open PRs**
+(created by you, assigned to you, or requesting your review), or select a single
+scope matching the dashboard tabs at <https://github.com/pulls>. Drafts are included.
+New PRs enter the normal analysis queue, respecting your global and per-repo analysis
+settings. Already tracked PRs, including archived ones, are skipped without refreshing
+or reanalyzing them. Click again whenever you want to discover new PRs.
+
+The result shows added/skipped/failed counts and how many analyses were queued.
+Individual PR failures do not stop the remaining imports; you can retry by clicking
+again. GitHub search pagination is supported up to its 1,000-result limit per scope;
+incomplete or capped search results are explicitly reported. Only repositories visible
+to your authenticated `gh` account can be imported. This uses the read-only
+[GitHub search API](https://docs.github.com/en/rest/search/search#search-issues-and-pull-requests)
+and does not post anything to GitHub.
+
+`POST /api/prs/import { "scope": "all" }` exposes the same action. Other scopes are
+`created`, `assigned`, and `review-requested`; `?analyze=false` imports without analysis.
+
+
 For development, `pnpm dev` runs the server only (no rebuild) against the existing
 `packages/web/dist`.
 

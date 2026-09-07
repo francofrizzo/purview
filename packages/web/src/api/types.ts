@@ -544,3 +544,13 @@ export interface RepoPathResult {
   ok: boolean;
   warning?: string;
 }
+
+export type ImportScope = "all" | "created" | "assigned" | "review-requested";
+export interface ImportPrsResult {
+  login: string;
+  added: string[];
+  skipped: string[];
+  failed: { url: string; error: string }[];
+  queued: number;
+  warnings: string[];
+}
