@@ -6,6 +6,8 @@ import { isRemovedUnit, TOOL_KINDS } from "./types";
 import type {
   AddCommentInput,
   AnalysisImportReport,
+  ImportScope,
+  ImportPrsResult,
   AnalysisJob,
   ChatMessage,
   ChatRef,
@@ -435,6 +437,11 @@ function adaptReview(raw: WireReviewStatus): ReviewStatus {
 }
 
 export const api = {
+  async importPrs(scope: ImportScope): Promise<ImportPrsResult> {
+    if (MOCK) throw new Error("GitHub import is unavailable in mock mode.");
+    return post<ImportPrsResult>("/prs/import", { scope });
+  },
+
   async listPrs(): Promise<PrListEntry[]> {
     if (MOCK) return mockApi.listPrs();
     const entries = unwrap<WireListEntry>(await request<unknown>("/prs"), "prs");

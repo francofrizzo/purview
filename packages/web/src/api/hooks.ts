@@ -11,6 +11,7 @@ import { applyArchive, applyRepoArchive } from "../lib/prList";
 import { stalenessPollInterval } from "../lib/staleness";
 import type {
   AnalysisImportReport,
+  ImportScope,
   AnalysisJob,
   DiffOfDiffs,
   RevisionLineChanges,
@@ -125,6 +126,17 @@ export function usePrs() {
         ? 3000
         : 60_000,
     refetchOnWindowFocus: true,
+  });
+}
+
+export function useImportPrs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (scope: ImportScope) => api.importPrs(scope),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: qk.repos });
+    },
   });
 }
 
