@@ -6,7 +6,12 @@
  * what keeps that a hash lookup instead of a scan. Pure functions only.
  */
 
-import { isFileComment, type CommentStatus, type DraftComment } from "../api/types";
+import {
+  isFileComment,
+  type CommentStatus,
+  type CommentSubject,
+  type DraftComment,
+} from "../api/types";
 
 /** Anchor key for a line comment: the tuple GitHub itself anchors on. */
 export function lineAnchor(file: string, line: number, side: "LEFT" | "RIGHT"): string {
@@ -43,6 +48,33 @@ function push<K>(map: Map<K, DraftComment[]>, key: K, value: DraftComment) {
   const list = map.get(key);
   if (list) list.push(value);
   else map.set(key, [value]);
+}
+
+/** The subset of a comment the shared ordering needs — nothing about status. */
+export interface OrderableComment {
+  file: string;
+  /** null for a file-level comment */
+  line: number | null;
+  side?: "LEFT" | "RIGHT" | null;
+  subjectType?: CommentSubject;
+}
+
+/**
+ * The one ordering every surface that lists comments across files should use:
+ * file path, then — within a file — the file-level comment ahead of every
+ * line comment, then by line, then LEFT before RIGHT. `Array.prototype.sort`
+ * is stable, so comments that tie on all of the above keep their incoming
+ * (creation) order.
+ *
+ * Shared between the drafts drawer and {@link ../lib/agentExport | agentExport}
+ * so the two can't drift apart again.
+ */
+export function compareCommentOrder(a: OrderableComment, b: OrderableComment): number {
+  const lineOf = (c: OrderableComment) => (isFileComment(c) ? -1 : (c.line as number));
+  const sideOf = (c: OrderableComment) => c.side ?? "";
+  return (
+    a.file.localeCompare(b.file) || lineOf(a) - lineOf(b) || sideOf(a).localeCompare(sideOf(b))
+  );
 }
 
 /** How far along the review lifecycle a status is; higher wins a rollup. */

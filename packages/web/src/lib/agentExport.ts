@@ -8,6 +8,7 @@
  */
 
 import { isFileComment, type CommentStatus, type CommentSubject, type FilesJson, type Hunk } from "../api/types";
+import { compareCommentOrder } from "./comments";
 import { buildRows, languageFor } from "./diffModel";
 
 /** How much of the surrounding hunk travels with the anchored line. */
@@ -57,14 +58,9 @@ export const STALE_NOTE = "(line no longer in current diff)";
 export function sortComments<T extends ExportableComment>(comments: T[]): T[] {
   // File-level comments sort to -1, i.e. ahead of every line in their file:
   // they are the "about this file as a whole" preamble to what follows.
-  const lineOf = (c: T) => (isFileComment(c) ? -1 : (c.line as number));
-  const sideOf = (c: T) => c.side ?? "";
-  return [...comments].sort(
-    (a, b) =>
-      a.file.localeCompare(b.file) ||
-      lineOf(a) - lineOf(b) ||
-      sideOf(a).localeCompare(sideOf(b)),
-  );
+  // The comparator itself lives in lib/comments so the drafts drawer can use
+  // the exact same ordering and the two surfaces can't drift apart.
+  return [...comments].sort(compareCommentOrder);
 }
 
 /**

@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { CommentStatus, DraftComment } from "../api/types";
-import { bubbleTitle, groupComments, lineAnchor, mostAdvancedStatus, statusColors } from "./comments";
+import {
+  bubbleTitle,
+  compareCommentOrder,
+  groupComments,
+  lineAnchor,
+  mostAdvancedStatus,
+  statusColors,
+} from "./comments";
 
 let seq = 0;
 const c = (over: Partial<DraftComment> = {}): DraftComment => ({
@@ -81,6 +88,60 @@ describe("mostAdvancedStatus", () => {
 
   it("defaults to draft when there is nothing to roll up", () => {
     expect(mostAdvancedStatus([])).toBe("draft");
+  });
+});
+
+describe("compareCommentOrder", () => {
+  it("orders by file path first", () => {
+    const z = c({ file: "src/z.ts", line: 1, body: "z" });
+    const a = c({ file: "src/a.ts", line: 1, body: "a" });
+    expect([z, a].sort(compareCommentOrder).map((x) => x.body)).toEqual(["a", "z"]);
+  });
+
+  it("puts a file-level comment ahead of every line comment in the same file", () => {
+    const line = c({ file: "src/a.ts", line: 2, subjectType: "line", body: "line" });
+    const fileLevel = c({ file: "src/a.ts", line: null, side: null, subjectType: "file", body: "file" });
+    expect([line, fileLevel].sort(compareCommentOrder).map((x) => x.body)).toEqual(["file", "line"]);
+  });
+
+  it("orders line comments within a file by line number", () => {
+    const nine = c({ file: "src/a.ts", line: 9, body: "9" });
+    const two = c({ file: "src/a.ts", line: 2, body: "2" });
+    expect([nine, two].sort(compareCommentOrder).map((x) => x.body)).toEqual(["2", "9"]);
+  });
+
+  it("breaks a line tie with LEFT before RIGHT", () => {
+    const right = c({ file: "src/a.ts", line: 5, side: "RIGHT", body: "right" });
+    const left = c({ file: "src/a.ts", line: 5, side: "LEFT", body: "left" });
+    expect([right, left].sort(compareCommentOrder).map((x) => x.body)).toEqual(["left", "right"]);
+  });
+
+  it("is stable: comments tying on every key keep their incoming order", () => {
+    const first = c({ file: "src/a.ts", line: 5, body: "first" });
+    const second = c({ file: "src/a.ts", line: 5, body: "second" });
+    const third = c({ file: "src/a.ts", line: 5, body: "third" });
+    expect([first, second, third].sort(compareCommentOrder).map((x) => x.body)).toEqual([
+      "first",
+      "second",
+      "third",
+    ]);
+  });
+
+  it("puts a whole diff's worth of comments in file-level-then-line, path, then line order", () => {
+    const set = [
+      c({ file: "src/z.ts", line: 1, body: "z1" }),
+      c({ file: "src/a.ts", line: 9, body: "a9" }),
+      c({ file: "src/z.ts", line: null, side: null, subjectType: "file", body: "zFile" }),
+      c({ file: "src/a.ts", line: 2, body: "a2" }),
+      c({ file: "src/a.ts", line: null, side: null, subjectType: "file", body: "aFile" }),
+    ];
+    expect(set.sort(compareCommentOrder).map((x) => x.body)).toEqual([
+      "aFile",
+      "a2",
+      "a9",
+      "zFile",
+      "z1",
+    ]);
   });
 });
 

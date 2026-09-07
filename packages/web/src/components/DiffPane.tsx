@@ -1007,19 +1007,28 @@ export function DiffPane({
             borderLeft: `2px solid ${focused ? "var(--accent)" : "transparent"}`,
             color: "var(--fg-muted)",
           }}
-          title={folded ? "Unfold this hunk" : "Fold this hunk"}
-          onClick={() => {
-            onFocusHunk(row.hunkId);
-            toggleHunkCollapsed(row.hunkId);
-          }}
+          title="Focus this hunk (j/k)"
+          onClick={() => onFocusHunk(row.hunkId)}
         >
           <span className="row-head-fixed flex min-w-0 items-center gap-2">
-          <IconChevron
-            open={!folded}
-            width={10}
-            height={10}
-            style={{ color: "var(--fg-faint)", flex: "none" }}
-          />
+          <button
+            type="button"
+            data-testid={`hunk-toggle-${row.hunkId}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleHunkCollapsed(row.hunkId);
+            }}
+            title={folded ? "expand hunk" : "collapse hunk"}
+            aria-label={folded ? "expand hunk" : "collapse hunk"}
+            className="flex h-5 w-5 flex-none items-center justify-center rounded-sm transition-colors hover:opacity-80"
+          >
+            <IconChevron
+              open={!folded}
+              width={11}
+              height={11}
+              style={{ color: "var(--fg-faint)", flex: "none" }}
+            />
+          </button>
           <button
             type="button"
             onClick={(e) => {

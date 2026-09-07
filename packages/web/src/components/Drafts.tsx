@@ -9,6 +9,7 @@ import {
   type EditCommentResult,
 } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
+import { compareCommentOrder } from "../lib/comments";
 import { QuoteButton } from "./ChatPanel";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
 import { StatusChip } from "./FinishReview";
@@ -372,9 +373,12 @@ export function DraftsDrawer({
   onEdit?: EditComment;
   onQuote?: (ref: ChatRef) => void;
 }) {
-  const local = drafts.filter((d) => (d.status ?? "draft") === "draft");
-  const pushed = drafts.filter((d) => d.status === "pushed");
-  const submitted = drafts.filter((d) => d.status === "submitted");
+  // Status buckets stay the outer grouping (the review lifecycle order), but
+  // within each bucket the ordering matches the agent-export bundle — same
+  // comparator, so the drawer and "copy for agent" can never read differently.
+  const local = drafts.filter((d) => (d.status ?? "draft") === "draft").sort(compareCommentOrder);
+  const pushed = drafts.filter((d) => d.status === "pushed").sort(compareCommentOrder);
+  const submitted = drafts.filter((d) => d.status === "submitted").sort(compareCommentOrder);
   const ordered = [...local, ...pushed, ...submitted];
 
   return (
