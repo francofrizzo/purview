@@ -23,7 +23,7 @@ export function PrList() {
   const background = useModalBackground();
   const addPr = useAddPr();
   const importPrs = useImportPrs();
-  const [importScope, setImportScope] = useState<ImportScope>("all");
+  const [importScope, setImportScope] = useState<ImportScope>("review-requested");
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
 
@@ -107,7 +107,7 @@ export function PrList() {
           </button>
         </div>
         <p className="mt-2 leading-5" style={{ color: "var(--fg-muted)" }}>
-          Import open PRs you created, are assigned to, or are requested to review.
+          Defaults to open PRs requesting your review. Choose another scope to import more PRs.
           New PRs are analyzed using your analysis settings. Already tracked PRs are skipped.
         </p>
         <div role="status" aria-live="polite" className="mt-2 leading-5">
