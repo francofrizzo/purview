@@ -78,6 +78,17 @@ describe("GitHub discovery", () => {
 });
 
 describe("POST /api/prs/import", () => {
+  it("defaults to review requests without importing authored or assigned PRs", async () => {
+    const calls = install((args) => page(args.includes("q=is:pr is:open review-requested:octocat") ? [8] : [9]));
+    const response = await createApp({ stateDir: root }).request("/api/prs/import", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ added: ["github.com/acme/widgets/8"], queued: 1 });
+    expect(calls.filter((args) => args.includes("search/issues"))).toHaveLength(1);
+    expect(startAnalysis).toHaveBeenCalledTimes(1);
+  });
+
   it("imports once, preserves archives, and queues only new PRs", async () => {
     buildFixture(root);
     updateMeta(key, { archived: true }, root);

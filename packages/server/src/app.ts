@@ -234,7 +234,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   });
 
   app.post("/api/prs/import", async (c) => {
-    const { scope } = z.object({ scope: ImportScopeSchema.default("all") }).parse(await readJsonBody(c));
+    const { scope } = z.object({ scope: ImportScopeSchema.default("review-requested") }).parse(await readJsonBody(c));
     // Finish discovery before changing local state so a search/auth failure is retryable.
     const discovery = discoverPullRequests(scope);
     const tracked = new Set(listPrs(root)
