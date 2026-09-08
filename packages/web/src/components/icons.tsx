@@ -123,6 +123,16 @@ export const IconComment = (p: P) => (
   </svg>
 );
 
+/**
+ * Solid variant for tiny sizes (the diff-gutter comment bubble renders at
+ * 9–10px, where a stroked outline turns to mush).
+ */
+export const IconCommentFilled = (p: P) => (
+  <svg {...base} {...p} fill="currentColor" stroke="none">
+    <path d="M14 9.5A1.5 1.5 0 0 1 12.5 11H6l-3 2.5V4A1.5 1.5 0 0 1 4.5 2.5h8A1.5 1.5 0 0 1 14 4z" />
+  </svg>
+);
+
 /** Stacked rows — unified diff. */
 export const IconUnified = (p: P) => (
   <svg {...base} {...p}>

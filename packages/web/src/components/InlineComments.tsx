@@ -16,7 +16,7 @@ import { QuoteButton } from "./ChatPanel";
 import { CopyForAgentButton } from "./CopyForAgent";
 import { CommentBody, commentRef, type EditComment } from "./Drafts";
 import { StatusChip } from "./FinishReview";
-import { IconClose, IconComment } from "./icons";
+import { IconClose, IconCommentFilled } from "./icons";
 
 /** The actions an inline comment offers; all optional, all reused from elsewhere. */
 export interface InlineCommentActions {
@@ -61,19 +61,22 @@ export function CommentBubble({
         e.stopPropagation();
         onToggle();
       }}
-      className={`inline-flex flex-none select-none items-center gap-[1px] rounded ${
+      className={`inline-flex flex-none select-none items-center gap-[2px] rounded-sm ${
         compact ? "mx-0 my-[2px] px-[1px]" : "px-1 py-0.5"
       }`}
       style={{
-        background: expanded ? fg : bg,
-        color: expanded ? "var(--bg)" : fg,
-        boxShadow: expanded ? undefined : `inset 0 0 0 1px ${fg}`,
+        // Collapsed in the gutter the glyph carries the status color on its
+        // own — a box around a 10px icon just muddies it. Expanded gets the
+        // tint so the toggle state stays visible.
+        background: expanded ? bg : compact ? "transparent" : bg,
+        color: fg,
+        boxShadow: expanded ? `inset 0 0 0 1px ${fg}` : undefined,
         lineHeight: 1,
       }}
     >
-      <IconComment width={compact ? 9 : 11} height={compact ? 9 : 11} />
+      <IconCommentFilled width={compact ? 10 : 11} height={compact ? 10 : 11} />
       {count > 1 ? (
-        <span className="tabular-nums" style={{ fontSize: compact ? 8 : 9 }}>
+        <span className="font-medium tabular-nums" style={{ fontSize: compact ? 8 : 9 }}>
           {count}
         </span>
       ) : null}
