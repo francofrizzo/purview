@@ -9,6 +9,7 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "dev": "pnpm --filter @reviewer/server dev",
-    "start": "node scripts/start.mjs"
+    "start": "node scripts/start.mjs",
+    "smoke:pack": "node scripts/smoke-pack.mjs"
   }
 }

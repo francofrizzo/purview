@@ -1,0 +1,30 @@
+{
+  "name": "@francofrizzo/purview",
+  "version": "0.1.0",
+  "description": "Local-first pull request review assistant. Run `npx @francofrizzo/purview` to get started.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/francofrizzo/purview.git"
+  },
+  "bin": {
+    "purview": "./bin/purview.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "web-dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepublishOnly": "pnpm -r build"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
+  }
+}

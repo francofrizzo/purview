@@ -14,20 +14,37 @@ Two halves that couple through files on disk, not an API:
 ## Prerequisites
 
 - Node.js >= 20
-- pnpm
 - [`gh`](https://cli.github.com/), authenticated (`gh auth login`) — every GitHub read and
   write goes through it; the app never shells out to `git`.
 - [`claude`](https://claude.com/claude-code), signed in, for the automatic analysis and the
   review chat (see below). Everything else works without it.
 
-## Install and build
+## Install
+
+**Available once `@francofrizzo/purview` is published to npm.** No clone, no pnpm, no local
+build — `npx` fetches and runs it:
+
+```bash
+npx @francofrizzo/purview
+```
+
+That's the `packages/cli` package in this repo: it bundles the server and its `@reviewer/core`
+dependency with esbuild, ships a prebuilt copy of the web app, and runs the same terminal
+onboarding and server described below. `PURVIEW_PORT` picks a different port than the default
+4779, and `PURVIEW_STATE_DIR` a different state directory than the default `~/.purview`.
+`npx @francofrizzo/purview --onboard` re-runs onboarding at any time.
+
+Until it's published, use the Development path below instead.
+
+## Development
+
+Working on Purview itself — or running it from source before it's published — needs the full
+monorepo and pnpm:
 
 ```bash
 pnpm install
 pnpm -r build
 ```
-
-## Run
 
 ```bash
 pnpm start        # build if sources changed, (re)start the server on http://localhost:4779
@@ -41,6 +58,12 @@ Open <http://localhost:4779> and paste a PR URL to start tracking it.
 
 For development, `pnpm dev` runs the server only (no rebuild) against the existing
 `packages/web/dist`.
+
+`pnpm smoke:pack` is the closest thing to an install test without actually publishing: it
+builds `packages/cli`, `npm pack`s it, installs the tarball into a throwaway temp dir (the way
+a real `npx` install would see it, not via pnpm's workspace symlinks), starts it on a scratch
+port and state dir, and checks it serves. Useful after touching anything under `packages/cli`
+or the bundling.
 
 ## First run
 
