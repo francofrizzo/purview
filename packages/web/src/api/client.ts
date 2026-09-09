@@ -454,6 +454,11 @@ export const api = {
   },
 
   /** Local-only: nothing about the PR on GitHub changes. */
+  async deletePr(key: string): Promise<void> {
+    if (MOCK) return mockApi.deletePr(key);
+    await del(`/prs/${encodeKey(key)}`);
+  },
+
   async setArchived(key: string, archived: boolean): Promise<void> {
     if (MOCK) return mockApi.setArchived(key, archived);
     await post(`/prs/${encodeKey(key)}/archive`, { archived });
