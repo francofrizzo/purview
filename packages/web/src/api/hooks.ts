@@ -99,6 +99,21 @@ export function useAddPr() {
  * out of) the repo group's disclosure before the request lands, and rolls back
  * if the server refuses.
  */
+export function useDeletePr() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) => api.deletePr(key),
+    onSuccess: async (_, key) => {
+      await qc.cancelQueries({ predicate: (q) => q.queryKey[1] === key });
+      qc.removeQueries({ predicate: (q) => q.queryKey[1] === key });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: qk.prs }),
+        qc.invalidateQueries({ queryKey: qk.repos }),
+      ]);
+    },
+  });
+}
+
 export function useSetArchived() {
   const qc = useQueryClient();
   return useMutation({

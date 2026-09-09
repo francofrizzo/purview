@@ -13,6 +13,7 @@ import {
   listRepos,
   loadState,
   parseKey,
+  prDir,
   parseRepoKey,
   readDiff,
   readFilesJson,
@@ -65,6 +66,7 @@ import { HttpError, classifyError } from "./http-error.js";
 import { streamSSE } from "hono/streaming";
 import {
   cancelAnalysis,
+  isBusy,
   jobEvents,
   readJob,
   reconcileStaleJobs,
@@ -142,6 +144,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   const app = new Hono();
   const root = opts.stateDir ?? stateRoot();
   const autoAnalyze = opts.autoAnalyze ?? true;
+  const deleting = new Set<string>();
   // A "running" job record can only be stale at boot — nothing is running yet.
   reconcileStaleJobs(root);
 
@@ -179,6 +182,11 @@ export function createApp(opts: AppOptions = {}): Hono {
       devOrigins: opts.devOrigins,
     }),
   );
+
+  app.use("/api/prs/:key/*", async (c, next) => {
+    if (deleting.has(c.req.param("key"))) throw new HttpError(409, "pr_deleting", "This PR is being deleted. Try again shortly.");
+    await next();
+  });
 
   app.onError((err, c) => {
     const httpErr = classifyError(err);
@@ -220,6 +228,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     } catch (err) {
       throw classifyError(err);
     }
+    if (deleting.has(keyToString(key))) throw new HttpError(409, "pr_deleting", "This PR is being deleted.");
     const result = initPr(key, root);
     // A freshly tracked PR has no analysis at all, so init always kicks one
     // off (unless the caller opted out with ?analyze=false).
@@ -317,6 +326,30 @@ export function createApp(opts: AppOptions = {}): Hono {
   });
 
   /* ------------------------------------------------- Claude: analysis job */
+
+  app.delete("/api/prs/:key", async (c) => {
+    const key = keyParam(c);
+    const id = keyToString(key);
+    readMeta(key, root);
+    if (deleting.has(id) || chatBusy(key)) {
+      throw new HttpError(409, "pr_busy", "Wait for the active chat or deletion to finish, then try again.");
+    }
+    deleting.add(id);
+    try {
+      const job = readJob(key, root);
+      if (job?.status === "queued" || job?.status === "running") cancelAnalysis(key, root);
+      const deadline = Date.now() + 10_000;
+      while (isBusy(key)) {
+        if (Date.now() >= deadline) throw new HttpError(409, "analysis_stopping", "Analysis is still stopping. Try deleting again shortly.");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      fs.rmSync(prDir(key, root), { recursive: true, force: true });
+      clearStalenessCache(key, root);
+      return c.json({ ok: true });
+    } finally {
+      deleting.delete(id);
+    }
+  });
 
   app.get("/api/prs/:key/analysis-job", (c) => {
     const key = keyParam(c);

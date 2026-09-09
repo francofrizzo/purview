@@ -440,6 +440,22 @@ export const mockApi = {
   },
 
   /** Local-only, exactly as the tooltip in the UI claims. */
+  async deletePr(key: string): Promise<void> {
+    const index = list.findIndex((p) => p.key === key);
+    if (index === -1) throw new ApiError("not_found", 404, `No PR "${key}"`);
+    clearJobTimers(key);
+    delete jobTimers[key];
+    delete jobSubscribers[key];
+    delete chatModels[key];
+    delete repoPaths[key];
+    delete acknowledgedSha[key];
+    list.splice(index, 1);
+    delete details[key];
+    delete chats[key];
+    delete jobs[key];
+    syncRepoCounts();
+  },
+
   async setArchived(key: string, archived: boolean): Promise<void> {
     await delay(120);
     const entry = list.find((p) => p.key === key);

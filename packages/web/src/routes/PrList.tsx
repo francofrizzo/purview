@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK, errorText } from "../api/client";
-import { useAddPr, useImportPrs, usePrs, useSetArchived } from "../api/hooks";
+import { useAddPr, useDeletePr, useImportPrs, usePrs, useSetArchived } from "../api/hooks";
 import type { ImportScope, PrListEntry } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
@@ -236,6 +236,7 @@ const ARCHIVE_HINT =
 
 function PrRow({ pr }: { pr: PrListEntry }) {
   const setArchived = useSetArchived();
+  const deletePr = useDeletePr();
   const archived = pr.archived;
   const meta = pr.meta;
 
@@ -279,7 +280,7 @@ function PrRow({ pr }: { pr: PrListEntry }) {
         type="button"
         className="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-inset)]"
         data-testid={`archive-${pr.key}`}
-        disabled={setArchived.isPending}
+        disabled={setArchived.isPending || deletePr.isPending}
         title={`${archived ? "Unarchive" : "Archive"} — ${ARCHIVE_HINT}`}
         aria-label={archived ? "Unarchive" : "Archive"}
         onClick={() => setArchived.mutate({ key: pr.key, archived: !archived })}
@@ -287,6 +288,22 @@ function PrRow({ pr }: { pr: PrListEntry }) {
       >
         <IconArchive out={archived} width={12} height={12} />
       </button>
+      <button
+        type="button"
+        className="btn flex-none text-2xs"
+        data-testid={`delete-${pr.key}`}
+        disabled={deletePr.isPending || setArchived.isPending}
+        aria-label={`Delete PR #${meta?.number}`}
+        onClick={() => {
+          if (window.confirm(`Delete PR #${meta?.number} from Purview? This cancels analysis and permanently removes local diffs, review progress, draft comments, and chat. The GitHub PR is unchanged.`)) {
+            deletePr.mutate(pr.key);
+          }
+        }}
+        style={{ color: "var(--risk)" }}
+      >
+        {deletePr.isPending ? "Deleting…" : "Delete"}
+      </button>
+      {deletePr.error ? <span role="alert" className="text-2xs" style={{ color: "var(--risk)" }}>{errorText(deletePr.error)}</span> : null}
     </li>
   );
 }
