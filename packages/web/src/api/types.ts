@@ -86,6 +86,7 @@ export interface Finding {
 }
 
 export interface ReviewUnit {
+  generated?: boolean;
   id: string;
   title: string;
   summary: string;
@@ -123,6 +124,7 @@ export interface DiffOfDiffs {
 }
 
 export interface HunkState {
+  autoViewed?: boolean;
   viewed: boolean;
   viewedAtRevision?: number;
   changedSinceViewed: boolean;
@@ -541,4 +543,14 @@ export type ChatStreamEvent =
 export interface RepoPathResult {
   ok: boolean;
   warning?: string;
+}
+
+export type ImportScope = "all" | "created" | "assigned" | "review-requested";
+export interface ImportPrsResult {
+  login: string;
+  added: string[];
+  skipped: string[];
+  failed: { url: string; error: string }[];
+  queued: number;
+  warnings: string[];
 }

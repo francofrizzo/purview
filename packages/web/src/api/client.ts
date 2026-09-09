@@ -3,6 +3,8 @@ import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
 import type {
   AddCommentInput,
+  ImportScope,
+  ImportPrsResult,
   AnalysisJob,
   ChatMessage,
   ChatRef,
@@ -384,6 +386,11 @@ function adaptReview(raw: WireReviewStatus): ReviewStatus {
 }
 
 export const api = {
+  async importPrs(scope: ImportScope): Promise<ImportPrsResult> {
+    if (MOCK) throw new Error("GitHub import is unavailable in mock mode.");
+    return post<ImportPrsResult>("/prs/import", { scope });
+  },
+
   async listPrs(): Promise<PrListEntry[]> {
     if (MOCK) return mockApi.listPrs();
     const entries = unwrap<WireListEntry>(await request<unknown>("/prs"), "prs");
@@ -431,6 +438,11 @@ export const api = {
   },
 
   /** Local-only: nothing about the PR on GitHub changes. */
+  async deletePr(key: string): Promise<void> {
+    if (MOCK) return mockApi.deletePr(key);
+    await del(`/prs/${encodeKey(key)}`);
+  },
+
   async setArchived(key: string, archived: boolean): Promise<void> {
     if (MOCK) return mockApi.setArchived(key, archived);
     await post(`/prs/${encodeKey(key)}/archive`, { archived });
@@ -504,9 +516,9 @@ export const api = {
     await post(`/prs/${encodeKey(key)}/hunks/${encodeURIComponent(hunkId)}/viewed`, { viewed });
   },
 
-  async setUnitViewed(key: string, unitId: string): Promise<void> {
-    if (MOCK) return mockApi.setUnitViewed(key, unitId);
-    await post(`/prs/${encodeKey(key)}/units/${encodeURIComponent(unitId)}/viewed`);
+  async setUnitViewed(key: string, unitId: string, viewed = true): Promise<void> {
+    if (MOCK) return mockApi.setUnitViewed(key, unitId, viewed);
+    await post(`/prs/${encodeKey(key)}/units/${encodeURIComponent(unitId)}/viewed`, { viewed });
   },
 
   async patchUnit(key: string, unitId: string, patch: Partial<ReviewUnit>): Promise<void> {

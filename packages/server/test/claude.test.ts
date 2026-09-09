@@ -219,6 +219,22 @@ describe("analysis job lifecycle", () => {
     expect(finished.at(-1)).toMatchObject({ status: "cancelled" });
   });
 
+  it("deletes a PR only after its running analysis stops writing", async () => {
+    buildFixture(root);
+    claude.restore();
+    claude = fakeClaude({ hang: true, lines: scriptedRun() });
+    claude.install();
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    for (let i = 0; i < 200 && readJob(key, root)?.status !== "running"; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(readJob(key, root)?.status).toBe("running");
+    const response = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(response.status).toBe(200);
+    await analysisIdle();
+    expect(fs.existsSync(path.dirname(analysisJobPath(key, root)))).toBe(false);
+  });
+
   it("409s on cancel when nothing is in progress", async () => {
     buildFixture(root);
     const res = await app.request(`/api/prs/${encodedKey}/analyze`, { method: "DELETE" });
