@@ -17,6 +17,7 @@ import type {
   EditCommentResult,
   GlobalConfig,
   GlobalConfigPatch,
+  ImportReviewsResult,
   MigrationReport,
   PrDetail,
   PrListEntry,
@@ -133,6 +134,23 @@ export function useSaveRepoConfig(rkey: string) {
     mutationFn: (patch) => api.saveRepoConfig(rkey, patch),
     onSuccess: (config) => {
       qc.setQueryData(qk.repoConfig(rkey), config);
+      void qc.invalidateQueries({ queryKey: qk.repos });
+    },
+  });
+}
+
+/**
+ * Bulk-import review-requested PRs for a repo. Invalidates the PR list (new
+ * rows appear) and the repo list (prCount/archivedCount move).
+ */
+export function useImportReviews(
+  rkey: string,
+): UseMutationResult<ImportReviewsResult, Error, number> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (days: number) => api.importReviews(rkey, days),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.prs });
       void qc.invalidateQueries({ queryKey: qk.repos });
     },
   });

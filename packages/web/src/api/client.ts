@@ -20,6 +20,7 @@ import type {
   FileEntry,
   FileRollup,
   Hunk,
+  ImportReviewsResult,
   MigrationReport,
   MigrationReportItem,
   PrDetail,
@@ -462,6 +463,12 @@ export const api = {
   async saveRepoConfig(rkey: string, patch: RepoConfigPatch): Promise<RepoConfig> {
     if (MOCK) return mockApi.saveRepoConfig(rkey, patch);
     return put<RepoConfig>(`/repos/${encodeURIComponent(rkey)}/config`, patch);
+  },
+
+  /** Bulk-import review-requested PRs updated in the last `days` days. */
+  async importReviews(rkey: string, days: number): Promise<ImportReviewsResult> {
+    if (MOCK) return mockApi.importReviews(rkey, days);
+    return post<ImportReviewsResult>(`/repos/${encodeURIComponent(rkey)}/import-reviews`, { days });
   },
 
   async getPr(key: string): Promise<PrDetail> {

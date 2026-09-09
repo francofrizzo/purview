@@ -248,6 +248,7 @@ export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
     repoPath: typeof obj.repoPath === "string" ? obj.repoPath : null,
     analysisModel: model(obj.analysisModel),
     chatModel: model(obj.chatModel),
+    watchReviews: typeof obj.watchReviews === "boolean" ? obj.watchReviews : null,
   };
 }
 

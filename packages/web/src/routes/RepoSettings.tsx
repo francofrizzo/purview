@@ -138,6 +138,7 @@ function RepoSettingsBody({
       </Section>
 
       <AnalysisSection config={config} save={save} />
+      <WatchSection config={config} save={save} />
       <CheckoutSection config={config} save={save} />
       <RubricSection config={config} save={save} />
       <ChatInstructionsSection config={config} save={save} />
@@ -224,6 +225,51 @@ function AnalysisSection({ config, save }: { config: RepoConfig; save: Save }) {
           Every run passes the model explicitly, so nothing inherits whatever your{" "}
           <span className="font-mono">claude</span> CLI happens to default to.
         </p>
+      </div>
+    </Section>
+  );
+}
+
+/* ------------------------------------------------------------------ watch */
+
+/**
+ * Machine-local, not layered — there is no committed-team half of this
+ * setting, so unlike `AnalysisSection`'s tri-state control a plain checkbox
+ * is enough: checked -> true, unchecked -> null (both read as "off").
+ */
+function WatchSection({ config, save }: { config: RepoConfig; save: Save }) {
+  const [flash, setFlash] = useFlash();
+  const watching = config.local.watchReviews === true;
+
+  return (
+    <Section
+      title="Watch"
+      hint="Poll GitHub in the background for PRs assigned to you for review, and import the new ones automatically."
+    >
+      <label className="flex items-start gap-2">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          data-testid="watch-reviews-checkbox"
+          checked={watching}
+          disabled={save.isPending}
+          onChange={(e) =>
+            save.mutate(
+              { watchReviews: e.target.checked ? true : null },
+              { onSuccess: () => setFlash() },
+            )
+          }
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-xs">watch for review requests</span>
+          <span className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+            Polls GitHub every few minutes and imports PRs assigned to you for review (last 24h),
+            analyzing them automatically.
+          </span>
+        </span>
+      </label>
+      <div className="mt-2">
+        <SavedFlash shown={flash} error={save.error} />
       </div>
     </Section>
   );

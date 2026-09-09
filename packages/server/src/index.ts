@@ -3,6 +3,7 @@ import { migrateStateDirOnStartup, stateRoot } from "@reviewer/core";
 import { createApp, DEFAULT_PORT } from "./app.js";
 import { autoAnalyzeEnvAllows, readConfig } from "./config.js";
 import { maybeOnboard } from "./onboarding.js";
+import { startReviewWatch } from "./review-watch.js";
 
 const PORT = Number(process.env.PURVIEW_PORT ?? process.env.REVIEWER_PORT ?? DEFAULT_PORT);
 
@@ -34,6 +35,14 @@ async function main(): Promise<void> {
   serve({ fetch: app.fetch, port: PORT, hostname: "127.0.0.1" }, (info) => {
     console.log(`@reviewer/server listening on http://localhost:${info.port}`);
   });
+
+  // The watcher always starts (each repo's own `watchReviews` opt-in still
+  // gates whether it does anything); only whether an imported PR triggers an
+  // analysis is decided by the env switch, read fresh on every tick so
+  // flipping it takes effect without a restart. `PURVIEW_NO_WATCH` (see
+  // review-watch.ts) disables polling entirely, e.g. for tests or a
+  // guaranteed-no-background-gh-calls run.
+  startReviewWatch(ROOT, { analyzeAllowed: autoAnalyzeEnvAllows });
 }
 
 void main();

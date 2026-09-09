@@ -246,6 +246,14 @@ export const RepoConfigSchema = z.object({
   repoPath: z.string().nullable().default(null),
   analysisModel: ClaudeModelSchema.nullable().default(null),
   chatModel: ClaudeModelSchema.nullable().default(null),
+  /**
+   * Poll GitHub every few minutes for review requests and import them
+   * automatically (see review-watch.ts). Machine behavior, not team policy —
+   * this field never participates in the committed `.purview/config.json`
+   * layer, so it is resolved as `local.watchReviews === true` directly rather
+   * than through `effectiveConfig`. `null` (the default) is off.
+   */
+  watchReviews: z.boolean().nullable().default(null),
 });
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 

@@ -10,6 +10,7 @@ import type {
   AddCommentInput,
   DraftComment,
   EditCommentResult,
+  ImportReviewsResult,
   MigrationReport,
   PrDetail,
   PrListEntry,
@@ -144,6 +145,8 @@ function syncRepoCounts() {
         hasLocalConfig: false,
         hasCommittedConfig: false,
         repoPath: null,
+        watchReviews: false,
+        watch: null,
       };
       repos.push(summary);
       repoConfigs[rkey] ??= {
@@ -152,6 +155,7 @@ function syncRepoCounts() {
           repoPath: null,
           analysisModel: null,
           chatModel: null,
+          watchReviews: null,
           rubric: "",
           chatInstructions: "",
         },
@@ -499,21 +503,35 @@ export const mockApi = {
     if (patch.repoPath !== undefined) config.local.repoPath = patch.repoPath || null;
     if (patch.analysisModel !== undefined) config.local.analysisModel = patch.analysisModel;
     if (patch.chatModel !== undefined) config.local.chatModel = patch.chatModel;
+    if (patch.watchReviews !== undefined) config.local.watchReviews = patch.watchReviews;
     if (patch.rubric !== undefined) config.local.rubric = patch.rubric;
     if (patch.chatInstructions !== undefined) config.local.chatInstructions = patch.chatInstructions;
     relayer(rkey);
     const summary = repos.find((r) => `${r.host}/${r.owner}/${r.repo}` === rkey);
     if (summary) {
       summary.repoPath = config.effective.repoPath;
+      summary.watchReviews = config.local.watchReviews === true;
       summary.hasLocalConfig =
         config.local.autoAnalyze !== null ||
         Boolean(config.local.repoPath) ||
         Boolean(config.local.analysisModel) ||
         Boolean(config.local.chatModel) ||
+        config.local.watchReviews !== null ||
         Boolean(config.local.rubric.trim()) ||
         Boolean(config.local.chatInstructions.trim());
     }
     return structuredClone(config);
+  },
+
+  /**
+   * A tiny stand-in for the real search: "imports" nothing (the fixture data
+   * has no separate pool of untracked review-requested PRs to draw from), but
+   * exercises the same shape and timing the UI codes against.
+   */
+  async importReviews(rkey: string, days: number): Promise<ImportReviewsResult> {
+    await delay(250);
+    if (!repoConfigs[rkey]) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
+    return { imported: [], alreadyTracked: [], failed: [], days };
   },
 
   async getPr(key: string): Promise<PrDetail> {

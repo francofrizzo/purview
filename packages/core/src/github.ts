@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import type { PrKey } from "./paths.js";
+import type { PrKey, RepoKey } from "./paths.js";
 import type { PrState, ReviewDecision } from "./schemas.js";
 
 /**
@@ -265,6 +265,56 @@ export function fetchReviewDecision(key: PrKey): ReviewDecision | null {
   } catch {
     return null;
   }
+}
+
+/* ---------------------------------------------------- review-requested PRs */
+
+export interface ReviewRequestedPr {
+  number: number;
+  title: string;
+  updatedAt: string;
+}
+
+interface RawSearchPull {
+  number: number;
+  title: string;
+  updatedAt: string;
+}
+
+/**
+ * Open PRs in `repo` where the authenticated user's review is requested,
+ * updated on or after `sinceIso`'s date. `gh pr list --search` takes the date
+ * qualifier as a day (`updated:>=YYYY-MM-DD`), so the time-of-day component of
+ * `sinceIso` is dropped rather than pretending to a precision the search
+ * syntax does not offer.
+ */
+export function searchReviewRequestedPrs(
+  key: RepoKey,
+  sinceIso: string,
+): ReviewRequestedPr[] {
+  const day = sinceIso.slice(0, 10);
+  // `gh pr list` takes the repo (and host, for GHE) as one `-R [HOST/]OWNER/REPO`
+  // argument — unlike `gh api`, it has no separate `--hostname` flag.
+  const repoArg =
+    key.host && key.host !== "github.com"
+      ? `${key.host}/${key.owner}/${key.repo}`
+      : `${key.owner}/${key.repo}`;
+  const raw = gh([
+    "pr",
+    "list",
+    "-R",
+    repoArg,
+    "--search",
+    `review-requested:@me updated:>=${day}`,
+    "--state",
+    "open",
+    "--json",
+    "number,title,updatedAt",
+    "--limit",
+    "100",
+  ]);
+  const parsed = JSON.parse(raw) as RawSearchPull[];
+  return parsed.map((p) => ({ number: p.number, title: p.title, updatedAt: p.updatedAt }));
 }
 
 /* -------------------------------------------------- committed repo files */

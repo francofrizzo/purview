@@ -84,6 +84,8 @@ import {
 import { BUILTIN_DEFAULTS } from "./repo-config.js";
 import { readConfig, writeConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
+import { importReviewRequests } from "./review-import.js";
+import { getWatchStatus } from "./review-watch.js";
 
 export const DEFAULT_PORT = 4779;
 
@@ -836,10 +838,15 @@ export function createApp(opts: AppOptions = {}): Hono {
           local.repoPath !== null ||
           local.analysisModel !== null ||
           local.chatModel !== null ||
+          local.watchReviews !== null ||
           readLocalRubric(repo, root).trim() !== "" ||
           readLocalChatInstructions(repo, root).trim() !== "",
         hasCommittedConfig: cachedCommittedConfigForRepo(repo, root)?.present ?? false,
         repoPath: local.repoPath,
+        // Machine-local, not layered (see schemas.ts): the raw setting is the
+        // whole story, so no `effectiveConfig` resolution is involved.
+        watchReviews: local.watchReviews === true,
+        watch: getWatchStatus().repos[repoKeyToString(repo)] ?? null,
       };
     });
     return c.json({ repos });
@@ -904,6 +911,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         repoPath: local.repoPath,
         analysisModel: local.analysisModel,
         chatModel: local.chatModel,
+        watchReviews: local.watchReviews,
         rubric: readLocalRubric(repo, root),
         chatInstructions: readLocalChatInstructions(repo, root),
       },
@@ -978,6 +986,39 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json(repoConfigPayload(repoKeyParam(c)));
   });
 
+  const ImportReviewsSchema = z
+    .object({ days: z.number().int().min(1).max(90).default(7) })
+    .strict();
+
+  /**
+   * Bulk-import every open, review-requested PR of this repo updated in the
+   * last `days` days, exactly as `POST /api/prs` would for each one. Mirrors
+   * that endpoint's auto-analyze gating: the process-wide switch, then the
+   * per-repo/committed/global layering via `autoAnalyzeAllowed` — evaluated
+   * once here (a bulk import is one request; the layers do not change hunk to
+   * hunk within it), not per PR like the single-PR endpoint does.
+   */
+  app.post("/api/repos/:rkey/import-reviews", async (c) => {
+    const repo = repoKeyParam(c);
+    const parsed = ImportReviewsSchema.safeParse(await readJsonBody(c));
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      throw new HttpError(
+        400,
+        "invalid_body",
+        `${issue.path.join(".") || "(body)"}: ${issue.message}`,
+      );
+    }
+    const { days } = parsed.data;
+    // Repo-scoped, not PR-scoped, so there is no `meta.archived` to check —
+    // `autoAnalyzeAllowed`'s archive guard only applies once a PR exists.
+    // Each newly imported PR is untracked by definition, so nothing here can
+    // be archived; the layered consent alone decides.
+    const analyze = autoAnalyze && effectiveConfig(repo, root).autoAnalyze.value;
+    const result = importReviewRequests(repo, days, root, { analyze });
+    return c.json({ ...result, days });
+  });
+
   /**
    * Partial by design: only the keys present in the body are written, and
    * `null` means "inherit again" (which is not the same as `false`). An empty
@@ -989,6 +1030,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       repoPath: z.string().nullable().optional(),
       analysisModel: ClaudeModelSchema.nullable().optional(),
       chatModel: ClaudeModelSchema.nullable().optional(),
+      watchReviews: z.boolean().nullable().optional(),
       rubric: z.string().optional(),
       chatInstructions: z.string().optional(),
     })
@@ -1012,10 +1054,12 @@ export function createApp(opts: AppOptions = {}): Hono {
       repoPath?: string | null;
       analysisModel?: ClaudeModel | null;
       chatModel?: ClaudeModel | null;
+      watchReviews?: boolean | null;
     } = {};
     if ("autoAnalyze" in body) patch.autoAnalyze = body.autoAnalyze ?? null;
     if ("analysisModel" in body) patch.analysisModel = body.analysisModel ?? null;
     if ("chatModel" in body) patch.chatModel = body.chatModel ?? null;
+    if ("watchReviews" in body) patch.watchReviews = body.watchReviews ?? null;
     if ("repoPath" in body) {
       // Same validation as the per-PR endpoint: a path that isn't there is a
       // typo, and storing it would only fail later, silently.

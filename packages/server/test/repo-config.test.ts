@@ -540,6 +540,7 @@ describe("init and refresh capture", () => {
       repoPath: null,
       analysisModel: null,
       chatModel: null,
+      watchReviews: null,
     });
   });
 
@@ -693,6 +694,77 @@ describe("GET /api/repos", () => {
     await app.request("/api/repos");
     expect(gh.calls).toHaveLength(0);
   });
+
+  it("reports watchReviews and the watch status per repo", async () => {
+    ensureRepoConfig(repo, root);
+    const off = await (await app.request("/api/repos")).json();
+    expect(off.repos[0]).toMatchObject({ watchReviews: false, watch: null });
+
+    await app.request(`/api/repos/${encodedRepo}/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ watchReviews: true }),
+    });
+    const on = await (await app.request("/api/repos")).json();
+    expect(on.repos[0]).toMatchObject({ watchReviews: true });
+  });
+});
+
+describe("POST /api/repos/:rkey/import-reviews", () => {
+  it("imports review-requested PRs, defaulting to a 7-day window", async () => {
+    const other = { host: "github.com", owner: "acme", repo: "gadgets" };
+    const otherEncoded = encodeURIComponent(`${other.host}/${other.owner}/${other.repo}`);
+    // No fake `claude` spawner is installed in this file; keep the imported
+    // PR from queuing a real analysis run by opting the repo out up front.
+    writeRepoConfig(other, { autoAnalyze: false }, root);
+    setGhRunner((args: string[]) => {
+      const joined = args.join(" ");
+      if (args[0] === "pr" && args[1] === "list") {
+        expect(joined).toContain("review-requested:@me");
+        return JSON.stringify([{ number: 99, title: "New one", updatedAt: new Date().toISOString() }]);
+      }
+      if (args[1] === "graphql") {
+        return JSON.stringify({ data: { repository: { pullRequest: { reviewDecision: null } } } });
+      }
+      if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb9" } });
+      if (joined.includes("v3.diff")) return "";
+      if (/pulls\/\d+$/.test(args[args.length - 1] ?? "")) {
+        return JSON.stringify({
+          node_id: "PR_99",
+          number: 99,
+          title: "New one",
+          html_url: "https://github.com/acme/gadgets/pull/99",
+          state: "open",
+          draft: false,
+          merged: false,
+          base: { ref: "main", sha: "base9" },
+          head: { ref: "feature-99", sha: "head99" },
+        });
+      }
+      return "{}";
+    });
+
+    const res = await app.request(`/api/repos/${otherEncoded}/import-reviews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.days).toBe(7);
+    expect(body.imported).toEqual(["github.com/acme/gadgets/99"]);
+    expect(body.alreadyTracked).toEqual([]);
+    expect(body.failed).toEqual([]);
+  });
+
+  it("rejects a days value outside 1-90", async () => {
+    const res = await app.request(`/api/repos/${encodedRepo}/import-reviews`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days: 200 }),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("/api/repos/:rkey/config", () => {
@@ -710,6 +782,7 @@ describe("/api/repos/:rkey/config", () => {
       repoPath: null,
       analysisModel: null,
       chatModel: null,
+      watchReviews: null,
       rubric: "",
       chatInstructions: "",
     });
@@ -748,6 +821,7 @@ describe("/api/repos/:rkey/config", () => {
       repoPath: checkout.path,
       analysisModel: null,
       chatModel: null,
+      watchReviews: null,
       rubric: "# Local\n",
       chatInstructions: "# Local chat\n",
     });

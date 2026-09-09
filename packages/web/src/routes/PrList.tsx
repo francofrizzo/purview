@@ -1,12 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK } from "../api/client";
-import { useAddPr, usePrs, useSetArchived } from "../api/hooks";
-import type { PrListEntry } from "../api/types";
+import { useAddPr, useImportReviews, usePrs, useRepos, useSetArchived } from "../api/hooks";
+import type { PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
 import { IconArchive, IconChevron, IconSettings } from "../components/icons";
+import { errorText } from "../api/errors";
+import { formatImportResult } from "../lib/reviewImport";
 import {
   formatAddedAt,
   formatFullTimestamp,
@@ -16,12 +18,18 @@ import {
 
 export function PrList() {
   const { data: prs = [], isLoading, error } = usePrs();
+  const { data: repos = [] } = useRepos();
   const background = useModalBackground();
   const addPr = useAddPr();
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
 
   const groups = useMemo(() => groupPrsByRepo(prs), [prs]);
+  const repoByKey = useMemo(() => {
+    const map = new Map<string, RepoSummary>();
+    for (const r of repos) map.set(`${r.host}/${r.owner}/${r.repo}`, r);
+    return map;
+  }, [repos]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,7 +104,7 @@ export function PrList() {
         ) : (
           <div className="flex flex-col gap-3 pb-6">
             {groups.map((group) => (
-              <RepoSection key={group.key} group={group} />
+              <RepoSection key={group.key} group={group} repo={repoByKey.get(group.key)} />
             ))}
           </div>
         )}
@@ -106,8 +114,9 @@ export function PrList() {
 }
 
 /** One repo: a header row, its PRs, and the archived disclosure at the bottom. */
-function RepoSection({ group }: { group: RepoGroup }) {
+function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) {
   const [showArchived, setShowArchived] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
 
@@ -129,13 +138,35 @@ function RepoSection({ group }: { group: RepoGroup }) {
             {group.host}
           </span>
         ) : null}
+        {repo?.watchReviews ? (
+          <span
+            className="chip px-0 font-normal flex-none"
+            style={{ color: "var(--fg-faint)", background: "transparent" }}
+            title={
+              repo.watch
+                ? `Polling for review requests — last checked ${formatFullTimestamp(repo.watch.checkedAt)}`
+                : "Polling for review requests — no check yet"
+            }
+          >
+            watching
+          </span>
+        ) : null}
         <span className="flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
           {group.prs.length} {group.prs.length === 1 ? "PR" : "PRs"}
         </span>
+        <button
+          type="button"
+          className="btn ml-auto flex-none"
+          data-testid={`import-reviews-toggle-${group.key}`}
+          aria-expanded={importOpen}
+          onClick={() => setImportOpen((v) => !v)}
+        >
+          import review requests…
+        </button>
         <Link
           to={settingsHref}
           state={{ background }}
-          className="ml-auto flex-none rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
+          className="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
           title={`Settings for ${group.owner}/${group.repo}`}
           aria-label={`Settings for ${group.owner}/${group.repo}`}
           data-testid={`repo-settings-${group.key}`}
@@ -144,6 +175,10 @@ function RepoSection({ group }: { group: RepoGroup }) {
           <IconSettings width={12} height={12} />
         </Link>
       </header>
+
+      {importOpen ? (
+        <ImportReviewsForm rkey={group.key} onClose={() => setImportOpen(false)} />
+      ) : null}
 
       {group.prs.length ? (
         <ul>
@@ -180,6 +215,60 @@ function RepoSection({ group }: { group: RepoGroup }) {
         </div>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * Inline "import review requests…" form: one numeric input, an import
+ * button, and a transient result line. Collapses back into the header's
+ * toggle button when the reader cancels or closes it.
+ */
+function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => void }) {
+  const [days, setDays] = useState(7);
+  const importReviews = useImportReviews(rkey);
+
+  const submit = () => {
+    importReviews.mutate(days);
+  };
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-2xs"
+      style={{ borderColor: "var(--border)" }}
+    >
+      <span style={{ color: "var(--fg-faint)" }}>last</span>
+      <input
+        type="number"
+        min={1}
+        max={90}
+        className="input w-14 px-1.5 py-0.5 text-2xs"
+        value={days}
+        disabled={importReviews.isPending}
+        onChange={(e) => {
+          const n = Number(e.target.value);
+          if (Number.isFinite(n)) setDays(Math.min(90, Math.max(1, Math.round(n))));
+        }}
+      />
+      <span style={{ color: "var(--fg-faint)" }}>days</span>
+      <button
+        type="button"
+        className="btn"
+        disabled={importReviews.isPending}
+        onClick={submit}
+      >
+        {importReviews.isPending ? "importing…" : "import"}
+      </button>
+      <button type="button" className="btn" disabled={importReviews.isPending} onClick={onClose}>
+        cancel
+      </button>
+      {importReviews.error ? (
+        <span style={{ color: "var(--risk)" }}>{errorText(importReviews.error)}</span>
+      ) : importReviews.data ? (
+        <span style={{ color: importReviews.data.failed.length ? "var(--risk)" : "var(--fg-faint)" }}>
+          {formatImportResult(importReviews.data)}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

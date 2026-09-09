@@ -226,6 +226,13 @@ export interface PrListEntry {
 
 /* --------------------------------------------------------- repos & config */
 
+/** One repo's most recent review-watch poll, from `GET /api/repos`. */
+export interface RepoWatchStatus {
+  checkedAt: string;
+  imported: number;
+  error?: string;
+}
+
 /** GET /api/repos → `{ repos }`. */
 export interface RepoSummary {
   host: string;
@@ -237,6 +244,10 @@ export interface RepoSummary {
   hasCommittedConfig: boolean;
   /** the local checkout the server resolved for this repo, if any */
   repoPath: string | null;
+  /** whether this machine polls the repo for review requests (see repo settings) */
+  watchReviews: boolean;
+  /** this repo's most recent poll, or null if the watcher has not reached it yet */
+  watch: RepoWatchStatus | null;
 }
 
 /**
@@ -254,6 +265,12 @@ export interface RepoConfig {
     repoPath: string | null;
     analysisModel: ClaudeModel | null;
     chatModel: ClaudeModel | null;
+    /**
+     * Poll GitHub for review requests every few minutes and import them. Not
+     * layered like the other fields (it is a machine behavior, not team
+     * policy) — `null`/`false` are both "off"; there is no "inherit".
+     */
+    watchReviews: boolean | null;
     rubric: string;
     chatInstructions: string;
   };
@@ -283,6 +300,7 @@ export interface RepoConfigPatch {
   repoPath?: string | null;
   analysisModel?: ClaudeModel | null;
   chatModel?: ClaudeModel | null;
+  watchReviews?: boolean | null;
   rubric?: string;
   chatInstructions?: string;
 }
@@ -541,4 +559,12 @@ export type ChatStreamEvent =
 export interface RepoPathResult {
   ok: boolean;
   warning?: string;
+}
+
+/** POST /api/repos/:rkey/import-reviews */
+export interface ImportReviewsResult {
+  imported: string[];
+  alreadyTracked: string[];
+  failed: { key: string; error: string }[];
+  days: number;
 }

@@ -631,6 +631,8 @@ export const mockRepos: RepoSummary[] = [
     hasLocalConfig: true,
     hasCommittedConfig: false,
     repoPath: "/Users/dana/code/billing",
+    watchReviews: true,
+    watch: { checkedAt: new Date(Date.now() - 3 * 60_000).toISOString(), imported: 0 },
   },
   {
     host: "github.com",
@@ -641,6 +643,8 @@ export const mockRepos: RepoSummary[] = [
     hasLocalConfig: false,
     hasCommittedConfig: false,
     repoPath: null,
+    watchReviews: false,
+    watch: null,
   },
   {
     host: "git.acme.dev",
@@ -651,6 +655,8 @@ export const mockRepos: RepoSummary[] = [
     hasLocalConfig: false,
     hasCommittedConfig: true,
     repoPath: null,
+    watchReviews: false,
+    watch: null,
   },
 ];
 
@@ -661,6 +667,7 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
       repoPath: "/Users/dana/code/billing",
       analysisModel: "opus",
       chatModel: null,
+      watchReviews: true,
       rubric: LOCAL_BILLING_RUBRIC,
       chatInstructions: LOCAL_BILLING_CHAT_INSTRUCTIONS,
     },
@@ -684,6 +691,7 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
       repoPath: null,
       analysisModel: null,
       chatModel: null,
+      watchReviews: null,
       rubric: "",
       chatInstructions: "",
     },
@@ -707,6 +715,7 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
       repoPath: null,
       analysisModel: null,
       chatModel: null,
+      watchReviews: null,
       rubric: "",
       chatInstructions: "",
     },
