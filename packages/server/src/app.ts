@@ -61,6 +61,7 @@ import {
   updatePullRequestReviewCommentBody,
   type SubmitEvent,
 } from "./github-review.js";
+import { createPrPeopleLoader, persistPrPeople } from "./pr-people.js";
 import { discoverPullRequests, ImportScopeSchema } from "./github-import.js";
 import { HttpError, classifyError } from "./http-error.js";
 import { streamSSE } from "hono/streaming";
@@ -145,6 +146,11 @@ export function createApp(opts: AppOptions = {}): Hono {
   const root = opts.stateDir ?? stateRoot();
   const autoAnalyze = opts.autoAnalyze ?? true;
   const deleting = new Set<string>();
+  const peopleLoaders = {
+    all: createPrPeopleLoader(),
+    active: createPrPeopleLoader(),
+    archived: createPrPeopleLoader(),
+  };
   // A "running" job record can only be stale at boot — nothing is running yet.
   reconcileStaleJobs(root);
 
@@ -195,6 +201,14 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /* -------------------------------------------------------------- PR list */
 
+  app.get("/api/prs/people", async (c) => {
+    const scope = z.enum(["all", "active", "archived"]).parse(c.req.query("scope") ?? "all");
+    const keys = listPrs(root).filter((key) => scope === "all" || Boolean(readMeta(key, root).archived) === (scope === "archived"));
+    const people = await peopleLoaders[scope](keys, c.req.query("force") === "true");
+    persistPrPeople(keys, people, root);
+    return c.json(people);
+  });
+
   app.get("/api/prs", (c) => {
     const keys = listPrs(root);
     const prs = keys.map((key) => {
@@ -229,7 +243,10 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw classifyError(err);
     }
     if (deleting.has(keyToString(key))) throw new HttpError(409, "pr_deleting", "This PR is being deleted.");
+    if (isBusy(key)) throw new HttpError(409, "analysis_in_progress", "Wait for analysis to finish before adding this PR again.");
     const result = initPr(key, root);
+    if (readMeta(key, root).archived) updateMeta(key, { archived: false }, root);
+    clearStalenessCache(key, root);
     // A freshly tracked PR has no analysis at all, so init always kicks one
     // off (unless the caller opted out with ?analyze=false).
     const job = analyzeRequested(c, key) ? triggerAnalysis(key) : null;
@@ -361,7 +378,15 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.post("/api/prs/:key/analyze", (c) => {
     const key = keyParam(c);
-    readMeta(key, root);
+    const meta = readMeta(key, root);
+    if (meta.archived) {
+      if (isBusy(key)) throw new HttpError(409, "analysis_in_progress", "Wait for the previous analysis to stop before restoring this PR.");
+      if (chatBusy(key)) throw new HttpError(409, "pr_busy", "Wait for the active chat to finish before restoring this PR.");
+      // Refresh first so a GitHub failure leaves the PR safely archived.
+      refreshPr(key, root);
+      updateMeta(key, { archived: false }, root);
+      clearStalenessCache(key, root);
+    }
     return c.json({ job: startAnalysis(key, root, { timeoutMs: opts.analysisTimeoutMs }) });
   });
 

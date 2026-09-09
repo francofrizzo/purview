@@ -181,6 +181,7 @@ export const ReviewDecisionSchema = z.enum([
 export type ReviewDecision = z.infer<typeof ReviewDecisionSchema>;
 
 export const MetaSchema = z.object({
+  author: z.string().optional(),
   host: z.string(),
   owner: z.string(),
   repo: z.string(),

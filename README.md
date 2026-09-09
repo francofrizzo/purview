@@ -39,6 +39,13 @@ after `git pull` — it is always safe to re-run.
 
 Open <http://localhost:4779> and paste a PR URL to start tracking it.
 
+The dashboard checks active PRs on GitHub when opened and every five minutes while visible,
+updating authors, review requests, titles, PR status, and review decisions without
+changing diffs or starting analysis. Archived PRs are checked when their section
+is expanded, so they do not delay active PRs. Re-adding an archived PR by URL restores it
+and refreshes its diff. Explicitly starting analysis on an archived PR does the
+same before queueing analysis, preserving comments and review progress.
+
 You can also click **Import from GitHub** on the home page to add your open PRs in
 bulk using your existing `gh` login for github.com. **Review requested** is the default.
 Choose **All my open PRs**

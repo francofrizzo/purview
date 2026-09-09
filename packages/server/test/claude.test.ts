@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   analysisJobPath,
+  loadState,
+  setHunkViewed,
   chatPath,
   keyToString,
   parseDiff,
@@ -253,6 +255,51 @@ describe("analysis job lifecycle", () => {
     await analysisIdle();
     expect(readJob(key, root)?.status).toBe("cancelled");
     expect(readMeta(key, root).archived).toBe(true);
+  });
+
+  it("restores an archived PR, refreshes it and preserves review work before analysis", async () => {
+    buildFixture(root);
+    const previous = loadState(key, root);
+    const hunkId = Object.keys(previous.hunks)[0];
+    setHunkViewed(key, hunkId, true, root);
+    updateMeta(key, { archived: true }, root);
+    const commentsFile = path.join(path.dirname(analysisJobPath(key, root)), "comments.json");
+    const comments = JSON.stringify([{ id: "keep-comment", body: "Keep my feedback" }]);
+    fs.writeFileSync(commentsFile, comments);
+    setGhRunner(ghFor([REV1_PATCH], "2"));
+    const response = await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    expect(response.status).toBe(200);
+    expect(readMeta(key, root).archived).toBe(false);
+    const state = loadState(key, root);
+    expect(state.currentRevision).toBeGreaterThan(previous.currentRevision);
+    expect(state.hunks[hunkId].viewed).toBe(true);
+    expect(fs.readFileSync(commentsFile, "utf8")).toBe(comments);
+    expect((await response.json()).job.revision).toBe(state.currentRevision);
+    await analysisIdle();
+  });
+
+  it("keeps an archived PR archived if refreshing before analysis fails", async () => {
+    buildFixture(root);
+    updateMeta(key, { archived: true }, root);
+    setGhRunner(() => { throw new Error("gh api failed: offline"); });
+    const response = await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    expect(response.status).toBe(502);
+    expect(readMeta(key, root).archived).toBe(true);
+    expect(readJob(key, root)).toBeNull();
+  });
+
+  it("restores an archived PR added explicitly by URL without discarding its history", async () => {
+    buildFixture(root);
+    updateMeta(key, { archived: true }, root);
+    setGhRunner(ghFor([REV1_PATCH], "2"));
+    const response = await app.request("/api/prs?analyze=false", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: `https://github.com/${key.owner}/${key.repo}/pull/${key.number}` }),
+    });
+    expect(response.status).toBe(200);
+    expect(readMeta(key, root).archived).toBe(false);
+    expect(loadState(key, root).revisions.length).toBeGreaterThan(1);
+    expect(readJob(key, root)).toBeNull();
   });
 
   it("409s on cancel when nothing is in progress", async () => {

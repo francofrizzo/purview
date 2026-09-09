@@ -554,3 +554,11 @@ export interface ImportPrsResult {
   queued: number;
   warnings: string[];
 }
+
+export interface PrPerson {
+  author?: string;
+  title?: string;
+  state?: PrGithubState;
+  reviewDecision?: ReviewDecision | null;
+  relationship: "own" | "review" | "other" | "unknown";
+}

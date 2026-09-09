@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK, errorText } from "../api/client";
-import { useAddPr, useDeletePr, useImportPrs, usePrs, useSetArchived } from "../api/hooks";
-import type { ImportScope, PrListEntry } from "../api/types";
+import { useAddPr, useDeletePr, useImportPrs, usePrPeople, usePrs, useSetArchived } from "../api/hooks";
+import type { ImportScope, PrListEntry, PrPerson } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
@@ -16,6 +16,7 @@ import {
 
 export function PrList() {
   const { data: prs = [], isLoading, error } = usePrs();
+  const { data: people = {}, isPending: loadingPeople } = usePrPeople();
   const background = useModalBackground();
   const addPr = useAddPr();
   const importPrs = useImportPrs();
@@ -92,10 +93,6 @@ export function PrList() {
             {importPrs.isPending ? "Importing…" : "Import from GitHub"}
           </button>
         </div>
-        <p className="mt-2 leading-5" style={{ color: "var(--fg-muted)" }}>
-          Defaults to open PRs requesting your review. Choose another scope to import more PRs.
-          New PRs are analyzed using your analysis settings. Already tracked PRs are skipped.
-        </p>
         <div role="status" aria-live="polite" className="mt-2 leading-5">
           {importPrs.isPending ? "Fetching your GitHub PRs and adding them for analysis…" : null}
           {!importPrs.isPending && importPrs.data ? (
@@ -144,7 +141,7 @@ export function PrList() {
         ) : (
           <div className="flex flex-col gap-3 pb-6">
             {groups.map((group) => (
-              <RepoSection key={group.key} group={group} />
+              <RepoSection key={group.key} group={group} people={people} loadingPeople={loadingPeople} />
             ))}
           </div>
         )}
@@ -154,8 +151,9 @@ export function PrList() {
 }
 
 /** One repo: a header row, its PRs, and the archived disclosure at the bottom. */
-function RepoSection({ group }: { group: RepoGroup }) {
+function RepoSection({ group, people, loadingPeople }: { group: RepoGroup; people: Record<string, PrPerson>; loadingPeople: boolean }) {
   const [showArchived, setShowArchived] = useState(false);
+  const { data: archivedPeople = {} } = usePrPeople(true, showArchived);
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
 
@@ -194,15 +192,17 @@ function RepoSection({ group }: { group: RepoGroup }) {
       </header>
 
       {group.prs.length ? (
-        <ul>
-          {group.prs.map((pr) => (
-            <PrRow key={pr.key} pr={pr} />
-          ))}
-        </ul>
+        (["review", "own", "other", "unknown"] as const).map((relationship) => {
+          const prs = group.prs.filter((pr) => (people[pr.key]?.relationship ?? "unknown") === relationship);
+          if (!prs.length) return null;
+          const label = { review: "For your review", own: "Your PRs", other: "Other PRs", unknown: loadingPeople ? "Loading GitHub…" : "Uncategorized" }[relationship];
+          return <div key={relationship}>
+            <h3 className="px-3 pt-3 pb-1 text-2xs font-medium" style={{ color: "var(--fg-muted)" }}>{label} <span className="tabular-nums">({prs.length})</span></h3>
+            <ul>{prs.map((pr) => <PrRow key={pr.key} pr={pr} person={people[pr.key]} />)}</ul>
+          </div>;
+        })
       ) : (
-        <p className="px-3 py-2.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-          Every PR in this repo is archived.
-        </p>
+        <p className="px-3 py-2.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>Every PR in this repo is archived.</p>
       )}
 
       {group.archived.length ? (
@@ -221,7 +221,7 @@ function RepoSection({ group }: { group: RepoGroup }) {
           {showArchived ? (
             <ul style={{ borderTop: "1px solid var(--border)" }}>
               {group.archived.map((pr) => (
-                <PrRow key={pr.key} pr={pr} />
+                <PrRow key={pr.key} pr={pr} person={archivedPeople[pr.key] ?? people[pr.key]} />
               ))}
             </ul>
           ) : null}
@@ -234,7 +234,7 @@ function RepoSection({ group }: { group: RepoGroup }) {
 const ARCHIVE_HINT =
   "Archiving cancels analysis and hides the PR here. It changes nothing on GitHub.";
 
-function PrRow({ pr }: { pr: PrListEntry }) {
+function PrRow({ pr, person }: { pr: PrListEntry; person?: PrPerson }) {
   const setArchived = useSetArchived();
   const deletePr = useDeletePr();
   const archived = pr.archived;
@@ -262,6 +262,8 @@ function PrRow({ pr }: { pr: PrListEntry }) {
           className="mt-0.5 flex items-center gap-2 text-2xs"
           style={{ color: "var(--fg-faint)" }}
         >
+          <span>{person?.author || meta?.author ? `@${person?.author ?? meta?.author}` : "Author unavailable"}</span>
+          <span>·</span>
           <span title={formatFullTimestamp(pr.addedAt)}>added {formatAddedAt(pr.addedAt)}</span>
           <span>·</span>
           <span className="font-mono">

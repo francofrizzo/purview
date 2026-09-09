@@ -65,6 +65,7 @@ export function initPr(key: PrKey, root = stateRoot()): InitResult {
         number: key.number,
         url: pr.url,
         title: pr.title,
+        author: pr.author,
         headRef: pr.headRef,
         prState: pr.prState,
         reviewDecision: fetchReviewDecision(key),
@@ -114,6 +115,7 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   // move. Both are additive, and a failed decision query degrades to null.
   const reviewDecision = fetchReviewDecision(key);
   const metaPatch: Partial<Meta> = {};
+  if (pr.author && meta.author !== pr.author) metaPatch.author = pr.author;
   if (meta.headRef !== pr.headRef) metaPatch.headRef = pr.headRef;
   if (meta.prState !== pr.prState) metaPatch.prState = pr.prState;
   if ((meta.reviewDecision ?? null) !== reviewDecision) {
