@@ -388,7 +388,9 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.delete("/api/prs/:key", async (c) => {
     const key = keyParam(c);
     const id = keyToString(key);
-    readMeta(key, root);
+    if (!readMeta(key, root).archived) {
+      throw new HttpError(409, "pr_not_archived", "Archive this PR before deleting it.");
+    }
     if (deleting.has(id) || chatBusy(key)) {
       throw new HttpError(409, "pr_busy", "Wait for the active chat or deletion to finish, then try again.");
     }
@@ -544,6 +546,10 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw new HttpError(400, "invalid_body", "Body must include { archived: boolean }");
     }
     const meta = updateMeta(key, { archived: body.archived }, root);
+    if (body.archived) {
+      const job = readJob(key, root);
+      if (job?.status === "queued" || job?.status === "running") cancelAnalysis(key, root);
+    }
     return c.json({ ok: true, archived: meta.archived === true });
   });
 
