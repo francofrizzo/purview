@@ -51,11 +51,13 @@ bulk using your existing `gh` login for github.com. **Review requested** is the 
 Choose **All my open PRs**
 (created by you, assigned to you, or requesting your review), or select a single
 scope matching the dashboard tabs at <https://github.com/pulls>. Drafts are included.
-New PRs enter the normal analysis queue, respecting your global and per-repo analysis
-settings. Already tracked PRs, including archived ones, are skipped without refreshing
-or reanalyzing them. Click again whenever you want to discover new PRs.
+New and restored PRs enter the normal analysis queue oldest-first by GitHub PR
+creation date (across all selected scopes), respecting your global and per-repo analysis
+settings. Matching archived PRs are refreshed and restored using the same flow as
+Add PR, preserving comments and review progress. Already active PRs are skipped
+without refreshing or reanalyzing them. Click again to discover or restore PRs.
 
-The result shows added/skipped/failed counts and how many analyses were queued.
+The result shows added-or-restored/skipped/failed counts and how many analyses were queued.
 Individual PR failures do not stop the remaining imports; you can retry by clicking
 again. GitHub search pagination is supported up to its 1,000-result limit per scope;
 incomplete or capped search results are explicitly reported. Only repositories visible

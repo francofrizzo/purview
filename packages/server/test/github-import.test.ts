@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listPrs, readMeta, setGhRunner, updateMeta, writeRepoConfig } from "@reviewer/core";
+import { loadState, prDir, setHunkViewed, listPrs, readMeta, setGhRunner, updateMeta, writeRepoConfig } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { discoverPullRequests } from "../src/github-import.js";
 import { buildFixture, key, REV1_PATCH } from "./fixtures.js";
@@ -17,7 +17,7 @@ let root: string;
 const url = (n: number) => `https://github.com/acme/widgets/pull/${n}`;
 const page = (numbers: number[], total = numbers.length, incomplete = false) => JSON.stringify({
   total_count: total, incomplete_results: incomplete,
-  items: numbers.map((n) => ({ html_url: url(n) })),
+  items: numbers.map((n) => ({ html_url: url(n), created_at: new Date(Date.UTC(2026, 0, 1) + n * 60_000).toISOString() })),
 });
 
 function install(search: (args: string[]) => string, failPr?: number) {
@@ -71,6 +71,18 @@ describe("GitHub discovery", () => {
     for (const args of calls) expect(args.slice(0, 3)).toEqual(["api", "--hostname", "github.com"]);
   });
 
+  it("sorts the union of scopes by creation time, independent of PR number", () => {
+    install((args) => {
+      const items = args.includes("q=is:pr is:open author:octocat")
+        ? [{ html_url: url(7), created_at: "2026-09-03T00:00:00Z" }]
+        : args.includes("q=is:pr is:open assignee:octocat")
+          ? [{ html_url: url(9), created_at: "2026-09-01T00:00:00Z" }]
+          : [{ html_url: url(8), created_at: "2026-09-02T00:00:00Z" }, { html_url: url(7), created_at: "2026-09-03T00:00:00Z" }];
+      return JSON.stringify({ items, total_count: items.length, incomplete_results: false });
+    });
+    expect(discoverPullRequests("all").urls).toEqual([url(9), url(8), url(7)]);
+  });
+
   it("reports incomplete results and GitHub's search ceiling", () => {
     install(() => page([1], 1001, true));
     expect(discoverPullRequests("created").warnings).toHaveLength(2);
@@ -89,19 +101,43 @@ describe("POST /api/prs/import", () => {
     expect(startAnalysis).toHaveBeenCalledTimes(1);
   });
 
-  it("imports once, preserves archives, and queues only new PRs", async () => {
+  it("restores archived matches once, preserves review work, and skips active matches", async () => {
     buildFixture(root);
     updateMeta(key, { archived: true }, root);
+    const hunkId = Object.keys(loadState(key, root).hunks)[0];
+    setHunkViewed(key, hunkId, true, root);
+    const commentsFile = path.join(prDir(key, root), "comments.json");
+    const comments = JSON.stringify([{ id: "keep", body: "Keep feedback" }]);
+    fs.writeFileSync(commentsFile, comments);
     install(() => page([7, 8, 8]));
     const app = createApp({ stateDir: root });
     const first = await request(app);
     expect(first.status).toBe(200);
-    expect(await first.json()).toMatchObject({ added: ["github.com/acme/widgets/8"], skipped: ["github.com/acme/widgets/7"], queued: 1, failed: [] });
-    expect(startAnalysis).toHaveBeenCalledTimes(1);
-    expect(readMeta(key, root).archived).toBe(true);
+    expect(await first.json()).toMatchObject({ added: ["github.com/acme/widgets/7", "github.com/acme/widgets/8"], skipped: [], queued: 2, failed: [] });
+    expect(startAnalysis).toHaveBeenCalledTimes(2);
+    expect(readMeta(key, root).archived).toBe(false);
+    expect(loadState(key, root).hunks[hunkId].viewed).toBe(true);
+    expect(fs.readFileSync(commentsFile, "utf8")).toBe(comments);
     expect((await (await request(app)).json()).added).toEqual([]);
-    expect(startAnalysis).toHaveBeenCalledTimes(1);
+    expect(startAnalysis).toHaveBeenCalledTimes(2);
     expect(listPrs(root)).toHaveLength(2);
+  });
+
+  it("queues archived and new PRs together from oldest creation date to newest", async () => {
+    buildFixture(root);
+    updateMeta(key, { archived: true }, root);
+    install(() => JSON.stringify({
+      total_count: 3, incomplete_results: false,
+      items: [
+        { html_url: url(7), created_at: "2026-09-03T00:00:00Z" },
+        { html_url: url(8), created_at: "2026-09-02T00:00:00Z" },
+        { html_url: url(9), created_at: "2026-09-01T00:00:00Z" },
+      ],
+    }));
+    const response = await request(createApp({ stateDir: root }), "review-requested");
+    expect(response.status).toBe(200);
+    expect((await response.json()).queued).toBe(3);
+    expect(vi.mocked(startAnalysis).mock.calls.map(([key]) => key.number)).toEqual([9, 8, 7]);
   });
 
   it.each(["process", "repo", "request"])("respects the %s analysis opt-out", async (setting) => {
@@ -112,6 +148,36 @@ describe("POST /api/prs/import", () => {
     expect(result.added).toHaveLength(1);
     expect(result.queued).toBe(0);
     expect(startAnalysis).not.toHaveBeenCalled();
+  });
+
+  it.each(["process", "repo", "request"])("restores archived PRs while respecting the %s analysis opt-out", async (setting) => {
+    buildFixture(root);
+    updateMeta(key, { archived: true }, root);
+    install(() => page([7]));
+    if (setting === "repo") writeRepoConfig(key, { autoAnalyze: false }, root);
+    const app = createApp({ stateDir: root, autoAnalyze: setting !== "process" });
+    const result = await (await request(app, "review-requested", setting === "request" ? "?analyze=false" : "")).json();
+    expect(result).toMatchObject({ added: ["github.com/acme/widgets/7"], queued: 0, failed: [] });
+    expect(readMeta(key, root).archived).toBe(false);
+    expect(startAnalysis).not.toHaveBeenCalled();
+  });
+
+  it("leaves archived PRs archived if refresh fails and retries them on the next import", async () => {
+    buildFixture(root);
+    updateMeta(key, { archived: true }, root);
+    const before = loadState(key, root);
+    install(() => page([7]), 7);
+    const app = createApp({ stateDir: root });
+    const result = await (await request(app)).json();
+    expect(result.failed).toHaveLength(1);
+    expect(result.added).toEqual([]);
+    expect(readMeta(key, root).archived).toBe(true);
+    expect(loadState(key, root)).toEqual(before);
+    expect(startAnalysis).not.toHaveBeenCalled();
+    install(() => page([7]));
+    expect((await (await request(app)).json()).added).toEqual(["github.com/acme/widgets/7"]);
+    expect(readMeta(key, root).archived).toBe(false);
+    expect(startAnalysis).toHaveBeenCalledTimes(1);
   });
 
   it("continues after an individual PR fails and allows retrying it", async () => {

@@ -233,6 +233,19 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json({ prs });
   });
 
+  /** Add and import share refresh, restore, and analysis consent handling. */
+  const addOrRestorePr = (key: PrKey, c: Parameters<typeof analyzeRequested>[0]) => {
+    if (deleting.has(keyToString(key))) throw new HttpError(409, "pr_deleting", "This PR is being deleted.");
+    if (isBusy(key)) throw new HttpError(409, "analysis_in_progress", "Wait for analysis to finish before adding this PR again.");
+    const result = initPr(key, root);
+    if (readMeta(key, root).archived) updateMeta(key, { archived: false }, root);
+    clearStalenessCache(key, root);
+    // A freshly tracked PR has no analysis at all, so init always kicks one
+    // off (unless the caller opted out with ?analyze=false).
+    const job = analyzeRequested(c, key) ? triggerAnalysis(key) : null;
+    return { result, job };
+  };
+
   app.post("/api/prs", async (c) => {
     const body = (await readJsonBody(c)) as { url?: string };
     if (!body.url) throw new HttpError(400, "missing_url", "Body must include { url }");
@@ -242,14 +255,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     } catch (err) {
       throw classifyError(err);
     }
-    if (deleting.has(keyToString(key))) throw new HttpError(409, "pr_deleting", "This PR is being deleted.");
-    if (isBusy(key)) throw new HttpError(409, "analysis_in_progress", "Wait for analysis to finish before adding this PR again.");
-    const result = initPr(key, root);
-    if (readMeta(key, root).archived) updateMeta(key, { archived: false }, root);
-    clearStalenessCache(key, root);
-    // A freshly tracked PR has no analysis at all, so init always kicks one
-    // off (unless the caller opted out with ?analyze=false).
-    const job = analyzeRequested(c, key) ? triggerAnalysis(key) : null;
+    const { result, job } = addOrRestorePr(key, c);
     return c.json({
       key: keyToString(result.key),
       created: result.created,
@@ -264,7 +270,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // Finish discovery before changing local state so a search/auth failure is retryable.
     const discovery = discoverPullRequests(scope);
     const tracked = new Set(listPrs(root)
-      .filter((key) => loadState(key, root).currentRevision > 0)
+      .filter((key) => loadState(key, root).currentRevision > 0 && !readMeta(key, root).archived)
       .map((key) => keyToString(key).toLowerCase()));
     const added: string[] = [];
     const skipped: string[] = [];
@@ -281,10 +287,10 @@ export function createApp(opts: AppOptions = {}): Hono {
         }
         // init can leave metadata behind if fetching the diff fails. Retry
         // entries with no revision instead of treating them as fully tracked.
-        initPr(key, root);
+        const { job } = addOrRestorePr(key, c);
         tracked.add(id.toLowerCase());
         added.push(id);
-        if (analyzeRequested(c, key) && triggerAnalysis(key)) queued++;
+        if (job) queued++;
       } catch (err) {
         failed.push({ url, error: err instanceof Error ? err.message : String(err) });
       }

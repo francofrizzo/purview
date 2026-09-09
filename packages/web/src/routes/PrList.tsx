@@ -97,12 +97,18 @@ export function PrList() {
           {importPrs.isPending ? "Fetching your GitHub PRs and adding them for analysis…" : null}
           {!importPrs.isPending && importPrs.data ? (
             <>
-              <p>
-                {importPrs.data.login}: {importPrs.data.added.length} added,
-                {" "}{importPrs.data.queued} queued for analysis,
-                {" "}{importPrs.data.skipped.length} already tracked,
-                {" "}{importPrs.data.failed.length} failed.
-              </p>
+              {importPrs.data.added.length === 0 && importPrs.data.failed.length === 0 ? (
+                <p>{importPrs.data.skipped.length
+                  ? `No new PRs to import. ${importPrs.data.skipped.length} already active in Purview.`
+                  : "No matching PRs found."}</p>
+              ) : (
+                <p>
+                  {importPrs.data.added.length} PRs added or restored,
+                  {" "}{importPrs.data.queued} analysis jobs queued (oldest PR first),
+                  {" "}{importPrs.data.skipped.length} already active,
+                  {" "}{importPrs.data.failed.length} failed.
+                </p>
+              )}
               {importPrs.data.warnings.map((warning) => <p key={warning} style={{ color: "var(--warn)" }}>{warning}</p>)}
               {importPrs.data.failed.map((failure) => (
                 <p key={failure.url} style={{ color: "var(--risk)" }}>{failure.url}: {failure.error}</p>
