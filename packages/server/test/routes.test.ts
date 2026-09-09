@@ -455,7 +455,14 @@ describe("GET /api/prs/:key/revisions/:n/line-changes", () => {
 });
 
 describe("DELETE /api/prs/:key", () => {
+  it("requires archiving before deletion without touching PR data", async () => {
+    const res = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(res.status).toBe(409);
+    expect(fs.existsSync(prDir(key, root))).toBe(true);
+  });
+
   it("removes all PR data while preserving neighboring PRs and repo settings", async () => {
+    updateMeta(key, { archived: true }, root);
     const dir = prDir(key, root);
     const sibling = path.join(path.dirname(dir), "99999");
     fs.mkdirSync(sibling);
