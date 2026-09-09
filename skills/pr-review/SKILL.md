@@ -269,18 +269,26 @@ future runs don't repeat it — see RUBRIC.md for the format.
 
 ## 7. Write the analysis
 
-Write the JSON from step 4 to a temp file, then:
+Write the JSON from step 4 with the **Write tool** into the run's scratch directory
+(`<state-dir>/scratch/` — the only writable location; the run prompt gives the absolute
+path), then hand the CLI the file path:
 
 ```
-reviewer-state set-analysis <key> --file analysis.json
+reviewer-state set-analysis <key> --file <state-dir>/scratch/analysis.json
 ```
 
-`--file` is required; pass `-` to read the JSON from stdin instead of a temp file. This
-**replaces** the whole analysis for the current revision.
+**Never inline JSON into a Bash command** — no heredocs, no `echo '{...}'`, no `--file -`
+with piped input. The permission layer rejects any Bash command containing quoted braces
+("expansion obfuscation"), and each rejected attempt wastes a full turn re-sending your
+whole context. A file written once is also cheap to retry: the save command is one short
+line.
+
+This **replaces** the whole analysis for the current revision.
 
 On success it prints `Analysis set for revision <n>: <u> units covering <h> hunks`. If the
-CLI reports validation errors, fix the JSON and retry — do not hand-wave past a validation
-failure. Common causes: a hunk id of the current revision missing from every unit's
+CLI reports validation errors, fix the file with the **Edit tool** — a targeted edit, not
+a rewrite — and re-run the same command. Do not hand-wave past a validation failure.
+Common causes: a hunk id of the current revision missing from every unit's
 `hunkIds` *and* from `"unassigned"` (the error lists the exact ids), a referenced id that
 isn't in this revision, an invalid `kind`/`attention`/`riskFlags` enum value, or a missing
 required field such as `attentionWhy` or `order`.
@@ -297,7 +305,8 @@ re-verification reads the same way. In short:
 3. Patch only the affected units with
    `reviewer-state set-unit <key> --id <unitId> --file patch.json` — the unit id is the
    `--id` **flag** (or an `id` field inside the JSON), not a positional argument. The file
-   may be a partial patch (e.g. just `{"hunkIds": [...]}`); pass `-` for stdin. Add
+   may be a partial patch (e.g. just `{"hunkIds": [...]}`) — write it with the Write tool
+   into the scratch directory, never via stdin/heredoc. Add
    `--note "<why>"` when you are correcting a `kind`/`attention` — that note is recorded on
    the `classification-corrected` events. **Never regenerate the whole analysis** on a
    refresh.

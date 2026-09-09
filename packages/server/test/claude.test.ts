@@ -131,19 +131,29 @@ describe("findings gating text", () => {
 });
 
 describe("analysis tool allowlist", () => {
-  it("permits batched read-only investigation but never writes, gh or git", () => {
-    const { tools, allowedTools, disallowedTools } = analysisToolFlags();
-    expect(tools).not.toContain("Write");
-    expect(tools).not.toContain("Edit");
+  it("permits batched reads and scratch-scoped writes but never gh or git", () => {
+    const scratch = "/tmp/purview-test/pr/scratch";
+    const { tools, allowedTools, disallowedTools } = analysisToolFlags(scratch);
+    // Write/Edit exist solely for composing JSON payloads in scratch/ —
+    // path-scoped in the allowlist, never granted bare.
+    expect(tools).toContain("Write");
+    expect(tools).toContain("Edit");
+    expect(allowedTools).toContain(`Write(/${scratch}/**)`);
+    expect(allowedTools).toContain(`Edit(/${scratch}/**)`);
+    expect(allowedTools).toContain("Write(scratch/**)");
+    expect(allowedTools).not.toContain("Write");
+    expect(allowedTools).not.toContain("Edit");
     // Batched investigation (`grep … && sed -n …`) needs these allowed outright.
     for (const rule of ["Bash(grep:*)", "Bash(sed -n:*)", "Bash(ls:*)", "Bash(cat:*)"]) {
       expect(allowedTools).toContain(rule);
     }
     // In-place sed must not be reachable through the `sed` allowance.
     expect(allowedTools).not.toContain("Bash(sed:*)");
-    for (const rule of ["Bash(gh:*)", "Bash(git:*)", "Edit"]) {
+    for (const rule of ["Bash(gh:*)", "Bash(git:*)"]) {
       expect(disallowedTools).toContain(rule);
     }
+    // A bare Edit deny would beat the scoped allow; it must be absent.
+    expect(disallowedTools).not.toContain("Edit");
   });
 });
 
@@ -261,7 +271,7 @@ describe("analysis job lifecycle", () => {
     expect(argv).toContain("--output-format stream-json");
     expect(argv).toContain("--safe-mode");
     expect(argv).toContain("--strict-mcp-config");
-    expect(argv).toContain("--tools Read,Glob,Grep,Bash");
+    expect(argv).toContain("--tools Read,Glob,Grep,Bash,Write,Edit");
     // Never inherited from the user's CLI default: the model is always explicit.
     expect(argv).toContain("--model sonnet");
     // Bash is allowed only for the reviewer-state CLI; gh/git are denied outright.
@@ -269,7 +279,9 @@ describe("analysis job lifecycle", () => {
     expect(argv).toContain("Bash(gh:*)");
     expect(argv).toContain("Bash(git:*)");
     expect(argv).not.toContain("--dangerously-skip-permissions");
+    // Writes are path-scoped to the run's scratch dir, never granted bare.
     expect(run.argv).not.toContain("Write");
+    expect(argv).toContain(`Write(/${path.join(run.cwd, "scratch")}/**)`);
 
     const prompt = claude.promptOf(0);
     expect(prompt).toContain("SKILL.md");

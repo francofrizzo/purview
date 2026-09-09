@@ -51,7 +51,8 @@ first three as "carried".
    and re-deriving them from scratch risks contradicting that history.
 3. Patch only the units affected by new hunks, via
    `reviewer-state set-unit <key> --id <unitId> --file patch.json` (unit id is the `--id`
-   flag or an `id` field in the JSON; `--file -` reads stdin; `--note "<why>"` annotates a
+   flag or an `id` field in the JSON; write patch.json with the Write tool into the scratch
+   directory — never stdin/heredoc; `--note "<why>"` annotates a
    kind/attention correction). A "patch" here means updating that one unit's `hunkIds`
    (adding the new hunk — send the **full** resulting array, the patch replaces the field,
    it does not append) and, only if the new hunk changes what's true about the unit, its

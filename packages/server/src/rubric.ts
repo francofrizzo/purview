@@ -98,7 +98,10 @@ export function rubricSection(
   for (const layer of layers) {
     out.push("", `----- RUBRIC LAYER ${layer.level}: ${layer.label} -----`);
     if (layer.path) out.push(`Read it from: ${layer.path}`);
-    if (layer.origin) out.push(`Source: ${layer.origin}`);
+    // Provenance only: naming the path without this warning reliably baits
+    // the model into `cat`ing a file outside its readable roots and burning a
+    // turn on the denial.
+    if (layer.origin) out.push(`Source (already inlined below — do NOT read this path): ${layer.origin}`);
     if (layer.content) out.push(layer.content.trimEnd());
   }
   out.push("", "===== END REVIEW RUBRIC =====");

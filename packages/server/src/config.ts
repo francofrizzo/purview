@@ -42,6 +42,13 @@ export const ConfigSchema = z.object({
    */
   analysisModel: ClaudeModelSchema.nullable().default(null),
   chatModel: ClaudeModelSchema.nullable().default(null),
+  /**
+   * How many analysis runs may execute at once. Each run is its own `claude`
+   * process, so this multiplies the *rate* of spend, never the total; 2 keeps
+   * a big PR from making every later one wait out its whole wall time.
+   * `PURVIEW_ANALYSIS_CONCURRENCY` overrides without editing the file.
+   */
+  analysisConcurrency: z.number().int().min(1).max(4).default(2),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;
