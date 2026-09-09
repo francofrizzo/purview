@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { MOCK, errorText } from "../api/client";
+import { MOCK } from "../api/client";
 import { useAddPr, useDeletePr, useImportReviews, useImportPrs, usePrPeople, usePrs, useRepos, useSetArchived } from "../api/hooks";
 import type { ImportScope, PrListEntry, PrPerson, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
