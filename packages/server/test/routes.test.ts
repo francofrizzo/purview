@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   githubUserCachePath,
   loadState,
+  prDir,
   refreshPr,
   setGhRunner,
   setHunkViewed,
@@ -450,5 +451,37 @@ describe("GET /api/prs/:key/revisions/:n/line-changes", () => {
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toBeTruthy();
+  });
+});
+
+describe("DELETE /api/prs/:key", () => {
+  it("removes all PR data while preserving neighboring PRs and repo settings", async () => {
+    const dir = prDir(key, root);
+    const sibling = path.join(path.dirname(dir), "99999");
+    fs.mkdirSync(sibling);
+    fs.writeFileSync(path.join(sibling, "keep.txt"), "keep");
+    const config = path.join(path.dirname(dir), "repo.json");
+    fs.writeFileSync(config, "{}");
+    fs.writeFileSync(path.join(dir, "analysis-job.json"), JSON.stringify({ revision: 1, status: "queued" }));
+    const res = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(fs.existsSync(dir)).toBe(false);
+    expect(fs.readFileSync(path.join(sibling, "keep.txt"), "utf8")).toBe("keep");
+    expect(fs.existsSync(config)).toBe(true);
+    expect((await app.request(`/api/prs/${encodedKey}`)).status).toBe(404);
+  });
+
+  it("returns 404 for an unknown PR", async () => {
+    const res = await app.request(`/api/prs/${encodeURIComponent("github.com/acme/widgets/99999")}`, { method: "DELETE" });
+    expect(res.status).toBe(404);
+    expect(fs.existsSync(prDir(key, root))).toBe(true);
+  });
+
+  it("rejects cross-origin deletion", async () => {
+    const res = await app.request(`/api/prs/${encodedKey}`, {
+      method: "DELETE", headers: { Origin: "https://example.com" },
+    });
+    expect(res.status).toBe(403);
+    expect(fs.existsSync(prDir(key, root))).toBe(true);
   });
 });
