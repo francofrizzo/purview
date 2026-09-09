@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { prDir, loadState, refreshPr, setGhRunner, setHunkViewed } from "@reviewer/core";
+import { updateMeta, prDir, loadState, refreshPr, setGhRunner, setHunkViewed } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { DOD_REV1, DOD_REV2, DOD_REV3, buildFixture, key } from "./fixtures.js";
 
@@ -346,7 +346,14 @@ describe("GET /api/prs/:key/hunks/:id/diff-of-diffs", () => {
 
 
 describe("DELETE /api/prs/:key", () => {
+  it("requires archiving before deletion without touching PR data", async () => {
+    const res = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(res.status).toBe(409);
+    expect(fs.existsSync(prDir(key, root))).toBe(true);
+  });
+
   it("removes all PR data while preserving neighboring PRs and repo settings", async () => {
+    updateMeta(key, { archived: true }, root);
     const dir = prDir(key, root);
     const sibling = path.join(path.dirname(dir), "99999");
     fs.mkdirSync(sibling);

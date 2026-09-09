@@ -443,6 +443,7 @@ export const mockApi = {
   async deletePr(key: string): Promise<void> {
     const index = list.findIndex((p) => p.key === key);
     if (index === -1) throw new ApiError("not_found", 404, `No PR "${key}"`);
+    if (!list[index].archived) throw new ApiError("Archive this PR before deleting it.", 409, null);
     clearJobTimers(key);
     delete jobTimers[key];
     delete jobSubscribers[key];
@@ -461,6 +462,7 @@ export const mockApi = {
     const entry = list.find((p) => p.key === key);
     if (!entry) throw new ApiError("not_found", 404, `No PR "${key}"`);
     entry.archived = archived;
+    if (archived && isLive(jobs[key])) await mockApi.cancelAnalysis(key);
     syncRepoCounts();
   },
 

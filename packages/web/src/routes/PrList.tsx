@@ -232,7 +232,7 @@ function RepoSection({ group }: { group: RepoGroup }) {
 }
 
 const ARCHIVE_HINT =
-  "Archiving is local only — it hides the PR here and changes nothing on GitHub.";
+  "Archiving cancels analysis and hides the PR here. It changes nothing on GitHub.";
 
 function PrRow({ pr }: { pr: PrListEntry }) {
   const setArchived = useSetArchived();
@@ -288,7 +288,7 @@ function PrRow({ pr }: { pr: PrListEntry }) {
       >
         <IconArchive out={archived} width={12} height={12} />
       </button>
-      <button
+      {archived ? <button
         type="button"
         className="btn flex-none text-2xs"
         data-testid={`delete-${pr.key}`}
@@ -302,7 +302,7 @@ function PrRow({ pr }: { pr: PrListEntry }) {
         style={{ color: "var(--risk)" }}
       >
         {deletePr.isPending ? "Deleting…" : "Delete"}
-      </button>
+      </button> : null}
       {deletePr.error ? <span role="alert" className="text-2xs" style={{ color: "var(--risk)" }}>{errorText(deletePr.error)}</span> : null}
     </li>
   );
