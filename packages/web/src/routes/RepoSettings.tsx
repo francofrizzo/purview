@@ -179,7 +179,7 @@ function AnalysisSection({ config, save }: { config: RepoConfig; save: Save }) {
   return (
     <Section
       title="Analysis"
-      hint="Whether a new revision is analyzed automatically as soon as it is fetched."
+      hint="Whether a new revision is analyzed automatically as soon as it is fetched, and which model runs the analysis."
     >
       <div className="flex flex-wrap items-end gap-4">
         <Field label="Auto-analyze">
