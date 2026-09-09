@@ -1071,7 +1071,11 @@ export function DiffPane({
           data-collapsed={folded ? "true" : "false"}
           className="flex cursor-pointer items-center gap-2 px-3 py-1"
           style={{
-            background: focused ? "var(--accent-soft)" : "var(--bg-inset)",
+            // accent-soft is translucent; composite it over the inset ground
+            // so a pinned focused header stays opaque with code beneath it.
+            background: focused
+              ? "linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-inset)"
+              : "var(--bg-inset)",
             borderLeft: `2px solid ${focused ? "var(--accent)" : "transparent"}`,
             color: "var(--fg-muted)",
           }}
