@@ -1,10 +1,15 @@
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { lineRangeRef } from "../lib/chatRefs";
 import { groupComments, lineAnchor } from "../lib/comments";
 import { buildRows, buildSplitRows, hunkLabel, type CharRange } from "../lib/diffModel";
 import { lineKey, type SearchMatch } from "../lib/diffSearch";
+import {
+  mergeStickyIntoRange,
+  stickyHeadersFor,
+  type StickyHeaders,
+} from "../lib/stickyHeaders";
 import {
   EMPTY_COLLAPSED,
   isCollapsed,
@@ -396,6 +401,28 @@ export function DiffPane({
     return m;
   }, [rows]);
 
+  // Sticky headers: the current file/hunk header rows stay mounted (range
+  // extractor) and pinned (render swaps them to position: sticky). See
+  // lib/stickyHeaders.ts for the row-picking logic.
+  const headerIdxs = useMemo(() => {
+    const file: number[] = [];
+    const hunk: number[] = [];
+    rows.forEach((r, i) => {
+      if (r.type === "file") file.push(i);
+      else if (r.type === "hunk") hunk.push(i);
+    });
+    return { file, hunk };
+  }, [rows]);
+  const stickyRef = useRef<StickyHeaders>({});
+  const rangeExtractor = useCallback(
+    (range: Range) => {
+      const sticky = stickyHeadersFor(headerIdxs.file, headerIdxs.hunk, range.startIndex);
+      stickyRef.current = sticky;
+      return mergeStickyIntoRange(sticky, defaultRangeExtractor(range));
+    },
+    [headerIdxs],
+  );
+
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -420,6 +447,10 @@ export function DiffPane({
     },
     overscan: 30,
     getItemKey: (i) => rows[i].key,
+    rangeExtractor,
+    // scrollToIndex targets land under the pinned header stack otherwise;
+    // one header height of padding keeps the row it navigated to visible.
+    scrollPaddingStart: 40,
   });
 
   /* ------------------------------------------- keeping the reader in place */
@@ -843,26 +874,63 @@ export function DiffPane({
             className="pointer-events-none absolute left-0 top-0 w-full"
             style={{ height: EXPAND_UNDER }}
           />
-        {items.map((vi) => {
+        {(() => {
+          // The current headers render in-flow + sticky instead of absolute.
+          // They are the lowest indexes in the range, so they are the first
+          // children and their in-flow position is the container top — the
+          // sticky offsets (0 for the file row, its height for the hunk row
+          // below it) then pin them to the scrollport from there.
+          //
+          // "Engaged" gating: a header only switches to sticky once its own
+          // slot has scrolled under the pin line. Without it, a header still
+          // sitting visibly in place (say, below an expanded file-comments
+          // block) would be yanked up to the pin position. The cascade is
+          // consistent by construction: the hunk's pin line is the file
+          // header's height only when the file header itself is engaged, and
+          // an engaged hunk implies an engaged file above it.
+          const sticky = stickyRef.current;
+          const scrollTop = virtualizer.scrollOffset ?? 0;
+          const fileVi =
+            sticky.file !== undefined ? items.find((i) => i.index === sticky.file) : undefined;
+          const fileEngaged = fileVi !== undefined && fileVi.start < scrollTop;
+          const hunkPin = fileEngaged ? (fileVi?.size ?? 0) : 0;
+          return items.map((vi) => {
           const row = rows[vi.index];
+          const stickyTop =
+            vi.index === sticky.file && fileEngaged
+              ? 0
+              : vi.index === sticky.hunk && vi.start - scrollTop < hunkPin
+                ? hunkPin
+                : null;
           return (
             <div
               key={vi.key}
               data-index={vi.index}
               data-flash={vi.key === flashKey ? "true" : undefined}
+              data-sticky={stickyTop !== null ? "true" : undefined}
               ref={virtualizer.measureElement}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${vi.start}px)`,
-              }}
+              style={
+                stickyTop !== null
+                  ? {
+                      position: "sticky",
+                      top: stickyTop,
+                      zIndex: 3,
+                      width: "100%",
+                    }
+                  : {
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${vi.start}px)`,
+                    }
+              }
             >
               {renderRow(row)}
             </div>
           );
-        })}
+          });
+        })()}
         </div>
       </div>
     </div>

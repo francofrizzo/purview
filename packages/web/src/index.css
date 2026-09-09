@@ -263,6 +263,12 @@
     box-shadow: 0 0 0 1px var(--search-active);
     border-radius: 2px;
   }
+  /* Pinned file/hunk header rows (see DiffPane's sticky rendering): a hint of
+     shadow so the code sliding underneath reads as underneath. */
+  [data-sticky="true"] {
+    box-shadow: var(--shadow-1);
+  }
+
   /* Brief pulse on the row a match was just scrolled to — the row itself may be
      far down a long unit, and the mark alone is easy to miss. */
   [data-flash="true"] {
