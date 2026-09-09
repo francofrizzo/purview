@@ -485,7 +485,15 @@ export const mockApi = {
     const [, host, owner, repo, number] = m;
     const key = `${host}/${owner}/${repo}/${number}`;
     const existing = list.find((p) => p.key === key);
-    if (existing) return existing;
+    if (existing) {
+      if (isLive(jobs[key])) throw new ApiError("analysis_in_progress", 409, "Wait for analysis to finish before adding this PR again.");
+      if (existing.archived) {
+        await mockApi.refresh(key);
+        existing.archived = false;
+        syncRepoCounts();
+      }
+      return existing;
+    }
     const entry: PrListEntry = {
       key,
       meta: { host, owner, repo, number: Number(number), url, title: `${repo}#${number}` },
@@ -505,6 +513,13 @@ export const mockApi = {
   },
 
   /** Local-only, exactly as the tooltip in the UI claims. */
+  async prPeople(): Promise<Record<string, import("../api/types").PrPerson>> {
+    return Object.fromEntries(list.map((pr, index) => [pr.key, {
+      author: pr.meta?.author ?? (index % 2 === 0 ? "octocat" : "hubot"),
+      relationship: index % 2 === 0 ? "own" : "review",
+    }]));
+  },
+
   async deletePr(key: string): Promise<void> {
     const index = list.findIndex((p) => p.key === key);
     if (index === -1) throw new ApiError("not_found", 404, `No PR "${key}"`);
@@ -707,7 +722,7 @@ export const mockApi = {
     await delay(700);
     // Mirrors the server: a refresh that lands new hunks on a PR with no
     // analysis auto-queues one, and the UI picks that up over /events.
-    if (details[key] && !details[key].state.units.length && !isLive(jobs[key])) {
+    if (details[key] && !list.find((pr) => pr.key === key)?.archived && !details[key].state.units.length && !isLive(jobs[key])) {
       runJob(key);
     }
     // A real refresh fetches whatever upstream had, so the drift it was
@@ -996,6 +1011,12 @@ export const mockApi = {
     await delay(120);
     if (isLive(jobs[key])) {
       throw new ApiError("already_running", 409, "An analysis is already queued for this PR");
+    }
+    const entry = list.find((pr) => pr.key === key);
+    if (entry?.archived) {
+      await mockApi.refresh(key);
+      entry.archived = false;
+      syncRepoCounts();
     }
     runJob(key);
     return structuredClone(jobs[key]!);

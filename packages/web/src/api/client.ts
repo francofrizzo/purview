@@ -4,6 +4,7 @@ import { ApiError } from "./errors";
 import type {
   AddCommentInput,
   AnalysisImportReport,
+  PrPerson,
   ImportScope,
   ImportPrsResult,
   AnalysisJob,
@@ -454,6 +455,11 @@ export const api = {
   },
 
   /** Local-only: nothing about the PR on GitHub changes. */
+  async prPeople(archived = false): Promise<Record<string, PrPerson>> {
+    if (MOCK) return mockApi.prPeople();
+    return request(`/prs/people?force=true&scope=${archived ? "archived" : "active"}`);
+  },
+
   async deletePr(key: string): Promise<void> {
     if (MOCK) return mockApi.deletePr(key);
     await del(`/prs/${encodeKey(key)}`);

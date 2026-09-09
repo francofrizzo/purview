@@ -43,6 +43,7 @@ function ghJson<T>(host: string, args: string[], input?: string): T {
 }
 
 export interface PullRequestInfo {
+  author?: string;
   nodeId: string;
   number: number;
   title: string;
@@ -63,6 +64,7 @@ export interface PullRequestInfo {
 }
 
 interface RawPull {
+  user?: { login?: string };
   node_id: string;
   number: number;
   title: string;
@@ -98,6 +100,7 @@ export function fetchPullRequest(key: PrKey): PullRequestInfo {
     `repos/${key.owner}/${key.repo}/pulls/${key.number}`,
   ]);
   return {
+    author: raw.user?.login,
     nodeId: raw.node_id,
     number: raw.number,
     title: raw.title,
