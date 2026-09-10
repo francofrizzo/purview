@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { ClaudeModelSchema, configPath, stateRoot } from "@reviewer/core";
+import { AnalysisEffortSchema, ClaudeModelSchema, configPath, stateRoot } from "@reviewer/core";
 
 /**
  * `~/.purview/config.json` — the one piece of global (not per-PR) state.
@@ -53,10 +53,17 @@ export const ConfigSchema = z.object({
    * Reasoning effort for analysis runs (`claude --effort`). Measured on a
    * 153-hunk PR: medium matched high's classification quality at ~10% less
    * wall time and ~15% less cost — thinking volume is the dominant cost of a
-   * run. `null` omits the flag entirely, for `claude` CLIs old enough not to
-   * know it.
+   * run, which is why "medium" (not the CLI's own default) is what a fresh
+   * install gets.
+   *
+   * This is now a layered setting like `analysisModel` (see repo-config.ts):
+   * `null` here means "inherit", which at this outermost layer resolves to
+   * the built-in default above. To actually omit `--effort` — the escape
+   * hatch for a `claude` CLI too old to know the flag — pin the value
+   * `"none"` at whichever layer needs it; that is a real, distinct choice,
+   * not the same thing as `null`.
    */
-  analysisEffort: z.enum(["low", "medium", "high"]).nullable().default("medium"),
+  analysisEffort: AnalysisEffortSchema.nullable().default("medium"),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;

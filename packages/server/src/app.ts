@@ -3,6 +3,7 @@ import path from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
+  AnalysisEffortSchema,
   CLAUDE_MODELS,
   ClaudeModelSchema,
   analysisCoverage,
@@ -33,6 +34,7 @@ import {
   writeLocalChatInstructions,
   writeLocalRubric,
   writeRepoConfig,
+  type AnalysisEffort,
   type ClaudeModel,
   type Hunk,
   type Meta,
@@ -838,6 +840,7 @@ export function createApp(opts: AppOptions = {}): Hono {
           local.repoPath !== null ||
           local.analysisModel !== null ||
           local.chatModel !== null ||
+          local.analysisEffort !== null ||
           local.watchReviews !== null ||
           readLocalRubric(repo, root).trim() !== "" ||
           readLocalChatInstructions(repo, root).trim() !== "",
@@ -911,6 +914,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         repoPath: local.repoPath,
         analysisModel: local.analysisModel,
         chatModel: local.chatModel,
+        analysisEffort: local.analysisEffort,
         watchReviews: local.watchReviews,
         rubric: readLocalRubric(repo, root),
         chatInstructions: readLocalChatInstructions(repo, root),
@@ -926,12 +930,14 @@ export function createApp(opts: AppOptions = {}): Hono {
         repoPath: effective.repoPath.value,
         analysisModel: effective.analysisModel.value,
         chatModel: effective.chatModel.value,
+        analysisEffort: effective.analysisEffort.value,
       },
       sources: {
         autoAnalyze: effective.autoAnalyze.source,
         repoPath: effective.repoPath.source,
         analysisModel: effective.analysisModel.source,
         chatModel: effective.chatModel.source,
+        analysisEffort: effective.analysisEffort.source,
       },
     };
   }
@@ -947,10 +953,12 @@ export function createApp(opts: AppOptions = {}): Hono {
     return {
       analysisModel: config.analysisModel,
       chatModel: config.chatModel,
+      analysisEffort: config.analysisEffort,
       /** what `null` resolves to here — the end of the inheritance chain */
       defaults: {
         analysisModel: BUILTIN_DEFAULTS.analysisModel,
         chatModel: BUILTIN_DEFAULTS.chatModel,
+        analysisEffort: BUILTIN_DEFAULTS.analysisEffort,
       },
     };
   }
@@ -959,6 +967,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     .object({
       analysisModel: ClaudeModelSchema.nullable().optional(),
       chatModel: ClaudeModelSchema.nullable().optional(),
+      analysisEffort: AnalysisEffortSchema.nullable().optional(),
     })
     .strict();
 
@@ -975,9 +984,14 @@ export function createApp(opts: AppOptions = {}): Hono {
       );
     }
     const body = parsed.data;
-    const patch: { analysisModel?: ClaudeModel | null; chatModel?: ClaudeModel | null } = {};
+    const patch: {
+      analysisModel?: ClaudeModel | null;
+      chatModel?: ClaudeModel | null;
+      analysisEffort?: AnalysisEffort | null;
+    } = {};
     if ("analysisModel" in body) patch.analysisModel = body.analysisModel ?? null;
     if ("chatModel" in body) patch.chatModel = body.chatModel ?? null;
+    if ("analysisEffort" in body) patch.analysisEffort = body.analysisEffort ?? null;
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
   });
@@ -1030,6 +1044,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       repoPath: z.string().nullable().optional(),
       analysisModel: ClaudeModelSchema.nullable().optional(),
       chatModel: ClaudeModelSchema.nullable().optional(),
+      analysisEffort: AnalysisEffortSchema.nullable().optional(),
       watchReviews: z.boolean().nullable().optional(),
       rubric: z.string().optional(),
       chatInstructions: z.string().optional(),
@@ -1054,11 +1069,13 @@ export function createApp(opts: AppOptions = {}): Hono {
       repoPath?: string | null;
       analysisModel?: ClaudeModel | null;
       chatModel?: ClaudeModel | null;
+      analysisEffort?: AnalysisEffort | null;
       watchReviews?: boolean | null;
     } = {};
     if ("autoAnalyze" in body) patch.autoAnalyze = body.autoAnalyze ?? null;
     if ("analysisModel" in body) patch.analysisModel = body.analysisModel ?? null;
     if ("chatModel" in body) patch.chatModel = body.chatModel ?? null;
+    if ("analysisEffort" in body) patch.analysisEffort = body.analysisEffort ?? null;
     if ("watchReviews" in body) patch.watchReviews = body.watchReviews ?? null;
     if ("repoPath" in body) {
       // Same validation as the per-PR endpoint: a path that isn't there is a

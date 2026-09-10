@@ -17,7 +17,7 @@ import {
 import { runClaude, type ClaudeRun } from "./claude-runner.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 import { readConfig } from "./config.js";
-import { effectiveAnalysisModel, effectiveRepoPath } from "./repo-config.js";
+import { effectiveAnalysisEffort, effectiveAnalysisModel, effectiveRepoPath } from "./repo-config.js";
 import { rubricSection } from "./rubric.js";
 import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
 import { resolveCheckout, type CheckoutResolution } from "./worktree.js";
@@ -370,15 +370,6 @@ function concurrencyLimit(root: string): number {
   }
 }
 
-/** Reasoning effort for analysis runs; null (old CLIs) omits the flag. */
-function analysisEffort(root: string): "low" | "medium" | "high" | undefined {
-  try {
-    return readConfig(root).analysisEffort ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /** Only for tests: wait until nothing is queued or running. */
 export function analysisIdle(): Promise<void> {
   return new Promise((resolve) => {
@@ -560,6 +551,11 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     console.warn(`[analysis] ${keyToString(key)}: ${checkout.error}; running without a checkout`);
   }
 
+  // "none" (pinnable at any layer) means omit --effort entirely, for a
+  // `claude` CLI too old to know the flag; every other value passes straight
+  // through to runClaude.
+  const effort = effectiveAnalysisEffort(key, root, { meta: meta ?? null });
+
   const run = runClaude({
     label: "analysis",
     prompt: analysisPrompt(key, root, {
@@ -574,7 +570,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     // Always explicit: an analysis must never inherit the `claude` CLI's own
     // default model, which is whatever the user happens to have configured.
     model: effectiveAnalysisModel(key, root, { meta: meta ?? null }),
-    effort: analysisEffort(root),
+    effort: effort === "none" ? undefined : effort,
     timeoutMs: opts.timeoutMs,
   });
   slot.run = run;

@@ -265,6 +265,8 @@ export interface RepoConfig {
     repoPath: string | null;
     analysisModel: ClaudeModel | null;
     chatModel: ClaudeModel | null;
+    /** null = inherit; "none" is a real pinned value (omit `--effort`) */
+    analysisEffort: AnalysisEffort | null;
     /**
      * Poll GitHub for review requests every few minutes and import them. Not
      * layered like the other fields (it is a machine behavior, not team
@@ -285,6 +287,7 @@ export interface RepoConfig {
     repoPath: string | null;
     analysisModel: ClaudeModel;
     chatModel: ClaudeModel;
+    analysisEffort: AnalysisEffort;
   };
   /** which layer each effective value came from */
   sources?: {
@@ -292,6 +295,7 @@ export interface RepoConfig {
     repoPath: ConfigSource;
     analysisModel: ConfigSource;
     chatModel: ConfigSource;
+    analysisEffort: ConfigSource;
   };
 }
 
@@ -300,6 +304,7 @@ export interface RepoConfigPatch {
   repoPath?: string | null;
   analysisModel?: ClaudeModel | null;
   chatModel?: ClaudeModel | null;
+  analysisEffort?: AnalysisEffort | null;
   watchReviews?: boolean | null;
   rubric?: string;
   chatInstructions?: string;
@@ -310,12 +315,14 @@ export interface GlobalConfig {
   /** null = inherit, which at this layer means `defaults` */
   analysisModel: ClaudeModel | null;
   chatModel: ClaudeModel | null;
-  defaults: { analysisModel: ClaudeModel; chatModel: ClaudeModel };
+  analysisEffort: AnalysisEffort | null;
+  defaults: { analysisModel: ClaudeModel; chatModel: ClaudeModel; analysisEffort: AnalysisEffort };
 }
 
 export interface GlobalConfigPatch {
   analysisModel?: ClaudeModel | null;
   chatModel?: ClaudeModel | null;
+  analysisEffort?: AnalysisEffort | null;
 }
 
 /** GET /api/prs/:key */
@@ -520,6 +527,16 @@ export interface ChatMessage {
 export type ClaudeModel = "sonnet" | "opus" | "haiku";
 
 export const CLAUDE_MODELS: ClaudeModel[] = ["sonnet", "opus", "haiku"];
+
+/**
+ * Reasoning effort for an analysis run. `"none"` is not a level — it is a
+ * real, pinnable value (distinct from `null`/"inherit" in the fields below)
+ * that means "omit `--effort` entirely," for a `claude` CLI too old to know
+ * the flag.
+ */
+export type AnalysisEffort = "low" | "medium" | "high" | "none";
+
+export const ANALYSIS_EFFORTS: AnalysisEffort[] = ["low", "medium", "high", "none"];
 
 /** Which configuration layer an effective value came from. */
 export type ConfigSource = "pr" | "repo" | "committed" | "global" | "default";

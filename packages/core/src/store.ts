@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  AnalysisEffortSchema,
   ClaudeModelSchema,
   EMPTY_REPO_CONFIG,
   EventSchema,
@@ -248,6 +249,7 @@ export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
     repoPath: typeof obj.repoPath === "string" ? obj.repoPath : null,
     analysisModel: model(obj.analysisModel),
     chatModel: model(obj.chatModel),
+    analysisEffort: AnalysisEffortSchema.safeParse(obj.analysisEffort).data ?? null,
     watchReviews: typeof obj.watchReviews === "boolean" ? obj.watchReviews : null,
   };
 }

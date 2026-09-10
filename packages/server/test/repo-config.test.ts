@@ -15,6 +15,7 @@ import {
   writeLocalChatInstructions,
   writeLocalRubric,
   writeRepoConfig,
+  type AnalysisEffort,
   type ClaudeModel,
   type GhRunner,
 } from "@reviewer/core";
@@ -24,6 +25,7 @@ import { chatSystemPrompt } from "../src/chat.js";
 import { writeConfig } from "../src/config.js";
 import {
   autoAnalyzeAllowed,
+  effectiveAnalysisEffort,
   effectiveAnalysisModel,
   effectiveChatModel,
   effectiveConfig,
@@ -269,6 +271,80 @@ describe("effectiveConfig precedence", () => {
     writeRepoConfig(repo, { analysisModel: "haiku", chatModel: "opus" }, root);
     expect(effectiveAnalysisModel(key, root)).toBe("haiku");
     expect(effectiveChatModel(key, root)).toBe("opus");
+  });
+
+  /**
+   * Effort precedence: the same repo > committed > global > built-in chain as
+   * the model cases above, with one wrinkle — the global ConfigSchema default
+   * is "medium" itself (not null, unlike the model fields), so an untouched
+   * config.json already resolves from the *global* layer. Only an explicit
+   * `null` written there reaches the built-in default. `"none"` is exercised
+   * as what it is: a normal pinnable value, not an absence.
+   */
+  const effortCases: {
+    name: string;
+    repoLocal?: AnalysisEffort | null;
+    committed?: AnalysisEffort;
+    global?: AnalysisEffort | null;
+    expected: AnalysisEffort;
+    source: string;
+  }[] = [
+    {
+      name: "nothing set anywhere resolves to the schema's own default",
+      expected: "medium",
+      source: "global",
+    },
+    {
+      name: "an explicit null written at the global layer inherits the built-in default",
+      global: null,
+      expected: "medium",
+      source: "default",
+    },
+    {
+      name: "committed beats global",
+      committed: "high",
+      global: "low",
+      expected: "high",
+      source: "committed",
+    },
+    {
+      name: "repo.json beats committed and global",
+      repoLocal: "low",
+      committed: "high",
+      global: "high",
+      expected: "low",
+      source: "repo",
+    },
+    {
+      name: "explicit null in repo.json inherits rather than pinning",
+      repoLocal: null,
+      committed: "high",
+      expected: "high",
+      source: "committed",
+    },
+    {
+      name: '"none" is a real pinned value at the repo layer, not an absence',
+      repoLocal: "none",
+      expected: "none",
+      source: "repo",
+    },
+  ];
+
+  for (const c of effortCases) {
+    it(`analysisEffort: ${c.name}`, () => {
+      if (c.repoLocal !== undefined) writeRepoConfig(repo, { analysisEffort: c.repoLocal }, root);
+      if (c.global !== undefined) writeConfig({ analysisEffort: c.global }, root);
+      const resolved = effectiveConfig(key, root, {
+        committed: c.committed === undefined ? null : { analysisEffort: c.committed },
+      });
+      expect(resolved.analysisEffort.value).toBe(c.expected);
+      expect(resolved.analysisEffort.source).toBe(c.source);
+    });
+  }
+
+  it("effectiveAnalysisEffort is the resolver's value, and 'none' round-trips through it", () => {
+    writeRepoConfig(repo, { analysisEffort: "none" }, root);
+    expect(effectiveAnalysisEffort(key, root)).toBe("none");
   });
 
   it("an archived PR never auto-analyzes, whatever the layers say", () => {
@@ -540,6 +616,7 @@ describe("init and refresh capture", () => {
       repoPath: null,
       analysisModel: null,
       chatModel: null,
+      analysisEffort: null,
       watchReviews: null,
     });
   });
@@ -782,6 +859,7 @@ describe("/api/repos/:rkey/config", () => {
       repoPath: null,
       analysisModel: null,
       chatModel: null,
+      analysisEffort: null,
       watchReviews: null,
       rubric: "",
       chatInstructions: "",
@@ -797,6 +875,7 @@ describe("/api/repos/:rkey/config", () => {
       repoPath: null,
       analysisModel: "sonnet",
       chatModel: "sonnet",
+      analysisEffort: "medium",
     });
   });
 
@@ -821,6 +900,7 @@ describe("/api/repos/:rkey/config", () => {
       repoPath: checkout.path,
       analysisModel: null,
       chatModel: null,
+      analysisEffort: null,
       watchReviews: null,
       rubric: "# Local\n",
       chatInstructions: "# Local chat\n",
@@ -876,11 +956,49 @@ describe("/api/repos/:rkey/config", () => {
     expect(clearedBody.local.analysisModel).toBe("opus");
   });
 
+  it("PUT accepts and persists analysisEffort, including the 'none' escape hatch", async () => {
+    const put = await app.request(`/api/repos/${encodedRepo}/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisEffort: "high" }),
+    });
+    const body = await put.json();
+    expect(body.local.analysisEffort).toBe("high");
+    expect(body.effective.analysisEffort).toBe("high");
+    expect(body.sources.analysisEffort).toBe("repo");
+
+    const none = await app.request(`/api/repos/${encodedRepo}/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisEffort: "none" }),
+    });
+    expect((await none.json()).local.analysisEffort).toBe("none");
+
+    const cleared = await app.request(`/api/repos/${encodedRepo}/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisEffort: null }),
+    });
+    const clearedBody = await cleared.json();
+    expect(clearedBody.local.analysisEffort).toBeNull();
+    expect(clearedBody.effective.analysisEffort).toBe("medium");
+    expect(clearedBody.sources.analysisEffort).toBe("global");
+  });
+
   it("rejects an unknown model name", async () => {
     const put = await app.request(`/api/repos/${encodedRepo}/config`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ analysisModel: "claude-opus-4-6" }),
+    });
+    expect(put.status).toBe(400);
+  });
+
+  it("rejects an unknown effort value", async () => {
+    const put = await app.request(`/api/repos/${encodedRepo}/config`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisEffort: "extreme" }),
     });
     expect(put.status).toBe(400);
   });
@@ -930,7 +1048,8 @@ describe("/api/config", () => {
     expect(body).toEqual({
       analysisModel: null,
       chatModel: null,
-      defaults: { analysisModel: "sonnet", chatModel: "sonnet" },
+      analysisEffort: "medium",
+      defaults: { analysisModel: "sonnet", chatModel: "sonnet", analysisEffort: "medium" },
     });
   });
 
@@ -966,6 +1085,33 @@ describe("/api/config", () => {
     });
     expect((await put.json()).chatModel).toBeNull();
     expect(effectiveConfig(key, root).chatModel.source).toBe("default");
+  });
+
+  it("PUT accepts and persists analysisEffort at the global layer, including 'none'", async () => {
+    const put = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisEffort: "low" }),
+    });
+    expect(put.status).toBe(200);
+    expect((await put.json()).analysisEffort).toBe("low");
+    expect(effectiveConfig(key, root).analysisEffort).toEqual({ value: "low", source: "global" });
+
+    const none = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisEffort: "none" }),
+    });
+    expect((await none.json()).analysisEffort).toBe("none");
+    expect(effectiveConfig(key, root).analysisEffort).toEqual({ value: "none", source: "global" });
+
+    const cleared = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisEffort: null }),
+    });
+    expect((await cleared.json()).analysisEffort).toBeNull();
+    expect(effectiveConfig(key, root).analysisEffort).toEqual({ value: "medium", source: "default" });
   });
 
   it("400s on an unknown model or an unknown key", async () => {

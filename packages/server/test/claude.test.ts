@@ -304,6 +304,20 @@ describe("analysis job lifecycle", () => {
     expect(claude.promptOf(0)).toContain("MIGRATION-NOTES.md");
     expect(claude.promptOf(0)).toContain("set-unit");
   });
+
+  it("omits --effort entirely when repo.json pins the 'none' escape hatch", async () => {
+    buildFixture(root);
+    writeRepoConfig(
+      { host: key.host, owner: key.owner, repo: key.repo },
+      { analysisEffort: "none" },
+      root,
+    );
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+
+    const argv = claude.runs[0].argv;
+    expect(argv).not.toContain("--effort");
+  });
 });
 
 /* --------------------------------------------------------------- triggers */

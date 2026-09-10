@@ -6,6 +6,7 @@ import {
   listPrs,
   repoKeyOf,
   stateRoot,
+  type AnalysisEffort,
   type Meta,
   type PrKey,
   type RepoConfig,
@@ -54,6 +55,8 @@ export interface EffectiveConfig {
   analysisModel: Resolved<ClaudeModel>;
   /** model for review-chat turns, unless the chat session pins its own */
   chatModel: Resolved<ClaudeModel>;
+  /** reasoning effort for analysis runs; "none" means omit `--effort` */
+  analysisEffort: Resolved<AnalysisEffort>;
 }
 
 /** Every layer, already read. Injectable so callers can avoid re-reading. */
@@ -73,7 +76,17 @@ export const BUILTIN_DEFAULTS = {
   // model's rate, which for an Opus default is an order of magnitude more.
   analysisModel: "sonnet",
   chatModel: "sonnet",
-} as const satisfies { autoAnalyze: boolean; repoPath: string | null; analysisModel: ClaudeModel; chatModel: ClaudeModel };
+  // Matches the global ConfigSchema's own default (config.ts): medium matched
+  // high's classification quality on a 153-hunk PR at ~10% less wall time and
+  // ~15% less cost.
+  analysisEffort: "medium",
+} as const satisfies {
+  autoAnalyze: boolean;
+  repoPath: string | null;
+  analysisModel: ClaudeModel;
+  chatModel: ClaudeModel;
+  analysisEffort: AnalysisEffort;
+};
 
 function isPrKey(key: PrKey | RepoKey): key is PrKey {
   return typeof (key as PrKey).number === "number";
@@ -183,11 +196,24 @@ export function effectiveConfig(
       ? { value: layers.local.repoPath, source: "repo" }
       : { value: BUILTIN_DEFAULTS.repoPath, source: "default" };
 
+  // Same shape as `model()` above, but its own function: "none" is a real,
+  // pinnable value here (not an absence), so the type is `AnalysisEffort`
+  // rather than `ClaudeModel`, and it can't share `model()`'s signature.
+  const analysisEffort: Resolved<AnalysisEffort> =
+    layers.local.analysisEffort !== null
+      ? { value: layers.local.analysisEffort, source: "repo" }
+      : layers.committed?.analysisEffort !== undefined
+        ? { value: layers.committed.analysisEffort, source: "committed" }
+        : layers.global.analysisEffort !== null
+          ? { value: layers.global.analysisEffort, source: "global" }
+          : { value: BUILTIN_DEFAULTS.analysisEffort, source: "default" };
+
   return {
     autoAnalyze,
     repoPath,
     analysisModel: model("analysisModel"),
     chatModel: model("chatModel"),
+    analysisEffort,
   };
 }
 
@@ -235,4 +261,17 @@ export function effectiveChatModel(
   overrides: Partial<ConfigLayers> = {},
 ): ClaudeModel {
   return effectiveConfig(key, root, overrides).chatModel.value;
+}
+
+/**
+ * The reasoning effort an analysis run for this PR (or repo) should be
+ * spawned with. `"none"` means the caller should omit `--effort` entirely
+ * rather than pass it through — see the field's doc comment in config.ts.
+ */
+export function effectiveAnalysisEffort(
+  key: PrKey | RepoKey,
+  root = stateRoot(),
+  overrides: Partial<ConfigLayers> = {},
+): AnalysisEffort {
+  return effectiveConfig(key, root, overrides).analysisEffort.value;
 }

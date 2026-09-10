@@ -233,6 +233,18 @@ export type ClaudeModel = z.infer<typeof ClaudeModelSchema>;
 export const CLAUDE_MODELS = ClaudeModelSchema.options;
 
 /**
+ * Reasoning effort for a Claude run (`claude --effort`). `"none"` is not a
+ * level — it is the escape hatch that means "omit the flag entirely", for a
+ * `claude` CLI old enough not to know it. It is a real, pinnable value at
+ * every layer, distinct from `null` ("inherit"), so it needs its own spot in
+ * the enum rather than being folded into the nullability.
+ */
+export const AnalysisEffortSchema = z.enum(["low", "medium", "high", "none"]);
+export type AnalysisEffort = z.infer<typeof AnalysisEffortSchema>;
+
+export const ANALYSIS_EFFORTS = AnalysisEffortSchema.options;
+
+/**
  * `~/.purview/<host>/<owner>/<repo>/repo.json` — settings that apply to every
  * PR of one repository.
  *
@@ -246,6 +258,8 @@ export const RepoConfigSchema = z.object({
   repoPath: z.string().nullable().default(null),
   analysisModel: ClaudeModelSchema.nullable().default(null),
   chatModel: ClaudeModelSchema.nullable().default(null),
+  /** Reasoning effort for analysis runs; `null` inherits, same as the models above. */
+  analysisEffort: AnalysisEffortSchema.nullable().default(null),
   /**
    * Poll GitHub every few minutes for review requests and import them
    * automatically (see review-watch.ts). Machine behavior, not team policy —
@@ -268,6 +282,7 @@ export const TeamConfigSchema = z.object({
   autoAnalyze: z.boolean().optional(),
   analysisModel: ClaudeModelSchema.optional(),
   chatModel: ClaudeModelSchema.optional(),
+  analysisEffort: AnalysisEffortSchema.optional(),
 });
 export type TeamConfig = z.infer<typeof TeamConfigSchema>;
 

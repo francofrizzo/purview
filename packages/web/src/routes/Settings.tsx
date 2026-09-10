@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { errorText } from "../api/errors";
 import { useGlobalConfig, useSaveGlobalConfig } from "../api/hooks";
-import { CLAUDE_MODELS } from "../api/types";
-import type { ClaudeModel } from "../api/types";
+import { ANALYSIS_EFFORTS, CLAUDE_MODELS } from "../api/types";
+import type { AnalysisEffort, ClaudeModel } from "../api/types";
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
 import { Modal, useCloseModal } from "../components/Modal";
 import { IconSettings } from "../components/icons";
@@ -504,6 +504,14 @@ function ClaudeSection() {
             disabled={save.isPending}
             onChange={(m) => save.mutate({ analysisModel: m })}
           />
+          <GlobalEffortField
+            label="Effort"
+            testId="global-analysis-effort"
+            value={config.data.analysisEffort}
+            fallback={config.data.defaults.analysisEffort}
+            disabled={save.isPending}
+            onChange={(e) => save.mutate({ analysisEffort: e })}
+          />
           <GlobalModelField
             label="Chat model"
             testId="global-chat-model"
@@ -523,6 +531,58 @@ function ClaudeSection() {
   );
 }
 
+/**
+ * The global-layer sibling of RepoSettings' `SelectField`: same "inherit vs.
+ * pinned value" shape, but "inherit" here is the *end* of the chain, so the
+ * hint shows the built-in default inline in the option rather than a source.
+ */
+function GlobalSelectField<T extends string>({
+  label,
+  testId,
+  value,
+  fallback,
+  disabled,
+  options,
+  onChange,
+}: {
+  label: string;
+  testId: string;
+  value: T | null;
+  fallback: T;
+  disabled?: boolean;
+  options: { value: T; label: string; title?: string }[];
+  onChange: (value: T | null) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Field label={label}>
+        <select
+          data-testid={`${testId}-select`}
+          className="rounded px-2 py-1 text-xs outline-none"
+          value={value ?? "inherit"}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value === "inherit" ? null : (e.target.value as T))}
+          style={{
+            background: "var(--bg-inset)",
+            border: "1px solid var(--border)",
+            color: "var(--fg)",
+          }}
+        >
+          <option value="inherit">inherit ({fallback})</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value} title={o.title}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        {value ? `Every repo without its own setting uses ${value}.` : `Built-in default: ${fallback}.`}
+      </p>
+    </div>
+  );
+}
+
 function GlobalModelField({
   label,
   testId,
@@ -539,34 +599,49 @@ function GlobalModelField({
   onChange: (model: ClaudeModel | null) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <Field label={label}>
-        <select
-          data-testid={`${testId}-select`}
-          className="rounded px-2 py-1 text-xs outline-none"
-          value={value ?? "inherit"}
-          disabled={disabled}
-          onChange={(e) =>
-            onChange(e.target.value === "inherit" ? null : (e.target.value as ClaudeModel))
-          }
-          style={{
-            background: "var(--bg-inset)",
-            border: "1px solid var(--border)",
-            color: "var(--fg)",
-          }}
-        >
-          <option value="inherit">inherit ({fallback})</option>
-          {CLAUDE_MODELS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        {value ? `Every repo without its own setting uses ${value}.` : `Built-in default: ${fallback}.`}
-      </p>
-    </div>
+    <GlobalSelectField
+      label={label}
+      testId={testId}
+      value={value}
+      fallback={fallback}
+      disabled={disabled}
+      options={CLAUDE_MODELS.map((m) => ({ value: m, label: m }))}
+      onChange={onChange}
+    />
+  );
+}
+
+const GLOBAL_EFFORT_OPTIONS = ANALYSIS_EFFORTS.map((e) => ({
+  value: e,
+  label: e,
+  title: e === "none" ? "Don't set --effort — for old claude CLIs" : undefined,
+}));
+
+function GlobalEffortField({
+  label,
+  testId,
+  value,
+  fallback,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  testId: string;
+  value: AnalysisEffort | null;
+  fallback: AnalysisEffort;
+  disabled?: boolean;
+  onChange: (effort: AnalysisEffort | null) => void;
+}) {
+  return (
+    <GlobalSelectField
+      label={label}
+      testId={testId}
+      value={value}
+      fallback={fallback}
+      disabled={disabled}
+      options={GLOBAL_EFFORT_OPTIONS}
+      onChange={onChange}
+    />
   );
 }
 

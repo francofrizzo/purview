@@ -1,6 +1,7 @@
 import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import type {
+  AnalysisEffort,
   AnalysisJob,
   ChatMessage,
   ChatRef,
@@ -66,10 +67,18 @@ const DEFAULT_AUTO_ANALYZE = false;
 /** The real server's built-in model default; `null` anywhere resolves to it. */
 const DEFAULT_MODEL: ClaudeModel = "sonnet";
 
+/** The real server's built-in effort default (config.ts); `null` resolves to it. */
+const DEFAULT_EFFORT: AnalysisEffort = "medium";
+
 /** `~/.purview/config.json`, the outermost layer. */
-const globalConfig: { analysisModel: ClaudeModel | null; chatModel: ClaudeModel | null } = {
+const globalConfig: {
+  analysisModel: ClaudeModel | null;
+  chatModel: ClaudeModel | null;
+  analysisEffort: AnalysisEffort | null;
+} = {
   analysisModel: null,
   chatModel: null,
+  analysisEffort: null,
 };
 
 /** Per-conversation model pins, keyed like the transcripts. */
@@ -92,6 +101,19 @@ function resolveModel(
   return { value: DEFAULT_MODEL, source: "default" };
 }
 
+/** Same precedence as `resolveModel`, kept separate: "none" is a real pinned value here, not an absence. */
+function resolveEffort(rkey: string): { value: AnalysisEffort; source: Source } {
+  const config = repoConfigs[rkey];
+  const local = config?.local.analysisEffort ?? null;
+  const committed = (config?.committed.config as { analysisEffort?: AnalysisEffort } | null)
+    ?.analysisEffort;
+  const global = globalConfig.analysisEffort;
+  if (local) return { value: local, source: "repo" };
+  if (committed) return { value: committed, source: "committed" };
+  if (global) return { value: global, source: "global" };
+  return { value: DEFAULT_EFFORT, source: "default" };
+}
+
 /**
  * Recompute a repo's `effective`/`sources` blocks. On the real server this is
  * the resolver's job, so the mock has to do it too — the UI reads these
@@ -103,11 +125,13 @@ function relayer(rkey: string): void {
   const committed = config.committed.config as { autoAnalyze?: boolean } | null;
   const analysisModel = resolveModel(rkey, "analysisModel");
   const chatModel = resolveModel(rkey, "chatModel");
+  const analysisEffort = resolveEffort(rkey);
   config.effective = {
     autoAnalyze: config.local.autoAnalyze ?? committed?.autoAnalyze ?? DEFAULT_AUTO_ANALYZE,
     repoPath: config.local.repoPath,
     analysisModel: analysisModel.value,
     chatModel: chatModel.value,
+    analysisEffort: analysisEffort.value,
   };
   config.sources = {
     autoAnalyze:
@@ -119,6 +143,7 @@ function relayer(rkey: string): void {
     repoPath: config.local.repoPath ? "repo" : "default",
     analysisModel: analysisModel.source,
     chatModel: chatModel.source,
+    analysisEffort: analysisEffort.source,
   };
 }
 
@@ -155,6 +180,7 @@ function syncRepoCounts() {
           repoPath: null,
           analysisModel: null,
           chatModel: null,
+          analysisEffort: null,
           watchReviews: null,
           rubric: "",
           chatInstructions: "",
@@ -165,12 +191,14 @@ function syncRepoCounts() {
           repoPath: null,
           analysisModel: DEFAULT_MODEL,
           chatModel: DEFAULT_MODEL,
+          analysisEffort: DEFAULT_EFFORT,
         },
         sources: {
           autoAnalyze: "default",
           repoPath: "default",
           analysisModel: "default",
           chatModel: "default",
+          analysisEffort: "default",
         },
       };
     }
@@ -475,7 +503,7 @@ export const mockApi = {
     await delay(80);
     return {
       ...globalConfig,
-      defaults: { analysisModel: DEFAULT_MODEL, chatModel: DEFAULT_MODEL },
+      defaults: { analysisModel: DEFAULT_MODEL, chatModel: DEFAULT_MODEL, analysisEffort: DEFAULT_EFFORT },
     };
   },
 
@@ -483,10 +511,11 @@ export const mockApi = {
     await delay(180);
     if (patch.analysisModel !== undefined) globalConfig.analysisModel = patch.analysisModel;
     if (patch.chatModel !== undefined) globalConfig.chatModel = patch.chatModel;
+    if (patch.analysisEffort !== undefined) globalConfig.analysisEffort = patch.analysisEffort;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return {
       ...globalConfig,
-      defaults: { analysisModel: DEFAULT_MODEL, chatModel: DEFAULT_MODEL },
+      defaults: { analysisModel: DEFAULT_MODEL, chatModel: DEFAULT_MODEL, analysisEffort: DEFAULT_EFFORT },
     };
   },
 
@@ -503,6 +532,7 @@ export const mockApi = {
     if (patch.repoPath !== undefined) config.local.repoPath = patch.repoPath || null;
     if (patch.analysisModel !== undefined) config.local.analysisModel = patch.analysisModel;
     if (patch.chatModel !== undefined) config.local.chatModel = patch.chatModel;
+    if (patch.analysisEffort !== undefined) config.local.analysisEffort = patch.analysisEffort;
     if (patch.watchReviews !== undefined) config.local.watchReviews = patch.watchReviews;
     if (patch.rubric !== undefined) config.local.rubric = patch.rubric;
     if (patch.chatInstructions !== undefined) config.local.chatInstructions = patch.chatInstructions;
@@ -516,6 +546,7 @@ export const mockApi = {
         Boolean(config.local.repoPath) ||
         Boolean(config.local.analysisModel) ||
         Boolean(config.local.chatModel) ||
+        Boolean(config.local.analysisEffort) ||
         config.local.watchReviews !== null ||
         Boolean(config.local.rubric.trim()) ||
         Boolean(config.local.chatInstructions.trim());

@@ -10,8 +10,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { repoKey } from "../api/client";
 import { errorText } from "../api/errors";
 import { useRepoConfig, useSaveRepoConfig, useRepos } from "../api/hooks";
-import { CLAUDE_MODELS } from "../api/types";
-import type { ClaudeModel, ConfigSource, RepoConfig } from "../api/types";
+import { ANALYSIS_EFFORTS, CLAUDE_MODELS } from "../api/types";
+import type { AnalysisEffort, ClaudeModel, ConfigSource, RepoConfig } from "../api/types";
 import { Markdown } from "../components/Markdown";
 import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
 import { IconCheck, IconChevron, IconFile, IconSettings } from "../components/icons";
@@ -211,6 +211,15 @@ function AnalysisSection({ config, save }: { config: RepoConfig; save: Save }) {
           source={config.sources?.analysisModel}
           disabled={save.isPending}
           onChange={(m) => save.mutate({ analysisModel: m }, { onSuccess: () => setFlash() })}
+        />
+        <EffortField
+          label="Effort"
+          testId="analysis-effort"
+          value={config.local.analysisEffort}
+          effective={config.effective.analysisEffort}
+          source={config.sources?.analysisEffort}
+          disabled={save.isPending}
+          onChange={(e) => save.mutate({ analysisEffort: e }, { onSuccess: () => setFlash() })}
         />
         <ModelField
           label="Chat model"
@@ -629,10 +638,63 @@ const SOURCE_LABEL: Record<ConfigSource, string> = {
 };
 
 /**
- * One model choice, with what it resolves to underneath it. `inherit` is a
- * real option, not an absence: it is what lets the repo sit between the team's
- * committed config and the machine-wide setting.
+ * One tri-state-plus choice — "inherit" plus a fixed set of pinnable values —
+ * with what it resolves to underneath it. `inherit` is a real option, not an
+ * absence: it is what lets the repo sit between the team's committed config
+ * and the machine-wide setting. `ModelField` and `EffortField` below are both
+ * just this with their own option list, so the select markup and the
+ * "Effective: ... — from ..." line are written once.
  */
+export function SelectField<T extends string>({
+  label,
+  testId,
+  value,
+  effective,
+  source,
+  disabled,
+  options,
+  onChange,
+}: {
+  label: string;
+  testId: string;
+  value: T | null;
+  effective: T;
+  source?: ConfigSource;
+  disabled?: boolean;
+  options: { value: T; label: string; title?: string }[];
+  onChange: (value: T | null) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Field label={label}>
+        <select
+          data-testid={`${testId}-select`}
+          className="rounded px-2 py-1 text-xs outline-none"
+          value={value ?? "inherit"}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value === "inherit" ? null : (e.target.value as T))}
+          style={{
+            background: "var(--bg-inset)",
+            border: "1px solid var(--border)",
+            color: "var(--fg)",
+          }}
+        >
+          <option value="inherit">inherit</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value} title={o.title}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        Effective: <span style={{ color: "var(--fg-muted)" }}>{effective}</span>
+        {source ? ` — from ${SOURCE_LABEL[source]}.` : "."}
+      </p>
+    </div>
+  );
+}
+
 export function ModelField({
   label,
   testId,
@@ -651,35 +713,59 @@ export function ModelField({
   onChange: (model: ClaudeModel | null) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <Field label={label}>
-        <select
-          data-testid={`${testId}-select`}
-          className="rounded px-2 py-1 text-xs outline-none"
-          value={value ?? "inherit"}
-          disabled={disabled}
-          onChange={(e) =>
-            onChange(e.target.value === "inherit" ? null : (e.target.value as ClaudeModel))
-          }
-          style={{
-            background: "var(--bg-inset)",
-            border: "1px solid var(--border)",
-            color: "var(--fg)",
-          }}
-        >
-          <option value="inherit">inherit</option>
-          {CLAUDE_MODELS.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        Effective: <span style={{ color: "var(--fg-muted)" }}>{effective}</span>
-        {source ? ` — from ${SOURCE_LABEL[source]}.` : "."}
-      </p>
-    </div>
+    <SelectField
+      label={label}
+      testId={testId}
+      value={value}
+      effective={effective}
+      source={source}
+      disabled={disabled}
+      options={CLAUDE_MODELS.map((m) => ({ value: m, label: m }))}
+      onChange={onChange}
+    />
+  );
+}
+
+/**
+ * `"none"` is not a level like the others — it drops `--effort` from the
+ * spawned `claude` invocation entirely, which only matters for a CLI too old
+ * to recognize the flag. The hint lives in the option's `title` (a hover
+ * tooltip) so the visible label stays as short as the others.
+ */
+const EFFORT_OPTIONS = ANALYSIS_EFFORTS.map((e) => ({
+  value: e,
+  label: e,
+  title: e === "none" ? "Don't set --effort — for old claude CLIs" : undefined,
+}));
+
+export function EffortField({
+  label,
+  testId,
+  value,
+  effective,
+  source,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  testId: string;
+  value: AnalysisEffort | null;
+  effective: AnalysisEffort;
+  source?: ConfigSource;
+  disabled?: boolean;
+  onChange: (effort: AnalysisEffort | null) => void;
+}) {
+  return (
+    <SelectField
+      label={label}
+      testId={testId}
+      value={value}
+      effective={effective}
+      source={source}
+      disabled={disabled}
+      options={EFFORT_OPTIONS}
+      onChange={onChange}
+    />
   );
 }
 

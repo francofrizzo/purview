@@ -67,7 +67,11 @@ describe("repo model layering", () => {
 
   it("reports the global defaults so 'inherit' can be labelled", async () => {
     const config = await mockApi.getConfig();
-    expect(config.defaults).toEqual({ analysisModel: "sonnet", chatModel: "sonnet" });
+    expect(config.defaults).toEqual({
+      analysisModel: "sonnet",
+      chatModel: "sonnet",
+      analysisEffort: "medium",
+    });
   });
 });
 
