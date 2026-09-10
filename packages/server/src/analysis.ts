@@ -370,6 +370,15 @@ function concurrencyLimit(root: string): number {
   }
 }
 
+/** Reasoning effort for analysis runs; null (old CLIs) omits the flag. */
+function analysisEffort(root: string): "low" | "medium" | "high" | undefined {
+  try {
+    return readConfig(root).analysisEffort ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Only for tests: wait until nothing is queued or running. */
 export function analysisIdle(): Promise<void> {
   return new Promise((resolve) => {
@@ -565,6 +574,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     // Always explicit: an analysis must never inherit the `claude` CLI's own
     // default model, which is whatever the user happens to have configured.
     model: effectiveAnalysisModel(key, root, { meta: meta ?? null }),
+    effort: analysisEffort(root),
     timeoutMs: opts.timeoutMs,
   });
   slot.run = run;

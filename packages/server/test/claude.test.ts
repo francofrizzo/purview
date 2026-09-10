@@ -274,6 +274,8 @@ describe("analysis job lifecycle", () => {
     expect(argv).toContain("--tools Read,Glob,Grep,Bash,Write,Edit");
     // Never inherited from the user's CLI default: the model is always explicit.
     expect(argv).toContain("--model sonnet");
+    // Default reasoning effort for analysis runs (see config.ts).
+    expect(argv).toContain("--effort medium");
     // Bash is allowed only for the reviewer-state CLI; gh/git are denied outright.
     expect(argv).toContain(`Bash(${process.execPath} ${process.env.REVIEWER_CLI_PATH} report:*)`);
     expect(argv).toContain("Bash(gh:*)");

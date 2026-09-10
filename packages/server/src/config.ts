@@ -49,6 +49,14 @@ export const ConfigSchema = z.object({
    * `PURVIEW_ANALYSIS_CONCURRENCY` overrides without editing the file.
    */
   analysisConcurrency: z.number().int().min(1).max(4).default(2),
+  /**
+   * Reasoning effort for analysis runs (`claude --effort`). Measured on a
+   * 153-hunk PR: medium matched high's classification quality at ~10% less
+   * wall time and ~15% less cost — thinking volume is the dominant cost of a
+   * run. `null` omits the flag entirely, for `claude` CLIs old enough not to
+   * know it.
+   */
+  analysisEffort: z.enum(["low", "medium", "high"]).nullable().default("medium"),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;

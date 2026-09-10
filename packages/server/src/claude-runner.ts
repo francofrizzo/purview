@@ -78,6 +78,8 @@ export interface ClaudeRunOptions {
   /** stream token-level deltas (`--include-partial-messages`) */
   partialMessages?: boolean;
   model?: string;
+  /** reasoning effort (`--effort`); omitted when unset */
+  effort?: "low" | "medium" | "high";
   /** SIGTERM after this long. Analysis runs are slow — keep it generous. */
   timeoutMs?: number;
   /** label used in the argv log line */
@@ -100,6 +102,7 @@ export function buildArgv(opts: ClaudeRunOptions): string[] {
   argv.push("--safe-mode", "--strict-mcp-config");
   if (opts.partialMessages) argv.push("--include-partial-messages");
   if (opts.model) argv.push("--model", opts.model);
+  if (opts.effort) argv.push("--effort", opts.effort);
   if (opts.systemPrompt) argv.push("--append-system-prompt", opts.systemPrompt);
   for (const dir of opts.addDirs ?? []) argv.push("--add-dir", dir);
   if (opts.tools) argv.push("--tools", opts.tools.join(","));
