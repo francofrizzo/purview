@@ -63,6 +63,8 @@ export function initPr(key: PrKey, root = stateRoot()): InitResult {
         number: key.number,
         url: pr.url,
         title: pr.title,
+        author: pr.author,
+        authorAvatarUrl: pr.authorAvatarUrl,
         headRef: pr.headRef,
         prState: pr.prState,
         reviewDecision: fetchReviewDecision(key),
@@ -113,6 +115,11 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   const reviewDecision = fetchReviewDecision(key);
   const metaPatch: Partial<Meta> = {};
   if (meta.headRef !== pr.headRef) metaPatch.headRef = pr.headRef;
+  // Backfills state written before the author was recorded.
+  if (pr.author && meta.author !== pr.author) metaPatch.author = pr.author;
+  if (pr.authorAvatarUrl && meta.authorAvatarUrl !== pr.authorAvatarUrl) {
+    metaPatch.authorAvatarUrl = pr.authorAvatarUrl;
+  }
   if (meta.prState !== pr.prState) metaPatch.prState = pr.prState;
   if ((meta.reviewDecision ?? null) !== reviewDecision) {
     metaPatch.reviewDecision = reviewDecision;

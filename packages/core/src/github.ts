@@ -53,6 +53,9 @@ export interface PullRequestInfo {
   merged: boolean;
   /** the four-value state the UI shows */
   prState: PrState;
+  /** GitHub login of the PR author, when the payload carries one. */
+  author?: string;
+  authorAvatarUrl?: string;
   baseRef: string;
   headRef: string;
   baseSha: string;
@@ -68,6 +71,7 @@ interface RawPull {
   draft?: boolean;
   merged?: boolean;
   merged_at?: string | null;
+  user?: { login?: string; avatar_url?: string } | null;
   base: { ref: string; sha: string };
   head: { ref: string; sha: string };
 }
@@ -102,6 +106,8 @@ export function fetchPullRequest(key: PrKey): PullRequestInfo {
     draft: !!raw.draft,
     merged: !!(raw.merged || raw.merged_at),
     prState: collapsePrState(raw),
+    author: raw.user?.login ?? undefined,
+    authorAvatarUrl: raw.user?.avatar_url ?? undefined,
     baseRef: raw.base.ref,
     headRef: raw.head.ref,
     baseSha: raw.base.sha,

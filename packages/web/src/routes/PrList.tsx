@@ -4,6 +4,7 @@ import { MOCK } from "../api/client";
 import { useAddPr, useImportReviews, usePrs, useRepos, useSetArchived } from "../api/hooks";
 import type { PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
+import { AuthorAvatar } from "../components/AuthorAvatar";
 import { Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
 import { IconArchive, IconChevron, IconSettings } from "../components/icons";
@@ -302,6 +303,15 @@ function PrRow({ pr }: { pr: PrListEntry }) {
           className="mt-0.5 flex items-center gap-2 text-2xs"
           style={{ color: "var(--fg-faint)" }}
         >
+          {meta?.author ? (
+            <>
+              <span className="flex items-center gap-1" title={`Opened by ${meta.author}`}>
+                <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
+                {meta.author}
+              </span>
+              <span>·</span>
+            </>
+          ) : null}
           <span title={formatFullTimestamp(pr.addedAt)}>added {formatAddedAt(pr.addedAt)}</span>
           <span>·</span>
           <span className="font-mono">

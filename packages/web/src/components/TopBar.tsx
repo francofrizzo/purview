@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { AnalysisJob, PrDetail } from "../api/types";
 import { isJobLive } from "../api/types";
 import { AnalysisChip } from "./Analysis";
+import { AuthorAvatar } from "./AuthorAvatar";
 import { ChatButton } from "./ChatPanel";
 import { useModalBackground } from "./Modal";
 import {
@@ -86,6 +87,16 @@ export function TopBar({
           {meta.owner}/{meta.repo}#{meta.number} · rev {state.revision}
           {state.baseOnly ? " (base only)" : ""}
         </span>
+        {meta.author ? (
+          <span
+            className="flex flex-none items-center gap-1 self-center text-2xs"
+            style={{ color: "var(--fg-faint)" }}
+            title={`Opened by ${meta.author}`}
+          >
+            <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={16} />
+            {meta.author}
+          </span>
+        ) : null}
         {/* Only interesting while the analysis is not a plain success. */}
         <AnalysisChip job={analysisJob} />
       </div>

@@ -146,6 +146,7 @@ export interface PrMeta {
   url: string;
   title?: string;
   author?: string;
+  authorAvatarUrl?: string;
   createdAt?: string;
 }
 

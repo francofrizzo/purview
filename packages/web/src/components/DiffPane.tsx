@@ -110,6 +110,15 @@ const COLLAPSE_PAST = 40;
 /** Under this many px, it expands again. The gap between the two is the
  *  hysteresis that keeps a header parked on the boundary from flickering. */
 const EXPAND_UNDER = 10;
+/**
+ * Collapsing the host header makes this scroller *taller*, which clamps
+ * scrollTop down. On a diff short enough, that clamp lands back under
+ * EXPAND_UNDER, the header re-expands, and the pair oscillates forever at the
+ * bottom of the page. So the collapse only engages when the scroll slack
+ * comfortably exceeds the height the header hand-back can return (~100px):
+ * a diff too short to absorb the swap keeps its header whole instead.
+ */
+const MIN_COLLAPSE_SLACK = 160;
 
 /** A range being selected in one file, on one side of the diff. */
 interface LineSelection {
@@ -200,8 +209,9 @@ export function DiffPane({
     const io = new IntersectionObserver(
       (records) => {
         for (const r of records) {
-          if (r.target === past && !r.isIntersecting) onScrolledAway(true);
-          else if (r.target === near && r.isIntersecting) onScrolledAway(false);
+          if (r.target === past && !r.isIntersecting) {
+            if (root.scrollHeight - root.clientHeight >= MIN_COLLAPSE_SLACK) onScrolledAway(true);
+          } else if (r.target === near && r.isIntersecting) onScrolledAway(false);
         }
       },
       { root },

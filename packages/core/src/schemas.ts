@@ -184,6 +184,10 @@ export const MetaSchema = z.object({
   number: z.number().int(),
   url: z.string(),
   title: z.string().optional(),
+  /** GitHub login/avatar of the PR author; refreshed (and backfilled onto
+   *  older state) by every refresh. */
+  author: z.string().optional(),
+  authorAvatarUrl: z.string().optional(),
   createdAt: z.string(),
   /**
    * The PR's head branch name, refreshed from GitHub on every refresh. Used to
