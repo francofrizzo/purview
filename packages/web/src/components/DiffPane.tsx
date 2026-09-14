@@ -12,6 +12,7 @@ import {
   type DiffRow,
 } from "../lib/diffModel";
 import { lineKey, type SearchMatch } from "../lib/diffSearch";
+import { identifierRangeAtPoint } from "../lib/identifierAt";
 import { detectMoves, type HunkMoves } from "../lib/moveDetection";
 import {
   mergeStickyIntoRange,
@@ -217,24 +218,75 @@ export function DiffPane({
     onNarrowChange?.(!wide);
   }, [wide, onNarrowChange]);
 
-  // Cmd/ctrl+click "go to definition" affordance: toggle a class on the
-  // scroller while the modifier is held, rather than tracking hover per row —
-  // one listener pair for the whole pane, virtualized rows untouched.
+  // Cmd/ctrl+click "go to definition" affordance: while the modifier is held,
+  // the identifier under the pointer gets a link-style highlight — a single
+  // fixed-position overlay div moved imperatively (rAF-throttled), so the
+  // virtualized rows are never touched and nothing re-renders on mousemove.
+  const defHoverRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!onDefinitionClick) return;
     const el = scrollRef.current;
     if (!el) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey) el.classList.add("cmd-held");
+    let raf = 0;
+    const hideOverlay = () => {
+      const overlay = defHoverRef.current;
+      if (overlay) overlay.style.display = "none";
     };
-    const clear = () => el.classList.remove("cmd-held");
+    const clear = () => {
+      el.classList.remove("cmd-held");
+      cancelAnimationFrame(raf);
+      hideOverlay();
+    };
+    const isModifier = (e: KeyboardEvent) => e.key === "Meta" || e.key === "Control";
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isModifier(e)) el.classList.add("cmd-held");
+    };
+    // Keyed on the modifier itself: releasing some *other* key mid-hover
+    // (cmd+C, then C up) must not kill the affordance while cmd is still down.
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (isModifier(e)) clear();
+    };
+    const onMove = (e: MouseEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) {
+        // Covers cmd pressed/released outside the window, where no key event
+        // ever reaches us — the pointer state is the ground truth.
+        if (el.classList.contains("cmd-held")) clear();
+        return;
+      }
+      el.classList.add("cmd-held");
+      const target = e.target instanceof Element ? e.target.closest(".diff-code") : null;
+      const { clientX, clientY } = e;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const overlay = defHoverRef.current;
+        if (!overlay) return;
+        const hit =
+          target instanceof HTMLElement ? identifierRangeAtPoint(target, clientX, clientY) : null;
+        if (!hit) {
+          overlay.style.display = "none";
+          return;
+        }
+        overlay.style.display = "block";
+        overlay.style.left = `${hit.rect.left}px`;
+        overlay.style.top = `${hit.rect.top}px`;
+        overlay.style.width = `${hit.rect.width}px`;
+        overlay.style.height = `${hit.rect.height}px`;
+      });
+    };
+    // The overlay is viewport-anchored; scrolling moves the text out from
+    // under it, and the next mousemove redraws it in the right place.
+    const onScroll = () => hideOverlay();
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", clear);
+    window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", clear);
+    el.addEventListener("mousemove", onMove);
+    el.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", clear);
+      window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", clear);
+      el.removeEventListener("mousemove", onMove);
+      el.removeEventListener("scroll", onScroll);
       clear();
     };
   }, [onDefinitionClick]);
@@ -949,6 +1001,9 @@ export function DiffPane({
       >
         {"0".repeat(100)}
       </span>
+      {onDefinitionClick ? (
+        <div ref={defHoverRef} aria-hidden className="def-hover-overlay" style={{ display: "none" }} />
+      ) : null}
       <div
         ref={scrollRef}
         data-diff-scroller=""

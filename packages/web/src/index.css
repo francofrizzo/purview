@@ -268,13 +268,20 @@
     border-radius: 2px;
   }
 
-  /* Cmd/ctrl+click "go to definition" affordance: held down, the code column
-     hints it's clickable. `.cmd-held` is toggled on the scroller by DiffPane's
-     keydown/keyup listener — cheap, and doesn't touch virtualized rows at all. */
-  .cmd-held .diff-code:hover {
+  /* Cmd/ctrl+click "go to definition" affordance: with the modifier held, the
+     identifier under the pointer reads as a link — a single viewport-anchored
+     overlay positioned by DiffPane (see its mousemove handler), so nothing in
+     the virtualized rows changes. `.cmd-held` only carries the cursor. */
+  .cmd-held .diff-code {
     cursor: pointer;
-    text-decoration: underline dotted;
-    text-underline-offset: 2px;
+  }
+  .def-hover-overlay {
+    position: fixed;
+    z-index: 30;
+    pointer-events: none;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    box-shadow: 0 1.5px 0 0 var(--accent);
   }
 
   /* --- search marks ---

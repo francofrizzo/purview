@@ -409,18 +409,6 @@ export function PrView() {
     [prKey, detail, jumpToDiffHunk],
   );
 
-  // Scrolling the diff while the popover is open reads as "moving on" — the
-  // anchor point it was positioned against is gone anyway.
-  const defPopoverOpen = Boolean(defPopover);
-  useEffect(() => {
-    if (!defPopoverOpen) return;
-    const el = mainRef.current?.querySelector<HTMLElement>("[data-diff-scroller]");
-    if (!el) return;
-    const onScroll = () => setDefPopover(null);
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
-  }, [defPopoverOpen]);
-
   // `c` toggles the chat, `s` the summary overlay, `/` opens the find bar — all
   // single-letter, all suppressed while typing. Cmd/Ctrl+F is taken over from the browser on
   // purpose: rows are virtualized, so native find can only see what is mounted.
@@ -843,7 +831,8 @@ export function PrView() {
             </div>
             <div>
               <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
-              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>s</kbd> summary · <kbd>/</kbd> search
+              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>s</kbd> summary · <kbd>/</kbd> search ·{" "}
+              <kbd>⌘</kbd>click definition
             </div>
           </div>
         </nav>

@@ -11,7 +11,9 @@ import {
   parseCtagsJson,
   parseGitGrepOutput,
   resetCtagsAvailabilityCache,
+  grepFallback,
   resolveDefinition,
+  toPosixEre,
 } from "../src/definitions.js";
 import { buildFixture, key } from "./fixtures.js";
 import { git, makeRepo } from "./git-fixtures.js";
@@ -133,6 +135,27 @@ describe("DEFINITION_GREP_PATTERNS", () => {
   });
 });
 
+describe("toPosixEre", () => {
+  it("rewrites PCRE shorthand into POSIX classes git grep -E understands", () => {
+    expect(toPosixEre(String.raw`^\s*def\s+NAME\b`)).toBe(
+      "^[[:space:]]*def[[:space:]]+NAME([^[:alnum:]_]|$)",
+    );
+    expect(toPosixEre(String.raw`\bNAME\s*\(`)).toBe(
+      String.raw`(^|[^[:alnum:]_])NAME[[:space:]]*\(`,
+    );
+    expect(toPosixEre(String.raw`[\w]+`)).toBe("[[[:alnum:]_]]+"); // why brackets stay flat in the real list
+  });
+
+  it("leaves every shipped pattern free of untranslated shorthand", () => {
+    for (const pattern of DEFINITION_GREP_PATTERNS) {
+      // Same order as grepPatternsFor: translate first, then substitute — the
+      // boundary rules key on the NAME placeholder itself.
+      const posix = toPosixEre(pattern).replace(/NAME/g, "x");
+      expect(posix).not.toMatch(/\\[swb]/);
+    }
+  });
+});
+
 describe("resolveDefinition", () => {
   it("reports no checkout when the PR has none configured", async () => {
     buildFixture(root);
@@ -165,6 +188,24 @@ describe("resolveDefinition", () => {
     expect(candidate.line).toBe(6);
     expect(candidate.snippet.lines.join("\n")).toContain("fetchWidgets");
     expect(candidate.snippet.startLine).toBeGreaterThanOrEqual(1);
+  });
+
+  it("grep engine finds definitions even where ctags is installed (POSIX ERE regression)", async () => {
+    // Bypasses engine selection: git grep -E is POSIX ERE, where PCRE's \s and
+    // \b match nothing (macOS regcomp) — this used to zero out every fallback
+    // lookup, invisibly on machines whose tests ran on the ctags engine.
+    const repo = makeRepo(path.join(dir, "repo-grep"), { origin: false });
+    fs.writeFileSync(
+      path.join(repo.path, "main.go"),
+      "package main\n\nfunc main() {\n}\n\nfunc (s *Server) Close() error {\n\treturn nil\n}\n",
+    );
+    git(["add", "."], repo.path);
+    git(["commit", "-q", "-m", "add main"], repo.path);
+
+    const hits = await grepFallback(repo.path, "main");
+    expect(hits.map((h) => h.line)).toEqual([3]);
+    const close = await grepFallback(repo.path, "Close");
+    expect(close.map((h) => h.line)).toEqual([6]);
   });
 
   it("returns no candidates (not an error) when nothing matches", async () => {

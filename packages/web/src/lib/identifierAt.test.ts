@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { wordAt } from "./identifierAt";
+import { wordAt, wordSpanAt } from "./identifierAt";
 
 describe("wordAt", () => {
   it("expands a caret in the middle of a word to the whole word", () => {
@@ -49,5 +49,20 @@ describe("wordAt", () => {
     }
     expect(wordAt(line, line.indexOf("getRate"))).toBe("getRate");
     expect(wordAt(line, line.indexOf("getRate") + 3)).toBe("getRate");
+  });
+});
+
+describe("wordSpanAt", () => {
+  it("returns the [start, end) offsets wordAt slices from", () => {
+    expect(wordSpanAt("foo.bar", 5)).toEqual({ start: 4, end: 7 });
+    expect(wordSpanAt("fetchWidgets(id)", 0)).toEqual({ start: 0, end: 12 });
+  });
+
+  it("agrees with wordAt everywhere", () => {
+    const line = "const rate = getRate(id);";
+    for (let i = 0; i <= line.length; i++) {
+      const span = wordSpanAt(line, i);
+      expect(span ? line.slice(span.start, span.end) : null).toBe(wordAt(line, i));
+    }
   });
 });

@@ -18,6 +18,13 @@ const WORD_CHAR = /[A-Za-z0-9_$]/;
  * identifier here to jump from.
  */
 export function wordAt(text: string, offset: number): string | null {
+  const span = wordSpanAt(text, offset);
+  return span ? text.slice(span.start, span.end) : null;
+}
+
+/** Same resolution as {@link wordAt}, but as `[start, end)` offsets into
+ *  `text` — what the hover affordance needs to draw a rect around the word. */
+export function wordSpanAt(text: string, offset: number): { start: number; end: number } | null {
   if (offset < 0 || offset > text.length) return null;
   const isWord = (i: number) => i >= 0 && i < text.length && WORD_CHAR.test(text[i]);
   if (!isWord(offset) && !isWord(offset - 1)) return null;
@@ -25,7 +32,7 @@ export function wordAt(text: string, offset: number): string | null {
   while (isWord(start - 1)) start--;
   let end = offset;
   while (isWord(end)) end++;
-  return start < end ? text.slice(start, end) : null;
+  return start < end ? { start, end } : null;
 }
 
 /** Character offset of `(node, nodeOffset)` within `container`'s full text. */
@@ -55,6 +62,40 @@ export function identifierAtPoint(
   clientX: number,
   clientY: number,
 ): string | null {
+  return identifierRangeAtPoint(container, clientX, clientY)?.symbol ?? null;
+}
+
+export interface IdentifierHit {
+  symbol: string;
+  /** viewport-coordinate box of the identifier's glyphs */
+  rect: DOMRect;
+}
+
+/** `(global text offset) -> (text node, offset into it)` — the inverse of
+ *  {@link globalTextOffset}, for building a DOM Range around a word. */
+function nodeAtTextOffset(container: Node, target: number): { node: Node; offset: number } | null {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  let offset = 0;
+  let cur = walker.nextNode();
+  while (cur) {
+    const len = (cur.textContent ?? "").length;
+    if (target <= offset + len) return { node: cur, offset: target - offset };
+    offset += len;
+    cur = walker.nextNode();
+  }
+  return null;
+}
+
+/**
+ * The identifier under a point plus its on-screen rect. The word may be split
+ * across several highlight `<span>` runs, so the rect comes from a Range over
+ * the whole span — one box, since diff lines never wrap a word.
+ */
+export function identifierRangeAtPoint(
+  container: HTMLElement,
+  clientX: number,
+  clientY: number,
+): IdentifierHit | null {
   const doc = container.ownerDocument as Document & {
     caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
     caretRangeFromPoint?: (x: number, y: number) => Range | null;
@@ -79,5 +120,20 @@ export function identifierAtPoint(
   if (!node || node.nodeType !== Node.TEXT_NODE || !container.contains(node)) return null;
   const offset = globalTextOffset(container, node, nodeOffset);
   if (offset === null) return null;
-  return wordAt(container.textContent ?? "", offset);
+  const text = container.textContent ?? "";
+  const span = wordSpanAt(text, offset);
+  if (!span) return null;
+
+  const from = nodeAtTextOffset(container, span.start);
+  const to = nodeAtTextOffset(container, span.end);
+  if (!from || !to) return null;
+  const range = doc.createRange();
+  range.setStart(from.node, from.offset);
+  range.setEnd(to.node, to.offset);
+  const rect = range.getBoundingClientRect();
+  if (rect.width === 0) return null;
+  // A caret can sit just outside the glyphs it resolves to (click in the
+  // gutter-side padding); only claim the word when the point is really on it.
+  if (clientX < rect.left - 2 || clientX > rect.right + 2) return null;
+  return { symbol: text.slice(span.start, span.end), rect };
 }

@@ -189,12 +189,30 @@ export const DEFINITION_GREP_PATTERNS: string[] = [
   String.raw`^\s*fn\s+NAME\b`, // rust
   String.raw`^\s*struct\s+NAME\b`, // rust/c/c++
   String.raw`^\s*enum\s+NAME\b`, // rust/java/c#/c++
-  String.raw`^\s*(public|private|protected|internal|static|final|\s)+[\w<>[\],.\s]+\bNAME\s*\(`, // java/c#/c++ method
+  // java/c#/c++ method — the char classes are spelled out (no \w/\s inside
+  // brackets) so toPosixEre() below stays a trivial substitution.
+  String.raw`^\s*(public|private|protected|internal|static|final|\s)+[A-Za-z0-9_<>[\],. \t]+\bNAME\s*\(`,
 ];
+
+/**
+ * `git grep -E` is POSIX ERE, where `\s`/`\b`/`\w` are NOT special — on
+ * macOS they match nothing at all, which silently zeroed out every fallback
+ * lookup. The patterns above stay in PCRE-ish form because the tests compile
+ * them as JS RegExp; this translates them right before they reach git grep.
+ * `\b` only ever appears against the NAME placeholder, so the two boundary
+ * substitutions below cover every use.
+ */
+export function toPosixEre(pattern: string): string {
+  return pattern
+    .replace(/NAME\\b/g, "NAME([^[:alnum:]_]|$)")
+    .replace(/\\bNAME/g, "(^|[^[:alnum:]_])NAME")
+    .replace(/\\s/g, "[[:space:]]")
+    .replace(/\\w/g, "[[:alnum:]_]");
+}
 
 function grepPatternsFor(symbol: string): string[] {
   const escaped = symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return DEFINITION_GREP_PATTERNS.map((p) => p.replace(/NAME/g, escaped));
+  return DEFINITION_GREP_PATTERNS.map((p) => toPosixEre(p).replace(/NAME/g, escaped));
 }
 
 export interface GrepHit {
@@ -226,7 +244,9 @@ export function parseGitGrepOutput(output: string): GrepHit[] {
   return hits;
 }
 
-async function grepFallback(checkoutDir: string, symbol: string): Promise<GrepHit[]> {
+/** Exported for tests: the e2e coverage must exercise this engine even on a
+ *  machine that has universal-ctags installed. */
+export async function grepFallback(checkoutDir: string, symbol: string): Promise<GrepHit[]> {
   const args = ["grep", "-n", "-E", "--no-color"];
   for (const pattern of grepPatternsFor(symbol)) args.push("-e", pattern);
   const out = await run("git", args, checkoutDir);
