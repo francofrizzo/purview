@@ -29,6 +29,8 @@ export function TopBar({
   analysisCancelling,
   hasAnalysis,
   exporting,
+  sharing,
+  importingFromPr,
   onRefresh,
   onSync,
   onToggleDrafts,
@@ -38,6 +40,8 @@ export function TopBar({
   onCancelAnalysis,
   onExportAnalysis,
   onImportFilePicked,
+  onShareToPr,
+  onImportFromPr,
 }: {
   detail: PrDetail;
   draftCount: number;
@@ -52,9 +56,13 @@ export function TopBar({
   analysisJob?: AnalysisJob | null;
   analysisStarting: boolean;
   analysisCancelling: boolean;
-  /** whether there is an analysis on record to export */
+  /** whether there is an analysis on record to export / share */
   hasAnalysis: boolean;
   exporting: boolean;
+  /** posting/updating the canonical analysis comment on the PR itself */
+  sharing: boolean;
+  /** importing the newest marked comment from the PR itself */
+  importingFromPr: boolean;
   onRefresh: () => void;
   onSync: () => void;
   onToggleDrafts: () => void;
@@ -65,6 +73,10 @@ export function TopBar({
   onExportAnalysis: () => void;
   /** a file was picked from the "import analysis…" menu item */
   onImportFilePicked: (file: File) => void;
+  /** "share analysis to PR" was picked — arms the confirm step (public write) */
+  onShareToPr: () => void;
+  /** "import analysis from PR" was picked — arms the confirm step (replaces the current analysis) */
+  onImportFromPr: () => void;
 }) {
   const importInputRef = useRef<HTMLInputElement>(null);
   const { meta, state } = detail;
@@ -192,6 +204,22 @@ export function TopBar({
               testId: "menu-import-analysis",
               hint: "Replaces the current analysis with one exported from a teammate's copy of this PR.",
               onClick: () => importInputRef.current?.click(),
+            },
+            {
+              label: sharing ? "sharing…" : "share analysis to PR",
+              testId: "menu-share-analysis-to-pr",
+              disabled: sharing || !hasAnalysis,
+              hint: hasAnalysis
+                ? "Posts the current analysis as a comment on this PR, publicly on GitHub."
+                : "No analysis yet — analyze first.",
+              onClick: onShareToPr,
+            },
+            {
+              label: importingFromPr ? "importing…" : "import analysis from PR",
+              testId: "menu-import-analysis-from-pr",
+              disabled: importingFromPr,
+              hint: "Replaces the current analysis with the one shared as a comment on this PR.",
+              onClick: onImportFromPr,
             },
           ]}
         />

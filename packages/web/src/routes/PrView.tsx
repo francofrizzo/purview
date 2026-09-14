@@ -7,6 +7,7 @@ import type {
   MigrationReport,
   PrDetail,
   ReviewEvent,
+  ShareAnalysisResult,
   SubmitReviewResult,
   SyncResult,
 } from "../api/types";
@@ -24,6 +25,9 @@ import {
   useDiscardPendingReview,
   useExportAnalysis,
   useImportAnalysis,
+  useImportAnalysisFromPr,
+  useShareAnalysisToPr,
+  useSharedAnalysisProbe,
   usePatchUnit,
   usePr,
   useRefresh,
@@ -60,7 +64,11 @@ import { IconChevron } from "../components/icons";
 import {
   AnalysisImportConfirmPanel,
   AnalysisImportResultPanel,
+  ImportFromPrConfirmPanel,
   MigrationReportPanel,
+  ShareAnalysisConfirmPanel,
+  ShareAnalysisResultPanel,
+  SharedAnalysisBanner,
   StalenessHint,
   SyncResultPanel,
 } from "../components/Panels";
@@ -100,6 +108,9 @@ export function PrView() {
   const cancelAnalysis = useCancelAnalysis(prKey);
   const exportAnalysis = useExportAnalysis(prKey);
   const importAnalysis = useImportAnalysis(prKey);
+  const shareToPr = useShareAnalysisToPr(prKey);
+  const importFromPr = useImportAnalysisFromPr(prKey);
+  const sharedProbe = useSharedAnalysisProbe(prKey);
 
   // The event stream is what makes the banner live; the query is its seed and
   // its fallback.
@@ -139,6 +150,23 @@ export function PrView() {
   );
   const [importParseError, setImportParseError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<AnalysisImportReport | null>(null);
+  // "share analysis to PR" / "import analysis from PR" follow the same
+  // confirm-then-act idiom as the file export/import above, just sourced from
+  // the PR's own conversation tab.
+  const [shareConfirmOpen, setShareConfirmOpen] = useState(false);
+  const [shareResult, setShareResult] = useState<ShareAnalysisResult | null>(null);
+  const [importFromPrConfirmOpen, setImportFromPrConfirmOpen] = useState(false);
+  const [importFromPrResult, setImportFromPrResult] = useState<{
+    report: AnalysisImportReport;
+    author?: string;
+    postedAt: string;
+  } | null>(null);
+  // Session-local: dismissing the shared-analysis banner is never persisted,
+  // so it comes back on the next visit if it is still applicable.
+  const [sharedBannerDismissed, setSharedBannerDismissed] = useState(false);
+  // The probe fires once per PR, only once it is actually relevant (no local
+  // analysis, no live job) — this guards against re-firing on every render.
+  const probedForRef = useRef<string | null>(null);
   const { viewMode, setViewMode, toggleViewMode, wrap, setWrap, toggleWrap } = useDiffViewPrefs();
   const [narrow, setNarrow] = useState(false);
   const showNarrowNote = narrow && viewMode === "split";
@@ -381,6 +409,19 @@ export function PrView() {
   const showAnalysisBanner = units.length === 0 || analysisPending;
   const quote = (ref: ChatRef) => chat.attachRef(ref);
 
+  // Cost-avoidance UI: when there is nothing local to read yet and nothing is
+  // actively being analyzed, check once (no polling) whether a teammate
+  // already shared an analysis on the PR itself.
+  const noLocalAnalysis = units.length === 0;
+  useEffect(() => {
+    if (noLocalAnalysis && !analysisPending && probedForRef.current !== prKey) {
+      probedForRef.current = prKey;
+      sharedProbe.mutate();
+    }
+  }, [noLocalAnalysis, analysisPending, prKey, sharedProbe]);
+  const showSharedAnalysisBanner =
+    noLocalAnalysis && !analysisPending && !sharedBannerDismissed && sharedProbe.data?.found === true;
+
   // Everything the agent-facing markdown needs: the diff to slice snippets
   // out of, and the PR identity for the bundle heading.
   const exportCtx = { files: detail.files, diff: detail.diff };
@@ -441,6 +482,54 @@ export function PrView() {
     });
   };
 
+  const handleOpenShareConfirm = () => {
+    shareToPr.reset();
+    setShareResult(null);
+    setShareConfirmOpen(true);
+  };
+
+  const confirmShareToPr = () => {
+    shareToPr.mutate(undefined, {
+      onSuccess: (result) => {
+        setShareConfirmOpen(false);
+        setShareResult(result);
+      },
+    });
+  };
+
+  const handleOpenImportFromPrConfirm = () => {
+    importFromPr.reset();
+    setImportFromPrResult(null);
+    setImportFromPrConfirmOpen(true);
+  };
+
+  const confirmImportFromPr = () => {
+    importFromPr.mutate(undefined, {
+      onSuccess: ({ report, author, postedAt }) => {
+        setImportFromPrConfirmOpen(false);
+        setImportFromPrResult({ report, author, postedAt });
+        setSharedBannerDismissed(true);
+      },
+    });
+  };
+
+  // The banner only shows when there is no local analysis to lose, so its own
+  // "import" button acts directly — no separate confirm step, unlike the
+  // overflow menu's "import analysis from PR" (which can replace real work).
+  const handleBannerImport = () => {
+    importFromPr.mutate(undefined, {
+      onSuccess: ({ report, author, postedAt }) => {
+        setImportFromPrResult({ report, author, postedAt });
+        setSharedBannerDismissed(true);
+      },
+    });
+  };
+
+  const handleBannerAnalyzeFresh = () => {
+    setSharedBannerDismissed(true);
+    startAnalysis.mutate();
+  };
+
   return (
     <div className="flex h-full flex-col">
       <TopBar
@@ -457,12 +546,16 @@ export function PrView() {
         analysisCancelling={cancelAnalysis.isPending}
         hasAnalysis={detail.state.units.length > 0}
         exporting={exportAnalysis.isPending}
+        sharing={shareToPr.isPending}
+        importingFromPr={importFromPr.isPending}
         onToggleDrafts={() => setDraftsOpen((v) => !v)}
         onToggleChat={chat.toggleChat}
         onAnalyze={() => startAnalysis.mutate()}
         onCancelAnalysis={() => cancelAnalysis.mutate()}
         onExportAnalysis={handleExportAnalysis}
         onImportFilePicked={handleImportFilePicked}
+        onShareToPr={handleOpenShareConfirm}
+        onImportFromPr={handleOpenImportFromPrConfirm}
         onFinishReview={() => {
           setSubmitResult(null);
           submitReview.reset();
@@ -512,6 +605,52 @@ export function PrView() {
       ) : null}
       {importResult ? (
         <AnalysisImportResultPanel report={importResult} onDismiss={() => setImportResult(null)} />
+      ) : null}
+      {shareToPr.error ? (
+        <ErrorBar message={`share failed: ${(shareToPr.error as Error).message}`} />
+      ) : null}
+      {shareConfirmOpen ? (
+        <ShareAnalysisConfirmPanel
+          sharing={shareToPr.isPending}
+          onConfirm={confirmShareToPr}
+          onCancel={() => {
+            setShareConfirmOpen(false);
+            shareToPr.reset();
+          }}
+        />
+      ) : null}
+      {shareResult ? (
+        <ShareAnalysisResultPanel result={shareResult} onDismiss={() => setShareResult(null)} />
+      ) : null}
+      {importFromPr.error ? (
+        <ErrorBar message={`import from PR failed: ${(importFromPr.error as Error).message}`} />
+      ) : null}
+      {importFromPrConfirmOpen ? (
+        <ImportFromPrConfirmPanel
+          importing={importFromPr.isPending}
+          onConfirm={confirmImportFromPr}
+          onCancel={() => {
+            setImportFromPrConfirmOpen(false);
+            importFromPr.reset();
+          }}
+        />
+      ) : null}
+      {importFromPrResult ? (
+        <AnalysisImportResultPanel
+          report={importFromPrResult.report}
+          source={{ author: importFromPrResult.author, postedAt: importFromPrResult.postedAt }}
+          onDismiss={() => setImportFromPrResult(null)}
+        />
+      ) : null}
+      {showSharedAnalysisBanner && sharedProbe.data ? (
+        <SharedAnalysisBanner
+          author={sharedProbe.data.author}
+          sameCommit={sharedProbe.data.sameCommit === true}
+          importing={importFromPr.isPending}
+          onImport={handleBannerImport}
+          onAnalyzeFresh={handleBannerAnalyzeFresh}
+          onDismiss={() => setSharedBannerDismissed(true)}
+        />
       ) : null}
       {showAnalysisBanner ? (
         <AnalysisBanner

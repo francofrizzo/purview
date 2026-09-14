@@ -21,6 +21,7 @@ import type {
   FileEntry,
   FileRollup,
   Hunk,
+  ImportFromPrResult,
   ImportReviewsResult,
   MigrationReport,
   MigrationReportItem,
@@ -36,6 +37,8 @@ import type {
   RepoPathResult,
   ReviewStatus,
   ReviewUnit,
+  ShareAnalysisResult,
+  SharedAnalysisProbe,
   Staleness,
   SubmitReviewResult,
   SyncResult,
@@ -685,6 +688,31 @@ export const api = {
       envelope,
     );
     return res.report;
+  },
+
+  /**
+   * Post (or update) the canonical `purview-analysis` comment on the PR's own
+   * conversation tab — a public write, gated behind an explicit UI confirm.
+   */
+  async shareAnalysisToPr(key: string): Promise<ShareAnalysisResult> {
+    if (MOCK) return mockApi.shareAnalysisToPr(key);
+    return post<ShareAnalysisResult>(`/prs/${encodeKey(key)}/analysis/share-to-pr`);
+  },
+
+  /** Import the newest marked comment on the PR's own conversation tab. */
+  async importAnalysisFromPr(key: string): Promise<ImportFromPrResult> {
+    if (MOCK) return mockApi.importAnalysisFromPr(key);
+    return post<ImportFromPrResult>(`/prs/${encodeKey(key)}/analysis/import-from-pr`);
+  },
+
+  /**
+   * Cheap read-only probe: is there a shared analysis on this PR? Called on
+   * demand only (the PR-view banner, once, when there is no local analysis
+   * and no live job) — never polled.
+   */
+  async getSharedAnalysis(key: string): Promise<SharedAnalysisProbe> {
+    if (MOCK) return mockApi.getSharedAnalysis(key);
+    return request<SharedAnalysisProbe>(`/prs/${encodeKey(key)}/analysis/shared`);
   },
 
   /* ------------------------------------------------------------------ chat */

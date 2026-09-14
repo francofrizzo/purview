@@ -1,5 +1,11 @@
 import type { ReactNode } from "react";
-import type { AnalysisImportReport, MigrationReport, Staleness, SyncResult } from "../api/types";
+import type {
+  AnalysisImportReport,
+  MigrationReport,
+  ShareAnalysisResult,
+  Staleness,
+  SyncResult,
+} from "../api/types";
 import { stalenessReasonText } from "../lib/staleness";
 import { IconClose, IconRefresh } from "./icons";
 
@@ -234,14 +240,23 @@ export function AnalysisImportConfirmPanel({
 
 export function AnalysisImportResultPanel({
   report,
+  source,
   onDismiss,
 }: {
   report: AnalysisImportReport;
+  /** set when the import came from a PR comment rather than a picked file */
+  source?: { author?: string; postedAt: string };
   onDismiss: () => void;
 }) {
   return (
     <DismissiblePanel title="analysis imported" onDismiss={onDismiss}>
       <div style={{ color: "var(--fg-muted)" }}>
+        {source ? (
+          <div className="mb-1">
+            shared{source.author ? ` by ${source.author}` : ""} on{" "}
+            {new Date(source.postedAt).toLocaleDateString()}
+          </div>
+        ) : null}
         <span style={{ color: "var(--fg)" }}>{report.unitsImported}</span> unit
         {report.unitsImported === 1 ? "" : "s"} imported
         {report.unitsDropped > 0
@@ -259,5 +274,164 @@ export function AnalysisImportResultPanel({
         ) : null}
       </div>
     </DismissiblePanel>
+  );
+}
+
+/**
+ * "share analysis to PR" is a public write (a comment lands on GitHub) — this
+ * is the confirm step, shown after the overflow menu item is picked and
+ * before anything is posted.
+ */
+export function ShareAnalysisConfirmPanel({
+  sharing,
+  onConfirm,
+  onCancel,
+}: {
+  sharing: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <DismissiblePanel tone="warn" title="share analysis to this PR?" onDismiss={onCancel}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span style={{ color: "var(--fg-muted)" }}>
+          Posts the current analysis as a comment on this PR's conversation tab, publicly on
+          GitHub. A teammate tracking the same PR can import it from there instead of paying for
+          their own analysis run.
+        </span>
+        <button
+          type="button"
+          className="btn btn-primary"
+          data-testid="share-analysis-confirm"
+          disabled={sharing}
+          onClick={onConfirm}
+        >
+          {sharing ? "sharing…" : "share"}
+        </button>
+      </div>
+    </DismissiblePanel>
+  );
+}
+
+export function ShareAnalysisResultPanel({
+  result,
+  onDismiss,
+}: {
+  result: ShareAnalysisResult;
+  onDismiss: () => void;
+}) {
+  return (
+    <DismissiblePanel title={result.updated ? "analysis comment updated" : "analysis shared"} onDismiss={onDismiss}>
+      <div style={{ color: "var(--fg-muted)" }}>
+        {result.updated
+          ? "Updated the existing analysis comment on this PR."
+          : "Posted a new analysis comment on this PR."}
+        {" · "}
+        <a
+          href={result.commentUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="underline"
+          style={{ color: "var(--accent)" }}
+        >
+          view comment
+        </a>
+      </div>
+    </DismissiblePanel>
+  );
+}
+
+/**
+ * "import analysis from PR" is two steps too — it replaces the current
+ * analysis, same as the file import, just sourced from the PR's own
+ * conversation tab instead of a picked file.
+ */
+export function ImportFromPrConfirmPanel({
+  importing,
+  onConfirm,
+  onCancel,
+}: {
+  importing: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <DismissiblePanel tone="warn" title="replace current analysis?" onDismiss={onCancel}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span style={{ color: "var(--fg-muted)" }}>
+          Imports the analysis shared as a comment on this PR, replacing the current one (units,
+          kinds, findings). What you've already viewed is untouched.
+        </span>
+        <button
+          type="button"
+          className="btn btn-primary"
+          data-testid="import-from-pr-confirm"
+          disabled={importing}
+          onClick={onConfirm}
+        >
+          {importing ? "importing…" : "import"}
+        </button>
+      </div>
+    </DismissiblePanel>
+  );
+}
+
+/**
+ * The PR-view banner for an auto-detected shared analysis: shown only when
+ * there is no local analysis, no live analysis job, and the one-shot probe
+ * found something. Session-local — `onDismiss` never persists.
+ */
+export function SharedAnalysisBanner({
+  author,
+  sameCommit,
+  importing,
+  onImport,
+  onAnalyzeFresh,
+  onDismiss,
+}: {
+  author?: string;
+  sameCommit: boolean;
+  importing: boolean;
+  onImport: () => void;
+  onAnalyzeFresh: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      data-testid="shared-analysis-banner"
+      className="flex flex-none items-center gap-2 border-b px-3 py-1.5 text-xs"
+      style={{ background: "var(--accent-soft)", borderColor: "var(--border)" }}
+    >
+      <span style={{ color: "var(--accent)" }}>
+        Shared analysis{author ? ` by ${author}` : ""} (
+        {sameCommit ? "same commit" : "older commit"})
+      </span>
+      <button
+        type="button"
+        className="btn ml-auto"
+        data-testid="shared-analysis-import"
+        disabled={importing}
+        onClick={onImport}
+      >
+        {importing ? "importing…" : "import"}
+      </button>
+      <button
+        type="button"
+        className="btn"
+        data-testid="shared-analysis-analyze-fresh"
+        onClick={onAnalyzeFresh}
+      >
+        analyze fresh
+      </button>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs"
+        data-testid="shared-analysis-dismiss"
+        style={{ color: "var(--fg-muted)" }}
+        onClick={onDismiss}
+      >
+        dismiss <IconClose width={10} height={10} />
+      </button>
+    </div>
   );
 }

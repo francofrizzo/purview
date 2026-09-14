@@ -9,6 +9,7 @@ import {
 } from "@reviewer/core";
 import { HttpError } from "./http-error.js";
 import { startAnalysis } from "./analysis.js";
+import { resolveAutoSharedAnalysis } from "./analysis-share-server.js";
 
 /**
  * Bulk import of open PRs where the authenticated user's review is requested
@@ -23,6 +24,16 @@ export interface ImportResult {
   imported: string[];
   alreadyTracked: string[];
   failed: { key: string; error: string }[];
+  /**
+   * Additive: which of `imported`'s PRs got a shared analysis imported off
+   * the PR itself instead of a fresh (paid) Claude run — the same
+   * cost-avoidance check `POST /api/prs` does for a single interactive add,
+   * applied here per PR. Unlike the interactive path, a shared analysis for a
+   * *different* revision is never suggested here (nobody is present to
+   * decide) — it just falls back to a normal analysis run, same as "not
+   * found".
+   */
+  sharedImports: { key: string; author?: string; postedAt: string }[];
 }
 
 export interface ImportOptions {
@@ -59,7 +70,7 @@ export function importReviewRequestsSince(
   root = stateRoot(),
   opts: ImportOptions = {},
 ): ImportResult {
-  const result: ImportResult = { imported: [], alreadyTracked: [], failed: [] };
+  const result: ImportResult = { imported: [], alreadyTracked: [], failed: [], sharedImports: [] };
   const analyze = opts.analyze ?? true;
 
   const candidates = searchReviewRequestedPrs(repo, since.toISOString());
@@ -75,13 +86,24 @@ export function importReviewRequestsSince(
     try {
       initPr(key, root);
       if (analyze) {
-        try {
-          startAnalysis(key, root);
-        } catch (err) {
-          // A 409 means an analysis is already queued/running for this PR
-          // (init's own refresh can trigger one indirectly via other callers,
-          // or a concurrent import raced us) — that is success, not failure.
-          if (!(err instanceof HttpError) || err.status !== 409) throw err;
+        // Cost-avoidance: a shared analysis already on the PR for this exact
+        // revision is free to import and replaces the paid run entirely.
+        const auto = resolveAutoSharedAnalysis(key, root);
+        if (auto.imported) {
+          result.sharedImports.push({
+            key: keyStr,
+            author: auto.sharedAnalysis?.author,
+            postedAt: auto.sharedAnalysis?.postedAt ?? "",
+          });
+        } else {
+          try {
+            startAnalysis(key, root);
+          } catch (err) {
+            // A 409 means an analysis is already queued/running for this PR
+            // (init's own refresh can trigger one indirectly via other callers,
+            // or a concurrent import raced us) — that is success, not failure.
+            if (!(err instanceof HttpError) || err.status !== 409) throw err;
+          }
         }
       }
       result.imported.push(keyStr);

@@ -12,6 +12,7 @@ import type {
   AddCommentInput,
   DraftComment,
   EditCommentResult,
+  ImportFromPrResult,
   ImportReviewsResult,
   MigrationReport,
   PrDetail,
@@ -27,6 +28,8 @@ import type {
   ReviewEvent,
   ReviewStatus,
   ReviewUnit,
+  ShareAnalysisResult,
+  SharedAnalysisProbe,
   Staleness,
   StalenessReason,
   SubmitReviewResult,
@@ -379,6 +382,28 @@ function recomputeFileRollups() {
 const chats: Record<string, ChatMessage[]> = {};
 const repoPaths: Record<string, string> = {};
 
+/**
+ * In-memory stand-in for the one canonical `purview-analysis` comment on a
+ * PR's conversation tab. Keyed by PR key; absent = nothing shared yet.
+ */
+interface MockSharedComment {
+  author: string;
+  postedAt: string;
+  headSha: string;
+  envelope: {
+    format: "purview-analysis";
+    version: 1;
+    pr: { host: string; owner: string; repo: string; number: number };
+    revision: number;
+    headSha: string;
+    mergeBase: string;
+    exportedAt: string;
+    summary: string;
+    units: ReviewUnit[];
+  };
+}
+const sharedComments: Record<string, MockSharedComment> = {};
+
 /** A canned answer, written to exercise every markdown feature the panel renders. */
 const CANNED_REPLY = `The riskiest change here is the **ledger write ordering** in \`charge()\`. The
 idempotency key is derived before the gateway call, but the ledger row is only
@@ -563,7 +588,7 @@ export const mockApi = {
   async importReviews(rkey: string, days: number): Promise<ImportReviewsResult> {
     await delay(250);
     if (!repoConfigs[rkey]) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
-    return { imported: [], alreadyTracked: [], failed: [], days };
+    return { imported: [], alreadyTracked: [], failed: [], sharedImports: [], days };
   },
 
   async getPr(key: string): Promise<PrDetail> {
@@ -978,6 +1003,102 @@ export const mockApi = {
       hunksMatched: matched.size,
       hunksUnassigned: unassigned.length,
       sameRevision: envelope.revision === target.state.revision,
+    };
+  },
+
+  /* --------------------------------------------------- PR-comment channel */
+
+  async shareAnalysisToPr(key: string): Promise<ShareAnalysisResult> {
+    await delay(300);
+    const target = details[key];
+    if (!target || target.state.units.length === 0) {
+      throw new ApiError("no_analysis", 409, "No analysis to share — run an analysis first.");
+    }
+    const existing = sharedComments[key];
+    const updated = !!existing;
+    sharedComments[key] = {
+      author: "you",
+      postedAt: new Date().toISOString(),
+      headSha: "mock-head-sha",
+      envelope: {
+        format: "purview-analysis",
+        version: 1,
+        pr: {
+          host: target.meta.host,
+          owner: target.meta.owner,
+          repo: target.meta.repo,
+          number: target.meta.number,
+        },
+        revision: target.state.revision,
+        headSha: "mock-head-sha",
+        mergeBase: "mock-merge-base",
+        exportedAt: new Date().toISOString(),
+        summary: target.state.summary ?? "",
+        units: target.state.units,
+      },
+    };
+    return {
+      commentUrl: `https://github.com/${target.meta.owner}/${target.meta.repo}/pull/${target.meta.number}#issuecomment-${updated ? "1" : "2"}`,
+      updated,
+    };
+  },
+
+  async importAnalysisFromPr(key: string): Promise<ImportFromPrResult> {
+    await delay(250);
+    const target = details[key];
+    if (!target) throw new ApiError("not_found", 404, `No PR "${key}" in the fixture.`);
+    const shared = sharedComments[key];
+    if (!shared) {
+      throw new ApiError(
+        "no_shared_analysis",
+        404,
+        `No shared Purview analysis comment found on this PR.`,
+      );
+    }
+    const currentIds = new Set(target.files.files.flatMap((f) => f.hunks.map((h) => h.id)));
+    let unitsDropped = 0;
+    const matched = new Set<string>();
+    const units: ReviewUnit[] = [];
+    for (const unit of shared.envelope.units) {
+      const hunkIds = unit.hunkIds.filter((id) => currentIds.has(id));
+      if (hunkIds.length === 0) {
+        unitsDropped++;
+        continue;
+      }
+      for (const id of hunkIds) matched.add(id);
+      units.push({ ...unit, hunkIds });
+    }
+    const unassigned = [...currentIds].filter((id) => !matched.has(id));
+
+    target.state.units = units;
+    target.state.summary = shared.envelope.summary;
+    if (target === detail) recomputeFileRollups();
+
+    return {
+      report: {
+        unitsImported: units.length,
+        unitsDropped,
+        hunksMatched: matched.size,
+        hunksUnassigned: unassigned.length,
+        sameRevision: shared.envelope.revision === target.state.revision,
+      },
+      author: shared.author,
+      postedAt: shared.postedAt,
+      commentUrl: `https://github.com/${target.meta.owner}/${target.meta.repo}/pull/${target.meta.number}#issuecomment-1`,
+    };
+  },
+
+  async getSharedAnalysis(key: string): Promise<SharedAnalysisProbe> {
+    await delay(180);
+    const target = details[key];
+    const shared = sharedComments[key];
+    if (!target || !shared) return { found: false };
+    return {
+      found: true,
+      author: shared.author,
+      postedAt: shared.postedAt,
+      headSha: shared.headSha,
+      sameCommit: true,
     };
   },
 

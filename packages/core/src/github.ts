@@ -38,8 +38,8 @@ function hostArgs(host: string): string[] {
   return host && host !== "github.com" ? ["--hostname", host] : [];
 }
 
-function ghJson<T>(host: string, args: string[]): T {
-  return JSON.parse(gh(["api", ...hostArgs(host), ...args])) as T;
+function ghJson<T>(host: string, args: string[], input?: string): T {
+  return JSON.parse(gh(["api", ...hostArgs(host), ...args], input)) as T;
 }
 
 export interface PullRequestInfo {
@@ -329,6 +329,94 @@ interface RawContents {
   content?: string;
   encoding?: string;
   type?: string;
+}
+
+/* ------------------------------------------------------------ issue comments */
+
+export interface IssueComment {
+  id: number;
+  body: string;
+  htmlUrl: string;
+  author?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface RawIssueComment {
+  id: number;
+  body?: string;
+  html_url: string;
+  user?: { login?: string } | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * A PR's conversation-tab comments (`issues/{n}/comments`, since a PR is an
+ * issue as far as this endpoint is concerned) — the channel the analysis
+ * sharing feature rides on, distinct from the line/file review comments the
+ * rest of this module deals with. `--paginate` so a long-running PR's full
+ * comment history is returned in one call.
+ */
+export function listIssueComments(key: PrKey): IssueComment[] {
+  const raw = ghJson<RawIssueComment[]>(key.host, [
+    "--paginate",
+    `repos/${key.owner}/${key.repo}/issues/${key.number}/comments`,
+  ]);
+  return raw.map((c) => ({
+    id: c.id,
+    body: c.body ?? "",
+    htmlUrl: c.html_url,
+    author: c.user?.login ?? undefined,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  }));
+}
+
+/** `POST repos/{o}/{r}/issues/{n}/comments` — a new conversation-tab comment. */
+export function postIssueComment(key: PrKey, body: string): IssueComment {
+  const raw = ghJson<RawIssueComment>(
+    key.host,
+    [
+      "--method",
+      "POST",
+      `repos/${key.owner}/${key.repo}/issues/${key.number}/comments`,
+      "--input",
+      "-",
+    ],
+    JSON.stringify({ body }),
+  );
+  return {
+    id: raw.id,
+    body: raw.body ?? "",
+    htmlUrl: raw.html_url,
+    author: raw.user?.login ?? undefined,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+/** `PATCH repos/{o}/{r}/issues/comments/{id}` — edits an existing conversation-tab comment. */
+export function updateIssueComment(key: PrKey, commentId: number, body: string): IssueComment {
+  const raw = ghJson<RawIssueComment>(
+    key.host,
+    [
+      "--method",
+      "PATCH",
+      `repos/${key.owner}/${key.repo}/issues/comments/${commentId}`,
+      "--input",
+      "-",
+    ],
+    JSON.stringify({ body }),
+  );
+  return {
+    id: raw.id,
+    body: raw.body ?? "",
+    htmlUrl: raw.html_url,
+    author: raw.user?.login ?? undefined,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
 }
 
 /**

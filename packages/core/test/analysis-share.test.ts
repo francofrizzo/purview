@@ -3,8 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  ANALYSIS_COMMENT_MARKER,
+  AnalysisCommentTooLargeError,
   applyAnalysisImport,
   buildAnalysisExport,
+  extractAnalysisFromComment,
+  renderAnalysisComment,
   type AnalysisExport,
 } from "../src/analysis-share.js";
 import { computeHunkId } from "../src/hunk-id.js";
@@ -251,5 +255,78 @@ describe("applyAnalysisImport", () => {
     expect(Object.keys(envelope).sort()).toEqual(
       ["exportedAt", "format", "headSha", "mergeBase", "pr", "revision", "summary", "units", "version"].sort(),
     );
+  });
+});
+
+describe("renderAnalysisComment / extractAnalysisFromComment", () => {
+  it("round-trips an envelope through the rendered comment", () => {
+    const h = mkHunk("src/a.ts", ["+a"], []);
+    seedPr(key, [h], tmp);
+    setAnalysis(key, { summary: "Adds a.", units: [mkUnit({ hunkIds: [h.id] })] }, {}, tmp);
+    const envelope = buildAnalysisExport(key, tmp);
+
+    const body = renderAnalysisComment(envelope);
+    expect(body).toContain("**Purview analysis**");
+    expect(body).toContain("1 unit,");
+    expect(body).toContain("Adds a.");
+    expect(body).toContain(ANALYSIS_COMMENT_MARKER);
+    expect(body).toContain("```json");
+
+    const extracted = extractAnalysisFromComment(body);
+    expect(extracted).toEqual(envelope);
+  });
+
+  it("pluralizes the unit count in the header", () => {
+    const h1 = mkHunk("src/a.ts", ["+a"], []);
+    const h2 = mkHunk("src/a.ts", ["+b"], []);
+    seedPr(key, [h1, h2], tmp);
+    setAnalysis(
+      key,
+      {
+        summary: "s",
+        units: [mkUnit({ id: "u1", hunkIds: [h1.id] }), mkUnit({ id: "u2", hunkIds: [h2.id], order: 1 })],
+      },
+      {},
+      tmp,
+    );
+    const envelope = buildAnalysisExport(key, tmp);
+    expect(renderAnalysisComment(envelope)).toContain("2 units,");
+  });
+
+  it("throws AnalysisCommentTooLargeError instead of truncating an oversize envelope", () => {
+    const hunks = Array.from({ length: 60 }, (_, i) => mkHunk("src/a.ts", [`+line${i}`], []));
+    seedPr(key, hunks, tmp);
+    const units: ReviewUnit[] = hunks.map((h, i) =>
+      mkUnit({
+        id: `u${i}`,
+        order: i,
+        hunkIds: [h.id],
+        summary: "x".repeat(2000),
+        attentionWhy: "y".repeat(500),
+      }),
+    );
+    setAnalysis(key, { summary: "s", units }, {}, tmp);
+    const envelope = buildAnalysisExport(key, tmp);
+    expect(() => renderAnalysisComment(envelope)).toThrow(AnalysisCommentTooLargeError);
+  });
+
+  it("extractAnalysisFromComment tolerates junk, malformed JSON, and a missing marker, never throwing", () => {
+    expect(extractAnalysisFromComment("just a regular human comment")).toBeNull();
+    // Marker present, but no fenced JSON block at all.
+    expect(extractAnalysisFromComment(`some text\n\n${ANALYSIS_COMMENT_MARKER}`)).toBeNull();
+    // Marker present, fenced block present, but the JSON itself is broken.
+    expect(
+      extractAnalysisFromComment(`\`\`\`json\n{not valid json\n\`\`\`\n\n${ANALYSIS_COMMENT_MARKER}`),
+    ).toBeNull();
+    // Marker present, valid JSON, but it doesn't match the envelope schema.
+    expect(
+      extractAnalysisFromComment(
+        `\`\`\`json\n${JSON.stringify({ not: "an envelope" })}\n\`\`\`\n\n${ANALYSIS_COMMENT_MARKER}`,
+      ),
+    ).toBeNull();
+    // Fenced JSON present but no marker at all — not ours, skip it.
+    expect(
+      extractAnalysisFromComment(`\`\`\`json\n${JSON.stringify({ some: "json" })}\n\`\`\``),
+    ).toBeNull();
   });
 });

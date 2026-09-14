@@ -74,6 +74,12 @@ import {
   reconcileStaleJobs,
   startAnalysis,
 } from "./analysis.js";
+import {
+  importAnalysisFromPr,
+  probeSharedAnalysis,
+  resolveAutoSharedAnalysis,
+  shareAnalysisToPr,
+} from "./analysis-share-server.js";
 import { chatBusy, startChatTurn, type ChatStreamEvent } from "./chat-session.js";
 import { ChatRefSchema, clearChat, readChat, setChatModel } from "./chat.js";
 import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
@@ -227,15 +233,30 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw classifyError(err);
     }
     const result = initPr(key, root);
-    // A freshly tracked PR has no analysis at all, so init always kicks one
-    // off (unless the caller opted out with ?analyze=false).
-    const job = analyzeRequested(c, key) ? triggerAnalysis(key) : null;
+    // A freshly tracked PR has no analysis at all, so init would normally kick
+    // one off (unless the caller opted out with ?analyze=false) — but first
+    // check whether a teammate already shared one for this exact revision on
+    // the PR itself, which is free to import and saves the paid run entirely.
+    let job = null as ReturnType<typeof triggerAnalysis>;
+    let sharedAnalysis: { author?: string; postedAt: string } | null = null;
+    if (analyzeRequested(c, key)) {
+      const auto = resolveAutoSharedAnalysis(key, root);
+      if (auto.imported) {
+        sharedAnalysis = auto.sharedAnalysis ?? null;
+      } else if (!auto.foundDifferentCommit) {
+        // No shared analysis at all -> analyze fresh, same as before this
+        // feature existed. (foundDifferentCommit: leave it to the UI to
+        // suggest importing or analyzing fresh — see the PR-view banner.)
+        job = triggerAnalysis(key);
+      }
+    }
     return c.json({
       key: keyToString(result.key),
       created: result.created,
       revision: result.revision,
-      state: result.state,
+      state: sharedAnalysis ? loadState(key, root) : result.state,
       analysisJob: job,
+      sharedAnalysis,
     });
   });
 
@@ -345,6 +366,59 @@ export function createApp(opts: AppOptions = {}): Hono {
     const body = await readJsonBody(c);
     const { report } = applyAnalysisImport(key, body, root);
     return c.json({ report });
+  });
+
+  /**
+   * Post (or update) the canonical `purview-analysis`-marked comment on the
+   * PR's own conversation tab. Public and 409s while an analysis run is in
+   * flight, for the same reason the file import does: it would race the
+   * run's own `set-analysis` call, and this reads the current analysis to
+   * build the envelope.
+   */
+  app.post("/api/prs/:key/analysis/share-to-pr", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    if (isBusy(key)) {
+      throw new HttpError(
+        409,
+        "analysis_in_progress",
+        `An analysis is currently running for ${keyToString(key)}; try again once it finishes.`,
+      );
+    }
+    const result = shareAnalysisToPr(key, root);
+    return c.json(result);
+  });
+
+  /**
+   * Import the newest marked comment on the PR's own conversation tab,
+   * verifying it is for this PR and re-anchoring it exactly as the file
+   * import does. 409s mid-run for the same reason `analysis/import` does.
+   */
+  app.post("/api/prs/:key/analysis/import-from-pr", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    if (isBusy(key)) {
+      throw new HttpError(
+        409,
+        "analysis_in_progress",
+        `An analysis is currently running for ${keyToString(key)}; try again once it finishes.`,
+      );
+    }
+    const result = importAnalysisFromPr(key, root);
+    return c.json(result);
+  });
+
+  /**
+   * Cheap read-only probe: is there a shared analysis comment on this PR, and
+   * does it match the revision the reader is currently looking at? Used by
+   * the PR-view banner (only when there is no local analysis and no live
+   * job) — never polled, and never throws: a `gh` failure degrades to
+   * `{ found: false, error }` with 200, same idiom as `/staleness`.
+   */
+  app.get("/api/prs/:key/analysis/shared", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    return c.json(probeSharedAnalysis(key, root));
   });
 
   app.post("/api/prs/:key/repo-path", async (c) => {

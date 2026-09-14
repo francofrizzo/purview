@@ -18,6 +18,7 @@ import type {
   EditCommentResult,
   GlobalConfig,
   GlobalConfigPatch,
+  ImportFromPrResult,
   ImportReviewsResult,
   MigrationReport,
   PrDetail,
@@ -29,6 +30,8 @@ import type {
   ReviewEvent,
   ReviewStatus,
   ReviewUnit,
+  ShareAnalysisResult,
+  SharedAnalysisProbe,
   Staleness,
   SubmitReviewResult,
   SyncResult,
@@ -563,6 +566,41 @@ export function useImportAnalysis(
       void qc.invalidateQueries({ queryKey: qk.prs });
     },
   });
+}
+
+/**
+ * Posts (or updates) the canonical analysis comment on the PR itself — a
+ * public write, so the caller gates this behind an explicit confirm step.
+ */
+export function useShareAnalysisToPr(
+  key: string,
+): UseMutationResult<ShareAnalysisResult, Error, void> {
+  return useMutation({ mutationFn: () => api.shareAnalysisToPr(key) });
+}
+
+/** Replaces the current analysis with the one shared on the PR itself. */
+export function useImportAnalysisFromPr(
+  key: string,
+): UseMutationResult<ImportFromPrResult, Error, void> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.importAnalysisFromPr(key),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.pr(key) });
+      void qc.invalidateQueries({ queryKey: qk.prs });
+    },
+  });
+}
+
+/**
+ * A one-shot probe for a shared analysis, modeled as a mutation (not a
+ * query) on purpose: the PR-view banner fires it exactly once, when it first
+ * notices there is no local analysis and no live job, and never polls.
+ */
+export function useSharedAnalysisProbe(
+  key: string,
+): UseMutationResult<SharedAnalysisProbe, Error, void> {
+  return useMutation({ mutationFn: () => api.getSharedAnalysis(key) });
 }
 
 export function useDiscardPendingReview(

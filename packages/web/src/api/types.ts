@@ -604,4 +604,43 @@ export interface ImportReviewsResult {
   alreadyTracked: string[];
   failed: { key: string; error: string }[];
   days: number;
+  /**
+   * Which of `imported`'s PRs got a shared analysis imported off the PR's own
+   * conversation tab instead of a fresh (paid) Claude run — additive, so an
+   * older server (or a test fixture predating this) simply never populates it.
+   */
+  sharedImports?: { key: string; author?: string; postedAt: string }[];
+}
+
+/* --------------------------------------------- PR-comment analysis sharing */
+
+/** POST /api/prs/:key/analysis/share-to-pr */
+export interface ShareAnalysisResult {
+  commentUrl: string;
+  /** true when an existing marked comment was updated rather than a new one posted */
+  updated: boolean;
+}
+
+/** POST /api/prs/:key/analysis/import-from-pr */
+export interface ImportFromPrResult {
+  report: AnalysisImportReport;
+  author?: string;
+  postedAt: string;
+  commentUrl: string;
+}
+
+/**
+ * GET /api/prs/:key/analysis/shared — a cheap, read-only probe: is there a
+ * shared analysis comment on this PR, and does it match the revision the
+ * reader is currently looking at? Never throws server-side (a `gh` failure
+ * degrades to `{ found: false, error }`), same idiom as `Staleness`. Called
+ * on demand only — never polled.
+ */
+export interface SharedAnalysisProbe {
+  found: boolean;
+  author?: string;
+  postedAt?: string;
+  headSha?: string;
+  sameCommit?: boolean;
+  error?: string;
 }
