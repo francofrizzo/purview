@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { MigrationReport, Staleness, SyncResult } from "../api/types";
+import type { AnalysisImportReport, MigrationReport, Staleness, SyncResult } from "../api/types";
 import { stalenessReasonText } from "../lib/staleness";
 import { IconClose, IconRefresh } from "./icons";
 
@@ -187,6 +187,74 @@ export function SyncResultPanel({
         {result.drift?.length ? (
           <div className="mt-1" style={{ color: "var(--warn)" }}>
             drift detected on: {result.drift.join(", ")}
+          </div>
+        ) : null}
+      </div>
+    </DismissiblePanel>
+  );
+}
+
+/**
+ * "import analysis…" is a two-step act (it replaces the current analysis):
+ * this panel is the confirm step, shown after a file was picked and parsed
+ * but before anything is posted. `onDismiss`/`onCancel` are the same "back
+ * out" action.
+ */
+export function AnalysisImportConfirmPanel({
+  filename,
+  importing,
+  onConfirm,
+  onCancel,
+}: {
+  filename: string;
+  importing: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <DismissiblePanel tone="warn" title="replace current analysis?" onDismiss={onCancel}>
+      <div className="flex flex-wrap items-center gap-2">
+        <span style={{ color: "var(--fg-muted)" }}>
+          Importing <span style={{ color: "var(--fg)" }}>{filename}</span> replaces the current
+          analysis (units, kinds, findings). What you've already viewed is untouched.
+        </span>
+        <button
+          type="button"
+          className="btn btn-primary"
+          data-testid="analysis-import-confirm"
+          disabled={importing}
+          onClick={onConfirm}
+        >
+          {importing ? "importing…" : "import"}
+        </button>
+      </div>
+    </DismissiblePanel>
+  );
+}
+
+export function AnalysisImportResultPanel({
+  report,
+  onDismiss,
+}: {
+  report: AnalysisImportReport;
+  onDismiss: () => void;
+}) {
+  return (
+    <DismissiblePanel title="analysis imported" onDismiss={onDismiss}>
+      <div style={{ color: "var(--fg-muted)" }}>
+        <span style={{ color: "var(--fg)" }}>{report.unitsImported}</span> unit
+        {report.unitsImported === 1 ? "" : "s"} imported
+        {report.unitsDropped > 0
+          ? `, ${report.unitsDropped} dropped (no longer in this revision)`
+          : ""}
+        {" · "}
+        <span style={{ color: "var(--fg)" }}>{report.hunksMatched}</span> hunk
+        {report.hunksMatched === 1 ? "" : "s"} matched
+        {report.hunksUnassigned > 0 ? `, ${report.hunksUnassigned} left unassigned` : ""}
+        {!report.sameRevision ? (
+          <div className="mt-1" style={{ color: "var(--warn)" }}>
+            imported onto a different revision than it was exported from — unassigned hunks may
+            need classifying.
           </div>
         ) : null}
       </div>

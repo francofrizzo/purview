@@ -10,3 +10,4 @@ export * from "./diff-of-diffs.js";
 export * from "./github.js";
 export * from "./service.js";
 export * from "./report.js";
+export * from "./analysis-share.js";

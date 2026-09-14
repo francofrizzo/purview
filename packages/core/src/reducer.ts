@@ -176,6 +176,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       state.units = event.units.map((u) => ({ ...u }));
       state.unassignedHunkIds = [...(event.unassigned ?? [])];
       state.analysisRevision = event.revision;
+      state.analysisOrigin = event.origin;
       break;
     }
 

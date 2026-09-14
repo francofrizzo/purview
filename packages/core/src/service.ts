@@ -213,10 +213,17 @@ export function analysisCoverage(
   };
 }
 
+export interface SetAnalysisOptions {
+  /** Provenance: set to "import" when the units came from another reader's
+   *  exported analysis (see analysis-share.ts) rather than a fresh Claude run. */
+  origin?: "import";
+}
+
 /** Validates coverage, then emits `analysis-set`. Throws on gaps. */
 export function setAnalysis(
   key: PrKey,
   input: unknown,
+  opts: SetAnalysisOptions = {},
   root = stateRoot(),
 ): { state: State; coverage: AnalysisCoverage } {
   const analysis = AnalysisSchema.parse(input);
@@ -243,6 +250,7 @@ export function setAnalysis(
       summary: analysis.summary,
       units: analysis.units,
       unassigned: analysis.unassigned ?? [],
+      origin: opts.origin,
     },
     root,
   );

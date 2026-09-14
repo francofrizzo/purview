@@ -7,6 +7,8 @@ import {
   CLAUDE_MODELS,
   ClaudeModelSchema,
   analysisCoverage,
+  applyAnalysisImport,
+  buildAnalysisExport,
   hunkDiffOfDiffs,
   initPr,
   keyToString,
@@ -66,6 +68,7 @@ import { HttpError, classifyError } from "./http-error.js";
 import { streamSSE } from "hono/streaming";
 import {
   cancelAnalysis,
+  isBusy,
   jobEvents,
   readJob,
   reconcileStaleJobs,
@@ -304,6 +307,44 @@ export function createApp(opts: AppOptions = {}): Hono {
     const key = keyParam(c);
     readMeta(key, root);
     return c.json({ job: cancelAnalysis(key, root) });
+  });
+
+  /* --------------------------------------------------- Purview-to-Purview */
+
+  /**
+   * Download the current analysis as a portable envelope another reader can
+   * import into their own tracked copy of the same PR. Throws (409, via
+   * classifyError) when there is no analysis yet.
+   */
+  app.get("/api/prs/:key/analysis/export", (c) => {
+    const key = keyParam(c);
+    const envelope = buildAnalysisExport(key, root);
+    const filename = `${key.owner}-${key.repo}-${key.number}-analysis.json`;
+    return c.body(JSON.stringify(envelope, null, 2), 200, {
+      "Content-Type": "application/json",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+    });
+  });
+
+  /**
+   * Import an envelope exported from another reader's copy of the same PR.
+   * Re-anchors by hunk id onto the importer's current revision and replaces
+   * the current analysis. 409s while an analysis run is in flight for this
+   * PR — importing mid-run would race the run's own `set-analysis` call.
+   */
+  app.post("/api/prs/:key/analysis/import", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    if (isBusy(key)) {
+      throw new HttpError(
+        409,
+        "analysis_in_progress",
+        `An analysis is currently running for ${keyToString(key)}; try again once it finishes.`,
+      );
+    }
+    const body = await readJsonBody(c);
+    const { report } = applyAnalysisImport(key, body, root);
+    return c.json({ report });
   });
 
   app.post("/api/prs/:key/repo-path", async (c) => {

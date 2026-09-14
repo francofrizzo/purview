@@ -9,6 +9,7 @@ import { api } from "./client";
 import { applyArchive } from "../lib/prList";
 import { stalenessPollInterval } from "../lib/staleness";
 import type {
+  AnalysisImportReport,
   AnalysisJob,
   DiffOfDiffs,
   DiscardPendingResult,
@@ -538,6 +539,27 @@ export function useCancelAnalysis(key: string): UseMutationResult<AnalysisJob, E
     mutationFn: () => api.cancelAnalysis(key),
     onSuccess: (job) => {
       qc.setQueryData(qk.analysisJob(key), job);
+      void qc.invalidateQueries({ queryKey: qk.prs });
+    },
+  });
+}
+
+/** Downloads the current analysis; the caller turns the blob into a save-as. */
+export function useExportAnalysis(
+  key: string,
+): UseMutationResult<{ filename: string; blob: Blob }, Error, void> {
+  return useMutation({ mutationFn: () => api.exportAnalysis(key) });
+}
+
+/** Replaces the current analysis with an imported envelope's units. */
+export function useImportAnalysis(
+  key: string,
+): UseMutationResult<AnalysisImportReport, Error, unknown> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (envelope: unknown) => api.importAnalysis(key, envelope),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.pr(key) });
       void qc.invalidateQueries({ queryKey: qk.prs });
     },
   });

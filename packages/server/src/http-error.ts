@@ -38,6 +38,12 @@ export function classifyError(err: unknown): HttpError {
   if (/does not cover \d+ hunk|references \d+ hunk id/.test(message)) {
     return new HttpError(400, "validation_error", message);
   }
+  if (/^No analysis to export/.test(message)) {
+    return new HttpError(409, "no_analysis", message);
+  }
+  if (/cannot import\.$/.test(message)) {
+    return new HttpError(400, "wrong_pr", message);
+  }
   if ((err as { name?: string } | null)?.name === "ZodError") {
     return new HttpError(400, "validation_error", (err as { issues?: unknown }).issues ?? message);
   }

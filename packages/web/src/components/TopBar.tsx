@@ -27,6 +27,8 @@ export function TopBar({
   analysisJob,
   analysisStarting,
   analysisCancelling,
+  hasAnalysis,
+  exporting,
   onRefresh,
   onSync,
   onToggleDrafts,
@@ -34,6 +36,8 @@ export function TopBar({
   onFinishReview,
   onAnalyze,
   onCancelAnalysis,
+  onExportAnalysis,
+  onImportFilePicked,
 }: {
   detail: PrDetail;
   draftCount: number;
@@ -48,6 +52,9 @@ export function TopBar({
   analysisJob?: AnalysisJob | null;
   analysisStarting: boolean;
   analysisCancelling: boolean;
+  /** whether there is an analysis on record to export */
+  hasAnalysis: boolean;
+  exporting: boolean;
   onRefresh: () => void;
   onSync: () => void;
   onToggleDrafts: () => void;
@@ -55,7 +62,11 @@ export function TopBar({
   onFinishReview: () => void;
   onAnalyze: () => void;
   onCancelAnalysis: () => void;
+  onExportAnalysis: () => void;
+  /** a file was picked from the "import analysis…" menu item */
+  onImportFilePicked: (file: File) => void;
 }) {
+  const importInputRef = useRef<HTMLInputElement>(null);
   const { meta, state } = detail;
   const live = isJobLive(analysisJob);
   // The gear opens settings over this PR view instead of leaving it.
@@ -139,6 +150,18 @@ export function TopBar({
           <IconUpload width={11} height={11} />
           {syncing ? "syncing…" : "sync"}
         </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept="application/json"
+          className="hidden"
+          data-testid="import-analysis-input"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = ""; // lets the same file be re-picked later
+            if (file) onImportFilePicked(file);
+          }}
+        />
         <OverflowMenu
           items={[
             live
@@ -155,6 +178,21 @@ export function TopBar({
                   hint: "Re-runs the automatic analysis for this revision.",
                   onClick: onAnalyze,
                 },
+            {
+              label: exporting ? "exporting…" : "export analysis",
+              testId: "menu-export-analysis",
+              disabled: exporting || !hasAnalysis,
+              hint: hasAnalysis
+                ? "Download the current analysis to share with a teammate tracking this PR."
+                : "No analysis yet — analyze first.",
+              onClick: onExportAnalysis,
+            },
+            {
+              label: "import analysis…",
+              testId: "menu-import-analysis",
+              hint: "Replaces the current analysis with one exported from a teammate's copy of this PR.",
+              onClick: () => importInputRef.current?.click(),
+            },
           ]}
         />
         <Link

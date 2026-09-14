@@ -278,16 +278,16 @@ describe("findings through the CLI-facing service", () => {
   });
 
   it("set-analysis accepts findings and folds them into state", () => {
-    const { state } = setAnalysis(key, payload([warning, note]), tmp);
+    const { state } = setAnalysis(key, payload([warning, note]), {}, tmp);
     expect(state.units[0].findings).toEqual([warning, note]);
   });
 
   it("set-analysis rejects a finding with empty evidence", () => {
-    expect(() => setAnalysis(key, payload([{ ...note, evidence: "" }]), tmp)).toThrow();
+    expect(() => setAnalysis(key, payload([{ ...note, evidence: "" }]), {}, tmp)).toThrow();
   });
 
   it("set-unit patches findings onto an existing unit without touching anything else", () => {
-    setAnalysis(key, payload(undefined), tmp);
+    setAnalysis(key, payload(undefined), {}, tmp);
     const state = setUnit(key, "u1", { findings: [warning] }, {}, tmp);
     expect(state.units[0].findings).toEqual([warning]);
     expect(state.units[0].attention).toBe("must-read");

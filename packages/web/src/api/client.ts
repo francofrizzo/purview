@@ -3,6 +3,7 @@ import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
 import type {
   AddCommentInput,
+  AnalysisImportReport,
   AnalysisJob,
   ChatMessage,
   ChatRef,
@@ -643,6 +644,47 @@ export const api = {
       source.removeEventListener("analysis-job", handler as EventListener);
       source.close();
     };
+  },
+
+  /* ------------------------------------------------- Purview-to-Purview share */
+
+  /**
+   * Download the current analysis. Fetched as a blob (rather than a plain
+   * navigation) so a failure — no analysis yet, PR unknown — surfaces as a
+   * catchable error instead of the browser silently rendering the JSON error
+   * body. `filename` follows the server's `Content-Disposition` when present.
+   */
+  async exportAnalysis(key: string): Promise<{ filename: string; blob: Blob }> {
+    if (MOCK) return mockApi.exportAnalysis(key);
+    const res = await fetch(`/api/prs/${encodeKey(key)}/analysis/export`);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      let body: unknown = text;
+      try {
+        body = text ? JSON.parse(text) : undefined;
+      } catch {
+        /* not JSON; keep the raw text */
+      }
+      const message =
+        (typeof body === "object" && body && "error" in body && String((body as any).error)) ||
+        text ||
+        `${res.status} ${res.statusText}`;
+      throw new ApiError(message, res.status, body);
+    }
+    const disposition = res.headers.get("content-disposition") ?? "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const filename = match?.[1] ?? `${key.replace(/\//g, "-")}-analysis.json`;
+    return { filename, blob: await res.blob() };
+  },
+
+  /** Parsed file contents go straight over the wire; the server validates the envelope. */
+  async importAnalysis(key: string, envelope: unknown): Promise<AnalysisImportReport> {
+    if (MOCK) return mockApi.importAnalysis(key, envelope);
+    const res = await post<{ report: AnalysisImportReport }>(
+      `/prs/${encodeKey(key)}/analysis/import`,
+      envelope,
+    );
+    return res.report;
   },
 
   /* ------------------------------------------------------------------ chat */

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
+  AnalysisImportReport,
   ChatRef,
   MigrationReport,
   PrDetail,
@@ -21,6 +22,8 @@ import {
   useDeleteComment,
   useEditComment,
   useDiscardPendingReview,
+  useExportAnalysis,
+  useImportAnalysis,
   usePatchUnit,
   usePr,
   useRefresh,
@@ -54,7 +57,13 @@ import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
 import { IconChevron } from "../components/icons";
-import { MigrationReportPanel, StalenessHint, SyncResultPanel } from "../components/Panels";
+import {
+  AnalysisImportConfirmPanel,
+  AnalysisImportResultPanel,
+  MigrationReportPanel,
+  StalenessHint,
+  SyncResultPanel,
+} from "../components/Panels";
 import { SummaryStrip } from "../components/SummaryStrip";
 import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
@@ -89,6 +98,8 @@ export function PrView() {
   const discardPending = useDiscardPendingReview(prKey);
   const startAnalysis = useStartAnalysis(prKey);
   const cancelAnalysis = useCancelAnalysis(prKey);
+  const exportAnalysis = useExportAnalysis(prKey);
+  const importAnalysis = useImportAnalysis(prKey);
 
   // The event stream is what makes the banner live; the query is its seed and
   // its fallback.
@@ -121,6 +132,13 @@ export function PrView() {
   const [report, setReport] = useState<MigrationReport | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitReviewResult | null>(null);
+  // "import analysis…" is two steps: a file is picked and parsed (armed, not
+  // yet sent), then explicitly confirmed — it replaces the current analysis.
+  const [pendingImport, setPendingImport] = useState<{ filename: string; envelope: unknown } | null>(
+    null,
+  );
+  const [importParseError, setImportParseError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<AnalysisImportReport | null>(null);
   const { viewMode, setViewMode, toggleViewMode, wrap, setWrap, toggleWrap } = useDiffViewPrefs();
   const [narrow, setNarrow] = useState(false);
   const showNarrowNote = narrow && viewMode === "split";
@@ -388,6 +406,41 @@ export function PrView() {
     setSelectedPath(file);
   };
 
+  const handleExportAnalysis = () => {
+    exportAnalysis.mutate(undefined, {
+      onSuccess: ({ filename, blob }) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      },
+    });
+  };
+
+  const handleImportFilePicked = async (file: File) => {
+    importAnalysis.reset();
+    setImportParseError(null);
+    try {
+      const envelope = JSON.parse(await file.text());
+      setPendingImport({ filename: file.name, envelope });
+    } catch {
+      setPendingImport(null);
+      setImportParseError(`"${file.name}" is not valid JSON.`);
+    }
+  };
+
+  const confirmImportAnalysis = () => {
+    if (!pendingImport) return;
+    importAnalysis.mutate(pendingImport.envelope, {
+      onSuccess: (report) => {
+        setPendingImport(null);
+        setImportResult(report);
+      },
+    });
+  };
+
   return (
     <div className="flex h-full flex-col">
       <TopBar
@@ -402,10 +455,14 @@ export function PrView() {
         analysisJob={job}
         analysisStarting={startAnalysis.isPending}
         analysisCancelling={cancelAnalysis.isPending}
+        hasAnalysis={detail.state.units.length > 0}
+        exporting={exportAnalysis.isPending}
         onToggleDrafts={() => setDraftsOpen((v) => !v)}
         onToggleChat={chat.toggleChat}
         onAnalyze={() => startAnalysis.mutate()}
         onCancelAnalysis={() => cancelAnalysis.mutate()}
+        onExportAnalysis={handleExportAnalysis}
+        onImportFilePicked={handleImportFilePicked}
         onFinishReview={() => {
           setSubmitResult(null);
           submitReview.reset();
@@ -434,6 +491,27 @@ export function PrView() {
       {report ? <MigrationReportPanel report={report} onDismiss={() => setReport(null)} /> : null}
       {syncResult ? (
         <SyncResultPanel result={syncResult} onDismiss={() => setSyncResult(null)} />
+      ) : null}
+      {exportAnalysis.error ? (
+        <ErrorBar message={`export failed: ${(exportAnalysis.error as Error).message}`} />
+      ) : null}
+      {importParseError ? <ErrorBar message={importParseError} /> : null}
+      {importAnalysis.error ? (
+        <ErrorBar message={`import failed: ${(importAnalysis.error as Error).message}`} />
+      ) : null}
+      {pendingImport ? (
+        <AnalysisImportConfirmPanel
+          filename={pendingImport.filename}
+          importing={importAnalysis.isPending}
+          onConfirm={confirmImportAnalysis}
+          onCancel={() => {
+            setPendingImport(null);
+            importAnalysis.reset();
+          }}
+        />
+      ) : null}
+      {importResult ? (
+        <AnalysisImportResultPanel report={importResult} onDismiss={() => setImportResult(null)} />
       ) : null}
       {showAnalysisBanner ? (
         <AnalysisBanner

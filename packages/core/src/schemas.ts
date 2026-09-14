@@ -144,6 +144,35 @@ export const AnalysisSchema = z.object({
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
+/* ---------------------------------------------------- analysis sharing */
+
+/**
+ * Purview-to-Purview analysis export. Versioned so a future shape change can
+ * be detected and rejected with a clear message rather than silently
+ * misparsed. `pr`/`revision`/`headSha`/`mergeBase` are the exporter's own
+ * anchors — informational on import, since hunk ids (not shas) are what
+ * re-anchoring uses. Only `units` rides along: viewed state lives elsewhere
+ * (hunks/files) and must never travel with the analysis, and `unassigned`
+ * hunks are recomputed on import against the importer's own revision.
+ */
+export const AnalysisExportSchema = z.object({
+  format: z.literal("purview-analysis"),
+  version: z.literal(1),
+  pr: z.object({
+    host: z.string(),
+    owner: z.string(),
+    repo: z.string(),
+    number: z.number().int(),
+  }),
+  revision: z.number().int(),
+  headSha: z.string(),
+  mergeBase: z.string(),
+  exportedAt: z.string(),
+  summary: z.string(),
+  units: z.array(ReviewUnitSchema),
+});
+export type AnalysisExport = z.infer<typeof AnalysisExportSchema>;
+
 export const MigrationKindSchema = z.enum([
   "identical",
   "fuzzy",
@@ -411,6 +440,13 @@ export const AnalysisSetEventSchema = z.object({
   summary: z.string(),
   units: z.array(ReviewUnitSchema),
   unassigned: z.array(z.string()).default([]),
+  /**
+   * Provenance: absent/undefined for a normal skill-produced analysis,
+   * `"import"` when the units came from another reader's exported analysis
+   * (see analysis-share.ts) rather than a fresh Claude run. Additive and
+   * optional, so every event written before this existed parses unchanged.
+   */
+  origin: z.literal("import").optional(),
 });
 
 export const UnitUpdatedEventSchema = z.object({
@@ -579,6 +615,8 @@ export const StateSchema = z.object({
   revisions: z.array(RevisionInfoSchema).default([]),
   summary: z.string().default(""),
   analysisRevision: z.number().int().optional(),
+  /** provenance of the current analysis; absent = produced by a normal Claude run */
+  analysisOrigin: z.literal("import").optional(),
   units: z.array(ReviewUnitSchema).default([]),
   hunks: z.record(z.string(), HunkStateSchema).default({}),
   files: z.array(FileRollupSchema).default([]),

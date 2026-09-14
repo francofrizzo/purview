@@ -579,6 +579,25 @@ export interface RepoPathResult {
   warning?: string;
 }
 
+/* ------------------------------------------------- Purview-to-Purview share */
+
+/**
+ * The report `POST /api/prs/:key/analysis/import` answers with. Hunk ids are
+ * content-derived, so importing re-anchors the export's units onto the
+ * importer's own current revision by id intersection: `hunksUnassigned`
+ * counts hunks of the current revision the export didn't cover,
+ * `unitsDropped` counts units whose every hunk id fell out of the current
+ * revision.
+ */
+export interface AnalysisImportReport {
+  unitsImported: number;
+  unitsDropped: number;
+  hunksMatched: number;
+  hunksUnassigned: number;
+  /** false when the importer's revision differs from the exporter's */
+  sameRevision: boolean;
+}
+
 /** POST /api/repos/:rkey/import-reviews */
 export interface ImportReviewsResult {
   imported: string[];

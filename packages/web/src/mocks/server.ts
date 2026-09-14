@@ -2,6 +2,7 @@ import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import type {
   AnalysisEffort,
+  AnalysisImportReport,
   AnalysisJob,
   ChatMessage,
   ChatRef,
@@ -896,6 +897,87 @@ export const mockApi = {
     (jobSubscribers[key] ??= new Set()).add(onJob);
     return () => {
       jobSubscribers[key]?.delete(onJob);
+    };
+  },
+
+  /* ------------------------------------------------- Purview-to-Purview share */
+
+  async exportAnalysis(key: string): Promise<{ filename: string; blob: Blob }> {
+    await delay(150);
+    const target = details[key];
+    if (!target || target.state.units.length === 0) {
+      throw new ApiError("no_analysis", 409, "No analysis to export — run an analysis first.");
+    }
+    const envelope = {
+      format: "purview-analysis",
+      version: 1,
+      pr: {
+        host: target.meta.host,
+        owner: target.meta.owner,
+        repo: target.meta.repo,
+        number: target.meta.number,
+      },
+      revision: target.state.revision,
+      headSha: "mock-head-sha",
+      mergeBase: "mock-merge-base",
+      exportedAt: new Date().toISOString(),
+      summary: target.state.summary,
+      units: target.state.units,
+    };
+    const filename = `${target.meta.owner}-${target.meta.repo}-${target.meta.number}-analysis.json`;
+    return { filename, blob: new Blob([JSON.stringify(envelope, null, 2)], { type: "application/json" }) };
+  },
+
+  async importAnalysis(key: string, input: unknown): Promise<AnalysisImportReport> {
+    await delay(200);
+    const envelope = input as {
+      format?: string;
+      version?: number;
+      pr?: { host?: string; owner?: string; repo?: string; number?: number };
+      revision?: number;
+      summary?: string;
+      units?: ReviewUnit[];
+    } | null;
+    if (!envelope || envelope.format !== "purview-analysis" || envelope.version !== 1) {
+      throw new ApiError("validation_error", 400, "Not a Purview analysis export.");
+    }
+    const target = details[key];
+    if (!target) throw new ApiError("not_found", 404, `No PR "${key}" in the fixture.`);
+    const meta = target.meta;
+    if (
+      envelope.pr?.host !== meta.host ||
+      envelope.pr?.owner !== meta.owner ||
+      envelope.pr?.repo !== meta.repo ||
+      envelope.pr?.number !== meta.number
+    ) {
+      throw new ApiError("wrong_pr", 400, "This export is for a different pull request.");
+    }
+
+    const currentIds = new Set(target.files.files.flatMap((f) => f.hunks.map((h) => h.id)));
+    let unitsDropped = 0;
+    const matched = new Set<string>();
+    const units: ReviewUnit[] = [];
+    for (const unit of envelope.units ?? []) {
+      const hunkIds = unit.hunkIds.filter((id) => currentIds.has(id));
+      if (hunkIds.length === 0) {
+        unitsDropped++;
+        continue;
+      }
+      for (const id of hunkIds) matched.add(id);
+      units.push({ ...unit, hunkIds });
+    }
+    const unassigned = [...currentIds].filter((id) => !matched.has(id));
+
+    target.state.units = units;
+    target.state.summary = envelope.summary ?? target.state.summary;
+    if (target === detail) recomputeFileRollups();
+
+    return {
+      unitsImported: units.length,
+      unitsDropped,
+      hunksMatched: matched.size,
+      hunksUnassigned: unassigned.length,
+      sameRevision: envelope.revision === target.state.revision,
     };
   },
 
