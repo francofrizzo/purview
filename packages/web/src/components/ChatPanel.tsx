@@ -261,6 +261,17 @@ export function ChatPanel({
     textareaRef.current?.focus();
   }, []);
 
+  // Quoting from the diff attaches a chip; the point of quoting is to type
+  // about it, so the composer takes focus whenever an *explicit* ref is
+  // added while the panel is already open. Auto-chip changes (unit
+  // navigation) don't count — those must never steal focus mid-scroll.
+  const explicitCount = chat.effectiveRefs.filter((r) => !chat.isAutoRef(r)).length;
+  const prevExplicit = useRef(explicitCount);
+  useEffect(() => {
+    if (explicitCount > prevExplicit.current) textareaRef.current?.focus();
+    prevExplicit.current = explicitCount;
+  }, [explicitCount]);
+
   const submit = (text?: string) => {
     const body = (text ?? draft).trim();
     if (!body || chat.busy) return;
