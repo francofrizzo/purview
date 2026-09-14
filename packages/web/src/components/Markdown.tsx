@@ -10,6 +10,7 @@
 import { memo, useEffect, useState } from "react";
 import { parseInline, parseMarkdown, type MdInline } from "../lib/markdown";
 import { cachedTokens, tokenizeLines, type Tok } from "../lib/highlight";
+import { renderMermaid } from "../lib/mermaid";
 import { useSettings } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 
@@ -153,6 +154,47 @@ function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
   );
 }
 
+/**
+ * A ```mermaid fence, rendered to inline SVG.
+ *
+ * `open` (still-streaming, unclosed fence) is forwarded straight to
+ * lib/mermaid.ts, which resolves it to "pending" without ever touching the
+ * mermaid module — so a diagram is only attempted once the fence closes, and
+ * a half-arrived block just reads as the raw fenced code in the meantime.
+ * The same raw-code render is also the error fallback: a parse/render
+ * failure never leaves a blank diagram.
+ */
+function MermaidBlock({ code, open }: { code: string; open: boolean }) {
+  const { appearance } = useSettings();
+  const dark = appearance.theme.mode === "dark";
+  const fontFamily = appearance.uiFont;
+  const [result, setResult] = useState<{ status: "pending" | "ok" | "error"; svg?: string }>({
+    status: "pending",
+  });
+
+  useEffect(() => {
+    let alive = true;
+    setResult({ status: "pending" });
+    void renderMermaid(code, open, { dark, fontFamily }).then((r) => {
+      if (alive) setResult(r);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [code, open, dark, fontFamily]);
+
+  if (result.status !== "ok" || !result.svg) return <CodeBlock code={code} lang="mermaid" />;
+  return (
+    <div
+      className="my-1.5 overflow-x-auto rounded p-2"
+      style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
+      // mermaid runs under securityLevel "strict": no script/foreignObject
+      // survives into this markup, so this is safe to inject as-is.
+      dangerouslySetInnerHTML={{ __html: result.svg }}
+    />
+  );
+}
+
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   const blocks = parseMarkdown(text);
   return (
@@ -160,7 +202,11 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
       {blocks.map((block, i) => {
         switch (block.type) {
           case "code":
-            return <CodeBlock key={i} code={block.code} lang={block.lang} />;
+            return block.lang === "mermaid" ? (
+              <MermaidBlock key={i} code={block.code} open={block.open} />
+            ) : (
+              <CodeBlock key={i} code={block.code} lang={block.lang} />
+            );
           case "heading":
             return (
               <div
