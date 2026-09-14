@@ -62,7 +62,7 @@ import { DiffSearchBar } from "../components/DiffSearchBar";
 import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
-import { useDiffSearch } from "../lib/useDiffSearch";
+import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
 import { useDiffViewPrefs } from "../lib/settings";
@@ -218,50 +218,6 @@ export function PrView() {
     return { viewed, total };
   }, [detail]);
 
-  const search = useDiffSearch(detail, units);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-
-  const openSearch = useCallback(() => {
-    search.openSearch();
-    // Opening while already open means "start over": select what is there.
-    requestAnimationFrame(() => {
-      searchInputRef.current?.focus();
-      searchInputRef.current?.select();
-    });
-  }, [search]);
-
-  // `c` toggles the chat, `s` the summary overlay, `/` opens the find bar — all
-  // single-letter, all suppressed while typing. Cmd/Ctrl+F is taken over from the browser on
-  // purpose: rows are virtualized, so native find can only see what is mounted.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      const typing = Boolean(
-        t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable),
-      );
-      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "f") {
-        e.preventDefault();
-        openSearch();
-        return;
-      }
-      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "c") {
-        e.preventDefault();
-        chat.toggleChat();
-      } else if (e.key === "s") {
-        e.preventDefault();
-        setSummaryOpen((v) => !v);
-      } else if (e.key === "/") {
-        e.preventDefault();
-        openSearch();
-      } else if (e.key === "Escape" && search.open) {
-        e.preventDefault();
-        search.close();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [chat, openSearch, search.open, search.close]);
 
   useEffect(() => {
     if (!detail) return;
@@ -297,6 +253,58 @@ export function PrView() {
     const file = detail.files.files.find((f) => f.path === selectedPath);
     return file ? file.hunks.map((h) => ({ hunk: h, file })) : [];
   }, [detail, tab, selectedUnit, selectedPath]);
+
+  // What the pane is currently showing — the default (Cmd+F) search scope.
+  const visibleHunkIds = useMemo(() => new Set(entries.map((e) => e.hunk.id)), [entries]);
+
+  const search = useDiffSearch(detail, units, visibleHunkIds);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const openSearch = useCallback(
+    (scope?: SearchScope) => {
+      search.openSearch(scope);
+      // Opening while already open means "start over": select what is there.
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      });
+    },
+    [search],
+  );
+
+  // `c` toggles the chat, `s` the summary overlay, `/` opens the find bar — all
+  // single-letter, all suppressed while typing. Cmd/Ctrl+F is taken over from the browser on
+  // purpose: rows are virtualized, so native find can only see what is mounted.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      const typing = Boolean(
+        t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable),
+      );
+      // Cmd+F searches what the pane shows; Cmd+Shift+F widens to the whole diff.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        openSearch(e.shiftKey ? "all" : "visible");
+        return;
+      }
+      if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "c") {
+        e.preventDefault();
+        chat.toggleChat();
+      } else if (e.key === "s") {
+        e.preventDefault();
+        setSummaryOpen((v) => !v);
+      } else if (e.key === "/") {
+        e.preventDefault();
+        openSearch();
+      } else if (e.key === "Escape" && search.open) {
+        e.preventDefault();
+        search.close();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [chat, openSearch, search.open, search.close]);
 
   // Keep the focused hunk inside the currently shown set.
   useEffect(() => {
@@ -677,7 +685,13 @@ export function PrView() {
             </div>
           ) : null}
 
-          {search.open ? <DiffSearchBar search={search} inputRef={searchInputRef} /> : null}
+          {search.open ? (
+            <DiffSearchBar
+              search={search}
+              inputRef={searchInputRef}
+              scopeLabel={tab === "units" ? "this unit" : "this file"}
+            />
+          ) : null}
 
           <div className="min-h-0 flex-1">
             <DiffPane

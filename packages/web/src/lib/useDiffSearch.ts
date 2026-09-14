@@ -21,6 +21,9 @@ import {
 
 export const SEARCH_DEBOUNCE_MS = 150;
 
+/** Where a search looks: what the pane currently shows, or the whole diff. */
+export type SearchScope = "visible" | "all";
+
 export interface DiffSearch {
   open: boolean;
   query: string;
@@ -28,6 +31,8 @@ export interface DiffSearch {
   activeQuery: string;
   caseSensitive: boolean;
   changedOnly: boolean;
+  scope: SearchScope;
+  setScope: (s: SearchScope) => void;
   matches: SearchMatch[];
   /** 0-based index of the current match, or -1 when there are none */
   index: number;
@@ -38,18 +43,24 @@ export interface DiffSearch {
   setQuery: (q: string) => void;
   setCaseSensitive: (v: boolean) => void;
   setChangedOnly: (v: boolean) => void;
-  openSearch: () => void;
+  openSearch: (scope?: SearchScope) => void;
   close: () => void;
   next: () => void;
   prev: () => void;
 }
 
-export function useDiffSearch(detail: PrDetail | undefined, units: ReviewUnit[]): DiffSearch {
+export function useDiffSearch(
+  detail: PrDetail | undefined,
+  units: ReviewUnit[],
+  /** hunk ids the pane is currently showing; null disables the visible scope */
+  visibleHunkIds: Set<string> | null = null,
+): DiffSearch {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [changedOnly, setChangedOnly] = useState(true);
+  const [scope, setScope] = useState<SearchScope>("visible");
   const [index, setIndex] = useState(0);
 
   useEffect(() => {
@@ -68,12 +79,23 @@ export function useDiffSearch(detail: PrDetail | undefined, units: ReviewUnit[])
     [open, detail],
   );
 
-  const matches = useMemo(
+  const allMatches = useMemo(
     () =>
       searchIndex && debounced
         ? searchDiff(searchIndex, debounced, { caseSensitive, changedOnly })
         : [],
     [searchIndex, debounced, caseSensitive, changedOnly],
+  );
+
+  // The visible scope is a post-filter over the full result set, so widening
+  // to "all" is free and the per-file/unit counts always reflect the scope
+  // the navigation actually cycles through.
+  const matches = useMemo(
+    () =>
+      scope === "visible" && visibleHunkIds
+        ? allMatches.filter((m) => visibleHunkIds.has(m.hunkId))
+        : allMatches,
+    [allMatches, scope, visibleHunkIds],
   );
 
   // Any change to the result set starts the cycle over at the first match.
@@ -109,6 +131,8 @@ export function useDiffSearch(detail: PrDetail | undefined, units: ReviewUnit[])
     activeQuery: debounced,
     caseSensitive,
     changedOnly,
+    scope,
+    setScope,
     matches,
     index: matches.length ? Math.min(index, matches.length - 1) : -1,
     current,
@@ -118,7 +142,10 @@ export function useDiffSearch(detail: PrDetail | undefined, units: ReviewUnit[])
     setQuery,
     setCaseSensitive,
     setChangedOnly,
-    openSearch: useCallback(() => setOpen(true), []),
+    openSearch: useCallback((s?: SearchScope) => {
+      if (s) setScope(s);
+      setOpen(true);
+    }, []),
     close,
     next: useCallback(() => step(1), [step]),
     prev: useCallback(() => step(-1), [step]),

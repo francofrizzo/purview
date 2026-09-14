@@ -10,9 +10,12 @@ import { IconCaret, IconClose, IconSearch } from "./icons";
 export function DiffSearchBar({
   search,
   inputRef,
+  scopeLabel = "shown",
 }: {
   search: DiffSearch;
   inputRef: RefObject<HTMLInputElement>;
+  /** what the visible scope is called right now ("this unit" / "this file") */
+  scopeLabel?: string;
 }) {
   const total = search.matches.length;
   const status = !search.activeQuery
@@ -71,6 +74,18 @@ export function DiffSearchBar({
           onClick={search.next}
         />
       </div>
+      <Toggle
+        testId="search-where"
+        active={search.scope === "all"}
+        title={
+          search.scope === "all"
+            ? "Searching the whole diff — ⌘F narrows to what's shown"
+            : `Searching ${scopeLabel} only — ⌘⇧F widens to the whole diff`
+        }
+        onClick={() => search.setScope(search.scope === "all" ? "visible" : "all")}
+      >
+        {search.scope === "all" ? "whole diff" : scopeLabel}
+      </Toggle>
       <Toggle
         testId="search-case"
         active={search.caseSensitive}
