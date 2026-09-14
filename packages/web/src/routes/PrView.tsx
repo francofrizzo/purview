@@ -386,6 +386,20 @@ export function PrView() {
     if (m.path !== selectedPath) setSelectedPath(m.path);
   }, [search.current, search.index, tab, units, selectedUnitId, selectedPath]);
 
+  // Cost-avoidance probe: when there is nothing local to read yet and nothing
+  // is actively being analyzed, check once (no polling) whether a teammate
+  // already shared an analysis on the PR itself. Lives ABOVE the early
+  // returns below — hooks must run on every render, including the loading
+  // ones, so the nullable `detail` is guarded inside rather than by position.
+  const probeJob = analysisJob.data ?? detail?.analysisJob ?? null;
+  useEffect(() => {
+    if (!detail) return;
+    if (units.length === 0 && !isJobLive(probeJob) && probedForRef.current !== prKey) {
+      probedForRef.current = prKey;
+      sharedProbe.mutate();
+    }
+  }, [detail, units.length, probeJob, prKey, sharedProbe]);
+
   if (isLoading) {
     return <Centered>Loading {prKey}…</Centered>;
   }
@@ -409,16 +423,7 @@ export function PrView() {
   const showAnalysisBanner = units.length === 0 || analysisPending;
   const quote = (ref: ChatRef) => chat.attachRef(ref);
 
-  // Cost-avoidance UI: when there is nothing local to read yet and nothing is
-  // actively being analyzed, check once (no polling) whether a teammate
-  // already shared an analysis on the PR itself.
   const noLocalAnalysis = units.length === 0;
-  useEffect(() => {
-    if (noLocalAnalysis && !analysisPending && probedForRef.current !== prKey) {
-      probedForRef.current = prKey;
-      sharedProbe.mutate();
-    }
-  }, [noLocalAnalysis, analysisPending, prKey, sharedProbe]);
   const showSharedAnalysisBanner =
     noLocalAnalysis && !analysisPending && !sharedBannerDismissed && sharedProbe.data?.found === true;
 
