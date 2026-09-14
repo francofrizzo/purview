@@ -1,6 +1,12 @@
 import type { FileEntry, Hunk } from "../api/types";
 
 /**
+ * MIRRORED IMPLEMENTATION — packages/core/src/move-detection.ts is the same
+ * algorithm over core's types (the server needs it to describe moves to the
+ * analysis prompt), because this package deliberately does not depend on
+ * core. The two copies share their behavioral contract through matching test
+ * vectors; change one, change both, and keep the constants identical.
+ *
  * Move detection (git `--color-moved` spirit): a contiguous run of removed
  * lines that reappears, in order, as added lines elsewhere in the same
  * revision is a code move — even when it's buried inside a hunk that also

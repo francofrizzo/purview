@@ -11,3 +11,4 @@ export * from "./github.js";
 export * from "./service.js";
 export * from "./report.js";
 export * from "./analysis-share.js";
+export * from "./move-detection.js";

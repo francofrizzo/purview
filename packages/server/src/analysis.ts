@@ -9,9 +9,12 @@ import {
   listPrs,
   loadState,
   prDir,
+  readFilesJson,
   readMeta,
   stateRoot,
+  summarizeMoves,
   type AnalysisJob,
+  type MovePairSummary,
   type PrKey,
 } from "@reviewer/core";
 import { runClaude, type ClaudeRun } from "./claude-runner.js";
@@ -166,6 +169,40 @@ export function findingsNote(resolution?: CheckoutResolution): string {
   ].join("\n");
 }
 
+/**
+ * The moved-code block of the analysis prompt. Detection is the same
+ * deterministic line-run matcher the UI tints with (core/move-detection.ts),
+ * so what the model is told is exactly what the reviewer sees highlighted.
+ * Empty when nothing moved, so the common case costs no tokens.
+ */
+export function movedNote(pairs: MovePairSummary[]): string {
+  if (pairs.length === 0) return "";
+  const MAX = 12;
+  const shown = pairs.slice(0, MAX);
+  const lines = [
+    "MOVED CODE (detected mechanically by line-run matching; the UI highlights these lines):",
+    ...shown.map(
+      (p) => `  - ~${p.lines} lines moved: ${p.fromPath} -> ${p.toPath}`,
+    ),
+    pairs.length > MAX ? `  - … and ${pairs.length - MAX} more pairs` : "",
+    "Relocated lines were already reviewed where they lived. A unit that is mostly moved",
+    "code belongs at skim (kind per the rubric — usually ripple or connective-tissue),",
+    "with attentionWhy saying so, e.g. \"extraction moved from manager.go; unchanged\".",
+    "Must-read attention goes only to lines edited during the move (the detector excludes",
+    "those from its runs) and to the seams: call sites, imports, visibility, receivers.",
+  ].filter((l) => l !== "");
+  return "\n" + lines.join("\n");
+}
+
+/** Move summary for the prompt; unreadable files degrade to "no moves". */
+function movedCodeSummary(key: PrKey, revision: number, root: string): MovePairSummary[] {
+  try {
+    return summarizeMoves(readFilesJson(key, revision, root).files);
+  } catch {
+    return [];
+  }
+}
+
 export function analysisPrompt(
   key: PrKey,
   root: string,
@@ -204,6 +241,7 @@ export function analysisPrompt(
     `  events (read \`classification-corrected\` entries and honor them as precedent): ${path.join(dir, "events.jsonl")}`,
     opts.checkout ? "\n" + checkoutNote(opts.checkout, opts.headSha) : "",
     "\n" + findingsNote(opts.checkout),
+    movedNote(movedCodeSummary(key, state.currentRevision, root)),
     rubric ? "\n" + rubric : "",
     "",
     "Run the reviewer-state CLI as:",

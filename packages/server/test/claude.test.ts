@@ -22,6 +22,7 @@ import {
   analysisIdle,
   analysisToolFlags,
   findingsNote,
+  movedNote,
   readJob,
   reconcileStaleJobs,
 } from "../src/analysis.js";
@@ -127,6 +128,18 @@ describe("findings gating text", () => {
       expect(off).toContain("Do NOT emit any findings");
       expect(off).not.toContain("RUN IT");
     }
+  });
+});
+
+describe("moved-code prompt note", () => {
+  it("names the pairs and stays empty when nothing moved", () => {
+    expect(movedNote([])).toBe("");
+    const note = movedNote([
+      { fromPath: "a/manager.go", toPath: "a/runtime.go", lines: 38, fromHunkIds: ["h1"], toHunkIds: ["h2"] },
+    ]);
+    expect(note).toContain("MOVED CODE");
+    expect(note).toContain("~38 lines moved: a/manager.go -> a/runtime.go");
+    expect(note).toContain("mostly moved");
   });
 });
 
