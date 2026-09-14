@@ -49,6 +49,9 @@ export const TOKEN_NAMES = [
   "moved-bg",
   "moved-bg-strong",
   "moved-gutter",
+  "moved-out-bg",
+  "moved-out-bg-strong",
+  "moved-out-gutter",
   "moved-fg",
   "search-match",
   "search-active",
@@ -184,9 +187,15 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "del-bg-strong": rgba(palette.red, tintStrong),
     "del-gutter": rgba(palette.red, tintGutter),
 
+    // Two hues, git --color-moved style: violet marks where the code arrived
+    // (added side), cyan where it left (removed side) — same-tint both sides
+    // made direction illegible at a glance.
     "moved-bg": rgba(palette.purple, tint),
     "moved-bg-strong": rgba(palette.purple, tintStrong),
     "moved-gutter": rgba(palette.purple, tintGutter),
+    "moved-out-bg": rgba(cyan, tint),
+    "moved-out-bg-strong": rgba(cyan, tintStrong),
+    "moved-out-gutter": rgba(cyan, tintGutter),
     "moved-fg": moved,
 
     "search-match": rgba(searchTint, dark ? 0.24 : 0.28),
@@ -424,6 +433,9 @@ const REVIEWER_DARK: ThemeDef = {
     "moved-bg": "rgba(163, 113, 247, 0.1)",
     "moved-bg-strong": "rgba(163, 113, 247, 0.26)",
     "moved-gutter": "rgba(163, 113, 247, 0.16)",
+    "moved-out-bg": "rgba(57, 197, 207, 0.1)",
+    "moved-out-bg-strong": "rgba(57, 197, 207, 0.26)",
+    "moved-out-gutter": "rgba(57, 197, 207, 0.16)",
     "moved-fg": "#c4a7ff",
     "search-match": "rgba(227, 179, 65, 0.22)",
     "search-active": "rgba(255, 166, 87, 0.55)",
@@ -484,6 +496,9 @@ const REVIEWER_LIGHT: ThemeDef = {
     "moved-bg": "rgba(130, 80, 223, 0.09)",
     "moved-bg-strong": "rgba(130, 80, 223, 0.22)",
     "moved-gutter": "rgba(130, 80, 223, 0.13)",
+    "moved-out-bg": "rgba(11, 125, 140, 0.09)",
+    "moved-out-bg-strong": "rgba(11, 125, 140, 0.22)",
+    "moved-out-gutter": "rgba(11, 125, 140, 0.13)",
     "moved-fg": "#6b3fd4",
     "search-match": "rgba(226, 168, 22, 0.3)",
     "search-active": "rgba(247, 148, 30, 0.6)",

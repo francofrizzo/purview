@@ -137,13 +137,14 @@ function renderContent(
  * applies to context lines, which are shared, unmoved code either way.
  */
 function bgFor(type: DiffRow["type"], moved?: boolean) {
+  // Direction is a hue: violet where the code arrived, cyan where it left.
   if (type === "add") return moved ? "var(--moved-bg)" : "var(--add-bg)";
-  if (type === "del") return moved ? "var(--moved-bg)" : "var(--del-bg)";
+  if (type === "del") return moved ? "var(--moved-out-bg)" : "var(--del-bg)";
   return "transparent";
 }
 function gutterBgFor(type: DiffRow["type"], moved?: boolean) {
   if (type === "add") return moved ? "var(--moved-gutter)" : "var(--add-gutter)";
-  if (type === "del") return moved ? "var(--moved-gutter)" : "var(--del-gutter)";
+  if (type === "del") return moved ? "var(--moved-out-gutter)" : "var(--del-gutter)";
   return "transparent";
 }
 function markerColor(type: DiffRow["type"]) {
@@ -287,7 +288,7 @@ export const DiffLine = memo(function DiffLine({
         ? "var(--moved-bg-strong)"
         : "var(--add-bg-strong)"
       : moved
-        ? "var(--moved-bg-strong)"
+        ? "var(--moved-out-bg-strong)"
         : "var(--del-bg-strong)";
   const marker = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
   const gutterBg = gutterBgFor(row.type, moved);
@@ -386,7 +387,7 @@ function SplitHalf({
         ? "var(--moved-bg-strong)"
         : "var(--add-bg-strong)"
       : moved
-        ? "var(--moved-bg-strong)"
+        ? "var(--moved-out-bg-strong)"
         : "var(--del-bg-strong)";
   const marker = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
   return (
