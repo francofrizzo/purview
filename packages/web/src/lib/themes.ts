@@ -46,6 +46,10 @@ export const TOKEN_NAMES = [
   "del-bg",
   "del-bg-strong",
   "del-gutter",
+  "moved-bg",
+  "moved-bg-strong",
+  "moved-gutter",
+  "moved-fg",
   "search-match",
   "search-active",
   "risk",
@@ -141,6 +145,9 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
   const accent = text(palette.blue, 3.6);
   const ok = text(palette.green, 3.4);
   const risk = text(palette.red, 3.6);
+  // Moved-code tint: derived from purple the same way add/del derive from
+  // green/red, text() gets it the same contrast floor as accent/ok/risk.
+  const moved = text(palette.purple, 3.6);
   const warn = text(
     // yellow on a light background is hopeless; prefer orange there
     !dark && contrast(palette.yellow, base) < 2.4 ? palette.orange : palette.yellow,
@@ -176,6 +183,11 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "del-bg": rgba(palette.red, tint),
     "del-bg-strong": rgba(palette.red, tintStrong),
     "del-gutter": rgba(palette.red, tintGutter),
+
+    "moved-bg": rgba(palette.purple, tint),
+    "moved-bg-strong": rgba(palette.purple, tintStrong),
+    "moved-gutter": rgba(palette.purple, tintGutter),
+    "moved-fg": moved,
 
     "search-match": rgba(searchTint, dark ? 0.24 : 0.28),
     "search-active": rgba(palette.orange, dark ? 0.55 : 0.48),
@@ -409,6 +421,10 @@ const REVIEWER_DARK: ThemeDef = {
     "del-bg": "rgba(248, 81, 73, 0.1)",
     "del-bg-strong": "rgba(248, 81, 73, 0.26)",
     "del-gutter": "rgba(248, 81, 73, 0.16)",
+    "moved-bg": "rgba(163, 113, 247, 0.1)",
+    "moved-bg-strong": "rgba(163, 113, 247, 0.26)",
+    "moved-gutter": "rgba(163, 113, 247, 0.16)",
+    "moved-fg": "#c4a7ff",
     "search-match": "rgba(227, 179, 65, 0.22)",
     "search-active": "rgba(255, 166, 87, 0.55)",
     risk: "#f0787a",
@@ -465,6 +481,10 @@ const REVIEWER_LIGHT: ThemeDef = {
     "del-bg": "rgba(203, 36, 49, 0.08)",
     "del-bg-strong": "rgba(203, 36, 49, 0.2)",
     "del-gutter": "rgba(203, 36, 49, 0.12)",
+    "moved-bg": "rgba(130, 80, 223, 0.09)",
+    "moved-bg-strong": "rgba(130, 80, 223, 0.22)",
+    "moved-gutter": "rgba(130, 80, 223, 0.13)",
+    "moved-fg": "#6b3fd4",
     "search-match": "rgba(226, 168, 22, 0.3)",
     "search-active": "rgba(247, 148, 30, 0.6)",
     risk: "#c0403f",

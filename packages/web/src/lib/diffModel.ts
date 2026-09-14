@@ -142,6 +142,46 @@ function pairLines(del: DiffRow, add: DiffRow) {
   add.intra = addRanges;
 }
 
+/**
+ * Map each unified row to its position within the hunk's own `removedLines`/
+ * `addedLines` arrays — the same index space `lib/moveDetection.ts`'s
+ * `movedOut`/`movedIn` sets are keyed by. `del` rows appear in `removedLines`
+ * order, `add` rows in `addedLines` order (context rows have neither), so
+ * this is just a running count over `buildRows`' output.
+ */
+export interface MoveIndex {
+  removedIdx: (number | undefined)[];
+  addedIdx: (number | undefined)[];
+}
+
+const MOVE_INDEX_CACHE = new Map<string, MoveIndex>();
+
+export function buildMoveIndex(hunk: Hunk, diffText: string): MoveIndex {
+  const cached = MOVE_INDEX_CACHE.get(hunk.id);
+  if (cached) return cached;
+
+  const rows = buildRows(hunk, diffText);
+  const removedIdx: (number | undefined)[] = [];
+  const addedIdx: (number | undefined)[] = [];
+  let r = 0;
+  let a = 0;
+  for (const row of rows) {
+    if (row.type === "del") {
+      removedIdx.push(r++);
+      addedIdx.push(undefined);
+    } else if (row.type === "add") {
+      removedIdx.push(undefined);
+      addedIdx.push(a++);
+    } else {
+      removedIdx.push(undefined);
+      addedIdx.push(undefined);
+    }
+  }
+  const index = { removedIdx, addedIdx };
+  MOVE_INDEX_CACHE.set(hunk.id, index);
+  return index;
+}
+
 /** One side of a side-by-side row. `null` is a filler cell (nothing there). */
 export interface SplitCell {
   row: DiffRow;

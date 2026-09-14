@@ -131,15 +131,20 @@ function renderContent(
   return out;
 }
 
-function bgFor(type: DiffRow["type"]) {
-  return type === "add" ? "var(--add-bg)" : type === "del" ? "var(--del-bg)" : "transparent";
+/**
+ * `moved` overrides the add/del tint with the same violet used everywhere
+ * else for a code move (see lib/moveDetection.ts + lib/themes.ts) — it never
+ * applies to context lines, which are shared, unmoved code either way.
+ */
+function bgFor(type: DiffRow["type"], moved?: boolean) {
+  if (type === "add") return moved ? "var(--moved-bg)" : "var(--add-bg)";
+  if (type === "del") return moved ? "var(--moved-bg)" : "var(--del-bg)";
+  return "transparent";
 }
-function gutterBgFor(type: DiffRow["type"]) {
-  return type === "add"
-    ? "var(--add-gutter)"
-    : type === "del"
-      ? "var(--del-gutter)"
-      : "transparent";
+function gutterBgFor(type: DiffRow["type"], moved?: boolean) {
+  if (type === "add") return moved ? "var(--moved-gutter)" : "var(--add-gutter)";
+  if (type === "del") return moved ? "var(--moved-gutter)" : "var(--del-gutter)";
+  return "transparent";
 }
 function markerColor(type: DiffRow["type"]) {
   return type === "add" ? "var(--ok)" : type === "del" ? "var(--risk)" : "var(--fg-faint)";
@@ -258,6 +263,8 @@ export interface DiffLineProps extends GutterSelectProps, LineCommentProps {
   onComment?: () => void;
   /** search hits on this row, if a search is running */
   marks?: LineMarks;
+  /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
+  moved?: boolean;
 }
 
 export const DiffLine = memo(function DiffLine({
@@ -272,19 +279,28 @@ export const DiffLine = memo(function DiffLine({
   onSelectEnter,
   selectedOld,
   selectedNew,
+  moved,
 }: DiffLineProps) {
-  const intraBg = row.type === "add" ? "var(--add-bg-strong)" : "var(--del-bg-strong)";
+  const intraBg =
+    row.type === "add"
+      ? moved
+        ? "var(--moved-bg-strong)"
+        : "var(--add-bg-strong)"
+      : moved
+        ? "var(--moved-bg-strong)"
+        : "var(--del-bg-strong)";
   const marker = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
-  const gutterBg = gutterBgFor(row.type);
+  const gutterBg = gutterBgFor(row.type, moved);
   const selected = Boolean(selectedOld || selectedNew);
 
   return (
     <div
       className="diff-line group relative"
       data-type={row.type}
+      data-moved={moved ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       style={{
-        background: bgFor(row.type),
+        background: bgFor(row.type, moved),
         ["--intra-bg" as string]: intraBg,
         boxShadow: selected ? "inset 0 0 0 9999px var(--accent-soft)" : undefined,
       }}
@@ -333,6 +349,8 @@ export interface SplitHalfProps extends LineCommentProps {
   selected?: boolean;
   onSelectDown?: GutterSelectProps["onSelectDown"];
   onSelectEnter?: GutterSelectProps["onSelectEnter"];
+  /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
+  moved?: boolean;
 }
 
 /** One side of a side-by-side row; `row === null` renders an empty filler. */
@@ -348,6 +366,7 @@ function SplitHalf({
   selected,
   onSelectDown,
   onSelectEnter,
+  moved,
 }: SplitHalfProps) {
   if (!row) {
     return (
@@ -361,15 +380,23 @@ function SplitHalf({
       </div>
     );
   }
-  const intraBg = row.type === "add" ? "var(--add-bg-strong)" : "var(--del-bg-strong)";
+  const intraBg =
+    row.type === "add"
+      ? moved
+        ? "var(--moved-bg-strong)"
+        : "var(--add-bg-strong)"
+      : moved
+        ? "var(--moved-bg-strong)"
+        : "var(--del-bg-strong)";
   const marker = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
   return (
     <div
       className="diff-half group/half"
       data-type={row.type}
+      data-moved={moved ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       style={{
-        background: bgFor(row.type),
+        background: bgFor(row.type, moved),
         ["--intra-bg" as string]: intraBg,
         boxShadow: selected ? "inset 0 0 0 9999px var(--accent-soft)" : undefined,
       }}
@@ -378,7 +405,7 @@ function SplitHalf({
         <Gutter
           number={side === "old" ? row.oldNumber : row.newNumber}
           side={side}
-          background={gutterBgFor(row.type)}
+          background={gutterBgFor(row.type, moved)}
           selected={selected}
           onSelectDown={onSelectDown}
           onSelectEnter={onSelectEnter}
@@ -419,6 +446,14 @@ export interface SplitDiffLineProps {
   selectedRight?: boolean;
   onSelectDown?: GutterSelectProps["onSelectDown"];
   onSelectEnter?: GutterSelectProps["onSelectEnter"];
+  /**
+   * Move status is per-line (see lib/moveDetection.ts's `HunkMoves`), so the
+   * two halves take it independently: `left` is a del row (checked against
+   * `movedOut`), `right` is an add row (checked against `movedIn`) — a mixed
+   * hunk can have one side moved and not the other.
+   */
+  movedLeft?: boolean;
+  movedRight?: boolean;
 }
 
 export const SplitDiffLine = memo(function SplitDiffLine({
@@ -440,6 +475,8 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   selectedRight,
   onSelectDown,
   onSelectEnter,
+  movedLeft,
+  movedRight,
 }: SplitDiffLineProps) {
   return (
     <div className="diff-split group flex">
@@ -455,6 +492,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         selected={selectedLeft}
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}
+        moved={movedLeft}
       />
       <div className="diff-split-divider" />
       <SplitHalf
@@ -469,6 +507,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         selected={selectedRight}
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}
+        moved={movedRight}
       />
     </div>
   );

@@ -39,6 +39,11 @@
     --del-bg-strong: rgba(248, 81, 73, 0.26);
     --del-gutter: rgba(248, 81, 73, 0.16);
 
+    --moved-bg: rgba(163, 113, 247, 0.1);
+    --moved-bg-strong: rgba(163, 113, 247, 0.26);
+    --moved-gutter: rgba(163, 113, 247, 0.16);
+    --moved-fg: #c4a7ff;
+
     --risk: #f0787a;
     --risk-soft: rgba(240, 120, 122, 0.13);
     --warn: #e3b341;
@@ -88,6 +93,11 @@
       --del-bg: rgba(203, 36, 49, 0.08);
       --del-bg-strong: rgba(203, 36, 49, 0.2);
       --del-gutter: rgba(203, 36, 49, 0.12);
+
+      --moved-bg: rgba(130, 80, 223, 0.09);
+      --moved-bg-strong: rgba(130, 80, 223, 0.22);
+      --moved-gutter: rgba(130, 80, 223, 0.13);
+      --moved-fg: #6b3fd4;
 
       --risk: #c0403f;
       --risk-soft: rgba(192, 64, 63, 0.1);
@@ -339,6 +349,13 @@
   }
   .diff-nowrap [data-type="del"] > .diff-fixed {
     background-image: linear-gradient(var(--del-bg), var(--del-bg));
+  }
+  /* Moved add/del rows: same fixed-column pinning, violet tint instead. */
+  .diff-nowrap [data-type="add"][data-moved="true"] > .diff-fixed {
+    background-image: linear-gradient(var(--moved-bg), var(--moved-bg));
+  }
+  .diff-nowrap [data-type="del"][data-moved="true"] > .diff-fixed {
+    background-image: linear-gradient(var(--moved-bg), var(--moved-bg));
   }
   /* file / hunk header rows span the whole scroll width when wrap is off, so
      pin their left half — otherwise the viewed checkbox scrolls out of reach */

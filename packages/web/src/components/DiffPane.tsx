@@ -1,10 +1,18 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
-import { lineRangeRef } from "../lib/chatRefs";
+import { baseName, lineRangeRef } from "../lib/chatRefs";
 import { groupComments, lineAnchor } from "../lib/comments";
-import { buildRows, buildSplitRows, hunkLabel, type CharRange } from "../lib/diffModel";
+import {
+  buildMoveIndex,
+  buildRows,
+  buildSplitRows,
+  hunkLabel,
+  type CharRange,
+  type DiffRow,
+} from "../lib/diffModel";
 import { lineKey, type SearchMatch } from "../lib/diffSearch";
+import { detectMoves, type HunkMoves } from "../lib/moveDetection";
 import {
   mergeStickyIntoRange,
   stickyHeadersFor,
@@ -256,6 +264,30 @@ export function DiffPane({
 
   const hunks = useMemo(() => entries.map((e) => e.hunk), [entries]);
   const tokens = useTokensForHunks(hunks, detail.diff, theme);
+
+  // Moves are detected over every file of the revision (a move can cross
+  // file boundaries), not just the entries currently shown in this pane.
+  const moves = useMemo(() => detectMoves(detail.files.files), [detail.files]);
+
+  /** Whether one unified row (identified by its index into `buildRows`) is
+   *  part of a moved run, per lib/moveDetection.ts's per-line granularity. */
+  const movedAt = useCallback(
+    (hunkId: string, hunk: Hunk, unifiedIdx: number, type: DiffRow["type"]): boolean => {
+      const hunkMoves: HunkMoves | undefined = moves.get(hunkId);
+      if (!hunkMoves) return false;
+      const moveIndex = buildMoveIndex(hunk, detail.diff);
+      if (type === "del") {
+        const idx = moveIndex.removedIdx[unifiedIdx];
+        return idx !== undefined && hunkMoves.movedOut.has(idx);
+      }
+      if (type === "add") {
+        const idx = moveIndex.addedIdx[unifiedIdx];
+        return idx !== undefined && hunkMoves.movedIn.has(idx);
+      }
+      return false;
+    },
+    [moves, detail.diff],
+  );
 
   const grouped = useMemo(() => groupComments(drafts), [drafts]);
 
@@ -1167,6 +1199,40 @@ export function DiffPane({
               new
             </span>
           ) : null}
+          {(() => {
+            const hunkMoves = moves.get(row.hunkId);
+            if (!hunkMoves || hunkMoves.counterparts.length === 0) return null;
+            const hasOut = hunkMoves.counterparts.some((c) => c.direction === "out");
+            const hasIn = hunkMoves.counterparts.some((c) => c.direction === "in");
+            const arrow = hasOut && hasIn ? "↔" : hasOut ? "→" : "←";
+            // First-occurrence counterpart names the badge; the title lists all of them.
+            const label = baseName(hunkMoves.counterparts[0].path);
+            const reachable = hunkMoves.counterparts.find((c) =>
+              entries.some((en) => en.hunk.id === c.hunkId),
+            );
+            const title = hunkMoves.counterparts
+              .map((c) => `${c.direction === "out" ? "moved to" : "moved from"} ${c.path}`)
+              .join("; ");
+            return (
+              <button
+                type="button"
+                data-testid={`moved-badge-${row.hunkId}`}
+                className="chip"
+                style={{
+                  background: "var(--moved-bg)",
+                  color: "var(--moved-fg)",
+                  cursor: reachable ? "pointer" : "default",
+                }}
+                title={title}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (reachable) onFocusHunk(reachable.hunkId);
+                }}
+              >
+                moved {arrow} {label}
+              </button>
+            );
+          })()}
           </span>
           <span className="ml-auto font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
             {row.hunkId.slice(0, 8)}
@@ -1233,6 +1299,10 @@ export function DiffPane({
             onQuote ? (side, line, shift) => startSelect(path, side, line, shift) : undefined
           }
           onSelectEnter={onQuote ? (side, line) => extendSelect(path, side, line) : undefined}
+          movedLeft={left ? movedAt(row.hunkId, row.entry.hunk, left.index, left.row.type) : false}
+          movedRight={
+            right ? movedAt(row.hunkId, row.entry.hunk, right.index, right.row.type) : false
+          }
         />
       );
     }
@@ -1248,6 +1318,7 @@ export function DiffPane({
         row={line}
         tokens={tokens[row.hunkId]?.[row.lineIdx]}
         marks={marksFor(row.hunkId, row.lineIdx)}
+        moved={movedAt(row.hunkId, row.entry.hunk, row.lineIdx, line.type)}
         comments={anchor ? grouped.byLine.get(anchor) : undefined}
         expanded={anchor ? expandedAnchors.has(anchor) : false}
         onToggleComments={anchor ? () => toggleAnchor(anchor) : undefined}
