@@ -14,6 +14,7 @@ import {
 } from "../src/config.js";
 import {
   checkClaude,
+  checkCtags,
   checkGh,
   checkNode,
   checkStateDir,
@@ -79,6 +80,7 @@ const HEALTHY = {
   "gh --version": { stdout: "gh version 2.63.2 (2024-12-05)" },
   "gh auth status": { stdout: "github.com\n  ✓ Logged in to github.com account octocat (keyring)" },
   "claude --version": { stdout: "2.0.14 (Claude Code)" },
+  "ctags --version": { stdout: "Universal Ctags 6.1.0, Copyright (C) 2015-2023 Universal Ctags Team" },
 };
 
 /* ------------------------------------------------------------ skip decision */
@@ -164,6 +166,26 @@ describe("environment checks", () => {
     expect(checkClaude(fakeExec(HEALTHY))).toMatchObject({
       status: "pass",
       detail: "2.0.14 (Claude Code)",
+    });
+  });
+
+  it("only warns when ctags is missing — it is optional", () => {
+    const r = checkCtags(fakeExec({}));
+    expect(r.status).toBe("warn");
+    expect(r.detail).toBe("not found");
+    expect(r.hint).toMatch(/universal-ctags/);
+  });
+
+  it("warns on macOS's BSD ctags — a ctags binary alone proves nothing", () => {
+    const r = checkCtags(fakeExec({ "ctags --version": { stdout: "usage: ctags [-BFTaduwvx] ..." } }));
+    expect(r.status).toBe("warn");
+    expect(r.detail).toBe("found BSD ctags, not Universal");
+  });
+
+  it("passes ctags on a Universal Ctags banner", () => {
+    expect(checkCtags(fakeExec(HEALTHY))).toMatchObject({
+      status: "pass",
+      detail: "Universal Ctags 6.1.0, Copyright (C) 2015-2023 Universal Ctags Team",
     });
   });
 

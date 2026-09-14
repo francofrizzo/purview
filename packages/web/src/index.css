@@ -268,6 +268,15 @@
     border-radius: 2px;
   }
 
+  /* Cmd/ctrl+click "go to definition" affordance: held down, the code column
+     hints it's clickable. `.cmd-held` is toggled on the scroller by DiffPane's
+     keydown/keyup listener — cheap, and doesn't touch virtualized rows at all. */
+  .cmd-held .diff-code:hover {
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 2px;
+  }
+
   /* --- search marks ---
      Backgrounds only, so shiki's token colors and the word-diff split both
      survive underneath; the active hit adds a ring so it still reads as the

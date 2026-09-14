@@ -64,7 +64,7 @@ export function colorsEnabled(
 export type CheckStatus = "pass" | "warn" | "fail";
 
 export interface CheckResult {
-  id: "node" | "gh" | "claude" | "statedir";
+  id: "node" | "gh" | "claude" | "ctags" | "statedir";
   label: string;
   status: CheckStatus;
   /** One-line result detail, e.g. the detected `gh` login or version. */
@@ -164,6 +164,32 @@ export function checkClaude(exec: Exec): CheckResult {
     status: "pass",
     detail: r.stdout.trim().split("\n")[0] || "ok",
   };
+}
+
+/**
+ * Soft, like `claude`: without Universal Ctags, cmd+click go-to-definition
+ * still works via a text-search fallback, just less precisely. The version
+ * banner is the only reliable signal — macOS ships the old BSD ctags at
+ * `/usr/bin/ctags`, which errors on `--version`, so "a ctags exists" proves
+ * nothing.
+ */
+export function checkCtags(exec: Exec): CheckResult {
+  const label = "universal-ctags available";
+  const r = exec("ctags", ["--version"]);
+  const banner = r.stdout.split("\n")[0] ?? "";
+  if (!r.ok || !banner.includes("Universal Ctags")) {
+    // BSD ctags exits non-zero on `--version` with a usage error — any output
+    // at all means *a* ctags ran, just not the one we want.
+    const ranSomething = r.stdout.trim() !== "" || r.stderr.includes("usage");
+    return {
+      id: "ctags",
+      label,
+      status: "warn",
+      detail: ranSomething ? "found BSD ctags, not Universal" : "not found",
+      hint: "Optional. Enables precise go-to-definition: brew install universal-ctags",
+    };
+  }
+  return { id: "ctags", label, status: "pass", detail: banner };
 }
 
 /** The state dir must be creatable and writable — everything persists there. */
@@ -360,6 +386,7 @@ export async function runOnboarding(deps: OnboardingDeps): Promise<OnboardingRes
   run(() => checkNode(deps.nodeVersion));
   const gh = run(() => checkGh(exec));
   const claude = run(() => checkClaude(exec));
+  run(() => checkCtags(exec));
   run(() => checkStateDir(root));
 
   io.write("\n");

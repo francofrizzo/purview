@@ -33,7 +33,14 @@ import { useSettings, type DiffViewMode } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 import { ChangedBadge } from "./Chips";
 import { QuoteButton } from "./ChatPanel";
-import { COMMENT_COL_WIDTH, DiffLine, SplitDiffLine, type LineMarks, type LineSide } from "./DiffLine";
+import {
+  COMMENT_COL_WIDTH,
+  DiffLine,
+  SplitDiffLine,
+  type LineMarks,
+  type LineSide,
+  type OnDefinitionClick,
+} from "./DiffLine";
 import { DiffOfDiffs } from "./DiffOfDiffs";
 import type { CommentTarget } from "./Drafts";
 import { CommentBubble, InlineCommentList, type InlineCommentActions } from "./InlineComments";
@@ -111,6 +118,16 @@ export interface DiffPaneProps {
    * {@link COLLAPSE_PAST}px, false again only under {@link EXPAND_UNDER}px.
    */
   onScrolledAway?: (scrolled: boolean) => void;
+  /** Cmd/ctrl+click "go to definition" on an identifier — see DiffLine.tsx. */
+  onDefinitionClick?: OnDefinitionClick;
+  /**
+   * Scroll/focus request from outside (a "go to definition" candidate that
+   * turned out to already be in this diff). A new object — even for the same
+   * hunk — triggers another jump; `hunkId` must already be part of `entries`
+   * (the host is responsible for switching unit/file first, same as a search
+   * visit does).
+   */
+  jumpToHunk?: { hunkId: string; nonce: number } | null;
 }
 
 /** Past this many px from the top, the host header may collapse. */
@@ -171,6 +188,8 @@ export function DiffPane({
   searchMarks,
   activeMatch,
   onScrolledAway,
+  onDefinitionClick,
+  jumpToHunk,
 }: DiffPaneProps) {
   const { appearance, settings } = useSettings();
   const theme = shikiThemeFor(appearance.theme);
@@ -197,6 +216,28 @@ export function DiffPane({
   useEffect(() => {
     onNarrowChange?.(!wide);
   }, [wide, onNarrowChange]);
+
+  // Cmd/ctrl+click "go to definition" affordance: toggle a class on the
+  // scroller while the modifier is held, rather than tracking hover per row —
+  // one listener pair for the whole pane, virtualized rows untouched.
+  useEffect(() => {
+    if (!onDefinitionClick) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey) el.classList.add("cmd-held");
+    };
+    const clear = () => el.classList.remove("cmd-held");
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", clear);
+    window.addEventListener("blur", clear);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", clear);
+      window.removeEventListener("blur", clear);
+      clear();
+    };
+  }, [onDefinitionClick]);
 
   // Two zero-cost sentinels pinned to the top of the scrolled content, watched
   // against the scroller itself: the tall one stops intersecting once we are
@@ -766,6 +807,25 @@ export function DiffPane({
     return () => clearTimeout(t);
   }, [flashKey]);
 
+  // "Go to definition" landed on a hunk already in this diff: scroll/focus it
+  // instead of opening a popover. Mirrors the search-visit effect above, but
+  // is its own mechanism — it must not entangle with an active search. Keyed
+  // by `nonce` so re-requesting the same hunk (e.g. clicking the "in this
+  // diff" marker for a candidate the reader already jumped to) still jumps.
+  const jumpedNonce = useRef<number | null>(null);
+  useEffect(() => {
+    if (!jumpToHunk || jumpedNonce.current === jumpToHunk.nonce) return;
+    const idx = hunkRowIndex.get(jumpToHunk.hunkId);
+    if (idx === undefined) return; // entries haven't caught up yet; effect reruns when they do
+    jumpedNonce.current = jumpToHunk.nonce;
+    onFocusHunk(jumpToHunk.hunkId);
+    setFlashKey(rows[idx].key);
+    const frame = requestAnimationFrame(() =>
+      virtualizer.scrollToIndex(idx, { align: "center" }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [jumpToHunk, hunkRowIndex, rows, virtualizer, onFocusHunk]);
+
   /** Search hits on one rendered row, plus the active one if it lives here. */
   const marksFor = useCallback(
     (hunkId: string, lineIdx: number): LineMarks | undefined => {
@@ -1303,6 +1363,7 @@ export function DiffPane({
           movedRight={
             right ? movedAt(row.hunkId, row.entry.hunk, right.index, right.row.type) : false
           }
+          onDefinitionClick={onDefinitionClick}
         />
       );
     }
@@ -1336,6 +1397,7 @@ export function DiffPane({
             : undefined
         }
         onSelectEnter={onQuote ? (s, l) => extendSelect(row.entry.file.path, s, l) : undefined}
+        onDefinitionClick={onDefinitionClick}
       />
     );
   }

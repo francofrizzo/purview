@@ -1,8 +1,25 @@
-import { memo, type ReactNode } from "react";
+import { memo, type MouseEvent, type ReactNode } from "react";
 import type { DraftComment } from "../api/types";
 import type { Tok } from "../lib/highlight";
 import type { CharRange, DiffRow } from "../lib/diffModel";
+import { identifierAtPoint } from "../lib/identifierAt";
 import { CommentBubble } from "./InlineComments";
+
+/**
+ * Cmd/ctrl+click "go to definition": resolve the identifier under the click
+ * point (see lib/identifierAt.ts) and hand it up. A plain click, or a
+ * cmd+click that misses an identifier, is left alone — this must never
+ * interfere with normal text selection or the comment affordances.
+ */
+export type OnDefinitionClick = (symbol: string, x: number, y: number) => void;
+
+function handleDefinitionClick(e: MouseEvent<HTMLSpanElement>, onDefinitionClick?: OnDefinitionClick) {
+  if (!onDefinitionClick || !(e.metaKey || e.ctrlKey)) return;
+  const symbol = identifierAtPoint(e.currentTarget, e.clientX, e.clientY);
+  if (!symbol) return;
+  e.preventDefault();
+  onDefinitionClick(symbol, e.clientX, e.clientY);
+}
 
 function inRange(pos: number, ranges: CharRange[] | undefined): boolean {
   if (!ranges) return false;
@@ -266,6 +283,7 @@ export interface DiffLineProps extends GutterSelectProps, LineCommentProps {
   marks?: LineMarks;
   /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
   moved?: boolean;
+  onDefinitionClick?: OnDefinitionClick;
 }
 
 export const DiffLine = memo(function DiffLine({
@@ -281,6 +299,7 @@ export const DiffLine = memo(function DiffLine({
   selectedOld,
   selectedNew,
   moved,
+  onDefinitionClick,
 }: DiffLineProps) {
   const intraBg =
     row.type === "add"
@@ -333,7 +352,10 @@ export const DiffLine = memo(function DiffLine({
           {marker}
         </span>
       </span>
-      <span className="diff-code min-w-0 flex-1 pr-4">
+      <span
+        className="diff-code min-w-0 flex-1 pr-4"
+        onClick={(e) => handleDefinitionClick(e, onDefinitionClick)}
+      >
         {renderContent(row.content, tokens, row.intra, marks)}
       </span>
     </div>
@@ -352,6 +374,7 @@ export interface SplitHalfProps extends LineCommentProps {
   onSelectEnter?: GutterSelectProps["onSelectEnter"];
   /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
   moved?: boolean;
+  onDefinitionClick?: OnDefinitionClick;
 }
 
 /** One side of a side-by-side row; `row === null` renders an empty filler. */
@@ -368,6 +391,7 @@ function SplitHalf({
   onSelectDown,
   onSelectEnter,
   moved,
+  onDefinitionClick,
 }: SplitHalfProps) {
   if (!row) {
     return (
@@ -421,7 +445,10 @@ function SplitHalf({
           {marker}
         </span>
       </span>
-      <span className="diff-code min-w-0 flex-1 pr-3">
+      <span
+        className="diff-code min-w-0 flex-1 pr-3"
+        onClick={(e) => handleDefinitionClick(e, onDefinitionClick)}
+      >
         {renderContent(row.content, tokens, row.intra, marks)}
       </span>
     </div>
@@ -455,6 +482,7 @@ export interface SplitDiffLineProps {
    */
   movedLeft?: boolean;
   movedRight?: boolean;
+  onDefinitionClick?: OnDefinitionClick;
 }
 
 export const SplitDiffLine = memo(function SplitDiffLine({
@@ -478,6 +506,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   onSelectEnter,
   movedLeft,
   movedRight,
+  onDefinitionClick,
 }: SplitDiffLineProps) {
   return (
     <div className="diff-split group flex">
@@ -494,6 +523,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}
         moved={movedLeft}
+        onDefinitionClick={onDefinitionClick}
       />
       <div className="diff-split-divider" />
       <SplitHalf
@@ -509,6 +539,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}
         moved={movedRight}
+        onDefinitionClick={onDefinitionClick}
       />
     </div>
   );

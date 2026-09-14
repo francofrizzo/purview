@@ -64,6 +64,13 @@ export const ConfigSchema = z.object({
    * not the same thing as `null`.
    */
   analysisEffort: AnalysisEffortSchema.nullable().default("medium"),
+  /**
+   * Editor URL scheme for "open in editor" links from a definition peek (see
+   * definitions.ts): `zed://file/<abs-path>:<line>` or
+   * `vscode://file/<abs-path>:<line>`. Not layered like the model settings —
+   * it is a machine preference, not something a repo or team would pin.
+   */
+  editor: z.enum(["zed", "vscode"]).default("zed"),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;

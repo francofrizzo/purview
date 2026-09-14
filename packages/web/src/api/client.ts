@@ -10,6 +10,7 @@ import type {
   ChatModelResult,
   ChatState,
   ClaudeModel,
+  DefinitionResult,
   GlobalConfig,
   GlobalConfigPatch,
   ChatStreamEvent,
@@ -513,6 +514,14 @@ export const api = {
     if (MOCK) return mockApi.diffOfDiffs(key, hunkId);
     return request<DiffOfDiffs>(
       `/prs/${encodeKey(key)}/hunks/${encodeURIComponent(hunkId)}/diff-of-diffs`,
+    );
+  },
+
+  /** Cmd+click "go to definition" — resolved against the PR's local checkout. */
+  async getDefinition(key: string, symbol: string): Promise<DefinitionResult> {
+    if (MOCK) return mockApi.getDefinition(key, symbol);
+    return request<DefinitionResult>(
+      `/prs/${encodeKey(key)}/definition?symbol=${encodeURIComponent(symbol)}`,
     );
   },
 

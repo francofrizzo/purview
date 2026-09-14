@@ -24,6 +24,7 @@ import {
   useEditComment,
   useDiscardPendingReview,
   useExportAnalysis,
+  useGlobalConfig,
   useImportAnalysis,
   useImportAnalysisFromPr,
   useShareAnalysisToPr,
@@ -39,9 +40,12 @@ import {
   useSubmitReview,
   useSync,
 } from "../api/hooks";
+import { api } from "../api/client";
+import { errorText } from "../api/errors";
 import { AnalysisBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
+import { DefinitionPopover } from "../components/DefinitionPopover";
 import {
   DiffPane,
   DiffViewToggle,
@@ -78,8 +82,10 @@ import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
 import { DiffSearchBar } from "../components/DiffSearchBar";
 import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
+import { findInDiffHunk } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
+import type { DefinitionResult } from "../api/types";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
@@ -179,6 +185,24 @@ export function PrView() {
   const { viewMode, setViewMode, toggleViewMode, wrap, setWrap, toggleWrap } = useDiffViewPrefs();
   const [narrow, setNarrow] = useState(false);
   const showNarrowNote = narrow && viewMode === "split";
+
+  // --- go to definition ---------------------------------------------------
+  const globalConfig = useGlobalConfig();
+  const editor = globalConfig.data?.editor ?? "zed";
+  const [defPopover, setDefPopover] = useState<{
+    x: number;
+    y: number;
+    symbol: string;
+    status: "loading" | "result" | "error";
+    result?: DefinitionResult;
+    error?: string;
+  } | null>(null);
+  // A new object (even for a repeat target) is what re-triggers DiffPane's
+  // scroll effect — see its own jumpToHunk handling.
+  const [jumpToHunk, setJumpToHunk] = useState<{ hunkId: string; nonce: number } | null>(null);
+  // Guards a slow lookup from overwriting a newer one, or from landing after
+  // the reader has already closed the popover and clicked something else.
+  const defRequestId = useRef(0);
 
   // --- header collapse ---------------------------------------------------
   // Once the reader is into the diff, the prose above it has done its job and
@@ -326,6 +350,76 @@ export function PrView() {
     },
     [search],
   );
+
+  /**
+   * Switch to whatever unit/file shows `hunkId` (mirroring how visiting a
+   * search match does it) and ask DiffPane to scroll/focus it. Used both for
+   * the "first candidate is already in this diff" auto-jump and for clicking
+   * an "in this diff" marker in the popover's candidate list.
+   */
+  const jumpToDiffHunk = useCallback(
+    (hunkId: string, path: string) => {
+      if (tab === "units") {
+        const unit = unitForHunk(units, hunkId);
+        if (unit) {
+          if (unit.id !== selectedUnitId) setSelectedUnitId(unit.id);
+        } else {
+          // No unit claims this hunk — only reachable through the files tab.
+          setTab("files");
+          setSelectedPath(path);
+        }
+      } else if (selectedPath !== path) {
+        setSelectedPath(path);
+      }
+      setJumpToHunk({ hunkId, nonce: Date.now() });
+      setDefPopover(null);
+    },
+    [tab, units, selectedUnitId, selectedPath],
+  );
+
+  /** Cmd+click "go to definition" — see DiffLine.tsx / lib/identifierAt.ts. */
+  const handleDefinitionClick = useCallback(
+    (symbol: string, x: number, y: number) => {
+      if (!detail) return;
+      const reqId = ++defRequestId.current;
+      setDefPopover({ x, y, symbol, status: "loading" });
+      api
+        .getDefinition(prKey, symbol)
+        .then((result) => {
+          if (defRequestId.current !== reqId) return; // superseded by a later click
+          if (result.checkout && result.candidates.length > 0) {
+            const first = result.candidates[0];
+            const inDiff = findInDiffHunk(detail.files, first.path, first.line);
+            if (inDiff) {
+              jumpToDiffHunk(inDiff.hunkId, first.path);
+              return;
+            }
+          }
+          setDefPopover((cur) =>
+            cur && cur.symbol === symbol ? { ...cur, status: "result", result } : cur,
+          );
+        })
+        .catch((err) => {
+          if (defRequestId.current !== reqId) return;
+          setDefPopover((cur) =>
+            cur && cur.symbol === symbol ? { ...cur, status: "error", error: errorText(err) } : cur,
+          );
+        });
+    },
+    [prKey, detail, jumpToDiffHunk],
+  );
+
+  // Scrolling the diff while the popover is open reads as "moving on" — the
+  // anchor point it was positioned against is gone anyway.
+  const defPopoverOpen = Boolean(defPopover);
+  useEffect(() => {
+    if (!defPopoverOpen) return;
+    const el = mainRef.current?.querySelector<HTMLElement>("[data-diff-scroller]");
+    if (!el) return;
+    const onScroll = () => setDefPopover(null);
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [defPopoverOpen]);
 
   // `c` toggles the chat, `s` the summary overlay, `/` opens the find bar — all
   // single-letter, all suppressed while typing. Cmd/Ctrl+F is taken over from the browser on
@@ -950,6 +1044,8 @@ export function PrView() {
               searchMarks={search.marksByLine}
               activeMatch={search.current}
               onScrolledAway={onScrolledAway}
+              onDefinitionClick={handleDefinitionClick}
+              jumpToHunk={jumpToHunk}
               showFileRows={tab === "units"}
               emptyMessage={
                 tab === "units"
@@ -1010,6 +1106,21 @@ export function PrView() {
           />
         ) : null}
       </div>
+
+      {defPopover ? (
+        <DefinitionPopover
+          x={defPopover.x}
+          y={defPopover.y}
+          symbol={defPopover.symbol}
+          status={defPopover.status}
+          result={defPopover.result}
+          error={defPopover.error}
+          editor={editor}
+          files={detail.files}
+          onJumpInDiff={jumpToDiffHunk}
+          onClose={() => setDefPopover(null)}
+        />
+      ) : null}
     </div>
   );
 }

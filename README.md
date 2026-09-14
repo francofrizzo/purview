@@ -18,6 +18,9 @@ Two halves that couple through files on disk, not an API:
   write goes through it; the app never shells out to `git`.
 - [`claude`](https://claude.com/claude-code), signed in, for the automatic analysis and the
   review chat (see below). Everything else works without it.
+- Optional: [`universal-ctags`](https://github.com/universal-ctags/ctags) (`brew install
+  universal-ctags`) — enables precise cmd+click "go to definition" in the diff viewer; without
+  it, go-to-definition falls back to a plain text search.
 
 ## Install
 

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { errorText } from "../api/errors";
 import { useGlobalConfig, useSaveGlobalConfig } from "../api/hooks";
-import { ANALYSIS_EFFORTS, CLAUDE_MODELS } from "../api/types";
-import type { AnalysisEffort, ClaudeModel } from "../api/types";
+import { ANALYSIS_EFFORTS, CLAUDE_MODELS, EDITORS } from "../api/types";
+import type { AnalysisEffort, ClaudeModel, Editor } from "../api/types";
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
 import { Modal, useCloseModal } from "../components/Modal";
 import { IconSettings } from "../components/icons";
@@ -55,6 +55,8 @@ export function SettingsModal() {
       </Section>
 
       <ClaudeSection />
+
+      <EditorSection />
 
       <Section title="Diff defaults" hint="The same preferences the d / w keys toggle while reviewing.">
         <div className="flex flex-wrap items-center gap-6">
@@ -465,6 +467,39 @@ function ThemePreview() {
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * Which editor "open in editor" links (in the go-to-definition peek popover)
+ * use. A machine preference, not layered like the Claude settings above.
+ */
+function EditorSection() {
+  const config = useGlobalConfig();
+  const save = useSaveGlobalConfig();
+  const EDITOR_LABELS: Record<Editor, string> = { zed: "Zed", vscode: "VS Code" };
+
+  return (
+    <Section
+      title="Editor"
+      hint="Which app 'open in editor' links use, from the go-to-definition peek popover (cmd+click an identifier in the diff)."
+    >
+      {config.isLoading ? (
+        <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
+          Loading…
+        </p>
+      ) : config.error || !config.data ? (
+        <p className="text-2xs" style={{ color: "var(--risk)" }}>
+          {errorText(config.error) || "Could not read the server's settings."}
+        </p>
+      ) : (
+        <Segmented
+          value={config.data.editor}
+          options={EDITORS.map((e) => ({ value: e, label: EDITOR_LABELS[e] }))}
+          onChange={(v) => save.mutate({ editor: v as Editor })}
+        />
+      )}
+    </Section>
   );
 }
 

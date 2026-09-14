@@ -311,12 +311,18 @@ export interface RepoConfigPatch {
   chatInstructions?: string;
 }
 
+/** URL scheme "open in editor" links use; not layered, see server's config.ts. */
+export type Editor = "zed" | "vscode";
+
+export const EDITORS: Editor[] = ["zed", "vscode"];
+
 /** GET/PUT /api/config — the machine-wide layer. */
 export interface GlobalConfig {
   /** null = inherit, which at this layer means `defaults` */
   analysisModel: ClaudeModel | null;
   chatModel: ClaudeModel | null;
   analysisEffort: AnalysisEffort | null;
+  editor: Editor;
   defaults: { analysisModel: ClaudeModel; chatModel: ClaudeModel; analysisEffort: AnalysisEffort };
 }
 
@@ -324,6 +330,7 @@ export interface GlobalConfigPatch {
   analysisModel?: ClaudeModel | null;
   chatModel?: ClaudeModel | null;
   analysisEffort?: AnalysisEffort | null;
+  editor?: Editor;
 }
 
 /** GET /api/prs/:key */
@@ -650,3 +657,33 @@ export interface SharedAnalysisProbe {
   sameCommit?: boolean;
   error?: string;
 }
+
+/* ------------------------------------------------------- go to definition */
+
+/**
+ * GET /api/prs/:key/definition?symbol=<name> — cmd+click "go to definition"
+ * in the diff viewer. `engine` says which tier answered: `ctags` when
+ * universal-ctags is on the server's PATH, `grep` for the heuristic fallback
+ * (see packages/server/src/definitions.ts) — the web shows a quiet hint when
+ * it's the fallback.
+ */
+export interface DefinitionSnippet {
+  /** 1-based */
+  startLine: number;
+  lines: string[];
+}
+
+export interface DefinitionCandidate {
+  /** repo-relative */
+  path: string;
+  absPath: string;
+  /** 1-based */
+  line: number;
+  kind?: string;
+  signature?: string;
+  snippet: DefinitionSnippet;
+}
+
+export type DefinitionResult =
+  | { checkout: false; reason: string }
+  | { checkout: true; engine: "ctags" | "grep"; candidates: DefinitionCandidate[] };

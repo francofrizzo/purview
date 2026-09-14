@@ -1049,6 +1049,7 @@ describe("/api/config", () => {
       analysisModel: null,
       chatModel: null,
       analysisEffort: "medium",
+      editor: "zed",
       defaults: { analysisModel: "sonnet", chatModel: "sonnet", analysisEffort: "medium" },
     });
   });
