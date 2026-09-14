@@ -39,7 +39,12 @@ export function PrList() {
     addPr.mutate(value, {
       onSuccess: (entry) => {
         setUrl("");
-        if (entry?.key) navigate(`/pr/${entry.key}`);
+        // The shared-analysis note rides along so the PR view can say the
+        // analysis was imported rather than looking suspiciously instant.
+        if (entry?.key)
+          navigate(`/pr/${entry.key}`, {
+            state: entry.sharedAnalysis ? { sharedAnalysis: entry.sharedAnalysis } : undefined,
+          });
       },
     });
   };

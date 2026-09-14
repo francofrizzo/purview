@@ -163,6 +163,30 @@ export function MigrationReportPanel({
   );
 }
 
+/**
+ * Shown once, right after adding a PR whose analysis was imported for free
+ * from a teammate's shared comment — without this the import is invisible
+ * and indistinguishable from a suspiciously instant analysis run.
+ */
+export function AutoImportedAnalysisPanel({
+  author,
+  postedAt,
+  onDismiss,
+}: {
+  author?: string;
+  postedAt: string;
+  onDismiss: () => void;
+}) {
+  return (
+    <DismissiblePanel title="analysis imported" onDismiss={onDismiss}>
+      <div style={{ color: "var(--fg-muted)" }}>
+        A shared analysis{author ? ` by ${author}` : ""} was found on the PR (posted{" "}
+        {new Date(postedAt).toLocaleString()}) and imported — no analysis run was needed.
+      </div>
+    </DismissiblePanel>
+  );
+}
+
 export function SyncResultPanel({
   result,
   onDismiss,

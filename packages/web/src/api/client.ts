@@ -38,6 +38,7 @@ import type {
   ReviewStatus,
   ReviewUnit,
   ShareAnalysisResult,
+  SharedAnalysisNote,
   SharedAnalysisProbe,
   Staleness,
   SubmitReviewResult,
@@ -411,12 +412,16 @@ export const api = {
     }));
   },
 
-  async addPr(url: string): Promise<PrListEntry> {
+  async addPr(url: string): Promise<PrListEntry & { sharedAnalysis?: SharedAnalysisNote | null }> {
     if (MOCK) return mockApi.addPr(url);
-    const res = await post<{ key: string; created: boolean; revision: number; state: WireState }>(
-      "/prs",
-      { url },
-    );
+    const res = await post<{
+      key: string;
+      created: boolean;
+      revision: number;
+      state: WireState;
+      /** present when the add imported a teammate's shared analysis instead of analyzing */
+      sharedAnalysis?: SharedAnalysisNote | null;
+    }>("/prs", { url });
     const state = adaptState(res.state);
     return {
       key: res.key,
@@ -432,6 +437,7 @@ export const api = {
       reviewDecision: null,
       addedAt: new Date().toISOString(),
       archived: false,
+      sharedAnalysis: res.sharedAnalysis ?? null,
     };
   },
 

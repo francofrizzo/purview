@@ -615,6 +615,12 @@ export interface ImportReviewsResult {
 /* --------------------------------------------- PR-comment analysis sharing */
 
 /** POST /api/prs/:key/analysis/share-to-pr */
+/** Rides on POST /api/prs when adding imported a shared analysis for free. */
+export interface SharedAnalysisNote {
+  author?: string;
+  postedAt: string;
+}
+
 export interface ShareAnalysisResult {
   commentUrl: string;
   /** true when an existing marked comment was updated rather than a new one posted */

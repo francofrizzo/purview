@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { useLocation, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   AnalysisImportReport,
@@ -64,6 +64,7 @@ import { IconChevron } from "../components/icons";
 import {
   AnalysisImportConfirmPanel,
   AnalysisImportResultPanel,
+  AutoImportedAnalysisPanel,
   ImportFromPrConfirmPanel,
   MigrationReportPanel,
   ShareAnalysisConfirmPanel,
@@ -88,6 +89,14 @@ import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "
 export function PrView() {
   const params = useParams();
   const prKey = decodeURIComponent(params["*"] ?? "");
+  // Handed over by the add flow (PrList) when adding imported a teammate's
+  // shared analysis instead of running one — captured once so the notice
+  // survives re-renders but not a page reload.
+  const location = useLocation();
+  const [autoImported, setAutoImported] = useState<{ author?: string; postedAt: string } | null>(
+    () => (location.state as { sharedAnalysis?: { author?: string; postedAt: string } } | null)
+      ?.sharedAnalysis ?? null,
+  );
 
   const { data: detail, isLoading, error } = usePr(prKey);
   const { data: drafts = [] } = useComments(prKey);
@@ -645,6 +654,13 @@ export function PrView() {
           report={importFromPrResult.report}
           source={{ author: importFromPrResult.author, postedAt: importFromPrResult.postedAt }}
           onDismiss={() => setImportFromPrResult(null)}
+        />
+      ) : null}
+      {autoImported ? (
+        <AutoImportedAnalysisPanel
+          author={autoImported.author}
+          postedAt={autoImported.postedAt}
+          onDismiss={() => setAutoImported(null)}
         />
       ) : null}
       {showSharedAnalysisBanner && sharedProbe.data ? (
