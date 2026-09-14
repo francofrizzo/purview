@@ -493,6 +493,7 @@ export const mockApi = {
       unitCount: 0,
       viewedHunks: 0,
       totalHunks: 0,
+      effort: null,
       state: "open",
       reviewDecision: null,
       addedAt: new Date().toISOString(),

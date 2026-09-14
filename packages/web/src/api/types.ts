@@ -205,6 +205,22 @@ export interface Staleness {
   error?: string;
 }
 
+/**
+ * `GET /api/prs`'s per-PR effort badge: "fast" for a PR that's mostly skim,
+ * "heavy" for one with a large or risky must-read surface, `null` for
+ * everything in between (deliberately most PRs). Absent/undefined only on a
+ * server too old to send it; `null` means the server computed it and there's
+ * nothing to badge (including "not analyzed yet").
+ */
+export type EffortBadge = "fast" | "heavy" | null;
+
+export interface ReviewEffort {
+  mustReadLines: number;
+  mustReadUnits: number;
+  riskCount: number;
+  badge: EffortBadge;
+}
+
 /** GET /api/prs — flattened by `client.ts` from the server's progress envelope. */
 export interface PrListEntry {
   key: string;
@@ -216,6 +232,7 @@ export interface PrListEntry {
   viewedHunks?: number;
   totalHunks?: number;
   analysisJob?: AnalysisJob | null;
+  effort?: ReviewEffort | null;
   /** GitHub lifecycle state, as of the last fetch. */
   state: PrGithubState;
   reviewDecision: ReviewDecision | null;

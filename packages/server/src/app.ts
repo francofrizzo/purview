@@ -90,6 +90,7 @@ import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
 import { localOnlyGuard } from "./security.js";
 import { checkStaleness, clearStalenessCache } from "./staleness.js";
+import { reviewEffort } from "./effort.js";
 import {
   autoAnalyzeAllowed,
   cachedCommittedConfigForRepo,
@@ -158,6 +159,14 @@ function progressOf(state: State) {
 export function createApp(opts: AppOptions = {}): Hono {
   const app = new Hono();
   const root = opts.stateDir ?? stateRoot();
+  // A failure to compute effort must never break the PR list.
+  const safeEffort = (key: PrKey) => {
+    try {
+      return reviewEffort(key, root);
+    } catch {
+      return null;
+    }
+  };
   const autoAnalyze = opts.autoAnalyze ?? true;
   // A "running" job record can only be stale at boot — nothing is running yet.
   reconcileStaleJobs(root);
@@ -223,6 +232,9 @@ export function createApp(opts: AppOptions = {}): Hono {
         summary: state.summary,
         progress: progressOf(state),
         analysisJob: readJob(key, root),
+        // Best-effort: a broken computation for one PR must never take the
+        // whole list down.
+        effort: safeEffort(key),
       };
     });
     return c.json({ prs });

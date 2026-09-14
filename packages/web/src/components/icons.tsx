@@ -244,6 +244,21 @@ export const IconArchive = ({ out, ...p }: P & { out?: boolean }) => (
   </svg>
 );
 
+/** Lightning bolt — the "fast" effort badge. */
+export const IconBolt = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M8.8 1.5 3 9h3.6L6.2 14.5 13 6.8H9.4z" strokeLinejoin="round" />
+  </svg>
+);
+
+/** Stacked weight plates — the "heavy" effort badge. */
+export const IconWeight = (p: P) => (
+  <svg {...base} {...p}>
+    <rect x="6.5" y="2" width="3" height="12" rx="0.8" />
+    <path d="M4 5v6M2 6.2v3.6M12 5v6M14 6.2v3.6" />
+  </svg>
+);
+
 export const RISK_META: Record<
   RiskFlag,
   { icon: (p: P) => JSX.Element; label: string }

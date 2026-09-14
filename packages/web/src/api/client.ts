@@ -34,6 +34,7 @@ import type {
   RepoConfigPatch,
   RepoSummary,
   ReviewDecision,
+  ReviewEffort,
   ReviewEvent,
   RepoPathResult,
   ReviewStatus,
@@ -126,6 +127,7 @@ interface WireListEntry {
   summary: string;
   progress: WireProgress;
   analysisJob?: AnalysisJob | null;
+  effort?: ReviewEffort | null;
   state?: PrGithubState;
   reviewDecision?: ReviewDecision | null;
   addedAt?: string;
@@ -405,6 +407,7 @@ export const api = {
       viewedHunks: e.progress?.hunks.viewed,
       totalHunks: e.progress?.hunks.total,
       analysisJob: e.analysisJob ?? null,
+      effort: e.effort ?? null,
       // Defaults keep an older server (which does not send these yet) from
       // blanking the row: it simply reads as a never-archived open PR.
       state: e.state ?? "open",

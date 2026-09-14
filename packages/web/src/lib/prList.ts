@@ -68,6 +68,16 @@ export function formatFullTimestamp(iso: string): string {
   });
 }
 
+/**
+ * A must-read line count for the effort badge's tooltip: exact under 1000,
+ * abbreviated to one decimal ("1.6k") at and above it — the tooltip states a
+ * ballpark, not an audit trail.
+ */
+export function formatMustReadLines(n: number): string {
+  if (n < 1000) return String(n);
+  return `${(n / 1000).toFixed(1)}k`;
+}
+
 /* ------------------------------------------------------------- grouping */
 
 export interface RepoGroup {

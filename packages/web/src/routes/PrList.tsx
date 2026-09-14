@@ -5,7 +5,7 @@ import { useAddPr, useImportReviews, usePrs, useRepos, useSetArchived } from "..
 import type { PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
-import { Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
+import { EffortChip, Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
 import { IconArchive, IconChevron, IconSettings } from "../components/icons";
 import { errorText } from "../api/errors";
@@ -303,6 +303,7 @@ function PrRow({ pr }: { pr: PrListEntry }) {
           <PrStateChip state={pr.state} />
           <ReviewDecisionChip decision={pr.reviewDecision} />
           <AnalysisChip job={pr.analysisJob} />
+          <EffortChip effort={pr.effort} />
         </div>
         <div
           className="mt-0.5 flex items-center gap-2 text-2xs"

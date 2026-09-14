@@ -5,6 +5,7 @@ import {
   formatAbsoluteDate,
   formatAddedAt,
   formatFullTimestamp,
+  formatMustReadLines,
   groupKeyOf,
   groupPrsByRepo,
 } from "./prList";
@@ -68,6 +69,20 @@ describe("formatAddedAt", () => {
     expect(formatAddedAt("not-a-date", NOW)).toBe("");
     expect(formatAbsoluteDate("", NOW)).toBe("");
     expect(formatFullTimestamp("nope")).toBe("");
+  });
+});
+
+describe("formatMustReadLines", () => {
+  it("is exact under 1000", () => {
+    expect(formatMustReadLines(0)).toBe("0");
+    expect(formatMustReadLines(42)).toBe("42");
+    expect(formatMustReadLines(999)).toBe("999");
+  });
+
+  it("abbreviates to one decimal at and above 1000", () => {
+    expect(formatMustReadLines(1000)).toBe("1.0k");
+    expect(formatMustReadLines(1649)).toBe("1.6k");
+    expect(formatMustReadLines(15000)).toBe("15.0k");
   });
 });
 

@@ -1,5 +1,14 @@
-import type { Attention, Kind, PrGithubState, ReviewDecision, RiskFlag } from "../api/types";
-import { IconCheck, RISK_META } from "./icons";
+import type {
+  Attention,
+  EffortBadge,
+  Kind,
+  PrGithubState,
+  ReviewDecision,
+  ReviewEffort,
+  RiskFlag,
+} from "../api/types";
+import { formatMustReadLines } from "../lib/prList";
+import { IconBolt, IconCheck, IconWeight, RISK_META } from "./icons";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
 // distinguishable — and coherent with the syntax colors — on every theme.
@@ -89,6 +98,39 @@ export function AttentionChip({ attention }: { attention: Attention }) {
   const s = ATTENTION_STYLE[attention] ?? ATTENTION_STYLE.skim;
   return (
     <span className="chip" style={{ color: s.color, background: s.bg }}>
+      {s.label}
+    </span>
+  );
+}
+
+const EFFORT_STYLE: Record<
+  Exclude<EffortBadge, null>,
+  { label: string; icon: (p: { width?: number; height?: number }) => JSX.Element; color: string; bg: string }
+> = {
+  fast: { label: "fast", icon: IconBolt, color: "var(--ok)", bg: "var(--ok-soft)" },
+  heavy: { label: "heavy", icon: IconWeight, color: "var(--warn)", bg: "var(--warn-soft)" },
+};
+
+/**
+ * The PR list's effort badge — "fast" (small, low-risk must-read surface) or
+ * "heavy" (large or risky). Renders nothing for the unbadged middle (most
+ * PRs) and for PRs without an analysis: an absent chip says nothing, where a
+ * placeholder would read as "checked, found nothing".
+ */
+export function EffortChip({ effort }: { effort?: ReviewEffort | null }) {
+  if (!effort?.badge) return null;
+  const s = EFFORT_STYLE[effort.badge];
+  const Icon = s.icon;
+  const lines = formatMustReadLines(effort.mustReadLines);
+  const flags = effort.riskCount === 1 ? "flag" : "flags";
+  return (
+    <span
+      className="chip"
+      data-testid="effort-chip"
+      title={`~${lines} must-read lines · ${effort.riskCount} risk ${flags}`}
+      style={{ color: s.color, background: s.bg }}
+    >
+      <Icon width={10} height={10} />
       {s.label}
     </span>
   );
