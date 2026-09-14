@@ -94,28 +94,26 @@ export function AttentionChip({ attention }: { attention: Attention }) {
   );
 }
 
-export function RiskFlags({ flags, size = 12 }: { flags: RiskFlag[]; size?: number }) {
+/**
+ * One quiet chip for a unit's whole risk surface, instead of a row of
+ * per-flag icons: the icons read as alarms and needed a hover each to decode.
+ * The full variant names the flags; `compact` (sidebar rows) shows a count
+ * and leaves the names to the tooltip.
+ */
+export function RiskFlags({ flags, compact }: { flags: RiskFlag[]; compact?: boolean }) {
   if (!flags?.length) return null;
+  const labels = flags.map((f) => RISK_META[f]?.label ?? f);
+  const one = labels.length === 1;
   return (
     <span
-      className="inline-flex flex-none items-center gap-1 whitespace-nowrap"
-      style={{ color: "var(--risk)" }}
+      className="chip"
+      data-testid="risk-chip"
+      title={`Risk surface${one ? "" : "s"}: ${labels.join(", ")}`}
+      style={{ color: "var(--risk)", background: "var(--risk-soft)" }}
     >
-      {flags.map((f) => {
-        const meta = RISK_META[f];
-        if (!meta) return null;
-        const Icon = meta.icon;
-        return (
-          <span
-            key={f}
-            title={`risk: ${meta.label}`}
-            className="inline-flex flex-none items-center rounded p-px"
-            style={{ background: "var(--risk-soft)" }}
-          >
-            <Icon width={size} height={size} />
-          </span>
-        );
-      })}
+      {compact
+        ? `${labels.length} risk${one ? "" : "s"}`
+        : `risk${one ? "" : "s"}: ${labels.join(" + ")}`}
     </span>
   );
 }
