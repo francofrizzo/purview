@@ -23,14 +23,36 @@ const FAST_MAX_MUST_READ_UNITS = 5;
 
 const HEAVY_MIN_LINES = 1500;
 /** The lower-line "heavy" path also demands real risk surface, not just size. */
-const HEAVY_MODERATE_LINES = 1000;
+const HEAVY_MODERATE_LINES = 1200;
 const HEAVY_MODERATE_RISKS = 4;
+
+/**
+ * A must-read line is not a must-read line: 170 lines of generated sqlc
+ * queries or the same panel wiring repeated across three channels skim far
+ * faster than 170 lines of novel core logic, and the analysis already labels
+ * that difference as the unit's `kind`. Weighting by kind is what kept a
+ * wide-but-repetitive PR (8327: 1554 raw must-read lines, ~670 of them
+ * connective-tissue, reviewed quickly in practice) from wearing a "heavy"
+ * badge it didn't deserve. Unknown kinds land in the middle rather than at
+ * either extreme.
+ */
+const KIND_WEIGHTS: Record<string, number> = {
+  "core-logic": 1.0,
+  "connective-tissue": 0.4,
+  wiring: 0.3,
+  ripple: 0.3,
+  tests: 0.25,
+  docs: 0.1,
+};
+const DEFAULT_KIND_WEIGHT = 0.5;
 
 export type EffortBadge = "fast" | "heavy" | null;
 
 export interface ReviewEffort {
   /** changed lines (added+removed) across the union of must-read units' hunks */
   mustReadLines: number;
+  /** the same lines discounted by unit kind (see KIND_WEIGHTS) — what the badge reads */
+  weightedMustReadLines: number;
   mustReadUnits: number;
   riskCount: number;
   badge: EffortBadge;
@@ -102,15 +124,30 @@ export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | nul
   let mustReadLines = 0;
   for (const id of mustReadHunkIds) mustReadLines += hunkLines.get(id) ?? 0;
 
+  // Weighted over the same deduped hunk set as the raw count: each hunk is
+  // counted once, at the highest kind-weight among the must-read units that
+  // claim it, so raw and weighted stay comparable when units share a hunk.
+  const hunkWeight = new Map<string, number>();
+  for (const u of mustReadUnitList) {
+    const w = KIND_WEIGHTS[u.kind] ?? DEFAULT_KIND_WEIGHT;
+    for (const id of u.hunkIds) {
+      hunkWeight.set(id, Math.max(hunkWeight.get(id) ?? 0, w));
+    }
+  }
+  let weightedMustReadLines = 0;
+  for (const [id, w] of hunkWeight) weightedMustReadLines += (hunkLines.get(id) ?? 0) * w;
+  weightedMustReadLines = Math.round(weightedMustReadLines);
+
   const riskFlags = new Set(state.units.flatMap((u) => u.riskFlags));
   const riskCount = riskFlags.size;
   const mustReadUnits = mustReadUnitList.length;
 
   const result: ReviewEffort = {
     mustReadLines,
+    weightedMustReadLines,
     mustReadUnits,
     riskCount,
-    badge: badgeFor(mustReadLines, riskCount, mustReadUnits),
+    badge: badgeFor(weightedMustReadLines, riskCount, mustReadUnits),
   };
   cache.set(cacheKey, { result });
   return result;

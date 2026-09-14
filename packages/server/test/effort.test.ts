@@ -119,6 +119,7 @@ describe("reviewEffort", () => {
     const effort = reviewEffort(key, root);
     expect(effort).toEqual({
       mustReadLines: 100,
+      weightedMustReadLines: 100,
       mustReadUnits: 1,
       riskCount: 0,
       badge: "fast",
@@ -139,7 +140,7 @@ describe("reviewEffort", () => {
   it("badges heavy on a moderate line count combined with enough risk flags", () => {
     build(
       root,
-      [hunk("h1", 1100)],
+      [hunk("h1", 1250)],
       [
         unit({
           id: "u1",
@@ -192,7 +193,43 @@ describe("reviewEffort", () => {
     );
     const effort = reviewEffort(key, root);
     expect(effort?.mustReadLines).toBe(70);
+    expect(effort?.weightedMustReadLines).toBe(70);
     expect(effort?.mustReadUnits).toBe(2);
+  });
+
+  it("discounts non-core kinds in the weighted count, and the badge follows it", () => {
+    // 8327's shape in miniature: enough raw must-read lines to look heavy,
+    // but a big slice of them is connective tissue.
+    build(
+      root,
+      [hunk("h1", 900), hunk("h2", 700)],
+      [
+        unit({ id: "u1", attention: "must-read", riskFlags: [], hunkIds: ["h1"] }),
+        unit({
+          id: "u2",
+          kind: "connective-tissue",
+          attention: "must-read",
+          riskFlags: [],
+          hunkIds: ["h2"],
+        }),
+      ],
+    );
+    const effort = reviewEffort(key, root);
+    expect(effort?.mustReadLines).toBe(1600);
+    expect(effort?.weightedMustReadLines).toBe(900 + 700 * 0.4);
+    expect(effort?.badge).toBeNull(); // raw 1600 would have been heavy
+  });
+
+  it("counts a shared hunk once, at the highest claiming kind weight", () => {
+    build(
+      root,
+      [hunk("h1", 100)],
+      [
+        unit({ id: "u1", kind: "connective-tissue", attention: "must-read", riskFlags: [], hunkIds: ["h1"] }),
+        unit({ id: "u2", attention: "must-read", riskFlags: [], hunkIds: ["h1"] }),
+      ],
+    );
+    expect(reviewEffort(key, root)?.weightedMustReadLines).toBe(100);
   });
 
   it("counts distinct risk flags across every unit, not just must-read ones", () => {
@@ -248,6 +285,7 @@ describe("GET /api/prs effort field", () => {
     expect(body.prs).toHaveLength(1);
     expect(body.prs[0].effort).toEqual({
       mustReadLines: 50,
+      weightedMustReadLines: 50,
       mustReadUnits: 1,
       riskCount: 0,
       badge: "fast",

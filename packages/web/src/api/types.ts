@@ -216,6 +216,8 @@ export type EffortBadge = "fast" | "heavy" | null;
 
 export interface ReviewEffort {
   mustReadLines: number;
+  /** kind-discounted lines — what the badge is derived from */
+  weightedMustReadLines: number;
   mustReadUnits: number;
   riskCount: number;
   badge: EffortBadge;

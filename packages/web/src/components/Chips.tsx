@@ -121,7 +121,7 @@ export function EffortChip({ effort }: { effort?: ReviewEffort | null }) {
   if (!effort?.badge) return null;
   const s = EFFORT_STYLE[effort.badge];
   const Icon = s.icon;
-  const lines = formatMustReadLines(effort.mustReadLines);
+  const lines = formatMustReadLines(effort.weightedMustReadLines);
   const flags = effort.riskCount === 1 ? "flag" : "flags";
   return (
     <span

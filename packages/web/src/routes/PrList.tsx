@@ -303,7 +303,6 @@ function PrRow({ pr }: { pr: PrListEntry }) {
           <PrStateChip state={pr.state} />
           <ReviewDecisionChip decision={pr.reviewDecision} />
           <AnalysisChip job={pr.analysisJob} />
-          <EffortChip effort={pr.effort} />
         </div>
         <div
           className="mt-0.5 flex items-center gap-2 text-2xs"
@@ -323,6 +322,7 @@ function PrRow({ pr }: { pr: PrListEntry }) {
           <span className="font-mono">
             {pr.unitCount ? `${pr.unitCount} units` : "not analyzed"}
           </span>
+          <EffortChip effort={pr.effort} />
         </div>
       </Link>
 
