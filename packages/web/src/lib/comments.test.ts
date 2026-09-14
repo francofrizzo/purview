@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { CommentStatus, DraftComment } from "../api/types";
+import type { CommentStatus, DraftComment, FilesJson } from "../api/types";
 import {
   bubbleTitle,
   compareCommentOrder,
   groupComments,
+  isCommentAnchored,
   lineAnchor,
   mostAdvancedStatus,
   statusColors,
@@ -142,6 +143,47 @@ describe("compareCommentOrder", () => {
       "zFile",
       "z1",
     ]);
+  });
+});
+
+describe("isCommentAnchored", () => {
+  const files: FilesJson = {
+    files: [
+      {
+        path: "src/a.ts",
+        hunks: [
+          { id: "h1", file: "src/a.ts", oldStart: 10, oldLines: 3, newStart: 10, newLines: 3, header: "" },
+        ],
+      },
+    ],
+  };
+
+  it("is anchored when the RIGHT line falls inside a hunk's new range", () => {
+    expect(isCommentAnchored(files, c({ file: "src/a.ts", line: 11, side: "RIGHT" }))).toBe(true);
+  });
+
+  it("is not anchored when the line falls outside every hunk", () => {
+    expect(isCommentAnchored(files, c({ file: "src/a.ts", line: 999, side: "RIGHT" }))).toBe(false);
+  });
+
+  it("checks the LEFT side against oldStart/oldLines", () => {
+    expect(isCommentAnchored(files, c({ file: "src/a.ts", line: 11, side: "LEFT" }))).toBe(true);
+    expect(isCommentAnchored(files, c({ file: "src/a.ts", line: 999, side: "LEFT" }))).toBe(false);
+  });
+
+  it("is not anchored when the file isn't in the diff at all", () => {
+    expect(isCommentAnchored(files, c({ file: "src/gone.ts", line: 11 }))).toBe(false);
+  });
+
+  it("treats a file-level comment as always anchored", () => {
+    expect(
+      isCommentAnchored(files, c({ file: "src/a.ts", line: null, side: null, subjectType: "file" })),
+    ).toBe(true);
+  });
+
+  it("defaults a missing side to RIGHT, like the server does", () => {
+    const { side: _side, ...rest } = c({ file: "src/a.ts", line: 11 });
+    expect(isCommentAnchored(files, rest as DraftComment)).toBe(true);
   });
 });
 

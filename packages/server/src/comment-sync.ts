@@ -1,5 +1,12 @@
 import { loadState, type PrKey } from "@reviewer/core";
-import { commentCounts, markPushed, readComments, type Comment } from "./comments.js";
+import {
+  commentCounts,
+  markPushed,
+  reanchorDraftComments,
+  readComments,
+  unanchoredDraftLineComments,
+  type Comment,
+} from "./comments.js";
 import {
   ReviewError,
   appendCommentToPendingReview,
@@ -110,6 +117,37 @@ function appendDrafts(
  * discard paths do not have to rediscover them.
  */
 export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult {
+  // Best-effort reconciliation: a draft comment left over from a prior
+  // revision (the PR moved, its commented hunk slid) is re-anchored here
+  // before we ever talk to GitHub. A bug in the reconciler must never block
+  // a push — see comments.ts for the algorithm.
+  try {
+    reanchorDraftComments(key, root);
+  } catch (err) {
+    console.warn(
+      `[comment-sync] reanchorDraftComments failed for ${key.owner}/${key.repo}#${key.number}: ` +
+        (err instanceof Error ? err.message : String(err)),
+    );
+  }
+
+  // Anything reconciliation couldn't fix (the commented hunk itself changed
+  // or vanished) would otherwise reach GitHub as an opaque 422. Fail fast
+  // here with a message that names the comment instead.
+  const stillOutside = unanchoredDraftLineComments(key, root);
+  if (stillOutside.length > 0) {
+    const c = stillOutside[0];
+    const snippet = c.body.length > 60 ? `${c.body.slice(0, 60)}…` : c.body;
+    return {
+      ok: false,
+      pushed: 0,
+      error:
+        `A draft comment at ${c.file}:${c.line} ("${snippet}") is outside the current diff. ` +
+        `The PR changed under this comment — edit its position, delete it, or use ` +
+        `"Suggest new anchor".`,
+      errorCode: "comment_outside_diff",
+    };
+  }
+
   const all = readComments(key, root);
   const drafts = all.filter((c) => c.status === "draft");
 

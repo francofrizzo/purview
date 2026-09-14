@@ -37,6 +37,7 @@ import type {
   ReviewEvent,
   RepoPathResult,
   ReviewStatus,
+  ReanchorResult,
   ReviewUnit,
   ShareAnalysisResult,
   SharedAnalysisNote,
@@ -583,6 +584,30 @@ export const api = {
   async deleteComment(key: string, id: string): Promise<void> {
     if (MOCK) return mockApi.deleteComment(key, id);
     await del(`/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}`);
+  },
+
+  /** Move a draft's anchor — the accept step of "Suggest new anchor", or a manual re-anchor. */
+  async moveComment(
+    key: string,
+    input: { id: string; line?: number; file?: string },
+  ): Promise<EditCommentResult> {
+    if (MOCK) return mockApi.moveComment(key, input);
+    const { id, ...patchBody } = input;
+    const res = await patch<{ comment: WireComment }>(
+      `/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}`,
+      patchBody,
+    );
+    return { comment: adaptComment(res.comment), remote: null };
+  },
+
+  /**
+   * Ask a one-shot model run to propose a new anchor for a draft comment that
+   * fell outside the current diff. Never applies anything — see
+   * `moveComment` for the apply step.
+   */
+  async proposeReanchor(key: string, id: string): Promise<ReanchorResult> {
+    if (MOCK) return mockApi.proposeReanchor(key, id);
+    return post<ReanchorResult>(`/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}/reanchor`);
   },
 
   /* ------------------------------------------------------ review lifecycle */

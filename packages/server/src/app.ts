@@ -47,11 +47,15 @@ import {
 import {
   addComment,
   deleteComment,
+  findAnchoringHunk,
+  reanchorDraftComments,
   readComments,
   setCommentNodeId,
   updateCommentBody,
+  updateCommentPosition,
 } from "./comments.js";
 import { recoverCommentNodeId, syncCommentsToGithub } from "./comment-sync.js";
+import { proposeCommentReanchor } from "./comment-reanchor.js";
 import {
   SUBMIT_EVENTS,
   discardPendingReview,
@@ -266,6 +270,20 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/refresh", (c) => {
     const key = keyParam(c);
     const result = refreshPr(key, root);
+    // A migration report means the diff actually changed shape; that's
+    // exactly when a draft comment's hunk can have slid out from under it,
+    // so reconcile drafts here too, not just on push — see comments.ts. A
+    // bug here must never fail a refresh.
+    if (result.report) {
+      try {
+        reanchorDraftComments(key, root);
+      } catch (err) {
+        console.warn(
+          `[refresh] reanchorDraftComments failed for ${key.owner}/${key.repo}#${key.number}: ` +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
     // We just fetched the truth; any cached "this PR moved" answer is now
     // about a revision we hold, so it must not outlive the refresh.
     clearStalenessCache(key, root);
@@ -802,32 +820,101 @@ export function createApp(opts: AppOptions = {}): Hono {
   });
 
   /**
-   * Editing a comment's body. What happens beyond the local write depends on
-   * status:
-   *   draft     — local only, no GitHub call.
-   *   pushed    — local write always happens, then a best-effort GraphQL
-   *               update via the stored githubCommentId. That id can be
-   *               missing (a known backfill gap, see comment-sync.ts); when
-   *               it is, we still save locally and report a structured
-   *               remote failure instead of hard-failing the request.
-   *   submitted — same remote update, but the edit is publicly visible so it
-   *               requires an explicit { confirm: true }.
-   * An unchanged body is a 200 no-op before any of the above, including the
-   * confirm requirement — nothing is being edited, so nothing needs a
-   * remote call or a confirmation.
+   * Re-anchoring a draft comment that fell outside the current diff and that
+   * `reanchorDraftComments` couldn't place deterministically (its hunk itself
+   * changed or vanished, so there's no exact offset to carry over). Only ever
+   * proposes — nothing is applied here; the reader accepts via the PATCH
+   * below. 400s for anything but a draft line comment: pushed/submitted
+   * comments are anchored on GitHub already, and a file comment has no line
+   * to re-anchor.
+   */
+  app.post("/api/prs/:key/comments/:id/reanchor", async (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    const target = readComments(key, root).find((cc) => cc.id === id);
+    if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    if (target.status !== "draft" || target.subjectType !== "line") {
+      throw new HttpError(
+        400,
+        "not_reanchorable",
+        "Only draft line comments can be re-anchored",
+      );
+    }
+    const result = await proposeCommentReanchor(key, target, root);
+    return c.json(result);
+  });
+
+  /**
+   * Editing a comment. Two independent things ride this one route:
+   *
+   *   - `{ body }` — edit the text. What happens beyond the local write
+   *     depends on status:
+   *       draft     — local only, no GitHub call.
+   *       pushed    — local write always happens, then a best-effort GraphQL
+   *                   update via the stored githubCommentId. That id can be
+   *                   missing (a known backfill gap, see comment-sync.ts);
+   *                   when it is, we still save locally and report a
+   *                   structured remote failure instead of hard-failing.
+   *       submitted — same remote update, but the edit is publicly visible so
+   *                   it requires an explicit { confirm: true }.
+   *     An unchanged body is a 200 no-op before any of the above, including
+   *     the confirm requirement.
+   *
+   *   - `{ line?, file? }` — move a draft's anchor (the accept step of
+   *     "Suggest new anchor", or a manual re-anchor). Draft line comments
+   *     only — 400 for pushed/submitted (already anchored on GitHub) or
+   *     file-level comments. The target must land inside a hunk of the
+   *     current diff; GitHub itself is never consulted for this, since a
+   *     draft never left the local store.
    */
   app.patch("/api/prs/:key/comments/:id", async (c) => {
     const key = keyParam(c);
     const id = c.req.param("id");
-    const body = (await readJsonBody(c)) as { body?: unknown; confirm?: boolean };
-    if (typeof body.body !== "string" || body.body.trim() === "") {
-      throw new HttpError(400, "invalid_body", "Body must include a non-empty { body: string }");
-    }
-    const newBody = body.body;
+    const body = (await readJsonBody(c)) as {
+      body?: unknown;
+      confirm?: boolean;
+      line?: unknown;
+      file?: unknown;
+    };
 
     const existing = readComments(key, root);
     const target = existing.find((c2) => c2.id === id);
     if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
+
+    if (body.line !== undefined || body.file !== undefined) {
+      if (target.status !== "draft") {
+        throw new HttpError(400, "not_draft", "Only draft comments can be repositioned");
+      }
+      if (target.subjectType !== "line") {
+        throw new HttpError(400, "not_line_comment", "Only line comments can be repositioned");
+      }
+      const nextLine = body.line !== undefined ? body.line : target.line;
+      const nextFile = body.file !== undefined ? body.file : target.file;
+      if (typeof nextLine !== "number" || !Number.isInteger(nextLine)) {
+        throw new HttpError(400, "invalid_body", "line must be an integer");
+      }
+      if (typeof nextFile !== "string" || nextFile.trim() === "") {
+        throw new HttpError(400, "invalid_body", "file must be a non-empty string");
+      }
+      const state = loadState(key, root);
+      const currentFiles = readFilesJson(key, state.currentRevision, root).files;
+      const hunk = findAnchoringHunk(currentFiles, nextFile, nextLine, target.side ?? "RIGHT");
+      if (!hunk) {
+        throw new HttpError(
+          422,
+          "comment_outside_diff",
+          `${nextFile}:${nextLine} is not part of the current diff`,
+        );
+      }
+      const moved = updateCommentPosition(key, id, { line: nextLine, file: nextFile }, root);
+      if (!moved.found || !moved.comment) throw new HttpError(404, "not_found", `No comment "${id}"`);
+      return c.json({ comment: moved.comment });
+    }
+
+    if (typeof body.body !== "string" || body.body.trim() === "") {
+      throw new HttpError(400, "invalid_body", "Body must include a non-empty { body: string }");
+    }
+    const newBody = body.body;
 
     if (target.body === newBody) {
       return c.json({ comment: target, remote: null });

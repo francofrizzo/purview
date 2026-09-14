@@ -43,6 +43,7 @@ export type ReviewErrorCode =
   | "pending_review_gone"
   | "pending_review_exists"
   | "comment_line_not_in_diff"
+  | "comment_outside_diff"
   | "not_authenticated"
   | "gh_failed";
 
@@ -64,6 +65,7 @@ const STATUS_BY_CODE: Record<ReviewErrorCode, number> = {
   pending_review_gone: 404,
   pending_review_exists: 422,
   comment_line_not_in_diff: 422,
+  comment_outside_diff: 422,
   not_authenticated: 502,
   gh_failed: 502,
 };

@@ -22,6 +22,8 @@ import {
   useComments,
   useDeleteComment,
   useEditComment,
+  useMoveComment,
+  useProposeReanchor,
   useDiscardPendingReview,
   useExportAnalysis,
   useGlobalConfig,
@@ -116,6 +118,8 @@ export function PrView() {
   const addComment = useAddComment(prKey);
   const deleteComment = useDeleteComment(prKey);
   const editComment = useEditComment(prKey);
+  const moveComment = useMoveComment(prKey);
+  const proposeReanchor = useProposeReanchor(prKey);
   const saveReviewBody = useSaveReviewBody(prKey);
   const submitReview = useSubmitReview(prKey);
   const discardPending = useDiscardPendingReview(prKey);
@@ -1100,6 +1104,15 @@ export function PrView() {
             onJumpToComment={(file) => jumpToFile(file)}
             onEditComment={(input) => editComment.mutateAsync(input)}
             bundle={bundle}
+            files={detail?.files}
+            onProposeReanchor={async (id) => {
+              const result = await proposeReanchor.mutateAsync(id);
+              if (!result.ok) throw new Error(result.reason);
+              return result.proposal;
+            }}
+            onApplyReanchor={async (id, target) => {
+              await moveComment.mutateAsync({ id, ...target });
+            }}
           />
         ) : null}
       </div>

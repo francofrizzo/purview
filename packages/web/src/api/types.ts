@@ -442,6 +442,23 @@ export interface SyncResult {
   message?: string;
 }
 
+/**
+ * POST /api/prs/:key/comments/:id/reanchor — a one-shot, non-applying
+ * proposal for where a draft comment that fell outside the current diff
+ * should move to. `ok: false` means the run itself failed (no `claude` CLI,
+ * a timeout, an unparseable response); `applicable: false` means the run
+ * succeeded but concluded there's nowhere safe to move the comment to.
+ */
+export interface ReanchorProposal {
+  applicable: boolean;
+  file?: string;
+  line?: number;
+  side?: "LEFT" | "RIGHT";
+  reason: string;
+}
+
+export type ReanchorResult = { ok: true; proposal: ReanchorProposal } | { ok: false; reason: string };
+
 /* ------------------------------------------------------- review lifecycle */
 
 export type ReviewEvent = "APPROVE" | "REQUEST_CHANGES" | "COMMENT";

@@ -23,6 +23,7 @@ import type {
   MigrationReport,
   PrDetail,
   PrListEntry,
+  ReanchorResult,
   RepoConfig,
   RepoConfigPatch,
   PrGithubState,
@@ -438,6 +439,33 @@ export function useDeleteComment(key: string) {
       void qc.invalidateQueries({ queryKey: qk.comments(key) });
       void qc.invalidateQueries({ queryKey: qk.review(key) });
     },
+  });
+}
+
+/** Apply the accepted "Suggest new anchor" proposal (or a manual reposition). */
+export function useMoveComment(
+  key: string,
+): UseMutationResult<EditCommentResult, Error, { id: string; line?: number; file?: string }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string; line?: number; file?: string }) =>
+      api.moveComment(key, input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
+/**
+ * "Suggest new anchor" itself — a read-only proposal, never applied. Not
+ * cached: each click is a fresh model run.
+ */
+export function useProposeReanchor(
+  key: string,
+): UseMutationResult<ReanchorResult, Error, string> {
+  return useMutation({
+    mutationFn: (id: string) => api.proposeReanchor(key, id),
   });
 }
 

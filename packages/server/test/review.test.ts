@@ -320,6 +320,62 @@ describe("PATCH /api/prs/:key/comments/:id", () => {
   });
 });
 
+describe("PATCH /api/prs/:key/comments/:id (repositioning)", () => {
+  it("moves a draft's line to a new spot in the current diff", async () => {
+    const created = await addDraft("misplaced", 2);
+    const res = await patchComment(created.id, { line: 11 });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.comment.line).toBe(11);
+    expect(readComments(key, root)[0].line).toBe(11);
+  });
+
+  it("moves a draft's file along with its line", async () => {
+    const created = await addDraft("misplaced", 2);
+    const res = await patchComment(created.id, { file: "src/foo.ts", line: 11 });
+    expect(res.status).toBe(200);
+    expect((await res.json()).comment.file).toBe("src/foo.ts");
+  });
+
+  it("refuses to reposition a pushed comment", async () => {
+    const created = await addDraft("pushed", 2);
+    await sync();
+    const res = await patchComment(created.id, { line: 11 });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("not_draft");
+    expect(readComments(key, root)[0].line).toBe(2);
+  });
+
+  it("refuses to reposition a submitted comment", async () => {
+    const created = await addDraft("submitted", 2);
+    await sync();
+    await submit({ event: "COMMENT", body: "done", confirm: true });
+    const res = await patchComment(created.id, { line: 11 });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("not_draft");
+  });
+
+  it("refuses a target outside the current diff", async () => {
+    const created = await addDraft("misplaced", 2);
+    const res = await patchComment(created.id, { line: 999 });
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toBe("comment_outside_diff");
+    expect(readComments(key, root)[0].line).toBe(2);
+  });
+
+  it("refuses to reposition a file-level comment", async () => {
+    const created = await addFileDraft("whole file");
+    const res = await patchComment(created.id, { line: 2 });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("not_line_comment");
+  });
+
+  it("404s an unknown comment id", async () => {
+    const res = await patchComment("nope", { line: 2 });
+    expect(res.status).toBe(404);
+  });
+});
+
 /* ------------------------------------------------------------------- review */
 
 describe("GET/POST /api/prs/:key/review", () => {
@@ -408,16 +464,32 @@ describe("POST /api/prs/:key/review/submit", () => {
     expect((await res.json()).error).toBe("stale_commit_id");
   });
 
-  it("surfaces a comment anchored to a line that left the diff", async () => {
+  it("fails fast, before any gh call, on a draft anchored to a line outside the diff", async () => {
     await addDraft("first");
     await sync(); // creates the pending review
     await addDraft("stale anchor", 999);
+    const callsBefore = gh.calls.length;
+
+    const res = await submit({ event: "COMMENT", body: "note", confirm: true });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.error).toBe("comment_outside_diff");
+    expect(body.detail).toMatch(/src\/foo\.ts:999/);
+    // The pre-flight check runs before any GitHub call for the submit itself.
+    expect(gh.calls.length).toBe(callsBefore);
+    // Nothing was submitted: the review is still pending.
+    expect(gh.reviews[0].state).toBe("PENDING");
+  });
+
+  it("still surfaces a genuine GitHub-side comment_line_not_in_diff (e.g. a race with an out-of-band push)", async () => {
+    await addDraft("first");
+    await sync(); // creates the pending review, pushing "first"
+    await addDraft("second"); // anchors locally, so the pre-flight check passes it through
     gh.fail("graphql", "HTTP 422: line must be part of the diff");
 
     const res = await submit({ event: "COMMENT", body: "note", confirm: true });
     expect(res.status).toBe(422);
     expect((await res.json()).error).toBe("comment_line_not_in_diff");
-    // Nothing was submitted: the review is still pending.
     expect(gh.reviews[0].state).toBe("PENDING");
   });
 

@@ -2,7 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { gh, prDir, stateRoot, type PrKey } from "@reviewer/core";
+import {
+  computeHunkId,
+  disambiguate,
+  gh,
+  loadState,
+  prDir,
+  readFilesJson,
+  stateRoot,
+  type FileDiff,
+  type Hunk,
+  type PrKey,
+} from "@reviewer/core";
 
 /**
  * Local draft comments. Core has no comments module (SPEC's state dir only
@@ -298,6 +309,42 @@ export function updateCommentBody(
   return { found: true, changed: true, comment: updated };
 }
 
+export interface UpdateCommentPositionResult {
+  found: boolean;
+  /** false when the patch is a no-op (same line/file as stored) */
+  changed: boolean;
+  comment?: Comment;
+}
+
+/**
+ * Local-only re-anchor of a draft comment's position, used both by the
+ * "Suggest new anchor" apply step and by a reader manually dragging a comment
+ * onto the right line. Callers are responsible for the draft-only and
+ * in-diff invariants (the route validates against the current diff before
+ * calling this) — this just moves the pointer and persists it.
+ */
+export function updateCommentPosition(
+  key: PrKey,
+  id: string,
+  patch: { line?: number; file?: string },
+  root = stateRoot(),
+): UpdateCommentPositionResult {
+  const comments = readComments(key, root);
+  const idx = comments.findIndex((c) => c.id === id);
+  if (idx === -1) return { found: false, changed: false };
+  const target = comments[idx];
+  const line = patch.line ?? target.line;
+  const file = patch.file ?? target.file;
+  if (line === target.line && file === target.file) {
+    return { found: true, changed: false, comment: target };
+  }
+  const updated: Comment = { ...target, line, file };
+  const next = [...comments];
+  next[idx] = updated;
+  writeComments(key, next, root);
+  return { found: true, changed: true, comment: updated };
+}
+
 /** Mark comments as living in the pending review on GitHub. */
 export function markPushed(
   key: PrKey,
@@ -382,4 +429,165 @@ export function commentCounts(comments: Comment[]) {
     pushed: comments.filter((c) => c.status === "pushed").length,
     submitted: comments.filter((c) => c.status === "submitted").length,
   };
+}
+
+/*
+ * ------------------------------------------------------------- re-anchoring
+ *
+ * Draft comments are stored with an absolute file+line+side (see the module
+ * doc comment above): unlike hunk *viewed state*, which core migrates across
+ * revisions by content-derived hunk id (packages/core/src/migration.ts),
+ * nothing re-anchors a draft when the PR gains a revision and the commented
+ * line slides. A content-identical hunk keeps the same id across revisions
+ * (packages/core/src/hunk-id.ts), so a within-hunk offset carries over
+ * exactly — that's the fact this whole section leans on.
+ */
+
+/** Does `line` (on `side`) fall inside this hunk, in the revision it belongs to? */
+function hunkAnchorsLine(hunk: Hunk, line: number, side: CommentSide): boolean {
+  if (side === "RIGHT") {
+    return hunk.newLines > 0 && line >= hunk.newStart && line < hunk.newStart + hunk.newLines;
+  }
+  return hunk.oldLines > 0 && line >= hunk.oldStart && line < hunk.oldStart + hunk.oldLines;
+}
+
+/** The hunk (if any) that anchors `file:line` on `side`, in a given revision's files. */
+export function findAnchoringHunk(
+  files: FileDiff[],
+  file: string,
+  line: number,
+  side: CommentSide,
+): Hunk | undefined {
+  const f = files.find((f) => f.path === file);
+  if (!f) return undefined;
+  return f.hunks.find((h) => hunkAnchorsLine(h, line, side));
+}
+
+/**
+ * id -> hunk+file for a revision's files, indexed under *both* the hunk's
+ * actual id and — for a renamed file — the id it would have had under its
+ * previous path. A hunk id bakes in the file path (hunk-id.ts), so a rename
+ * alone changes every one of its hunks' ids even when the content is
+ * unchanged; this recomputes what the id used to be so a hunk carried over
+ * from before the rename is still reachable by its old id. Mirrors
+ * migration.ts's `indexNew`, which solves the identical problem there.
+ */
+function indexByIdRenameAware(files: FileDiff[]): Map<string, { hunk: Hunk; file: string }> {
+  const out = new Map<string, { hunk: Hunk; file: string }>();
+  for (const f of files) {
+    const matchPath = f.oldPath ?? f.path;
+    const renamed = matchPath !== f.path;
+    const seen = new Map<string, number>();
+    for (const h of f.hunks) {
+      out.set(h.id, { hunk: h, file: f.path });
+      if (renamed) {
+        const matchId = disambiguate(computeHunkId(matchPath, h.addedLines, h.removedLines), seen);
+        out.set(matchId, { hunk: h, file: f.path });
+      }
+    }
+  }
+  return out;
+}
+
+export interface DraftCommentMove {
+  id: string;
+  file: string;
+  fromLine: number;
+  toLine: number;
+  /** set only when the anchoring hunk now lives under a different path (rename) */
+  toFile?: string;
+}
+
+/**
+ * Re-anchor draft line comments that fell outside the diff when the PR moved
+ * to a new revision.
+ *
+ * A comment that still anchors in the current revision is left alone. One
+ * that doesn't is looked up in every prior revision, newest first: the first
+ * one where it *did* anchor gives us the hunk it was resting on. That hunk's
+ * id is then looked up in the current revision (identical id => identical
+ * added/removed lines, so the offset from the hunk's start transfers exactly)
+ * — if found, the comment's line (and file, under a rename) is updated to the
+ * same offset within the current hunk. If the id isn't found in the current
+ * revision either (the hunk itself changed or vanished), the comment is left
+ * untouched — there's nothing safe to do deterministically; see the agentic
+ * fallback (`comment-reanchor.ts`) for that case.
+ *
+ * Best-effort by construction: any read failure (missing files.json for an
+ * intermediate revision, etc.) just makes that revision unavailable to search,
+ * never throws.
+ */
+export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftCommentMove[] {
+  const comments = readComments(key, root);
+  const drafts = comments.filter((c) => c.status === "draft" && c.subjectType === "line");
+  if (drafts.length === 0) return [];
+
+  const state = loadState(key, root);
+  const currentRevision = state.currentRevision;
+  const currentFiles = readFilesJson(key, currentRevision, root).files;
+
+  const currentById = indexByIdRenameAware(currentFiles);
+
+  const moves: DraftCommentMove[] = [];
+  const byId = new Map(comments.map((c) => [c.id, c]));
+
+  for (const draft of drafts) {
+    const line = draft.line!;
+    const side = draft.side!;
+    if (findAnchoringHunk(currentFiles, draft.file, line, side)) continue;
+
+    let anchoringHunk: Hunk | undefined;
+    for (let rev = currentRevision - 1; rev >= 1; rev--) {
+      let files: FileDiff[];
+      try {
+        files = readFilesJson(key, rev, root).files;
+      } catch {
+        continue; // no files.json for this revision — tolerate and keep looking
+      }
+      const hunk = findAnchoringHunk(files, draft.file, line, side);
+      if (hunk) {
+        anchoringHunk = hunk;
+        break;
+      }
+    }
+    if (!anchoringHunk) continue; // never anchored anywhere we can see — leave it
+
+    const current = currentById.get(anchoringHunk.id);
+    if (!current) continue; // the hunk itself is gone from the current revision
+
+    const toLine =
+      side === "RIGHT"
+        ? line - anchoringHunk.newStart + current.hunk.newStart
+        : line - anchoringHunk.oldStart + current.hunk.oldStart;
+    const toFile = current.file !== draft.file ? current.file : undefined;
+
+    byId.set(draft.id, { ...draft, line: toLine, file: toFile ?? draft.file });
+    moves.push({ id: draft.id, file: draft.file, fromLine: line, toLine, toFile });
+  }
+
+  if (moves.length > 0) {
+    writeComments(key, comments.map((c) => byId.get(c.id) ?? c), root);
+  }
+  return moves;
+}
+
+/**
+ * Draft line comments that don't anchor into the current revision's diff —
+ * what `reanchorDraftComments` couldn't fix deterministically. Used to fail a
+ * push before GitHub 422s on it (see comment-sync.ts). Never throws: if the
+ * current revision's files can't be read, validation can't say anything
+ * useful, so it reports nothing wrong rather than blocking the push.
+ */
+export function unanchoredDraftLineComments(key: PrKey, root = stateRoot()): Comment[] {
+  const comments = readComments(key, root);
+  const drafts = comments.filter((c) => c.status === "draft" && c.subjectType === "line");
+  if (drafts.length === 0) return [];
+  let currentFiles: FileDiff[];
+  try {
+    const state = loadState(key, root);
+    currentFiles = readFilesJson(key, state.currentRevision, root).files;
+  } catch {
+    return [];
+  }
+  return drafts.filter((c) => !findAnchoringHunk(currentFiles, c.file, c.line!, c.side!));
 }

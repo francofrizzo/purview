@@ -1,5 +1,6 @@
 import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
+import { isFileComment } from "../api/types";
 import type {
   AnalysisEffort,
   AnalysisImportReport,
@@ -23,6 +24,7 @@ import type {
   ClaudeModel,
   GlobalConfig,
   GlobalConfigPatch,
+  ReanchorResult,
   RepoConfig,
   RepoConfigPatch,
   RepoPathResult,
@@ -843,6 +845,42 @@ export const mockApi = {
     await delay(80);
     const i = drafts.findIndex((d) => d.id === id);
     if (i >= 0) drafts.splice(i, 1);
+  },
+
+  /** Mirrors the server's { line?, file? } PATCH: draft line comments only. */
+  async moveComment(
+    _key: string,
+    input: { id: string; line?: number; file?: string },
+  ): Promise<EditCommentResult> {
+    await delay(120);
+    const target = drafts.find((d) => d.id === input.id);
+    if (!target) throw new ApiError("not_found", 404, `No comment "${input.id}"`);
+    if (target.status !== "draft") {
+      throw new ApiError("not_draft", 400, "Only draft comments can be repositioned");
+    }
+    if (isFileComment(target)) {
+      throw new ApiError("not_line_comment", 400, "Only line comments can be repositioned");
+    }
+    if (input.line !== undefined) target.line = input.line;
+    if (input.file !== undefined) target.file = input.file;
+    return { comment: structuredClone(target), remote: null };
+  },
+
+  /** A canned, always-applicable proposal — good enough for exercising the UI. */
+  async proposeReanchor(_key: string, id: string): Promise<ReanchorResult> {
+    await delay(500);
+    const target = drafts.find((d) => d.id === id);
+    if (!target) throw new ApiError("not_found", 404, `No comment "${id}"`);
+    return {
+      ok: true,
+      proposal: {
+        applicable: true,
+        file: target.file,
+        line: (target.line ?? 0) + 1,
+        side: "RIGHT",
+        reason: "Mock: the surrounding code still matches, just a few lines down.",
+      },
+    };
   },
 
   /* ------------------------------------------------------ review lifecycle */

@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import type { ReviewEvent, ReviewStatus, SubmitReviewResult } from "../api/types";
+import type {
+  FilesJson,
+  ReanchorProposal,
+  ReviewEvent,
+  ReviewStatus,
+  SubmitReviewResult,
+} from "../api/types";
+import { errorText } from "../api/errors";
+import { isCommentAnchored } from "../lib/comments";
 import type { BundleSource } from "./CopyForAgent";
 import { CopyBundleControls } from "./CopyForAgent";
 import { CommentBody, type EditComment } from "./Drafts";
@@ -49,6 +57,9 @@ export function FinishReviewPanel({
   onJumpToComment,
   onEditComment,
   bundle,
+  files,
+  onProposeReanchor,
+  onApplyReanchor,
 }: {
   review?: ReviewStatus;
   loading: boolean;
@@ -65,6 +76,12 @@ export function FinishReviewPanel({
   onEditComment?: EditComment;
   /** diff + PR identity for the agent-facing copy; omit to hide the action */
   bundle?: Omit<BundleSource, "comments" | "reviewBody">;
+  /** the current diff, used to flag drafts that fell outside it — omit to skip the check */
+  files?: FilesJson;
+  /** "Suggest new anchor" — resolves to the model's proposal, never applies it */
+  onProposeReanchor?: (id: string) => Promise<ReanchorProposal>;
+  /** accept a proposal (or a manual reposition) */
+  onApplyReanchor?: (id: string, target: { file: string; line: number }) => Promise<void>;
 }) {
   const [body, setBody] = useState("");
   const [arming, setArming] = useState<ReviewEvent | null>(null);
@@ -131,7 +148,7 @@ export function FinishReviewPanel({
               </Notice>
             ) : null}
 
-            {submitError ? <Notice tone="error">{submitError.message}</Notice> : null}
+            {submitError ? <Notice tone="error">{errorText(submitError)}</Notice> : null}
 
             <PendingBanner
               review={review}
@@ -193,6 +210,9 @@ export function FinishReviewPanel({
               onEdit={onEditComment}
               bundle={bundle}
               reviewBody={body}
+              files={files}
+              onProposeReanchor={onProposeReanchor}
+              onApplyReanchor={onApplyReanchor}
             />
 
             <div className="px-3 py-3">
@@ -359,6 +379,9 @@ function IncludedComments({
   onEdit,
   bundle,
   reviewBody,
+  files,
+  onProposeReanchor,
+  onApplyReanchor,
 }: {
   review: ReviewStatus;
   onJump: (file: string, line: number | null) => void;
@@ -366,6 +389,9 @@ function IncludedComments({
   bundle?: Omit<BundleSource, "comments" | "reviewBody">;
   /** the live textarea contents, so the copy matches what is on screen */
   reviewBody?: string;
+  files?: FilesJson;
+  onProposeReanchor?: (id: string) => Promise<ReanchorProposal>;
+  onApplyReanchor?: (id: string, target: { file: string; line: number }) => Promise<void>;
 }) {
   return (
     <div className="border-b" style={{ borderColor: "var(--border)" }}>
@@ -390,26 +416,158 @@ function IncludedComments({
         </p>
       ) : (
         <ul className="py-1">
-          {review.included.map((c) => (
-            <li key={c.id} className="px-3 py-1.5">
-              <button
-                type="button"
-                className="flex w-full items-center gap-1.5 text-left font-mono text-2xs"
-                style={{ color: "var(--fg-muted)" }}
-                onClick={() => onJump(c.file, c.line)}
-                title="Jump to this file"
-              >
-                <span className="truncate">{c.file}</span>
-                <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
-                  {c.line === null || c.subjectType === "file" ? "(file)" : `:${c.line}`}
-                </span>
-                <StatusChip status={c.status} />
-              </button>
-              <CommentBody comment={c} edit={onEdit} clamp />
-            </li>
-          ))}
+          {review.included.map((c) => {
+            const outside =
+              !!files && c.status === "draft" && c.subjectType !== "file" && !isCommentAnchored(files, c);
+            return (
+              <li key={c.id} className="px-3 py-1.5">
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-1.5 text-left font-mono text-2xs"
+                  style={{ color: "var(--fg-muted)" }}
+                  onClick={() => onJump(c.file, c.line)}
+                  title="Jump to this file"
+                >
+                  <span className="truncate">{c.file}</span>
+                  <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
+                    {c.line === null || c.subjectType === "file" ? "(file)" : `:${c.line}`}
+                  </span>
+                  <StatusChip status={c.status} />
+                </button>
+                {outside ? (
+                  <OutsideDiffNotice
+                    id={c.id}
+                    onProposeReanchor={onProposeReanchor}
+                    onApplyReanchor={onApplyReanchor}
+                  />
+                ) : null}
+                <CommentBody comment={c} edit={onEdit} clamp />
+              </li>
+            );
+          })}
         </ul>
       )}
+    </div>
+  );
+}
+
+/**
+ * A draft that no longer anchors into the current diff — the exact "PR
+ * revision moved, hunk slid outside every hunk we can see" scenario this
+ * whole feature exists for. The warning chip is always shown; the propose
+ * flow only lights up when the caller wired it in (PrView does, tests may
+ * not need to).
+ */
+function OutsideDiffNotice({
+  id,
+  onProposeReanchor,
+  onApplyReanchor,
+}: {
+  id: string;
+  onProposeReanchor?: (id: string) => Promise<ReanchorProposal>;
+  onApplyReanchor?: (id: string, target: { file: string; line: number }) => Promise<void>;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [proposal, setProposal] = useState<ReanchorProposal | null>(null);
+  const [applying, setApplying] = useState(false);
+
+  const suggest = async () => {
+    if (!onProposeReanchor) return;
+    setLoading(true);
+    setError(null);
+    try {
+      setProposal(await onProposeReanchor(id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const apply = async () => {
+    if (!onApplyReanchor || !proposal?.applicable || proposal.file === undefined || proposal.line === undefined) {
+      return;
+    }
+    setApplying(true);
+    setError(null);
+    try {
+      await onApplyReanchor(id, { file: proposal.file, line: proposal.line });
+      setProposal(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  return (
+    <div className="mt-1 flex flex-col gap-1">
+      <div className="flex items-center gap-1.5">
+        <span className="chip" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>
+          outside current diff
+        </span>
+        {onProposeReanchor && !proposal ? (
+          <button type="button" className="btn text-2xs" disabled={loading} onClick={() => void suggest()}>
+            {loading ? "thinking…" : "Suggest new anchor"}
+          </button>
+        ) : null}
+      </div>
+      {error ? (
+        <p className="text-2xs" style={{ color: "var(--risk)" }}>
+          {error}
+        </p>
+      ) : null}
+      {proposal ? (
+        <div
+          className="rounded-md border px-2 py-1.5 text-2xs leading-5"
+          style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
+        >
+          {proposal.applicable ? (
+            <>
+              <div style={{ color: "var(--fg-muted)" }}>
+                Move to <span className="font-mono">{proposal.file}:{proposal.line}</span>
+              </div>
+              {proposal.reason ? (
+                <div style={{ color: "var(--fg-faint)" }}>{proposal.reason}</div>
+              ) : null}
+              <div className="mt-1 flex items-center gap-1.5">
+                <button
+                  type="button"
+                  className="btn text-2xs"
+                  onClick={() => setProposal(null)}
+                  disabled={applying}
+                >
+                  dismiss
+                </button>
+                {onApplyReanchor ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary text-2xs"
+                    onClick={() => void apply()}
+                    disabled={applying}
+                  >
+                    {applying ? "applying…" : "apply"}
+                  </button>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ color: "var(--fg-faint)" }}>
+                {proposal.reason || "Not applicable — no safe anchor found."}
+              </div>
+              <button
+                type="button"
+                className="btn mt-1 text-2xs"
+                onClick={() => setProposal(null)}
+              >
+                dismiss
+              </button>
+            </>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

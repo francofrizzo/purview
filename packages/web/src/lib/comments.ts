@@ -6,6 +6,7 @@
  * what keeps that a hash lookup instead of a scan. Pure functions only.
  */
 
+import type { FilesJson } from "../api/types";
 import {
   isFileComment,
   type CommentStatus,
@@ -99,6 +100,27 @@ export function statusColors(status: CommentStatus): { fg: string; bg: string } 
   if (status === "pushed") return { fg: "var(--accent)", bg: "var(--accent-soft)" };
   if (status === "submitted") return { fg: "var(--ok)", bg: "var(--bg-inset)" };
   return { fg: "var(--fg-muted)", bg: "var(--bg-inset)" };
+}
+
+/**
+ * Is a draft line comment's anchor still inside the current diff? Mirrors
+ * the server's `findAnchoringHunk` (packages/server/src/comments.ts) —
+ * RIGHT against `newStart`/`newLines`, LEFT against `oldStart`/`oldLines` —
+ * so the same "this comment fell outside the diff" verdict shows up here
+ * without a round trip. A file-level comment has no line, so it's always
+ * anchored (the file itself is the anchor).
+ */
+export function isCommentAnchored(files: FilesJson, comment: DraftComment): boolean {
+  if (isFileComment(comment)) return true;
+  const line = comment.line as number;
+  const side = comment.side ?? "RIGHT";
+  const file = files.files.find((f) => f.path === comment.file);
+  if (!file) return false;
+  return file.hunks.some((h) =>
+    side === "RIGHT"
+      ? h.newLines > 0 && line >= h.newStart && line < h.newStart + h.newLines
+      : h.oldLines > 0 && line >= h.oldStart && line < h.oldStart + h.oldLines,
+  );
 }
 
 /** "3 comments (1 submitted)" — the bubble's tooltip. */
