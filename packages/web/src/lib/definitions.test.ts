@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FilesJson, Hunk } from "../api/types";
-import { findInDiffHunk } from "./definitions";
+import { findDiffLocalDefinitions, findInDiffHunk } from "./definitions";
 
 function hunk(id: string, newStart: number, newLines: number): Hunk {
   return {
@@ -52,5 +52,48 @@ describe("findInDiffHunk", () => {
 
   it("skips a pure-deletion hunk (newLines 0) rather than matching every line", () => {
     expect(findInDiffHunk(filesJson(), "src/widgets.ts", 30)).toBeNull();
+  });
+});
+
+describe("findDiffLocalDefinitions", () => {
+  const withAdded = (added: string[]): FilesJson => ({
+    files: [
+      {
+        path: "browser/types.go",
+        hunks: [{ ...hunk("g1", 10, added.length), addedLines: added } as Hunk],
+      },
+    ],
+  });
+
+  it("finds a Go type the PR itself introduces", () => {
+    const files = withAdded([
+      "// BrowserServiceEnvironment names one deployment of a service.",
+      "type BrowserServiceEnvironment string",
+      'BrowserServiceEnvironmentTest BrowserServiceEnvironment = "test"',
+    ]);
+    expect(findDiffLocalDefinitions(files, "BrowserServiceEnvironment")).toEqual([
+      {
+        hunkId: "g1",
+        path: "browser/types.go",
+        lineText: "type BrowserServiceEnvironment string",
+      },
+    ]);
+  });
+
+  it("does not treat a mere usage as a definition", () => {
+    const files = withAdded(["result := computeTotal(items)", "return computeTotal(items)"]);
+    expect(findDiffLocalDefinitions(files, "computeTotal")).toEqual([]);
+  });
+
+  it("requires the defined name itself, not a prefix-sharing sibling", () => {
+    const files = withAdded(["func computeTotals() int {"]);
+    expect(findDiffLocalDefinitions(files, "computeTotal")).toEqual([]);
+  });
+
+  it("finds a method definition behind a Go receiver", () => {
+    const files = withAdded(["func (s *Server) Close() error {"]);
+    expect(findDiffLocalDefinitions(files, "Close")).toEqual([
+      { hunkId: "g1", path: "browser/types.go", lineText: "func (s *Server) Close() error {" },
+    ]);
   });
 });

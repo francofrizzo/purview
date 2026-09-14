@@ -82,7 +82,7 @@ import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
 import { DiffSearchBar } from "../components/DiffSearchBar";
 import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
-import { findInDiffHunk } from "../lib/definitions";
+import { findDiffLocalDefinitions, findInDiffHunk } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
 import type { DefinitionResult } from "../api/types";
@@ -381,6 +381,14 @@ export function PrView() {
   const handleDefinitionClick = useCallback(
     (symbol: string, x: number, y: number) => {
       if (!detail) return;
+      // A definition the PR itself introduces exists only in the diff — no
+      // checkout engine can find it. The diff's own added lines answer first.
+      const local = findDiffLocalDefinitions(detail.files, symbol);
+      if (local.length > 0) {
+        ++defRequestId.current; // invalidate any in-flight server lookup
+        jumpToDiffHunk(local[0].hunkId, local[0].path);
+        return;
+      }
       const reqId = ++defRequestId.current;
       setDefPopover({ x, y, symbol, status: "loading" });
       api
