@@ -191,7 +191,9 @@ describe("full migration scenario", () => {
       migration: "identical",
     });
 
-    // fuzzy: edited after being viewed -> stays viewed, flagged as changed
+    // fuzzy: edited after being viewed -> flagged as changed AND no longer
+    // viewed: the reader saw an earlier version, so viewed-gating must bring
+    // them back to it (the flag survives to say why).
     const logout2 = hunkIdBy(r2, "src/auth.ts", "clock.now()");
     expect(logout2).not.toBe(ids.logout);
     const fuzzy = entryFor(logout2);
@@ -199,7 +201,7 @@ describe("full migration scenario", () => {
     expect(fuzzy.previousHunkId).toBe(ids.logout);
     expect(fuzzy.score).toBeGreaterThanOrEqual(0.6);
     expect(state.hunks[logout2]).toMatchObject({
-      viewed: true,
+      viewed: false,
       changedSinceViewed: true,
       migration: "fuzzy",
       predecessorId: ids.logout,

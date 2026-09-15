@@ -111,6 +111,15 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
             changedSinceViewed:
               entry.changedSinceViewed ?? old?.changedSinceViewed ?? false,
           };
+          // A changed-since-viewed hunk is no longer viewed: the reader saw
+          // an earlier version of it, and "viewed" gating (readiness, the
+          // progress bar, space-to-next-unviewed) must bring them back. The
+          // flag itself stays on so the UI can say *why* it needs a re-read;
+          // re-viewing clears both (see "hunk-viewed").
+          if (carried.changedSinceViewed && carried.viewed) {
+            carried.viewed = false;
+            carried.viewedAtRevision = undefined;
+          }
           nextHunks[entry.hunkId] = carried;
           if (entry.previousHunkId)
             idRemap.set(entry.previousHunkId, entry.hunkId);
