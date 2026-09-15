@@ -1359,7 +1359,11 @@ export function DiffPane({
             );
           })()}
           </span>
-          <span className="ml-auto flex min-w-0 flex-none items-center gap-2">
+          {/* shrink-[3]: when the header runs out of room, the unit label
+              gives up space three times faster than the file/range half, so
+              on a wide screen the full title shows and on a narrow one the
+              code-identifying content wins. */}
+          <span className="ml-auto flex min-w-0 shrink-[3] items-center gap-2">
             {(() => {
               const unit = unitForHunkId?.(row.hunkId);
               if (!unit) return null;
@@ -1378,7 +1382,7 @@ export function DiffPane({
                     className="h-1.5 w-1.5 flex-none rounded-full"
                     style={{ background: attentionColor(unit.attention) }}
                   />
-                  <span className="max-w-[9rem] truncate">{unit.title}</span>
+                  <span className="truncate">{unit.title}</span>
                 </button>
               );
             })()}
