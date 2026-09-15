@@ -301,6 +301,16 @@
     box-shadow: var(--shadow-1);
   }
 
+  /* Hunk header's "which unit is this" label (files tab only) — quiet until
+     hovered, then it reads as clickable. */
+  .hunk-unit-label {
+    color: var(--fg-faint);
+  }
+  .hunk-unit-label:hover {
+    color: var(--fg-muted);
+    text-decoration: underline;
+  }
+
   /* Brief pulse on the row a match was just scrolled to — the row itself may be
      far down a long unit, and the mark alone is easy to miss. */
   [data-flash="true"] {

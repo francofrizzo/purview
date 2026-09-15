@@ -1,6 +1,6 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
+import type { Attention, ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { baseName, lineRangeRef } from "../lib/chatRefs";
 import { groupComments, lineAnchor } from "../lib/comments";
 import {
@@ -32,7 +32,7 @@ import {
 import { useTokensForHunks } from "../lib/useHunkTokens";
 import { useSettings, type DiffViewMode } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
-import { ChangedBadge } from "./Chips";
+import { attentionColor, ChangedBadge } from "./Chips";
 import { QuoteButton } from "./ChatPanel";
 import {
   COMMENT_COL_WIDTH,
@@ -129,6 +129,14 @@ export interface DiffPaneProps {
    * visit does).
    */
   jumpToHunk?: { hunkId: string; nonce: number } | null;
+  /**
+   * Files tab only: which unit (if any) a hunk belongs to, for a quiet label
+   * on its header — the units tab already groups by unit, so the host omits
+   * this prop there and the label renders nothing.
+   */
+  unitForHunkId?: (hunkId: string) => { id: string; title: string; attention: Attention } | null;
+  /** Clicking that label: host switches to the units tab, same unit, same hunk. */
+  onUnitClick?: (unitId: string, hunkId: string) => void;
 }
 
 /** Past this many px from the top, the host header may collapse. */
@@ -191,6 +199,8 @@ export function DiffPane({
   onScrolledAway,
   onDefinitionClick,
   jumpToHunk,
+  unitForHunkId,
+  onUnitClick,
 }: DiffPaneProps) {
   const { appearance, settings } = useSettings();
   const theme = shikiThemeFor(appearance.theme);
@@ -1349,8 +1359,32 @@ export function DiffPane({
             );
           })()}
           </span>
-          <span className="ml-auto font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
-            {row.hunkId.slice(0, 8)}
+          <span className="ml-auto flex min-w-0 flex-none items-center gap-2">
+            {(() => {
+              const unit = unitForHunkId?.(row.hunkId);
+              if (!unit) return null;
+              return (
+                <button
+                  type="button"
+                  data-testid={`hunk-unit-${row.hunkId}`}
+                  className="hunk-unit-label flex min-w-0 items-center gap-1.5 text-2xs"
+                  title={`${unit.title} (${unit.attention})`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onUnitClick?.(unit.id, row.hunkId);
+                  }}
+                >
+                  <span
+                    className="h-1.5 w-1.5 flex-none rounded-full"
+                    style={{ background: attentionColor(unit.attention) }}
+                  />
+                  <span className="max-w-[9rem] truncate">{unit.title}</span>
+                </button>
+              );
+            })()}
+            <span className="font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+              {row.hunkId.slice(0, 8)}
+            </span>
           </span>
         </div>
       );

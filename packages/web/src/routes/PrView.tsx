@@ -381,6 +381,28 @@ export function PrView() {
     [tab, units, selectedUnitId, selectedPath],
   );
 
+  /**
+   * Files tab only: each hunk header quietly names the unit it belongs to
+   * (units tab already groups by unit, so this would be redundant there).
+   * Looked up per hunk rather than precomputed into a map — `units` and its
+   * hunk lists are small, and this mirrors `unitForHunk`'s other callers.
+   */
+  const unitForHunkId = useMemo(() => {
+    if (tab !== "files") return undefined;
+    return (hunkId: string) => {
+      const unit = unitForHunk(units, hunkId);
+      return unit ? { id: unit.id, title: unit.title, attention: unit.attention } : null;
+    };
+  }, [tab, units]);
+
+  /** Clicking that unit label: jump to the units tab, same unit, same hunk —
+   *  the same "switch tab, keep the hunk in view" flow as jumpToDiffHunk. */
+  const onHunkUnitClick = useCallback((unitId: string, hunkId: string) => {
+    setSelectedUnitId(unitId);
+    setTab("units");
+    setJumpToHunk({ hunkId, nonce: Date.now() });
+  }, []);
+
   /** Cmd+click "go to definition" — see DiffLine.tsx / lib/identifierAt.ts. */
   const handleDefinitionClick = useCallback(
     (symbol: string, x: number, y: number) => {
@@ -1047,6 +1069,8 @@ export function PrView() {
               onScrolledAway={onScrolledAway}
               onDefinitionClick={handleDefinitionClick}
               jumpToHunk={jumpToHunk}
+              unitForHunkId={unitForHunkId}
+              onUnitClick={onHunkUnitClick}
               showFileRows={tab === "units"}
               emptyMessage={
                 tab === "units"

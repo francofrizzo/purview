@@ -103,6 +103,12 @@ export function AttentionChip({ attention }: { attention: Attention }) {
   );
 }
 
+/** Just the color decision behind {@link AttentionChip}, for callers (e.g. a
+ *  hunk header's unit dot) that want the same hue without the whole chip. */
+export function attentionColor(attention: Attention): string {
+  return (ATTENTION_STYLE[attention] ?? ATTENTION_STYLE.skim).color;
+}
+
 const EFFORT_STYLE: Record<
   Exclude<EffortBadge, null>,
   { label: string; icon: (p: { width?: number; height?: number }) => JSX.Element; color: string; bg: string }
