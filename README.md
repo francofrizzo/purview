@@ -155,8 +155,10 @@ checks, then records the answer on the unit as a `finding` — a `warning` when 
 looks wrong, a `note` when it verified fine and closed a question the reviewer would
 otherwise have chased. Every finding cites the files and lines it was verified against, and
 the discipline around them is deliberately narrow: verified, sourced, and material enough to
-change what you write in your review — never style opinions, unchecked "might"s, restatements
-of the diff, or architecture editorializing. Questions that code *can't* settle stay
+change what you write in your review, and explicit about whether the PR *introduced*,
+*exposed*, or merely *left unchanged* the issue it reports — never style opinions, unchecked
+"might"s, restatements of the diff, architecture editorializing, or pre-existing debt the diff
+only happens to touch. Questions that code *can't* settle stay
 questions in `attentionWhy`. Without a checkout there is no verification pass and no
 findings at all, because a finding derived from the diff alone is just a guess with a
 citation-shaped hole in it. Findings are local annotations: they never block, never approve,

@@ -159,6 +159,14 @@ all the others. These are hard rules, not preferences.
 
 A candidate that fails any one of the three is not downgraded to a `note` — it is dropped.
 
+### Attribution: what did this PR do?
+
+Before calling anything a regression, compare base and head — the diff's removed and
+context lines are the base side, the checkout is the head side. Every finding states which
+of three things the change did: **introduced** the issue, **exposed** a latent one, or
+**left a pre-existing issue unchanged**. A pre-existing issue the PR does not make worse is
+a `note` at most, never a `warning`, and never a request for an unrelated fix.
+
 ### Never a finding
 
 - **Style or taste.** Naming, formatting, "this could be a switch", preferred idioms,
@@ -171,6 +179,9 @@ A candidate that fails any one of the three is not downgraded to a `note` — it
   pattern would fit better here." The PR's shape is the author's decision.
 - **Anything the diff + checkout cannot demonstrate.** Runtime behavior you did not run,
   performance you did not measure, product intent you inferred, "does the team want this?"
+- **Pre-existing debt the diff merely touches.** Out of scope for this PR. If it matters to
+  the reader, say so in one line — don't file it as a finding against a change that didn't
+  cause it.
 
 **If a question cannot be settled by reading code — it needs runtime knowledge, data, or
 product intent — it stays a question in `attentionWhy`. It never becomes a finding.** A
