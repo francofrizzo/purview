@@ -149,6 +149,7 @@ export interface PrMeta {
   title?: string;
   author?: string;
   authorAvatarUrl?: string;
+  reviewRelationship?: "own" | "review" | "other";
   createdAt?: string;
 }
 
@@ -725,16 +726,6 @@ export interface DefinitionCandidate {
 export type DefinitionResult =
   | { checkout: false; reason: string }
   | { checkout: true; engine: "ctags" | "grep"; candidates: DefinitionCandidate[] };
-export type ImportScope = "all" | "created" | "assigned" | "review-requested";
-export interface ImportPrsResult {
-  login: string;
-  added: string[];
-  skipped: string[];
-  failed: { url: string; error: string }[];
-  queued: number;
-  warnings: string[];
-}
-
 export interface PrPerson {
   author?: string;
   title?: string;

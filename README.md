@@ -59,33 +59,20 @@ after `git pull` — it is always safe to re-run.
 
 Open <http://localhost:4779> and paste a PR URL to start tracking it.
 
-The dashboard checks active PRs on GitHub when opened and every five minutes while visible,
+The dashboard immediately shows saved PR metadata and review groupings, then checks
+active PRs on GitHub in the background when opened and every five minutes while visible,
 updating authors, review requests, titles, PR status, and review decisions without
-changing diffs or starting analysis. Archived PRs are checked when their section
+changing diffs or starting analysis. Failed lookups retain the last known information.
+Archived PRs are checked when their section
 is expanded, so they do not delay active PRs. Re-adding an archived PR by URL restores it
 and refreshes its diff. Explicitly starting analysis on an archived PR does the
 same before queueing analysis, preserving comments and review progress.
 
-You can also click **Import from GitHub** on the home page to add your open PRs in
-bulk using your existing `gh` login for github.com. **Review requested** is the default.
-Choose **All my open PRs**
-(created by you, assigned to you, or requesting your review), or select a single
-scope matching the dashboard tabs at <https://github.com/pulls>. Drafts are included.
-New PRs enter the normal analysis queue, respecting your global and per-repo analysis
-settings. Already tracked PRs, including archived ones, are skipped without refreshing
-or reanalyzing them. Click again whenever you want to discover new PRs.
-
-The result shows added/skipped/failed counts and how many analyses were queued.
-Individual PR failures do not stop the remaining imports; you can retry by clicking
-again. GitHub search pagination is supported up to its 1,000-result limit per scope;
-incomplete or capped search results are explicitly reported. Only repositories visible
-to your authenticated `gh` account can be imported. This uses the read-only
-[GitHub search API](https://docs.github.com/en/rest/search/search#search-issues-and-pull-requests)
-and does not post anything to GitHub.
-
-`POST /api/prs/import { "scope": "review-requested" }` exposes the same action.
-Omitting `scope` defaults to `review-requested`. Other scopes are `created`, `assigned`,
-and `all`; `?analyze=false` imports without analysis.
+Use **import review requests…** in a repository section to import recent review
+requests for that repository. Repository settings can enable
+watch mode to discover new review requests automatically. Imports enqueue older PRs
+first within each repository, using the existing analysis queue. Both leave archived PRs
+archived; use Add PR or Unarchive to restore one explicitly.
 
 Add one PR with `POST /api/prs { "url": "https://github.com/OWNER/REPO/pull/123" }`.
 Automatic analysis respects the process and repo settings. To explicitly start analysis

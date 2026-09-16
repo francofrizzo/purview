@@ -43,7 +43,6 @@ function ghJson<T>(host: string, args: string[], input?: string): T {
 }
 
 export interface PullRequestInfo {
-  author?: string;
   nodeId: string;
   number: number;
   title: string;
@@ -64,7 +63,6 @@ export interface PullRequestInfo {
 }
 
 interface RawPull {
-  user?: { login?: string };
   node_id: string;
   number: number;
   title: string;
@@ -94,23 +92,38 @@ export function collapsePrState(raw: {
   return raw.draft ? "draft" : "open";
 }
 
+/** Shared metadata projection for synchronous refresh and background dashboard reads. */
+export function pullRequestMetadata(raw: {
+  user?: { login?: string; avatar_url?: string } | null;
+  title?: string;
+  state?: string;
+  draft?: boolean;
+  merged?: boolean;
+  merged_at?: string | null;
+}) {
+  return {
+    author: raw.user?.login ?? undefined,
+    authorAvatarUrl: raw.user?.avatar_url ?? undefined,
+    title: raw.title,
+    prState: raw.state === undefined ? undefined : collapsePrState(raw),
+  };
+}
+
 /** `gh api repos/{owner}/{repo}/pulls/{number}` */
 export function fetchPullRequest(key: PrKey): PullRequestInfo {
   const raw = ghJson<RawPull>(key.host, [
     `repos/${key.owner}/${key.repo}/pulls/${key.number}`,
   ]);
   return {
-    author: raw.user?.login,
     nodeId: raw.node_id,
     number: raw.number,
-    title: raw.title,
     url: raw.html_url,
     state: raw.state,
     draft: !!raw.draft,
     merged: !!(raw.merged || raw.merged_at),
+    ...pullRequestMetadata(raw),
+    title: raw.title,
     prState: collapsePrState(raw),
-    author: raw.user?.login ?? undefined,
-    authorAvatarUrl: raw.user?.avatar_url ?? undefined,
     baseRef: raw.base.ref,
     headRef: raw.head.ref,
     baseSha: raw.base.sha,
@@ -244,33 +257,29 @@ const REVIEW_DECISION_QUERY = `query($owner:String!,$repo:String!,$number:Int!){
  * does not know the field, or any transport failure, yields `null` rather than
  * failing the refresh that carries it.
  */
+export function reviewDecisionArgs(key: PrKey): string[] {
+  return ["api", "graphql", ...hostArgs(key.host), "-f",
+    `query=${REVIEW_DECISION_QUERY}`, "-F", `owner=${key.owner}`,
+    "-F", `repo=${key.repo}`, "-F", `number=${key.number}`];
+}
+
+/** undefined means unavailable; null is a successful read with no decision. */
+export function parseReviewDecisionResponse(res: {
+  errors?: unknown[];
+  data?: { repository?: { pullRequest?: { reviewDecision?: string | null } } };
+}): ReviewDecision | null | undefined {
+  if (res.errors?.length) return undefined;
+  const raw = res.data?.repository?.pullRequest?.reviewDecision;
+  if (raw === null) return null;
+  if (typeof raw !== "string") return undefined;
+  const value = raw.toLowerCase();
+  return value === "approved" || value === "changes_requested" || value === "review_required"
+    ? value : undefined;
+}
+
 export function fetchReviewDecision(key: PrKey): ReviewDecision | null {
   try {
-    const res = JSON.parse(
-      gh([
-        "api",
-        "graphql",
-        ...hostArgs(key.host),
-        "-f",
-        `query=${REVIEW_DECISION_QUERY}`,
-        "-F",
-        `owner=${key.owner}`,
-        "-F",
-        `repo=${key.repo}`,
-        "-F",
-        `number=${key.number}`,
-      ]),
-    ) as {
-      data?: { repository?: { pullRequest?: { reviewDecision?: string | null } } };
-    };
-    const raw = res.data?.repository?.pullRequest?.reviewDecision;
-    if (typeof raw !== "string" || raw === "") return null;
-    const normalized = raw.toLowerCase();
-    return normalized === "approved" ||
-      normalized === "changes_requested" ||
-      normalized === "review_required"
-      ? (normalized as ReviewDecision)
-      : null;
+    return parseReviewDecisionResponse(JSON.parse(gh(reviewDecisionArgs(key)))) ?? null;
   } catch {
     return null;
   }

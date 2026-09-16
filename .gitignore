@@ -3,3 +3,6 @@ dist/
 web-dist/
 *.log
 .DS_Store
+
+# Local verification artifacts
+/evidence/

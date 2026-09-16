@@ -76,7 +76,9 @@ export function importReviewRequestsSince(
   const candidates = searchReviewRequestedPrs(repo, since.toISOString());
   const tracked = trackedNumbers(repo, root);
 
-  for (const candidate of candidates) {
+  // Within a repository, lower PR numbers were created first. Keep the
+  // existing queue; only order the candidates before enqueueing.
+  for (const candidate of candidates.sort((a, b) => a.number - b.number)) {
     const key: PrKey = { ...repo, number: candidate.number };
     const keyStr = keyToString(key);
     if (tracked.has(candidate.number)) {

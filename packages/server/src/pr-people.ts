@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { collapsePrState, keyToString, readMeta, updateMeta, type Meta, type PrKey, type PrState, type ReviewDecision } from "@reviewer/core";
+import { pullRequestMetadata, reviewDecisionArgs, parseReviewDecisionResponse, keyToString, readMeta, updateMeta, type Meta, type PrKey, type PrState, type ReviewDecision } from "@reviewer/core";
 
 const exec = promisify(execFile);
 type Run = (args: string[]) => Promise<any>;
@@ -10,6 +10,7 @@ const runGh: Run = async (args) => {
 };
 export interface PrPerson {
   author?: string;
+  authorAvatarUrl?: string;
   title?: string;
   state?: PrState;
   reviewDecision?: ReviewDecision | null;
@@ -49,20 +50,17 @@ export function createPrPeopleLoader(run: Run = runGh) {
             const id = keyToString(key);
             try {
               const pr = await api([`repos/${key.owner}/${key.repo}/pulls/${key.number}`]);
-              const author = typeof pr.user?.login === "string" ? pr.user.login : undefined;
+              const metadata = pullRequestMetadata(pr);
+              const author = metadata.author;
               let reviewDecision: ReviewDecision | null | undefined;
               try {
-                const response = await api(["graphql", "-f", "query=query($owner:String!,$repo:String!,$number:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$number){reviewDecision}}}", "-F", `owner=${key.owner}`, "-F", `repo=${key.repo}`, "-F", `number=${key.number}`]);
-                const value = response.data?.repository?.pullRequest?.reviewDecision;
-                if (!response.errors?.length) {
-                  if (value === null) reviewDecision = null;
-                  else if (["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"].includes(value)) reviewDecision = value.toLowerCase();
-                }
+                reviewDecision = parseReviewDecisionResponse(await run(reviewDecisionArgs(key)));
               } catch { /* Preserve the last known decision when GitHub is unavailable. */ }
               result[id] = {
                 author,
-                ...(typeof pr.title === "string" ? { title: pr.title } : {}),
-                ...(["open", "closed"].includes(pr.state) ? { state: collapsePrState(pr) } : {}),
+                ...(metadata.authorAvatarUrl ? { authorAvatarUrl: metadata.authorAvatarUrl } : {}),
+                ...(metadata.title !== undefined ? { title: metadata.title } : {}),
+                ...(metadata.prState !== undefined ? { state: metadata.prState } : {}),
                 ...(reviewDecision !== undefined ? { reviewDecision } : {}),
                 relationship:
                 author && login && author.toLowerCase() === login.toLowerCase() ? "own" :
@@ -92,6 +90,8 @@ export function persistPrPeople(keys: PrKey[], people: Record<string, PrPerson>,
       const meta = readMeta(key, root);
       const patch: Partial<Meta> = {};
       if (person.author !== undefined && person.author !== meta.author) patch.author = person.author;
+      if (person.authorAvatarUrl !== undefined && person.authorAvatarUrl !== meta.authorAvatarUrl) patch.authorAvatarUrl = person.authorAvatarUrl;
+      if (person.relationship !== "unknown" && person.relationship !== meta.reviewRelationship) patch.reviewRelationship = person.relationship;
       if (person.title !== undefined && person.title !== meta.title) patch.title = person.title;
       if (person.state !== undefined && person.state !== meta.prState) patch.prState = person.state;
       if (person.reviewDecision !== undefined && person.reviewDecision !== meta.reviewDecision) patch.reviewDecision = person.reviewDecision;

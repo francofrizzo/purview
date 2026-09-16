@@ -116,7 +116,6 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   // move. Both are additive, and a failed decision query degrades to null.
   const reviewDecision = fetchReviewDecision(key);
   const metaPatch: Partial<Meta> = {};
-  if (pr.author && meta.author !== pr.author) metaPatch.author = pr.author;
   if (meta.headRef !== pr.headRef) metaPatch.headRef = pr.headRef;
   // Backfills state written before the author was recorded.
   if (pr.author && meta.author !== pr.author) metaPatch.author = pr.author;

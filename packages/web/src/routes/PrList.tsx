@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK } from "../api/client";
-import { useAddPr, useDeletePr, useImportReviews, useImportPrs, usePrPeople, usePrs, useRepos, useSetArchived } from "../api/hooks";
-import type { ImportScope, PrListEntry, PrPerson, RepoSummary } from "../api/types";
+import { useAddPr, useDeletePr, useImportReviews, usePrPeople, usePrs, useRepos, useSetArchived } from "../api/hooks";
+import type { PrListEntry, PrPerson, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
 import { EffortChip, Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
@@ -20,11 +20,9 @@ import {
 export function PrList() {
   const { data: prs = [], isLoading, error } = usePrs();
   const { data: repos = [] } = useRepos();
-  const { data: people = {}, isPending: loadingPeople } = usePrPeople();
+  const { data: people = {} } = usePrPeople();
   const background = useModalBackground();
   const addPr = useAddPr();
-  const importPrs = useImportPrs();
-  const [importScope, setImportScope] = useState<ImportScope>("review-requested");
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
 
@@ -84,49 +82,6 @@ export function PrList() {
         </button>
       </form>
 
-      <div className="mb-6 text-xs">
-        <div className="flex flex-wrap gap-2">
-          <select
-            className="input min-w-0 flex-1 text-xs"
-            aria-label="GitHub PRs to import"
-            value={importScope}
-            onChange={(e) => { setImportScope(e.target.value as ImportScope); importPrs.reset(); }}
-            disabled={importPrs.isPending}
-          >
-            <option value="all">All my open PRs</option>
-            <option value="created">Created by me</option>
-            <option value="assigned">Assigned to me</option>
-            <option value="review-requested">Review requested</option>
-          </select>
-          <button
-            type="button"
-            className="btn flex-none"
-            disabled={importPrs.isPending || MOCK}
-            onClick={() => importPrs.mutate(importScope)}
-          >
-            {importPrs.isPending ? "Importing…" : "Import from GitHub"}
-          </button>
-        </div>
-        <div role="status" aria-live="polite" className="mt-2 leading-5">
-          {importPrs.isPending ? "Fetching your GitHub PRs and adding them for analysis…" : null}
-          {!importPrs.isPending && importPrs.data ? (
-            <>
-              <p>
-                {importPrs.data.login}: {importPrs.data.added.length} added,
-                {" "}{importPrs.data.queued} queued for analysis,
-                {" "}{importPrs.data.skipped.length} already tracked,
-                {" "}{importPrs.data.failed.length} failed.
-              </p>
-              {importPrs.data.warnings.map((warning) => <p key={warning} style={{ color: "var(--warn)" }}>{warning}</p>)}
-              {importPrs.data.failed.map((failure) => (
-                <p key={failure.url} style={{ color: "var(--risk)" }}>{failure.url}: {failure.error}</p>
-              ))}
-            </>
-          ) : null}
-        </div>
-        {importPrs.error ? <p role="alert" style={{ color: "var(--risk)" }}>{errorText(importPrs.error)}</p> : null}
-      </div>
-
       {addPr.error ? (
         <div
           className="mb-4 rounded px-3 py-2 text-xs"
@@ -150,12 +105,12 @@ export function PrList() {
             className="surface rounded-md p-4 text-xs leading-5"
             style={{ color: "var(--fg-faint)" }}
           >
-            No pull requests tracked yet. Paste a GitHub PR URL above or import your open PRs from GitHub.
+            No pull requests tracked yet. Paste a GitHub PR URL above.
           </p>
         ) : (
           <div className="flex flex-col gap-3 pb-6">
             {groups.map((group) => (
-              <RepoSection key={group.key} group={group} repo={repoByKey.get(group.key)} people={people} loadingPeople={loadingPeople} />
+              <RepoSection key={group.key} group={group} repo={repoByKey.get(group.key)} people={people} />
             ))}
           </div>
         )}
@@ -165,10 +120,10 @@ export function PrList() {
 }
 
 /** One repo: a header row, its PRs, and the archived disclosure at the bottom. */
-function RepoSection({ group, repo, people, loadingPeople }: { group: RepoGroup; repo?: RepoSummary; people: Record<string, PrPerson>; loadingPeople: boolean }) {
+function RepoSection({ group, repo, people }: { group: RepoGroup; repo?: RepoSummary; people: Record<string, PrPerson> }) {
   const [showArchived, setShowArchived] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const { data: archivedPeople = {} } = usePrPeople(true, showArchived);
+  usePrPeople(true, showArchived);
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
 
@@ -234,12 +189,16 @@ function RepoSection({ group, repo, people, loadingPeople }: { group: RepoGroup;
 
       {group.prs.length ? (
         (["review", "own", "other", "unknown"] as const).map((relationship) => {
-          const prs = group.prs.filter((pr) => (people[pr.key]?.relationship ?? "unknown") === relationship);
+          const prs = group.prs.filter((pr) => {
+            const fresh = people[pr.key]?.relationship;
+            const known = fresh && fresh !== "unknown" ? fresh : pr.meta?.reviewRelationship;
+            return (known ?? "unknown") === relationship;
+          });
           if (!prs.length) return null;
-          const label = { review: "For your review", own: "Your PRs", other: "Other PRs", unknown: loadingPeople ? "Loading GitHub…" : "Uncategorized" }[relationship];
+          const label = { review: "For your review", own: "Your PRs", other: "Other PRs", unknown: "Uncategorized" }[relationship];
           return <div key={relationship}>
             <h3 className="px-3 pt-3 pb-1 text-2xs font-medium" style={{ color: "var(--fg-muted)" }}>{label} <span className="tabular-nums">({prs.length})</span></h3>
-            <ul>{prs.map((pr) => <PrRow key={pr.key} pr={pr} person={people[pr.key]} />)}</ul>
+            <ul>{prs.map((pr) => <PrRow key={pr.key} pr={pr} />)}</ul>
           </div>;
         })
       ) : (
@@ -262,7 +221,7 @@ function RepoSection({ group, repo, people, loadingPeople }: { group: RepoGroup;
           {showArchived ? (
             <ul style={{ borderTop: "1px solid var(--border)" }}>
               {group.archived.map((pr) => (
-                <PrRow key={pr.key} pr={pr} person={archivedPeople[pr.key] ?? people[pr.key]} />
+                <PrRow key={pr.key} pr={pr} />
               ))}
             </ul>
           ) : null}
@@ -329,7 +288,7 @@ function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => voi
 const ARCHIVE_HINT =
   "Archiving cancels analysis and hides the PR here. It changes nothing on GitHub.";
 
-function PrRow({ pr, person }: { pr: PrListEntry; person?: PrPerson }) {
+function PrRow({ pr }: { pr: PrListEntry }) {
   const setArchived = useSetArchived();
   const deletePr = useDeletePr();
   const archived = pr.archived;

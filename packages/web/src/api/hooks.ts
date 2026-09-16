@@ -10,7 +10,6 @@ import { applyArchive } from "../lib/prList";
 import { stalenessPollInterval } from "../lib/staleness";
 import type {
   AnalysisImportReport,
-  ImportScope,
   AnalysisJob,
   DiffOfDiffs,
   DiscardPendingResult,
@@ -94,18 +93,6 @@ export function usePrs() {
       )
         ? 3000
         : false,
-  });
-}
-
-export function useImportPrs() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (scope: ImportScope) => api.importPrs(scope),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: qk.prs });
-      void qc.invalidateQueries({ queryKey: ["pr-people"] });
-      void qc.invalidateQueries({ queryKey: qk.repos });
-    },
   });
 }
 
@@ -602,7 +589,7 @@ export function useAnalysisEvents(key: string) {
       if (job.status === "done" && was !== "done") {
         void qc.invalidateQueries({ queryKey: qk.pr(key) });
         void qc.invalidateQueries({ queryKey: qk.prs });
-      void qc.invalidateQueries({ queryKey: ["pr-people"] });
+        void qc.invalidateQueries({ queryKey: ["pr-people"] });
       }
     });
     return unsubscribe;

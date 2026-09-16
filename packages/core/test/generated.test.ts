@@ -75,14 +75,14 @@ it("upgrades existing stored revisions on analysis and preserves unit unview ove
     const f = file(" // @generated\n-old\n+new");
     writeRevision(key, 1, "", [f], { baseSha: "b", headSha: "h", mergeBase: "b" }, root);
     appendEvent(key, { type: "revision-added", revision: 1, baseSha: "b", headSha: "h", mergeBase: "b", files: toRevisionFiles([f]) }, root);
-    const first = setAnalysis(key, { summary: "Generated only", units: [] }, root);
+    const first = setAnalysis(key, { summary: "Generated only", units: [] }, {}, root);
     expect(first.coverage.missing).toEqual([]);
     expect(first.state.files[0].viewed).toBe(true);
     expect(() => setUnit(key, GENERATED_UNIT_ID, { attention: "skim" }, {}, root)).toThrow("managed unit");
     setUnitViewed(key, GENERATED_UNIT_ID, false, root);
-    setAnalysis(key, { summary: "Again", units: [] }, root);
+    setAnalysis(key, { summary: "Again", units: [] }, {}, root);
     expect(loadState(key, root).hunks[f.hunks[0].id].viewed).toBe(false);
-    expect(() => setAnalysis(key, { summary: "", units: [{ ...unit, id: GENERATED_UNIT_ID, hunkIds: ["unknown"] }] }, root)).toThrow("not in");
+    expect(() => setAnalysis(key, { summary: "", units: [{ ...unit, id: GENERATED_UNIT_ID, hunkIds: ["unknown"] }] }, {}, root)).toThrow("not in");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

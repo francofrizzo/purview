@@ -70,7 +70,6 @@ import {
   type SubmitEvent,
 } from "./github-review.js";
 import { createPrPeopleLoader, persistPrPeople } from "./pr-people.js";
-import { discoverPullRequests, ImportScopeSchema } from "./github-import.js";
 import { HttpError, classifyError } from "./http-error.js";
 import { streamSSE } from "hono/streaming";
 import {
@@ -232,7 +231,19 @@ export function createApp(opts: AppOptions = {}): Hono {
     const keys = listPrs(root).filter((key) => scope === "all" || Boolean(readMeta(key, root).archived) === (scope === "archived"));
     const people = await peopleLoaders[scope](keys, c.req.query("force") === "true");
     persistPrPeople(keys, people, root);
-    return c.json(people);
+    return c.json(Object.fromEntries(keys.filter((key) => fs.existsSync(prDir(key, root))).map((key) => {
+      const meta = readMeta(key, root);
+      const person = people[keyToString(key)];
+      return [keyToString(key), {
+        author: meta.author,
+        authorAvatarUrl: meta.authorAvatarUrl,
+        title: meta.title,
+        state: meta.prState,
+        reviewDecision: meta.reviewDecision,
+        relationship: person?.relationship !== undefined && person.relationship !== "unknown"
+          ? person.relationship : meta.reviewRelationship ?? "unknown",
+      }];
+    })));
   });
 
   app.get("/api/prs", (c) => {
@@ -301,39 +312,6 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisJob: job,
       sharedAnalysis,
     });
-  });
-
-  app.post("/api/prs/import", async (c) => {
-    const { scope } = z.object({ scope: ImportScopeSchema.default("review-requested") }).parse(await readJsonBody(c));
-    // Finish discovery before changing local state so a search/auth failure is retryable.
-    const discovery = discoverPullRequests(scope);
-    const tracked = new Set(listPrs(root)
-      .filter((key) => loadState(key, root).currentRevision > 0)
-      .map((key) => keyToString(key).toLowerCase()));
-    const added: string[] = [];
-    const skipped: string[] = [];
-    const failed: { url: string; error: string }[] = [];
-    let queued = 0;
-    for (const url of discovery.urls) {
-      try {
-        const key = parseKey(url);
-        if (key.host !== "github.com") throw new Error("Expected a github.com pull request");
-        const id = keyToString(key);
-        if (tracked.has(id.toLowerCase())) {
-          skipped.push(id);
-          continue;
-        }
-        // init can leave metadata behind if fetching the diff fails. Retry
-        // entries with no revision instead of treating them as fully tracked.
-        initPr(key, root);
-        tracked.add(id.toLowerCase());
-        added.push(id);
-        if (analyzeRequested(c, key) && triggerAnalysis(key)) queued++;
-      } catch (err) {
-        failed.push({ url, error: err instanceof Error ? err.message : String(err) });
-      }
-    }
-    return c.json({ login: discovery.login, added, skipped, failed, queued, warnings: discovery.warnings });
   });
 
   /* -------------------------------------------------------------- one PR */

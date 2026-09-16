@@ -59,7 +59,7 @@ describe("PR authors and relationships", () => {
     });
     const result = await createPrPeopleLoader(run)([key(2, "git.example.com")]);
     expect(result["git.example.com/acme/widgets/2"].relationship).toBe("unknown");
-    expect(run.mock.calls.every(([args]) => args[2] === "git.example.com")).toBe(true);
+    expect(run.mock.calls.every(([args]) => args[args.indexOf("--hostname") + 1] === "git.example.com")).toBe(true);
   });
 });
 
@@ -97,7 +97,9 @@ describe("GitHub metadata polling", () => {
       const before = fs.readFileSync(path.join(dir, "state.json"), "utf8");
       const people = { [keyToString(fixtureKey)]: { author: "new-author", title: "New title", state: "merged" as const, relationship: "other" as const } };
       persistPrPeople([fixtureKey], people, root);
-      expect(readMeta(fixtureKey, root)).toMatchObject({ author: "new-author", title: "New title", prState: "merged", reviewDecision: "approved", archived: true });
+      expect(readMeta(fixtureKey, root)).toMatchObject({ author: "new-author", title: "New title", prState: "merged", reviewDecision: "approved", archived: true, reviewRelationship: "other" });
+      persistPrPeople([fixtureKey], { [keyToString(fixtureKey)]: { relationship: "unknown" } }, root);
+      expect(readMeta(fixtureKey, root)).toMatchObject({ author: "new-author", reviewRelationship: "other", prState: "merged" });
       expect(fs.readFileSync(path.join(dir, "state.json"), "utf8")).toBe(before);
       persistPrPeople([fixtureKey], { [keyToString(fixtureKey)]: { ...people[keyToString(fixtureKey)], reviewDecision: null } }, root);
       expect(readMeta(fixtureKey, root).reviewDecision).toBeNull();

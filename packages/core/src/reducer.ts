@@ -119,7 +119,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           // re-viewing clears both (see "hunk-viewed").
           if (carried.changedSinceViewed && carried.viewed) {
             carried.viewed = false;
-            carried.viewedAtRevision = undefined;
+            // Retain the last-read revision for the diff-of-diffs baseline.
           }
           nextHunks[entry.hunkId] = carried;
           if (entry.previousHunkId)
