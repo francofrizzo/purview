@@ -1,3 +1,4 @@
+import { detectGenerated, normalizeGeneratedUnits } from "./generated.js";
 import {
   fetchMergeBase,
   fetchPullDiff,
@@ -17,6 +18,7 @@ import {
   prExists,
   readFilesJson,
   readMeta,
+  readRepoConfig,
   updateMeta,
   writeMeta,
   writeMigrationReport,
@@ -138,7 +140,7 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
     current.baseSha === pr.baseSha
   ) {
     return {
-      state,
+      state: classifyCurrentRevision(key, state, root),
       revision: current.revision,
       added: false,
       baseOnly: current.baseOnly,
@@ -146,7 +148,10 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   }
 
   const patch = fetchPullDiff(key);
-  const files = parseDiff(patch);
+  const patterns = readRepoConfig(repoKeyOf(key), root).generatedPaths ?? [];
+  const files = parseDiff(patch).map((file) => ({
+    ...file, generatedReason: detectGenerated(file, patterns),
+  }));
   const revision = (current?.revision ?? 0) + 1;
   const baseOnly = !!current && current.headSha === pr.headSha;
 
@@ -190,6 +195,17 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   return { state: next, revision, added: true, baseOnly, report };
 }
 
+/** Also upgrades already-tracked revisions when refreshed or re-analyzed. */
+function classifyCurrentRevision(key: PrKey, state: State, root: string): State {
+  if (!state.currentRevision) return state;
+  const patterns = readRepoConfig(repoKeyOf(key), root).generatedPaths ?? [];
+  const files = readFilesJson(key, state.currentRevision, root).files.map((file) => ({
+    path: file.path, generatedReason: detectGenerated(file, patterns),
+  }));
+  if (files.every((file) => state.files.find((f) => f.path === file.path)?.generatedReason === file.generatedReason)) return state;
+  return appendEvent(key, { type: "generated-files-classified", revision: state.currentRevision, files }, root);
+}
+
 export interface AnalysisCoverage {
   covered: string[];
   missing: string[];
@@ -227,8 +243,12 @@ export function setAnalysis(
   root = stateRoot(),
 ): { state: State; coverage: AnalysisCoverage } {
   const analysis = AnalysisSchema.parse(input);
-  const state = loadState(key, root);
-  const coverage = analysisCoverage(state, analysis);
+  const state = classifyCurrentRevision(key, loadState(key, root), root);
+  const unknown = analysisCoverage(state, analysis).unknown;
+  analysis.units = normalizeGeneratedUnits(state.files, analysis.units);
+  const generatedIds = new Set(state.files.filter((f) => f.generatedReason).flatMap((f) => f.hunkIds));
+  analysis.unassigned = analysis.unassigned.filter((id) => !generatedIds.has(id));
+  const coverage = { ...analysisCoverage(state, analysis), unknown };
   if (coverage.missing.length > 0) {
     throw new Error(
       `Analysis does not cover ${coverage.missing.length} hunk(s) of revision ` +
@@ -281,6 +301,9 @@ export function setUnit(
 ): State {
   const state = loadState(key, root);
   const existing = state.units.find((u) => u.id === unitId);
+  if (existing?.generated) {
+    throw new Error("Generated files is a managed unit; edit generatedPaths to change its membership, or mark its hunks unviewed to review them.");
+  }
 
   let patch: ReviewUnitPatch;
   if (!existing) {

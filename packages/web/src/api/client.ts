@@ -4,6 +4,7 @@ import { ApiError } from "./errors";
 import type {
   AddCommentInput,
   AnalysisImportReport,
+  PrPerson,
   AnalysisJob,
   ChatMessage,
   ChatRef,
@@ -447,6 +448,16 @@ export const api = {
   },
 
   /** Local-only: nothing about the PR on GitHub changes. */
+  async prPeople(archived = false): Promise<Record<string, PrPerson>> {
+    if (MOCK) return mockApi.prPeople();
+    return request(`/prs/people?force=true&scope=${archived ? "archived" : "active"}`);
+  },
+
+  async deletePr(key: string): Promise<void> {
+    if (MOCK) return mockApi.deletePr(key);
+    await del(`/prs/${encodeKey(key)}`);
+  },
+
   async setArchived(key: string, archived: boolean): Promise<void> {
     if (MOCK) return mockApi.setArchived(key, archived);
     await post(`/prs/${encodeKey(key)}/archive`, { archived });
@@ -534,9 +545,9 @@ export const api = {
     await post(`/prs/${encodeKey(key)}/hunks/${encodeURIComponent(hunkId)}/viewed`, { viewed });
   },
 
-  async setUnitViewed(key: string, unitId: string): Promise<void> {
-    if (MOCK) return mockApi.setUnitViewed(key, unitId);
-    await post(`/prs/${encodeKey(key)}/units/${encodeURIComponent(unitId)}/viewed`);
+  async setUnitViewed(key: string, unitId: string, viewed = true): Promise<void> {
+    if (MOCK) return mockApi.setUnitViewed(key, unitId, viewed);
+    await post(`/prs/${encodeKey(key)}/units/${encodeURIComponent(unitId)}/viewed`, { viewed });
   },
 
   async patchUnit(key: string, unitId: string, patch: Partial<ReviewUnit>): Promise<void> {

@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   analysisJobPath,
+  loadState,
+  setHunkViewed,
   chatPath,
   keyToString,
   parseDiff,
@@ -240,6 +242,87 @@ describe("analysis job lifecycle", () => {
     expect(readJob(key, root)!.status).toBe("cancelled");
     const finished = readEvents(key, root).filter((e) => e.type === "analysis-finished");
     expect(finished.at(-1)).toMatchObject({ status: "cancelled" });
+  });
+
+  it("deletes a PR only after its running analysis stops writing", async () => {
+    buildFixture(root);
+    claude.restore();
+    claude = fakeClaude({ hang: true, lines: scriptedRun() });
+    claude.install();
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    for (let i = 0; i < 200 && readJob(key, root)?.status !== "running"; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(readJob(key, root)?.status).toBe("running");
+    updateMeta(key, { archived: true }, root);
+    const response = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(response.status).toBe(200);
+    await analysisIdle();
+    expect(fs.existsSync(path.dirname(analysisJobPath(key, root)))).toBe(false);
+  });
+
+  it("archiving cancels running analysis and preserves the PR", async () => {
+    buildFixture(root);
+    claude.restore();
+    claude = fakeClaude({ hang: true, lines: scriptedRun() });
+    claude.install();
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    for (let i = 0; i < 200 && readJob(key, root)?.status !== "running"; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(readJob(key, root)?.status).toBe("running");
+    const response = await app.request(`/api/prs/${encodedKey}/archive`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+    });
+    expect(response.status).toBe(200);
+    await analysisIdle();
+    expect(readJob(key, root)?.status).toBe("cancelled");
+    expect(readMeta(key, root).archived).toBe(true);
+  });
+
+  it("restores an archived PR, refreshes it and preserves review work before analysis", async () => {
+    buildFixture(root);
+    const previous = loadState(key, root);
+    const hunkId = Object.keys(previous.hunks)[0];
+    setHunkViewed(key, hunkId, true, root);
+    updateMeta(key, { archived: true }, root);
+    const commentsFile = path.join(path.dirname(analysisJobPath(key, root)), "comments.json");
+    const comments = JSON.stringify([{ id: "keep-comment", body: "Keep my feedback" }]);
+    fs.writeFileSync(commentsFile, comments);
+    setGhRunner(ghFor([REV1_PATCH], "2"));
+    const response = await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    expect(response.status).toBe(200);
+    expect(readMeta(key, root).archived).toBe(false);
+    const state = loadState(key, root);
+    expect(state.currentRevision).toBeGreaterThan(previous.currentRevision);
+    expect(state.hunks[hunkId].viewed).toBe(true);
+    expect(fs.readFileSync(commentsFile, "utf8")).toBe(comments);
+    expect((await response.json()).job.revision).toBe(state.currentRevision);
+    await analysisIdle();
+  });
+
+  it("keeps an archived PR archived if refreshing before analysis fails", async () => {
+    buildFixture(root);
+    updateMeta(key, { archived: true }, root);
+    setGhRunner(() => { throw new Error("gh api failed: offline"); });
+    const response = await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    expect(response.status).toBe(502);
+    expect(readMeta(key, root).archived).toBe(true);
+    expect(readJob(key, root)).toBeNull();
+  });
+
+  it("restores an archived PR added explicitly by URL without discarding its history", async () => {
+    buildFixture(root);
+    updateMeta(key, { archived: true }, root);
+    setGhRunner(ghFor([REV1_PATCH], "2"));
+    const response = await app.request("/api/prs?analyze=false", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: `https://github.com/${key.owner}/${key.repo}/pull/${key.number}` }),
+    });
+    expect(response.status).toBe(200);
+    expect(readMeta(key, root).archived).toBe(false);
+    expect(loadState(key, root).revisions.length).toBeGreaterThan(1);
+    expect(readJob(key, root)).toBeNull();
   });
 
   it("409s on cancel when nothing is in progress", async () => {

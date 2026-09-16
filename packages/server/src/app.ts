@@ -16,6 +16,7 @@ import {
   listRepos,
   loadState,
   parseKey,
+  prDir,
   parseRepoKey,
   readDiff,
   readFilesJson,
@@ -68,6 +69,7 @@ import {
   updatePullRequestReviewCommentBody,
   type SubmitEvent,
 } from "./github-review.js";
+import { createPrPeopleLoader, persistPrPeople } from "./pr-people.js";
 import { HttpError, classifyError } from "./http-error.js";
 import { streamSSE } from "hono/streaming";
 import {
@@ -168,6 +170,12 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
   };
   const autoAnalyze = opts.autoAnalyze ?? true;
+  const deleting = new Set<string>();
+  const peopleLoaders = {
+    all: createPrPeopleLoader(),
+    active: createPrPeopleLoader(),
+    archived: createPrPeopleLoader(),
+  };
   // A "running" job record can only be stale at boot — nothing is running yet.
   reconcileStaleJobs(root);
 
@@ -206,12 +214,37 @@ export function createApp(opts: AppOptions = {}): Hono {
     }),
   );
 
+  app.use("/api/prs/:key/*", async (c, next) => {
+    if (deleting.has(c.req.param("key"))) throw new HttpError(409, "pr_deleting", "This PR is being deleted. Try again shortly.");
+    await next();
+  });
+
   app.onError((err, c) => {
     const httpErr = classifyError(err);
     return c.json({ error: httpErr.message, detail: httpErr.detail }, httpErr.status as 400);
   });
 
   /* -------------------------------------------------------------- PR list */
+
+  app.get("/api/prs/people", async (c) => {
+    const scope = z.enum(["all", "active", "archived"]).parse(c.req.query("scope") ?? "all");
+    const keys = listPrs(root).filter((key) => scope === "all" || Boolean(readMeta(key, root).archived) === (scope === "archived"));
+    const people = await peopleLoaders[scope](keys, c.req.query("force") === "true");
+    persistPrPeople(keys, people, root);
+    return c.json(Object.fromEntries(keys.filter((key) => fs.existsSync(prDir(key, root))).map((key) => {
+      const meta = readMeta(key, root);
+      const person = people[keyToString(key)];
+      return [keyToString(key), {
+        author: meta.author,
+        authorAvatarUrl: meta.authorAvatarUrl,
+        title: meta.title,
+        state: meta.prState,
+        reviewDecision: meta.reviewDecision,
+        relationship: person?.relationship !== undefined && person.relationship !== "unknown"
+          ? person.relationship : meta.reviewRelationship ?? "unknown",
+      }];
+    })));
+  });
 
   app.get("/api/prs", (c) => {
     const keys = listPrs(root);
@@ -249,7 +282,11 @@ export function createApp(opts: AppOptions = {}): Hono {
     } catch (err) {
       throw classifyError(err);
     }
+    if (deleting.has(keyToString(key))) throw new HttpError(409, "pr_deleting", "This PR is being deleted.");
+    if (isBusy(key)) throw new HttpError(409, "analysis_in_progress", "Wait for analysis to finish before adding this PR again.");
     const result = initPr(key, root);
+    if (readMeta(key, root).archived) updateMeta(key, { archived: false }, root);
+    clearStalenessCache(key, root);
     // A freshly tracked PR has no analysis at all, so init would normally kick
     // one off (unless the caller opted out with ?analyze=false) — but first
     // check whether a teammate already shared one for this exact revision on
@@ -343,6 +380,32 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /* ------------------------------------------------- Claude: analysis job */
 
+  app.delete("/api/prs/:key", async (c) => {
+    const key = keyParam(c);
+    const id = keyToString(key);
+    if (!readMeta(key, root).archived) {
+      throw new HttpError(409, "pr_not_archived", "Archive this PR before deleting it.");
+    }
+    if (deleting.has(id) || chatBusy(key)) {
+      throw new HttpError(409, "pr_busy", "Wait for the active chat or deletion to finish, then try again.");
+    }
+    deleting.add(id);
+    try {
+      const job = readJob(key, root);
+      if (job?.status === "queued" || job?.status === "running") cancelAnalysis(key, root);
+      const deadline = Date.now() + 10_000;
+      while (isBusy(key)) {
+        if (Date.now() >= deadline) throw new HttpError(409, "analysis_stopping", "Analysis is still stopping. Try deleting again shortly.");
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      fs.rmSync(prDir(key, root), { recursive: true, force: true });
+      clearStalenessCache(key, root);
+      return c.json({ ok: true });
+    } finally {
+      deleting.delete(id);
+    }
+  });
+
   app.get("/api/prs/:key/analysis-job", (c) => {
     const key = keyParam(c);
     readMeta(key, root); // 404s for an unknown PR instead of reporting "no job"
@@ -351,7 +414,15 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.post("/api/prs/:key/analyze", (c) => {
     const key = keyParam(c);
-    readMeta(key, root);
+    const meta = readMeta(key, root);
+    if (meta.archived) {
+      if (isBusy(key)) throw new HttpError(409, "analysis_in_progress", "Wait for the previous analysis to stop before restoring this PR.");
+      if (chatBusy(key)) throw new HttpError(409, "pr_busy", "Wait for the active chat to finish before restoring this PR.");
+      // Refresh first so a GitHub failure leaves the PR safely archived.
+      refreshPr(key, root);
+      updateMeta(key, { archived: false }, root);
+      clearStalenessCache(key, root);
+    }
     return c.json({ job: startAnalysis(key, root, { timeoutMs: opts.analysisTimeoutMs }) });
   });
 
@@ -478,6 +549,10 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw new HttpError(400, "invalid_body", "Body must include { archived: boolean }");
     }
     const meta = updateMeta(key, { archived: body.archived }, root);
+    if (body.archived) {
+      const job = readJob(key, root);
+      if (job?.status === "queued" || job?.status === "running") cancelAnalysis(key, root);
+    }
     return c.json({ ok: true, archived: meta.archived === true });
   });
 
@@ -1139,6 +1214,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     return {
       repo: repoKeyToString(repo),
       local: {
+        generatedPaths: local.generatedPaths ?? [],
         autoAnalyze: local.autoAnalyze,
         repoPath: local.repoPath,
         analysisModel: local.analysisModel,
@@ -1274,6 +1350,7 @@ export function createApp(opts: AppOptions = {}): Hono {
    */
   const RepoConfigPutSchema = z
     .object({
+      generatedPaths: z.array(z.string().min(1)).optional(),
       autoAnalyze: z.boolean().nullable().optional(),
       repoPath: z.string().nullable().optional(),
       analysisModel: ClaudeModelSchema.nullable().optional(),
@@ -1299,6 +1376,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const body = parsed.data;
 
     const patch: {
+      generatedPaths?: string[];
       autoAnalyze?: boolean | null;
       repoPath?: string | null;
       analysisModel?: ClaudeModel | null;
@@ -1306,6 +1384,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisEffort?: AnalysisEffort | null;
       watchReviews?: boolean | null;
     } = {};
+    if ("generatedPaths" in body) patch.generatedPaths = body.generatedPaths;
     if ("autoAnalyze" in body) patch.autoAnalyze = body.autoAnalyze ?? null;
     if ("analysisModel" in body) patch.analysisModel = body.analysisModel ?? null;
     if ("chatModel" in body) patch.chatModel = body.chatModel ?? null;

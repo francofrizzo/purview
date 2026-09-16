@@ -86,6 +86,7 @@ export interface Finding {
 }
 
 export interface ReviewUnit {
+  generated?: boolean;
   id: string;
   title: string;
   summary: string;
@@ -123,6 +124,7 @@ export interface DiffOfDiffs {
 }
 
 export interface HunkState {
+  autoViewed?: boolean;
   viewed: boolean;
   viewedAtRevision?: number;
   changedSinceViewed: boolean;
@@ -147,6 +149,7 @@ export interface PrMeta {
   title?: string;
   author?: string;
   authorAvatarUrl?: string;
+  reviewRelationship?: "own" | "review" | "other";
   createdAt?: string;
 }
 
@@ -723,3 +726,10 @@ export interface DefinitionCandidate {
 export type DefinitionResult =
   | { checkout: false; reason: string }
   | { checkout: true; engine: "ctags" | "grep"; candidates: DefinitionCandidate[] };
+export interface PrPerson {
+  author?: string;
+  title?: string;
+  state?: PrGithubState;
+  reviewDecision?: ReviewDecision | null;
+  relationship: "own" | "review" | "other" | "unknown";
+}

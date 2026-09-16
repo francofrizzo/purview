@@ -517,13 +517,14 @@ export function PrView() {
   // returns below — hooks must run on every render, including the loading
   // ones, so the nullable `detail` is guarded inside rather than by position.
   const probeJob = analysisJob.data ?? detail?.analysisJob ?? null;
+  const hasLocalAnalysis = units.some((unit) => !unit.generated) || Boolean(detail?.state.summary?.trim());
   useEffect(() => {
     if (!detail) return;
-    if (units.length === 0 && !isJobLive(probeJob) && probedForRef.current !== prKey) {
+    if (!hasLocalAnalysis && !isJobLive(probeJob) && probedForRef.current !== prKey) {
       probedForRef.current = prKey;
       sharedProbe.mutate();
     }
-  }, [detail, units.length, probeJob, prKey, sharedProbe]);
+  }, [detail, hasLocalAnalysis, probeJob, prKey, sharedProbe]);
 
   if (isLoading) {
     return <Centered>Loading {prKey}…</Centered>;
@@ -545,10 +546,10 @@ export function PrView() {
   const analysisPending = isJobLive(job);
   // The banner is for the "nothing to read yet" case: once units exist, the
   // job's state lives in the top bar chip and the overflow menu instead.
-  const showAnalysisBanner = units.length === 0 || analysisPending;
+  const showAnalysisBanner = !hasLocalAnalysis || analysisPending;
   const quote = (ref: ChatRef) => chat.attachRef(ref);
 
-  const noLocalAnalysis = units.length === 0;
+  const noLocalAnalysis = !hasLocalAnalysis;
   const showSharedAnalysisBanner =
     noLocalAnalysis && !analysisPending && !sharedBannerDismissed && sharedProbe.data?.found === true;
 
@@ -674,7 +675,7 @@ export function PrView() {
         analysisJob={job}
         analysisStarting={startAnalysis.isPending}
         analysisCancelling={cancelAnalysis.isPending}
-        hasAnalysis={detail.state.units.length > 0}
+        hasAnalysis={hasLocalAnalysis}
         exporting={exportAnalysis.isPending}
         sharing={shareToPr.isPending}
         importingFromPr={importFromPr.isPending}
@@ -915,7 +916,7 @@ export function PrView() {
                   {selectedUnit.title}
                 </h2>
                 <div className="flex flex-none flex-wrap items-center gap-2">
-                  <KindChip kind={selectedUnit.kind} />
+                  {selectedUnit.generated ? <span className="text-2xs">{selectedUnit.hunkIds.every((id) => detail.state.hunks[id]?.autoViewed) ? "Auto-viewed" : "Generated"}</span> : <KindChip kind={selectedUnit.kind} />}
                   <AttentionChip attention={selectedUnit.attention} />
                   <RiskFlags flags={selectedUnit.riskFlags} />
                   {progress && progress.changed > 0 ? <ChangedBadge count={progress.changed} /> : null}
@@ -940,6 +941,12 @@ export function PrView() {
                   >
                     mark unit viewed
                   </button>
+                  {selectedUnit.generated && (progress?.viewed ?? 0) > 0 ? (
+                    <button type="button" className="btn" disabled={setUnitViewed.isPending}
+                      onClick={() => setUnitViewed.mutate({ unitId: selectedUnit.id, viewed: false })}>
+                      mark unviewed
+                    </button>
+                  ) : null}
                   {allUnitsViewed ? (
                     <span
                       className="text-2xs"

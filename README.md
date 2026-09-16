@@ -59,6 +59,29 @@ after `git pull` — it is always safe to re-run.
 
 Open <http://localhost:4779> and paste a PR URL to start tracking it.
 
+The dashboard immediately shows saved PR metadata and review groupings, then checks
+active PRs on GitHub in the background when opened and every five minutes while visible,
+updating authors, review requests, titles, PR status, and review decisions without
+changing diffs or starting analysis. Failed lookups retain the last known information.
+Archived PRs are checked when their section
+is expanded, so they do not delay active PRs. Re-adding an archived PR by URL restores it
+and refreshes its diff. Explicitly starting analysis on an archived PR does the
+same before queueing analysis, preserving comments and review progress.
+
+Use **import review requests…** in a repository section to import recent review
+requests for that repository. Repository settings can enable
+watch mode to discover new review requests automatically. Imports enqueue older PRs
+first within each repository, using the existing analysis queue. Both leave archived PRs
+archived; use Add PR or Unarchive to restore one explicitly.
+
+Add one PR with `POST /api/prs { "url": "https://github.com/OWNER/REPO/pull/123" }`.
+Automatic analysis respects the process and repo settings. To explicitly start analysis
+for a tracked PR, use `POST /api/prs/github.com%2FOWNER%2FREPO%2F123/analyze`.
+Use `DELETE` on that same analysis endpoint to cancel a queued or running job.
+The live queue is in memory; each PR’s status is persisted in
+`~/.purview/github.com/OWNER/REPO/123/analysis-job.json` (or the configured state directory).
+
+
 For development, `pnpm dev` runs the server only (no rebuild) against the existing
 `packages/web/dist`.
 
@@ -384,6 +407,28 @@ it and the hunk as it is now, baselined on the revision you actually viewed rath
 the previous one. A file counts as viewed only when all of its hunks in the current revision
 are; that rollup is what `sync` pushes to GitHub as `markFileAsViewed`. Local state is always
 the source of truth — remote state is read only to report drift, never to overwrite you.
+
+## Generated files
+
+Generated hunks are collected into one **Generated files** unit under **skip** and
+marked viewed locally before analysis. The **Auto-viewed** badge distinguishes this
+from manual review. Open the unit to inspect its diffs; **mark unviewed** opts its
+files out of automatic viewing for this PR, including new hunks and detected renames.
+Individual hunk unview actions also opt that file out. GitHub updates still require sync.
+
+Detection uses explicit comment headers such as `@generated` and
+`Code generated … DO NOT EDIT` within the first 30 lines, when present in the diff.
+For files whose headers are outside the diff, or generated output without markers,
+add `generatedPaths` to `~/.purview/<host>/<owner>/<repo>/repo.json`, for example:
+
+```json
+{ "generatedPaths": ["**/*.gen.ts", "internal/api/generated/**"] }
+```
+
+Patterns match repository-relative paths; `*` matches within a directory, `**`
+crosses directories, and `?` matches one character. Lockfiles are opt-in through
+these rules. Refresh or re-analyze to apply rules to an already tracked PR.
+Generated hunks remain in their dedicated unit when AI analysis is replaced.
 
 ## Finishing a review
 

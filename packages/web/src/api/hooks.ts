@@ -65,6 +65,22 @@ export function useDiffOfDiffs(key: string, hunkId: string | null) {
   });
 }
 
+export function usePrPeople(archived = false, enabled = true) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["pr-people", archived ? "archived" : "active"],
+    enabled,
+    queryFn: async () => {
+      const people = await api.prPeople(archived);
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      return people;
+    },
+    staleTime: 5 * 60_000,
+    refetchInterval: 5 * 60_000,
+    refetchOnMount: "always",
+  });
+}
+
 export function usePrs() {
   return useQuery<PrListEntry[]>({
     queryKey: qk.prs,
@@ -84,7 +100,10 @@ export function useAddPr() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (url: string) => api.addPr(url),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.prs }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: ["pr-people"] });
+    },
   });
 }
 
@@ -93,6 +112,21 @@ export function useAddPr() {
  * out of) the repo group's disclosure before the request lands, and rolls back
  * if the server refuses.
  */
+export function useDeletePr() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (key: string) => api.deletePr(key),
+    onSuccess: async (_, key) => {
+      await qc.cancelQueries({ predicate: (q) => q.queryKey[1] === key });
+      qc.removeQueries({ predicate: (q) => q.queryKey[1] === key });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: qk.prs }),
+        qc.invalidateQueries({ queryKey: qk.repos }),
+      ]);
+    },
+  });
+}
+
 export function useSetArchived() {
   const qc = useQueryClient();
   return useMutation({
@@ -109,6 +143,7 @@ export function useSetArchived() {
     },
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: ["pr-people"] });
       void qc.invalidateQueries({ queryKey: qk.repos });
     },
   });
@@ -227,6 +262,7 @@ export function useSetHunkViewed(key: string) {
               [hunkId]: {
                 ...prevState,
                 viewed,
+                autoViewed: false,
                 viewedAtRevision: viewed ? previous.state.revision : undefined,
                 changedSinceViewed: viewed ? prevState.changedSinceViewed : false,
               },
@@ -247,8 +283,11 @@ export function useSetHunkViewed(key: string) {
 export function useSetUnitViewed(key: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (unitId: string) => api.setUnitViewed(key, unitId),
-    onMutate: async (unitId) => {
+    mutationFn: (input: string | { unitId: string; viewed: boolean }) =>
+      api.setUnitViewed(key, typeof input === "string" ? input : input.unitId, typeof input === "string" ? true : input.viewed),
+    onMutate: async (input) => {
+      const unitId = typeof input === "string" ? input : input.unitId;
+      const viewed = typeof input === "string" ? true : input.viewed;
       await qc.cancelQueries({ queryKey: qk.pr(key) });
       const previous = qc.getQueryData<PrDetail>(qk.pr(key));
       if (previous) {
@@ -258,8 +297,10 @@ export function useSetUnitViewed(key: string) {
           for (const id of unit.hunkIds) {
             hunks[id] = {
               ...(hunks[id] ?? { viewed: false, changedSinceViewed: false }),
-              viewed: true,
-              viewedAtRevision: previous.state.revision,
+              viewed,
+              autoViewed: false,
+              changedSinceViewed: false,
+              viewedAtRevision: viewed ? previous.state.revision : undefined,
             };
           }
           qc.setQueryData(
@@ -310,6 +351,7 @@ export function useRefresh(key: string): UseMutationResult<MigrationReport, Erro
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.pr(key) });
       void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: ["pr-people"] });
       // A refresh that lands a new revision can auto-queue an analysis; pick
       // that job up right away so the banner goes live without a reload.
       void qc.invalidateQueries({ queryKey: qk.analysisJob(key) });
@@ -547,6 +589,7 @@ export function useAnalysisEvents(key: string) {
       if (job.status === "done" && was !== "done") {
         void qc.invalidateQueries({ queryKey: qk.pr(key) });
         void qc.invalidateQueries({ queryKey: qk.prs });
+        void qc.invalidateQueries({ queryKey: ["pr-people"] });
       }
     });
     return unsubscribe;
@@ -559,7 +602,12 @@ export function useStartAnalysis(key: string): UseMutationResult<AnalysisJob, Er
     mutationFn: () => api.startAnalysis(key),
     onSuccess: (job) => {
       qc.setQueryData(qk.analysisJob(key), job);
+      void qc.invalidateQueries({ queryKey: qk.pr(key) });
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.staleness(key) });
+      void qc.invalidateQueries({ queryKey: qk.repos });
       void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: ["pr-people"] });
     },
   });
 }
@@ -571,6 +619,7 @@ export function useCancelAnalysis(key: string): UseMutationResult<AnalysisJob, E
     onSuccess: (job) => {
       qc.setQueryData(qk.analysisJob(key), job);
       void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: ["pr-people"] });
     },
   });
 }

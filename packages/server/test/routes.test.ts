@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadState, refreshPr, setGhRunner, setHunkViewed } from "@reviewer/core";
+import { updateMeta, prDir, loadState, refreshPr, setGhRunner, setHunkViewed } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { DOD_REV1, DOD_REV2, DOD_REV3, buildFixture, key } from "./fixtures.js";
 
@@ -364,5 +364,44 @@ describe("GET /api/prs/:key/definition", () => {
       "/api/prs/github.com%2Facme%2Fwidgets%2F999/definition?symbol=x",
     );
     expect(res.status).toBe(404);
+  });
+});
+
+describe("DELETE /api/prs/:key", () => {
+  it("requires archiving before deletion without touching PR data", async () => {
+    const res = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(res.status).toBe(409);
+    expect(fs.existsSync(prDir(key, root))).toBe(true);
+  });
+
+  it("removes all PR data while preserving neighboring PRs and repo settings", async () => {
+    updateMeta(key, { archived: true }, root);
+    const dir = prDir(key, root);
+    const sibling = path.join(path.dirname(dir), "99999");
+    fs.mkdirSync(sibling);
+    fs.writeFileSync(path.join(sibling, "keep.txt"), "keep");
+    const config = path.join(path.dirname(dir), "repo.json");
+    fs.writeFileSync(config, "{}");
+    fs.writeFileSync(path.join(dir, "analysis-job.json"), JSON.stringify({ revision: 1, status: "queued" }));
+    const res = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(fs.existsSync(dir)).toBe(false);
+    expect(fs.readFileSync(path.join(sibling, "keep.txt"), "utf8")).toBe("keep");
+    expect(fs.existsSync(config)).toBe(true);
+    expect((await app.request(`/api/prs/${encodedKey}`)).status).toBe(404);
+  });
+
+  it("returns 404 for an unknown PR", async () => {
+    const res = await app.request(`/api/prs/${encodeURIComponent("github.com/acme/widgets/99999")}`, { method: "DELETE" });
+    expect(res.status).toBe(404);
+    expect(fs.existsSync(prDir(key, root))).toBe(true);
+  });
+
+  it("rejects cross-origin deletion", async () => {
+    const res = await app.request(`/api/prs/${encodedKey}`, {
+      method: "DELETE", headers: { Origin: "https://example.com" },
+    });
+    expect(res.status).toBe(403);
+    expect(fs.existsSync(prDir(key, root))).toBe(true);
   });
 });

@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK } from "../api/client";
-import { useAddPr, useImportReviews, usePrs, useRepos, useSetArchived } from "../api/hooks";
-import type { PrListEntry, RepoSummary } from "../api/types";
+import { useAddPr, useDeletePr, useImportReviews, usePrPeople, usePrs, useRepos, useSetArchived } from "../api/hooks";
+import type { PrListEntry, PrPerson, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
 import { EffortChip, Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
@@ -20,6 +20,7 @@ import {
 export function PrList() {
   const { data: prs = [], isLoading, error } = usePrs();
   const { data: repos = [] } = useRepos();
+  const { data: people = {} } = usePrPeople();
   const background = useModalBackground();
   const addPr = useAddPr();
   const navigate = useNavigate();
@@ -104,13 +105,12 @@ export function PrList() {
             className="surface rounded-md p-4 text-xs leading-5"
             style={{ color: "var(--fg-faint)" }}
           >
-            No pull requests tracked yet. Paste a GitHub PR URL above; the server fetches it with{" "}
-            <span className="font-mono">gh</span> and creates the local state directory.
+            No pull requests tracked yet. Paste a GitHub PR URL above.
           </p>
         ) : (
           <div className="flex flex-col gap-3 pb-6">
             {groups.map((group) => (
-              <RepoSection key={group.key} group={group} repo={repoByKey.get(group.key)} />
+              <RepoSection key={group.key} group={group} repo={repoByKey.get(group.key)} people={people} />
             ))}
           </div>
         )}
@@ -120,9 +120,10 @@ export function PrList() {
 }
 
 /** One repo: a header row, its PRs, and the archived disclosure at the bottom. */
-function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) {
+function RepoSection({ group, repo, people }: { group: RepoGroup; repo?: RepoSummary; people: Record<string, PrPerson> }) {
   const [showArchived, setShowArchived] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  usePrPeople(true, showArchived);
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
 
@@ -187,15 +188,21 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
       ) : null}
 
       {group.prs.length ? (
-        <ul>
-          {group.prs.map((pr) => (
-            <PrRow key={pr.key} pr={pr} />
-          ))}
-        </ul>
+        (["review", "own", "other", "unknown"] as const).map((relationship) => {
+          const prs = group.prs.filter((pr) => {
+            const fresh = people[pr.key]?.relationship;
+            const known = fresh && fresh !== "unknown" ? fresh : pr.meta?.reviewRelationship;
+            return (known ?? "unknown") === relationship;
+          });
+          if (!prs.length) return null;
+          const label = { review: "For your review", own: "Your PRs", other: "Other PRs", unknown: "Uncategorized" }[relationship];
+          return <div key={relationship}>
+            <h3 className="px-3 pt-3 pb-1 text-2xs font-medium" style={{ color: "var(--fg-muted)" }}>{label} <span className="tabular-nums">({prs.length})</span></h3>
+            <ul>{prs.map((pr) => <PrRow key={pr.key} pr={pr} />)}</ul>
+          </div>;
+        })
       ) : (
-        <p className="px-3 py-2.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-          Every PR in this repo is archived.
-        </p>
+        <p className="px-3 py-2.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>Every PR in this repo is archived.</p>
       )}
 
       {group.archived.length ? (
@@ -279,10 +286,11 @@ function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => voi
 }
 
 const ARCHIVE_HINT =
-  "Archiving is local only — it hides the PR here and changes nothing on GitHub.";
+  "Archiving cancels analysis and hides the PR here. It changes nothing on GitHub.";
 
 function PrRow({ pr }: { pr: PrListEntry }) {
   const setArchived = useSetArchived();
+  const deletePr = useDeletePr();
   const archived = pr.archived;
   const meta = pr.meta;
 
@@ -336,7 +344,7 @@ function PrRow({ pr }: { pr: PrListEntry }) {
         type="button"
         className="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-inset)]"
         data-testid={`archive-${pr.key}`}
-        disabled={setArchived.isPending}
+        disabled={setArchived.isPending || deletePr.isPending}
         title={`${archived ? "Unarchive" : "Archive"} — ${ARCHIVE_HINT}`}
         aria-label={archived ? "Unarchive" : "Archive"}
         onClick={() => setArchived.mutate({ key: pr.key, archived: !archived })}
@@ -344,6 +352,22 @@ function PrRow({ pr }: { pr: PrListEntry }) {
       >
         <IconArchive out={archived} width={12} height={12} />
       </button>
+      {archived ? <button
+        type="button"
+        className="btn flex-none text-2xs"
+        data-testid={`delete-${pr.key}`}
+        disabled={deletePr.isPending || setArchived.isPending}
+        aria-label={`Delete PR #${meta?.number}`}
+        onClick={() => {
+          if (window.confirm(`Delete PR #${meta?.number} from Purview? This cancels analysis and permanently removes local diffs, review progress, draft comments, and chat. The GitHub PR is unchanged.`)) {
+            deletePr.mutate(pr.key);
+          }
+        }}
+        style={{ color: "var(--risk)" }}
+      >
+        {deletePr.isPending ? "Deleting…" : "Delete"}
+      </button> : null}
+      {deletePr.error ? <span role="alert" className="text-2xs" style={{ color: "var(--risk)" }}>{errorText(deletePr.error)}</span> : null}
     </li>
   );
 }
