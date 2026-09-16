@@ -202,6 +202,7 @@ describe("full migration scenario", () => {
     expect(fuzzy.score).toBeGreaterThanOrEqual(0.6);
     expect(state.hunks[logout2]).toMatchObject({
       viewed: false,
+      viewedAtRevision: 1, // kept: the diff-of-diffs baseline
       changedSinceViewed: true,
       migration: "fuzzy",
       predecessorId: ids.logout,

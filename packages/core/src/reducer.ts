@@ -115,10 +115,11 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           // an earlier version of it, and "viewed" gating (readiness, the
           // progress bar, space-to-next-unviewed) must bring them back. The
           // flag itself stays on so the UI can say *why* it needs a re-read;
-          // re-viewing clears both (see "hunk-viewed").
+          // re-viewing clears both (see "hunk-viewed"). `viewedAtRevision` is
+          // kept: it is the baseline the diff-of-diffs view compares against,
+          // i.e. the version the reader actually read.
           if (carried.changedSinceViewed && carried.viewed) {
             carried.viewed = false;
-            carried.viewedAtRevision = undefined;
           }
           nextHunks[entry.hunkId] = carried;
           if (entry.previousHunkId)
