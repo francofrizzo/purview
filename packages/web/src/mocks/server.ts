@@ -29,6 +29,7 @@ import type {
   RepoConfigPatch,
   RepoPathResult,
   RepoSummary,
+  RewindChatResult,
   ReviewEvent,
   ReviewStatus,
   ReviewUnit,
@@ -1298,6 +1299,40 @@ export const mockApi = {
         cancelled = true;
       },
     });
+  },
+
+  /**
+   * Discard a message and everything after it. `sessionId` in the response
+   * is always `null`, mirroring the real server: the next send starts fresh.
+   */
+  async rewindChat(key: string, index: number): Promise<RewindChatResult> {
+    await delay(90);
+    const store = chats[key] ?? [];
+    if (!Number.isInteger(index) || index < 0 || index >= store.length) {
+      throw new ApiError("invalid_index", 400, `index must be an integer in [0, ${store.length})`);
+    }
+    const removed = store.length - index;
+    chats[key] = store.slice(0, index);
+    return { messages: structuredClone(chats[key]), sessionId: null, removed };
+  },
+
+  /**
+   * Rewind to the edited message, then resend it with the new text/refs
+   * (defaulting to the original message's refs). Streams exactly like
+   * `streamChat`.
+   */
+  streamEditChat(
+    key: string,
+    input: { index: number; text: string; refs?: ChatRef[] },
+    signal?: AbortSignal,
+  ): ReadableStream<Uint8Array> {
+    const store = chats[key] ?? [];
+    const target = store[input.index];
+    if (!target || target.role !== "user") {
+      throw new ApiError("invalid_index", 400, `index ${input.index} is not a user message`);
+    }
+    chats[key] = store.slice(0, input.index);
+    return mockApi.streamChat(key, { text: input.text, refs: input.refs ?? target.refs }, signal);
   },
 };
 

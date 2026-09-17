@@ -27,7 +27,8 @@ import {
   reconcileStaleJobs,
 } from "../src/analysis.js";
 import { chatTurnDone } from "../src/chat-session.js";
-import { resolveRefs } from "../src/chat.js";
+import { buildChatPrompt, readChat, replayTranscript, resolveRefs, rewindChat, writeChat } from "../src/chat.js";
+import type { ChatMessage } from "../src/chat.js";
 import { ownerRepoFromRemote } from "../src/repo-path.js";
 import { HttpError } from "../src/http-error.js";
 import { buildFixture, key, DOD_REV1, DOD_REV2, REV1_PATCH } from "./fixtures.js";
@@ -818,6 +819,304 @@ describe("chat", () => {
     expect(prompt).toContain("REFERENCED CONTEXT");
     expect(prompt).toContain(hunkIds[0]);
     expect(prompt.trimEnd().endsWith("is this right?")).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------- session replay */
+
+describe("replayTranscript", () => {
+  it("returns empty string for no messages", () => {
+    expect(replayTranscript([])).toBe("");
+  });
+
+  it("frames each message by role, in order", () => {
+    const messages: ChatMessage[] = [
+      { role: "user", text: "hi there", ts: "t1" },
+      { role: "assistant", text: "hello!", ts: "t2" },
+    ];
+    const block = replayTranscript(messages);
+    expect(block).toContain("CONVERSATION SO FAR (replayed: this session is fresh)");
+    expect(block).toContain("END CONVERSATION SO FAR");
+    expect(block).toContain("You: hi there");
+    expect(block).toContain("Assistant: hello!");
+    expect(block.indexOf("You: hi there")).toBeLessThan(block.indexOf("Assistant: hello!"));
+    expect(block).not.toContain("omitted");
+  });
+
+  it("drops the oldest messages first and marks how many, keeping the newest intact", () => {
+    const messages: ChatMessage[] = Array.from({ length: 40 }, (_, i) => ({
+      role: i % 2 === 0 ? "user" : "assistant",
+      text: `message ${i} `.repeat(200), // long enough that 40 of these blow the budget
+      ts: `t${i}`,
+    }));
+    const block = replayTranscript(messages);
+    expect(block).toMatch(/\(\d+ earlier messages? omitted\)/);
+    // The newest message is never trimmed.
+    expect(block).toContain("message 39");
+    // Some prefix of the oldest messages did not make it in.
+    expect(block).not.toContain("message 0 ");
+    expect(block.length).toBeLessThan(30_000);
+  });
+});
+
+describe("buildChatPrompt replay behaviour", () => {
+  it("prefixes the replay block before refs/text when the session is fresh with history", () => {
+    buildFixture(root);
+    const history: ChatMessage[] = [
+      { role: "user", text: "earlier question", ts: "t1" },
+      { role: "assistant", text: "earlier answer", ts: "t2" },
+    ];
+    const prompt = buildChatPrompt(
+      key,
+      "new question",
+      [],
+      { sessionId: null, priorMessages: history },
+      root,
+    );
+    expect(prompt).toContain("CONVERSATION SO FAR");
+    expect(prompt).toContain("earlier question");
+    expect(prompt).toContain("earlier answer");
+    expect(prompt.trimEnd().endsWith("new question")).toBe(true);
+    // The message being sent must not be replayed back to itself.
+    expect(prompt.match(/new question/g)).toHaveLength(1);
+  });
+
+  it("omits the replay block on a live (resumed) session", () => {
+    buildFixture(root);
+    const history: ChatMessage[] = [{ role: "user", text: "earlier question", ts: "t1" }];
+    const prompt = buildChatPrompt(
+      key,
+      "new question",
+      [],
+      { sessionId: "some-session-id", priorMessages: history },
+      root,
+    );
+    expect(prompt).not.toContain("CONVERSATION SO FAR");
+    expect(prompt).toBe("new question");
+  });
+
+  it("omits the replay block on a fresh session with no history", () => {
+    buildFixture(root);
+    const prompt = buildChatPrompt(key, "new question", [], { sessionId: null, priorMessages: [] }, root);
+    expect(prompt).toBe("new question");
+  });
+});
+
+/* ----------------------------------------------------------------- rewindChat */
+
+describe("rewindChat", () => {
+  it("truncates messages, clears the session id, and preserves the model", () => {
+    buildFixture(root);
+    writeChat(
+      key,
+      {
+        sessionId: "live-session",
+        model: "opus",
+        messages: [
+          { role: "user", text: "one", ts: "t1" },
+          { role: "assistant", text: "two", ts: "t2" },
+          { role: "user", text: "three", ts: "t3" },
+        ],
+      },
+      root,
+    );
+
+    const result = rewindChat(key, 1, root);
+    expect(result.removed).toBe(2);
+    expect(result.sessionReset).toBe(true);
+    expect(result.messages).toEqual([{ role: "user", text: "one", ts: "t1" }]);
+
+    const chat = readChat(key, root);
+    expect(chat.sessionId).toBeNull();
+    expect(chat.model).toBe("opus");
+    expect(chat.messages).toEqual([{ role: "user", text: "one", ts: "t1" }]);
+  });
+
+  it("rejects an out-of-range or non-integer index", () => {
+    buildFixture(root);
+    writeChat(
+      key,
+      { sessionId: "s", model: null, messages: [{ role: "user", text: "one", ts: "t1" }] },
+      root,
+    );
+    expect(() => rewindChat(key, -1, root)).toThrow(/index/);
+    expect(() => rewindChat(key, 1, root)).toThrow(/index/); // length is 1
+    expect(() => rewindChat(key, 1.5, root)).toThrow(/index/);
+  });
+});
+
+/* --------------------------------------------------------- rewind/edit routes */
+
+describe("chat rewind/edit routes", () => {
+  const seedChat = () => {
+    buildFixture(root);
+    writeChat(
+      key,
+      {
+        sessionId: "live-session",
+        model: null,
+        messages: [
+          { role: "user", text: "first", ts: "t1", refs: [{ kind: "unit", id: "unit-1" }] },
+          { role: "assistant", text: "reply one", ts: "t2" },
+          { role: "user", text: "second", ts: "t3" },
+          { role: "assistant", text: "reply two", ts: "t4" },
+        ],
+      },
+      root,
+    );
+  };
+
+  it("POST /chat/rewind truncates and returns the new chat file", async () => {
+    seedChat();
+    const res = await app.request(`/api/prs/${encodedKey}/chat/rewind`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: 2 }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.removed).toBe(2);
+    expect(body.sessionId).toBeNull();
+    expect(body.messages).toHaveLength(2);
+    expect(body.messages[1]).toMatchObject({ role: "assistant", text: "reply one" });
+  });
+
+  it("POST /chat/rewind 400s on a bad index", async () => {
+    seedChat();
+    const res = await app.request(`/api/prs/${encodedKey}/chat/rewind`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: 99 }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /chat/rewind 409s while a turn is running", async () => {
+    seedChat();
+    claude.restore();
+    claude = fakeClaude({ hang: true });
+    claude.install();
+    const send = app.request(`/api/prs/${encodedKey}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "hi" }),
+    });
+    // Give the turn a moment to register as in-flight before racing the rewind.
+    await new Promise((r) => setTimeout(r, 20));
+    const res = await app.request(`/api/prs/${encodedKey}/chat/rewind`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: 0 }),
+    });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toBe("chat_busy");
+    await (await send).body?.cancel();
+    // The turn itself keeps running past the client disconnect; end it so it
+    // doesn't leak into a later test on the same PR key.
+    claude.killAll();
+    await chatTurnDone(key);
+  });
+
+  it("POST /chat/edit on a non-user message 400s", async () => {
+    seedChat();
+    const res = await app.request(`/api/prs/${encodedKey}/chat/edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: 1, text: "edited" }),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /chat/edit rejects blank text without having truncated anything", async () => {
+    seedChat();
+    const res = await app.request(`/api/prs/${encodedKey}/chat/edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: 2, text: "   " }),
+    });
+    expect(res.status).toBe(400);
+    // The rewind is destructive and unrecoverable: a rejected edit must leave
+    // the conversation (and its live session) exactly as it was.
+    const chat = readChat(key, root);
+    expect(chat.messages).toHaveLength(4);
+    expect(chat.sessionId).toBe("live-session");
+  });
+
+  it("POST /chat/edit rejects an unresolvable ref without having truncated anything", async () => {
+    seedChat();
+    const res = await app.request(`/api/prs/${encodedKey}/chat/edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        index: 2,
+        text: "edited",
+        refs: [{ kind: "unit", id: "no-such-unit" }],
+      }),
+    });
+    expect(res.status).toBe(400);
+    const chat = readChat(key, root);
+    expect(chat.messages).toHaveLength(4);
+    expect(chat.sessionId).toBe("live-session");
+  });
+
+  it("POST /chat/edit truncates to the edited message and starts a fresh-session turn replaying what's kept", async () => {
+    seedChat();
+    claude.restore();
+    claude = fakeClaude({
+      lines: scriptedRun({
+        sessionId: "new-session-after-edit",
+        text: "edited reply",
+      }),
+    });
+    claude.install();
+
+    const res = await app.request(`/api/prs/${encodedKey}/chat/edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: 2, text: "second, edited" }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    await chatTurnDone(key);
+    expect(body).toContain("event: done");
+
+    const chat = JSON.parse(fs.readFileSync(chatPath(key, root), "utf8"));
+    expect(chat.sessionId).toBe("new-session-after-edit");
+    expect(chat.messages).toHaveLength(4);
+    expect(chat.messages[0]).toMatchObject({ role: "user", text: "first" });
+    expect(chat.messages[1]).toMatchObject({ role: "assistant", text: "reply one" });
+    expect(chat.messages[2]).toMatchObject({ role: "user", text: "second, edited" });
+    expect(chat.messages[3]).toMatchObject({ role: "assistant", text: "edited reply" });
+
+    // The session was cleared by the rewind, so the run started a new one
+    // (no --resume) and replayed the kept history ("first" + "reply one")
+    // into the prompt.
+    expect(claude.runs).toHaveLength(1);
+    expect(claude.runs[0].argv).not.toContain("--resume");
+    const prompt = claude.promptOf(0);
+    expect(prompt).toContain("CONVERSATION SO FAR");
+    expect(prompt).toContain("first");
+    expect(prompt).toContain("reply one");
+    expect(prompt.trimEnd().endsWith("second, edited")).toBe(true);
+  });
+
+  it("POST /chat/edit defaults refs to the original message's refs when omitted", async () => {
+    seedChat();
+    const res = await app.request(`/api/prs/${encodedKey}/chat/edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: 0, text: "first, edited" }),
+    });
+    expect(res.status).toBe(200);
+    await res.text();
+    await chatTurnDone(key);
+    const chat = JSON.parse(fs.readFileSync(chatPath(key, root), "utf8"));
+    expect(chat.messages[0]).toMatchObject({
+      role: "user",
+      text: "first, edited",
+      refs: [{ kind: "unit", id: "unit-1" }],
+    });
   });
 });
 

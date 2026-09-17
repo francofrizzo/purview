@@ -217,6 +217,48 @@ export function resolveRefs(key: PrKey, refs: ChatRef[], root = stateRoot()): st
   ].join("\n");
 }
 
+/* ---------------------------------------------------------- session replay */
+
+/**
+ * Kept messages, under this many characters, before a fresh session's replay
+ * block is truncated. Generous — it is prompt text, not display text — but a
+ * long-lived conversation must still stay bounded per turn.
+ */
+const REPLAY_BUDGET_CHARS = 24_000;
+
+/**
+ * A fresh Claude session (after a rewind, or one that never started) has no
+ * memory of messages the reader still sees in the transcript. This renders
+ * the kept history back into text so it can be replayed at the front of the
+ * next prompt — the CLI has no way to seed a session's memory other than
+ * feeding it back through the prompt itself.
+ *
+ * Pure and side-effect free so it is testable without a chat.json on disk.
+ */
+export function replayTranscript(messages: ChatMessage[]): string {
+  if (messages.length === 0) return "";
+
+  const turns = messages.map((m) => `${m.role === "user" ? "You" : "Assistant"}: ${m.text}`);
+
+  // The reader already sees every kept message in the transcript; only the
+  // model's memory of them is at stake here, so the oldest are dropped first
+  // and the most recent are never touched.
+  let start = 0;
+  while (start < turns.length - 1 && turns.slice(start).join("\n\n").length > REPLAY_BUDGET_CHARS) {
+    start++;
+  }
+  const omitted = start;
+
+  return [
+    "----- CONVERSATION SO FAR (replayed: this session is fresh) -----",
+    omitted > 0 ? `(${omitted} earlier message${omitted === 1 ? "" : "s"} omitted)` : "",
+    turns.slice(start).join("\n\n"),
+    "----- END CONVERSATION SO FAR -----",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 /* ------------------------------------------------------------ chat prompts */
 
 export function chatSystemPrompt(
@@ -322,15 +364,28 @@ export function chatToolFlags(): {
   };
 }
 
-/** The message actually sent to the CLI: resolved refs, then the reader's text. */
+/**
+ * The message actually sent to the CLI: a replayed transcript when the
+ * session is fresh but the reader still sees history (first turn ever, or
+ * after a rewind), then resolved refs, then the reader's text.
+ *
+ * `priorMessages` must be the messages already on disk *before* this turn's
+ * user message is appended — replaying the message being sent right back to
+ * itself would be pointless and would blow the budget for no reason.
+ */
 export function buildChatPrompt(
   key: PrKey,
   text: string,
   refs: ChatRef[],
+  history: { sessionId: string | null; priorMessages: ChatMessage[] },
   root = stateRoot(),
 ): string {
+  const replay =
+    history.sessionId === null && history.priorMessages.length > 0
+      ? replayTranscript(history.priorMessages)
+      : "";
   const block = resolveRefs(key, refs, root);
-  return block ? `${block}\n\n${text}` : text;
+  return [replay, block, text].filter(Boolean).join("\n\n");
 }
 
 /**
@@ -348,4 +403,30 @@ export function setChatModel(
 
 export function newSessionId(): string {
   return randomUUID();
+}
+
+/**
+ * Discard the messages at and after `index`, and clear the session id so the
+ * next turn starts fresh — the CLI has no way to truncate a session's
+ * transcript (`--fork-session` copies the whole thing, it does not trim it),
+ * so "forget what came after" can only mean "stop resuming and replay what's
+ * kept" (see `replayTranscript` / `buildChatPrompt`).
+ */
+export function rewindChat(
+  key: PrKey,
+  index: number,
+  root = stateRoot(),
+): { messages: ChatMessage[]; removed: number; sessionReset: true } {
+  const chat = readChat(key, root);
+  if (!Number.isInteger(index) || index < 0 || index >= chat.messages.length) {
+    throw new HttpError(
+      400,
+      "invalid_index",
+      `index must be an integer in [0, ${chat.messages.length})`,
+    );
+  }
+  const messages = chat.messages.slice(0, index);
+  const removed = chat.messages.length - messages.length;
+  writeChat(key, { ...chat, sessionId: null, messages }, root);
+  return { messages, removed, sessionReset: true };
 }

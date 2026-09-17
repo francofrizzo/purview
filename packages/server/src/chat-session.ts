@@ -70,10 +70,19 @@ export function startChatTurn(
   if (!text) throw new HttpError(400, "invalid_body", "Body must include a non-empty { text }");
   const refs = input.refs ?? [];
 
-  // Resolution first: it is the only step allowed to reject the send.
-  const prompt = buildChatPrompt(key, text, refs, root);
-
+  // Read before this turn's message is appended: `buildChatPrompt` replays
+  // history when the session is fresh, and must not replay the very message
+  // it is about to send.
   const chat = readChat(key, root);
+  // Resolution first: it is the only step allowed to reject the send.
+  const prompt = buildChatPrompt(
+    key,
+    text,
+    refs,
+    { sessionId: chat.sessionId, priorMessages: chat.messages },
+    root,
+  );
+
   appendChatMessage(
     key,
     { role: "user", text, ts: new Date().toISOString(), refs: refs.length ? refs : undefined },

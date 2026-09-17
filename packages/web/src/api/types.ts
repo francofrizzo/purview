@@ -616,6 +616,17 @@ export type ChatStreamEvent =
   | { type: "done"; message: ChatMessage }
   | { type: "error"; error: string };
 
+/**
+ * POST /api/prs/:key/chat/rewind. The session id always comes back `null`:
+ * the CLI cannot truncate a session's transcript, so a rewind clears it and
+ * the next turn starts fresh, replaying whatever is kept.
+ */
+export interface RewindChatResult {
+  messages: ChatMessage[];
+  sessionId: null;
+  removed: number;
+}
+
 /** POST /api/prs/:key/repo-path */
 export interface RepoPathResult {
   ok: boolean;

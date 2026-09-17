@@ -35,8 +35,10 @@ import {
   IconChat,
   IconChevron,
   IconClose,
+  IconEdit,
   IconFile,
   IconQuote,
+  IconRewind,
   IconSettings,
   IconSpinner,
 } from "./icons";
@@ -111,34 +113,106 @@ function ToolLine({ tool }: { tool: ToolActivity }) {
 
 function RoleLabel({ role }: { role: "user" | "assistant" }) {
   return (
-    <div
-      className="mb-1 text-2xs uppercase tracking-wider"
+    <span
+      className="text-2xs uppercase tracking-wider"
       style={{ color: role === "user" ? "var(--fg-faint)" : "var(--accent)" }}
     >
       {role === "user" ? "you" : "claude"}
-    </div>
+    </span>
   );
 }
 
 function MessageBlock({
   message,
+  index,
   labelFor,
   titleFor,
+  busy,
+  isEditing,
+  rewindConfirming,
+  discardCount,
+  onEdit,
+  onRewindClick,
+  onRewindConfirm,
+  onRewindCancel,
 }: {
   message: LocalMessage;
+  index: number;
   labelFor: (ref: ChatRef) => string;
   titleFor: (ref: ChatRef) => string;
+  busy: boolean;
+  isEditing: boolean;
+  rewindConfirming: boolean;
+  /** messages this row and everything after it, i.e. what a rewind here removes */
+  discardCount: number;
+  onEdit: () => void;
+  onRewindClick: () => void;
+  onRewindConfirm: () => void;
+  onRewindCancel: () => void;
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   return (
     <div
-      className="border-b px-3 py-2.5"
+      className="group border-b px-3 py-2.5"
       style={{
         borderColor: "var(--border)",
         background: message.role === "user" ? "var(--bg-inset)" : "transparent",
       }}
     >
-      <RoleLabel role={message.role} />
+      <div className="mb-1 flex items-center gap-2">
+        <RoleLabel role={message.role} />
+        {/* Hidden entirely while streaming: neither action is safe to act on mid-turn. */}
+        {!busy && !isEditing ? (
+          <div
+            className={`ml-auto flex items-center gap-2 text-2xs ${
+              rewindConfirming ? "" : "opacity-0 transition-opacity group-hover:opacity-100"
+            }`}
+            style={{ color: "var(--fg-faint)" }}
+          >
+            {message.role === "user" ? (
+              <button
+                type="button"
+                data-testid={`chat-edit-${index}`}
+                title="Edit this message"
+                aria-label="Edit this message"
+                onClick={onEdit}
+                className="inline-flex items-center gap-0.5 hover:underline"
+              >
+                <IconEdit width={10} height={10} />
+                edit
+              </button>
+            ) : null}
+            {rewindConfirming ? (
+              <span className="inline-flex items-center gap-1.5">
+                <button
+                  type="button"
+                  data-testid={`chat-rewind-confirm-${index}`}
+                  onClick={onRewindConfirm}
+                  className="hover:underline"
+                  style={{ color: "var(--risk)" }}
+                >
+                  discard {discardCount} message{discardCount === 1 ? "" : "s"}?
+                </button>
+                <button type="button" onClick={onRewindCancel} className="hover:underline">
+                  cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                type="button"
+                data-testid={`chat-rewind-${index}`}
+                title="Discard this message and everything after it"
+                aria-label="Rewind to here"
+                onClick={onRewindClick}
+                className="inline-flex items-center gap-0.5 hover:underline"
+              >
+                <IconRewind width={10} height={10} />
+                rewind here
+              </button>
+            )}
+          </div>
+        ) : null}
+      </div>
       {message.refs?.length ? (
         <div className="mb-1.5 flex flex-wrap gap-1">
           {message.refs.map((r) => (
@@ -195,6 +269,8 @@ export function ChatPanel({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [pinned, setPinned] = useState(true);
+  const [preEditDraft, setPreEditDraft] = useState<string | null>(null);
+  const [rewindConfirmIndex, setRewindConfirmIndex] = useState<number | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -275,8 +351,13 @@ export function ChatPanel({
   const submit = (text?: string) => {
     const body = (text ?? draft).trim();
     if (!body || chat.busy) return;
-    chat.send(body);
+    if (chat.editingIndex !== null) {
+      chat.sendEdit(body);
+    } else {
+      chat.send(body);
+    }
     setDraft("");
+    setPreEditDraft(null);
     setPinned(true);
     requestAnimationFrame(() => scrollToBottom());
   };
@@ -288,9 +369,41 @@ export function ChatPanel({
     }
     if (e.key === "Escape") {
       e.stopPropagation();
-      chat.closeChat();
+      if (chat.editingIndex !== null) cancelEditing();
+      else chat.closeChat();
     }
   };
+
+  /** Load a sent message back into the composer; its own refs replace whatever was staged. */
+  const beginEdit = (index: number, text: string) => {
+    if (chat.busy) return;
+    setPreEditDraft(draft);
+    setDraft(text);
+    chat.startEdit(index);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const cancelEditing = () => {
+    setDraft(preEditDraft ?? "");
+    setPreEditDraft(null);
+    chat.cancelEdit();
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  /** Two-step confirm lives in the row itself; this just fires the request once confirmed. */
+  const confirmRewind = async (index: number) => {
+    try {
+      await chat.rewindTo(index);
+    } finally {
+      setRewindConfirmIndex(null);
+    }
+  };
+
+  // A rewind or an edit's resend changes what "later" means; a stale confirm
+  // pointed at a row that may no longer exist is worse than none at all.
+  useEffect(() => {
+    setRewindConfirmIndex(null);
+  }, [chat.messages.length]);
 
   const empty = !chat.messages.length && !chat.streaming && !chat.loading;
 
@@ -420,12 +533,28 @@ export function ChatPanel({
         ) : null}
 
         {chat.messages.map((m, i) => (
-          <MessageBlock key={`${m.ts}-${i}`} message={m} labelFor={labelFor} titleFor={titleFor} />
+          <MessageBlock
+            key={`${m.ts}-${i}`}
+            message={m}
+            index={i}
+            labelFor={labelFor}
+            titleFor={titleFor}
+            busy={chat.busy}
+            isEditing={chat.editingIndex === i}
+            rewindConfirming={rewindConfirmIndex === i}
+            discardCount={chat.messages.length - i}
+            onEdit={() => beginEdit(i, m.text)}
+            onRewindClick={() => setRewindConfirmIndex(i)}
+            onRewindConfirm={() => void confirmRewind(i)}
+            onRewindCancel={() => setRewindConfirmIndex(null)}
+          />
         ))}
 
         {chat.streaming ? (
           <div className="px-3 py-2.5" data-testid="chat-streaming">
-            <RoleLabel role="assistant" />
+            <div className="mb-1">
+              <RoleLabel role="assistant" />
+            </div>
             {chat.streaming.tools.length ? (
               <div className="mb-1.5 space-y-0.5">
                 {chat.streaming.tools.map((t, i) => (
@@ -475,6 +604,28 @@ export function ChatPanel({
       ) : null}
 
       <div className="flex-none border-t p-2" style={{ borderColor: "var(--border)" }}>
+        {chat.editingIndex !== null ? (
+          <div
+            className="mb-1.5 flex items-center gap-2 text-2xs"
+            data-testid="chat-editing-banner"
+            style={{ color: "var(--fg-muted)" }}
+          >
+            editing — sending will discard {chat.messages.length - chat.editingIndex - 1} later message
+            {chat.messages.length - chat.editingIndex - 1 === 1 ? "" : "s"}
+            <button type="button" className="btn ml-auto" onClick={cancelEditing}>
+              cancel
+            </button>
+          </div>
+        ) : null}
+        {chat.sessionReset ? (
+          <div
+            className="mb-1.5 text-2xs"
+            data-testid="chat-session-reset-note"
+            style={{ color: "var(--fg-faint)" }}
+          >
+            starting a fresh session next — the conversation so far will be replayed
+          </div>
+        ) : null}
         {chat.effectiveRefs.length ? (
           <div className="mb-1.5 flex flex-wrap items-center gap-1" data-testid="chat-refs">
             {chat.effectiveRefs.map((r) => {
@@ -507,7 +658,13 @@ export function ChatPanel({
           data-testid="chat-input"
           className="input resize-none text-xs leading-[18px]"
           rows={2}
-          placeholder={chat.busy ? "Claude is replying…" : "Ask about this PR…  (↵ send · ⇧↵ newline)"}
+          placeholder={
+            chat.busy
+              ? "Claude is replying…"
+              : chat.editingIndex !== null
+                ? "Edit your message…  (↵ send · ⇧↵ newline)"
+                : "Ask about this PR…  (↵ send · ⇧↵ newline)"
+          }
           value={draft}
           disabled={chat.busy}
           onChange={(e) => setDraft(e.target.value)}
@@ -536,7 +693,7 @@ export function ChatPanel({
             disabled={chat.busy || !draft.trim()}
             onClick={() => submit()}
           >
-            {chat.busy ? "…" : "send"}
+            {chat.busy ? "…" : chat.editingIndex !== null ? "resend" : "send"}
           </button>
         </div>
       </div>

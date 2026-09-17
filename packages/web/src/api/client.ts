@@ -33,6 +33,7 @@ import type {
   RepoConfig,
   RepoConfigPatch,
   RepoSummary,
+  RewindChatResult,
   ReviewDecision,
   ReviewEffort,
   ReviewEvent,
@@ -809,29 +810,74 @@ export const api = {
     onEvent: (event: ChatStreamEvent) => void,
     signal?: AbortSignal,
   ): Promise<void> {
-    const body = MOCK
-      ? mockApi.streamChat(key, input, signal)
-      : await (async () => {
-          const res = await fetch(`/api/prs/${encodeKey(key)}/chat`, {
-            method: "POST",
-            headers: { "content-type": "application/json", accept: "text/event-stream" },
-            body: JSON.stringify(input),
-            signal,
-          });
-          if (!res.ok) {
-            const text = await res.text().catch(() => "");
-            throw new ApiError(text || `${res.status} ${res.statusText}`, res.status, text);
-          }
-          if (!res.body) throw new ApiError("The chat response carried no body", 500, null);
-          return res.body;
-        })();
+    await consumeChatStream(
+      MOCK ? mockApi.streamChat(key, input, signal) : fetchChatStream(`/prs/${encodeKey(key)}/chat`, input, signal),
+      onEvent,
+      signal,
+    );
+  },
 
-    for await (const frame of readSseStream(body, signal)) {
-      const event = decodeChatFrame(frame.event, frame.data);
-      if (event) onEvent(event);
-    }
+  /**
+   * Discard a message and everything after it. The session id always comes
+   * back cleared — the next turn replays what's kept (see chat.ts on the
+   * server) rather than resuming.
+   */
+  async rewindChat(key: string, index: number): Promise<RewindChatResult> {
+    if (MOCK) return mockApi.rewindChat(key, index);
+    return post<RewindChatResult>(`/prs/${encodeKey(key)}/chat/rewind`, { index });
+  },
+
+  /**
+   * Edit a previously sent user message: the server rewinds to it, then
+   * resends it with the new text/refs. Streams exactly like `streamChat`.
+   */
+  async streamEditChat(
+    key: string,
+    input: { index: number; text: string; refs?: ChatRef[] },
+    onEvent: (event: ChatStreamEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    await consumeChatStream(
+      MOCK
+        ? mockApi.streamEditChat(key, input, signal)
+        : fetchChatStream(`/prs/${encodeKey(key)}/chat/edit`, input, signal),
+      onEvent,
+      signal,
+    );
   },
 };
+
+/** POST to a chat-streaming route and hand back its raw SSE body. */
+async function fetchChatStream(
+  path: string,
+  input: unknown,
+  signal?: AbortSignal,
+): Promise<ReadableStream<Uint8Array>> {
+  const res = await fetch(`/api${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "text/event-stream" },
+    body: JSON.stringify(input),
+    signal,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new ApiError(text || `${res.status} ${res.statusText}`, res.status, text);
+  }
+  if (!res.body) throw new ApiError("The chat response carried no body", 500, null);
+  return res.body;
+}
+
+/** Decode an SSE body (real or mocked) into `ChatStreamEvent`s, shared by every chat-streaming call. */
+async function consumeChatStream(
+  body: ReadableStream<Uint8Array> | Promise<ReadableStream<Uint8Array>>,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  for await (const frame of readSseStream(await body, signal)) {
+    const event = decodeChatFrame(frame.event, frame.data);
+    if (event) onEvent(event);
+  }
+}
 
 /** Map one SSE frame onto the chat event union; unknown frames are ignored. */
 export function decodeChatFrame(event: string, data: string): ChatStreamEvent | null {

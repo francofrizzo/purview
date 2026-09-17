@@ -25,7 +25,7 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { errorText } from "../api/errors";
-import type { ChatMessage, ChatRef, ClaudeModel, ConfigSource } from "../api/types";
+import type { ChatMessage, ChatRef, ChatStreamEvent, ClaudeModel, ConfigSource } from "../api/types";
 import {
   autoRefReducer,
   effectiveRefs as deriveEffectiveRefs,
@@ -90,6 +90,19 @@ interface ChatContextValue {
   send: (text: string) => void;
   retry: () => void;
   clearConversation: () => Promise<void>;
+
+  /** index of the user message currently loaded into the composer, or null */
+  editingIndex: number | null;
+  /** load a user message's text/refs into the composer for editing; caller supplies the text */
+  startEdit: (index: number) => void;
+  /** leave editing mode; the composer's own contents are the caller's to restore */
+  cancelEdit: () => void;
+  /** resend the message at `editingIndex` with new text — discards it and everything after first */
+  sendEdit: (text: string) => void;
+  /** discard the message at `index` and everything after it */
+  rewindTo: (index: number) => Promise<void>;
+  /** true from a rewind/edit until the next turn finishes — the session is fresh and will replay history */
+  sessionReset: boolean;
 }
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -103,6 +116,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<ChatFailure | null>(null);
   const [refs, setRefs] = useState<ChatRef[]>([]);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [preEditRefs, setPreEditRefs] = useState<ChatRef[] | null>(null);
+  const [sessionReset, setSessionReset] = useState(false);
   const [autoRefState, dispatchAutoRef] = useReducer(autoRefReducer, initialAutoRefState);
   // Seeded with the built-in default so the header never renders blank; the
   // real values arrive with the transcript.
@@ -136,6 +152,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setBusy(false);
       setFailure(null);
       setRefs([]);
+      setEditingIndex(null);
+      setPreEditRefs(null);
+      setSessionReset(false);
       dispatchAutoRef({ type: "reset" });
       setModelState({
         model: "sonnet",
@@ -209,11 +228,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const effectiveRefs = useMemo(() => deriveEffectiveRefs(refs, autoRefState), [refs, autoRefState]);
   const isAutoRef = useCallback((ref: ChatRef) => deriveIsAutoRef(ref, refs, autoRefState), [refs, autoRefState]);
 
-  const run = useCallback((key: string, text: string, sent: ChatRef[]) => {
+  /**
+   * `editIndex` set means this turn is an edit's resend: the message at that
+   * index (and everything after) was already truncated by the caller, and
+   * the server does the same truncation itself before resending, via the
+   * edit endpoint rather than the plain one.
+   */
+  const run = useCallback((key: string, text: string, sent: ChatRef[], editIndex?: number) => {
     const controller = new AbortController();
     abortRef.current = controller;
     setBusy(true);
     setFailure(null);
+    // The note's whole point is "the *next* reply replays history"; once
+    // that reply is in flight, it no longer describes something upcoming.
+    setSessionReset(false);
     setStreaming({ text: "", tools: [] });
 
     // A plain object rather than locals: these are written from the event
@@ -227,27 +255,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     void (async () => {
       let seenTools: ToolActivity[] = [];
+      const onEvent = (event: ChatStreamEvent) => {
+        if (event.type === "delta") {
+          outcome.text += event.text;
+          setStreaming((cur) => (cur ? { ...cur, text: cur.text + event.text } : cur));
+        } else if (event.type === "tool") {
+          seenTools = [...seenTools, { name: event.name, detail: event.detail }];
+          setStreaming((cur) =>
+            cur ? { ...cur, tools: [...cur.tools, { name: event.name, detail: event.detail }] } : cur,
+          );
+        } else if (event.type === "done") {
+          outcome.message = { ...event.message, tools: seenTools.length ? seenTools : undefined };
+        } else if (event.type === "error") {
+          outcome.failed = event.error;
+        }
+      };
       try {
-        await api.streamChat(
-          key,
-          { text, ...(sent.length ? { refs: sent } : {}) },
-          (event) => {
-            if (event.type === "delta") {
-              outcome.text += event.text;
-              setStreaming((cur) => (cur ? { ...cur, text: cur.text + event.text } : cur));
-            } else if (event.type === "tool") {
-              seenTools = [...seenTools, { name: event.name, detail: event.detail }];
-              setStreaming((cur) =>
-                cur ? { ...cur, tools: [...cur.tools, { name: event.name, detail: event.detail }] } : cur,
-              );
-            } else if (event.type === "done") {
-              outcome.message = { ...event.message, tools: seenTools.length ? seenTools : undefined };
-            } else if (event.type === "error") {
-              outcome.failed = event.error;
-            }
-          },
-          controller.signal,
-        );
+        if (editIndex === undefined) {
+          await api.streamChat(key, { text, ...(sent.length ? { refs: sent } : {}) }, onEvent, controller.signal);
+        } else {
+          await api.streamEditChat(
+            key,
+            { index: editIndex, text, ...(sent.length ? { refs: sent } : {}) },
+            onEvent,
+            controller.signal,
+          );
+        }
       } catch (err) {
         if (controller.signal.aborted) return;
         outcome.failed = errorText(err);
@@ -311,6 +344,67 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [busy, failure, run]);
 
   /**
+   * Load a user message into the composer for editing. The message's own
+   * refs replace the staged ones (mirroring what sending it again would
+   * carry); the previous staged refs are kept so `cancelEdit` can put them
+   * back. The composer's own text is the caller's responsibility — this only
+   * tracks which message is being edited.
+   */
+  const startEdit = useCallback(
+    (index: number) => {
+      const target = messages[index];
+      if (!target || target.role !== "user" || busy) return;
+      setPreEditRefs(refs);
+      setRefs(target.refs ?? []);
+      setEditingIndex(index);
+    },
+    [messages, refs, busy],
+  );
+
+  const cancelEdit = useCallback(() => {
+    setRefs(preEditRefs ?? []);
+    setPreEditRefs(null);
+    setEditingIndex(null);
+  }, [preEditRefs]);
+
+  /** Resend the message being edited: discards it and everything after, then resends with `text`. */
+  const sendEdit = useCallback(
+    (text: string) => {
+      const key = keyRef.current;
+      const body = text.trim();
+      const index = editingIndex;
+      if (!key || !body || busy || index === null) return;
+      const sent = effectiveRefs;
+      setMessages((cur) => [
+        ...cur.slice(0, index),
+        { role: "user", text: body, ts: new Date().toISOString(), refs: sent.length ? sent : undefined },
+      ]);
+      setRefs([]);
+      setEditingIndex(null);
+      setPreEditRefs(null);
+      setSessionReset(true);
+      run(key, body, sent, index);
+    },
+    [busy, editingIndex, effectiveRefs, run],
+  );
+
+  /** Discard the message at `index` and everything after it; unrecoverable. */
+  const rewindTo = useCallback(
+    async (index: number) => {
+      const key = keyRef.current;
+      if (!key || busy) return;
+      const result = await api.rewindChat(key, index);
+      if (keyRef.current !== key) return;
+      setMessages(result.messages);
+      setFailure(null);
+      setSessionReset(true);
+      // The message being edited may itself have just been discarded.
+      setEditingIndex((cur) => (cur !== null && cur >= index ? null : cur));
+    },
+    [busy],
+  );
+
+  /**
    * The switch is optimistic: the header should move the instant it is
    * clicked. The server's answer is authoritative and replaces it, and a
    * failure puts the old value back rather than leaving a lie on screen.
@@ -351,6 +445,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setStreaming(null);
     setBusy(false);
     setFailure(null);
+    setEditingIndex(null);
+    setPreEditRefs(null);
+    setSessionReset(false);
     // The server drops the pin with the transcript; mirror it.
     setModelState((cur) => ({ ...cur, sessionModel: null, model: cur.configuredModel }));
   }, []);
@@ -381,6 +478,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       send,
       retry,
       clearConversation,
+      editingIndex,
+      startEdit,
+      cancelEdit,
+      sendEdit,
+      rewindTo,
+      sessionReset,
     }),
     [
       modelState,
@@ -404,6 +507,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       send,
       retry,
       clearConversation,
+      editingIndex,
+      startEdit,
+      cancelEdit,
+      sendEdit,
+      rewindTo,
+      sessionReset,
     ],
   );
 

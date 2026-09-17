@@ -259,6 +259,21 @@ export const IconWeight = (p: P) => (
   </svg>
 );
 
+/** A pencil — edit a sent message. */
+export const IconEdit = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M10.5 2.5 13.5 5.5 5 14H2v-3z" />
+    <path d="M9 4 12 7" />
+  </svg>
+);
+
+/** A counter-clockwise arrow — rewind the conversation to this point. */
+export const IconRewind = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M2.5 8a5.5 5.5 0 1 0 1.7-4M2.5 2v3.5H6" />
+  </svg>
+);
+
 export const RISK_META: Record<
   RiskFlag,
   { icon: (p: P) => JSX.Element; label: string }

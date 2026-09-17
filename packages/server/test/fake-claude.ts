@@ -23,6 +23,8 @@ export interface FakeClaude {
   restore(): void;
   /** prompt of the nth run, readable even while that run is still going */
   promptOf(index: number): string;
+  /** SIGTERM every child spawned so far — for `hang: true` runs a test leaves running */
+  killAll(): void;
   dir: string;
 }
 
@@ -69,6 +71,7 @@ export function fakeClaude(opts: FakeClaudeOptions = {}): FakeClaude {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fake-claude-"));
   const argvFile = path.join(dir, "argv.jsonl");
   const runs: FakeClaude["runs"] = [];
+  const children: ReturnType<typeof spawn>[] = [];
 
   const install = () => {
     setClaudeSpawner((argv, spawnOpts) => {
@@ -91,6 +94,7 @@ export function fakeClaude(opts: FakeClaudeOptions = {}): FakeClaude {
       child.on("exit", () => {
         if (fs.existsSync(promptFile)) runs[index].prompt = fs.readFileSync(promptFile, "utf8");
       });
+      children.push(child);
       return child as unknown as ClaudeChild;
     });
   };
@@ -101,6 +105,15 @@ export function fakeClaude(opts: FakeClaudeOptions = {}): FakeClaude {
     promptOf: (index: number) => {
       const file = path.join(dir, `prompt-${index}.txt`);
       return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+    },
+    killAll: () => {
+      for (const child of children) {
+        try {
+          child.kill("SIGTERM");
+        } catch {
+          /* already gone */
+        }
+      }
     },
     restore: () => {
       setClaudeSpawner(null);

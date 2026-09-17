@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
+import type { Context } from "hono";
 import { z } from "zod";
 import {
   AnalysisEffortSchema,
@@ -84,8 +85,8 @@ import {
   resolveAutoSharedAnalysis,
   shareAnalysisToPr,
 } from "./analysis-share-server.js";
-import { chatBusy, startChatTurn, type ChatStreamEvent } from "./chat-session.js";
-import { ChatRefSchema, clearChat, readChat, setChatModel } from "./chat.js";
+import { chatBusy, startChatTurn, type ChatStreamEvent, type ChatTurn } from "./chat-session.js";
+import { ChatRefSchema, clearChat, readChat, resolveRefs, rewindChat, setChatModel } from "./chat.js";
 import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
 import { localOnlyGuard } from "./security.js";
@@ -603,15 +604,10 @@ export function createApp(opts: AppOptions = {}): Hono {
   /**
    * A chat turn streams over SSE but does not depend on the stream: the run is
    * started first and persists its answer to chat.json even if the client
-   * disconnects halfway through.
+   * disconnects halfway through. Shared by every route that starts a turn
+   * (plain send, and edit-then-resend) so the SSE plumbing exists once.
    */
-  app.post("/api/prs/:key/chat", async (c) => {
-    const key = keyParam(c);
-    readMeta(key, root);
-    const body = (await readJsonBody(c)) as { text?: string; refs?: unknown };
-    const refs = z.array(ChatRefSchema).default([]).parse(body.refs ?? []);
-    const turn = startChatTurn(key, { text: body.text ?? "", refs }, root);
-
+  function streamChatTurn(c: Context, turn: ChatTurn) {
     return streamSSE(c, async (stream) => {
       let closed = false;
       stream.onAbort(() => {
@@ -659,6 +655,75 @@ export function createApp(opts: AppOptions = {}): Hono {
         turn.emitter.off("event", onEvent);
       }
     });
+  }
+
+  app.post("/api/prs/:key/chat", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const body = (await readJsonBody(c)) as { text?: string; refs?: unknown };
+    const refs = z.array(ChatRefSchema).default([]).parse(body.refs ?? []);
+    const turn = startChatTurn(key, { text: body.text ?? "", refs }, root);
+    return streamChatTurn(c, turn);
+  });
+
+  /**
+   * Discard the message at `index` and everything after it, and clear the
+   * session id: the next turn starts fresh and replays what's kept (see
+   * `buildChatPrompt` in chat.ts). 409s while a turn is running for the same
+   * reason the plain send does — a reply mid-flight is about to append to the
+   * very messages this would remove.
+   */
+  app.post("/api/prs/:key/chat/rewind", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    if (chatBusy(key)) {
+      throw new HttpError(409, "chat_busy", `A chat turn is already running for ${keyToString(key)}`);
+    }
+    const parsed = z.object({ index: z.number() }).strict().safeParse(await readJsonBody(c));
+    if (!parsed.success) {
+      throw new HttpError(400, "invalid_body", "Body must include { index: number }");
+    }
+    const { removed } = rewindChat(key, parsed.data.index, root);
+    return c.json({ ...readChat(key, root), removed });
+  });
+
+  /**
+   * Edit a previously sent user message: rewind to it (dropping it and
+   * everything after, same as `/chat/rewind`), then immediately resend it
+   * with the new text/refs. Streams exactly like a plain send.
+   */
+  app.post("/api/prs/:key/chat/edit", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    if (chatBusy(key)) {
+      throw new HttpError(409, "chat_busy", `A chat turn is already running for ${keyToString(key)}`);
+    }
+    const parsed = z
+      .object({ index: z.number(), text: z.string(), refs: z.array(ChatRefSchema).optional() })
+      .strict()
+      .safeParse(await readJsonBody(c));
+    if (!parsed.success) {
+      throw new HttpError(400, "invalid_body", "Body must include { index: number, text: string }");
+    }
+    const { index, text } = parsed.data;
+    const target = readChat(key, root).messages[index];
+    if (!target || target.role !== "user") {
+      throw new HttpError(400, "invalid_index", `index ${index} is not a user message`);
+    }
+    // Refs default to the message's own, so editing just the text keeps what
+    // it was pointing at.
+    const refs = parsed.data.refs ?? target.refs ?? [];
+    // Everything that can reject this send has to reject it BEFORE the rewind:
+    // truncating and then failing to start the turn would destroy messages
+    // with nothing to show for it. Empty text and unresolvable refs are the
+    // two rejections `startChatTurn` would otherwise raise after the fact.
+    if (!text.trim()) {
+      throw new HttpError(400, "invalid_body", "Body must include a non-empty { text }");
+    }
+    resolveRefs(key, refs, root);
+    rewindChat(key, index, root);
+    const turn = startChatTurn(key, { text, refs }, root);
+    return streamChatTurn(c, turn);
   });
 
   app.post("/api/prs/:key/hunks/:id/viewed", async (c) => {
