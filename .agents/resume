@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Purview has no backing services to reconnect and user authentication must not
+# be captured in a shared orb snapshot. Keep wake-up work intentionally empty.
+exit 0

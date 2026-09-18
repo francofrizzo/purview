@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+step() {
+  local label=$1
+  shift
+  printf '\n==> %s\n' "$label"
+  time "$@"
+}
+
+node_major=$(node -p 'Number(process.versions.node.split(".")[0])')
+if ((node_major < 20)); then
+  printf 'Purview requires Node.js 20 or newer (found %s).\n' "$(node --version)" >&2
+  exit 1
+fi
+
+if ! command -v ctags >/dev/null 2>&1 || ! ctags --version 2>&1 | grep -q 'Universal Ctags'; then
+  step "Updating apt metadata" sudo apt-get update
+  step "Installing Universal Ctags" sudo apt-get install -y universal-ctags
+fi
+
+step "Enabling Corepack" corepack enable
+step "Preparing pnpm" corepack prepare pnpm@10.34.5 --activate
+step "Installing workspace dependencies" pnpm install --frozen-lockfile
+step "Building core" pnpm --filter @reviewer/core build
+step "Building server" pnpm --filter @reviewer/server build
+step "Building web and CLI" pnpm --filter @francofrizzo/purview build
+
+printf '\nOrb setup complete. Node %s, pnpm %s.\n' "$(node --version)" "$(pnpm --version)"
