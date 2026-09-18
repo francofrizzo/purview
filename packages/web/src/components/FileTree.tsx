@@ -84,7 +84,7 @@ export function FileTree({
                 return n;
               })
             }
-            className="flex w-full items-center gap-1 py-[3px] pr-2 text-left font-mono text-2xs"
+            className="sidebar-row-btn flex w-full items-center gap-1 py-[3px] pr-2 text-left font-mono text-2xs"
             style={{ paddingLeft: 8 + depth * 10, color: "var(--fg-muted)" }}
           >
             <IconChevron open={!isCollapsed} width={9} height={9} />
@@ -101,7 +101,7 @@ export function FileTree({
           <button
             type="button"
             onClick={() => onSelect(kid.file!.path)}
-            className="flex w-full items-center gap-1.5 border-l-2 py-[3px] pr-2 text-left font-mono text-2xs"
+            className="sidebar-row-btn flex w-full items-center gap-1.5 border-l-2 py-[3px] pr-2 text-left font-mono text-2xs"
             style={{
               paddingLeft: 6 + depth * 10,
               borderColor: selected ? "var(--accent)" : "transparent",
@@ -127,7 +127,7 @@ export function FileTree({
           </button>
           {onQuote ? (
             <span
-              className="absolute right-1 hidden rounded px-0.5 group-hover:block"
+              className="file-tree-quote absolute right-1 hidden rounded px-0.5 group-hover:block"
               style={{ background: selected ? "var(--bg-hover)" : "var(--bg-raised)" }}
             >
               <QuoteButton

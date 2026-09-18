@@ -211,7 +211,7 @@ function CommentColumn({
             onComment();
           }}
           title={has ? "Add another comment on this line" : "Draft a comment on this line"}
-          className="my-[2px] h-[13px] w-[13px] flex-none rounded text-[10px] leading-[12px] opacity-0 transition-opacity group-hover:opacity-100 group-hover/half:opacity-100"
+          className="diff-comment-affordance my-[2px] h-[13px] w-[13px] flex-none rounded text-[10px] leading-[12px] opacity-0 transition-opacity group-hover:opacity-100 group-hover/half:opacity-100"
           style={{ background: "var(--bg-hover)", color: "var(--fg-muted)" }}
         >
           +

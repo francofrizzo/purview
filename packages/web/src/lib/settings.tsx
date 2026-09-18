@@ -48,6 +48,9 @@ export interface Settings {
   hideReviewedUnits: boolean;
   /** Width of the Claude chat panel in px (clamped to the range below). */
   chatPanelWidth: number;
+  /** Column-mode sidebar collapsed to nothing. Ignored in drawer mode, where
+   *  the sidebar always starts closed regardless of this. */
+  sidebarCollapsed: boolean;
 }
 
 export const SETTINGS_KEY = "reviewer.settings";
@@ -80,6 +83,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoCollapseViewedHunks: true,
   hideReviewedUnits: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
+  sidebarCollapsed: false,
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -119,6 +123,7 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   if (typeof r.chatPanelWidth === "number" && Number.isFinite(r.chatPanelWidth)) {
     out.chatPanelWidth = clampChatPanelWidth(r.chatPanelWidth);
   }
+  if (typeof r.sidebarCollapsed === "boolean") out.sidebarCollapsed = r.sidebarCollapsed;
   return out;
 }
 

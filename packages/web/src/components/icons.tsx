@@ -274,6 +274,20 @@ export const IconRewind = (p: P) => (
   </svg>
 );
 
+/** Four outward corner brackets — enter full screen. */
+export const IconExpand = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
+  </svg>
+);
+
+/** Four inward corner brackets — exit full screen. */
+export const IconCollapse = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" />
+  </svg>
+);
+
 export const RISK_META: Record<
   RiskFlag,
   { icon: (p: P) => JSX.Element; label: string }

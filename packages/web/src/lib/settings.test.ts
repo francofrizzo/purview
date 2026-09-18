@@ -160,3 +160,18 @@ describe("diff behaviour defaults", () => {
     expect(parsed.hideReviewedUnits).toBe(false);
   });
 });
+
+describe("sidebarCollapsed", () => {
+  it("defaults to expanded", () => {
+    expect(DEFAULT_SETTINGS.sidebarCollapsed).toBe(false);
+  });
+
+  it("round-trips through the parser", () => {
+    expect(parseSettings({ sidebarCollapsed: true }).sidebarCollapsed).toBe(true);
+    expect(parseSettings({ sidebarCollapsed: false }).sidebarCollapsed).toBe(false);
+  });
+
+  it("ignores a non-boolean value rather than storing it", () => {
+    expect(parseSettings({ sidebarCollapsed: "yes" }).sidebarCollapsed).toBe(false);
+  });
+});

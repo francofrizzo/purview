@@ -164,7 +164,7 @@ function MessageBlock({
         {/* Hidden entirely while streaming: neither action is safe to act on mid-turn. */}
         {!busy && !isEditing ? (
           <div
-            className={`ml-auto flex items-center gap-2 text-2xs ${
+            className={`chat-message-actions ml-auto flex items-center gap-2 text-2xs ${
               rewindConfirming ? "" : "opacity-0 transition-opacity group-hover:opacity-100"
             }`}
             style={{ color: "var(--fg-faint)" }}

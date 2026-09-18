@@ -8,7 +8,10 @@ import { ChatButton } from "./ChatPanel";
 import { useModalBackground } from "./Modal";
 import {
   IconArrowLeft,
+  IconChevron,
+  IconCollapse,
   IconComment,
+  IconExpand,
   IconMore,
   IconRefresh,
   IconSettings,
@@ -31,6 +34,13 @@ export function TopBar({
   exporting,
   sharing,
   importingFromPr,
+  sidebarButtonVisible,
+  sidebarButtonLabel,
+  sidebarButtonCount,
+  onOpenSidebar,
+  fullscreenVisible,
+  fullscreenActive,
+  onToggleFullscreen,
   onRefresh,
   onSync,
   onToggleDrafts,
@@ -63,6 +73,16 @@ export function TopBar({
   sharing: boolean;
   /** importing the newest marked comment from the PR itself */
   importingFromPr: boolean;
+  /** the sidebar isn't a visible column right now (collapsed, or a drawer) */
+  sidebarButtonVisible?: boolean;
+  sidebarButtonLabel?: "units" | "files";
+  /** whole-PR hunk progress, shown once there is an analysis to show it for */
+  sidebarButtonCount?: { viewed: number; total: number } | null;
+  onOpenSidebar?: () => void;
+  /** the Fullscreen API is supported and this isn't already a Home Screen app */
+  fullscreenVisible?: boolean;
+  fullscreenActive?: boolean;
+  onToggleFullscreen?: () => void;
   onRefresh: () => void;
   onSync: () => void;
   onToggleDrafts: () => void;
@@ -96,6 +116,23 @@ export function TopBar({
       >
         <IconArrowLeft width={12} height={12} />
       </Link>
+      {sidebarButtonVisible ? (
+        <button
+          type="button"
+          className="btn flex-none"
+          data-testid="topbar-open-sidebar"
+          title={`Show ${sidebarButtonLabel ?? "sidebar"}`}
+          onClick={onOpenSidebar}
+        >
+          <IconChevron width={10} height={10} />
+          {sidebarButtonLabel ?? "sidebar"}
+          {sidebarButtonCount ? (
+            <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
+              {sidebarButtonCount.viewed}/{sidebarButtonCount.total}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
       <div className="flex min-w-0 items-baseline gap-2">
         <a
           href={meta.url}
@@ -223,6 +260,21 @@ export function TopBar({
             },
           ]}
         />
+        {fullscreenVisible ? (
+          <button
+            type="button"
+            className="btn"
+            title={fullscreenActive ? "Exit full screen" : "Full screen"}
+            aria-label={fullscreenActive ? "Exit full screen" : "Full screen"}
+            onClick={onToggleFullscreen}
+          >
+            {fullscreenActive ? (
+              <IconCollapse width={12} height={12} />
+            ) : (
+              <IconExpand width={12} height={12} />
+            )}
+          </button>
+        ) : null}
         <Link
           to="/settings"
           state={{ background }}

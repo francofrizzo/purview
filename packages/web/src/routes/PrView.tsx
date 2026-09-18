@@ -91,7 +91,9 @@ import type { DefinitionResult } from "../api/types";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
-import { useDiffViewPrefs } from "../lib/settings";
+import { useDiffViewPrefs, useSettings } from "../lib/settings";
+import { useSidebarMode } from "../lib/sidebarMode";
+import { isStandalone, useFullscreen } from "../lib/useFullscreen";
 import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
 
 export function PrView() {
@@ -151,6 +153,47 @@ export function PrView() {
   const [tab, setTab] = useState<"units" | "files">("units");
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
+  // --- sidebar: collapsible column, or a floating drawer on a narrow/iPad
+  // viewport ---------------------------------------------------------------
+  const { settings, update: updateSettings } = useSettings();
+  const sidebarMode = useSidebarMode();
+  // Drawer state is transient by design: the persisted `sidebarCollapsed`
+  // only governs column mode, so a drawer always starts (and, on switching
+  // back to a drawer-sized viewport, resumes) closed.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  useEffect(() => {
+    if (sidebarMode === "column") setDrawerOpen(false);
+  }, [sidebarMode]);
+  const sidebarCollapsed = settings.sidebarCollapsed;
+  const toggleSidebar = useCallback(() => {
+    if (sidebarMode === "drawer") setDrawerOpen((v) => !v);
+    else updateSettings({ sidebarCollapsed: !sidebarCollapsed });
+  }, [sidebarMode, sidebarCollapsed, updateSettings]);
+  const openSidebar = useCallback(() => {
+    if (sidebarMode === "drawer") setDrawerOpen(true);
+    else updateSettings({ sidebarCollapsed: false });
+  }, [sidebarMode, updateSettings]);
+  // Selecting a unit or file from the drawer is "I found what I wanted" —
+  // close it so the reader lands on the code. A column-mode select leaves the
+  // sidebar exactly as it was.
+  const selectUnitFromSidebar = useCallback(
+    (unitId: string) => {
+      setSelectedUnitId(unitId);
+      if (sidebarMode === "drawer") setDrawerOpen(false);
+    },
+    [sidebarMode],
+  );
+  const selectFileFromSidebar = useCallback(
+    (path: string) => {
+      setSelectedPath(path);
+      if (sidebarMode === "drawer") setDrawerOpen(false);
+    },
+    [sidebarMode],
+  );
+
+  const fullscreen = useFullscreen();
+  const [standalone] = useState(isStandalone);
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [draftsOpen, setDraftsOpen] = useState(false);
@@ -468,14 +511,23 @@ export function PrView() {
       } else if (e.key === "/") {
         e.preventDefault();
         openSearch();
+      } else if (e.key === "b") {
+        // `b` (as in VS Code's ⌘B), not `[`: on Spanish and other ISO layouts
+        // the bracket is an Option chord, and the modifier guard above would
+        // swallow it — the shortcut has to be a plain letter to exist at all.
+        e.preventDefault();
+        toggleSidebar();
       } else if (e.key === "Escape" && search.open) {
         e.preventDefault();
         search.close();
+      } else if (e.key === "Escape" && sidebarMode === "drawer" && drawerOpen) {
+        e.preventDefault();
+        setDrawerOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [chat, openSearch, search.open, search.close]);
+  }, [chat, openSearch, search.open, search.close, toggleSidebar, sidebarMode, drawerOpen]);
 
   // Keep the focused hunk inside the currently shown set.
   useEffect(() => {
@@ -660,6 +712,73 @@ export function PrView() {
     startAnalysis.mutate();
   };
 
+  // Shared between the column and the drawer — same header row (tabs +
+  // collapse/close chevron), same list, same footer legend, just mounted in
+  // a different container depending on `sidebarMode`.
+  const sidebarBody = (
+    <>
+      <div className="flex flex-none border-b" style={{ borderColor: "var(--border)" }}>
+        {(["units", "files"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className="sidebar-tab-btn flex-1 border-b-2 px-2 py-1.5 text-2xs uppercase tracking-wider transition-colors"
+            style={{
+              borderColor: tab === t ? "var(--accent)" : "transparent",
+              color: tab === t ? "var(--fg)" : "var(--fg-faint)",
+            }}
+          >
+            {t === "units" ? "review units" : "files"}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="flex-none px-2"
+          style={{ color: "var(--fg-faint)" }}
+          title={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
+          aria-label={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
+          onClick={toggleSidebar}
+        >
+          <IconChevron width={11} height={11} style={{ transform: "rotate(180deg)" }} />
+        </button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        {tab === "units" ? (
+          <UnitSidebar
+            detail={detail}
+            selectedUnitId={selectedUnitId}
+            onSelect={selectUnitFromSidebar}
+            onReclassify={(unitId, patch) => patchUnit.mutate({ unitId, patch })}
+            onQuote={quote}
+            matchCounts={search.unitCounts}
+          />
+        ) : (
+          <FileTree
+            detail={detail}
+            selectedPath={selectedPath}
+            onSelect={selectFileFromSidebar}
+            onQuote={quote}
+            matchCounts={search.fileCounts}
+          />
+        )}
+      </div>
+      <div
+        className="flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
+        style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
+      >
+        <div>
+          <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>space</kbd> next unviewed
+        </div>
+        <div>
+          <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
+          {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>s</kbd> summary · <kbd>/</kbd> search ·{" "}
+          <kbd>b</kbd> sidebar · <kbd>⌘</kbd>click definition
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-full flex-col">
       <TopBar
@@ -678,6 +797,13 @@ export function PrView() {
         exporting={exportAnalysis.isPending}
         sharing={shareToPr.isPending}
         importingFromPr={importFromPr.isPending}
+        sidebarButtonVisible={sidebarMode === "drawer" || sidebarCollapsed}
+        sidebarButtonLabel={tab}
+        sidebarButtonCount={units.length > 0 ? overall : null}
+        onOpenSidebar={openSidebar}
+        fullscreenVisible={fullscreen.supported && !standalone}
+        fullscreenActive={fullscreen.active}
+        onToggleFullscreen={fullscreen.toggle}
         onToggleDrafts={() => setDraftsOpen((v) => !v)}
         onToggleChat={chat.toggleChat}
         onAnalyze={() => startAnalysis.mutate()}
@@ -815,61 +941,38 @@ export function PrView() {
         />
       ) : null}
 
-      <div className="flex min-h-0 flex-1">
-        <nav
-          className="flex w-[19rem] flex-none flex-col border-r"
-          style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
-        >
-          <div className="flex flex-none border-b" style={{ borderColor: "var(--border)" }}>
-            {(["units", "files"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className="flex-1 border-b-2 px-2 py-1.5 text-2xs uppercase tracking-wider transition-colors"
-                style={{
-                  borderColor: tab === t ? "var(--accent)" : "transparent",
-                  color: tab === t ? "var(--fg)" : "var(--fg-faint)",
-                }}
-              >
-                {t === "units" ? "review units" : "files"}
-              </button>
-            ))}
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-            {tab === "units" ? (
-              <UnitSidebar
-                detail={detail}
-                selectedUnitId={selectedUnitId}
-                onSelect={setSelectedUnitId}
-                onReclassify={(unitId, patch) => patchUnit.mutate({ unitId, patch })}
-                onQuote={quote}
-                matchCounts={search.unitCounts}
-              />
-            ) : (
-              <FileTree
-                detail={detail}
-                selectedPath={selectedPath}
-                onSelect={setSelectedPath}
-                onQuote={quote}
-                matchCounts={search.fileCounts}
-              />
-            )}
-          </div>
-          <div
-            className="flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
-            style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
+      <div className="relative flex min-h-0 flex-1">
+        {sidebarMode === "column" ? (
+          <nav
+            className="flex flex-none flex-col overflow-hidden border-r transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
+            style={{
+              width: sidebarCollapsed ? "0rem" : "19rem",
+              borderColor: "var(--border)",
+              background: "var(--bg-raised)",
+              pointerEvents: sidebarCollapsed ? "none" : undefined,
+            }}
+            aria-hidden={sidebarCollapsed}
           >
-            <div>
-              <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>space</kbd> next unviewed
-            </div>
-            <div>
-              <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
-              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>s</kbd> summary · <kbd>/</kbd> search ·{" "}
-              <kbd>⌘</kbd>click definition
-            </div>
-          </div>
-        </nav>
+            <div className="flex h-full w-[19rem] flex-none flex-col">{sidebarBody}</div>
+          </nav>
+        ) : null}
+
+        {sidebarMode === "drawer" && drawerOpen ? (
+          <>
+            {/* Transparent scrim: tapping anywhere outside the drawer closes it. */}
+            <div
+              className="absolute inset-0 z-30"
+              style={{ background: "rgba(0, 0, 0, 0.4)" }}
+              onClick={() => setDrawerOpen(false)}
+            />
+            <nav
+              className="elev-3 absolute inset-y-0 left-0 z-40 flex w-[19rem] flex-none flex-col border-r"
+              style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
+            >
+              {sidebarBody}
+            </nav>
+          </>
+        ) : null}
 
         <main ref={mainRef} className="relative flex min-w-0 flex-1 flex-col">
           {tab === "units" && selectedUnit ? (

@@ -190,7 +190,7 @@ function UnitRow({
       <button
         type="button"
         onClick={onSelect}
-        className="w-full border-l-2 px-2.5 py-2 text-left transition-colors"
+        className="sidebar-row-btn w-full border-l-2 px-2.5 py-2 text-left transition-colors"
         style={{
           borderColor: selected ? "var(--accent)" : "transparent",
           background: selected ? "var(--accent-soft)" : "transparent",

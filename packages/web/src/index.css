@@ -122,12 +122,25 @@
   body,
   #root {
     height: 100%;
+    /* dvh accounts for Safari's dynamic toolbars; browsers that don't parse
+       it discard the whole declaration and keep the 100% above. */
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   body {
     background: var(--bg);
     color: var(--fg);
     -webkit-font-smoothing: antialiased;
+  }
+
+  /* Standalone/fullscreen on an iPad: keep the app clear of the status bar
+     and the home indicator. A no-op (0px) everywhere else. */
+  #root {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
   }
 
   /* Keyboard focus: visible everywhere, invisible to the mouse. Inputs keep
@@ -397,5 +410,39 @@
   }
   .diff-nowrap [data-type="none"] > .diff-fixed {
     background-image: linear-gradient(var(--bg-inset), var(--bg-inset));
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Touch support. Deliberately unlayered: @layer utilities outranks
+   @layer components in Tailwind's cascade, so a rule in `components`
+   above could never beat the `opacity-0`/`hidden` utilities these
+   affordances use on desktop. Sitting outside any layer beats both.
+   ------------------------------------------------------------------- */
+
+/* Comment bubble, chat message actions, file-tree quote button: hover-only
+   on desktop, so a hover-less device needs another way to know they exist —
+   a quiet resting opacity instead of invisible/gone. */
+@media (hover: none) {
+  .diff-comment-affordance,
+  .chat-message-actions {
+    opacity: 0.55;
+  }
+  .file-tree-quote {
+    display: block;
+    opacity: 0.55;
+  }
+}
+
+/* Coarse pointers get more room to land a tap. Scoped to controls and
+   sidebar rows only — the diff rows themselves keep their density. */
+@media (hover: none) and (pointer: coarse) {
+  .btn {
+    min-height: 2.25rem;
+  }
+  .sidebar-tab-btn,
+  .sidebar-row-btn {
+    padding-top: 0.625rem;
+    padding-bottom: 0.625rem;
   }
 }
