@@ -38,6 +38,7 @@ import {
   COMMENT_COL_WIDTH,
   DiffLine,
   SplitDiffLine,
+  type IsDefinedInDiff,
   type LineMarks,
   type LineSide,
   type OnDefinitionClick,
@@ -121,6 +122,9 @@ export interface DiffPaneProps {
   onScrolledAway?: (scrolled: boolean) => void;
   /** Cmd/ctrl+click "go to definition" on an identifier — see DiffLine.tsx. */
   onDefinitionClick?: OnDefinitionClick;
+  /** Whether an identifier has a definition in this diff — gates both the
+   *  hover affordance below and DiffLine's click handler. */
+  isDefinedInDiff?: IsDefinedInDiff;
   /**
    * Scroll/focus request from outside (a "go to definition" candidate that
    * turned out to already be in this diff). A new object — even for the same
@@ -200,6 +204,7 @@ export function DiffPane({
   activeMatch,
   onScrolledAway,
   onDefinitionClick,
+  isDefinedInDiff,
   jumpToHunk,
   unitForHunkId,
   onUnitClick,
@@ -230,10 +235,12 @@ export function DiffPane({
     onNarrowChange?.(!wide);
   }, [wide, onNarrowChange]);
 
-  // Cmd/ctrl+click "go to definition" affordance: while the modifier is held,
-  // the identifier under the pointer gets a link-style highlight — a single
-  // fixed-position overlay div moved imperatively (rAF-throttled), so the
-  // virtualized rows are never touched and nothing re-renders on mousemove.
+  // Cmd/ctrl+click "go to definition" affordance: while the modifier is held
+  // AND the pointer sits over an identifier this diff itself defines, it gets
+  // a link-style highlight — a single fixed-position overlay div moved
+  // imperatively (rAF-throttled), so the virtualized rows are never touched
+  // and nothing re-renders on mousemove. Anything not in the index (see
+  // isDefinedInDiff) is inert: no overlay, no pointer cursor, no click.
   const defHoverRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!onDefinitionClick) return;
@@ -243,6 +250,9 @@ export function DiffPane({
     const hideOverlay = () => {
       const overlay = defHoverRef.current;
       if (overlay) overlay.style.display = "none";
+      // The cursor only reads as a pointer over an identifier actually in the
+      // index — `cmd-held` alone (see below) just tracks the modifier.
+      el.classList.remove("def-armed");
     };
     const clear = () => {
       el.classList.remove("cmd-held");
@@ -274,8 +284,9 @@ export function DiffPane({
         if (!overlay) return;
         const hit =
           target instanceof HTMLElement ? identifierRangeAtPoint(target, clientX, clientY) : null;
-        if (!hit) {
+        if (!hit || !isDefinedInDiff?.(hit.symbol)) {
           overlay.style.display = "none";
+          el.classList.remove("def-armed");
           return;
         }
         overlay.style.display = "block";
@@ -283,6 +294,7 @@ export function DiffPane({
         overlay.style.top = `${hit.rect.top}px`;
         overlay.style.width = `${hit.rect.width}px`;
         overlay.style.height = `${hit.rect.height}px`;
+        el.classList.add("def-armed");
       });
     };
     // The overlay is viewport-anchored; scrolling moves the text out from
@@ -301,7 +313,7 @@ export function DiffPane({
       el.removeEventListener("scroll", onScroll);
       clear();
     };
-  }, [onDefinitionClick]);
+  }, [onDefinitionClick, isDefinedInDiff]);
 
   // Two zero-cost sentinels pinned to the top of the scrolled content, watched
   // against the scroller itself: the tall one stops intersecting once we are
@@ -1481,6 +1493,7 @@ export function DiffPane({
             right ? movedAt(row.hunkId, row.entry.hunk, right.index, right.row.type) : false
           }
           onDefinitionClick={onDefinitionClick}
+          isDefinedInDiff={isDefinedInDiff}
         />
       );
     }
@@ -1515,6 +1528,7 @@ export function DiffPane({
         }
         onSelectEnter={onQuote ? (s, l) => extendSelect(row.entry.file.path, s, l) : undefined}
         onDefinitionClick={onDefinitionClick}
+        isDefinedInDiff={isDefinedInDiff}
       />
     );
   }

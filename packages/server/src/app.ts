@@ -104,7 +104,6 @@ import { generateLanToken, readConfig, writeConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
-import { resolveDefinition } from "./definitions.js";
 
 export const DEFAULT_PORT = 4779;
 
@@ -870,20 +869,6 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json({ ...hunkDiffOfDiffs(previousHunk, currentHunk), baselineRevision: baseline });
   });
 
-  /**
-   * Cmd+click "go to definition" in the diff viewer. `symbol` is the
-   * identifier under the click point, resolved client-side (see
-   * lib/identifierAt.ts) — the server never sees the diff line itself, only
-   * the name. `readMeta` 404s for an unknown PR before touching the checkout.
-   */
-  app.get("/api/prs/:key/definition", async (c) => {
-    const key = keyParam(c);
-    readMeta(key, root);
-    const symbol = c.req.query("symbol")?.trim();
-    if (!symbol) throw new HttpError(400, "missing_symbol", "Query must include ?symbol=<name>");
-    return c.json(await resolveDefinition(key, symbol, root));
-  });
-
   /* ------------------------------------------------------------ comments */
 
   app.get("/api/prs/:key/comments", (c) => {
@@ -1263,8 +1248,6 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisModel: config.analysisModel,
       chatModel: config.chatModel,
       analysisEffort: config.analysisEffort,
-      /** URL scheme for "open in editor" links; not layered, see config.ts */
-      editor: config.editor,
       /** what `null` resolves to here — the end of the inheritance chain */
       defaults: {
         analysisModel: BUILTIN_DEFAULTS.analysisModel,
@@ -1279,7 +1262,6 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisModel: ClaudeModelSchema.nullable().optional(),
       chatModel: ClaudeModelSchema.nullable().optional(),
       analysisEffort: AnalysisEffortSchema.nullable().optional(),
-      editor: z.enum(["zed", "vscode"]).optional(),
     })
     .strict();
 
@@ -1300,12 +1282,10 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisModel?: ClaudeModel | null;
       chatModel?: ClaudeModel | null;
       analysisEffort?: AnalysisEffort | null;
-      editor?: "zed" | "vscode";
     } = {};
     if ("analysisModel" in body) patch.analysisModel = body.analysisModel ?? null;
     if ("chatModel" in body) patch.chatModel = body.chatModel ?? null;
     if ("analysisEffort" in body) patch.analysisEffort = body.analysisEffort ?? null;
-    if (body.editor !== undefined) patch.editor = body.editor;
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
   });

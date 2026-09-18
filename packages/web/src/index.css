@@ -285,11 +285,14 @@
     border-radius: 2px;
   }
 
-  /* Cmd/ctrl+click "go to definition" affordance: with the modifier held, the
-     identifier under the pointer reads as a link — a single viewport-anchored
-     overlay positioned by DiffPane (see its mousemove handler), so nothing in
-     the virtualized rows changes. `.cmd-held` only carries the cursor. */
-  .cmd-held .diff-code {
+  /* Cmd/ctrl+click "go to definition" affordance: with the modifier held AND
+     the pointer over an identifier this diff itself defines, it reads as a
+     link — a single viewport-anchored overlay positioned by DiffPane (see its
+     mousemove handler), so nothing in the virtualized rows changes.
+     `.cmd-held` alone just tracks the modifier; `.def-armed` is what actually
+     carries the cursor, and only applies while a defined identifier is under
+     the pointer (see DiffPane's isDefinedInDiff gating). */
+  .def-armed .diff-code {
     cursor: pointer;
   }
   .def-hover-overlay {

@@ -344,25 +344,3 @@ describe("GET /api/prs/:key/hunks/:id/diff-of-diffs", () => {
   });
 });
 
-describe("GET /api/prs/:key/definition", () => {
-  it("400s without a ?symbol", async () => {
-    const res = await app.request(`/api/prs/${encodedKey}/definition`);
-    expect(res.status).toBe(400);
-    expect((await res.json()).error).toBe("missing_symbol");
-  });
-
-  it("reports no checkout when the PR has none configured", async () => {
-    const res = await app.request(`/api/prs/${encodedKey}/definition?symbol=fetchWidgets`);
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.checkout).toBe(false);
-    expect(typeof body.reason).toBe("string");
-  });
-
-  it("404s for an unknown PR", async () => {
-    const res = await app.request(
-      "/api/prs/github.com%2Facme%2Fwidgets%2F999/definition?symbol=x",
-    );
-    expect(res.status).toBe(404);
-  });
-});

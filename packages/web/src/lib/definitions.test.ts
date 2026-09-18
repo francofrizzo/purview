@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FilesJson, Hunk } from "../api/types";
-import { findDiffLocalDefinitions, findInDiffHunk } from "./definitions";
+import { buildDefinitionIndex, findDiffLocalDefinitions } from "./definitions";
 
 function hunk(id: string, newStart: number, newLines: number): Hunk {
   return {
@@ -13,47 +13,6 @@ function hunk(id: string, newStart: number, newLines: number): Hunk {
     header: "",
   };
 }
-
-function filesJson(): FilesJson {
-  return {
-    files: [
-      {
-        path: "src/widgets.ts",
-        hunks: [hunk("h1", 10, 5), hunk("h2", 30, 0)],
-      },
-      { path: "src/other.ts", hunks: [hunk("h3", 1, 10)] },
-    ],
-  };
-}
-
-describe("findInDiffHunk", () => {
-  it("finds the hunk whose new-side range contains the line", () => {
-    expect(findInDiffHunk(filesJson(), "src/widgets.ts", 12)).toEqual({
-      hunkId: "h1",
-      path: "src/widgets.ts",
-    });
-  });
-
-  it("matches the range boundaries inclusively/exclusively (start in, end out)", () => {
-    expect(findInDiffHunk(filesJson(), "src/widgets.ts", 10)).toEqual({
-      hunkId: "h1",
-      path: "src/widgets.ts",
-    });
-    expect(findInDiffHunk(filesJson(), "src/widgets.ts", 15)).toBeNull();
-  });
-
-  it("returns null for a file not in the diff", () => {
-    expect(findInDiffHunk(filesJson(), "src/missing.ts", 12)).toBeNull();
-  });
-
-  it("returns null for a line outside every hunk of a changed file", () => {
-    expect(findInDiffHunk(filesJson(), "src/widgets.ts", 1)).toBeNull();
-  });
-
-  it("skips a pure-deletion hunk (newLines 0) rather than matching every line", () => {
-    expect(findInDiffHunk(filesJson(), "src/widgets.ts", 30)).toBeNull();
-  });
-});
 
 describe("findDiffLocalDefinitions", () => {
   const withAdded = (added: string[]): FilesJson => ({
@@ -101,5 +60,51 @@ describe("findDiffLocalDefinitions", () => {
         addedIndex: 0,
       },
     ]);
+  });
+});
+
+describe("buildDefinitionIndex", () => {
+  const withAdded = (path: string, hunkId: string, added: string[]): FilesJson["files"][number] => ({
+    path,
+    hunks: [{ ...hunk(hunkId, 10, added.length), addedLines: added } as Hunk],
+  });
+
+  it("is empty for a diff with no definitions", () => {
+    const files: FilesJson = {
+      files: [withAdded("src/widgets.ts", "h1", ["result := computeTotal(items)"])],
+    };
+    expect(buildDefinitionIndex(files)).toEqual(new Map());
+  });
+
+  it("maps a name to every one of its definitions, in document order", () => {
+    const files: FilesJson = {
+      files: [
+        withAdded("src/widgets.ts", "h1", [
+          "function widget() {",
+          "class widget {", // a shadowing re-declaration further down the same hunk
+        ]),
+      ],
+    };
+    expect(buildDefinitionIndex(files).get("widget")).toEqual([
+      { hunkId: "h1", path: "src/widgets.ts", lineText: "function widget() {", addedIndex: 0 },
+      { hunkId: "h1", path: "src/widgets.ts", lineText: "class widget {", addedIndex: 1 },
+    ]);
+  });
+
+  it("collects definitions of different names from several files under one index", () => {
+    const files: FilesJson = {
+      files: [
+        withAdded("src/a.ts", "h1", ["export function alpha() {"]),
+        withAdded("src/b.ts", "h2", ["export function beta() {"]),
+      ],
+    };
+    const index = buildDefinitionIndex(files);
+    expect(index.get("alpha")).toEqual([
+      { hunkId: "h1", path: "src/a.ts", lineText: "export function alpha() {", addedIndex: 0 },
+    ]);
+    expect(index.get("beta")).toEqual([
+      { hunkId: "h2", path: "src/b.ts", lineText: "export function beta() {", addedIndex: 0 },
+    ]);
+    expect(index.size).toBe(2);
   });
 });

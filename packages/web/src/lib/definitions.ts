@@ -1,43 +1,11 @@
 import type { FilesJson } from "../api/types";
 
 /**
- * "Go to definition" in-diff mapping: is a definition candidate's location
- * already visible in the current diff? If so, DiffPane scrolls to it instead
- * of a popover opening — see PrView's use of this.
- */
-export interface InDiffHunk {
-  hunkId: string;
-  path: string;
-}
-
-/**
- * A candidate is "in this diff" when its file is one of the changed files and
- * its line falls inside one of that file's hunks, on the *new*-file side
- * (`newStart`/`newLines` — the candidate's line number is read straight out
- * of the checkout's current file content, which lines up with the new side of
- * the diff, not the old one). A hunk with `newLines === 0` (a pure deletion)
- * can never contain a still-live definition, so it's skipped rather than
- * matching every line via a degenerate range.
- */
-export function findInDiffHunk(files: FilesJson, path: string, line: number): InDiffHunk | null {
-  for (const file of files.files) {
-    if (file.path !== path) continue;
-    for (const hunk of file.hunks) {
-      if (hunk.newLines <= 0) continue;
-      if (line >= hunk.newStart && line < hunk.newStart + hunk.newLines) {
-        return { hunkId: hunk.id, path: file.path };
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * Definition shapes for the diff-local scan below. MIRRORED PATTERNS — the
- * server keeps the authoritative list in packages/server/src/definitions.ts
- * (DEFINITION_GREP_PATTERNS); this is the same set as JS regexes, minus the
- * NAME placeholder: group 1 must capture the defined identifier. Change one
- * list, revisit the other.
+ * One rough shape per definition a common language uses, matched against a
+ * diff's added lines: group 1 must capture the defined identifier. Not a
+ * parser — no attempt is made to be exact — it exists purely to answer
+ * "does this diff define that name," so a miss just means no affordance
+ * rather than a wrong jump.
  */
 const DEFINITION_LINE_PATTERNS: RegExp[] = [
   /^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s+([A-Za-z_$][\w$]*)/, // js/ts
@@ -63,26 +31,41 @@ export interface DiffLocalDefinition {
 }
 
 /**
- * Definitions the PR itself introduces. A symbol added by the PR (a new type,
- * function, class...) does not exist in the local checkout at all — no engine
- * on the server can ever find it — but its definition is sitting right in the
- * diff's added lines. Scanned client-side, first match per hunk document
- * order, before the server is even asked.
+ * Every definition the PR itself introduces, scanned once per diff and keyed
+ * by the defined identifier (in document order — file, then hunk, then added
+ * line). A symbol added by the PR (a new type, function, class...) does not
+ * exist anywhere else — it is sitting right in these added lines — so this is
+ * the whole of "go to definition" now: no server round-trip, no checkout to
+ * search. `findDiffLocalDefinitions` is a lookup over this same index.
  */
-export function findDiffLocalDefinitions(files: FilesJson, symbol: string): DiffLocalDefinition[] {
-  const out: DiffLocalDefinition[] = [];
+export function buildDefinitionIndex(files: FilesJson): Map<string, DiffLocalDefinition[]> {
+  const index = new Map<string, DiffLocalDefinition[]>();
   for (const file of files.files) {
     for (const hunk of file.hunks) {
       const added = hunk.addedLines ?? [];
       for (let i = 0; i < added.length; i++) {
         const line = added[i];
-        if (!line.includes(symbol)) continue;
-        const matched = DEFINITION_LINE_PATTERNS.some((re) => re.exec(line)?.[1] === symbol);
-        if (!matched) continue;
-        out.push({ hunkId: hunk.id, path: file.path, lineText: line.trim(), addedIndex: i });
-        break; // one hit per hunk is enough to jump to it
+        for (const re of DEFINITION_LINE_PATTERNS) {
+          const name = re.exec(line)?.[1];
+          if (!name) continue;
+          const def: DiffLocalDefinition = {
+            hunkId: hunk.id,
+            path: file.path,
+            lineText: line.trim(),
+            addedIndex: i,
+          };
+          const list = index.get(name);
+          if (list) list.push(def);
+          else index.set(name, [def]);
+          break; // one pattern per line is enough — a line defines at most one name
+        }
       }
     }
   }
-  return out;
+  return index;
+}
+
+/** Thin lookup over {@link buildDefinitionIndex} for callers with a single symbol in hand. */
+export function findDiffLocalDefinitions(files: FilesJson, symbol: string): DiffLocalDefinition[] {
+  return buildDefinitionIndex(files).get(symbol) ?? [];
 }

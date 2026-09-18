@@ -2,7 +2,6 @@ import { serve } from "@hono/node-server";
 import { migrateStateDirOnStartup, stateRoot } from "@reviewer/core";
 import { createApp, DEFAULT_PORT } from "./app.js";
 import { autoAnalyzeEnvAllows, lanEnabled, lanToken, readConfig } from "./config.js";
-import { isUniversalCtagsAvailable } from "./definitions.js";
 import { LAN_WARNING, lanHostnames, lanQrTerminal, lanUrl } from "./lan.js";
 import { maybeOnboard } from "./onboarding.js";
 import { startReviewWatch } from "./review-watch.js";
@@ -34,18 +33,6 @@ export async function main(opts: MainOptions = {}): Promise<void> {
   if (onboarding?.aborted) process.exit(1);
 
   const config = onboarding?.config ?? readConfig(ROOT);
-
-  // Checked (and cached) once here rather than on the first definition
-  // lookup, so the gap in capability is visible at boot instead of silently
-  // shipping every cmd+click through the text-search fallback. macOS's
-  // built-in `/usr/bin/ctags` is the old BSD ctags, not this — most Mac
-  // installs hit this line.
-  if (!(await isUniversalCtagsAvailable())) {
-    console.log(
-      "universal-ctags not found — go-to-definition will use text-search fallback " +
-        "(brew install universal-ctags)",
-    );
-  }
 
   // `--lan` (or PURVIEW_LAN=1), decided before anything binds: the token has to
   // exist before the first LAN request can arrive, and the interface scan is

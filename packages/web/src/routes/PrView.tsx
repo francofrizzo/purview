@@ -26,7 +26,6 @@ import {
   useProposeReanchor,
   useDiscardPendingReview,
   useExportAnalysis,
-  useGlobalConfig,
   useImportAnalysis,
   useImportAnalysisFromPr,
   useShareAnalysisToPr,
@@ -42,12 +41,9 @@ import {
   useSubmitReview,
   useSync,
 } from "../api/hooks";
-import { api } from "../api/client";
-import { errorText } from "../api/errors";
 import { AnalysisBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
-import { DefinitionPopover } from "../components/DefinitionPopover";
 import {
   DiffPane,
   DiffViewToggle,
@@ -85,10 +81,9 @@ import { UnitSidebar } from "../components/UnitSidebar";
 import { SidebarRail } from "../components/SidebarRail";
 import { DiffSearchBar } from "../components/DiffSearchBar";
 import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
-import { findDiffLocalDefinitions, findInDiffHunk } from "../lib/definitions";
+import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
-import type { DefinitionResult } from "../api/types";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
@@ -242,22 +237,9 @@ export function PrView() {
   const showNarrowNote = narrow && viewMode === "split";
 
   // --- go to definition ---------------------------------------------------
-  const globalConfig = useGlobalConfig();
-  const editor = globalConfig.data?.editor ?? "zed";
-  const [defPopover, setDefPopover] = useState<{
-    x: number;
-    y: number;
-    symbol: string;
-    status: "loading" | "result" | "error";
-    result?: DefinitionResult;
-    error?: string;
-  } | null>(null);
   // A new object (even for a repeat target) is what re-triggers DiffPane's
   // scroll effect — see its own jumpToHunk handling.
   const [jumpToHunk, setJumpToHunk] = useState<{ hunkId: string; nonce: number } | null>(null);
-  // Guards a slow lookup from overwriting a newer one, or from landing after
-  // the reader has already closed the popover and clicked something else.
-  const defRequestId = useRef(0);
 
   // --- header collapse ---------------------------------------------------
   // Once the reader is into the diff, the prose above it has done its job and
@@ -427,7 +409,6 @@ export function PrView() {
         setSelectedPath(path);
       }
       setJumpToHunk({ hunkId, nonce: Date.now(), ...target });
-      setDefPopover(null);
     },
     [tab, units, selectedUnitId, selectedPath],
   );
@@ -454,44 +435,29 @@ export function PrView() {
     setJumpToHunk({ hunkId, nonce: Date.now() });
   }, []);
 
-  /** Cmd+click "go to definition" — see DiffLine.tsx / lib/identifierAt.ts. */
+  // Built once per PR detail: every identifier the diff itself defines, keyed
+  // for O(1) lookup — see lib/definitions.ts. Both the hover affordance and
+  // the click handler below key off this same index, so cmd+click only ever
+  // does something for an identifier the PR itself introduces.
+  const definitionIndex = useMemo(
+    () => (detail ? buildDefinitionIndex(detail.files) : new Map()),
+    [detail],
+  );
+  const isDefinedInDiff = useCallback(
+    (symbol: string) => definitionIndex.has(symbol),
+    [definitionIndex],
+  );
+
+  /** Cmd+click "go to definition" — see DiffLine.tsx / lib/identifierAt.ts.
+   *  Only ever called for a symbol `isDefinedInDiff` already approved, so the
+   *  first definition is always there to jump to. */
   const handleDefinitionClick = useCallback(
-    (symbol: string, x: number, y: number) => {
-      if (!detail) return;
-      // A definition the PR itself introduces exists only in the diff — no
-      // checkout engine can find it. The diff's own added lines answer first.
-      const local = findDiffLocalDefinitions(detail.files, symbol);
-      if (local.length > 0) {
-        ++defRequestId.current; // invalidate any in-flight server lookup
-        jumpToDiffHunk(local[0].hunkId, local[0].path, { addedIndex: local[0].addedIndex });
-        return;
-      }
-      const reqId = ++defRequestId.current;
-      setDefPopover({ x, y, symbol, status: "loading" });
-      api
-        .getDefinition(prKey, symbol)
-        .then((result) => {
-          if (defRequestId.current !== reqId) return; // superseded by a later click
-          if (result.checkout && result.candidates.length > 0) {
-            const first = result.candidates[0];
-            const inDiff = findInDiffHunk(detail.files, first.path, first.line);
-            if (inDiff) {
-              jumpToDiffHunk(inDiff.hunkId, first.path, { line: first.line });
-              return;
-            }
-          }
-          setDefPopover((cur) =>
-            cur && cur.symbol === symbol ? { ...cur, status: "result", result } : cur,
-          );
-        })
-        .catch((err) => {
-          if (defRequestId.current !== reqId) return;
-          setDefPopover((cur) =>
-            cur && cur.symbol === symbol ? { ...cur, status: "error", error: errorText(err) } : cur,
-          );
-        });
+    (symbol: string) => {
+      const local = definitionIndex.get(symbol);
+      if (!local || local.length === 0) return;
+      jumpToDiffHunk(local[0].hunkId, local[0].path, { addedIndex: local[0].addedIndex });
     },
-    [prKey, detail, jumpToDiffHunk],
+    [definitionIndex, jumpToDiffHunk],
   );
 
   // `c` toggles the chat, `s` the summary overlay, `/` opens the find bar — all
@@ -1211,6 +1177,7 @@ export function PrView() {
               activeMatch={search.current}
               onScrolledAway={onScrolledAway}
               onDefinitionClick={handleDefinitionClick}
+              isDefinedInDiff={isDefinedInDiff}
               jumpToHunk={jumpToHunk}
               unitForHunkId={unitForHunkId}
               onUnitClick={onHunkUnitClick}
@@ -1283,23 +1250,6 @@ export function PrView() {
           />
         ) : null}
       </div>
-
-      {defPopover ? (
-        <DefinitionPopover
-          x={defPopover.x}
-          y={defPopover.y}
-          symbol={defPopover.symbol}
-          status={defPopover.status}
-          result={defPopover.result}
-          error={defPopover.error}
-          editor={editor}
-          files={detail.files}
-          onJumpInDiff={(hunkId, path, line) =>
-            jumpToDiffHunk(hunkId, path, line === undefined ? undefined : { line })
-          }
-          onClose={() => setDefPopover(null)}
-        />
-      ) : null}
     </div>
   );
 }

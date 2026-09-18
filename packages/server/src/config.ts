@@ -66,13 +66,6 @@ export const ConfigSchema = z.object({
    */
   analysisEffort: AnalysisEffortSchema.nullable().default("medium"),
   /**
-   * Editor URL scheme for "open in editor" links from a definition peek (see
-   * definitions.ts): `zed://file/<abs-path>:<line>` or
-   * `vscode://file/<abs-path>:<line>`. Not layered like the model settings —
-   * it is a machine preference, not something a repo or team would pin.
-   */
-  editor: z.enum(["zed", "vscode"]).default("zed"),
-  /**
    * The secret for LAN access (`--lan`; see main.ts). *Whether* the server
    * listens on the network is a per-run decision and is deliberately not
    * stored — only the token is, because a device that scanned the QR code has

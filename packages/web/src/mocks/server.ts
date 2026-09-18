@@ -8,12 +8,10 @@ import type {
   ChatMessage,
   ChatRef,
   ChatState,
-  DefinitionResult,
   DiffOfDiffs,
   DiscardPendingResult,
   AddCommentInput,
   DraftComment,
-  Editor,
   EditCommentResult,
   ImportFromPrResult,
   ImportReviewsResult,
@@ -85,12 +83,10 @@ const globalConfig: {
   analysisModel: ClaudeModel | null;
   chatModel: ClaudeModel | null;
   analysisEffort: AnalysisEffort | null;
-  editor: Editor;
 } = {
   analysisModel: null,
   chatModel: null,
   analysisEffort: null,
-  editor: "zed",
 };
 
 /**
@@ -571,7 +567,6 @@ export const mockApi = {
     if (patch.analysisModel !== undefined) globalConfig.analysisModel = patch.analysisModel;
     if (patch.chatModel !== undefined) globalConfig.chatModel = patch.chatModel;
     if (patch.analysisEffort !== undefined) globalConfig.analysisEffort = patch.analysisEffort;
-    if (patch.editor !== undefined) globalConfig.editor = patch.editor;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return {
       ...globalConfig,
@@ -588,41 +583,6 @@ export const mockApi = {
     await delay(180);
     lanToken = `m0ckT0ken-${Math.random().toString(36).slice(2, 10)}`;
     return lanPayload();
-  },
-
-  /**
-   * A tiny fixed fixture: `demo` resolves to one candidate (with a snippet),
-   * `missing` resolves with no candidates, anything else reports "no local
-   * checkout" — enough to exercise every popover state under VITE_MOCK=1.
-   */
-  async getDefinition(_key: string, symbol: string): Promise<DefinitionResult> {
-    await delay(150);
-    if (symbol === "missing") return { checkout: true, engine: "grep", candidates: [] };
-    if (symbol !== "demo") {
-      return { checkout: false, reason: "No local checkout configured for this repo." };
-    }
-    return {
-      checkout: true,
-      engine: "grep",
-      candidates: [
-        {
-          path: "src/widgets.ts",
-          absPath: "/repo/src/widgets.ts",
-          line: 12,
-          signature: "export function demo(id: string) {",
-          snippet: {
-            startLine: 9,
-            lines: [
-              "// widgets",
-              "",
-              "export function demo(id: string) {",
-              "  return db.widgets.find(id);",
-              "}",
-            ],
-          },
-        },
-      ],
-    };
   },
 
   /**

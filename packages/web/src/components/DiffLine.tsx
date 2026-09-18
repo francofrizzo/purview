@@ -7,18 +7,27 @@ import { CommentBubble } from "./InlineComments";
 
 /**
  * Cmd/ctrl+click "go to definition": resolve the identifier under the click
- * point (see lib/identifierAt.ts) and hand it up. A plain click, or a
- * cmd+click that misses an identifier, is left alone — this must never
- * interfere with normal text selection or the comment affordances.
+ * point (see lib/identifierAt.ts) and hand it up. A plain click, a cmd+click
+ * that misses an identifier, or a cmd+click on one with no definition in this
+ * diff (see `IsDefinedInDiff`) is left alone — this must never interfere with
+ * normal text selection or the comment affordances.
  */
-export type OnDefinitionClick = (symbol: string, x: number, y: number) => void;
+export type OnDefinitionClick = (symbol: string) => void;
 
-function handleDefinitionClick(e: MouseEvent<HTMLSpanElement>, onDefinitionClick?: OnDefinitionClick) {
+/** Whether `symbol` has a definition in this diff — see lib/definitions.ts's
+ *  `buildDefinitionIndex`. Anything not in the index does nothing at all. */
+export type IsDefinedInDiff = (symbol: string) => boolean;
+
+function handleDefinitionClick(
+  e: MouseEvent<HTMLSpanElement>,
+  onDefinitionClick?: OnDefinitionClick,
+  isDefinedInDiff?: IsDefinedInDiff,
+) {
   if (!onDefinitionClick || !(e.metaKey || e.ctrlKey)) return;
   const symbol = identifierAtPoint(e.currentTarget, e.clientX, e.clientY);
-  if (!symbol) return;
+  if (!symbol || !isDefinedInDiff?.(symbol)) return;
   e.preventDefault();
-  onDefinitionClick(symbol, e.clientX, e.clientY);
+  onDefinitionClick(symbol);
 }
 
 function inRange(pos: number, ranges: CharRange[] | undefined): boolean {
@@ -284,6 +293,7 @@ export interface DiffLineProps extends GutterSelectProps, LineCommentProps {
   /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
   moved?: boolean;
   onDefinitionClick?: OnDefinitionClick;
+  isDefinedInDiff?: IsDefinedInDiff;
 }
 
 export const DiffLine = memo(function DiffLine({
@@ -300,6 +310,7 @@ export const DiffLine = memo(function DiffLine({
   selectedNew,
   moved,
   onDefinitionClick,
+  isDefinedInDiff,
 }: DiffLineProps) {
   const intraBg =
     row.type === "add"
@@ -354,7 +365,7 @@ export const DiffLine = memo(function DiffLine({
       </span>
       <span
         className="diff-code min-w-0 flex-1 pr-4"
-        onClick={(e) => handleDefinitionClick(e, onDefinitionClick)}
+        onClick={(e) => handleDefinitionClick(e, onDefinitionClick, isDefinedInDiff)}
       >
         {renderContent(row.content, tokens, row.intra, marks)}
       </span>
@@ -375,6 +386,7 @@ export interface SplitHalfProps extends LineCommentProps {
   /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
   moved?: boolean;
   onDefinitionClick?: OnDefinitionClick;
+  isDefinedInDiff?: IsDefinedInDiff;
 }
 
 /** One side of a side-by-side row; `row === null` renders an empty filler. */
@@ -392,6 +404,7 @@ function SplitHalf({
   onSelectEnter,
   moved,
   onDefinitionClick,
+  isDefinedInDiff,
 }: SplitHalfProps) {
   if (!row) {
     return (
@@ -447,7 +460,7 @@ function SplitHalf({
       </span>
       <span
         className="diff-code min-w-0 flex-1 pr-3"
-        onClick={(e) => handleDefinitionClick(e, onDefinitionClick)}
+        onClick={(e) => handleDefinitionClick(e, onDefinitionClick, isDefinedInDiff)}
       >
         {renderContent(row.content, tokens, row.intra, marks)}
       </span>
@@ -483,6 +496,7 @@ export interface SplitDiffLineProps {
   movedLeft?: boolean;
   movedRight?: boolean;
   onDefinitionClick?: OnDefinitionClick;
+  isDefinedInDiff?: IsDefinedInDiff;
 }
 
 export const SplitDiffLine = memo(function SplitDiffLine({
@@ -507,6 +521,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   movedLeft,
   movedRight,
   onDefinitionClick,
+  isDefinedInDiff,
 }: SplitDiffLineProps) {
   return (
     <div className="diff-split group flex">
@@ -524,6 +539,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectEnter={onSelectEnter}
         moved={movedLeft}
         onDefinitionClick={onDefinitionClick}
+        isDefinedInDiff={isDefinedInDiff}
       />
       <div className="diff-split-divider" />
       <SplitHalf
@@ -540,6 +556,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectEnter={onSelectEnter}
         moved={movedRight}
         onDefinitionClick={onDefinitionClick}
+        isDefinedInDiff={isDefinedInDiff}
       />
     </div>
   );
