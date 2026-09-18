@@ -126,9 +126,11 @@ export interface DiffPaneProps {
    * turned out to already be in this diff). A new object — even for the same
    * hunk — triggers another jump; `hunkId` must already be part of `entries`
    * (the host is responsible for switching unit/file first, same as a search
-   * visit does).
+   * visit does). With `line` (a new-side line number) or `addedIndex` (an
+   * index into the hunk's added lines) the jump lands on that row rather than
+   * the hunk header.
    */
-  jumpToHunk?: { hunkId: string; nonce: number } | null;
+  jumpToHunk?: { hunkId: string; nonce: number; line?: number; addedIndex?: number } | null;
   /**
    * Files tab only: which unit (if any) a hunk belongs to, for a quiet label
    * on its header — the units tab already groups by unit, so the host omits
@@ -881,12 +883,34 @@ export function DiffPane({
     if (idx === undefined) return; // entries haven't caught up yet; effect reruns when they do
     jumpedNonce.current = jumpToHunk.nonce;
     onFocusHunk(jumpToHunk.hunkId);
-    setFlashKey(rows[idx].key);
+    // The hunk's rows follow its header contiguously; walk them for the
+    // requested line (unified rows carry it directly, split rows on their
+    // right cell) and fall back to the header when nothing matches.
+    let target = idx;
+    const { line, addedIndex } = jumpToHunk;
+    if (line !== undefined || addedIndex !== undefined) {
+      let added = 0;
+      for (let i = idx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        if (!("hunkId" in r) || r.hunkId !== jumpToHunk.hunkId) break;
+        let dr: DiffRow | undefined;
+        if (r.type === "line") dr = buildRows(r.entry.hunk, detail.diff)[r.lineIdx];
+        else if (r.type === "split") dr = buildSplitRows(r.entry.hunk, detail.diff)[r.rowIdx]?.right?.row;
+        if (!dr) continue;
+        const hit =
+          line !== undefined ? dr.newNumber === line : dr.type === "add" && added++ === addedIndex;
+        if (hit) {
+          target = i;
+          break;
+        }
+      }
+    }
+    setFlashKey(rows[target].key);
     const frame = requestAnimationFrame(() =>
-      virtualizer.scrollToIndex(idx, { align: "center" }),
+      virtualizer.scrollToIndex(target, { align: "center" }),
     );
     return () => cancelAnimationFrame(frame);
-  }, [jumpToHunk, hunkRowIndex, rows, virtualizer, onFocusHunk]);
+  }, [jumpToHunk, hunkRowIndex, rows, virtualizer, onFocusHunk, detail.diff]);
 
   /** Search hits on one rendered row, plus the active one if it lives here. */
   const marksFor = useCallback(

@@ -58,6 +58,8 @@ export interface DiffLocalDefinition {
   path: string;
   /** the matched added line, trimmed — shown as the candidate's signature */
   lineText: string;
+  /** index into the hunk's addedLines, so the diff pane can land on the row itself */
+  addedIndex: number;
 }
 
 /**
@@ -71,11 +73,13 @@ export function findDiffLocalDefinitions(files: FilesJson, symbol: string): Diff
   const out: DiffLocalDefinition[] = [];
   for (const file of files.files) {
     for (const hunk of file.hunks) {
-      for (const line of hunk.addedLines ?? []) {
+      const added = hunk.addedLines ?? [];
+      for (let i = 0; i < added.length; i++) {
+        const line = added[i];
         if (!line.includes(symbol)) continue;
         const matched = DEFINITION_LINE_PATTERNS.some((re) => re.exec(line)?.[1] === symbol);
         if (!matched) continue;
-        out.push({ hunkId: hunk.id, path: file.path, lineText: line.trim() });
+        out.push({ hunkId: hunk.id, path: file.path, lineText: line.trim(), addedIndex: i });
         break; // one hit per hunk is enough to jump to it
       }
     }

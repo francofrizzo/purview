@@ -76,6 +76,7 @@ describe("findDiffLocalDefinitions", () => {
         hunkId: "g1",
         path: "browser/types.go",
         lineText: "type BrowserServiceEnvironment string",
+        addedIndex: 1,
       },
     ]);
   });
@@ -93,7 +94,12 @@ describe("findDiffLocalDefinitions", () => {
   it("finds a method definition behind a Go receiver", () => {
     const files = withAdded(["func (s *Server) Close() error {"]);
     expect(findDiffLocalDefinitions(files, "Close")).toEqual([
-      { hunkId: "g1", path: "browser/types.go", lineText: "func (s *Server) Close() error {" },
+      {
+        hunkId: "g1",
+        path: "browser/types.go",
+        lineText: "func (s *Server) Close() error {",
+        addedIndex: 0,
+      },
     ]);
   });
 });

@@ -413,7 +413,7 @@ export function PrView() {
    * an "in this diff" marker in the popover's candidate list.
    */
   const jumpToDiffHunk = useCallback(
-    (hunkId: string, path: string) => {
+    (hunkId: string, path: string, target?: { line?: number; addedIndex?: number }) => {
       if (tab === "units") {
         const unit = unitForHunk(units, hunkId);
         if (unit) {
@@ -426,7 +426,7 @@ export function PrView() {
       } else if (selectedPath !== path) {
         setSelectedPath(path);
       }
-      setJumpToHunk({ hunkId, nonce: Date.now() });
+      setJumpToHunk({ hunkId, nonce: Date.now(), ...target });
       setDefPopover(null);
     },
     [tab, units, selectedUnitId, selectedPath],
@@ -463,7 +463,7 @@ export function PrView() {
       const local = findDiffLocalDefinitions(detail.files, symbol);
       if (local.length > 0) {
         ++defRequestId.current; // invalidate any in-flight server lookup
-        jumpToDiffHunk(local[0].hunkId, local[0].path);
+        jumpToDiffHunk(local[0].hunkId, local[0].path, { addedIndex: local[0].addedIndex });
         return;
       }
       const reqId = ++defRequestId.current;
@@ -476,7 +476,7 @@ export function PrView() {
             const first = result.candidates[0];
             const inDiff = findInDiffHunk(detail.files, first.path, first.line);
             if (inDiff) {
-              jumpToDiffHunk(inDiff.hunkId, first.path);
+              jumpToDiffHunk(inDiff.hunkId, first.path, { line: first.line });
               return;
             }
           }
@@ -554,7 +554,9 @@ export function PrView() {
       visited.current = null;
       return;
     }
-    const key = `${search.index}:${m.hunkId}:${m.lineIdx}:${m.start}`;
+    // Identity of the match, not its position: the index shifts whenever an
+    // earlier match drops out of a recomputed set, and that is not a visit.
+    const key = `${m.hunkId}:${m.lineIdx}:${m.start}`;
     if (key === visited.current) return;
     visited.current = key;
     if (tab === "units") {
@@ -569,7 +571,7 @@ export function PrView() {
       return;
     }
     if (m.path !== selectedPath) setSelectedPath(m.path);
-  }, [search.current, search.index, tab, units, selectedUnitId, selectedPath]);
+  }, [search.current, tab, units, selectedUnitId, selectedPath]);
 
   // Cost-avoidance probe: when there is nothing local to read yet and nothing
   // is actively being analyzed, check once (no polling) whether a teammate
@@ -1292,7 +1294,9 @@ export function PrView() {
           error={defPopover.error}
           editor={editor}
           files={detail.files}
-          onJumpInDiff={jumpToDiffHunk}
+          onJumpInDiff={(hunkId, path, line) =>
+            jumpToDiffHunk(hunkId, path, line === undefined ? undefined : { line })
+          }
           onClose={() => setDefPopover(null)}
         />
       ) : null}

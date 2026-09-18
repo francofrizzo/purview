@@ -7,7 +7,7 @@
  * it. The query itself is debounced, so a fast typist runs one pass, not ten.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PrDetail, ReviewUnit } from "../api/types";
 import type { CharRange } from "./diffModel";
 import {
@@ -47,6 +47,11 @@ export interface DiffSearch {
   close: () => void;
   next: () => void;
   prev: () => void;
+}
+
+/** A match's identity across recomputes of the result set. */
+function matchKey(m: SearchMatch): string {
+  return `${m.hunkId}:${m.lineIdx}:${m.side}:${m.start}`;
 }
 
 export function useDiffSearch(
@@ -98,9 +103,16 @@ export function useDiffSearch(
     [allMatches, scope, visibleHunkIds],
   );
 
-  // Any change to the result set starts the cycle over at the first match.
+  // The result set is recomputed not only when the query changes but whenever
+  // the visible rows do — a comment composer closing, a hunk toggling viewed —
+  // and resetting to the first match on every recompute yanked the reader
+  // across the diff for no reason. Stay on the match they were on whenever it
+  // survives; only a set that no longer contains it starts over.
+  const currentKey = useRef<string | null>(null);
   useEffect(() => {
-    setIndex(0);
+    const prev = currentKey.current;
+    const at = prev === null ? -1 : matches.findIndex((m) => matchKey(m) === prev);
+    setIndex(at >= 0 ? at : 0);
   }, [matches]);
 
   const marksByLine = useMemo(() => matchRangesByLine(matches), [matches]);
@@ -124,6 +136,11 @@ export function useDiffSearch(
   }, []);
 
   const current = matches.length ? (matches[Math.min(index, matches.length - 1)] ?? null) : null;
+  // Recorded after the reset effect above has read it, so a recompute sees
+  // the match that was current before it, not the interim one.
+  useEffect(() => {
+    currentKey.current = current ? matchKey(current) : null;
+  }, [current]);
 
   return {
     open,

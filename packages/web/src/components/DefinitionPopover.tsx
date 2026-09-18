@@ -19,7 +19,7 @@ export interface DefinitionPopoverProps {
   editor: Editor;
   /** the PR's own diff, for the "in this diff" marker + jump */
   files: FilesJson;
-  onJumpInDiff: (hunkId: string, path: string) => void;
+  onJumpInDiff: (hunkId: string, path: string, line?: number) => void;
   onClose: () => void;
 }
 
@@ -170,7 +170,7 @@ function CandidateList({
   selected: number;
   onSelect: (i: number) => void;
   inDiffOf: (c: DefinitionCandidate) => { hunkId: string } | null;
-  onJumpInDiff: (hunkId: string, path: string) => void;
+  onJumpInDiff: (hunkId: string, path: string, line?: number) => void;
 }) {
   return (
     <div
@@ -184,7 +184,7 @@ function CandidateList({
             key={`${c.path}:${c.line}:${i}`}
             type="button"
             data-testid={`definition-candidate-${i}`}
-            onClick={() => (inDiff ? onJumpInDiff(inDiff.hunkId, c.path) : onSelect(i))}
+            onClick={() => (inDiff ? onJumpInDiff(inDiff.hunkId, c.path, c.line) : onSelect(i))}
             className="flex flex-col items-start gap-0.5 px-2 py-1 text-left transition-colors"
             style={{
               background: i === selected ? "var(--accent-soft)" : "transparent",
@@ -230,7 +230,7 @@ function CandidateSnippet({
   candidate: DefinitionCandidate;
   editor: Editor;
   inDiff: { hunkId: string } | null;
-  onJumpInDiff: (hunkId: string, path: string) => void;
+  onJumpInDiff: (hunkId: string, path: string, line?: number) => void;
 }) {
   return (
     <div>
@@ -249,7 +249,7 @@ function CandidateSnippet({
             data-testid="definition-jump-in-diff"
             className="chip flex-none"
             style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-            onClick={() => onJumpInDiff(inDiff.hunkId, candidate.path)}
+            onClick={() => onJumpInDiff(inDiff.hunkId, candidate.path, candidate.line)}
           >
             jump to it in this diff
           </button>
