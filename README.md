@@ -337,8 +337,10 @@ so hand-editing it does nothing; edit nothing here by hand at all — use the CL
 ## Security model
 
 The server is unauthenticated by design — it is yours, on your machine — which makes *who is
-allowed to talk to it* the whole of the security model. It listens on `127.0.0.1` only, never
-on `0.0.0.0`, so nothing on your network can reach it.
+allowed to talk to it* the whole of the security model. By default it listens on `127.0.0.1`
+only, so nothing on your network can reach it. (The one exception has to be asked for on the
+command line and pays for itself with a real secret — see
+[Reading from another device](#reading-from-another-device) below.)
 
 That still leaves the browser. Any page you have open can send a cross-origin request to
 `http://127.0.0.1:4779`; CORS only decides whether the *response* can be read, so the request
@@ -361,6 +363,37 @@ responses unreadable to other pages. The one relaxation is `devOrigins` in `conf
 Vite dev proxy forwards the browser's original `Origin` (`http://localhost:5179`), so that
 origin is accepted as a *sender*. It adds no CORS response header — the proxy already makes
 everything same-origin as far as the browser is concerned.
+
+### Reading from another device
+
+You can open Purview on an iPad or phone on the same network. It is off unless you ask for it,
+on the command that starts the server:
+
+```bash
+pnpm start --lan     # from a checkout
+purview --lan        # the packaged CLI
+```
+
+`PURVIEW_LAN=1` is the same switch for a non-interactive start. There is no setting for it:
+the flag decides what the server binds to, so it belongs to the run, not to a file that could
+turn it on behind your back.
+
+With the flag, the server binds `0.0.0.0` and the startup log prints the LAN URL, a QR code
+for it, and the warning below. **Settings → Network access** shows the same QR — scan it with
+the other device's camera. The URL carries a token (`crypto.randomBytes(24)`, stored in
+`config.json`, which is then mode `0600`, and reused across restarts so a device only scans
+once); opening it stores that token in a cookie and redirects to the plain URL, so the secret
+does not sit in history or a bookmark. A cookie, not a header, because `EventSource` and
+`<script>` loads cannot set headers. **Regenerate token** mints a new one immediately — every
+device that scanned an older code has to scan again.
+
+Loopback stays exempt from the token, so nothing about using Purview on the machine itself
+changes. `/api/lan` and the regenerate endpoint are served to loopback alone, so a LAN client
+can never read the token back out.
+
+The honest caveat: **only use `--lan` on a network you trust.** Once the server is on
+`0.0.0.0`, that token is the only thing between everyone on the network and a Purview that
+can spend your Claude credits and post to GitHub as you.
 
 ## The review-unit and attention model
 

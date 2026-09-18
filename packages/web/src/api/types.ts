@@ -352,6 +352,20 @@ export interface GlobalConfigPatch {
   editor?: Editor;
 }
 
+/**
+ * GET /api/lan — served only to the machine Purview runs on, because `url`
+ * has the access token in it.
+ */
+export interface LanAccess {
+  /** Whether this run was started with `--lan` and is actually reachable. */
+  active: boolean;
+  /** The address to open on the other device, token and all; null when inactive. */
+  url: string | null;
+  qrSvg: string | null;
+  /** The server's own wording of what handing that URL over gives away. */
+  warning: string;
+}
+
 /** GET /api/prs/:key */
 export interface PrDetail {
   key: string;

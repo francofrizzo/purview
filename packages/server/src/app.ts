@@ -89,7 +89,8 @@ import { chatBusy, startChatTurn, type ChatStreamEvent, type ChatTurn } from "./
 import { ChatRefSchema, clearChat, readChat, resolveRefs, rewindChat, setChatModel } from "./chat.js";
 import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
-import { localOnlyGuard } from "./security.js";
+import { localOnlyGuard, loopbackOnly } from "./security.js";
+import { LAN_WARNING, lanQrSvg, lanUrl } from "./lan.js";
 import { checkStaleness, clearStalenessCache } from "./staleness.js";
 import { reviewEffort } from "./effort.js";
 import {
@@ -99,7 +100,7 @@ import {
   effectiveRepoPath,
 } from "./repo-config.js";
 import { BUILTIN_DEFAULTS } from "./repo-config.js";
-import { readConfig, writeConfig } from "./config.js";
+import { generateLanToken, readConfig, writeConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
@@ -120,6 +121,12 @@ export interface AppOptions {
   port?: number;
   /** Extra origins the guard accepts (Vite dev proxy); see config.ts. */
   devOrigins?: string[];
+  /**
+   * LAN access, when the run was started with `--lan` (see main.ts). Absent —
+   * the default — keeps the loopback-only behaviour in every respect; `hosts`
+   * is the interface scan, done once there rather than per request.
+   */
+  lan?: { token: string; hosts: string[] };
 }
 
 function keyParam(c: { req: { param(name: string): string | undefined } }): PrKey {
@@ -195,17 +202,25 @@ export function createApp(opts: AppOptions = {}): Hono {
   const webDist =
     opts.webDist ?? path.join(path.dirname(new URL(import.meta.url).pathname), "../../web/dist");
 
+  const port = opts.port ?? DEFAULT_PORT;
+  /**
+   * `null` unless this run serves the LAN — that is decided by the command
+   * line, before anything binds, and cannot change afterwards. `token` is
+   * mutable on purpose: regenerating has to lock the old devices out of the
+   * *running* server, and the guard reads it off this object per request.
+   */
+  const lan = opts.lan ? { token: opts.lan.token, hosts: opts.lan.hosts } : null;
+
   // No CORS middleware at all: the UI is served from this same origin, so it
   // needs none, and emitting none is what stops a foreign page from reading any
   // response. What replaces it is a Host + Origin guard — see security.ts for
   // why CORS alone was never enough (it gates reads, not requests).
-  app.use(
-    "/api/*",
-    localOnlyGuard({
-      port: opts.port ?? DEFAULT_PORT,
-      devOrigins: opts.devOrigins,
-    }),
-  );
+  //
+  // Loopback-only, the guard covers `/api/*`: nothing else it serves is worth
+  // attacking cross-origin. With LAN access on it covers everything, because
+  // the token check has to apply to the app shell and its assets too — a
+  // device without the cookie must not get the page either.
+  app.use(lan ? "/*" : "/api/*", localOnlyGuard({ port, devOrigins: opts.devOrigins, lan }));
 
   app.onError((err, c) => {
     const httpErr = classifyError(err);
@@ -1293,6 +1308,42 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (body.editor !== undefined) patch.editor = body.editor;
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
+  });
+
+  /* ---------------------------------------------------------- LAN access */
+
+  /**
+   * Both endpoints are loopback-only: the payload contains a URL with the
+   * token in it, and the whole point of the token is that a LAN client cannot
+   * obtain one by asking. `active` is the honest answer to "can another device
+   * reach this?" — it is false for every run not started with `--lan`, and
+   * there is nothing here that could change that without a restart.
+   */
+  async function lanPayload() {
+    const url = lan ? lanUrl(lan.hosts, port, lan.token) : null;
+    return {
+      active: lan !== null,
+      url,
+      qrSvg: url ? await lanQrSvg(url) : null,
+      warning: LAN_WARNING,
+    };
+  }
+
+  app.use("/api/lan", loopbackOnly({ port }));
+  app.use("/api/lan/*", loopbackOnly({ port }));
+
+  app.get("/api/lan", async (c) => c.json(await lanPayload()));
+
+  /**
+   * A fresh token. Every device that scanned an older QR code is locked out —
+   * immediately, not at the next restart, because the guard reads the token
+   * off the same object this writes.
+   */
+  app.post("/api/lan/token", async (c) => {
+    const token = generateLanToken();
+    writeConfig({ lan: { token } }, root);
+    if (lan) lan.token = token;
+    return c.json(await lanPayload());
   });
 
   app.get("/api/repos/:rkey/config", (c) => {

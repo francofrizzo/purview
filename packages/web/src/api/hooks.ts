@@ -20,6 +20,7 @@ import type {
   GlobalConfigPatch,
   ImportFromPrResult,
   ImportReviewsResult,
+  LanAccess,
   MigrationReport,
   PrDetail,
   PrListEntry,
@@ -43,6 +44,7 @@ export const qk = {
   repos: ["repos"] as const,
   repoConfig: (rkey: string) => ["repo-config", rkey] as const,
   config: ["config"] as const,
+  lan: ["lan"] as const,
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
   review: (key: string) => ["review", key] as const,
@@ -179,6 +181,26 @@ export function useSaveGlobalConfig() {
       qc.setQueryData(qk.config, config);
       void qc.invalidateQueries({ queryKey: ["repo-config"] });
     },
+  });
+}
+
+/* ------------------------------------------------------------- LAN access */
+
+/**
+ * The QR code and the URL behind it. The endpoint is loopback-only, so this
+ * 403s when the app is itself being read over the LAN — which is the point:
+ * the token cannot be fetched by anything holding it.
+ */
+export function useLanAccess() {
+  return useQuery<LanAccess>({ queryKey: qk.lan, queryFn: api.getLan, retry: false });
+}
+
+/** Answers with the whole payload, so it needs no refetch. */
+export function useRegenerateLanToken(): UseMutationResult<LanAccess, Error, void> {
+  const qc = useQueryClient();
+  return useMutation<LanAccess, Error, void>({
+    mutationFn: () => api.regenerateLanToken(),
+    onSuccess: (lan) => qc.setQueryData(qk.lan, lan),
   });
 }
 

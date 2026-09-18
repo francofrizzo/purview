@@ -43,5 +43,10 @@ try {
 } catch { /* nothing listening */ }
 
 await new Promise((r) => setTimeout(r, 300));
-const child = spawn("node", [join(root, "packages/server/dist/index.js")], { cwd: root, stdio: "inherit" });
+// Our own argv goes through untouched, so `pnpm start --lan` (or --onboard)
+// reaches the flag parsing in main.ts.
+const child = spawn("node", [join(root, "packages/server/dist/index.js"), ...process.argv.slice(2)], {
+  cwd: root,
+  stdio: "inherit",
+});
 child.on("exit", (code) => process.exit(code ?? 0));

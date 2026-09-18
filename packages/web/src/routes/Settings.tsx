@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { errorText } from "../api/errors";
-import { useGlobalConfig, useSaveGlobalConfig } from "../api/hooks";
+import {
+  useGlobalConfig,
+  useLanAccess,
+  useRegenerateLanToken,
+  useSaveGlobalConfig,
+} from "../api/hooks";
 import { ANALYSIS_EFFORTS, CLAUDE_MODELS, EDITORS } from "../api/types";
 import type { AnalysisEffort, ClaudeModel, Editor } from "../api/types";
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
@@ -57,6 +62,8 @@ export function SettingsModal() {
       <ClaudeSection />
 
       <EditorSection />
+
+      <NetworkSection />
 
       <Section title="Diff defaults" hint="The same preferences the d / w keys toggle while reviewing.">
         <div className="flex flex-wrap items-center gap-6">
@@ -498,6 +505,96 @@ function EditorSection() {
           options={EDITORS.map((e) => ({ value: e, label: EDITOR_LABELS[e] }))}
           onChange={(v) => save.mutate({ editor: v as Editor })}
         />
+      )}
+    </Section>
+  );
+}
+
+/**
+ * Reaching this Purview from another device on the same network. Nothing here
+ * switches it on — that is the `--lan` flag on the command that started the
+ * server, because it decides what the server binds to. This section only shows
+ * what the running process is doing, and what the token behind it is worth.
+ */
+function NetworkSection() {
+  const lan = useLanAccess();
+  const regenerate = useRegenerateLanToken();
+  const data = lan.data;
+
+  return (
+    <Section
+      title="Network access"
+      hint="Read a PR from the couch: your iPad or phone on the same network can open this Purview, with a QR code to get it onto the device."
+    >
+      {lan.isLoading ? (
+        <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
+          Loading…
+        </p>
+      ) : lan.error || !data ? (
+        <p className="text-2xs" style={{ color: "var(--risk)" }}>
+          {errorText(lan.error) ||
+            "Could not read the network settings. They are only available on the machine Purview runs on."}
+        </p>
+      ) : !data.active || !data.url ? (
+        <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+          Off for this run. Start Purview with <span className="font-mono">--lan</span> —{" "}
+          <span className="font-mono">pnpm start --lan</span> from a checkout, or{" "}
+          <span className="font-mono">purview --lan</span> — and the QR code to scan appears both
+          here and in the startup log. Only do it on a network you trust: the access token it
+          hands out is the only thing between that network and a Purview that can spend Claude
+          credits and post to GitHub as you.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-start gap-4">
+            {data.qrSvg ? (
+              <span
+                className="flex h-36 w-36 flex-none items-center justify-center rounded bg-white p-1.5"
+                style={{ border: "1px solid var(--border)" }}
+                // The SVG comes from our own server's QR renderer.
+                dangerouslySetInnerHTML={{ __html: data.qrSvg }}
+              />
+            ) : null}
+            <div className="flex min-w-0 flex-col gap-2">
+              <span
+                className="text-2xs uppercase tracking-wider"
+                style={{ color: "var(--fg-faint)" }}
+              >
+                Scan, or open this address
+              </span>
+              <code
+                className="break-all rounded px-2 py-1 font-mono text-2xs"
+                style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+              >
+                {data.url}
+              </code>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={regenerate.isPending}
+                  onClick={() => regenerate.mutate()}
+                >
+                  {regenerate.isPending ? "regenerating…" : "Regenerate token"}
+                </button>
+                <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  Takes effect at once: every device that scanned an older code loses access and
+                  has to scan again.
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-2xs leading-4" style={{ color: "var(--risk)" }}>
+            {data.warning} Only stay on a network you trust.
+          </p>
+
+          {regenerate.error ? (
+            <p className="text-2xs" style={{ color: "var(--risk)" }}>
+              {errorText(regenerate.error)}
+            </p>
+          ) : null}
+        </div>
       )}
     </Section>
   );

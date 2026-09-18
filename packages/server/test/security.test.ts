@@ -105,6 +105,116 @@ describe("checkRequest", () => {
   });
 });
 
+/* --------------------------------------------------------------- LAN mode */
+
+const LAN_HOST = "192.168.1.24";
+const TOKEN = "t0ken-abcdefghijklmnopqrstuv";
+const lanOpts = { port: PORT, lan: { hosts: [LAN_HOST, "mac.local"], token: TOKEN } };
+
+describe("checkRequest with LAN access off (the default)", () => {
+  it("rejects a LAN Host outright, for every method", () => {
+    for (const method of ["GET", "POST", "DELETE"]) {
+      const v = checkRequest(facts({ method, host: `${LAN_HOST}:${PORT}` }), { port: PORT });
+      expect(v.ok).toBe(false);
+      expect(v.code).toBe("forbidden_host");
+      expect(v.status).toBe(403);
+    }
+  });
+
+  it("does not ask loopback for a token", () => {
+    expect(checkRequest(facts({ method: "GET" }), { port: PORT }).ok).toBe(true);
+  });
+
+  it("ignores a token presented under a LAN Host — the host is still wrong", () => {
+    const v = checkRequest(
+      facts({ method: "GET", host: LAN_HOST, tokenHeader: TOKEN }),
+      { port: PORT },
+    );
+    expect(v.code).toBe("forbidden_host");
+  });
+});
+
+describe("checkRequest with LAN access on", () => {
+  it("still exempts loopback from the token", () => {
+    expect(checkRequest(facts({ method: "GET" }), lanOpts).ok).toBe(true);
+    expect(checkRequest(facts({ method: "POST" }), lanOpts).ok).toBe(true);
+  });
+
+  it("accepts a LAN Host carrying the token in the cookie", () => {
+    const v = checkRequest(
+      facts({ method: "GET", host: `${LAN_HOST}:${PORT}`, cookie: `purview_token=${TOKEN}` }),
+      lanOpts,
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  it("accepts the token in the header too, and every configured LAN name", () => {
+    for (const host of ["mac.local", `${LAN_HOST}:${PORT}`]) {
+      expect(checkRequest(facts({ method: "GET", host, tokenHeader: TOKEN }), lanOpts).ok).toBe(
+        true,
+      );
+    }
+  });
+
+  it("401s a LAN Host with no token at all", () => {
+    const v = checkRequest(facts({ method: "GET", host: LAN_HOST }), lanOpts);
+    expect(v.ok).toBe(false);
+    expect(v.status).toBe(401);
+    expect(v.code).toBe("unauthorized");
+  });
+
+  it("401s a wrong token, and a wrong-length one does not throw", () => {
+    // timingSafeEqual throws on unequal buffer lengths; the length of what was
+    // presented is not a secret, so it is answered rather than crashed on.
+    for (const bad of ["", "x", TOKEN + "x", TOKEN.slice(0, -1) + "z"]) {
+      const v = checkRequest(
+        facts({ method: "GET", host: LAN_HOST, cookie: `purview_token=${bad}` }),
+        lanOpts,
+      );
+      expect(v.status).toBe(401);
+    }
+  });
+
+  it("lets an authenticated LAN page change state from its own origin", () => {
+    const v = checkRequest(
+      facts({
+        host: `${LAN_HOST}:${PORT}`,
+        origin: `http://${LAN_HOST}:${PORT}`,
+        secFetchSite: "same-origin",
+        tokenHeader: TOKEN,
+      }),
+      lanOpts,
+    );
+    expect(v.ok).toBe(true);
+  });
+
+  it("still blocks a foreign origin on an otherwise authenticated LAN request", () => {
+    const v = checkRequest(
+      facts({ host: `${LAN_HOST}:${PORT}`, origin: "https://evil.example", tokenHeader: TOKEN }),
+      lanOpts,
+    );
+    expect(v.ok).toBe(false);
+    expect(v.code).toBe("forbidden_origin");
+  });
+
+  it("bootstraps a GET carrying the right ?token=, dropping it from the redirect", () => {
+    const v = checkRequest(
+      facts({ method: "GET", host: LAN_HOST, path: "/pr/x", search: `?token=${TOKEN}&tab=diff` }),
+      lanOpts,
+    );
+    expect(v.bootstrap).toEqual({ token: TOKEN, location: "/pr/x?tab=diff" });
+  });
+
+  it("401s a bootstrap attempt with the wrong ?token=", () => {
+    const v = checkRequest(
+      facts({ method: "GET", host: LAN_HOST, path: "/", search: "?token=nope" }),
+      lanOpts,
+    );
+    expect(v.bootstrap).toBeUndefined();
+    expect(v.status).toBe(401);
+  });
+});
+
 /* ------------------------------------------------------------- end-to-end */
 
 describe("the guard on a live app", () => {

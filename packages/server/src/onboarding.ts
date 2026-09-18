@@ -319,6 +319,9 @@ export function renderSummary(
   } else {
     lines.push(p.dim("no claude CLI: analysis and chat are unavailable"));
   }
+  // Nothing else hints that this exists, and "read a PR on the iPad" is the
+  // reason someone would want it.
+  lines.push(p.dim("read it on a phone or iPad: start with --lan, then scan the QR code"));
   const width = Math.max(
     ...lines.map((l) => stripAnsi(l).length),
   );

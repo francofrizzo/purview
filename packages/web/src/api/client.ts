@@ -24,6 +24,7 @@ import type {
   Hunk,
   ImportFromPrResult,
   ImportReviewsResult,
+  LanAccess,
   MigrationReport,
   MigrationReportItem,
   PrDetail,
@@ -469,6 +470,19 @@ export const api = {
   async saveConfig(patch: GlobalConfigPatch): Promise<GlobalConfig> {
     if (MOCK) return mockApi.saveConfig(patch);
     return put<GlobalConfig>("/config", patch);
+  },
+
+  /* ------------------------------------------------------ LAN access */
+
+  async getLan(): Promise<LanAccess> {
+    if (MOCK) return mockApi.getLan();
+    return request<LanAccess>("/lan");
+  },
+
+  /** Invalidates every device that scanned an earlier QR code. */
+  async regenerateLanToken(): Promise<LanAccess> {
+    if (MOCK) return mockApi.regenerateLanToken();
+    return post<LanAccess>("/lan/token");
   },
 
   async getRepoConfig(rkey: string): Promise<RepoConfig> {

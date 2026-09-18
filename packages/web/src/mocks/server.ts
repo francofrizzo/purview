@@ -24,6 +24,7 @@ import type {
   ClaudeModel,
   GlobalConfig,
   GlobalConfigPatch,
+  LanAccess,
   ReanchorResult,
   RepoConfig,
   RepoConfigPatch,
@@ -91,6 +92,30 @@ const globalConfig: {
   analysisEffort: null,
   editor: "zed",
 };
+
+/**
+ * `/api/lan`. The mock has no network to be on and no command line to have
+ * been started from, so it plays the `--lan` case: a stand-in address and QR,
+ * enough for the Settings section to render.
+ */
+let lanToken = "m0ckT0ken-not-a-real-secret";
+
+const MOCK_QR_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" shape-rendering="crispEdges">' +
+  '<rect width="8" height="8" fill="#fff"/>' +
+  '<path fill="#000" d="M0 0h3v3H0zM5 0h3v3H5zM0 5h3v3H0zM4 4h1v1H4zM6 6h1v1H6z"/>' +
+  '<path fill="#fff" d="M1 1h1v1H1zM6 1h1v1H6zM1 6h1v1H1z"/></svg>';
+
+function lanPayload(): LanAccess {
+  return {
+    active: true,
+    url: `http://192.168.1.24:4779/?token=${lanToken}`,
+    qrSvg: MOCK_QR_SVG,
+    warning:
+      "Anyone on this network who has that URL has full control of this Purview — " +
+      "it can spend Claude credits and post to GitHub on your behalf.",
+  };
+}
 
 /** Per-conversation model pins, keyed like the transcripts. */
 const chatModels: Record<string, ClaudeModel | null> = {};
@@ -552,6 +577,17 @@ export const mockApi = {
       ...globalConfig,
       defaults: { analysisModel: DEFAULT_MODEL, chatModel: DEFAULT_MODEL, analysisEffort: DEFAULT_EFFORT },
     };
+  },
+
+  async getLan(): Promise<LanAccess> {
+    await delay(80);
+    return lanPayload();
+  },
+
+  async regenerateLanToken(): Promise<LanAccess> {
+    await delay(180);
+    lanToken = `m0ckT0ken-${Math.random().toString(36).slice(2, 10)}`;
+    return lanPayload();
   },
 
   /**

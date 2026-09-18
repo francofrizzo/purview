@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -71,6 +72,17 @@ export const ConfigSchema = z.object({
    * it is a machine preference, not something a repo or team would pin.
    */
   editor: z.enum(["zed", "vscode"]).default("zed"),
+  /**
+   * The secret for LAN access (`--lan`; see main.ts). *Whether* the server
+   * listens on the network is a per-run decision and is deliberately not
+   * stored — only the token is, because a device that scanned the QR code has
+   * to keep working across restarts.
+   *
+   * It is the *whole* authentication for a LAN client: loopback is exempt (see
+   * security.ts), so anything arriving over the network must present it. Minted
+   * the first time `--lan` is used, and replaced only when the user asks.
+   */
+  lan: z.object({ token: z.string().nullable().default(null) }).default({}),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;
@@ -108,7 +120,44 @@ export function writeConfig(patch: Partial<ReviewerConfig>, root = stateRoot()):
   const next = ConfigSchema.parse({ ...(configExists(root) ? readConfig(root) : {}), ...patch });
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(next, null, 2) + "\n");
+  // Once the file carries the LAN token it is a credential, so it must not be
+  // world-readable. `mode` on writeFileSync only applies when the file is
+  // created, hence the explicit chmod — and only ever downwards: a file that
+  // never held a token keeps whatever permissions the user gave it.
+  if (next.lan.token !== null) fs.chmodSync(file, 0o600);
   return next;
+}
+
+/**
+ * Whether this run serves the LAN. A per-run decision on purpose: it changes
+ * what the server binds to, so it belongs to the command that started it and
+ * never to a file that could switch it on behind the user's back.
+ * `PURVIEW_LAN=1` is the same switch for a non-interactive start.
+ */
+export function lanEnabled(
+  argv: string[] = process.argv,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return argv.includes("--lan") || env.PURVIEW_LAN === "1";
+}
+
+/**
+ * The LAN token, minted and persisted the first time one is needed. A token
+ * already on disk is never replaced here — devices that scanned an older QR
+ * code must keep working across restarts; only an explicit regenerate
+ * invalidates them.
+ */
+export function lanToken(root = stateRoot()): string {
+  const existing = readConfig(root).lan.token;
+  if (existing !== null) return existing;
+  const token = generateLanToken();
+  writeConfig({ lan: { token } }, root);
+  return token;
+}
+
+/** 24 bytes of CSPRNG output — url-safe, so it survives a QR code and a query string. */
+export function generateLanToken(): string {
+  return crypto.randomBytes(24).toString("base64url");
 }
 
 /**

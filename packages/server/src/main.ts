@@ -1,8 +1,9 @@
 import { serve } from "@hono/node-server";
 import { migrateStateDirOnStartup, stateRoot } from "@reviewer/core";
 import { createApp, DEFAULT_PORT } from "./app.js";
-import { autoAnalyzeEnvAllows, readConfig } from "./config.js";
+import { autoAnalyzeEnvAllows, lanEnabled, lanToken, readConfig } from "./config.js";
 import { isUniversalCtagsAvailable } from "./definitions.js";
+import { LAN_WARNING, lanHostnames, lanQrTerminal, lanUrl } from "./lan.js";
 import { maybeOnboard } from "./onboarding.js";
 import { startReviewWatch } from "./review-watch.js";
 
@@ -46,6 +47,11 @@ export async function main(opts: MainOptions = {}): Promise<void> {
     );
   }
 
+  // `--lan` (or PURVIEW_LAN=1), decided before anything binds: the token has to
+  // exist before the first LAN request can arrive, and the interface scan is
+  // done once here rather than per request.
+  const lan = lanEnabled() ? { token: lanToken(ROOT), hosts: lanHostnames() } : undefined;
+
   const app = createApp({
     // The master switch is the env kill switch only: consent itself is
     // layered (repo.json -> committed .purview/config.json -> global
@@ -54,12 +60,16 @@ export async function main(opts: MainOptions = {}): Promise<void> {
     port: PORT,
     devOrigins: config.devOrigins,
     webDist: opts.webDist,
+    lan,
   });
 
-  // Loopback only. Binding 0.0.0.0 would put an unauthenticated API that can
-  // spend money and write to GitHub on every interface the machine has.
-  const server = serve({ fetch: app.fetch, port: PORT, hostname: "127.0.0.1" }, (info) => {
+  // Loopback unless this run was started with `--lan`. Binding 0.0.0.0 puts an API that
+  // can spend money and write to GitHub on every interface the machine has,
+  // which is why nothing reaches it from there without the token (security.ts).
+  const hostname = lan ? "0.0.0.0" : "127.0.0.1";
+  const server = serve({ fetch: app.fetch, port: PORT, hostname }, (info) => {
     console.log(`@reviewer/server listening on http://localhost:${info.port}`);
+    if (lan) void announceLan(lan.hosts, info.port, lan.token);
   });
 
   // @hono/node-server's serve() hands back the underlying node:http server,
@@ -84,4 +94,25 @@ export async function main(opts: MainOptions = {}): Promise<void> {
   // review-watch.ts) disables polling entirely, e.g. for tests or a
   // guaranteed-no-background-gh-calls run.
   startReviewWatch(ROOT, { analyzeAllowed: autoAnalyzeEnvAllows });
+}
+
+/**
+ * The startup banner for LAN access: the URL with the token in it, a QR code
+ * to point a phone at, and the one sentence that says what handing that URL
+ * over actually gives away. Best-effort — a QR that fails to render must not
+ * take the server down with it.
+ */
+async function announceLan(hosts: string[], port: number, token: string): Promise<void> {
+  const url = lanUrl(hosts, port, token);
+  if (!url) {
+    console.log("--lan: this machine has no non-loopback address to serve on.");
+    return;
+  }
+  console.log(`LAN access is on — open ${url} on another device`);
+  try {
+    console.log(await lanQrTerminal(url));
+  } catch {
+    /* the URL above is the real payload; the QR is a convenience */
+  }
+  console.log(LAN_WARNING);
 }
