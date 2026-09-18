@@ -3,6 +3,7 @@ import type { Attention, ChatRef, PrDetail, ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
 import { useSettings } from "../lib/settings";
 import { filterUnits, hiddenHint } from "../lib/unitFilter";
+import { unitDisplayNumbers } from "../lib/unitOrder";
 import { ChangedBadge, KindChip, Progress, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { IconChevron } from "./icons";
@@ -53,12 +54,9 @@ export function UnitSidebar({
   // The skill's `order` is global and gappy once units are bucketed by
   // attention (must-read shows 1,2,…,15 and skim then restarts at 6), which
   // reads as broken. Number by rendered position instead — the list is already
-  // in reading order — and leave `order` in state untouched.
-  const displayNumber = new Map<string, number>();
-  let n = 0;
-  for (const g of GROUPS) {
-    for (const u of units) if (u.attention === g.attention) displayNumber.set(u.id, ++n);
-  }
+  // in reading order — and leave `order` in state untouched. Shared with the
+  // collapsed rail (SidebarRail) so the two numberings can never disagree.
+  const displayNumber = unitDisplayNumbers(units);
 
   const totalHidden = hide
     ? filterUnits(units, { hide, isFullyViewed, selectedId: selectedUnitId }).hidden

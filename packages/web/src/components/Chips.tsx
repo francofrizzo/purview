@@ -109,6 +109,12 @@ export function attentionColor(attention: Attention): string {
   return (ATTENTION_STYLE[attention] ?? ATTENTION_STYLE.skim).color;
 }
 
+/** The soft background half of the same decision, for callers building their
+ *  own tinted chip-alike (e.g. the collapsed sidebar rail's unit squares). */
+export function attentionSoftBg(attention: Attention): string {
+  return (ATTENTION_STYLE[attention] ?? ATTENTION_STYLE.skim).bg;
+}
+
 const EFFORT_STYLE: Record<
   Exclude<EffortBadge, null>,
   { label: string; icon: (p: { width?: number; height?: number }) => JSX.Element; color: string; bg: string }

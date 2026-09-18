@@ -82,6 +82,7 @@ import {
 import { SummaryStrip } from "../components/SummaryStrip";
 import { TopBar } from "../components/TopBar";
 import { UnitSidebar } from "../components/UnitSidebar";
+import { SidebarRail } from "../components/SidebarRail";
 import { DiffSearchBar } from "../components/DiffSearchBar";
 import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { findDiffLocalDefinitions, findInDiffHunk } from "../lib/definitions";
@@ -191,6 +192,13 @@ export function PrView() {
     },
     [sidebarMode],
   );
+  // The rail is the collapsed/resting state, not a temporary overlay — picking
+  // a unit from it doesn't open the drawer, it just selects (switching to the
+  // units tab if the files tab was showing, since the rail is units-only).
+  const selectUnitFromRail = useCallback((unitId: string) => {
+    setSelectedUnitId(unitId);
+    setTab("units");
+  }, []);
 
   const fullscreen = useFullscreen();
   const [standalone] = useState(isStandalone);
@@ -797,10 +805,6 @@ export function PrView() {
         exporting={exportAnalysis.isPending}
         sharing={shareToPr.isPending}
         importingFromPr={importFromPr.isPending}
-        sidebarButtonVisible={sidebarMode === "drawer" || sidebarCollapsed}
-        sidebarButtonLabel={tab}
-        sidebarButtonCount={units.length > 0 ? overall : null}
-        onOpenSidebar={openSidebar}
         fullscreenVisible={fullscreen.supported && !standalone}
         fullscreenActive={fullscreen.active}
         onToggleFullscreen={fullscreen.toggle}
@@ -946,14 +950,48 @@ export function PrView() {
           <nav
             className="flex flex-none flex-col overflow-hidden border-r transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
             style={{
-              width: sidebarCollapsed ? "0rem" : "19rem",
+              width: sidebarCollapsed ? "var(--sidebar-rail-width)" : "19rem",
               borderColor: "var(--border)",
               background: "var(--bg-raised)",
-              pointerEvents: sidebarCollapsed ? "none" : undefined,
             }}
-            aria-hidden={sidebarCollapsed}
           >
-            <div className="flex h-full w-[19rem] flex-none flex-col">{sidebarBody}</div>
+            {sidebarCollapsed ? (
+              <SidebarRail
+                detail={detail}
+                units={units}
+                selectedUnitId={selectedUnitId}
+                matchCounts={search.unitCounts}
+                onSelect={selectUnitFromRail}
+                onExpand={openSidebar}
+                expandLabel="Expand sidebar"
+              />
+            ) : (
+              <div className="flex h-full w-[19rem] flex-none flex-col">{sidebarBody}</div>
+            )}
+          </nav>
+        ) : null}
+
+        {sidebarMode === "drawer" ? (
+          // The rail is the drawer mode's resting state — always present,
+          // never unmounted — with the full sidebar floating over it (and
+          // over the diff) exactly like it floats when opened below.
+          <nav
+            className="flex flex-none flex-col border-r"
+            style={{
+              width: "var(--sidebar-rail-width)",
+              borderColor: "var(--border)",
+              background: "var(--bg-raised)",
+            }}
+          >
+            <SidebarRail
+              detail={detail}
+              units={units}
+              selectedUnitId={selectedUnitId}
+              matchCounts={search.unitCounts}
+              onSelect={selectUnitFromRail}
+              onExpand={openSidebar}
+              expandLabel="Open sidebar"
+            />
           </nav>
         ) : null}
 

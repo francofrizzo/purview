@@ -17,6 +17,10 @@
     --code-font-size: 12px;
     --code-line-height: 20px;
     --tab-size: 8;
+    /* Collapsed sidebar / drawer-mode resting width — widened under a coarse
+       pointer (see the touch section at the end of this file) so the rail's
+       unit squares stay tappable. */
+    --sidebar-rail-width: 2.75rem;
 
     --bg: #0c0d10;
     --bg-raised: #131519;
@@ -314,6 +318,24 @@
     box-shadow: var(--shadow-1);
   }
 
+  /* Collapsed-sidebar rail: one square per unit (see SidebarRail.tsx). Sized
+     here rather than with a width/height utility so the coarse-pointer rule
+     below can grow it without fighting Tailwind's own utility classes. */
+  .sidebar-rail-item {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+
+  /* The rail scrolls when units overflow, but a scrollbar down a 2.75rem
+     strip is mostly visual noise — keep it functional, hide the chrome. */
+  .sidebar-rail-scroll {
+    scrollbar-width: none;
+  }
+  .sidebar-rail-scroll::-webkit-scrollbar {
+    width: 0;
+    display: none;
+  }
+
   /* Hunk header's "which unit is this" label (files tab only) — quiet until
      hovered, then it reads as clickable. */
   .hunk-unit-label {
@@ -444,5 +466,12 @@
   .sidebar-row-btn {
     padding-top: 0.625rem;
     padding-bottom: 0.625rem;
+  }
+  :root {
+    --sidebar-rail-width: 3.25rem;
+  }
+  .sidebar-rail-item {
+    width: 2.25rem;
+    height: 2.25rem;
   }
 }
