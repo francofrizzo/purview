@@ -744,7 +744,8 @@ export function PrView() {
         style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
       >
         <div>
-          <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>space</kbd> next unviewed
+          <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>z</kbd> folds ·{" "}
+          <kbd>space</kbd> next unviewed
         </div>
         <div>
           <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}

@@ -12,6 +12,13 @@ import {
   type DiffRow,
 } from "../lib/diffModel";
 import { lineKey, type SearchMatch } from "../lib/diffSearch";
+import {
+  moveFoldRegions,
+  pruneOpenedFoldRegions,
+  splitMoveCandidates,
+  unifiedMoveCandidates,
+  type MoveFoldRegion,
+} from "../lib/foldRegions";
 import { identifierRangeAtPoint } from "../lib/identifierAt";
 import { detectMoves, type HunkMoves } from "../lib/moveDetection";
 import {
@@ -84,7 +91,23 @@ type FlatRow =
       side: "LEFT" | "RIGHT";
     }
   /** expanded comments hanging off a whole file */
-  | { type: "filecomments"; key: string; path: string };
+  | { type: "filecomments"; key: string; path: string }
+  /**
+   * A folded run of rows, collapsed behind one placeholder — the moved-block
+   * fold, so far the only fold kind (see lib/foldRegions.ts). `from`/`to` are
+   * the row-space bounds (this mode's line/pair index) it stands in for;
+   * `hidden` is how many rows that is, for the placeholder's own count.
+   */
+  | {
+      type: "fold";
+      key: string;
+      hunkId: string;
+      kind: "in" | "out";
+      from: number;
+      to: number;
+      label: string;
+      hidden: number;
+    };
 
 export interface DiffPaneProps {
   detail: PrDetail;
@@ -436,6 +459,127 @@ export function DiffPane({
     });
   }, []);
 
+  /* --------------------------------------------------- moved-block folding */
+
+  // Every fold-eligible run of moved rows, per hunk, for whichever mode is
+  // showing — see lib/foldRegions.ts. Recomputed whenever what would make a
+  // region exempt (comments, search) changes, so a region that just lost its
+  // last reason to stay open folds back up on its own (see `isRegionFolded`).
+  const foldRegionsByHunk = useMemo(() => {
+    const map = new Map<string, MoveFoldRegion[]>();
+    for (const entry of entries) {
+      const { hunk, file } = entry;
+      const hunkMoves = moves.get(hunk.id);
+      if (!hunkMoves || (hunkMoves.movedOut.size === 0 && hunkMoves.movedIn.size === 0)) continue;
+      const moveIndex = buildMoveIndex(hunk, detail.diff);
+      const unifiedRows = buildRows(hunk, detail.diff);
+      // Same exemption rule regardless of mode: a row that carries a draft
+      // comment, an expanded comment thread, a search hit, or the active
+      // match must stay visible — checked against its *unified* row index,
+      // which both split-pair cells and unified rows address it by.
+      const exemptAt = (unifiedIdx: number): boolean => {
+        if (searchMarks?.has(lineKey(hunk.id, unifiedIdx))) return true;
+        if (activeMatch && activeMatch.hunkId === hunk.id && activeMatch.lineIdx === unifiedIdx) {
+          return true;
+        }
+        const dr = unifiedRows[unifiedIdx];
+        if (!dr) return false;
+        const side: "LEFT" | "RIGHT" = dr.type === "del" ? "LEFT" : "RIGHT";
+        const no = dr.type === "del" ? dr.oldNumber : dr.newNumber;
+        if (no === undefined) return false;
+        const anchor = lineAnchor(file.path, no, side);
+        return grouped.byLine.has(anchor) || expandedAnchors.has(anchor);
+      };
+
+      const regions: MoveFoldRegion[] = [];
+      if (mode === "split") {
+        const pairs = buildSplitRows(hunk, detail.diff);
+        const shapes = pairs.map((p) => ({
+          leftType: p.left?.row.type,
+          leftUnifiedIndex: p.left?.index,
+          rightType: p.right?.row.type,
+          rightUnifiedIndex: p.right?.index,
+        }));
+        for (const kind of ["out", "in"] as const) {
+          const candidates = splitMoveCandidates(shapes, moveIndex, hunkMoves, kind);
+          const exempt = shapes.map((s) => {
+            const idx = kind === "out" ? s.leftUnifiedIndex : s.rightUnifiedIndex;
+            return idx !== undefined && exemptAt(idx);
+          });
+          regions.push(
+            ...moveFoldRegions({
+              hunkId: hunk.id,
+              kind,
+              candidates,
+              exempt,
+              counterparts: hunkMoves.counterparts,
+            }),
+          );
+        }
+      } else {
+        const rowTypes = unifiedRows.map((r) => r.type);
+        for (const kind of ["out", "in"] as const) {
+          const candidates = unifiedMoveCandidates(rowTypes, moveIndex, hunkMoves, kind);
+          const exempt = unifiedRows.map((_, i) => exemptAt(i));
+          regions.push(
+            ...moveFoldRegions({
+              hunkId: hunk.id,
+              kind,
+              candidates,
+              exempt,
+              counterparts: hunkMoves.counterparts,
+            }),
+          );
+        }
+      }
+      if (regions.length) {
+        regions.sort((a, b) => a.from - b.from);
+        map.set(hunk.id, regions);
+      }
+    }
+    return map;
+  }, [entries, detail.diff, moves, mode, grouped, expandedAnchors, searchMarks, activeMatch]);
+
+  // Manually opened regions, by key (see lib/foldRegions.ts) — never a manual
+  // *close* set, since the default is already folded; opening one is the only
+  // override a reader needs. Pruned below whenever a hunk leaves the pane.
+  const [openedFoldRegions, setOpenedFoldRegions] = useState<ReadonlySet<string>>(() => new Set());
+
+  const isRegionFolded = useCallback(
+    (region: MoveFoldRegion) => !region.exempt && !openedFoldRegions.has(region.key),
+    [openedFoldRegions],
+  );
+
+  const toggleFoldRegion = useCallback((key: string) => {
+    captureAnchorPosition();
+    setOpenedFoldRegions((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  /** `z` on the focused hunk: open every folded region at once, or — once
+   *  they're all open — fold the foldable ones back up. */
+  const toggleHunkFoldRegions = useCallback(
+    (hunkId: string) => {
+      const regions = (foldRegionsByHunk.get(hunkId) ?? []).filter((r) => !r.exempt);
+      if (!regions.length) return;
+      captureAnchorPosition();
+      setOpenedFoldRegions((prev) => {
+        const anyFolded = regions.some((r) => !prev.has(r.key));
+        const next = new Set(prev);
+        for (const r of regions) {
+          if (anyFolded) next.add(r.key);
+          else next.delete(r.key);
+        }
+        return next;
+      });
+    },
+    [foldRegionsByHunk],
+  );
+
   /* ------------------------------------------------------- hunk collapsing */
 
   const { autoCollapseViewedHunks } = settings;
@@ -503,9 +647,36 @@ export function DiffPane({
         });
       };
 
+      // Which row-space index starts a folded moved-block region, if any —
+      // built once per hunk so the row loop below is a plain lookup. A
+      // region that isn't actually folded (exempt, or manually opened)
+      // simply never matches here, and its rows render as normal.
+      const foldStartAt = new Map<number, MoveFoldRegion>();
+      for (const region of foldRegionsByHunk.get(hunk.id) ?? []) {
+        if (isRegionFolded(region)) foldStartAt.set(region.from, region);
+      }
+      const pushFold = (region: MoveFoldRegion) => {
+        out.push({
+          type: "fold",
+          key: `fold:${region.key}`,
+          hunkId: hunk.id,
+          kind: region.kind,
+          from: region.from,
+          to: region.to,
+          label: region.label,
+          hidden: region.hidden,
+        });
+      };
+
       if (mode === "split") {
         const pairs = buildSplitRows(hunk, detail.diff);
         for (let i = 0; i < pairs.length; i++) {
+          const region = foldStartAt.get(i);
+          if (region) {
+            pushFold(region);
+            i = region.to - 1;
+            continue;
+          }
           out.push({
             type: "split",
             key: `${w}s:${hunk.id}:${i}`,
@@ -523,6 +694,12 @@ export function DiffPane({
       } else {
         const lines = buildRows(hunk, detail.diff);
         for (let i = 0; i < lines.length; i++) {
+          const region = foldStartAt.get(i);
+          if (region) {
+            pushFold(region);
+            i = region.to - 1;
+            continue;
+          }
           out.push({
             type: "line",
             key: `${w}l:${hunk.id}:${i}`,
@@ -550,6 +727,8 @@ export function DiffPane({
     wrap,
     showFileRows,
     codeFontSize,
+    foldRegionsByHunk,
+    isRegionFolded,
   ]);
 
   const hunkRowIndex = useMemo(() => {
@@ -591,6 +770,8 @@ export function DiffPane({
       // split cells wrap, so rows are often taller than one line; measurement
       // corrects this, the estimate only needs to be in the right ballpark.
       if (r.type === "split") return codeLineHeight;
+      // A fold placeholder is one row, always — no wrapping content inside it.
+      if (r.type === "fold") return codeLineHeight;
       if (r.type === "dod") return 170;
       // Comment blocks are the one genuinely variable row. The estimate only
       // has to be in the right order of magnitude — measureElement's
@@ -640,7 +821,7 @@ export function DiffPane({
 
   const layoutSignature = `${Object.keys(collapsed)
     .filter((k) => collapsed[k])
-    .join(",")}|${[...expandedAnchors].join(",")}|${[...expandedFiles].join(",")}`;
+    .join(",")}|${[...expandedAnchors].join(",")}|${[...expandedFiles].join(",")}|${[...openedFoldRegions].join(",")}`;
 
   useEffect(() => {
     const target = anchorPos.current;
@@ -687,6 +868,7 @@ export function DiffPane({
     // state worth keeping. Comment expansion is keyed by file anchor, not by
     // hunk, so it deliberately survives — the reader comes back to it open.
     setCollapsedState((prev) => pruneCollapsed(prev, entries.map((e) => e.hunk.id)));
+    setOpenedFoldRegions((prev) => pruneOpenedFoldRegions(prev, entries.map((e) => e.hunk.id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSignature]);
 
@@ -864,6 +1046,11 @@ export function DiffPane({
       setCollapsedState((prev) => setCollapsed(prev, activeMatch.hunkId, false));
       return;
     }
+    // A match inside a folded moved-block region needs no equivalent check
+    // here: `activeMatch` is itself one of `foldRegionsByHunk`'s exemption
+    // inputs, so the region carrying it already opened — synchronously, in
+    // the same render — before this effect (which closes over the resulting
+    // `rows`) ever runs.
     const idx = findRowIndex(activeMatch.hunkId, activeMatch.lineIdx);
     if (idx === -1) return;
     onFocusHunk(activeMatch.hunkId);
@@ -891,6 +1078,34 @@ export function DiffPane({
   const jumpedNonce = useRef<number | null>(null);
   useEffect(() => {
     if (!jumpToHunk || jumpedNonce.current === jumpToHunk.nonce) return;
+
+    // The target may sit inside a folded moved-in region (only "in" regions
+    // can — jumpToHunk only ever targets an added or context line, never a
+    // removed one). Unfold it first, same idiom as the search-visit effect's
+    // folded-hunk check: bail without consuming the nonce, so this effect
+    // reruns once `rows` reflects the open region.
+    const { line, addedIndex } = jumpToHunk;
+    if (line !== undefined || addedIndex !== undefined) {
+      const entry = entries.find((e) => e.hunk.id === jumpToHunk.hunkId);
+      if (entry) {
+        let contentIdx: number | undefined = addedIndex;
+        if (contentIdx === undefined) {
+          const unified = buildRows(entry.hunk, detail.diff);
+          const rowIdx = unified.findIndex((r) => r.newNumber === line);
+          if (rowIdx !== -1) contentIdx = buildMoveIndex(entry.hunk, detail.diff).addedIdx[rowIdx];
+        }
+        if (contentIdx !== undefined) {
+          const region = (foldRegionsByHunk.get(jumpToHunk.hunkId) ?? []).find(
+            (r) => r.kind === "in" && contentIdx! >= r.contentFrom && contentIdx! < r.contentFrom + r.hidden,
+          );
+          if (region && isRegionFolded(region)) {
+            setOpenedFoldRegions((prev) => new Set(prev).add(region.key));
+            return;
+          }
+        }
+      }
+    }
+
     const idx = hunkRowIndex.get(jumpToHunk.hunkId);
     if (idx === undefined) return; // entries haven't caught up yet; effect reruns when they do
     jumpedNonce.current = jumpToHunk.nonce;
@@ -899,7 +1114,6 @@ export function DiffPane({
     // requested line (unified rows carry it directly, split rows on their
     // right cell) and fall back to the header when nothing matches.
     let target = idx;
-    const { line, addedIndex } = jumpToHunk;
     if (line !== undefined || addedIndex !== undefined) {
       let added = 0;
       for (let i = idx + 1; i < rows.length; i++) {
@@ -922,7 +1136,17 @@ export function DiffPane({
       virtualizer.scrollToIndex(target, { align: "center" }),
     );
     return () => cancelAnimationFrame(frame);
-  }, [jumpToHunk, hunkRowIndex, rows, virtualizer, onFocusHunk, detail.diff]);
+  }, [
+    jumpToHunk,
+    hunkRowIndex,
+    rows,
+    virtualizer,
+    onFocusHunk,
+    detail.diff,
+    entries,
+    foldRegionsByHunk,
+    isRegionFolded,
+  ]);
 
   /** Search hits on one rendered row, plus the active one if it lives here. */
   const marksFor = useCallback(
@@ -958,6 +1182,10 @@ export function DiffPane({
         if (!focusedHunkId) return;
         e.preventDefault();
         onToggleViewed(focusedHunkId, !detail.state.hunks[focusedHunkId]?.viewed);
+      } else if (e.key === "z") {
+        if (!focusedHunkId) return;
+        e.preventDefault();
+        toggleHunkFoldRegions(focusedHunkId);
       } else if (e.key === "d") {
         if (!onToggleViewMode) return;
         e.preventDefault();
@@ -984,6 +1212,7 @@ export function DiffPane({
     onToggleViewMode,
     onToggleWrap,
     detail.state.hunks,
+    toggleHunkFoldRegions,
   ]);
 
   if (!entries.length) {
@@ -1251,6 +1480,26 @@ export function DiffPane({
           onAdd={() => onComment({ subjectType: "file", file: row.path })}
           actions={commentActions ?? {}}
         />
+      );
+    }
+
+    if (row.type === "fold") {
+      const tint = row.kind === "in" ? "var(--moved-bg-strong)" : "var(--moved-out-bg-strong)";
+      return (
+        <button
+          type="button"
+          data-testid={`fold-${row.key}`}
+          onClick={() => toggleFoldRegion(row.key)}
+          title="Moved code, folded — click to unfold"
+          className="flex w-full items-center gap-2 px-3 py-1 text-left font-mono text-2xs transition-colors hover:opacity-90"
+          style={{
+            background: "var(--bg-inset)",
+            borderLeft: `2px solid ${tint}`,
+            color: "var(--fg-faint)",
+          }}
+        >
+          {row.label}
+        </button>
       );
     }
 
