@@ -47,12 +47,11 @@ export function SidebarRail({
             const number = i + 1;
             const p = unitProgress(detail, u);
             const done = p.total > 0 && p.viewed === p.total;
-            // A unit mid-review gets a circular progress ring instead of a
-            // flat tint — a hunk-count-shaped clock face, in the same hue as
-            // the number. Nothing to show it for: an empty unit (no ring, its
-            // flat tint is not a completion state — see `done` above) or a
-            // finished one (recedes to flat + faint instead, its job is done).
-            const showRing = p.total > 0 && !done;
+            // A unit mid-review fills in as a pie, in the same hue as the
+            // number. Nothing to show it for: an empty unit (its flat tint is
+            // not a completion state — see `done` above) or a finished one
+            // (recedes to flat + faint instead, its job is done).
+            const showPie = p.total > 0 && !done;
             const pct = p.total > 0 ? p.viewed / p.total : 0;
             const fill = attentionColor(u.attention);
             const selected = u.id === selectedUnitId;
@@ -66,15 +65,12 @@ export function SidebarRail({
                 aria-label={label}
                 className="sidebar-rail-item relative flex flex-none items-center justify-center rounded font-mono text-2xs tabular-nums"
                 style={{
-                  background: showRing
-                    ? // Two layers: a solid disc (the rail's own background
-                      // colour, so it reads as a punched-out hole rather than
-                      // a second colour) leaving a thin rim, over a conic
-                      // gradient clock-facing the viewed fraction. `closest-side`
-                      // ties both to the button's own box, so this tracks the
-                      // 1.75rem/2.25rem size swap under a coarse pointer for free.
-                      `radial-gradient(circle closest-side, var(--bg-raised) calc(100% - 3px), transparent calc(100% - 3px)), ` +
-                      `conic-gradient(${fill} ${pct * 360}deg, var(--border-strong) 0)`
+                  background: showPie
+                    ? // The whole pill is the pie: the viewed fraction sweeps
+                      // clockwise in a slightly stronger tint of the same hue
+                      // over the unit's usual soft tint, so progress reads as
+                      // the square filling in rather than a gauge sitting on it.
+                      `conic-gradient(color-mix(in srgb, ${fill} 30%, transparent) ${pct * 360}deg, ${attentionSoftBg(u.attention)} 0)`
                     : done
                       ? "transparent"
                       : attentionSoftBg(u.attention),
