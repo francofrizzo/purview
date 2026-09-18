@@ -357,6 +357,64 @@ export type AnalysisJobStatus = z.infer<typeof AnalysisJobStatusSchema>;
  * restart (a "running" record with no process behind it is reconciled to
  * "failed" on startup).
  */
+/**
+ * Where an analysis run's wall time went, derived from the `claude -p
+ * --output-format stream-json` event stream (see claude-runner.ts's `result`
+ * event and analysis.ts's `runOne`). Every field is best-effort: a run that
+ * never reaches a phase simply omits its key.
+ */
+export const AnalysisMetricsSchema = z.object({
+  /** `num_turns` from the result line */
+  turns: z.number().int().optional(),
+  /** `duration_ms` from the result line */
+  durationMs: z.number().optional(),
+  /** `duration_api_ms` from the result line */
+  apiMs: z.number().optional(),
+  /** `total_cost_usd` from the result line */
+  costUsd: z.number().optional(),
+  usage: z
+    .object({
+      input: z.number().int().optional(),
+      cacheCreation: z.number().int().optional(),
+      cacheRead: z.number().int().optional(),
+      output: z.number().int().optional(),
+    })
+    .optional(),
+  /** count of tool calls per tool name (Read, Bash, Write, Edit, Glob, Grep …) */
+  toolCalls: z.record(z.string(), z.number().int()).default({}),
+  /** Bash calls, classified by what the command does; a call may count in
+   *  several. `state` = touches the PR's state dir (files.json, diff.patch,
+   *  events.jsonl) — the triage reads, however they are spelled. */
+  bash: z
+    .object({
+      cli: z.number().int().default(0),
+      state: z.number().int().default(0),
+      grep: z.number().int().default(0),
+      sed: z.number().int().default(0),
+      other: z.number().int().default(0),
+    })
+    .default({ cli: 0, state: 0, grep: 0, sed: 0, other: 0 }),
+  /** Read calls, classified by what path they read. */
+  reads: z
+    .object({
+      filesJson: z.number().int().default(0),
+      diffPatch: z.number().int().default(0),
+      skill: z.number().int().default(0),
+      checkout: z.number().int().default(0),
+      other: z.number().int().default(0),
+    })
+    .default({ filesJson: 0, diffPatch: 0, skill: 0, checkout: 0, other: 0 }),
+  /** 1-based index of the tool call at which each phase first began. */
+  phases: z
+    .object({
+      firstInvestigationAt: z.number().int().optional(),
+      firstWriteAt: z.number().int().optional(),
+      setAnalysisAt: z.number().int().optional(),
+    })
+    .optional(),
+});
+export type AnalysisMetrics = z.infer<typeof AnalysisMetricsSchema>;
+
 export const AnalysisJobSchema = z.object({
   revision: z.number().int(),
   status: AnalysisJobStatusSchema,
@@ -365,6 +423,7 @@ export const AnalysisJobSchema = z.object({
   finishedAt: z.string().optional(),
   error: z.string().optional(),
   progress: z.string().optional(),
+  metrics: AnalysisMetricsSchema.optional(),
 });
 export type AnalysisJob = z.infer<typeof AnalysisJobSchema>;
 
@@ -530,6 +589,7 @@ export const AnalysisFinishedEventSchema = z.object({
   /** terminal states only */
   status: z.enum(["done", "failed", "cancelled"]),
   error: z.string().optional(),
+  metrics: AnalysisMetricsSchema.optional(),
 });
 
 export const EventSchema = z.discriminatedUnion("type", [

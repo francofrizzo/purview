@@ -14,6 +14,7 @@ import {
   stateRoot,
   summarizeMoves,
   type AnalysisJob,
+  type AnalysisMetrics,
   type MovePairSummary,
   type PrKey,
 } from "@reviewer/core";
@@ -496,6 +497,7 @@ function finish(
   revision: number,
   status: "done" | "failed" | "cancelled",
   error?: string,
+  metrics?: AnalysisMetrics,
 ): AnalysisJob {
   const previous = readJob(key, root);
   const job = writeJob(
@@ -507,15 +509,93 @@ function finish(
       finishedAt: new Date().toISOString(),
       error,
       progress: undefined,
+      metrics,
     },
     root,
   );
   try {
-    appendEvent(key, { type: "analysis-finished", revision, status, error }, root);
+    appendEvent(key, { type: "analysis-finished", revision, status, error, metrics }, root);
   } catch {
     /* never let bookkeeping fail a run that already ended */
   }
   return job;
+}
+
+/* ----------------------------------------------------------------- metrics */
+
+function emptyMetrics(): AnalysisMetrics {
+  return {
+    toolCalls: {},
+    bash: { cli: 0, state: 0, grep: 0, sed: 0, other: 0 },
+    reads: { filesJson: 0, diffPatch: 0, skill: 0, checkout: 0, other: 0 },
+    phases: {},
+  };
+}
+
+/** `true` when `p` (an absolute path) resolves to somewhere under `dir`. */
+function isUnder(p: string, dir: string): boolean {
+  if (!p || !dir) return false;
+  const rel = path.relative(dir, p);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+const INVESTIGATION_RE = /\b(grep|sed\s+-n|cat|head|tail)\b/;
+const GREP_RE = /\b(grep|rg)\b/;
+const SED_N_RE = /\bsed\s+-n\b/;
+const CLI_SUBCOMMAND_RE = /\b(set-analysis|set-unit)\b/;
+
+/**
+ * Folds one real (non-synthetic) tool call into the running metrics. `index`
+ * is the tool call's 1-based position — what `phases` reports.
+ */
+function recordTool(
+  metrics: AnalysisMetrics,
+  index: number,
+  name: string,
+  rawDetail: string,
+  ctx: { cliCmd: string; skillDir: string; prDir: string },
+): void {
+  metrics.toolCalls[name] = (metrics.toolCalls[name] ?? 0) + 1;
+  const phases = (metrics.phases ??= {});
+
+  if (name === "Bash") {
+    const cmd = rawDetail;
+    const isCli = cmd.startsWith(ctx.cliCmd);
+    // Past runs slice files.json with ad-hoc `python3 -c`/`cat` one-liners
+    // rather than the Read tool, so "touches the state dir" is the bucket that
+    // actually measures triage; such a call is never investigation.
+    const isState = !isCli && cmd.includes(ctx.prDir);
+    const isGrep = GREP_RE.test(cmd);
+    const isSed = SED_N_RE.test(cmd);
+    if (isCli) metrics.bash!.cli++;
+    if (isState) metrics.bash!.state++;
+    if (isGrep) metrics.bash!.grep++;
+    if (isSed) metrics.bash!.sed++;
+    if (!isCli && !isState && !isGrep && !isSed) metrics.bash!.other++;
+
+    if (!isCli && !isState && INVESTIGATION_RE.test(cmd) && phases.firstInvestigationAt === undefined) {
+      phases.firstInvestigationAt = index;
+    }
+    if (CLI_SUBCOMMAND_RE.test(cmd) && phases.setAnalysisAt === undefined) {
+      phases.setAnalysisAt = index;
+    }
+  } else if (name === "Read") {
+    const p = rawDetail;
+    const bucket: keyof AnalysisMetrics["reads"] & string = p.endsWith("files.json")
+      ? "filesJson"
+      : p.endsWith("diff.patch")
+        ? "diffPatch"
+        : isUnder(p, ctx.skillDir)
+          ? "skill"
+          : !isUnder(p, ctx.prDir)
+            ? "checkout"
+            : "other";
+    metrics.reads![bucket]++;
+  }
+
+  if ((name === "Write" || name === "Edit") && phases.firstWriteAt === undefined) {
+    phases.firstWriteAt = index;
+  }
 }
 
 /**
@@ -613,11 +693,19 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   });
   slot.run = run;
 
+  const metrics = emptyMetrics();
+  let toolIndex = 0;
+  const metricsCtx = { cliCmd: cliCommand(), skillDir: skillDir(), prDir: prDir(key, root) };
+
   let error: string | undefined;
   let ok = false;
   try {
     for await (const event of run.events) {
       if (event.type === "tool") {
+        if (event.name !== "result-error") {
+          toolIndex++;
+          recordTool(metrics, toolIndex, event.name, event.rawDetail ?? event.detail, metricsCtx);
+        }
         // Progress is cosmetic: if the record vanished under us, keep running.
         const latest = readJob(key, root);
         if (latest) {
@@ -627,6 +715,12 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
             root,
           );
         }
+      } else if (event.type === "result") {
+        metrics.turns = event.numTurns;
+        metrics.durationMs = event.durationMs;
+        metrics.apiMs = event.durationApiMs;
+        metrics.costUsd = event.costUsd;
+        metrics.usage = event.usage;
       } else if (event.type === "done") {
         ok = event.ok;
         error = event.error;
@@ -638,8 +732,15 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   }
 
   if (slot.cancelled) {
-    finish(key, root, revision, "cancelled");
+    finish(key, root, revision, "cancelled", undefined, metrics);
     return;
   }
-  finish(key, root, revision, ok ? "done" : "failed", ok ? undefined : (error ?? "unknown error"));
+  finish(
+    key,
+    root,
+    revision,
+    ok ? "done" : "failed",
+    ok ? undefined : (error ?? "unknown error"),
+    metrics,
+  );
 }

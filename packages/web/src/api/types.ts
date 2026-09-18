@@ -167,6 +167,28 @@ export interface PrState {
  */
 export type AnalysisJobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
 
+/** Where an analysis run's wall time went (see server's AnalysisMetricsSchema). */
+export interface AnalysisMetrics {
+  turns?: number;
+  durationMs?: number;
+  apiMs?: number;
+  costUsd?: number;
+  usage?: {
+    input?: number;
+    cacheCreation?: number;
+    cacheRead?: number;
+    output?: number;
+  };
+  toolCalls: Record<string, number>;
+  bash: { cli: number; state: number; grep: number; sed: number; other: number };
+  reads: { filesJson: number; diffPatch: number; skill: number; checkout: number; other: number };
+  phases?: {
+    firstInvestigationAt?: number;
+    firstWriteAt?: number;
+    setAnalysisAt?: number;
+  };
+}
+
 /** GET /api/prs/:key/analysis-job → `{ job }` (null when none was ever run). */
 export interface AnalysisJob {
   revision: number;
@@ -176,6 +198,7 @@ export interface AnalysisJob {
   error?: string;
   /** free-form one-liner the runner reports while working */
   progress?: string;
+  metrics?: AnalysisMetrics;
 }
 
 export const isJobLive = (job?: AnalysisJob | null): boolean =>

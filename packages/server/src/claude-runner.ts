@@ -55,7 +55,21 @@ export type ClaudeEvent =
   /** a complete assistant text block */
   | { type: "text"; text: string }
   /** Claude used a tool; `detail` is a short human-readable argument summary */
-  | { type: "tool"; name: string; detail: string }
+  | { type: "tool"; name: string; detail: string; rawDetail?: string }
+  /** the stream-json `result` line, error or not — timing/usage for metrics */
+  | {
+      type: "result";
+      numTurns?: number;
+      durationMs?: number;
+      durationApiMs?: number;
+      costUsd?: number;
+      usage?: {
+        input?: number;
+        cacheCreation?: number;
+        cacheRead?: number;
+        output?: number;
+      };
+    }
   /** terminal; always emitted exactly once, even on spawn failure */
   | { type: "done"; ok: boolean; error?: string; sessionId?: string };
 
@@ -336,10 +350,12 @@ export function translate(
       if (block.type === "text" && block.text) {
         out.push({ type: "text", text: block.text });
       } else if (block.type === "tool_use" && block.name) {
+        const raw = toolRawDetail(block.name, block.input ?? {});
         out.push({
           type: "tool",
           name: block.name,
-          detail: toolDetail(block.name, block.input ?? {}),
+          detail: raw.length > 200 ? raw.slice(0, 197) + "..." : raw,
+          rawDetail: raw,
         });
       }
     }
@@ -354,14 +370,39 @@ export function translate(
       const detail = errors.join("; ") || String(raw.subtype ?? "error");
       out.push({ type: "tool", name: "result-error", detail });
     }
+    out.push(translateResult(raw));
     return out;
   }
 
   return out;
 }
 
+const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+
+/** The `result` line's timing/cost/usage fields, every one of them optional. */
+function translateResult(raw: Record<string, unknown>): ClaudeEvent {
+  const usageRaw = raw.usage as Record<string, unknown> | undefined;
+  const usage =
+    usageRaw && typeof usageRaw === "object"
+      ? {
+          input: num(usageRaw.input_tokens),
+          cacheCreation: num(usageRaw.cache_creation_input_tokens),
+          cacheRead: num(usageRaw.cache_read_input_tokens),
+          output: num(usageRaw.output_tokens),
+        }
+      : undefined;
+  return {
+    type: "result",
+    numTurns: num(raw.num_turns),
+    durationMs: num(raw.duration_ms),
+    durationApiMs: num(raw.duration_api_ms),
+    costUsd: num(raw.total_cost_usd),
+    usage,
+  };
+}
+
 /** A one-line, non-sensitive summary of a tool call for the activity feed. */
-function toolDetail(name: string, input: Record<string, unknown>): string {
+function toolRawDetail(name: string, input: Record<string, unknown>): string {
   const pick = (...keys: string[]) => {
     for (const k of keys) {
       const v = input[k];
@@ -369,9 +410,7 @@ function toolDetail(name: string, input: Record<string, unknown>): string {
     }
     return "";
   };
-  const value =
-    name === "Bash"
-      ? pick("command")
-      : pick("file_path", "path", "pattern", "query", "url", "prompt");
-  return value.length > 200 ? value.slice(0, 197) + "..." : value;
+  return name === "Bash"
+    ? pick("command")
+    : pick("file_path", "path", "pattern", "query", "url", "prompt");
 }

@@ -34,6 +34,19 @@ export function scriptedRun(opts: {
   text?: string;
   tools?: { name: string; input: Record<string, unknown> }[];
   isError?: boolean;
+  /** stream-json `result` line fields — timing/cost/usage for metrics tests */
+  result?: {
+    numTurns?: number;
+    durationMs?: number;
+    durationApiMs?: number;
+    costUsd?: number;
+    usage?: {
+      inputTokens?: number;
+      cacheCreationInputTokens?: number;
+      cacheReadInputTokens?: number;
+      outputTokens?: number;
+    };
+  };
 } = {}): Record<string, unknown>[] {
   const sessionId = opts.sessionId ?? "11111111-2222-3333-4444-555555555555";
   const lines: Record<string, unknown>[] = [
@@ -53,11 +66,26 @@ export function scriptedRun(opts: {
       message: { content: [{ type: "text", text: opts.text }] },
     });
   }
+  const r = opts.result;
   lines.push({
     type: "result",
     subtype: opts.isError ? "error_during_execution" : "success",
     is_error: !!opts.isError,
     session_id: sessionId,
+    ...(r?.numTurns !== undefined ? { num_turns: r.numTurns } : {}),
+    ...(r?.durationMs !== undefined ? { duration_ms: r.durationMs } : {}),
+    ...(r?.durationApiMs !== undefined ? { duration_api_ms: r.durationApiMs } : {}),
+    ...(r?.costUsd !== undefined ? { total_cost_usd: r.costUsd } : {}),
+    ...(r?.usage
+      ? {
+          usage: {
+            input_tokens: r.usage.inputTokens,
+            cache_creation_input_tokens: r.usage.cacheCreationInputTokens,
+            cache_read_input_tokens: r.usage.cacheReadInputTokens,
+            output_tokens: r.usage.outputTokens,
+          },
+        }
+      : {}),
   });
   return lines;
 }

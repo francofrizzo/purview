@@ -7,7 +7,7 @@
  * units simply appear when it finishes.
  */
 
-import type { AnalysisJob } from "../api/types";
+import type { AnalysisJob, AnalysisMetrics } from "../api/types";
 import { IconRefresh, IconSpinner } from "./icons";
 
 const STATUS_TEXT: Record<AnalysisJob["status"], string> = {
@@ -31,9 +31,34 @@ function toneFor(status: AnalysisJob["status"]): { fg: string; bg: string } {
   }
 }
 
-/** List-row chip. Rendered only for a job that is not a plain success. */
+/** "7.4 min · 62 turns · $1.83 · reads 4 / bash 31"; null when nothing to show. */
+function formatMetricsLine(metrics: AnalysisMetrics): string | null {
+  const parts: string[] = [];
+  if (metrics.durationMs !== undefined) parts.push(`${(metrics.durationMs / 60_000).toFixed(1)} min`);
+  if (metrics.turns !== undefined) parts.push(`${metrics.turns} turns`);
+  if (metrics.costUsd !== undefined) parts.push(`$${metrics.costUsd.toFixed(2)}`);
+  const reads = metrics.toolCalls.Read ?? 0;
+  const bash = metrics.toolCalls.Bash ?? 0;
+  if (reads || bash) parts.push(`reads ${reads} / bash ${bash}`);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+/** List-row chip. A finished job with metrics gets a quiet summary line instead. */
 export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
-  if (!job || job.status === "done") return null;
+  if (!job) return null;
+  if (job.status === "done") {
+    const line = job.metrics ? formatMetricsLine(job.metrics) : null;
+    if (!line) return null;
+    return (
+      <span
+        className="flex-none whitespace-nowrap text-2xs"
+        data-testid="analysis-metrics"
+        style={{ color: "var(--fg-faint)" }}
+      >
+        {line}
+      </span>
+    );
+  }
   const tone = toneFor(job.status);
   const live = job.status === "queued" || job.status === "running";
   return (

@@ -319,6 +319,74 @@ describe("analysis job lifecycle", () => {
     expect(claude.promptOf(0)).toContain("set-unit");
   });
 
+  it("accumulates tool/result events into job.metrics and carries them on analysis-finished", async () => {
+    buildFixture(root);
+    claude.restore();
+    const cliCmd = `${process.execPath} ${process.env.REVIEWER_CLI_PATH}`;
+    const filesJsonPath = path.join(
+      root,
+      key.host,
+      key.owner,
+      key.repo,
+      String(key.number),
+      "revisions",
+      "1",
+      "files.json",
+    );
+    claude = fakeClaude({
+      lines: scriptedRun({
+        tools: [
+          { name: "Read", input: { file_path: filesJsonPath } },
+          // A slice of files.json via Bash is triage, not investigation.
+          { name: "Bash", input: { command: `cat ${filesJsonPath} | head -50` } },
+          { name: "Bash", input: { command: "grep -n foo /some/path.ts" } },
+          { name: "Bash", input: { command: "sed -n '1,20p' /some/path.ts" } },
+          { name: "Write", input: { file_path: "/scratch/analysis.json" } },
+          { name: "Bash", input: { command: `${cliCmd} set-analysis owner/repo/1 --file x.json` } },
+        ],
+        result: {
+          numTurns: 7,
+          durationMs: 120_000,
+          durationApiMs: 90_000,
+          costUsd: 1.23,
+          usage: {
+            inputTokens: 1000,
+            cacheCreationInputTokens: 200,
+            cacheReadInputTokens: 5000,
+            outputTokens: 300,
+          },
+        },
+      }),
+    });
+    claude.install();
+
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+
+    const job = readJob(key, root)!;
+    expect(job.status).toBe("done");
+    expect(job.metrics).toBeDefined();
+    const m = job.metrics!;
+    expect(m.turns).toBe(7);
+    expect(m.durationMs).toBe(120_000);
+    expect(m.apiMs).toBe(90_000);
+    expect(m.costUsd).toBe(1.23);
+    expect(m.usage).toEqual({ input: 1000, cacheCreation: 200, cacheRead: 5000, output: 300 });
+    expect(m.toolCalls).toMatchObject({ Read: 1, Bash: 4, Write: 1 });
+    expect(m.reads.filesJson).toBe(1);
+    expect(m.bash.state).toBe(1);
+    expect(m.bash.grep).toBe(1);
+    expect(m.bash.sed).toBe(1);
+    expect(m.bash.cli).toBe(1);
+    expect(m.bash.other).toBe(0);
+    expect(m.phases?.firstInvestigationAt).toBe(3); // the `grep` call, 1-based; the cat of files.json is not
+    expect(m.phases?.firstWriteAt).toBe(5); // the `Write` call
+    expect(m.phases?.setAnalysisAt).toBe(6); // the `set-analysis` Bash call
+
+    const finished = readEvents(key, root).filter((e) => e.type === "analysis-finished");
+    expect(finished.at(-1)).toMatchObject({ status: "done", metrics: { turns: 7, costUsd: 1.23 } });
+  });
+
   it("omits --effort entirely when repo.json pins the 'none' escape hatch", async () => {
     buildFixture(root);
     writeRepoConfig(
