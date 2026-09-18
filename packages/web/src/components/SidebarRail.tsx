@@ -47,6 +47,14 @@ export function SidebarRail({
             const number = i + 1;
             const p = unitProgress(detail, u);
             const done = p.total > 0 && p.viewed === p.total;
+            // A unit mid-review gets a circular progress ring instead of a
+            // flat tint — a hunk-count-shaped clock face, in the same hue as
+            // the number. Nothing to show it for: an empty unit (no ring, its
+            // flat tint is not a completion state — see `done` above) or a
+            // finished one (recedes to flat + faint instead, its job is done).
+            const showRing = p.total > 0 && !done;
+            const pct = p.total > 0 ? p.viewed / p.total : 0;
+            const fill = attentionColor(u.attention);
             const selected = u.id === selectedUnitId;
             const label = `${number}. ${u.title} — ${p.viewed}/${p.total} hunks`;
             return (
@@ -58,8 +66,19 @@ export function SidebarRail({
                 aria-label={label}
                 className="sidebar-rail-item relative flex flex-none items-center justify-center rounded font-mono text-2xs tabular-nums"
                 style={{
-                  background: done ? "transparent" : attentionSoftBg(u.attention),
-                  color: done ? "var(--fg-faint)" : attentionColor(u.attention),
+                  background: showRing
+                    ? // Two layers: a solid disc (the rail's own background
+                      // colour, so it reads as a punched-out hole rather than
+                      // a second colour) leaving a thin rim, over a conic
+                      // gradient clock-facing the viewed fraction. `closest-side`
+                      // ties both to the button's own box, so this tracks the
+                      // 1.75rem/2.25rem size swap under a coarse pointer for free.
+                      `radial-gradient(circle closest-side, var(--bg-raised) calc(100% - 3px), transparent calc(100% - 3px)), ` +
+                      `conic-gradient(${fill} ${pct * 360}deg, var(--border-strong) 0)`
+                    : done
+                      ? "transparent"
+                      : attentionSoftBg(u.attention),
+                  color: done ? "var(--fg-faint)" : fill,
                   boxShadow: selected ? "0 0 0 2px var(--accent)" : "none",
                 }}
               >
