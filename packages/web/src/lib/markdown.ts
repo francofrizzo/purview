@@ -1,7 +1,7 @@
 /**
  * A small markdown subset, enough for assistant replies: paragraphs, ATX
  * headings, fenced code, blockquotes, bullet/ordered lists, thematic breaks,
- * and inline code / emphasis / links.
+ * pipe tables, and inline code / emphasis / links.
  *
  * It is written for *streaming*: the source is re-parsed on every delta, and a
  * fence that has not been closed yet still yields a code block (marked `open`)
@@ -15,7 +15,10 @@ export type MdBlock =
   | { type: "code"; lang: string | null; code: string; open: boolean }
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "quote"; text: string }
-  | { type: "hr" };
+  | { type: "hr" }
+  | { type: "table"; align: TableAlign[]; header: string[]; rows: string[][] };
+
+export type TableAlign = "left" | "center" | "right" | null;
 
 const FENCE = /^\s{0,3}(`{3,}|~{3,})\s*([\w+#.-]*)\s*$/;
 const HEADING = /^\s{0,3}(#{1,6})\s+(.*)$/;
@@ -23,6 +26,38 @@ const BULLET = /^\s{0,3}[-*+]\s+(.*)$/;
 const ORDERED = /^\s{0,3}(\d{1,9})[.)]\s+(.*)$/;
 const QUOTE = /^\s{0,3}>\s?(.*)$/;
 const HR = /^\s{0,3}([-*_])(\s*\1){2,}\s*$/;
+/** The `| --- | :-: |` row under a table header; every cell is dashes with optional colons. */
+const TABLE_SEP = /^\s{0,3}\|?(\s*:?-+:?\s*\|)*\s*:?-+:?\s*\|?\s*$/;
+
+/** Split a table row into trimmed cells; `\|` inside a cell stays a literal pipe. */
+function splitTableRow(line: string): string[] {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|") && !s.endsWith("\\|")) s = s.slice(0, -1);
+  return s
+    .split(/(?<!\\)\|/)
+    .map((cell) => cell.replace(/\\\|/g, "|").trim());
+}
+
+/** A header row is only a table once its separator row has arrived — until
+ *  then (mid-stream) it is a paragraph, which is the right thing to show. */
+function isTableStart(lines: string[], i: number): boolean {
+  const header = lines[i];
+  const sep = lines[i + 1];
+  if (!header || !sep || !header.includes("|") || !TABLE_SEP.test(sep) || !sep.includes("|")) {
+    return false;
+  }
+  return splitTableRow(sep).length === splitTableRow(header).length;
+}
+
+function tableAlign(cell: string): TableAlign {
+  const left = cell.startsWith(":");
+  const right = cell.endsWith(":");
+  if (left && right) return "center";
+  if (right) return "right";
+  if (left) return "left";
+  return null;
+}
 
 export function parseMarkdown(src: string): MdBlock[] {
   const lines = src.replace(/\r\n?/g, "\n").split("\n");
@@ -113,6 +148,30 @@ export function parseMarkdown(src: string): MdBlock[] {
       continue;
     }
 
+    if (isTableStart(lines, i)) {
+      const header = splitTableRow(lines[i]);
+      const align = splitTableRow(lines[i + 1]).map(tableAlign);
+      const rows: string[][] = [];
+      i += 2;
+      // The body runs until a blank line or another block; ragged rows are
+      // squared to the header so the renderer never sees a jagged grid.
+      while (
+        i < lines.length &&
+        lines[i].trim() &&
+        lines[i].includes("|") &&
+        !FENCE.test(lines[i]) &&
+        !HEADING.test(lines[i]) &&
+        !HR.test(lines[i])
+      ) {
+        const cells = splitTableRow(lines[i]).slice(0, header.length);
+        while (cells.length < header.length) cells.push("");
+        rows.push(cells);
+        i++;
+      }
+      blocks.push({ type: "table", align, header, rows });
+      continue;
+    }
+
     const para: string[] = [line.trim()];
     i++;
     while (i < lines.length) {
@@ -124,7 +183,8 @@ export function parseMarkdown(src: string): MdBlock[] {
         BULLET.test(next) ||
         ORDERED.test(next) ||
         QUOTE.test(next) ||
-        HR.test(next)
+        HR.test(next) ||
+        isTableStart(lines, i)
       ) {
         break;
       }

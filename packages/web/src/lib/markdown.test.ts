@@ -44,6 +44,56 @@ describe("parseMarkdown", () => {
   });
 });
 
+describe("parseMarkdown tables", () => {
+  it("parses a pipe table with per-column alignment", () => {
+    const src = "| flow | before | after |\n| :-- | :-: | --: |\n| login | 3 | 1 |\n| logout | 2 | 2 |";
+    expect(parseMarkdown(src)).toEqual([
+      {
+        type: "table",
+        align: ["left", "center", "right"],
+        header: ["flow", "before", "after"],
+        rows: [
+          ["login", "3", "1"],
+          ["logout", "2", "2"],
+        ],
+      },
+    ]);
+  });
+
+  it("accepts rows without outer pipes and squares ragged rows to the header", () => {
+    const src = "a | b | c\n--- | --- | ---\n1 | 2\n1 | 2 | 3 | 4";
+    expect(parseMarkdown(src)).toEqual([
+      {
+        type: "table",
+        align: [null, null, null],
+        header: ["a", "b", "c"],
+        rows: [
+          ["1", "2", ""],
+          ["1", "2", "3"],
+        ],
+      },
+    ]);
+  });
+
+  it("keeps an escaped pipe inside a cell", () => {
+    const [block] = parseMarkdown("| expr | value |\n| --- | --- |\n| `a \\| b` | or |");
+    expect(block).toMatchObject({ type: "table", rows: [["`a | b`", "or"]] });
+  });
+
+  it("is still a paragraph while the separator row has not arrived", () => {
+    expect(parseMarkdown("| flow | before |")).toEqual([
+      { type: "paragraph", text: "| flow | before |" },
+    ]);
+  });
+
+  it("ends at a blank line and lets prose follow", () => {
+    expect(parseMarkdown("| a |\n| - |\n| 1 |\n\nafter")).toEqual([
+      { type: "table", align: [null], header: ["a"], rows: [["1"]] },
+      { type: "paragraph", text: "after" },
+    ]);
+  });
+});
+
 describe("parseInline", () => {
   it("keeps code spans literal, including markup inside them", () => {
     expect(parseInline("call `a *b* c` now")).toEqual([

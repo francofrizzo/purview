@@ -294,6 +294,7 @@ export function chatSystemPrompt(
     "  - a directory's responsibilities: a shallow file tree with one comment per entry",
     "  - interaction, sequencing or data flow between parts: a ```mermaid fence (mermaid fences render as diagrams in this chat)",
     "  - how a shape changes: a ```diff block over that same shape (component tree, call stack, file tree, state flow) rather than prose describing the change",
+    "  - comparing options, cases or before/after values field by field: a markdown pipe table (tables render in this chat)",
     "- Keep the visual small: only the calls, files, props or states that bear on the current question, not the whole tree.",
     "- Place each visual right next to the sentence or two it supports, not bundled at the end of the reply.",
     "- Keep the surrounding prose brief — the visual carries the shape, the text carries the judgment.",

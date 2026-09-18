@@ -207,6 +207,51 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
             ) : (
               <CodeBlock key={i} code={block.code} lang={block.lang} />
             );
+          case "table":
+            return (
+              <div key={i} className="my-1.5 overflow-x-auto">
+                <table
+                  className="w-full border-collapse text-xs tabular-nums"
+                  style={{ border: "1px solid var(--border)" }}
+                >
+                  <thead>
+                    <tr style={{ background: "var(--bg-raised)" }}>
+                      {block.header.map((cell, c) => (
+                        <th
+                          key={c}
+                          className="px-2 py-1 font-semibold"
+                          style={{
+                            color: "var(--fg)",
+                            border: "1px solid var(--border)",
+                            textAlign: block.align[c] ?? "left",
+                          }}
+                        >
+                          <Inline nodes={parseInline(cell)} />
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {block.rows.map((row, r) => (
+                      <tr key={r}>
+                        {row.map((cell, c) => (
+                          <td
+                            key={c}
+                            className="px-2 py-1 align-top"
+                            style={{
+                              border: "1px solid var(--border)",
+                              textAlign: block.align[c] ?? "left",
+                            }}
+                          >
+                            <Inline nodes={parseInline(cell)} />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
           case "heading":
             return (
               <div
