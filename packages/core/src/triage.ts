@@ -1,0 +1,197 @@
+import { detectMoves, summarizeMoves, type MoveFile } from "./move-detection.js";
+import type { FileDiff, FilesJson, Hunk } from "./schemas.js";
+
+/**
+ * `revisions/<n>/triage.txt` — a compact, one-turn overview of a revision's
+ * diff: one line per file, one line per hunk. Built to be read whole even for
+ * a 450-hunk PR, so a headless analysis run no longer has to re-slice
+ * `files.json` with ad-hoc `python3 -c` / `node -e` / `jq` one-liners just to
+ * see what's there. Hints are mechanical facts derived from the path/text
+ * alone — never a guessed kind or attention, which stays the model's job.
+ */
+
+const HEADER_MAX = 60;
+
+const LOCK_FILES = new Set([
+  "pnpm-lock.yaml",
+  "package-lock.json",
+  "yarn.lock",
+  "go.sum",
+  "Cargo.lock",
+  "poetry.lock",
+  "Gemfile.lock",
+  "composer.lock",
+]);
+
+const GEN_PATH_RE = /(\.pb\.go$|_generated\.|\.gen\.|\/generated\/|\.sql\.go$|\/sqlc\/|__generated__|\.d\.ts$.*\/dist\/)/;
+const GEN_TEXT_RE = /(Code generated|DO NOT EDIT|@generated)/;
+const DOCS_PATH_RE = /(\.mdx?$|\.rst$|\.txt$|(^|\/)docs\/)/i;
+const TESTS_PATH_RE = /(_test\.go$|\.test\.|\.spec\.|(^|\/)__tests__\/|(^|\/)testdata\/|(^|\/)tests\/|(^|\/)fixtures\/)/;
+const SNAP_PATH_RE = /((^|\/)__snapshots__\/|\.snap$|(^|\/)golden\/)/;
+const MIG_PATH_RE = /((^|\/)migrations\/.*\.sql$|(^|\/)migrations\/)/;
+
+function isLockFile(p: string): boolean {
+  const base = p.split("/").pop() ?? p;
+  return LOCK_FILES.has(base);
+}
+
+/** File-level hints, mechanical facts only, in the fixed order the doc shows. */
+function fileHints(file: FileDiff): string[] {
+  const hints: string[] = [];
+  const p = file.path;
+  if (isLockFile(p)) hints.push("lock");
+  if (GEN_PATH_RE.test(p)) hints.push("gen");
+  if (DOCS_PATH_RE.test(p)) hints.push("docs");
+  if (TESTS_PATH_RE.test(p)) hints.push("tests");
+  if (SNAP_PATH_RE.test(p)) hints.push("snap");
+  if (MIG_PATH_RE.test(p)) hints.push("mig");
+  return hints;
+}
+
+/** Per-hunk `gen` hint derived from hunk text, additive to any file-level hint. */
+function hunkGenHint(hunk: Hunk): boolean {
+  return GEN_TEXT_RE.test(hunk.text);
+}
+
+function truncateHeader(header: string): string {
+  const h = header.trim();
+  if (h.length <= HEADER_MAX) return h;
+  return h.slice(0, HEADER_MAX - 1) + "…";
+}
+
+/** `+a -r` size shape for a hunk. */
+function hunkSize(hunk: Hunk): string {
+  return `+${hunk.addedLines.length} -${hunk.removedLines.length}`;
+}
+
+function moveHint(
+  movedIn: Set<number>,
+  movedOut: Set<number>,
+  addedTotal: number,
+  removedTotal: number,
+  inSources: { path: string }[],
+  outTargets: { path: string }[],
+): string {
+  const parts: string[] = [];
+  if (movedIn.size > 0) {
+    const count =
+      movedIn.size === addedTotal && addedTotal > 0
+        ? `${movedIn.size}/${addedTotal}`
+        : `${movedIn.size} lines`;
+    const uniquePaths = [...new Set(inSources.map((s) => s.path))];
+    const from = uniquePaths.length === 1 ? uniquePaths[0] : `${uniquePaths.length} files`;
+    parts.push(`mv-in ${count} from ${from}`);
+  }
+  if (movedOut.size > 0) {
+    const count =
+      movedOut.size === removedTotal && removedTotal > 0
+        ? `${movedOut.size}/${removedTotal}`
+        : `${movedOut.size} lines`;
+    const uniquePaths = [...new Set(outTargets.map((s) => s.path))];
+    const to = uniquePaths.length === 1 ? uniquePaths[0] : `${uniquePaths.length} files`;
+    parts.push(`mv-out ${count} to ${to}`);
+  }
+  return parts.join("  ");
+}
+
+export interface RenderTriageOptions {
+  /** The exact CLI invocation to show on the `bodies:` line, e.g. `node
+   *  packages/core/dist/cli.js`. Defaults to a generic placeholder. */
+  cliCommand?: string;
+  /** The PR key to show on the `bodies:` line in place of `<key>`. */
+  key?: string;
+}
+
+/** Compact plain-text overview of one revision's diff. See module doc above. */
+export function renderTriage(filesJson: FilesJson, opts: RenderTriageOptions = {}): string {
+  const cmd = opts.cliCommand ?? "reviewer-state";
+  const keyPlaceholder = opts.key ?? "<key>";
+  const files = filesJson.files;
+
+  const moveFiles: MoveFile[] = files.map((f) => ({
+    path: f.path,
+    hunks: f.hunks.map((h) => ({ id: h.id, addedLines: h.addedLines, removedLines: h.removedLines })),
+  }));
+  const moves = detectMoves(moveFiles);
+
+  const totalHunks = files.reduce((n, f) => n + f.hunks.length, 0);
+  const totalAdded = files.reduce(
+    (n, f) => n + f.hunks.reduce((m, h) => m + h.addedLines.length, 0),
+    0,
+  );
+  const totalRemoved = files.reduce(
+    (n, f) => n + f.hunks.reduce((m, h) => m + h.removedLines.length, 0),
+    0,
+  );
+
+  const out: string[] = [];
+  out.push(
+    `revision ${filesJson.revision}   ${files.length} files   ${totalHunks} hunks   ` +
+      `+${totalAdded} -${totalRemoved}`,
+  );
+  out.push(
+    "hints: lock=lockfile  gen=generated  docs  tests  snap=snapshot/fixture  " +
+      "mig=db migration  mv-in/mv-out=moved code (see MOVED)",
+  );
+  out.push(
+    `bodies: ${cmd} show ${keyPlaceholder} <hunk-id|path|glob>...   (one call, several selectors)`,
+  );
+  out.push("");
+
+  for (const file of files) {
+    const hints = fileHints(file);
+    const hintSuffix = hints.length > 0 ? "   " + hints.join(" ") : "";
+    const nameLine = file.oldPath && file.oldPath !== file.path
+      ? `${file.oldPath} -> ${file.path}`
+      : file.path;
+
+    if (file.binary) {
+      out.push(`${nameLine}   ${file.status}   binary${hintSuffix}`);
+      continue;
+    }
+
+    const added = file.hunks.reduce((n, h) => n + h.addedLines.length, 0);
+    const removed = file.hunks.reduce((n, h) => n + h.removedLines.length, 0);
+    out.push(
+      `${nameLine}   ${file.status}   ${file.hunks.length} hunk${file.hunks.length === 1 ? "" : "s"}   ` +
+        `+${added} -${removed}${hintSuffix}`,
+    );
+
+    for (const hunk of file.hunks) {
+      const m = moves.get(hunk.id);
+      const genHint = hunkGenHint(hunk) && !hints.includes("gen") ? "gen" : "";
+      const inSources = (m?.counterparts ?? []).filter((c) => c.direction === "in");
+      const outTargets = (m?.counterparts ?? []).filter((c) => c.direction === "out");
+      const mv = m
+        ? moveHint(
+            m.movedIn,
+            m.movedOut,
+            hunk.addedLines.length,
+            hunk.removedLines.length,
+            inSources,
+            outTargets,
+          )
+        : "";
+      const extras = [genHint, mv].filter((s) => s !== "").join("   ");
+      out.push(
+        `  ${hunk.id}   ${hunkSize(hunk)}   @@ ${truncateHeader(hunk.header)}${
+          extras ? "   " + extras : ""
+        }`,
+      );
+    }
+  }
+
+  // A second, cheap pass over the same move data (summarizeMoves runs its own
+  // detectMoves internally) — simplest way to keep the MOVED section's
+  // aggregation identical to what analysis.ts's movedNote prints.
+  const pairs = summarizeMoves(moveFiles);
+  if (pairs.length > 0) {
+    out.push("");
+    out.push("MOVED");
+    for (const p of pairs) {
+      out.push(`  ~${p.lines} lines moved: ${p.fromPath} -> ${p.toPath}`);
+    }
+  }
+
+  return out.join("\n") + "\n";
+}

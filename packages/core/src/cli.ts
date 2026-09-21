@@ -11,9 +11,11 @@ import {
   setUnitViewed,
   syncPr,
 } from "./service.js";
-import { loadState, prExists, readMigrationReport, listPrs } from "./store.js";
+import { loadState, prExists, readFilesJson, readMigrationReport, listPrs } from "./store.js";
 import { migrateStateDirOnStartup } from "./state-dir.js";
 import { formatReport } from "./report.js";
+import { renderTriage } from "./triage.js";
+import { allSelectedHunks, selectHunks, type SelectedHunk } from "./hunk-select.js";
 
 // The state dir was renamed `~/.reviewer` -> `~/.purview`; whichever entry
 // point runs first does the one-time move. Logged on stderr so `--json` output
@@ -22,6 +24,26 @@ migrateStateDirOnStartup({
   info: (s) => console.error(s),
   warn: (s) => console.error(s),
 });
+
+/** This CLI's own real invocation, for the triage view's `bodies:` line. */
+function selfCliCommand(): string {
+  return `${process.execPath} ${process.argv[1]}`;
+}
+
+function resolveRevision(state: { currentRevision: number }, rev?: string): number {
+  if (rev === undefined) return state.currentRevision;
+  const n = Number(rev);
+  if (!Number.isInteger(n)) throw new Error(`Invalid --rev "${rev}"`);
+  return n;
+}
+
+function printHunk(sh: SelectedHunk): void {
+  console.log(
+    `=== ${sh.file.path}   ${sh.hunk.id}   +${sh.hunk.addedLines.length} -${sh.hunk.removedLines.length}   @@${sh.hunk.header}@@`,
+  );
+  console.log(sh.hunk.text);
+  console.log("");
+}
 
 function readJsonFile(file: string): unknown {
   if (file === "-") return JSON.parse(fs.readFileSync(0, "utf8"));
@@ -101,6 +123,53 @@ program
     console.log(
       formatReport(state, readMigrationReport(key, state.currentRevision)),
     );
+  });
+
+program
+  .command("triage")
+  .argument("<key>")
+  .option("--rev <n>", "revision to render (defaults to the current one)")
+  .description("one-turn overview of a revision's files/hunks (path, hunk ids, headers, sizes, hints)")
+  .action((keyArg: string, opts: { rev?: string }) => {
+    const key = requireExistingKey(keyArg);
+    const state = loadState(key);
+    const revision = resolveRevision(state, opts.rev);
+    const filesJson = readFilesJson(key, revision);
+    process.stdout.write(
+      renderTriage(filesJson, { cliCommand: selfCliCommand(), key: keyToString(key) }),
+    );
+  });
+
+program
+  .command("show")
+  .argument("<key>")
+  .argument("[selectors...]", "hunk id (exact or unique prefix >=6 chars), file path, or glob")
+  .option("--rev <n>", "revision to read from (defaults to the current one)")
+  .option("--all", "print every hunk of the revision, ignoring selectors")
+  .description("print full hunk bodies for the given selectors")
+  .action((keyArg: string, selectors: string[], opts: { rev?: string; all?: boolean }) => {
+    const key = requireExistingKey(keyArg);
+    const state = loadState(key);
+    const revision = resolveRevision(state, opts.rev);
+    const filesJson = readFilesJson(key, revision);
+
+    if (!opts.all && selectors.length === 0) {
+      throw new Error("Pass at least one selector, or --all to print every hunk.");
+    }
+
+    const { hunks, unknown } = opts.all
+      ? { hunks: allSelectedHunks(filesJson), unknown: [] as string[] }
+      : selectHunks(filesJson, selectors);
+
+    for (const sh of hunks) printHunk(sh);
+
+    const files = new Set(hunks.map((sh) => sh.file.path));
+    console.log(`-- ${hunks.length} hunks, ${files.size} files`);
+
+    if (unknown.length > 0) {
+      console.error(`error: unknown selector(s): ${unknown.join(", ")}`);
+      process.exitCode = 1;
+    }
   });
 
 program

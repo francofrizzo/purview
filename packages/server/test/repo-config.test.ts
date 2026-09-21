@@ -598,6 +598,14 @@ describe("chat instructions layering", () => {
     expect(withNothing).not.toContain("CHAT INSTRUCTIONS");
     expect(withNothing).not.toContain("REVIEW RUBRIC");
   });
+
+  it("points the chat prompt's 'Reading more' block at the triage and show commands", () => {
+    ghFor();
+    const prompt = chatSystemPrompt(key, root);
+    expect(prompt).toContain(`triage ${keyToString(key)}\``);
+    expect(prompt).toContain("triage overview (read this first)");
+    expect(prompt).toContain(`show ${keyToString(key)} <hunk-id|path|glob>...`);
+  });
 });
 
 /* --------------------------------------------------- init / refresh capture */

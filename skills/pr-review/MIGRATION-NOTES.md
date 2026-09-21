@@ -45,10 +45,13 @@ first three as "carried".
    counts + per-hunk list for everything except `identical`). The same report is on disk at
    `revisions/<n>/migration.json`, and `reviewer-state report <key>` reprints the current
    revision's one plus a "Needs classification" list.
-2. Classify **only** hunks marked `new` or left unassigned. Do not re-examine or
-   reclassify carried/fuzzy/renamed hunks — their unit membership and attention already
-   reflect prior human review context (including any `classification-corrected` events),
-   and re-deriving them from scratch risks contradicting that history.
+2. `reviewer-state report <key>`'s "Needs classification" list is exactly the `new`/
+   unassigned hunk ids. Fetch every one of their bodies with a **single**
+   `reviewer-state show <key> <id1> <id2> ...` call, then classify only those hunks. Do
+   not re-examine or reclassify carried/fuzzy/renamed hunks — their unit membership and
+   attention already reflect prior human review context (including any
+   `classification-corrected` events), and re-deriving them from scratch risks
+   contradicting that history.
 3. Patch only the units affected by new hunks, via
    `reviewer-state set-unit <key> --id <unitId> --file patch.json` (unit id is the `--id`
    flag or an `id` field in the JSON; write patch.json with the Write tool into the scratch

@@ -34,8 +34,8 @@ State lives under `~/.purview/` unless `PURVIEW_STATE_DIR` (or the legacy `REVIE
 set in your environment, the state root is that directory instead, and all paths below are
 relative to it.
 
-Subcommands that exist: `init`, `refresh`, `report`, `set-analysis`, `set-unit`, `view`,
-`sync`, `list`. There are no others.
+Subcommands that exist: `init`, `refresh`, `report`, `triage`, `show`, `set-analysis`,
+`set-unit`, `view`, `sync`, `list`. There are no others.
 
 ## 1. Determine state: init, refresh, or report
 
@@ -64,17 +64,39 @@ number: it's printed by `init`/`refresh`, appears in the `report` header line
 
 ## 2. Read the diff
 
-Read `revisions/<current>/files.json`. It is `{revision, baseSha, headSha, mergeBase,
-files[]}`, where each file is `{path, oldPath?, status, binary, hunks[]}` and each hunk is
-`{id, file, oldStart, oldLines, newStart, newLines, header, addedLines, removedLines,
-text}`.
+Run `reviewer-state triage <key>` first, in one Bash call. It prints a compact plain-text
+overview built for exactly this: one line per file (path, status, hunk
+count, +/- size, mechanical hints), one line per hunk (id, +/- size, truncated `@@` header,
+moved-code marks), and a trailing `MOVED` section — readable whole even for a 450-hunk PR.
+It ends with a `bodies:` line showing you the exact `show` invocation to fetch full hunk
+text. This is Pass 1's raw material (see step 3). (`init`/`refresh` also save a copy as
+`revisions/<n>/triage.txt`, but PRs initialized before that existed have none, and the
+saved copy's `bodies:` line can't know your CLI path — prefer the command.)
 
-Note `addedLines`, `removedLines` and `text` — `text` is the full hunk body (context,
-`+` and `-` lines, without the `@@` header) exactly as GitHub served it. **The diff
-content is already in files.json**, so both passes can work from it alone; `addedLines` /
-`removedLines` also give you the size shape for free. Read
-`revisions/<current>/diff.patch` (the raw unified diff) only when you need file-level
-headers (mode/rename/binary markers) or want to see several hunks in file order.
+When you need a hunk's full body (added/removed lines, complete text), fetch it with:
+
+```
+reviewer-state show <key> <selector...>
+```
+
+A selector is a hunk id (exact, or a unique prefix of 6+ chars — triage's ids are
+already unique-prefix-friendly), an exact file path, or a `*`/`**` glob over file paths.
+Pass every selector you need in **one call** — `show` is built to take many at once, so
+batch Pass 2's whole selection into a single invocation rather than one hunk per call. Add
+`--all` to dump every hunk of the revision when you genuinely need all of them.
+
+**Never parse `files.json` or `diff.patch` with `python3 -c`, `node -e`, `jq`, or any other
+ad-hoc one-liner.** `triage` and `show` already expose every field those hacks were
+reaching for (path, status, hunk ids, headers, +/- sizes, full added/removed text, moved
+marks) in one call each — reslicing the JSON
+yourself is strictly more turns for the same information.
+
+`files.json` (`{revision, baseSha, headSha, mergeBase, files[]}`, each file
+`{path, oldPath?, status, binary, hunks[]}`, each hunk `{id, file, oldStart, oldLines,
+newStart, newLines, header, addedLines, removedLines, text}`) is still the machine format
+underneath `triage`/`show` and what `set-analysis`/`set-unit` validate hunk ids
+against — but it is not the thing to read directly. Read `revisions/<current>/diff.patch`
+(the raw unified diff) only when you need file-level headers (mode/rename/binary markers).
 
 ## Batching (applies to every investigation step below — 3, 5 and 8)
 
@@ -104,8 +126,9 @@ Rules:
     ```
 - **Group by file, not by unit.** When several units need checks in the same file (or the
   same symbol set), do them together in one pass instead of revisiting the file per unit.
-- **Exploratory paging of `diff.patch` is a smell.** The full hunk text is already in
-  `files.json` — read it from there instead of re-slicing the patch. Go to `diff.patch`
+- **Exploratory paging of `diff.patch` (or `files.json`) is a smell.** The full hunk text
+  is one `reviewer-state show <key> <selectors>` call away — batch every hunk you need into
+  that single call instead of re-slicing the patch or the JSON by hand. Go to `diff.patch`
   only for file-level headers (mode/rename/binary).
 - Chained read-only commands (`grep`, `sed -n`, `ls`, `cat`, `head`, `tail`, `wc`, plus the
   `reviewer-state` CLI) pass the permission allowlist. A chain that mixes in a denied
@@ -121,14 +144,17 @@ Rules:
 
 Do not deep-read every hunk in a large PR. Two passes:
 
-**Pass 1 — cheap bucketing.** Walk `files.json`: for every file+hunk, look only at the
-path, the hunk header, and line-count stats (added/removed/context sizes). Using the
+**Pass 1 — cheap bucketing.** Walk the `triage` output: for every file+hunk line, look only at
+the path, the mechanical hints (`lock`/`gen`/`docs`/`tests`/`snap`/`mig`), the truncated
+`@@` header, the +/- size shape, and any `mv-in`/`mv-out` moved-code mark. Using the
 heuristics in `RUBRIC.md` (file path patterns, header keywords, size shape), bucket each
 hunk into a *likely* kind and a *likely* attention. This pass should not require reading
-full hunk bodies for hunks that are obviously wiring/docs/tests/generated/lockfile.
+full hunk bodies for hunks that are obviously wiring/docs/tests/generated/lockfile — a
+hint on the triage line is often enough on its own.
 
-**Pass 2 — deep read.** Deep-read (full hunk body, plus surrounding function/file context
-from the patch) for:
+**Pass 2 — deep read.** Collect every selector Pass 1 flagged (see below) and fetch them
+all with **one** `reviewer-state show <key> <selector...>` call. Deep-read (full hunk
+body, plus surrounding function/file context from the patch) for:
 - every hunk bucketed as likely `core-logic` or `connective-tissue`,
 - every hunk whose kind or attention is ambiguous after pass 1,
 - every hunk that pass 1 flags as touching a risk-flag surface (auth, migrations,
@@ -300,8 +326,11 @@ See `MIGRATION-NOTES.md` for the full mechanics. This is the flow the ~40-turn b
 re-verification reads the same way. In short:
 
 1. Run `reviewer-state refresh <key>`. Read the printed migration report.
-2. Classify **only** hunks the report marks `new` or unassigned. Carried, fuzzy-matched,
-   and renamed hunks keep their existing unit membership — do not touch them.
+2. Run `reviewer-state report <key>` and take the hunk ids listed under "Needs
+   classification" — those are exactly the `new`/unassigned hunks. Fetch all of their
+   bodies in **one** `reviewer-state show <key> <id1> <id2> ...` call (not one per hunk).
+   Carried, fuzzy-matched, and renamed hunks keep their existing unit membership — do not
+   touch or re-fetch them.
 3. Patch only the affected units with
    `reviewer-state set-unit <key> --id <unitId> --file patch.json` — the unit id is the
    `--id` **flag** (or an `id` field inside the JSON), not a positional argument. The file
@@ -333,6 +362,11 @@ re-verification reads the same way. In short:
   list of hunks in no unit, and recent archived hunks. Use it to verify your analysis
   landed. `--json` prints raw `state.json` instead (`currentRevision`, `units`, `hunks`,
   `files`, `unassignedHunkIds`, `archived`, `corrections`).
+- `reviewer-state triage <key> [--rev <n>]` — reprints `revisions/<n>/triage.txt` on
+  demand (useful if you want a revision other than the current one; the file on disk
+  always covers the current revision already).
+- `reviewer-state show <key> <selector...> [--rev <n>] [--all]` — prints full hunk bodies
+  for the given selectors (hunk id/prefix, file path, or glob), batched in one call.
 - `reviewer-state view <key> <hunkId|unit:<unitId>> [--unview]` — marks reading progress.
   That's the human reviewer's action (or the web app's); don't mark things viewed on the
   user's behalf unless asked.

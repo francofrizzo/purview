@@ -40,9 +40,11 @@ import {
   statePath,
   stateRoot,
   teamConfigPath,
+  triagePath,
   type PrKey,
   type RepoKey,
 } from "./paths.js";
+import { renderTriage } from "./triage.js";
 
 function writeJson(file: string, value: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -151,6 +153,7 @@ export function writeRevision(
   fs.writeFileSync(diffPath(key, revision, root), patch, "utf8");
   const filesJson = FilesJsonSchema.parse({ revision, files, ...shas });
   writeJson(filesJsonPath(key, revision, root), filesJson);
+  fs.writeFileSync(triagePath(key, revision, root), renderTriage(filesJson), "utf8");
   return filesJson;
 }
 

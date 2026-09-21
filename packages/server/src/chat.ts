@@ -310,6 +310,8 @@ export function chatSystemPrompt(
     `  - state directory: ${dir}`,
     `  - current diff: ${path.join(dir, "revisions", String(state.currentRevision), "diff.patch")}`,
     `  - parsed hunks: ${path.join(dir, "revisions", String(state.currentRevision), "files.json")}`,
+    `  - triage overview (read this first): \`${cmd} triage ${keyToString(key)}\``,
+    `  - hunk bodies: \`${cmd} show ${keyToString(key)} <hunk-id|path|glob>...\``,
     `  - review rubric: ${path.join(skillDir(), "RUBRIC.md")}`,
     // Overlays are inlined rather than pointed at: the team rubric may only
     // exist on GitHub, and the local one is outside the chat's roots.
@@ -344,6 +346,8 @@ export function chatToolFlags(): {
       "Grep",
       `Bash(${cmd} report:*)`,
       `Bash(${cmd} list:*)`,
+      `Bash(${cmd} triage:*)`,
+      `Bash(${cmd} show:*)`,
     ],
     disallowedTools: [
       `Bash(${cmd} sync:*)`,

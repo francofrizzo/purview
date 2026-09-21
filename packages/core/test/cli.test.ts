@@ -173,6 +173,59 @@ describe("cli view", () => {
   });
 });
 
+describe("cli triage", () => {
+  it("renders the overview with the real invocation and key on the bodies: line", () => {
+    const { hunk } = seed();
+    const res = run(["triage", keyToString(key)]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("revision 1");
+    expect(res.stdout).toContain(hunk.id);
+    expect(res.stdout).toContain(`show ${keyToString(key)} <hunk-id|path|glob>...`);
+    expect(res.stdout).toContain(cliPath);
+  });
+});
+
+describe("cli show", () => {
+  it("prints the matched hunk body and a trailing summary line", () => {
+    const { hunk } = seed();
+    const res = run(["show", keyToString(key), hunk.id]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain(`=== src/a.ts   ${hunk.id}`);
+    expect(res.stdout).toContain("-  return a;");
+    expect(res.stdout).toContain("-- 1 hunks, 1 files");
+  });
+
+  it("matches by a unique 6+ char id prefix and by exact file path", () => {
+    const { hunk } = seed();
+    const byPrefix = run(["show", keyToString(key), hunk.id.slice(0, 6)]);
+    expect(byPrefix.stdout).toContain(hunk.id);
+    const byPath = run(["show", keyToString(key), "src/a.ts"]);
+    expect(byPath.stdout).toContain(hunk.id);
+  });
+
+  it("exits 1 and lists unknown selectors on stderr while still printing what matched", () => {
+    const { hunk } = seed();
+    const res = run(["show", keyToString(key), hunk.id, "no/such/file.ts"]);
+    expect(res.status).toBe(1);
+    expect(res.stdout).toContain(hunk.id);
+    expect(res.stderr).toContain("no/such/file.ts");
+  });
+
+  it("--all prints every hunk of the revision", () => {
+    const { hunk } = seed();
+    const res = run(["show", keyToString(key), "--all"]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain(hunk.id);
+  });
+
+  it("requires at least one selector without --all", () => {
+    seed();
+    const res = run(["show", keyToString(key)]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/at least one selector/);
+  });
+});
+
 describe("cli set-unit", () => {
   it("requires the full schema when creating a brand-new unit, even if `kind` is just missing", () => {
     seed();

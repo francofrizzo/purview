@@ -161,6 +161,10 @@ describe("analysis tool allowlist", () => {
     for (const rule of ["Bash(grep:*)", "Bash(sed -n:*)", "Bash(ls:*)", "Bash(cat:*)"]) {
       expect(allowedTools).toContain(rule);
     }
+    // The pre-built triage/show views replace ad-hoc slicing of files.json.
+    const cliCmd = `${process.execPath} ${process.env.REVIEWER_CLI_PATH}`;
+    expect(allowedTools).toContain(`Bash(${cliCmd} triage:*)`);
+    expect(allowedTools).toContain(`Bash(${cliCmd} show:*)`);
     // In-place sed must not be reachable through the `sed` allowance.
     expect(allowedTools).not.toContain("Bash(sed:*)");
     for (const rule of ["Bash(gh:*)", "Bash(git:*)"]) {
@@ -292,6 +296,8 @@ describe("analysis job lifecycle", () => {
     expect(argv).toContain("--effort medium");
     // Bash is allowed only for the reviewer-state CLI; gh/git are denied outright.
     expect(argv).toContain(`Bash(${process.execPath} ${process.env.REVIEWER_CLI_PATH} report:*)`);
+    expect(argv).toContain(`Bash(${process.execPath} ${process.env.REVIEWER_CLI_PATH} triage:*)`);
+    expect(argv).toContain(`Bash(${process.execPath} ${process.env.REVIEWER_CLI_PATH} show:*)`);
     expect(argv).toContain("Bash(gh:*)");
     expect(argv).toContain("Bash(git:*)");
     expect(argv).not.toContain("--dangerously-skip-permissions");
@@ -304,6 +310,13 @@ describe("analysis job lifecycle", () => {
     expect(prompt).toContain("RUBRIC.md");
     expect(prompt).toContain("untrusted");
     expect(prompt).toContain("NEVER run `gh`");
+    // The triage view is pointed at explicitly, and one-liner slicing of
+    // files.json/diff.patch is called out as forbidden.
+    // The command, not the saved file: older PRs have no triage.txt.
+    expect(prompt).not.toContain("triage.txt");
+    expect(prompt).toContain(`triage ${keyToString(key)}\` first`);
+    expect(prompt).toContain("NEVER parse");
+    expect(prompt).toContain("show " + keyToString(key));
     // No checkout is configured in the base fixture, so the verification pass
     // must be switched off explicitly rather than left to inference.
     expect(prompt).toContain("VERIFICATION PASS: SKIPPED");

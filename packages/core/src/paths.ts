@@ -138,6 +138,15 @@ export function filesJsonPath(
   return path.join(revisionDir(key, revision, root), "files.json");
 }
 
+/** `revisions/<n>/triage.txt` — see triage.ts for what it holds. */
+export function triagePath(
+  key: PrKey,
+  revision: number,
+  root = stateRoot(),
+): string {
+  return path.join(revisionDir(key, revision, root), "triage.txt");
+}
+
 /**
  * Cached read of the target repo's committed `.purview/` config for one
  * revision. Cached per revision because it is keyed by the head sha: a new
