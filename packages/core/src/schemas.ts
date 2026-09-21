@@ -117,8 +117,14 @@ export type Finding = z.infer<typeof FindingSchema>;
 /** At most this many findings ride on one unit; beyond it, keep the material ones. */
 export const MAX_UNIT_FINDINGS = 5;
 
-/** Stored-state limit for one changelog line. The CLI truncates to it (see truncateFindings). */
-export const CHANGELOG_TEXT_MAX = 160;
+/**
+ * Stored-state sanity cap for one changelog note. Deliberately far above what
+ * a note needs: an earlier 160-char cap clipped real notes mid-sentence
+ * ("…"), and a clipped changelog is worse than a slightly long one. The CLI
+ * still truncates past it (see truncateFindings), but only runaway output
+ * ever gets there.
+ */
+export const CHANGELOG_TEXT_MAX = 1000;
 
 /**
  * One line about what a revision changed in a unit ("rounding switched to

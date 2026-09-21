@@ -4,6 +4,7 @@ import { fold, liveUnits } from "../src/reducer.js";
 import { truncateFindings } from "../src/service.js";
 import {
   AnalysisSchema,
+  CHANGELOG_TEXT_MAX,
   ReviewUnitPatchSchema,
   type FileDiff,
   type Hunk,
@@ -281,24 +282,29 @@ describe("unit changelog through the reducer", () => {
     expect(s.units.find((u) => u.id === "core")!.changelog).toBeUndefined();
   });
 
-  it("validates: set-analysis accepts changelog; the patch caps changelogEntry at 160", () => {
+  it("validates: set-analysis accepts changelog; the patch caps changelogEntry at the sanity limit", () => {
     const parsed = AnalysisSchema.parse({
       summary: "s",
       units: [{ ...unit("core", ["h1"], 0), changelog: [{ revision: 2, text: "x" }] }],
     });
     expect(parsed.units[0].changelog).toEqual([{ revision: 2, text: "x" }]);
-    expect(ReviewUnitPatchSchema.safeParse({ changelogEntry: "x".repeat(161) }).success).toBe(false);
-    expect(ReviewUnitPatchSchema.safeParse({ changelogEntry: "x".repeat(160) }).success).toBe(true);
+    expect(ReviewUnitPatchSchema.safeParse({ changelogEntry: "x".repeat(CHANGELOG_TEXT_MAX + 1) }).success).toBe(false);
+    expect(ReviewUnitPatchSchema.safeParse({ changelogEntry: "x".repeat(CHANGELOG_TEXT_MAX) }).success).toBe(true);
+    // A real-sized note (the kind the old 160-char cap clipped) passes whole.
+    const note = "summary/attentionWhy rewritten for per-policy previousEnd checks; tests cover a policy that disappears and reappears in a new management batch";
+    expect(truncateFindings({ changelogEntry: note }, "core")).toEqual({ payload: { changelogEntry: note }, warnings: [] });
   });
 
   it("truncateFindings clips an over-long changelogEntry at a word boundary with a warning", () => {
-    const long = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+    const long = Array.from({ length: 200 }, (_, i) => `word${i}`).join(" ");
     const { payload, warnings } = truncateFindings({ changelogEntry: long }, "core");
     const text = (payload as { changelogEntry: string }).changelogEntry;
-    expect(text.length).toBeLessThanOrEqual(160);
+    expect(text.length).toBeLessThanOrEqual(CHANGELOG_TEXT_MAX);
     expect(text.endsWith("…")).toBe(true);
     expect(text.slice(0, -1)).toMatch(/word\d+$/);
-    expect(warnings).toEqual([`warning: unit core changelogEntry truncated (${long.length}->160 chars)`]);
+    expect(warnings).toEqual([
+      `warning: unit core changelogEntry truncated (${long.length}->${CHANGELOG_TEXT_MAX} chars)`,
+    ]);
     expect(ReviewUnitPatchSchema.safeParse(payload).success).toBe(true);
   });
 });

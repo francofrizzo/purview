@@ -329,18 +329,18 @@ describe("cli set-unit changelogEntry", () => {
   it("records the entry under the current revision and truncates an over-long one with a warning", () => {
     seed();
     seedRev2(["  return a + b + c;"]);
-    const long = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+    const long = Array.from({ length: 200 }, (_, i) => `word${i}`).join(" ");
     const res = run([
       "set-unit", keyToString(key), "--id", "core",
       "--file", writeJson("log.json", { summary: "now adds c", changelogEntry: long }),
     ]);
     expect(res.status).toBe(0);
-    expect(res.stdout).toContain(`warning: unit core changelogEntry truncated (${long.length}->160 chars)`);
+    expect(res.stdout).toContain(`warning: unit core changelogEntry truncated (${long.length}->1000 chars)`);
     const state = JSON.parse(run(["report", keyToString(key), "--json"]).stdout);
     const log = state.units[0].changelog;
     expect(log).toHaveLength(1);
     expect(log[0].revision).toBe(2);
-    expect(log[0].text.length).toBeLessThanOrEqual(160);
+    expect(log[0].text.length).toBeLessThanOrEqual(1000);
     expect(log[0].text.endsWith("…")).toBe(true);
 
     // A re-run for the same revision replaces the entry.

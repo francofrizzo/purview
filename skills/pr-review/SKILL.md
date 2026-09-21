@@ -377,7 +377,7 @@ re-verification reads the same way. In short:
    re-group them. But **do** refresh the description of every changed unit: rewrite its
    `summary` and `attentionWhy` so they describe the code as it is *now*, re-check
    `kind`/`attention`/`riskFlags` (a correction needs `--note`), and send a
-   `changelogEntry` — one line, ≤160 chars, about what this revision changed in that unit
+   `changelogEntry` — a short note (a sentence or two) about what this revision changed in that unit
    (e.g. `"rounding switched to banker's; added a .5 test"`), not a restatement of the
    summary. A unit you attach a new hunk to has changed too and gets an entry as well.
    The entry is recorded under the current revision; re-sending replaces it, so there is

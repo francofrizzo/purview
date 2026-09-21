@@ -62,7 +62,7 @@ first three as "carried".
    hunk to it. For each changed unit, in its one `set-unit` patch:
    - rewrite `summary` and `attentionWhy` to describe the code as it is **now**;
    - re-check `kind` / `attention` / `riskFlags` (a correction needs `--note`);
-   - send a `changelogEntry`: one line, ≤160 chars, about what *this revision* changed in
+   - send a `changelogEntry`: a short note (a sentence or two) about what *this revision* changed in
      the unit (e.g. `"rounding switched to banker's; added a .5 test"`) — not a restatement
      of the summary. It is recorded under the state's current revision in the unit's
      `changelog`; re-sending replaces that revision's entry rather than adding another.
