@@ -102,6 +102,7 @@ import { checkStaleness, clearStalenessCache } from "./staleness.js";
 import { reviewEffort } from "./effort.js";
 import {
   autoAnalyzeAllowed,
+  autoAnalyzeBlocker,
   cachedCommittedConfigForRepo,
   effectiveConfig,
   effectiveRepoPath,
@@ -236,6 +237,19 @@ export function createApp(opts: AppOptions = {}): Hono {
     c: { req: { query(k: string): string | undefined } },
     key: PrKey,
   ) => autoAnalyze && c.req.query("analyze") !== "false" && autoAnalyzeAllowed(key, root);
+
+  /**
+   * Why `analyzeRequested` said no. `"archived"` only when archiving is the
+   * one thing that held the run back; every other opt-out (the process kill
+   * switch, `?analyze=false`, the layered config) is `"disabled"`.
+   */
+  const analysisSkipReason = (
+    c: { req: { query(k: string): string | undefined } },
+    key: PrKey,
+  ): "archived" | "disabled" | null => {
+    if (!autoAnalyze || c.req.query("analyze") === "false") return "disabled";
+    return autoAnalyzeBlocker(key, root);
+  };
 
   /** Auto-triggers are best-effort: a failed spawn must not fail the request. */
   const triggerAnalysis = (key: PrKey) => {
@@ -378,7 +392,18 @@ export function createApp(opts: AppOptions = {}): Hono {
     // about a revision we hold, so it must not outlive the refresh.
     clearStalenessCache(key, root);
     const hasNewWork = !!result.report && refreshLeavesWork(key, result.report, root);
-    const job = hasNewWork && analyzeRequested(c, key) ? triggerAnalysis(key) : null;
+    const analysisSkipped = hasNewWork ? analysisSkipReason(c, key) : null;
+    const job = hasNewWork && !analysisSkipped ? triggerAnalysis(key) : null;
+    // Remember an archive-skipped revision so the PR view can say so after a
+    // reload (the refresh may well have come from another tab). A started run
+    // clears it itself (startAnalysis); a new revision with nothing left to
+    // analyze makes it moot. A no-op refresh (no report) leaves it alone: the
+    // work it describes is still there.
+    if (analysisSkipped === "archived") {
+      updateMeta(key, { analysisPending: { revision: result.revision, reason: "archived" } }, root);
+    } else if (result.report && !hasNewWork && readMeta(key, root).analysisPending) {
+      updateMeta(key, { analysisPending: undefined }, root);
+    }
     return c.json({
       key: keyToString(key),
       revision: result.revision,
@@ -387,6 +412,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       report: result.report ?? null,
       state: result.state,
       analysisJob: job,
+      analysisSkipped,
     });
   });
 
@@ -416,6 +442,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         ? prExists({ ...repoKeyOf(key), number: meta.basePr.number }, root)
         : false,
       reviewRequest: meta.reviewRequest,
+      analysisPending: meta.analysisPending ?? null,
     });
   });
 
@@ -427,10 +454,20 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json({ job: readJob(key, root) });
   });
 
+  // An explicit request, so it runs on an archived PR too: only the
+  // *automatic* triggers (analyzeRequested) stay away from archived PRs.
   app.post("/api/prs/:key/analyze", (c) => {
     const key = keyParam(c);
     readMeta(key, root);
     return c.json({ job: startAnalysis(key, root, { timeoutMs: opts.analysisTimeoutMs }) });
+  });
+
+  /** The reader dismissed the "archived, so not analyzed" banner. */
+  app.delete("/api/prs/:key/analysis-pending", (c) => {
+    const key = keyParam(c);
+    const meta = readMeta(key, root);
+    if (meta.analysisPending) updateMeta(key, { analysisPending: undefined }, root);
+    return c.json({ ok: true });
   });
 
   app.delete("/api/prs/:key/analyze", (c) => {

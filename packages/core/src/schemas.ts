@@ -354,6 +354,16 @@ export const MetaSchema = z.object({
    * out of the automatic analysis triggers, which cost money).
    */
   archived: z.boolean().default(false),
+  /**
+   * A refresh landed work an analysis should account for (new hunks, reworked
+   * units) but no automatic run started, and why. Persisted — not just
+   * returned by the refresh — so the PR view can say so after a reload or from
+   * another tab. Cleared when an analysis starts for this revision or later,
+   * when a later revision leaves no work, or when the reader dismisses it.
+   */
+  analysisPending: z
+    .object({ revision: z.number().int(), reason: z.enum(["archived"]) })
+    .optional(),
 });
 export type Meta = z.infer<typeof MetaSchema>;
 

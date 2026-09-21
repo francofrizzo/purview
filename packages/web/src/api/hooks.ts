@@ -617,6 +617,43 @@ export function useStartAnalysis(key: string): UseMutationResult<AnalysisJob, Er
   });
 }
 
+/**
+ * The archived-and-skipped banner's one action: take the PR off the shelf,
+ * then run the analysis the refresh skipped. Sequential on purpose — if the
+ * unarchive fails nothing is spent. The server runs it incrementally on its
+ * own, since the PR already has units.
+ */
+export function useUnarchiveAndAnalyze(key: string): UseMutationResult<AnalysisJob, Error, void> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      await api.setArchived(key, false);
+      return api.startAnalysis(key);
+    },
+    onSuccess: (job) => qc.setQueryData(qk.analysisJob(key), job),
+    // Settled, not success: the unarchive may have landed even if the start
+    // then failed, and the view must reflect it either way.
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.pr(key) });
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: qk.repos });
+    },
+  });
+}
+
+/** Forget the "archived, so this revision wasn't analyzed" note. */
+export function useDismissAnalysisPending(key: string): UseMutationResult<void, Error, void> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.dismissAnalysisPending(key),
+    onMutate: () => {
+      const prev = qc.getQueryData<PrDetail>(qk.pr(key));
+      if (prev) qc.setQueryData(qk.pr(key), { ...prev, analysisPending: null });
+    },
+    onSettled: () => void qc.invalidateQueries({ queryKey: qk.pr(key) }),
+  });
+}
+
 export function useCancelAnalysis(key: string): UseMutationResult<AnalysisJob, Error, void> {
   const qc = useQueryClient();
   return useMutation({

@@ -11,6 +11,7 @@ import {
   prDir,
   readFilesJson,
   readMeta,
+  updateMeta,
   stateRoot,
   summarizeMoves,
   type AnalysisJob,
@@ -532,6 +533,16 @@ export function startAnalysis(
     },
     root,
   );
+  // A run for this revision (or a later one) settles any "refresh skipped
+  // the analysis" note. Bookkeeping only: it must never block the run.
+  try {
+    const note = readMeta(key, root).analysisPending;
+    if (note && note.revision <= state.currentRevision) {
+      updateMeta(key, { analysisPending: undefined }, root);
+    }
+  } catch {
+    /* ignore */
+  }
   const slot: Slot = { keyStr: keyToString(key), key, root, cancelled: false };
   pending.push(slot);
   queueMicrotask(() => void pump(opts));

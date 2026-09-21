@@ -528,6 +528,119 @@ index 0000000..4444444
   });
 });
 
+/* ------------------------------------------- archived: skipped analysis */
+
+describe("refresh of an archived PR", () => {
+  const NEW_FILE =
+    DOD_REV1 +
+    `diff --git a/src/bar.ts b/src/bar.ts
+new file mode 100644
+index 0000000..4444444
+--- /dev/null
++++ b/src/bar.ts
+@@ -0,0 +1,2 @@
++export const bar = 1;
++export const baz = 2;
+`;
+
+  const archive = (archived: boolean) =>
+    app.request(`/api/prs/${encodedKey}/archive`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archived }),
+    });
+
+  const detail = async () => (await app.request(`/api/prs/${encodedKey}`)).json();
+
+  it("skips the run, says why, and remembers it in meta", async () => {
+    buildFixture(root, DOD_REV1);
+    await archive(true);
+    setGhRunner(ghFor([NEW_FILE], "3"));
+    const res = await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
+    const body = await res.json();
+    expect(body.report.counts.new).toBeGreaterThan(0);
+    expect(body.analysisJob).toBeNull();
+    expect(body.analysisSkipped).toBe("archived");
+    expect(claude.runs).toHaveLength(0);
+    expect(readMeta(key, root).analysisPending).toEqual({ revision: body.revision, reason: "archived" });
+    // Visible after a reload, not just in the refresh response.
+    expect((await detail()).analysisPending).toEqual({ revision: body.revision, reason: "archived" });
+  });
+
+  it("unarchive + analyze clears the note and runs incrementally", async () => {
+    buildFixture(root, DOD_REV1);
+    await archive(true);
+    setGhRunner(ghFor([NEW_FILE], "3"));
+    await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
+    expect(readMeta(key, root).analysisPending).toBeDefined();
+
+    await archive(false);
+    const res = await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    expect(res.status).toBe(200);
+    expect(readMeta(key, root).analysisPending).toBeUndefined();
+    expect((await detail()).analysisPending).toBeNull();
+    await analysisIdle();
+    expect(readJob(key, root)!.status).toBe("done");
+    // Units exist, so the run builds on them rather than starting over.
+    expect(claude.promptOf(0)).toContain("incremental flow");
+  });
+
+  it("an explicit analyze still runs on an archived PR", async () => {
+    buildFixture(root, DOD_REV1);
+    await archive(true);
+    setGhRunner(ghFor([NEW_FILE], "3"));
+    await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
+    const res = await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    expect(res.status).toBe(200);
+    expect((await res.json()).job.status).toBe("queued");
+    await analysisIdle();
+    expect(readJob(key, root)!.status).toBe("done");
+    expect(claude.runs).toHaveLength(1);
+    expect(readMeta(key, root).archived).toBe(true);
+    expect(readMeta(key, root).analysisPending).toBeUndefined();
+  });
+
+  it("dismissing clears the note", async () => {
+    buildFixture(root, DOD_REV1);
+    await archive(true);
+    setGhRunner(ghFor([NEW_FILE], "3"));
+    await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
+    const res = await app.request(`/api/prs/${encodedKey}/analysis-pending`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(readMeta(key, root).analysisPending).toBeUndefined();
+  });
+
+  it("a later revision that leaves no work clears the note", async () => {
+    buildFixture(root, DOD_REV1);
+    updateMeta(key, { archived: true, analysisPending: { revision: 1, reason: "archived" } }, root);
+    // Same hunks under new shas: nothing for an analysis to do.
+    setGhRunner(ghFor([DOD_REV1], "2"));
+    const body = await (await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" })).json();
+    expect(body.added).toBe(true);
+    expect(body.analysisSkipped).toBeNull();
+    expect(readMeta(key, root).analysisPending).toBeUndefined();
+  });
+
+  it("?analyze=false is reported as disabled, not archived, and leaves no note", async () => {
+    buildFixture(root, DOD_REV1);
+    await archive(true);
+    setGhRunner(ghFor([NEW_FILE], "3"));
+    const res = await app.request(`/api/prs/${encodedKey}/refresh?analyze=false`, { method: "POST" });
+    expect((await res.json()).analysisSkipped).toBe("disabled");
+    expect(readMeta(key, root).analysisPending).toBeUndefined();
+  });
+
+  it("a non-archived refresh with new hunks still triggers, with nothing skipped", async () => {
+    buildFixture(root, DOD_REV1);
+    setGhRunner(ghFor([NEW_FILE], "3"));
+    const body = await (await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" })).json();
+    expect(body.analysisJob.status).toBe("queued");
+    expect(body.analysisSkipped).toBeNull();
+    expect(readMeta(key, root).analysisPending).toBeUndefined();
+    await analysisIdle();
+  });
+});
+
 describe("latestChangelogNote", () => {
   it("appends only the newest entry, and nothing without a changelog", () => {
     expect(latestChangelogNote({})).toBe("");

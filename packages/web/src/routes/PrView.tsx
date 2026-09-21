@@ -18,7 +18,9 @@ import {
   useAnalysisEvents,
   useAnalysisJob,
   useCancelAnalysis,
+  useDismissAnalysisPending,
   useStartAnalysis,
+  useUnarchiveAndAnalyze,
   useComments,
   useDeleteComment,
   useEditComment,
@@ -42,7 +44,7 @@ import {
   useSubmitReview,
   useSync,
 } from "../api/hooks";
-import { AnalysisBanner } from "../components/Analysis";
+import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
 import {
@@ -79,13 +81,14 @@ import {
 } from "../components/Panels";
 import { SummaryStrip } from "../components/SummaryStrip";
 import { TopBar } from "../components/TopBar";
-import { UnitSidebar } from "../components/UnitSidebar";
+import { UNPLACED_TITLE, UnitSidebar } from "../components/UnitSidebar";
 import { SidebarRail } from "../components/SidebarRail";
 import { DiffSearchBar } from "../components/DiffSearchBar";
 import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
+import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
@@ -126,6 +129,8 @@ export function PrView() {
   const discardPending = useDiscardPendingReview(prKey);
   const startAnalysis = useStartAnalysis(prKey);
   const cancelAnalysis = useCancelAnalysis(prKey);
+  const unarchiveAndAnalyze = useUnarchiveAndAnalyze(prKey);
+  const dismissAnalysisPending = useDismissAnalysisPending(prKey);
   const exportAnalysis = useExportAnalysis(prKey);
   const importAnalysis = useImportAnalysis(prKey);
   const shareToPr = useShareAnalysisToPr(prKey);
@@ -288,6 +293,16 @@ export function PrView() {
     [detail],
   );
 
+  // Hunks no live unit claims: the "Not in any unit" pseudo-unit, selected
+  // through the reserved UNPLACED_ID in `selectedUnitId`. `unplacedAll` is the
+  // raw count (the archived banner quotes it); `unplaced` is what the
+  // sidebar/rail/diff pane offer, which is nothing until real units exist —
+  // before the first analysis every hunk is "unplaced" and the analysis
+  // banner already says so.
+  const unplacedAll = useMemo(() => (detail ? unplacedHunkIds(detail) : []), [detail]);
+  const unplaced = useMemo(() => (units.length ? unplacedAll : []), [units.length, unplacedAll]);
+  const unplacedSet = useMemo(() => new Set(unplaced), [unplaced]);
+
   // Whether every unit in the PR is fully viewed — drives the quiet "all units
   // viewed" indicator next to the units-tab "mark unit viewed" button.
   const allUnitsViewed = useMemo(() => {
@@ -348,22 +363,32 @@ export function PrView() {
     setFileCommentsOpen(false);
   }, [selectedPath]);
 
+  // An analysis just placed the last of them: the pseudo-unit is gone, so
+  // land on the first real unit rather than an empty pane.
+  const unplacedEmpty = unplaced.length === 0;
+  useEffect(() => {
+    if (selectedUnitId === UNPLACED_ID && unplacedEmpty) setSelectedUnitId(units[0]?.id ?? null);
+  }, [selectedUnitId, unplacedEmpty, units]);
+
   const selectedUnit = units.find((u) => u.id === selectedUnitId) ?? null;
+  const unplacedSelected = selectedUnitId === UNPLACED_ID && !unplacedEmpty;
 
   // The composer's auto-attach chip follows whatever unit is in context; the
   // files tab has no such concept, so it sees null and shows nothing.
   const { setUnitContext } = chat;
   useEffect(() => {
-    setUnitContext(tab === "units" ? selectedUnitId : null);
+    // The pseudo-unit is not a unit the chat can reference.
+    setUnitContext(tab === "units" && selectedUnitId !== UNPLACED_ID ? selectedUnitId : null);
   }, [setUnitContext, tab, selectedUnitId]);
 
   const entries = useMemo<HunkEntry[]>(() => {
     if (!detail) return [];
     if (tab === "units") {
-      if (!selectedUnit) return [];
+      const ids = unplacedSelected ? unplaced : selectedUnit?.hunkIds;
+      if (!ids) return [];
       const index = hunkIndex(detail.files);
       const out: HunkEntry[] = [];
-      for (const id of selectedUnit.hunkIds) {
+      for (const id of ids) {
         const e = index.get(id);
         if (e) out.push({ hunk: e.hunk, file: e.file });
       }
@@ -371,12 +396,23 @@ export function PrView() {
     }
     const file = detail.files.files.find((f) => f.path === selectedPath);
     return file ? file.hunks.map((h) => ({ hunk: h, file })) : [];
-  }, [detail, tab, selectedUnit, selectedPath]);
+  }, [detail, tab, selectedUnit, unplacedSelected, unplaced, selectedPath]);
 
   // What the pane is currently showing — the default (Cmd+F) search scope.
   const visibleHunkIds = useMemo(() => new Set(entries.map((e) => e.hunk.id)), [entries]);
 
   const search = useDiffSearch(detail, units, visibleHunkIds);
+  // Search hits per unit, plus the pseudo-unit's under its reserved id so the
+  // sidebar group and the rail cell can badge it like any unit.
+  const unitMatchCounts = useMemo(() => {
+    if (!unplacedSet.size || !search.matches.length) return search.unitCounts;
+    let n = 0;
+    for (const m of search.matches) if (unplacedSet.has(m.hunkId)) n++;
+    if (!n) return search.unitCounts;
+    const out = new Map(search.unitCounts);
+    out.set(UNPLACED_ID, n);
+    return out;
+  }, [search.unitCounts, search.matches, unplacedSet]);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const openSearch = useCallback(
@@ -403,6 +439,8 @@ export function PrView() {
         const unit = unitForHunk(units, hunkId);
         if (unit) {
           if (unit.id !== selectedUnitId) setSelectedUnitId(unit.id);
+        } else if (unplacedSet.has(hunkId)) {
+          setSelectedUnitId(UNPLACED_ID);
         } else {
           // No unit claims this hunk — only reachable through the files tab.
           setTab("files");
@@ -413,7 +451,7 @@ export function PrView() {
       }
       setJumpToHunk({ hunkId, nonce: Date.now(), ...target });
     },
-    [tab, units, selectedUnitId, selectedPath],
+    [tab, units, unplacedSet, selectedUnitId, selectedPath],
   );
 
   /**
@@ -534,13 +572,17 @@ export function PrView() {
         if (unit.id !== selectedUnitId) setSelectedUnitId(unit.id);
         return;
       }
-      // A hunk no unit claims is only reachable through the files tab.
+      if (unplacedSet.has(m.hunkId)) {
+        if (selectedUnitId !== UNPLACED_ID) setSelectedUnitId(UNPLACED_ID);
+        return;
+      }
+      // Otherwise (no units at all yet) the files tab is the only way to it.
       setTab("files");
       setSelectedPath(m.path);
       return;
     }
     if (m.path !== selectedPath) setSelectedPath(m.path);
-  }, [search.current, tab, units, selectedUnitId, selectedPath]);
+  }, [search.current, tab, units, unplacedSet, selectedUnitId, selectedPath]);
 
   // Cost-avoidance probe: when there is nothing local to read yet and nothing
   // is actively being analyzed, check once (no polling) whether a teammate
@@ -577,6 +619,12 @@ export function PrView() {
   // The banner is for the "nothing to read yet" case: once units exist, the
   // job's state lives in the top bar chip and the overflow menu instead.
   const showAnalysisBanner = units.length === 0 || analysisPending;
+  // A refresh of this archived PR landed work and auto-analysis skipped it.
+  // Hidden while a run is live: the explicit analyze clears the note server-
+  // side, and the detail catches up when the run finishes.
+  const skipNote = detail.analysisPending;
+  const showArchivedSkipBanner =
+    !!skipNote && skipNote.reason === "archived" && detail.meta.archived === true && !analysisPending;
   const quote = (ref: ChatRef) => chat.attachRef(ref);
 
   const noLocalAnalysis = units.length === 0;
@@ -730,7 +778,7 @@ export function PrView() {
             onSelect={selectUnitFromSidebar}
             onReclassify={(unitId, patch) => patchUnit.mutate({ unitId, patch })}
             onQuote={quote}
-            matchCounts={search.unitCounts}
+            matchCounts={unitMatchCounts}
           />
         ) : (
           <FileTree
@@ -891,6 +939,16 @@ export function PrView() {
           onDismiss={() => setSharedBannerDismissed(true)}
         />
       ) : null}
+      {showArchivedSkipBanner && skipNote ? (
+        <ArchivedSkipBanner
+          revision={skipNote.revision}
+          unplaced={unplacedAll.length}
+          working={unarchiveAndAnalyze.isPending}
+          error={(unarchiveAndAnalyze.error as Error | null)?.message ?? null}
+          onUnarchiveAndAnalyze={() => unarchiveAndAnalyze.mutate()}
+          onDismiss={() => dismissAnalysisPending.mutate()}
+        />
+      ) : null}
       {showAnalysisBanner ? (
         <AnalysisBanner
           job={job}
@@ -932,7 +990,7 @@ export function PrView() {
                 detail={detail}
                 units={units}
                 selectedUnitId={selectedUnitId}
-                matchCounts={search.unitCounts}
+                matchCounts={unitMatchCounts}
                 onSelect={selectUnitFromRail}
                 onExpand={openSidebar}
                 expandLabel="Expand sidebar"
@@ -959,7 +1017,7 @@ export function PrView() {
               detail={detail}
               units={units}
               selectedUnitId={selectedUnitId}
-              matchCounts={search.unitCounts}
+              matchCounts={unitMatchCounts}
               onSelect={selectUnitFromRail}
               onExpand={openSidebar}
               expandLabel="Open sidebar"
@@ -1093,6 +1151,26 @@ export function PrView() {
                 </div>
               </div>
             </div>
+          ) : null}
+
+          {tab === "units" && unplacedSelected ? (
+            <UnplacedHeader
+              total={unplaced.length}
+              viewed={unplaced.filter((id) => detail.state.hunks[id]?.viewed).length}
+              canAnalyze={!analysisPending}
+              analyzing={startAnalysis.isPending}
+              analyzeError={(startAnalysis.error as Error | null)?.message ?? null}
+              onAnalyze={() => startAnalysis.mutate()}
+              markingViewed={setHunksViewed.isPending}
+              onMarkViewed={() => setHunksViewed.mutate({ hunkIds: unplaced, viewed: true })}
+              controls={
+                <>
+                  {showNarrowNote ? <NarrowPaneNote /> : null}
+                  <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                  <WrapToggle wrap={wrap} onChange={setWrap} />
+                </>
+              }
+            />
           ) : null}
 
           {tab === "files" && selectedPath ? (
@@ -1256,6 +1334,78 @@ export function PrView() {
           />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Header for the "Not in any unit" pseudo-unit: what these hunks are, and the
+ * one thing that fixes it (an analysis — incremental, since units exist).
+ * No collapse behaviour: it is two short lines, there is no prose to hide.
+ */
+function UnplacedHeader({
+  total,
+  viewed,
+  canAnalyze,
+  analyzing,
+  analyzeError,
+  onAnalyze,
+  markingViewed,
+  onMarkViewed,
+  controls,
+}: {
+  total: number;
+  viewed: number;
+  canAnalyze: boolean;
+  analyzing: boolean;
+  analyzeError: string | null;
+  onAnalyze: () => void;
+  markingViewed: boolean;
+  onMarkViewed: () => void;
+  controls: ReactNode;
+}) {
+  return (
+    <div
+      data-testid="unplaced-header"
+      className="flex-none border-b px-4 py-2.5"
+      style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="min-w-0 flex-1 basis-64 text-[13px] font-semibold leading-tight">
+          Not in any unit
+        </h2>
+        <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
+          {controls}
+          <Progress viewed={viewed} total={total} />
+          {canAnalyze ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              data-testid="unplaced-analyze"
+              disabled={analyzing}
+              onClick={onAnalyze}
+            >
+              {analyzing ? "starting…" : "Analyze"}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn"
+            disabled={markingViewed || viewed === total}
+            onClick={onMarkViewed}
+          >
+            mark all viewed
+          </button>
+        </div>
+      </div>
+      <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
+        {UNPLACED_TITLE}
+      </p>
+      {analyzeError ? (
+        <p className="mt-1 text-2xs" style={{ color: "var(--risk)" }}>
+          {analyzeError}
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AnalysisJob, AnalysisMetrics } from "../api/types";
-import { IconRefresh, IconSpinner, IconStopwatch } from "./icons";
+import { IconClose, IconRefresh, IconSpinner, IconStopwatch } from "./icons";
 
 const STATUS_TEXT: Record<AnalysisJob["status"], string> = {
   queued: "queued",
@@ -139,6 +139,89 @@ export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
       {live && job.status === "queued" ? <span>◔</span> : null}
       {STATUS_TEXT[job.status]}
     </span>
+  );
+}
+
+/** Banner copy, split out so it can be tested without rendering. */
+export function archivedSkipText(
+  revision: number,
+  unplaced: number,
+): { title: string; detail: string } {
+  return {
+    title: `This PR is archived, so revision ${revision} wasn't analyzed.`,
+    detail:
+      unplaced > 0
+        ? `${unplaced} ${unplaced === 1 ? "hunk isn't" : "hunks aren't"} in any unit yet.`
+        : "Some unit descriptions may not reflect its latest changes.",
+  };
+}
+
+/**
+ * A refresh of an archived PR landed new work, and auto-analysis skipped it
+ * (archived PRs never spend on their own). Persisted server-side, so this
+ * shows after a reload or from another tab too — without it the new hunks
+ * just sit outside every unit and the PR looks unchanged.
+ */
+export function ArchivedSkipBanner({
+  revision,
+  unplaced,
+  working,
+  error,
+  onUnarchiveAndAnalyze,
+  onDismiss,
+}: {
+  revision: number;
+  unplaced: number;
+  working: boolean;
+  error?: string | null;
+  onUnarchiveAndAnalyze: () => void;
+  onDismiss: () => void;
+}) {
+  const text = archivedSkipText(revision, unplaced);
+  return (
+    <div
+      className="flex-none border-b px-4 py-3"
+      data-testid="archived-skip-banner"
+      style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
+    >
+      <div className="flex items-center gap-2">
+        {working ? <IconSpinner width={12} height={12} /> : null}
+        <span className="text-[13px] font-semibold" style={{ color: "var(--fg-muted)" }}>
+          {text.title}
+        </span>
+        <div className="ml-auto flex flex-none items-center gap-1.5">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs"
+            data-testid="archived-skip-dismiss"
+            title="Hide this note; the hunks stay under Not in any unit"
+            style={{ color: "var(--fg-muted)" }}
+            disabled={working}
+            onClick={onDismiss}
+          >
+            dismiss <IconClose width={10} height={10} />
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            data-testid="archived-skip-analyze"
+            disabled={working}
+            onClick={onUnarchiveAndAnalyze}
+          >
+            <IconRefresh width={11} height={11} />
+            {working ? "starting…" : "Unarchive and analyze"}
+          </button>
+        </div>
+      </div>
+      <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
+        {text.detail}
+      </p>
+      {error ? (
+        <p className="mt-1 text-2xs" style={{ color: "var(--risk)" }}>
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

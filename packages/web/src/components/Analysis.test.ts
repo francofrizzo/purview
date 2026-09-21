@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysisStatsRows } from "./Analysis";
+import { analysisStatsRows, archivedSkipText } from "./Analysis";
 
 describe("analysisStatsRows", () => {
   it("lists known stats and orders tool calls by count", () => {
@@ -30,5 +30,21 @@ describe("analysisStatsRows", () => {
         reads: { filesJson: 0, diffPatch: 0, skill: 0, checkout: 0, other: 0 },
       }),
     ).toEqual([]);
+  });
+});
+
+describe("archivedSkipText", () => {
+  it("names the revision and counts the unplaced hunks", () => {
+    expect(archivedSkipText(2, 16)).toEqual({
+      title: "This PR is archived, so revision 2 wasn't analyzed.",
+      detail: "16 hunks aren't in any unit yet.",
+    });
+    expect(archivedSkipText(3, 1).detail).toBe("1 hunk isn't in any unit yet.");
+  });
+
+  it("still explains itself when every hunk is placed (reworked units only)", () => {
+    expect(archivedSkipText(4, 0).detail).toBe(
+      "Some unit descriptions may not reflect its latest changes.",
+    );
   });
 });

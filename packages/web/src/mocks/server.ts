@@ -5,6 +5,7 @@ import type {
   AnalysisEffort,
   AnalysisImportReport,
   AnalysisJob,
+  AnalysisPending,
   ChatMessage,
   ChatRef,
   ChatState,
@@ -497,6 +498,9 @@ function chunkReply(text: string): string[] {
   return out;
 }
 
+/** Mirrors meta.analysisPending: "a refresh skipped the analysis because the PR is archived". */
+const analysisPending: Record<string, AnalysisPending> = {};
+
 export const mockApi = {
   async listPrs(): Promise<PrListEntry[]> {
     await delay(80);
@@ -658,7 +662,10 @@ export const mockApi = {
     const { host, owner, repo } = target.meta;
     target.basePrTracked =
       !!basePr && list.some((p) => p.key === `${host}/${owner}/${repo}/${basePr.number}`);
-    target.reviewRequest = list.find((p) => p.key === key)?.reviewRequest;
+    const entry = list.find((p) => p.key === key);
+    target.reviewRequest = entry?.reviewRequest;
+    target.meta = { ...target.meta, archived: entry?.archived ?? false };
+    target.analysisPending = analysisPending[key] ?? null;
     return structuredClone(target);
   },
 
@@ -709,7 +716,11 @@ export const mockApi = {
     await delay(700);
     // Mirrors the server: a refresh that lands new hunks on a PR with no
     // analysis auto-queues one, and the UI picks that up over /events.
-    if (details[key] && !details[key].state.units.length && !isLive(jobs[key])) {
+    // An archived PR never auto-analyzes; the server records the skip instead
+    // (the report below always carries a new hunk).
+    if (details[key] && list.find((p) => p.key === key)?.archived) {
+      analysisPending[key] = { revision: details[key].state.revision, reason: "archived" };
+    } else if (details[key] && !details[key].state.units.length && !isLive(jobs[key])) {
       runJob(key);
     }
     // A real refresh fetches whatever upstream had, so the drift it was
@@ -999,8 +1010,14 @@ export const mockApi = {
     if (isLive(jobs[key])) {
       throw new ApiError("already_running", 409, "An analysis is already queued for this PR");
     }
+    delete analysisPending[key];
     runJob(key);
     return structuredClone(jobs[key]!);
+  },
+
+  async dismissAnalysisPending(key: string): Promise<void> {
+    await delay(60);
+    delete analysisPending[key];
   },
 
   async cancelAnalysis(key: string): Promise<AnalysisJob> {

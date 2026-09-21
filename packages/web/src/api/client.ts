@@ -38,6 +38,7 @@ import type {
   RewindChatResult,
   ReviewDecision,
   ReviewRequest,
+  AnalysisPending,
   ReviewEffort,
   ReviewEvent,
   RepoPathResult,
@@ -183,6 +184,7 @@ interface WirePrDetail {
   analysisJob?: AnalysisJob | null;
   basePrTracked?: boolean;
   reviewRequest?: ReviewRequest | null;
+  analysisPending?: AnalysisPending | null;
 }
 
 interface WireMigrationEntry {
@@ -317,6 +319,7 @@ function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
     basePrTracked: raw.basePrTracked === true,
     // Explicit, like basePrTracked: absent stays absent ("not looked up yet").
     reviewRequest: raw.reviewRequest !== undefined ? raw.reviewRequest : raw.meta?.reviewRequest,
+    analysisPending: raw.analysisPending ?? null,
   };
 }
 
@@ -690,6 +693,12 @@ export const api = {
     if (MOCK) return mockApi.cancelAnalysis(key);
     const res = await del<{ job: AnalysisJob }>(`/prs/${encodeKey(key)}/analyze`);
     return res.job;
+  },
+
+  /** Forget the "archived, so this revision wasn't analyzed" note. */
+  async dismissAnalysisPending(key: string): Promise<void> {
+    if (MOCK) return mockApi.dismissAnalysisPending(key);
+    await del(`/prs/${encodeKey(key)}/analysis-pending`);
   },
 
   /**

@@ -4,6 +4,7 @@ import { unitProgress } from "../lib/diffModel";
 import { useSettings } from "../lib/settings";
 import { filterUnits, hiddenHint } from "../lib/unitFilter";
 import { unitDisplayNumbers } from "../lib/unitOrder";
+import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { ChangedBadge, KindChip, Progress, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
@@ -12,6 +13,9 @@ import { ReclassifyPopover } from "./ReclassifyPopover";
 
 const HIDE_REVIEWED_TITLE =
   "Drop fully-viewed units out of the list. The unit you are reading stays put, so the diff pane never changes under you.";
+
+export const UNPLACED_TITLE =
+  "Hunks the analysis hasn't placed in a unit yet — usually new commits since the last analysis.";
 
 const GROUPS: { attention: Attention; label: string; defaultOpen: boolean }[] = [
   { attention: "must-read", label: "must read", defaultOpen: true },
@@ -61,6 +65,11 @@ export function UnitSidebar({
   // in reading order — and leave `order` in state untouched. Shared with the
   // collapsed rail (SidebarRail) so the two numberings can never disagree.
   const displayNumber = unitDisplayNumbers(units);
+
+  // Hunks in no live unit. With no units at all that is every hunk, and the
+  // analysis banner already tells that story — so the group only appears
+  // alongside real units.
+  const unplaced = units.length ? unplacedHunkIds(detail) : [];
 
   const totalHidden = hide
     ? filterUnits(units, { hide, isFullyViewed, selectedId: selectedUnitId }).hidden
@@ -162,8 +171,70 @@ export function UnitSidebar({
           </section>
         );
       })}
+      {unplaced.length ? (
+        <UnplacedGroup
+          detail={detail}
+          hunkIds={unplaced}
+          selected={selectedUnitId === UNPLACED_ID}
+          onSelect={() => onSelect(UNPLACED_ID)}
+          matches={matchCounts?.get(UNPLACED_ID)}
+        />
+      ) : null}
       {removed.length ? <RemovedGroup units={removed} /> : null}
     </div>
+  );
+}
+
+/**
+ * The pseudo-unit for hunks no live unit claims. One quiet header, styled
+ * like the other group headers, that is itself the selectable row: there is
+ * nothing to list under it but "these hunks", and selecting it opens them in
+ * the diff pane exactly like a unit.
+ */
+function UnplacedGroup({
+  detail,
+  hunkIds,
+  selected,
+  onSelect,
+  matches,
+}: {
+  detail: PrDetail;
+  hunkIds: string[];
+  selected: boolean;
+  onSelect: () => void;
+  matches?: number;
+}) {
+  const viewed = hunkIds.filter((id) => detail.state.hunks[id]?.viewed).length;
+  return (
+    <section className="mb-1" data-testid="unplaced-group">
+      <button
+        type="button"
+        onClick={onSelect}
+        title={UNPLACED_TITLE}
+        aria-current={selected ? "true" : undefined}
+        className="flex w-full items-center gap-1.5 border-l-2 px-2.5 py-1.5 text-2xs uppercase tracking-wider transition-colors"
+        style={{
+          color: selected ? "var(--fg-muted)" : "var(--fg-faint)",
+          borderColor: selected ? "var(--accent)" : "transparent",
+          background: selected ? "var(--accent-soft)" : "transparent",
+        }}
+        onMouseEnter={(e) => {
+          if (!selected) e.currentTarget.style.background = "var(--bg-hover)";
+        }}
+        onMouseLeave={(e) => {
+          if (!selected) e.currentTarget.style.background = "transparent";
+        }}
+      >
+        {/* Stands in for the chevron so the label lines up with the groups above. */}
+        <span className="inline-block w-[10px] text-center normal-case">?</span>
+        not in any unit
+        <span>({hunkIds.length})</span>
+        {matches ? <MatchBadge count={matches} /> : null}
+        <span className="ml-auto tabular-nums">
+          {viewed}/{hunkIds.length}
+        </span>
+      </button>
+    </section>
   );
 }
 

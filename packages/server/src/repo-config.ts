@@ -240,9 +240,23 @@ export function autoAnalyzeAllowed(
   root = stateRoot(),
   overrides: Partial<ConfigLayers> = {},
 ): boolean {
+  return autoAnalyzeBlocker(key, root, overrides) === null;
+}
+
+/**
+ * Why an automatic run would not start for this PR, or `null` when it would.
+ * `"disabled"` wins over `"archived"`: when the layers say no, archiving the
+ * PR is not what held the run back, so it would be wrong to say so.
+ */
+export function autoAnalyzeBlocker(
+  key: PrKey,
+  root = stateRoot(),
+  overrides: Partial<ConfigLayers> = {},
+): "archived" | "disabled" | null {
   const layers = readLayers(key, root, overrides);
-  if (layers.meta?.archived) return false;
-  return effectiveConfig(key, root, layers).autoAnalyze.value;
+  if (!effectiveConfig(key, root, layers).autoAnalyze.value) return "disabled";
+  if (layers.meta?.archived) return "archived";
+  return null;
 }
 
 /** The model an analysis run for this PR (or repo) should be spawned with. */

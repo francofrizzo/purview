@@ -184,6 +184,8 @@ export interface PrMeta {
   reviewRequest?: ReviewRequest | null;
   /** GitHub lifecycle state as of the last fetch (absent on older state). */
   prState?: PrGithubState;
+  /** Local-only shelf; archived PRs never auto-analyze. */
+  archived?: boolean;
 }
 
 /**
@@ -459,6 +461,16 @@ export interface PrDetail {
   basePrTracked?: boolean;
   /** Pending review request for the user; `null` = none, absent = not looked up yet. */
   reviewRequest?: ReviewRequest | null;
+  /**
+   * A refresh left work for an analysis but none started, and why (only
+   * `"archived"` is recorded). `null`/absent = nothing pending.
+   */
+  analysisPending?: AnalysisPending | null;
+}
+
+export interface AnalysisPending {
+  revision: number;
+  reason: "archived";
 }
 
 export interface MigrationReportItem {

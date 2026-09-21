@@ -2,6 +2,7 @@ import type { PrDetail, ReviewUnit } from "../api/types";
 import { attentionColor, attentionSoftBg } from "./Chips";
 import { unitProgress } from "../lib/diffModel";
 import { unitDisplayOrder } from "../lib/unitOrder";
+import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { IconChevron } from "./icons";
 
 /**
@@ -29,6 +30,8 @@ export function SidebarRail({
   expandLabel: string;
 }) {
   const ordered = unitDisplayOrder(units);
+  // Same rule as the full sidebar's group: only alongside real units.
+  const unplaced = ordered.length ? unplacedHunkIds(detail) : [];
   return (
     <div className="sidebar-rail-scroll flex h-full flex-col items-center overflow-y-auto overflow-x-hidden py-1.5">
       <button
@@ -88,8 +91,65 @@ export function SidebarRail({
               </button>
             );
           })}
+          {unplaced.length ? (
+            <UnplacedCell
+              detail={detail}
+              hunkIds={unplaced}
+              selected={selectedUnitId === UNPLACED_ID}
+              match={Boolean(matchCounts?.get(UNPLACED_ID))}
+              onSelect={() => onSelect(UNPLACED_ID)}
+            />
+          ) : null}
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The "Not in any unit" pseudo-unit on the rail: a "?" instead of a number
+ * (it is not part of the reading order), neutral instead of an attention hue,
+ * and a dashed outline so it never reads as unit N+1. Kept on the rail rather
+ * than skipped because in drawer mode the rail is the resting state — without
+ * it these hunks would only be reachable by opening the drawer.
+ */
+function UnplacedCell({
+  detail,
+  hunkIds,
+  selected,
+  match,
+  onSelect,
+}: {
+  detail: PrDetail;
+  hunkIds: string[];
+  selected: boolean;
+  match: boolean;
+  onSelect: () => void;
+}) {
+  const viewed = hunkIds.filter((id) => detail.state.hunks[id]?.viewed).length;
+  const label = `Not in any unit — ${viewed}/${hunkIds.length} hunks`;
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      title={label}
+      aria-label={label}
+      data-testid="rail-unplaced"
+      className="sidebar-rail-item relative mt-1 flex flex-none items-center justify-center rounded font-mono text-2xs"
+      style={{
+        background: "transparent",
+        color: viewed === hunkIds.length ? "var(--fg-faint)" : "var(--fg-muted)",
+        border: "1px dashed var(--border-strong)",
+        boxShadow: selected ? "0 0 0 2px var(--accent)" : "none",
+      }}
+    >
+      ?
+      {match ? (
+        <span
+          className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
+          style={{ background: "var(--accent)" }}
+        />
+      ) : null}
+    </button>
   );
 }

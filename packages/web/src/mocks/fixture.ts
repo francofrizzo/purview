@@ -355,12 +355,9 @@ const units: ReviewUnit[] = [
       { revision: 2, text: "ledger write moved before the gateway call; failures are now recorded too" },
       { revision: 3, text: "key derivation drops the timestamp; added a replay-after-timeout test" },
     ],
-    hunkIds: [
-      "a1b2c3d4e5f60001",
-      "a1b2c3d4e5f60003",
-      "a1b2c3d4e5f60005",
-      "a1b2c3d4e5f60004",
-    ],
+    // a1b2c3d4e5f60004 (the migration, new in revision 3) is deliberately in
+    // no unit: the sidebar's "Not in any unit" group needs something to show.
+    hunkIds: ["a1b2c3d4e5f60001", "a1b2c3d4e5f60003", "a1b2c3d4e5f60005"],
     order: 1,
   },
   {
