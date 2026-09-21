@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   AnalysisImportReport,
@@ -89,6 +89,7 @@ import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
+import { prPageTitle, unitFromSearch, withUnitParam } from "../lib/prUrl";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
@@ -155,7 +156,11 @@ export function PrView() {
     stale && shouldShowStalenessHint(staleness.data, dismissedStaleKey);
 
   const [tab, setTab] = useState<"units" | "files">("units");
-  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  // Seeded from `?unit=` so a unit link opens on that unit; validated against
+  // the real units once they load (see the effect below).
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(() =>
+    unitFromSearch(location.search),
+  );
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   // --- sidebar: collapsible column, or a floating drawer on a narrow/iPad
@@ -355,7 +360,12 @@ export function PrView() {
 
   useEffect(() => {
     if (!detail) return;
-    setSelectedUnitId((cur) => cur ?? units[0]?.id ?? null);
+    // A linked unit that no longer exists (re-analyzed away, now a husk)
+    // falls back to the first unit instead of an empty pane. The pseudo-unit
+    // is left to its own effect below.
+    setSelectedUnitId((cur) =>
+      cur && (cur === UNPLACED_ID || units.some((u) => u.id === cur)) ? cur : (units[0]?.id ?? null),
+    );
     setSelectedPath((cur) => cur ?? detail.files.files[0]?.path ?? null);
   }, [detail, units]);
 
@@ -369,6 +379,29 @@ export function PrView() {
   useEffect(() => {
     if (selectedUnitId === UNPLACED_ID && unplacedEmpty) setSelectedUnitId(units[0]?.id ?? null);
   }, [selectedUnitId, unplacedEmpty, units]);
+
+  // "core#8505 · Process successive batch snapshots · Purview" in the tab.
+  useEffect(() => {
+    if (!detail) return;
+    const previous = document.title;
+    document.title = prPageTitle(detail.meta);
+    return () => {
+      document.title = previous;
+    };
+  }, [detail]);
+
+  // Per-unit URLs: `?unit=<id>` follows the selection (replace, not push, so
+  // j/k through units doesn't bury the back button), and a copied URL opens
+  // on that unit. Only while this page is the real location — never while a
+  // settings modal sits over it, where navigating would close the modal.
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!detail || tab !== "units") return;
+    if (!window.location.pathname.startsWith("/pr/")) return;
+    const next = withUnitParam(location.search, selectedUnitId);
+    if (next === location.search) return;
+    navigate({ pathname: location.pathname, search: next, hash: location.hash }, { replace: true, state: location.state });
+  }, [detail, tab, selectedUnitId, location.pathname, location.search, location.hash, location.state, navigate]);
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId) ?? null;
   const unplacedSelected = selectedUnitId === UNPLACED_ID && !unplacedEmpty;
