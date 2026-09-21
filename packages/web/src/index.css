@@ -50,6 +50,7 @@
     --moved-out-bg-strong: rgba(57, 197, 207, 0.26);
     --moved-out-gutter: rgba(57, 197, 207, 0.16);
     --moved-fg: #c4a7ff;
+    --moved-out-fg: #6fd6de;
 
     --risk: #f0787a;
     --risk-soft: rgba(240, 120, 122, 0.13);
@@ -108,6 +109,7 @@
       --moved-out-bg-strong: rgba(11, 125, 140, 0.22);
       --moved-out-gutter: rgba(11, 125, 140, 0.13);
       --moved-fg: #6b3fd4;
+      --moved-out-fg: #0b6f7c;
 
       --risk: #c0403f;
       --risk-soft: rgba(192, 64, 63, 0.1);
@@ -285,6 +287,81 @@
     border-radius: 2px;
   }
 
+  /* Folded moved-code placeholder. Exactly one diff line tall (the
+     virtualizer estimates it as one), tinted at the moved code's strong
+     strength with a solid edge in the move's own hue, so it reads as part of
+     the block it hides rather than as chrome. */
+  .diff-fold-row {
+    --fold-tint: var(--moved-bg-strong);
+    --fold-edge: var(--moved-fg);
+    @apply flex w-full items-center text-left font-mono;
+    height: var(--code-line-height);
+    font-size: var(--code-font-size);
+    line-height: var(--code-line-height);
+    white-space: nowrap;
+    color: var(--fg);
+    cursor: pointer;
+    background: var(--fold-tint);
+    box-shadow: inset 3px 0 0 var(--fold-edge);
+  }
+  .diff-fold-row[data-kind="out"] {
+    --fold-tint: var(--moved-out-bg-strong);
+    --fold-edge: var(--moved-out-fg);
+  }
+  .diff-fold-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .diff-fold-row-label {
+    @apply flex min-w-0 max-w-full items-center gap-2;
+    padding: 0 0.75rem;
+  }
+  .diff-fold-row-chevron {
+    flex: none;
+    color: var(--fold-edge);
+    stroke-width: 2;
+  }
+  .diff-fold-row-hint {
+    flex: none;
+    font-size: 0.85em;
+    color: var(--fg-muted);
+    opacity: 0;
+    transition: opacity 120ms;
+  }
+  @media (hover: hover) {
+    /* the tint laid twice: a clearly darker band, same hue */
+    .diff-fold-row:hover {
+      background-image: linear-gradient(var(--fold-tint), var(--fold-tint));
+    }
+    .diff-fold-row:hover .diff-fold-row-hint {
+      opacity: 1;
+    }
+  }
+
+  /* "Fold back up" on the first line of an opened moved-code region: overlaid
+     on the old-number gutter's left edge (numbers are right-aligned there),
+     vertically centred on the first visual line so wrapping can't move it. */
+  .diff-refold {
+    position: absolute;
+    left: 2px;
+    top: calc((var(--code-line-height) - 14px) / 2);
+    @apply flex items-center justify-center;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--moved-fg);
+    background: var(--moved-bg-strong);
+  }
+  .diff-refold[data-kind="out"] {
+    color: var(--moved-out-fg);
+    background: var(--moved-out-bg-strong);
+  }
+  .diff-refold:hover,
+  .diff-refold:focus-visible {
+    box-shadow: inset 0 0 0 1px currentColor;
+  }
+
   /* Cmd/ctrl+click "go to definition" affordance: with the modifier held AND
      the pointer over an identifier this diff itself defines, it reads as a
      link — a single viewport-anchored overlay positioned by DiffPane (see its
@@ -456,6 +533,10 @@
   .file-tree-quote {
     display: block;
     opacity: 0.55;
+  }
+  /* no hover to reveal it, so the fold row always says what a tap does */
+  .diff-fold-row-hint {
+    opacity: 0.8;
   }
 }
 

@@ -252,16 +252,20 @@ function Gutter({
   selected,
   onSelectDown,
   onSelectEnter,
+  action,
 }: {
   number?: number;
   side: LineSide;
   background: string;
   selected?: boolean;
+  /** overlaid at the gutter's left edge (see `foldAction`) — the gutter sits
+   *  in the pinned column, so it stays put when wrap is off */
+  action?: ReactNode;
 } & Pick<GutterSelectProps, "onSelectDown" | "onSelectEnter">) {
   const interactive = Boolean(onSelectDown && number !== undefined);
   return (
     <span
-      className={`diff-gutter${interactive ? " cursor-pointer select-none" : ""}`}
+      className={`diff-gutter${interactive ? " cursor-pointer select-none" : ""}${action ? " relative" : ""}`}
       style={{
         background: selected ? "var(--accent-soft)" : background,
         color: selected ? "var(--accent)" : undefined,
@@ -279,6 +283,7 @@ function Gutter({
         interactive && onSelectEnter ? () => onSelectEnter(side, number!) : undefined
       }
     >
+      {action}
       {number ?? ""}
     </span>
   );
@@ -292,6 +297,9 @@ export interface DiffLineProps extends GutterSelectProps, LineCommentProps {
   marks?: LineMarks;
   /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
   moved?: boolean;
+  /** a control overlaid on the gutter — the "fold back up" button on the
+   *  first line of an opened moved-code region */
+  foldAction?: ReactNode;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -309,6 +317,7 @@ export const DiffLine = memo(function DiffLine({
   selectedOld,
   selectedNew,
   moved,
+  foldAction,
   onDefinitionClick,
   isDefinedInDiff,
 }: DiffLineProps) {
@@ -344,6 +353,7 @@ export const DiffLine = memo(function DiffLine({
           selected={selectedOld}
           onSelectDown={onSelectDown}
           onSelectEnter={onSelectEnter}
+          action={foldAction}
         />
         <Gutter
           number={row.newNumber}
@@ -385,6 +395,7 @@ export interface SplitHalfProps extends LineCommentProps {
   onSelectEnter?: GutterSelectProps["onSelectEnter"];
   /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
   moved?: boolean;
+  foldAction?: ReactNode;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -403,6 +414,7 @@ function SplitHalf({
   onSelectDown,
   onSelectEnter,
   moved,
+  foldAction,
   onDefinitionClick,
   isDefinedInDiff,
 }: SplitHalfProps) {
@@ -447,6 +459,7 @@ function SplitHalf({
           selected={selected}
           onSelectDown={onSelectDown}
           onSelectEnter={onSelectEnter}
+          action={foldAction}
         />
         <CommentColumn
           onComment={onComment}
@@ -495,6 +508,9 @@ export interface SplitDiffLineProps {
    */
   movedLeft?: boolean;
   movedRight?: boolean;
+  /** "fold back up" control, on whichever half carries the moved region */
+  foldActionLeft?: ReactNode;
+  foldActionRight?: ReactNode;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -520,6 +536,8 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   onSelectEnter,
   movedLeft,
   movedRight,
+  foldActionLeft,
+  foldActionRight,
   onDefinitionClick,
   isDefinedInDiff,
 }: SplitDiffLineProps) {
@@ -538,6 +556,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}
         moved={movedLeft}
+        foldAction={foldActionLeft}
         onDefinitionClick={onDefinitionClick}
         isDefinedInDiff={isDefinedInDiff}
       />
@@ -555,6 +574,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}
         moved={movedRight}
+        foldAction={foldActionRight}
         onDefinitionClick={onDefinitionClick}
         isDefinedInDiff={isDefinedInDiff}
       />

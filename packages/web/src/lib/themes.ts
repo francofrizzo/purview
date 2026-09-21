@@ -53,6 +53,7 @@ export const TOKEN_NAMES = [
   "moved-out-bg-strong",
   "moved-out-gutter",
   "moved-fg",
+  "moved-out-fg",
   "search-match",
   "search-active",
   "risk",
@@ -151,6 +152,7 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
   // Moved-code tint: derived from purple the same way add/del derive from
   // green/red, text() gets it the same contrast floor as accent/ok/risk.
   const moved = text(palette.purple, 3.6);
+  const movedOut = text(cyan, 3.6);
   const warn = text(
     // yellow on a light background is hopeless; prefer orange there
     !dark && contrast(palette.yellow, base) < 2.4 ? palette.orange : palette.yellow,
@@ -197,6 +199,7 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "moved-out-bg-strong": rgba(cyan, tintStrong),
     "moved-out-gutter": rgba(cyan, tintGutter),
     "moved-fg": moved,
+    "moved-out-fg": movedOut,
 
     "search-match": rgba(searchTint, dark ? 0.24 : 0.28),
     "search-active": rgba(palette.orange, dark ? 0.55 : 0.48),
@@ -437,6 +440,7 @@ const REVIEWER_DARK: ThemeDef = {
     "moved-out-bg-strong": "rgba(57, 197, 207, 0.26)",
     "moved-out-gutter": "rgba(57, 197, 207, 0.16)",
     "moved-fg": "#c4a7ff",
+    "moved-out-fg": "#6fd6de",
     "search-match": "rgba(227, 179, 65, 0.22)",
     "search-active": "rgba(255, 166, 87, 0.55)",
     risk: "#f0787a",
@@ -500,6 +504,7 @@ const REVIEWER_LIGHT: ThemeDef = {
     "moved-out-bg-strong": "rgba(11, 125, 140, 0.22)",
     "moved-out-gutter": "rgba(11, 125, 140, 0.13)",
     "moved-fg": "#6b3fd4",
+    "moved-out-fg": "#0b6f7c",
     "search-match": "rgba(226, 168, 22, 0.3)",
     "search-active": "rgba(247, 148, 30, 0.6)",
     risk: "#c0403f",

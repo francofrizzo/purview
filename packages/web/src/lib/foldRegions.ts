@@ -178,7 +178,7 @@ export function foldLabel(kind: "in" | "out", hidden: number, counterparts: Move
   const verb = kind === "in" ? "from" : "to";
   const where =
     paths.length === 0 ? "" : paths.length === 1 ? ` ${verb} ${paths[0]}` : ` ${verb} ${paths.length} files`;
-  return `⋯ ${hidden} ${noun} moved${where}`;
+  return `${hidden} ${noun} moved${where}`;
 }
 
 /**
@@ -217,6 +217,77 @@ export function moveFoldRegions(params: {
   });
 }
 
+/* ------------------------------------------------ open / folded state */
+
+/** The hunk id a region key (`${hunkId}:${kind}:${contentFrom}`) belongs to.
+ *  Parsed from the right, so a hunk id that itself contains a colon still
+ *  round-trips. */
+export function foldRegionHunkId(regionKey: string): string {
+  const last = regionKey.lastIndexOf(":");
+  const kindSep = last <= 0 ? -1 : regionKey.lastIndexOf(":", last - 1);
+  return kindSep === -1 ? regionKey : regionKey.slice(0, kindSep);
+}
+
+/** Is this region currently hidden behind its placeholder? Exempt regions
+ *  never fold; everything else folds unless the reader opened it. */
+export function isFoldRegionFolded(region: MoveFoldRegion, opened: ReadonlySet<string>): boolean {
+  return !region.exempt && !opened.has(region.key);
+}
+
+/** Flip one region between opened and folded. Takes the *region* key (see
+ *  {@link MoveFoldRegion.key}) — never a rendered row's key, which carries a
+ *  `fold:` prefix and would never match on read. */
+export function toggleOpenedFoldRegion(opened: ReadonlySet<string>, regionKey: string): ReadonlySet<string> {
+  const next = new Set(opened);
+  if (next.has(regionKey)) next.delete(regionKey);
+  else next.add(regionKey);
+  return next;
+}
+
+/** The placeholder a folded region renders as. `key` is the virtualizer row
+ *  key; `regionKey` is what open/fold state is keyed by. */
+export interface FoldPlaceholder {
+  key: string;
+  regionKey: string;
+  kind: "in" | "out";
+  from: number;
+  to: number;
+  label: string;
+  hidden: number;
+}
+
+export function foldPlaceholder(region: MoveFoldRegion): FoldPlaceholder {
+  return {
+    key: `fold:${region.key}`,
+    regionKey: region.key,
+    kind: region.kind,
+    from: region.from,
+    to: region.to,
+    label: region.label,
+    hidden: region.hidden,
+  };
+}
+
+/**
+ * Per hunk, by row-space start index: which regions are folded (render a
+ * placeholder there and skip to `to`) and which are manually opened (render
+ * rows as normal, with a "fold back up" control on the first one). Exempt
+ * regions appear in neither — they can't fold, so there's nothing to offer.
+ */
+export function foldStartsFor(
+  regions: readonly MoveFoldRegion[],
+  opened: ReadonlySet<string>,
+): { folded: Map<number, MoveFoldRegion>; opened: Map<number, MoveFoldRegion> } {
+  const folded = new Map<number, MoveFoldRegion>();
+  const open = new Map<number, MoveFoldRegion>();
+  for (const region of regions) {
+    if (region.exempt) continue;
+    if (opened.has(region.key)) open.set(region.from, region);
+    else folded.set(region.from, region);
+  }
+  return { folded, opened: open };
+}
+
 /** Regions the reader can no longer see have no business holding open state —
  *  same idiom as hunkCollapse.ts's `pruneCollapsed`, keyed by the hunk id a
  *  region's key is prefixed with. */
@@ -225,7 +296,7 @@ export function pruneOpenedFoldRegions(
   liveHunkIds: Iterable<string>,
 ): ReadonlySet<string> {
   const live = new Set(liveHunkIds);
-  const keep = [...opened].filter((key) => live.has(key.slice(0, key.indexOf(":"))));
+  const keep = [...opened].filter((key) => live.has(foldRegionHunkId(key)));
   if (keep.length === opened.size) return opened;
   return new Set(keep);
 }

@@ -3,6 +3,11 @@ import type { MoveCounterpart } from "./moveDetection";
 import {
   computeFoldRuns,
   foldLabel,
+  foldPlaceholder,
+  foldRegionHunkId,
+  foldStartsFor,
+  isFoldRegionFolded,
+  toggleOpenedFoldRegion,
   moveFoldRegions,
   pruneOpenedFoldRegions,
   splitMoveCandidates,
@@ -135,19 +140,19 @@ describe("foldLabel", () => {
   ];
 
   it("names the single counterpart for a moved-in region", () => {
-    expect(foldLabel("in", 39, oneIn)).toBe("⋯ 39 lines moved from internal/browser/manager.go");
+    expect(foldLabel("in", 39, oneIn)).toBe("39 lines moved from internal/browser/manager.go");
   });
 
   it("names the single counterpart for a moved-out region", () => {
-    expect(foldLabel("out", 39, oneOut)).toBe("⋯ 39 lines moved to sandbox_runtime.go");
+    expect(foldLabel("out", 39, oneOut)).toBe("39 lines moved to sandbox_runtime.go");
   });
 
   it("summarizes several counterparts by count instead of listing them", () => {
-    expect(foldLabel("in", 12, twoIn)).toBe("⋯ 12 lines moved from 2 files");
+    expect(foldLabel("in", 12, twoIn)).toBe("12 lines moved from 2 files");
   });
 
   it("singularizes 'line' for a one-line region", () => {
-    expect(foldLabel("in", 1, oneIn)).toBe("⋯ 1 line moved from internal/browser/manager.go");
+    expect(foldLabel("in", 1, oneIn)).toBe("1 line moved from internal/browser/manager.go");
   });
 
   it("dedupes two counterparts that share a path", () => {
@@ -155,12 +160,12 @@ describe("foldLabel", () => {
       { path: "a.go", hunkId: "h1", direction: "in" },
       { path: "a.go", hunkId: "h2", direction: "in" },
     ];
-    expect(foldLabel("in", 5, dup)).toBe("⋯ 5 lines moved from a.go");
+    expect(foldLabel("in", 5, dup)).toBe("5 lines moved from a.go");
   });
 
   it("ignores counterparts of the other direction", () => {
     const mixed: MoveCounterpart[] = [...oneIn, ...oneOut];
-    expect(foldLabel("in", 5, mixed)).toBe("⋯ 5 lines moved from internal/browser/manager.go");
+    expect(foldLabel("in", 5, mixed)).toBe("5 lines moved from internal/browser/manager.go");
   });
 });
 
@@ -187,7 +192,7 @@ describe("moveFoldRegions", () => {
         to: 4,
         hidden: 4,
         exempt: false,
-        label: "⋯ 4 lines moved from src/a.go",
+        label: "4 lines moved from src/a.go",
         contentFrom: 5,
       },
     ]);
@@ -258,5 +263,59 @@ describe("pruneOpenedFoldRegions", () => {
   it("is a no-op — same reference — when nothing would change", () => {
     const opened = new Set(["h1:in:0"]);
     expect(pruneOpenedFoldRegions(opened, ["h1", "h2"])).toBe(opened);
+  });
+});
+
+describe("folding and unfolding a region through its placeholder", () => {
+  // Mirrors DiffPane: the rows memo renders a placeholder for every folded
+  // region start, the placeholder's click toggles open state, and the next
+  // rows pass reads that state back by region key.
+  const [region] = moveFoldRegions({
+    hunkId: "h1",
+    kind: "in",
+    candidates: [5, 6, 7, 8].map((contentIdx) => ({ candidate: true, contentIdx })),
+    exempt: [false, false, false, false],
+    counterparts: [],
+  });
+
+  it("expands when the placeholder is clicked (regression: row key vs region key)", () => {
+    let opened: ReadonlySet<string> = new Set();
+    expect(foldStartsFor([region], opened).folded.get(0)).toBe(region);
+
+    const placeholder = foldPlaceholder(region);
+    // The row key is the virtualizer's, and differs from the region key —
+    // toggling by it is what left the region folded forever.
+    expect(placeholder.key).not.toBe(region.key);
+    opened = toggleOpenedFoldRegion(opened, placeholder.regionKey);
+
+    expect(isFoldRegionFolded(region, opened)).toBe(false);
+    expect(foldStartsFor([region], opened).folded.size).toBe(0);
+    expect(foldStartsFor([region], opened).opened.get(0)).toBe(region);
+    // and it survives the pane's prune pass while its hunk is still shown
+    expect(pruneOpenedFoldRegions(opened, ["h1"])).toBe(opened);
+  });
+
+  it("folds back up when the opened region's fold control is clicked", () => {
+    let opened: ReadonlySet<string> = toggleOpenedFoldRegion(new Set(), foldPlaceholder(region).regionKey);
+    const [first] = foldStartsFor([region], opened).opened.values();
+    opened = toggleOpenedFoldRegion(opened, first.key);
+    expect(isFoldRegionFolded(region, opened)).toBe(true);
+    expect(foldStartsFor([region], opened).folded.get(0)).toBe(region);
+    expect(foldStartsFor([region], opened).opened.size).toBe(0);
+  });
+
+  it("offers neither a placeholder nor a fold control for an exempt region", () => {
+    const exempt = { ...region, exempt: true };
+    const starts = foldStartsFor([exempt], new Set([exempt.key]));
+    expect(starts.folded.size).toBe(0);
+    expect(starts.opened.size).toBe(0);
+  });
+});
+
+describe("foldRegionHunkId", () => {
+  it("parses the hunk id from the right, so ids containing a colon survive", () => {
+    expect(foldRegionHunkId("h1:in:5")).toBe("h1");
+    expect(foldRegionHunkId("a:b:out:12")).toBe("a:b");
+    expect(pruneOpenedFoldRegions(new Set(["a:b:out:12"]), ["a:b"])).toEqual(new Set(["a:b:out:12"]));
   });
 });
