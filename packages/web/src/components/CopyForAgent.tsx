@@ -30,16 +30,19 @@ export function useCopyForAgent() {
     [],
   );
 
-  const copy = useCallback(async (text: string) => {
-    if (!text) return;
+  /** Resolves true only when the text really reached the clipboard. */
+  const copy = useCallback(async (text: string): Promise<boolean> => {
+    if (!text) return false;
     try {
       if (!navigator.clipboard?.writeText) throw new Error("no clipboard API");
       await navigator.clipboard.writeText(text);
       setState("copied");
       if (timer.current) window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => setState("idle"), FLASH_MS);
+      return true;
     } catch {
       setFallback(text);
+      return false;
     }
   }, []);
 
@@ -134,17 +137,31 @@ export function CopyBundleControls({
   source,
   testId,
   className,
+  onDeleteCopied,
 }: {
   source: BundleSource;
   testId?: string;
   className?: string;
+  /**
+   * Offer "copy & delete": after the bundle really reaches the clipboard,
+   * delete the copied comments that can be deleted (never submitted ones).
+   * Omitted, the button isn't shown.
+   */
+  onDeleteCopied?: (ids: string[]) => Promise<unknown>;
 }) {
   const [includeSubmitted, setIncludeSubmitted] = useState(false);
   const count = selectForBundle(source.comments, includeSubmitted).length;
   const submitted = source.comments.filter((c) => (c.status ?? "draft") === "submitted").length;
+  const bundleText = () =>
+    formatBundle(source.comments, source.ctx, {
+      repoLabel: source.repoLabel,
+      revision: source.revision,
+      reviewBody: source.reviewBody,
+      includeSubmitted,
+    });
 
   return (
-    <div className={`flex items-center gap-1.5 ${className ?? ""}`}>
+    <div className={`flex flex-wrap items-center gap-1.5 ${className ?? ""}`}>
       <CopyForAgentButton
         testId={testId}
         disabled={count === 0}
@@ -176,7 +193,117 @@ export function CopyBundleControls({
         />
         include submitted
       </label>
+      {onDeleteCopied ? (
+        <CopyAndDeleteButton
+          testId={testId ? `${testId}-and-delete` : undefined}
+          comments={selectForBundle(source.comments, includeSubmitted)}
+          text={bundleText}
+          onDelete={onDeleteCopied}
+        />
+      ) : null}
     </div>
+  );
+}
+
+/**
+ * "Copy all, then clear them": the hand-off to an agent that is going to act
+ * on the comments, so they don't need to stay. Deletes only after the copy
+ * really succeeded — on the manual-copy fallback nothing is deleted, since
+ * the text never reached the clipboard. Submitted comments are public review
+ * history and are never deleted. Deleting a *pushed* one also removes it from
+ * the pending review on GitHub, so that case asks for a second click.
+ */
+function CopyAndDeleteButton({
+  comments,
+  text,
+  onDelete,
+  testId,
+}: {
+  comments: ExportableComment[];
+  text: () => string;
+  onDelete: (ids: string[]) => Promise<unknown>;
+  testId?: string;
+}) {
+  const { copy, fallback, dismissFallback } = useCopyForAgent();
+  const [phase, setPhase] = useState<"idle" | "confirm" | "working" | "done" | "error">("idle");
+  const [message, setMessage] = useState<string | null>(null);
+  const deletable = comments.filter(
+    (c): c is ExportableComment & { id: string } =>
+      (c.status ?? "draft") !== "submitted" && typeof (c as { id?: unknown }).id === "string",
+  );
+  const pushed = deletable.filter((c) => c.status === "pushed").length;
+
+  useEffect(() => {
+    if (phase !== "confirm" && phase !== "done") return;
+    const t = window.setTimeout(() => setPhase("idle"), phase === "confirm" ? 4000 : FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [phase]);
+
+  const run = async () => {
+    if (pushed > 0 && phase !== "confirm") {
+      setPhase("confirm");
+      return;
+    }
+    setPhase("working");
+    setMessage(null);
+    const ids = deletable.map((c) => c.id);
+    if (!(await copy(text()))) {
+      setPhase("idle");
+      return;
+    }
+    try {
+      await onDelete(ids);
+      setPhase("done");
+    } catch (err) {
+      setPhase("error");
+      setMessage((err as Error).message);
+    }
+  };
+
+  const n = deletable.length;
+  const label =
+    phase === "confirm"
+      ? `also deletes ${pushed} on GitHub — click to confirm`
+      : phase === "working"
+        ? "copying…"
+        : phase === "done"
+          ? "copied · deleted"
+          : `copy & delete (${n})`;
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn"
+        data-testid={testId}
+        disabled={n === 0 || phase === "working"}
+        title={
+          pushed > 0
+            ? `Copy these comments for an agent, then delete the ${n} copied (${pushed} pushed ones are removed from the pending review on GitHub too)`
+            : `Copy these comments for an agent, then delete the ${n} copied`
+        }
+        style={
+          phase === "confirm"
+            ? { color: "var(--warn)", borderColor: "var(--warn)" }
+            : phase === "done"
+              ? { color: "var(--ok)", borderColor: "var(--ok)" }
+              : undefined
+        }
+        onClick={(e) => {
+          e.stopPropagation();
+          void run();
+        }}
+      >
+        {phase === "done" ? <IconCheck width={11} height={11} /> : null}
+        {label}
+      </button>
+      {phase === "error" && message ? (
+        <span className="text-2xs" style={{ color: "var(--risk)" }}>
+          copied, but deleting failed: {message}
+        </span>
+      ) : null}
+      {fallback !== null ? <CopyFallback text={fallback} onClose={dismissFallback} /> : null}
+    </>
   );
 }
 

@@ -512,6 +512,31 @@ export function useDeleteComment(key: string) {
   });
 }
 
+/**
+ * Delete several comments ("copy & delete"). There is no bulk route, so it is
+ * a few parallel single deletes; every one is attempted, and the first error
+ * (if any) is thrown after the lists are refreshed, so a partial failure still
+ * shows what is left.
+ */
+export function useDeleteComments(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      const results = await Promise.allSettled(ids.map((id) => api.deleteComment(key, id)));
+      const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      if (failed.length > 0) {
+        throw new Error(
+          `${failed.length} of ${ids.length} not deleted (${(failed[0].reason as Error)?.message ?? "error"})`,
+        );
+      }
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
 /** Apply the accepted "Suggest new anchor" proposal (or a manual reposition). */
 export function useMoveComment(
   key: string,

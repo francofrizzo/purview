@@ -23,6 +23,7 @@ import {
   useUnarchiveAndAnalyze,
   useComments,
   useDeleteComment,
+  useDeleteComments,
   useEditComment,
   useMoveComment,
   useProposeReanchor,
@@ -124,6 +125,7 @@ export function PrView() {
   const sync = useSync(prKey);
   const addComment = useAddComment(prKey);
   const deleteComment = useDeleteComment(prKey);
+  const deleteComments = useDeleteComments(prKey);
   const editComment = useEditComment(prKey);
   const moveComment = useMoveComment(prKey);
   const proposeReanchor = useProposeReanchor(prKey);
@@ -1429,6 +1431,7 @@ export function PrView() {
             onClose={() => setDraftsOpen(false)}
             onJump={(d) => jumpToFile(d.file)}
             onDelete={(d) => deleteComment.mutate(d.id)}
+            onDeleteMany={(ids) => deleteComments.mutateAsync(ids)}
             onEdit={(input) => editComment.mutateAsync(input)}
             onQuote={quote}
           />

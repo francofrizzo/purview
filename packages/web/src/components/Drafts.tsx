@@ -361,6 +361,7 @@ export function DraftsDrawer({
   onClose,
   onJump,
   onDelete,
+  onDeleteMany,
   onEdit,
   onQuote,
 }: {
@@ -371,6 +372,8 @@ export function DraftsDrawer({
   onClose: () => void;
   onJump: (draft: DraftComment) => void;
   onDelete?: (draft: DraftComment) => void;
+  /** bulk delete, for "copy & delete" */
+  onDeleteMany?: (ids: string[]) => Promise<unknown>;
   onEdit?: EditComment;
   onQuote?: (ref: ChatRef) => void;
 }) {
@@ -402,6 +405,7 @@ export function DraftsDrawer({
             testId="copy-bundle-drawer"
             className="mt-1.5"
             source={{ ...bundle, comments: drafts }}
+            onDeleteCopied={onDeleteMany}
           />
         ) : null}
       </div>
