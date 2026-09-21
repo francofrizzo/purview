@@ -1083,7 +1083,7 @@ export function PrView() {
                   <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
                     {selectedUnit.summary}
                   </p>
-                  <UnitChangelog changelog={selectedUnit.changelog} />
+                  <UnitChangelog changelog={selectedUnit.changelog} currentRevision={detail.state.revision} />
                   {selectedUnit.attentionWhy ? (
                     <p className="mt-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
                       why {selectedUnit.attention}: {selectedUnit.attentionWhy}

@@ -1,5 +1,10 @@
 import type { UnitChangelogEntry } from "../api/types";
 
+/** "Changelog (1 revision)" / "Changelog (3 revisions)" */
+export function changelogHeading(count: number): string {
+  return `Changelog (${count} revision${count === 1 ? "" : "s"})`;
+}
+
 /** "r3 · rounding switched to banker's" */
 export function formatChangelogEntry(e: UnitChangelogEntry): string {
   return `r${e.revision} · ${e.text}`;

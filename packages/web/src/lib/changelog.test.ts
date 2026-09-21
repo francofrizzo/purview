@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changelogView, formatChangelogEntry } from "./changelog";
+import { changelogHeading, changelogView, formatChangelogEntry } from "./changelog";
 import { mockDetail } from "../mocks/fixture";
 
 describe("changelogView", () => {
@@ -26,5 +26,12 @@ describe("changelogView", () => {
     const unit = mockDetail.state.units.find((u) => (u.changelog?.length ?? 0) === 2);
     expect(unit).toBeDefined();
     expect(changelogView(unit!.changelog)!.earlier).toHaveLength(1);
+  });
+});
+
+describe("changelogHeading", () => {
+  it("counts revisions with the right plural", () => {
+    expect(changelogHeading(1)).toBe("Changelog (1 revision)");
+    expect(changelogHeading(3)).toBe("Changelog (3 revisions)");
   });
 });
