@@ -1095,6 +1095,15 @@ export function DiffPane({
   useEffect(() => {
     if (!jumpToHunk || jumpedNonce.current === jumpToHunk.nonce) return;
 
+    // A collapsed hunk (folded by hand, or auto-collapsed once viewed) shows
+    // only its header, so the definition line isn't there to land on. Unfold
+    // it and bail without consuming the nonce; the effect reruns once `rows`
+    // carries the hunk's lines. Same idiom as the search-visit effect above.
+    if (isCollapsed(collapsed, jumpToHunk.hunkId)) {
+      setCollapsedState((prev) => setCollapsed(prev, jumpToHunk.hunkId, false));
+      return;
+    }
+
     // The target may sit inside a folded moved-in region (only "in" regions
     // can — jumpToHunk only ever targets an added or context line, never a
     // removed one). Unfold it first, same idiom as the search-visit effect's
@@ -1162,6 +1171,7 @@ export function DiffPane({
     entries,
     foldRegionsByHunk,
     isRegionFolded,
+    collapsed,
   ]);
 
   /** Search hits on one rendered row, plus the active one if it lives here. */
