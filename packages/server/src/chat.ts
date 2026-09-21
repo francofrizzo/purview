@@ -17,6 +17,7 @@ import {
 } from "@reviewer/core";
 import { readComments } from "./comments.js";
 import { checkoutNote } from "./analysis.js";
+import { baseNote } from "./base-note.js";
 import { cliCommand, skillDir } from "./skill-paths.js";
 import { rubricSection } from "./rubric.js";
 import { chatInstructionsSection } from "./chat-instructions.js";
@@ -321,8 +322,11 @@ function showingLines(panel: boolean): string[] {
   ];
 }
 
-/** PR url/title/key/revision, the analysis summary and the unit list. */
-function prOverviewLines(key: PrKey, root: string): string[] {
+/**
+ * PR url/title/key/revision, what it targets (stacked or not), the analysis
+ * summary and the unit list.
+ */
+function prOverviewLines(key: PrKey, root: string, checkout?: ChatCheckout): string[] {
   const state = loadState(key, root);
   const meta = readMeta(key, root);
   const units = state.units
@@ -338,6 +342,7 @@ function prOverviewLines(key: PrKey, root: string): string[] {
     `PR: ${meta.url}`,
     meta.title ? `Title: ${meta.title}` : "",
     `Key: ${keyToString(key)} — current revision ${state.currentRevision}`,
+    baseNote(key, root, checkout?.resolution),
     state.summary ? `\nAnalysis summary:\n${state.summary}` : "\nThis PR has not been analyzed yet.",
     units.length ? `\nReview units:\n${units.join("\n")}` : "",
   ];
@@ -385,7 +390,7 @@ export function chatSystemPrompt(
     "SHOWING, NOT JUST TELLING:",
     ...showingLines(true),
     "",
-    ...prOverviewLines(key, root),
+    ...prOverviewLines(key, root, checkout),
     "",
     "Reading more, when you need it:",
     ...reading.sources,
@@ -432,7 +437,7 @@ export function terminalContext(
       `The human is reviewing a pull request and asking you about it. ${MANNER_LINE}`,
     ]),
     "## Pull request",
-    section(prOverviewLines(key, root)),
+    section(prOverviewLines(key, root, opts.checkout)),
     "## Reading more, when you need it",
     section([...reading.sources, ...reading.status]),
     rubricSection(key, root, { committed: opts.committed }),

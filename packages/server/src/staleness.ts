@@ -4,6 +4,7 @@ import {
   keyToString,
   loadState,
   readMeta,
+  resolveBaseMeta,
   stateRoot,
   updateMeta,
   type Meta,
@@ -84,9 +85,11 @@ function localRevision(key: PrKey, root: string) {
  * UI polls this on focus and on an interval, and a `gh` that is failing is
  * exactly the case where hammering it helps least.
  *
- * Read-only with one deliberate exception: when the only thing that moved is
+ * Read-only with two deliberate exceptions: when the only thing that moved is
  * the PR's state or review decision, meta is patched in place so the home
- * page's chips stay honest without a full refresh. Revisions, hunks and the
+ * page's chips stay honest without a full refresh; and the base branch
+ * (`baseRef`/`basePr`) is backfilled or followed the same way, so older PRs
+ * learn what they target without anyone refreshing them. Revisions, hunks and the
  * event log are never touched here — that is `refreshPr`'s job.
  */
 export function checkStaleness(
@@ -149,6 +152,17 @@ export function checkStaleness(
     const patch: Partial<Meta> = {};
     if (stateMoved) patch.prState = pr.prState;
     if (decisionMoved) patch.reviewDecision = upstreamReviewDecision;
+    // Backfill what the prompts need to know about the base (state written
+    // before `baseRef` existed has none until this runs), and follow a
+    // retarget. Skipped once resolved, so the steady state costs no extra
+    // `gh` call; best-effort, it never turns into a staleness error.
+    if (meta.baseRef !== pr.baseRef || meta.basePr === undefined) {
+      try {
+        Object.assign(patch, resolveBaseMeta(key, meta, pr.baseRef, root));
+      } catch {
+        // leave the base fields for the next check
+      }
+    }
     if (Object.keys(patch).length > 0) updateMeta(key, patch, root);
   } catch (err) {
     result = {

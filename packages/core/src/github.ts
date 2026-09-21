@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
-import type { PrKey, RepoKey } from "./paths.js";
-import type { PrState, ReviewDecision } from "./schemas.js";
+import fs from "node:fs";
+import path from "node:path";
+import { repoGithubCachePath, stateRoot, type PrKey, type RepoKey } from "./paths.js";
+import type { BasePr, PrState, ReviewDecision } from "./schemas.js";
 
 /**
  * Every `gh` invocation in the project funnels through here so the server
@@ -36,6 +38,16 @@ export function gh(args: string[], input?: string): string {
 function hostArgs(host: string): string[] {
   // gh defaults to github.com; GHE hosts need an explicit --hostname.
   return host && host !== "github.com" ? ["--hostname", host] : [];
+}
+
+/**
+ * `gh pr list` takes the repo (and host, for GHE) as one `-R [HOST/]OWNER/REPO`
+ * argument — unlike `gh api`, it has no separate `--hostname` flag.
+ */
+function repoFlagValue(key: RepoKey): string {
+  return key.host && key.host !== "github.com"
+    ? `${key.host}/${key.owner}/${key.repo}`
+    : `${key.owner}/${key.repo}`;
 }
 
 function ghJson<T>(host: string, args: string[], input?: string): T {
@@ -299,17 +311,11 @@ export function searchReviewRequestedPrs(
   sinceIso: string,
 ): ReviewRequestedPr[] {
   const day = sinceIso.slice(0, 10);
-  // `gh pr list` takes the repo (and host, for GHE) as one `-R [HOST/]OWNER/REPO`
-  // argument — unlike `gh api`, it has no separate `--hostname` flag.
-  const repoArg =
-    key.host && key.host !== "github.com"
-      ? `${key.host}/${key.owner}/${key.repo}`
-      : `${key.owner}/${key.repo}`;
   const raw = gh([
     "pr",
     "list",
     "-R",
-    repoArg,
+    repoFlagValue(key),
     "--search",
     `review-requested:@me updated:>=${day}`,
     "--state",
@@ -321,6 +327,149 @@ export function searchReviewRequestedPrs(
   ]);
   const parsed = JSON.parse(raw) as RawSearchPull[];
   return parsed.map((p) => ({ number: p.number, title: p.title, updatedAt: p.updatedAt }));
+}
+
+/* ------------------------------------------------------- repo default branch */
+
+/** How long a cached default branch is trusted before it is re-read. */
+export const DEFAULT_BRANCH_TTL_MS = 24 * 60 * 60_000;
+/** A failed lookup is not retried (in this process) for this long. */
+const DEFAULT_BRANCH_FAILURE_TTL_MS = 5 * 60_000;
+
+interface DefaultBranchEntry {
+  /** `null` = never successfully read. */
+  defaultBranch: string | null;
+  fetchedAt: number;
+  /** When the last lookup failed (memory only, never on disk). */
+  failedAt?: number;
+}
+
+const defaultBranchMemo = new Map<string, DefaultBranchEntry>();
+const memoKey = (key: RepoKey, root: string) =>
+  `${root}|${key.host}/${key.owner}/${key.repo}`;
+
+/** Tests: forget every in-memory default branch. */
+export function clearDefaultBranchCache(): void {
+  defaultBranchMemo.clear();
+}
+
+function readDefaultBranchFile(key: RepoKey, root: string): DefaultBranchEntry | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(repoGithubCachePath(key, root), "utf8")) as {
+      defaultBranch?: unknown;
+      fetchedAt?: unknown;
+    };
+    if (typeof raw.defaultBranch !== "string" || raw.defaultBranch === "") return null;
+    const at = typeof raw.fetchedAt === "string" ? Date.parse(raw.fetchedAt) : NaN;
+    return { defaultBranch: raw.defaultBranch, fetchedAt: Number.isFinite(at) ? at : 0 };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The repo's default branch from cache alone — memory, then disk — ignoring
+ * the TTL and never calling `gh`. For prompt builders, which must not block on
+ * the network: a stale answer is still the right answer almost always, and no
+ * answer means "unknown".
+ */
+export function cachedDefaultBranch(key: RepoKey, root = stateRoot()): string | null {
+  const hit = defaultBranchMemo.get(memoKey(key, root));
+  if (hit?.defaultBranch) return hit.defaultBranch;
+  const file = readDefaultBranchFile(key, root);
+  if (file) defaultBranchMemo.set(memoKey(key, root), file);
+  return file?.defaultBranch ?? null;
+}
+
+/**
+ * `gh api repos/{o}/{r}` → `default_branch`, cached per repo in memory and in
+ * `github-cache.json` for `DEFAULT_BRANCH_TTL_MS`. Never throws: on any failure
+ * it answers with the last known value (however old), else `null` ("unknown").
+ */
+export function fetchDefaultBranch(
+  key: RepoKey,
+  root = stateRoot(),
+  now: number = Date.now(),
+): string | null {
+  const mk = memoKey(key, root);
+  const hit = defaultBranchMemo.get(mk) ?? readDefaultBranchFile(key, root);
+  if (hit) {
+    defaultBranchMemo.set(mk, hit);
+    if (hit.defaultBranch && now - hit.fetchedAt < DEFAULT_BRANCH_TTL_MS) return hit.defaultBranch;
+    if (hit.failedAt !== undefined && now - hit.failedAt < DEFAULT_BRANCH_FAILURE_TTL_MS) {
+      return hit.defaultBranch;
+    }
+  }
+  try {
+    const raw = ghJson<{ default_branch?: unknown }>(key.host, [
+      `repos/${key.owner}/${key.repo}`,
+    ]);
+    const branch = raw?.default_branch;
+    if (typeof branch !== "string" || branch === "") throw new Error("no default_branch");
+    const entry = { defaultBranch: branch, fetchedAt: now };
+    defaultBranchMemo.set(mk, entry);
+    try {
+      const file = repoGithubCachePath(key, root);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ defaultBranch: branch, fetchedAt: new Date(now).toISOString() }, null, 2) +
+          "\n",
+        "utf8",
+      );
+    } catch {
+      // An unwritable cache only costs a re-read next time.
+    }
+    return branch;
+  } catch {
+    // Remember the failure briefly so a broken `gh` isn't hammered, and keep
+    // serving the last known (if stale) value meanwhile.
+    const stale = hit?.defaultBranch ?? null;
+    defaultBranchMemo.set(mk, {
+      defaultBranch: stale,
+      fetchedAt: hit?.fetchedAt ?? 0,
+      failedAt: now,
+    });
+    return stale;
+  }
+}
+
+/* ------------------------------------------------------ PR by head branch */
+
+/**
+ * The open PR whose head branch is `head` (`gh pr list --head`), used to name
+ * the PR a stacked PR sits on. `null` when there is none; `undefined` when the
+ * lookup itself failed, so the caller can keep what it already knew.
+ */
+export function findOpenPrByHead(key: RepoKey, head: string): BasePr | null | undefined {
+  try {
+    const raw = gh([
+      "pr",
+      "list",
+      "--repo",
+      repoFlagValue(key),
+      "--head",
+      head,
+      "--state",
+      "open",
+      "--json",
+      "number,title,url",
+      "--limit",
+      "1",
+    ]);
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    const first = parsed[0] as { number?: unknown; title?: unknown; url?: unknown } | undefined;
+    if (!first) return null;
+    if (typeof first.number !== "number" || typeof first.url !== "string") return undefined;
+    return {
+      number: first.number,
+      title: typeof first.title === "string" ? first.title : "",
+      url: first.url,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 /* -------------------------------------------------- committed repo files */

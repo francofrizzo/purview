@@ -84,7 +84,21 @@ export function repoDir(key: RepoKey, root = stateRoot()): string {
  * PR directories are always `String(number)`, i.e. digits only, so no PR can
  * ever collide with one of these names — `isPrDirName` enforces that.
  */
-export const REPO_FILE_NAMES = ["repo.json", "RUBRIC.local.md", "CHAT.local.md"] as const;
+export const REPO_FILE_NAMES = [
+  "repo.json",
+  "RUBRIC.local.md",
+  "CHAT.local.md",
+  "github-cache.json",
+] as const;
+
+/**
+ * `~/.purview/<host>/<owner>/<repo>/github-cache.json` — facts about the repo
+ * read from GitHub (today: its default branch), cached with a timestamp so
+ * they cost one `gh` call a day rather than one per refresh.
+ */
+export function repoGithubCachePath(key: RepoKey, root = stateRoot()): string {
+  return path.join(repoDir(key, root), "github-cache.json");
+}
 
 /** `~/.purview/<host>/<owner>/<repo>/repo.json` */
 export function repoConfigPath(key: RepoKey, root = stateRoot()): string {

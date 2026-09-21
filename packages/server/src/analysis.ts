@@ -26,6 +26,7 @@ import { rubricSection } from "./rubric.js";
 import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
 import { resolveRunCheckout } from "./pr-checkout.js";
+import { baseNote, isManagedCheckout } from "./base-note.js";
 import { HttpError } from "./http-error.js";
 
 /**
@@ -121,7 +122,7 @@ export function checkoutNote(
   headSha?: string,
   key?: PrKey,
 ): string {
-  if (resolution.managed && resolution.path && !resolution.error) {
+  if (isManagedCheckout(resolution) && resolution.managed && resolution.path) {
     const sha = resolution.managed.headSha.slice(0, 12);
     const keyStr = key ? keyToString(key) : "<key>";
     return (
@@ -272,6 +273,7 @@ export function analysisPrompt(
     "with python/node/jq one-liners — the triage view and `show` already give you every field",
     "(path, status, hunk ids, headers, +/- sizes, addedLines/removedLines, full text, moved-code).",
     opts.checkout ? "\n" + checkoutNote(opts.checkout, opts.headSha, key) : "",
+    baseNote(key, root, opts.checkout),
     "\n" + findingsNote(opts.checkout),
     movedNote(movedCodeSummary(key, state.currentRevision, root)),
     rubric ? "\n" + rubric : "",

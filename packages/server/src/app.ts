@@ -18,6 +18,7 @@ import {
   loadState,
   parseKey,
   parseRepoKey,
+  prExists,
   readDiff,
   readFilesJson,
   readMeta,
@@ -26,6 +27,7 @@ import {
   readMigrationReport,
   readRepoConfig,
   refreshPr,
+  repoKeyOf,
   repoKeyToString,
   setHunkViewed,
   setUnit,
@@ -354,6 +356,11 @@ export function createApp(opts: AppOptions = {}): Hono {
       meta,
       analysisJob: readJob(key, root),
       checkoutMismatch: checkout.mismatch ?? null,
+      // Lets the header's "stacked on #n" chip link inside Purview when the
+      // base PR is tracked here too, and out to GitHub otherwise.
+      basePrTracked: meta.basePr
+        ? prExists({ ...repoKeyOf(key), number: meta.basePr.number }, root)
+        : false,
     });
   });
 

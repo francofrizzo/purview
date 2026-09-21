@@ -178,6 +178,7 @@ interface WirePrDetail {
   diff: string;
   meta: PrListEntry["meta"];
   analysisJob?: AnalysisJob | null;
+  basePrTracked?: boolean;
 }
 
 interface WireMigrationEntry {
@@ -305,6 +306,7 @@ function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
     files: { files: (raw.files ?? []).map(adaptFile) },
     diff: raw.diff ?? "",
     analysisJob: raw.analysisJob ?? null,
+    basePrTracked: raw.basePrTracked === true,
   };
 }
 

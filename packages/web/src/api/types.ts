@@ -148,6 +148,19 @@ export interface PrMeta {
   author?: string;
   authorAvatarUrl?: string;
   createdAt?: string;
+  /** The branch this PR targets (absent on state not yet backfilled). */
+  baseRef?: string;
+  /**
+   * The open PR whose head is `baseRef`, when this PR is stacked on another;
+   * `null` = not stacked (or no PR heads that branch), absent = not resolved.
+   */
+  basePr?: BasePr | null;
+}
+
+export interface BasePr {
+  number: number;
+  title: string;
+  url: string;
 }
 
 export interface PrState {
@@ -393,6 +406,8 @@ export interface PrDetail {
   files: FilesJson;
   diff: string;
   analysisJob?: AnalysisJob | null;
+  /** `meta.basePr` is tracked in Purview too (so it can be linked in-app). */
+  basePrTracked?: boolean;
 }
 
 export interface MigrationReportItem {

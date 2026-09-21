@@ -654,6 +654,10 @@ export const mockApi = {
     }
     if (target === detail) recomputeFileRollups();
     target.analysisJob = jobs[key] ?? null;
+    const basePr = target.meta.basePr;
+    const { host, owner, repo } = target.meta;
+    target.basePrTracked =
+      !!basePr && list.some((p) => p.key === `${host}/${owner}/${repo}/${basePr.number}`);
     return structuredClone(target);
   },
 

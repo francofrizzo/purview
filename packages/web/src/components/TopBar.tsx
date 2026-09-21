@@ -4,6 +4,8 @@ import type { AnalysisJob, PrDetail } from "../api/types";
 import { isJobLive } from "../api/types";
 import { AnalysisChip } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
+import { StackedOnChip } from "./Chips";
+import { stackedOnLink } from "../lib/stacked";
 import { ChatButton } from "./ChatPanel";
 import { useModalBackground } from "./Modal";
 import {
@@ -129,6 +131,7 @@ export function TopBar({
             {meta.author}
           </span>
         ) : null}
+        <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
         {/* Only interesting while the analysis is not a plain success. */}
         <AnalysisChip job={analysisJob} />
       </div>
