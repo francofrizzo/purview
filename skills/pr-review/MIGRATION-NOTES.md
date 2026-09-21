@@ -60,13 +60,15 @@ first three as "carried".
    hunk bodies), the archived hunk ids with their old header and sizes, and new/unassigned
    hunks in the same files as hints only. A unit is also changed once you attach a `new`
    hunk to it. For each changed unit, in its one `set-unit` patch:
-   - rewrite `summary` and `attentionWhy` to describe the code as it is **now**;
+   - rewrite `title`, `summary` and `attentionWhy` to describe exactly the hunks the unit holds
+     **now** (listed as "now holds" in the `changes` output). A unit that lost hunks is titled and
+     summarized by what remains, not by what left; the history goes in the changelog only;
    - re-check `kind` / `attention` / `riskFlags` (a correction needs `--note`);
    - send a `changelogEntry`: a short note (a sentence or two) about what *this revision* changed in
      the unit (e.g. `"rounding switched to banker's; added a .5 test"`) — not a restatement
      of the summary. It is recorded under the state's current revision in the unit's
      `changelog`; re-sending replaces that revision's entry rather than adding another.
-     A longer one is truncated at a word boundary with a warning;
+     Only runaway output is truncated;
    - re-verify its findings (see "What happens to findings").
 
    Units `changes` does not list and that take no new hunk are not patched at all.

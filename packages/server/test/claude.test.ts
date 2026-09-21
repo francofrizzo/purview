@@ -352,6 +352,8 @@ describe("analysis job lifecycle", () => {
     expect(claude.promptOf(0)).toContain(`CHANGED UNITS: run \`${cliCmd} changes ${keyToString(key)}\` first.`);
     expect(claude.promptOf(0)).toContain("changelogEntry");
     expect(analysisPrompt(key, root, { incremental: false })).not.toContain("CHANGED UNITS");
+    // Changed units get their title rewritten too, from what they hold now.
+    expect(claude.promptOf(0)).toContain("rewrite `title`, `summary` and `attentionWhy`");
   });
 
   it("accumulates tool/result events into job.metrics and carries them on analysis-finished", async () => {

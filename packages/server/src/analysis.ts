@@ -238,7 +238,9 @@ export function changesBlock(cmd: string, keyStr: string): string {
   return [
     `CHANGED UNITS: run \`${cmd} changes ${keyStr}\` first. It lists every unit this revision reworked`,
     "(fuzzy/renamed hunks as a compact before->after, archived hunks, related new hunks as hints).",
-    "For each unit it lists: rewrite `summary` and `attentionWhy` so they describe the code as it is NOW;",
+    "For each unit it lists: rewrite `title`, `summary` and `attentionWhy` so they describe exactly the",
+    "hunks it holds NOW (its \"now holds\" line). A unit that lost hunks is titled and summarized by what",
+    "remains, not by what left: history goes in the changelog, never in the summary or title;",
     "re-check `kind`/`attention`/`riskFlags` (a correction needs `--note`); and send a `changelogEntry`:",
     "a short note (a sentence or two) about what this revision changed in that unit, e.g. \"rounding",
     "switched to banker's; added a .5 test\". Don't restate the summary. Re-verify the findings of changed units",

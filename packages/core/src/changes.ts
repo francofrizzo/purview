@@ -210,6 +210,30 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
     ];
     const lastLog = u.changelog?.[u.changelog.length - 1];
     if (lastLog) lines.push(`last changelog: r${lastLog.revision} · ${lastLog.text}`);
+    // What the unit holds *now*, so a unit that shrank (or grew) is obvious:
+    // its title and summary must describe exactly these hunks.
+    // Grouped by file (hunk count and +/- per file) so a 27-hunk unit stays one
+    // readable line; a small unit lists its hunk ids too.
+    const holding = u.hunkIds.map((id) => cur.get(id)).filter((h) => h !== undefined);
+    const byFile = new Map<string, { n: number; add: number; del: number; ids: string[] }>();
+    for (const h of holding) {
+      const f = byFile.get(h!.file.path) ?? { n: 0, add: 0, del: 0, ids: [] };
+      f.n++;
+      f.add += h!.hunk.addedLines.length;
+      f.del += h!.hunk.removedLines.length;
+      f.ids.push(h!.hunk.id.slice(0, 8));
+      byFile.set(h!.file.path, f);
+    }
+    const listIds = holding.length <= 4;
+    lines.push(
+      `now holds ${u.hunkIds.length} hunk${u.hunkIds.length === 1 ? "" : "s"}: ` +
+        [...byFile]
+          .map(
+            ([path, f]) =>
+              `${path}${f.n > 1 ? ` ×${f.n}` : ""} +${f.add} -${f.del}` + (listIds ? ` (${f.ids.join(",")})` : ""),
+          )
+          .join("; "),
+    );
 
     for (const e of c.reworked) {
       reworkedCount++;

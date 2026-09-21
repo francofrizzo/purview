@@ -374,8 +374,10 @@ re-verification reads the same way. In short:
    bodies in **one** `reviewer-state show <key> <id1> <id2> ...` call (not one per hunk),
    and classify them.
    Carried, fuzzy-matched, and renamed hunks keep their existing unit membership — don't
-   re-group them. But **do** refresh the description of every changed unit: rewrite its
-   `summary` and `attentionWhy` so they describe the code as it is *now*, re-check
+   re-group them. But **do** refresh the description of every changed unit: rewrite its `title`, `summary` and `attentionWhy` so they describe exactly the hunks the unit
+   holds *now* (the `changes` output lists them). A unit that lost hunks gets a title and
+   summary about what remains, not about what left; history belongs in the changelog, never
+   in the summary, re-check
    `kind`/`attention`/`riskFlags` (a correction needs `--note`), and send a
    `changelogEntry` — a short note (a sentence or two) about what this revision changed in that unit
    (e.g. `"rounding switched to banker's; added a .5 test"`), not a restatement of the
