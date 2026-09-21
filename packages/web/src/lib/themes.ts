@@ -206,12 +206,14 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "search-match": rgba(searchTint, dark ? 0.24 : 0.28),
     "search-active": rgba(palette.orange, dark ? 0.55 : 0.48),
 
-    // "Changed in rN" (the changelog highlight): the accent, as a 3px gutter
-    // bar plus a tint faint enough to sit over an add/del row and stay under
-    // the line-selection wash. Blue is neither search (yellow/orange) nor a
-    // move (violet/cyan).
-    "changed-in-bar": accent,
-    "changed-in-bg": rgba(accent, dark ? 0.08 : 0.07),
+    // "Changed in rN" (the changelog highlight): yellow, as a 3px gutter bar
+    // plus a whole-row tint faint enough to sit over an add/del row and stay
+    // under the line-selection wash. Search is yellow too, but as a stronger
+    // tint on the matched *text*; a bar plus a faint row wash reads as a
+    // different thing. `warn`/`searchTint` already swap yellow for orange on
+    // light themes where yellow has no contrast.
+    "changed-in-bar": warn,
+    "changed-in-bg": rgba(searchTint, dark ? 0.08 : 0.09),
 
     risk,
     "risk-soft": rgba(risk, softAlpha),
@@ -452,8 +454,8 @@ const REVIEWER_DARK: ThemeDef = {
     "moved-out-fg": "#6fd6de",
     "search-match": "rgba(227, 179, 65, 0.22)",
     "search-active": "rgba(255, 166, 87, 0.55)",
-    "changed-in-bar": "#7aa2f7",
-    "changed-in-bg": "rgba(122, 162, 247, 0.08)",
+    "changed-in-bar": "#e3b341",
+    "changed-in-bg": "rgba(227, 179, 65, 0.08)",
     risk: "#f0787a",
     "risk-soft": "rgba(240, 120, 122, 0.13)",
     warn: "#e3b341",
@@ -518,8 +520,8 @@ const REVIEWER_LIGHT: ThemeDef = {
     "moved-out-fg": "#0b6f7c",
     "search-match": "rgba(226, 168, 22, 0.3)",
     "search-active": "rgba(247, 148, 30, 0.6)",
-    "changed-in-bar": "#2f6feb",
-    "changed-in-bg": "rgba(47, 111, 235, 0.07)",
+    "changed-in-bar": "#a06a08",
+    "changed-in-bg": "rgba(191, 135, 0, 0.09)",
     risk: "#c0403f",
     "risk-soft": "rgba(192, 64, 63, 0.1)",
     warn: "#a06a08",

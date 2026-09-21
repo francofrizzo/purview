@@ -79,8 +79,8 @@ export function UnitChangelog({
               <span
                 className="chip flex-none font-mono"
                 style={{
-                  background: active ? "var(--accent-soft)" : "var(--bg-inset)",
-                  color: active ? "var(--accent)" : "var(--fg-muted)",
+                  background: active ? "var(--warn-soft)" : "var(--bg-inset)",
+                  color: active ? "var(--warn)" : "var(--fg-muted)",
                 }}
                 title={`Revision ${e.revision}`}
               >

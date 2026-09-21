@@ -53,8 +53,8 @@
     --moved-out-fg: #6fd6de;
 
     /* "changed in rN" — the unit changelog's line highlight (see lib/themes.ts) */
-    --changed-in-bar: #7aa2f7;
-    --changed-in-bg: rgba(122, 162, 247, 0.08);
+    --changed-in-bar: #e3b341;
+    --changed-in-bg: rgba(227, 179, 65, 0.08);
 
     --risk: #f0787a;
     --risk-soft: rgba(240, 120, 122, 0.13);
@@ -115,8 +115,8 @@
       --moved-fg: #6b3fd4;
       --moved-out-fg: #0b6f7c;
 
-      --changed-in-bar: #2f6feb;
-      --changed-in-bg: rgba(47, 111, 235, 0.07);
+      --changed-in-bar: #a06a08;
+      --changed-in-bg: rgba(191, 135, 0, 0.09);
 
       --risk: #c0403f;
       --risk-soft: rgba(192, 64, 63, 0.1);
@@ -536,13 +536,13 @@
     background: var(--bg-hover);
   }
   .changelog-row[data-active="true"] {
-    background: var(--accent-soft);
+    background: var(--warn-soft);
     box-shadow: inset 2px 0 0 var(--changed-in-bar);
   }
   /* The hunk header's "changed in rN" label: the same bar, in miniature. */
   .changed-in-chip {
-    color: var(--accent);
-    background: var(--accent-soft);
+    color: var(--warn);
+    background: var(--warn-soft);
     box-shadow: inset 3px 0 0 var(--changed-in-bar);
     padding-left: 0.5rem;
   }
