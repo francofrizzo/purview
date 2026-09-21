@@ -109,6 +109,12 @@ export interface CheckoutResolution {
   mismatch?: { checkedOutBranch: string; prHeadRef: string };
   /** set when the stored path is unusable (deleted, no longer a repo) */
   error?: string;
+  /**
+   * Set when `path` is Purview's own exact checkout of the PR head (see
+   * pr-checkout.ts) rather than something resolved from the reader's trees.
+   * `baseRef` is the revision's merge base (else base sha), for `base-file`.
+   */
+  managed?: { headSha: string; baseRef?: string };
 }
 
 /**

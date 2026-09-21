@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import path from "node:path";
 import os from "node:os";
 import {
+  checkoutsRoot,
   diffPath,
   filesJsonPath,
   isPrDirName,
@@ -9,6 +10,7 @@ import {
   parseKey,
   parseRepoKey,
   parsePrUrl,
+  prCheckoutPath,
   prDir,
   repoChatInstructionsPath,
   repoConfigPath,
@@ -120,5 +122,16 @@ describe("keys", () => {
   it("rejects non-PR input", () => {
     expect(() => parsePrUrl("https://github.com/acme/widgets")).toThrow();
     expect(() => parseKey("nope")).toThrow();
+  });
+});
+
+describe("managed checkout paths", () => {
+  it("live under <root>/checkouts, outside every PR state dir", () => {
+    const root = path.join(os.tmpdir(), "purview-root");
+    expect(checkoutsRoot(root)).toBe(path.join(root, "checkouts"));
+    expect(prCheckoutPath(key, root)).toBe(
+      path.join(root, "checkouts", "github.com", "acme", "widgets", "7"),
+    );
+    expect(prCheckoutPath(key, root).startsWith(prDir(key, root))).toBe(false);
   });
 });

@@ -164,9 +164,13 @@ body, plus surrounding function/file context from the patch) for:
 For very large PRs where a must-read hunk's correctness depends on code not shown in the
 diff (e.g. a call site's full function, a type definition), read that surrounding context
 from the repo. Collect the whole pass's context needs first and fetch them in as few calls
-as possible (see "Batching" above) rather than one file per turn. You do not need to check
-out the branch: use the diff's context lines first,
-and fall back to `gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` (or
+as possible (see "Batching" above) rather than one file per turn. When the prompt names an
+**exact checkout of the PR head**, read from it directly: it is the code exactly as this PR
+leaves it, not a branch that may have drifted. For a file as it was *before* the PR, run
+`reviewer-state base-file <key> <path>` (a renamed file may be given by its new or old
+path; a file the PR added exits 1 with "not present at base"). Without such a checkout, use
+the diff's context lines first, and fall back to
+`gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` (or
 `gh api repos/{owner}/{repo}/git/blobs/{sha}`) to fetch specific files at the PR's head SHA
 when the diff's own context is insufficient. Don't fetch whole-file context for
 skim/skip-bucketed hunks.
@@ -228,8 +232,11 @@ questions that classification raises, so the reviewer doesn't have to chase them
 
 **Gate — read this before doing anything else in this step.** The pass runs **only** when a
 local checkout of the repo is available. The prompt that started you states whether there
-is one and gives its path; if it says there is none, **skip this step entirely and produce
-no `findings` at all**. Do not substitute the diff, `gh api` file fetches, or your own
+is one and gives its path — usually an exact checkout of the PR head, which is the best
+case: what you read there is the code under review, and `reviewer-state base-file <key>
+<path>` shows any file as it was before the PR. If the prompt says the checkout is on another
+branch, treat what you read as possibly stale. If it says there is none, **skip this step
+entirely and produce no `findings` at all**. Do not substitute the diff, `gh api` file fetches, or your own
 recollection for a checkout: a finding is a claim you verified by reading code in a
 checkout, and there is no weaker version of it. With no checkout, the questions simply stay
 questions, phrased in `attentionWhy`.

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { keyToString, type PrKey } from "../src/paths.js";
+import { keyToString, prCheckoutPath, type PrKey } from "../src/paths.js";
 import { appendEvent, writeMeta, writeRevision } from "../src/store.js";
 import { computeHunkId } from "../src/hunk-id.js";
 import { toRevisionFiles } from "../src/migration.js";
@@ -304,5 +304,106 @@ describe("cli set-unit", () => {
     expect(res.status).toBe(0);
     // kind is unchanged from the original "core-logic", not reset to "wiring"
     expect(res.stdout).toContain("skip/core-logic");
+  });
+});
+
+describe("cli base-file", () => {
+  const gitEnv = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "Test",
+    GIT_AUTHOR_EMAIL: "test@example.com",
+    GIT_COMMITTER_NAME: "Test",
+    GIT_COMMITTER_EMAIL: "test@example.com",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_SYSTEM: "/dev/null",
+  };
+  const g = (args: string[], cwd: string) =>
+    execFileSync("git", args, { cwd, encoding: "utf8", env: gitEnv, stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+  /**
+   * A git repo standing in for the managed checkout (base-file only needs the
+   * objects, not a worktree), plus PR state whose merge base is its first
+   * commit and whose files.json records modified/added/renamed files.
+   */
+  function seedWithCheckout(): { base: string; head: string } {
+    const dir = prCheckoutPath(key, tmp);
+    fs.mkdirSync(dir, { recursive: true });
+    g(["init", "-q", "-b", "main"], dir);
+    fs.writeFileSync(path.join(dir, "a.ts"), "base a\n");
+    fs.writeFileSync(path.join(dir, "legacy.ts"), "legacy body\n");
+    g(["add", "."], dir);
+    g(["commit", "-q", "-m", "base"], dir);
+    const base = g(["rev-parse", "HEAD"], dir);
+    fs.writeFileSync(path.join(dir, "a.ts"), "head a\n");
+    g(["mv", "legacy.ts", "modern.ts"], dir);
+    fs.writeFileSync(path.join(dir, "added.ts"), "new file\n");
+    g(["add", "."], dir);
+    g(["commit", "-q", "-m", "head"], dir);
+    const head = g(["rev-parse", "HEAD"], dir);
+
+    writeMeta(key, {
+      host: key.host,
+      owner: key.owner,
+      repo: key.repo,
+      number: key.number,
+      url: "https://github.com/acme/widgets/pull/42",
+      createdAt: new Date().toISOString(),
+      archived: false,
+    });
+    appendEvent(key, {
+      type: "pr-initialized",
+      host: key.host,
+      owner: key.owner,
+      repo: key.repo,
+      number: key.number,
+      url: "https://github.com/acme/widgets/pull/42",
+    });
+    const files: FileDiff[] = [
+      { path: "a.ts", status: "modified", binary: false, hunks: [mkHunk("a.ts", ["head a"], ["base a"])] },
+      { path: "added.ts", status: "added", binary: false, hunks: [mkHunk("added.ts", ["new file"], [])] },
+      { path: "modern.ts", oldPath: "legacy.ts", status: "renamed", binary: false, hunks: [] },
+    ];
+    const shas = { baseSha: base, headSha: head, mergeBase: base };
+    writeRevision(key, 1, "diff", files, shas);
+    appendEvent(key, {
+      type: "revision-added",
+      revision: 1,
+      ...shas,
+      baseOnly: false,
+      files: toRevisionFiles(files),
+    });
+    return { base, head };
+  }
+
+  it("prints a modified file as it was at the merge base", () => {
+    seedWithCheckout();
+    const res = run(["base-file", keyToString(key), "a.ts"]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("base a\n");
+  });
+
+  it("maps a renamed file's new path to its old path, and accepts the old path too", () => {
+    seedWithCheckout();
+    const byNew = run(["base-file", keyToString(key), "modern.ts"]);
+    expect(byNew.status).toBe(0);
+    expect(byNew.stdout).toBe("legacy body\n");
+    const byOld = run(["base-file", keyToString(key), "legacy.ts"]);
+    expect(byOld.stdout).toBe("legacy body\n");
+  });
+
+  it("exits 1 for a file the PR added", () => {
+    seedWithCheckout();
+    const res = run(["base-file", keyToString(key), "added.ts"]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("not present at base (added by this PR)");
+    expect(res.stdout).toBe("");
+  });
+
+  it("explains a missing checkout", () => {
+    seedWithCheckout();
+    fs.rmSync(prCheckoutPath(key, tmp), { recursive: true, force: true });
+    const res = run(["base-file", keyToString(key), "a.ts"]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("No managed checkout");
   });
 });

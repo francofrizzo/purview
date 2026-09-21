@@ -83,10 +83,12 @@ const globalConfig: {
   analysisModel: ClaudeModel | null;
   chatModel: ClaudeModel | null;
   analysisEffort: AnalysisEffort | null;
+  managedCheckouts: boolean;
 } = {
   analysisModel: null,
   chatModel: null,
   analysisEffort: null,
+  managedCheckouts: true,
 };
 
 /**
@@ -567,6 +569,7 @@ export const mockApi = {
     if (patch.analysisModel !== undefined) globalConfig.analysisModel = patch.analysisModel;
     if (patch.chatModel !== undefined) globalConfig.chatModel = patch.chatModel;
     if (patch.analysisEffort !== undefined) globalConfig.analysisEffort = patch.analysisEffort;
+    if (patch.managedCheckouts !== undefined) globalConfig.managedCheckouts = patch.managedCheckouts;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return {
       ...globalConfig,

@@ -60,20 +60,32 @@ export const ChatFileSchema = z.object({
    * model, so switching never costs the transcript.
    */
   model: ClaudeModelSchema.nullable().default(null),
+  /**
+   * The working directory `sessionId` was created under. The CLI files a
+   * session under a per-cwd project directory, so `--resume` from a different
+   * cwd may not find it; a turn whose cwd differs starts a fresh session and
+   * replays the transcript instead. `null` = unknown (a chat written before
+   * this field existed), which is treated as "differs".
+   */
+  sessionCwd: z.string().nullable().default(null),
 });
 export type ChatFile = z.infer<typeof ChatFileSchema>;
 
 export function readChat(key: PrKey, root = stateRoot()): ChatFile {
   const file = chatPath(key, root);
-  if (!fs.existsSync(file)) return { sessionId: null, messages: [], model: null };
+  if (!fs.existsSync(file)) return { sessionId: null, messages: [], model: null, sessionCwd: null };
   try {
     return ChatFileSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
   } catch {
-    return { sessionId: null, messages: [], model: null };
+    return { sessionId: null, messages: [], model: null, sessionCwd: null };
   }
 }
 
-export function writeChat(key: PrKey, chat: ChatFile, root = stateRoot()): ChatFile {
+export function writeChat(
+  key: PrKey,
+  chat: z.input<typeof ChatFileSchema>,
+  root = stateRoot(),
+): ChatFile {
   const file = chatPath(key, root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const parsed = ChatFileSchema.parse(chat);
@@ -317,7 +329,7 @@ export function chatSystemPrompt(
     // exist on GitHub, and the local one is outside the chat's roots.
     rubricSection(key, root, { committed: opts.committed }),
     `  - read-only status: \`${cmd} report ${keyToString(key)}\` (add --json for raw state), \`${cmd} list\``,
-    checkout ? `  - ${checkoutNote(checkout.resolution, checkout.headSha)}` : "",
+    checkout ? `  - ${checkoutNote(checkout.resolution, checkout.headSha, key)}` : "",
     // Repo-provided chat overlays, mirroring the rubric layering above; chat-
     // only, so the analysis prompt (which never calls this) is unaffected.
     chatInstructionsSection(key, root, { committed: opts.committed }),
@@ -348,6 +360,7 @@ export function chatToolFlags(): {
       `Bash(${cmd} list:*)`,
       `Bash(${cmd} triage:*)`,
       `Bash(${cmd} show:*)`,
+      `Bash(${cmd} base-file:*)`,
     ],
     disallowedTools: [
       `Bash(${cmd} sync:*)`,
@@ -432,6 +445,6 @@ export function rewindChat(
   }
   const messages = chat.messages.slice(0, index);
   const removed = chat.messages.length - messages.length;
-  writeChat(key, { ...chat, sessionId: null, messages }, root);
+  writeChat(key, { ...chat, sessionId: null, sessionCwd: null, messages }, root);
   return { messages, removed, sessionReset: true };
 }

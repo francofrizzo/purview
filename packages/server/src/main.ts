@@ -4,6 +4,7 @@ import { createApp, DEFAULT_PORT } from "./app.js";
 import { autoAnalyzeEnvAllows, lanEnabled, lanToken, readConfig } from "./config.js";
 import { LAN_WARNING, lanHostnames, lanQrTerminal, lanUrl } from "./lan.js";
 import { maybeOnboard } from "./onboarding.js";
+import { pruneCheckouts } from "./pr-checkout.js";
 import { startReviewWatch } from "./review-watch.js";
 
 /**
@@ -57,6 +58,12 @@ export async function main(opts: MainOptions = {}): Promise<void> {
   const server = serve({ fetch: app.fetch, port: PORT, hostname }, (info) => {
     console.log(`@reviewer/server listening on http://localhost:${info.port}`);
     if (lan) void announceLan(lan.hosts, info.port, lan.token);
+    // Managed checkouts of PRs that were merged, closed, archived or dropped
+    // while the server was down. After listen, and never awaited: removing a
+    // large worktree takes a while and must not delay serving.
+    void pruneCheckouts(ROOT).catch((err: unknown) =>
+      console.warn(`[checkouts] prune failed: ${(err as Error).message}`),
+    );
   });
 
   // @hono/node-server's serve() hands back the underlying node:http server,

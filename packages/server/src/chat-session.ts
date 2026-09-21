@@ -7,10 +7,10 @@ import {
   stateRoot,
   type PrKey,
 } from "@reviewer/core";
-import { resolveCheckout } from "./worktree.js";
+import { resolveRunCheckout } from "./pr-checkout.js";
 import { runClaude } from "./claude-runner.js";
 import { skillDir } from "./skill-paths.js";
-import { effectiveChatModel, effectiveRepoPath } from "./repo-config.js";
+import { effectiveChatModel } from "./repo-config.js";
 import { loadCommittedConfig } from "./team-config.js";
 import {
   appendChatMessage,
@@ -19,6 +19,7 @@ import {
   chatToolFlags,
   newSessionId,
   readChat,
+  resolveRefs,
   writeChat,
   type ChatRef,
 } from "./chat.js";
@@ -74,14 +75,9 @@ export function startChatTurn(
   // history when the session is fresh, and must not replay the very message
   // it is about to send.
   const chat = readChat(key, root);
-  // Resolution first: it is the only step allowed to reject the send.
-  const prompt = buildChatPrompt(
-    key,
-    text,
-    refs,
-    { sessionId: chat.sessionId, priorMessages: chat.messages },
-    root,
-  );
+  // Resolution first: it is the only step allowed to reject the send. The
+  // prompt itself is rebuilt once the checkout (and so the cwd) is known.
+  resolveRefs(key, refs, root);
 
   appendChatMessage(
     key,
@@ -98,27 +94,11 @@ export function startChatTurn(
   })();
   const stateDir = prDir(key, root);
   const flags = chatToolFlags();
-  const addDirs = [skillDir()];
-  // Resolved per turn: a worktree for this PR's branch may have appeared (or
-  // been removed) since the previous message.
   const state = loadState(key, root);
-  const headSha = state.revisions.find((r) => r.revision === state.currentRevision)?.headSha;
-  const checkout = resolveCheckout(effectiveRepoPath(key, root, { meta: meta ?? null }), {
-    headRef: meta?.headRef,
-    headSha,
-  });
-  if (checkout.error) {
-    console.warn(`[chat] ${keyStr}: ${checkout.error}; running without a checkout`);
-  }
+  const revisionInfo = state.revisions.find((r) => r.revision === state.currentRevision);
+  const headSha = revisionInfo?.headSha;
   // Cached per revision; the chat sees the same layered rubric as the analysis.
   const committed = loadCommittedConfig(key, root);
-  let cwd = stateDir;
-  if (checkout.path) {
-    // The checkout is the more useful working directory (grep/glob land in the
-    // code), so the state dir becomes the extra root instead.
-    cwd = checkout.path;
-    addDirs.push(stateDir);
-  }
 
   const emitter = new EventEmitter();
   emitter.setMaxListeners(0);
@@ -128,33 +108,64 @@ export function startChatTurn(
     emitter.emit("event", event);
   };
 
-  const isFirstTurn = chat.sessionId === null;
-  const sessionId = chat.sessionId ?? newSessionId();
-
-  const run = runClaude({
-    label: "chat",
-    prompt,
-    cwd,
-    addDirs,
-    ...flags,
-    // The system prompt is re-sent on resume too: it is cheap, and it keeps
-    // the read-only contract in force for every turn.
-    systemPrompt: chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed }),
-    // Session pin first, then the layered repo/global default. Never absent:
-    // an unset model would fall through to the CLI's own default.
-    model: chat.model ?? effectiveChatModel(key, root, { meta: meta ?? null }),
-    sessionId: isFirstTurn ? sessionId : undefined,
-    resumeSessionId: isFirstTurn ? undefined : sessionId,
-    partialMessages: true,
-    timeoutMs: opts.timeoutMs ?? CHAT_TIMEOUT_MS,
-  });
-
   const done = (async () => {
     let full = "";
     let streamed = false;
     let failure: string | undefined;
-    let resolvedSessionId = sessionId;
+    let resolvedSessionId: string | null = chat.sessionId;
+    let cwd = stateDir;
     try {
+      // Resolved per turn: the managed checkout follows the current head, and
+      // a reader worktree for this PR's branch may have appeared or vanished.
+      const checkout = await resolveRunCheckout(key, root, {
+        meta: meta ?? null,
+        revision: revisionInfo,
+        label: "chat",
+        onPreparing: () => emit({ type: "tool", name: "checkout", detail: "preparing checkout" }),
+      });
+      if (checkout.error) {
+        console.warn(`[chat] ${keyStr}: ${checkout.error}; running without a checkout`);
+      }
+      const addDirs = [skillDir()];
+      if (checkout.path) {
+        // The checkout is the more useful working directory (grep/glob land in
+        // the code), so the state dir becomes the extra root instead.
+        cwd = checkout.path;
+        addDirs.push(stateDir);
+      }
+
+      // The CLI files sessions per cwd: resuming from another cwd may not find
+      // the session, so a changed (or unknown) cwd starts a fresh session and
+      // replays the kept transcript, exactly like a rewind does.
+      const resume = chat.sessionId !== null && chat.sessionCwd === cwd;
+      const sessionId = resume ? chat.sessionId! : newSessionId();
+      resolvedSessionId = sessionId;
+      const prompt = buildChatPrompt(
+        key,
+        text,
+        refs,
+        { sessionId: resume ? chat.sessionId : null, priorMessages: chat.messages },
+        root,
+      );
+
+      const run = runClaude({
+        label: "chat",
+        prompt,
+        cwd,
+        addDirs,
+        ...flags,
+        // The system prompt is re-sent on resume too: it is cheap, and it keeps
+        // the read-only contract in force for every turn.
+        systemPrompt: chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed }),
+        // Session pin first, then the layered repo/global default. Never
+        // absent: an unset model would fall through to the CLI's own default.
+        model: chat.model ?? effectiveChatModel(key, root, { meta: meta ?? null }),
+        sessionId: resume ? undefined : sessionId,
+        resumeSessionId: resume ? sessionId : undefined,
+        partialMessages: true,
+        timeoutMs: opts.timeoutMs ?? CHAT_TIMEOUT_MS,
+      });
+
       for await (const event of run.events) {
         switch (event.type) {
           case "session":
@@ -183,8 +194,9 @@ export function startChatTurn(
     }
 
     const ts = new Date().toISOString();
+    const session = { sessionId: resolvedSessionId, sessionCwd: resolvedSessionId ? cwd : null };
     if (failure && !full) {
-      writeChat(key, { ...readChat(key, root), sessionId: resolvedSessionId }, root);
+      writeChat(key, { ...readChat(key, root), ...session }, root);
       emit({ type: "error", error: failure });
     } else {
       const current = readChat(key, root);
@@ -192,7 +204,7 @@ export function startChatTurn(
         key,
         {
           ...current,
-          sessionId: resolvedSessionId,
+          ...session,
           messages: [...current.messages, { role: "assistant", text: full, ts }],
         },
         root,

@@ -221,6 +221,20 @@ the response and `GET /api/prs/:key` carry `checkoutMismatch: {checkedOutBranch,
 and Claude is told the surrounding code may not match the diff. A checkout that has been
 deleted or is no longer a git repo just means "no local checkout" — it never fails a run.
 
+**Managed checkouts.** With a local repo configured, every analysis run and chat turn first
+makes Purview's *own* detached worktree of the PR's exact head commit, at
+`~/.purview/checkouts/<host>/<owner>/<repo>/<number>/`, and hands Claude that instead of
+the resolution above — so it never reads a stale or wrong-branch tree, and your own
+worktrees are never used or touched. The configured path only locates the repository (a
+clone, a worktree, or a bare repo with worktrees all work); a missing head commit is fetched
+with `git fetch <remote> refs/pull/<n>/head`, from the remote whose URL matches the PR's
+repo. Each checkout costs about the size of the repo's tracked files (objects are shared
+with your clone). `reviewer-state base-file <key> <path>` prints a file as it was at the
+merge base. Checkouts of merged, closed, archived or untracked PRs are removed at server
+startup and after archiving. If the managed checkout cannot be made (no matching remote,
+fetch fails) the run falls back to the behavior above. Set `"managedCheckouts": false` in
+`~/.purview/config.json` (or untick it under Settings → Claude) to turn it off.
+
 ## Per-repo configuration
 
 Settings live in four layers, most specific first:
@@ -294,7 +308,8 @@ automatic analysis run.
 
 `~/.purview/<host>/<owner>/<repo>/<number>/` (override the root with `PURVIEW_STATE_DIR`;
 `REVIEWER_STATE_DIR` still works). `~/.purview/config.json` sits beside the per-repo trees and
-holds the settings above.
+holds the settings above. `~/.purview/checkouts/` holds the managed PR checkouts (see
+"Managed checkouts"); it is a separate tree so nothing that walks PR state descends into one.
 
 The state directory used to be `~/.reviewer`. On startup — server or CLI — it is moved to
 `~/.purview` if the old one exists and the new one does not, taking `config.json` with it and

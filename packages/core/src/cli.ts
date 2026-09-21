@@ -1,7 +1,15 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { Command } from "commander";
-import { parseKey, parsePrUrl, prDir, keyToString, type PrKey } from "./paths.js";
+import {
+  parseKey,
+  parsePrUrl,
+  prCheckoutPath,
+  prDir,
+  keyToString,
+  type PrKey,
+} from "./paths.js";
 import {
   initPr,
   refreshPr,
@@ -172,6 +180,75 @@ program
     }
   });
 
+/** Exit with a message on stderr (no `error:` prefix — the text is the answer). */
+class CliExit extends Error {
+  constructor(
+    message: string,
+    readonly code = 1,
+  ) {
+    super(message);
+  }
+}
+
+function gitIn(dir: string, args: string[]): Buffer {
+  return execFileSync("git", ["-C", dir, ...args], {
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 256 * 1024 * 1024,
+  });
+}
+
+function gitOk(dir: string, args: string[]): boolean {
+  try {
+    gitIn(dir, args);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+program
+  .command("base-file")
+  .argument("<key>")
+  .argument("<path>", "file path (the PR's new path or, for a rename, the old one)")
+  .option("--rev <n>", "revision whose base to read (defaults to the current one)")
+  .description("print a file as it was before the PR (at the revision's merge base)")
+  .action((keyArg: string, filePath: string, opts: { rev?: string }) => {
+    const key = requireExistingKey(keyArg);
+    const state = loadState(key);
+    const revision = resolveRevision(state, opts.rev);
+    const info = state.revisions.find((r) => r.revision === revision);
+    let files: ReturnType<typeof readFilesJson> | undefined;
+    try {
+      files = readFilesJson(key, revision);
+    } catch {
+      files = undefined;
+    }
+    const baseSha = info?.mergeBase || info?.baseSha || files?.mergeBase || files?.baseSha;
+    if (!baseSha) throw new Error(`Revision ${revision} of ${keyToString(key)} has no base commit recorded.`);
+
+    const dir = prCheckoutPath(key);
+    if (!fs.existsSync(dir)) {
+      throw new Error(
+        `No managed checkout for ${keyToString(key)} at ${dir}. It is created when an analysis ` +
+          "or chat runs with a configured local repository (and managedCheckouts on).",
+      );
+    }
+    if (!gitOk(dir, ["cat-file", "-e", `${baseSha}^{commit}`])) {
+      throw new Error(`Base commit ${baseSha.slice(0, 12)} is not available in ${dir}.`);
+    }
+
+    // A renamed file is asked for by its new path most of the time; at base
+    // it lived at its old path.
+    const cleaned = filePath.replace(/^\.\//, "");
+    const renamed = files?.files.find((f) => f.path === cleaned && f.oldPath && f.oldPath !== f.path);
+    const basePath = renamed?.oldPath ?? cleaned;
+
+    if (!gitOk(dir, ["cat-file", "-e", `${baseSha}:${basePath}`])) {
+      throw new CliExit(`${basePath}: not present at base (added by this PR)`);
+    }
+    process.stdout.write(gitIn(dir, ["show", `${baseSha}:${basePath}`]));
+  });
+
 program
   .command("set-analysis")
   .argument("<key>")
@@ -284,6 +361,10 @@ program
 try {
   program.parse(process.argv);
 } catch (err) {
+  if (err instanceof CliExit) {
+    console.error(err.message);
+    process.exit(err.code);
+  }
   console.error(`error: ${(err as Error).message}`);
   process.exit(1);
 }

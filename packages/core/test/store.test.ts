@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { writeRevision } from "../src/store.js";
+import { listPrs, listRepos, writeRevision } from "../src/store.js";
 import { triagePath } from "../src/paths.js";
 import { computeHunkId } from "../src/hunk-id.js";
 import type { FileDiff, Hunk, PrKey } from "../src/schemas.js";
@@ -47,5 +47,22 @@ describe("writeRevision", () => {
     expect(content).toContain("revision 1");
     expect(content).toContain("src/a.ts");
     expect(content).toContain(hunk.id);
+  });
+});
+
+describe("listPrs / listRepos and checkouts/", () => {
+  it("never walk into the managed checkouts tree", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "purview-store-co-"));
+    try {
+      // Shaped exactly like a PR dir (host/owner/repo/<digits>/meta.json), so
+      // only the explicit skip keeps it out.
+      const decoy = path.join(root, "checkouts", "h", "o", "1");
+      fs.mkdirSync(decoy, { recursive: true });
+      fs.writeFileSync(path.join(decoy, "meta.json"), "{}");
+      expect(listPrs(root)).toEqual([]);
+      expect(listRepos(root)).toEqual([]);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 });

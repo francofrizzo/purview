@@ -592,36 +592,49 @@ function ClaudeSection() {
           {errorText(config.error) || "Could not read the server's settings."}
         </p>
       ) : (
-        <div className="flex flex-wrap items-end gap-6">
-          <GlobalModelField
-            label="Analysis model"
-            testId="global-analysis-model"
-            value={config.data.analysisModel}
-            fallback={config.data.defaults.analysisModel}
-            disabled={save.isPending}
-            onChange={(m) => save.mutate({ analysisModel: m })}
-          />
-          <GlobalEffortField
-            label="Effort"
-            testId="global-analysis-effort"
-            value={config.data.analysisEffort}
-            fallback={config.data.defaults.analysisEffort}
-            disabled={save.isPending}
-            onChange={(e) => save.mutate({ analysisEffort: e })}
-          />
-          <GlobalModelField
-            label="Chat model"
-            testId="global-chat-model"
-            value={config.data.chatModel}
-            fallback={config.data.defaults.chatModel}
-            disabled={save.isPending}
-            onChange={(m) => save.mutate({ chatModel: m })}
-          />
-          {save.error ? (
-            <p className="pb-1 text-2xs" style={{ color: "var(--risk)" }}>
-              {errorText(save.error)}
-            </p>
-          ) : null}
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end gap-6">
+            <GlobalModelField
+              label="Analysis model"
+              testId="global-analysis-model"
+              value={config.data.analysisModel}
+              fallback={config.data.defaults.analysisModel}
+              disabled={save.isPending}
+              onChange={(m) => save.mutate({ analysisModel: m })}
+            />
+            <GlobalEffortField
+              label="Effort"
+              testId="global-analysis-effort"
+              value={config.data.analysisEffort}
+              fallback={config.data.defaults.analysisEffort}
+              disabled={save.isPending}
+              onChange={(e) => save.mutate({ analysisEffort: e })}
+            />
+            <GlobalModelField
+              label="Chat model"
+              testId="global-chat-model"
+              value={config.data.chatModel}
+              fallback={config.data.defaults.chatModel}
+              disabled={save.isPending}
+              onChange={(m) => save.mutate({ chatModel: m })}
+            />
+            {save.error ? (
+              <p className="pb-1 text-2xs" style={{ color: "var(--risk)" }}>
+                {errorText(save.error)}
+              </p>
+            ) : null}
+          </div>
+          <label className="flex w-fit items-center gap-2 text-xs" style={{ color: "var(--fg-muted)" }}>
+            <input
+              type="checkbox"
+              data-testid="global-managed-checkouts"
+              checked={config.data.managedCheckouts}
+              disabled={save.isPending}
+              onChange={(e) => save.mutate({ managedCheckouts: e.target.checked })}
+              style={{ accentColor: "var(--accent)" }}
+            />
+            Managed checkouts — give runs an exact checkout of the PR head under ~/.purview/checkouts
+          </label>
         </div>
       )}
     </Section>

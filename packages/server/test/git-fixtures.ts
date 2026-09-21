@@ -59,3 +59,58 @@ export function addDetachedWorktree(repo: string, dir: string, sha: string): Rep
   git(["worktree", "add", "-q", "--detach", dir, sha], repo);
   return { path: dir, headSha: git(["rev-parse", "HEAD"], dir), branch: "" };
 }
+
+export interface PrRemote {
+  path: string;
+  baseSha: string;
+  headSha: string;
+}
+
+/**
+ * A stand-in for the GitHub repo: its path ends in `acme/widgets`, so it
+ * matches that owner/repo as a remote URL. The PR's head is reachable only as
+ * `refs/pull/<number>/head` (the branch is deleted), the way a fork's or a
+ * stacked PR's head is — so a clone does not have it until it fetches that ref.
+ *
+ * The PR modifies pricing.ts, renames legacy.ts -> modern.ts and adds added.ts.
+ */
+export function makePrRemote(dir: string, number: number): PrRemote {
+  const repo = makeRepo(dir);
+  fs.writeFileSync(path.join(dir, "legacy.ts"), "export const legacy = true;\n");
+  git(["add", "."], dir);
+  git(["commit", "-q", "-m", "base"], dir);
+  const baseSha = git(["rev-parse", "HEAD"], dir);
+
+  git(["checkout", "-q", "-b", "pr-branch"], dir);
+  fs.writeFileSync(path.join(dir, "pricing.ts"), "export const rate = 0.2;\n");
+  git(["mv", "legacy.ts", "modern.ts"], dir);
+  fs.writeFileSync(path.join(dir, "added.ts"), "export const added = 1;\n");
+  git(["add", "."], dir);
+  git(["commit", "-q", "-m", "pr"], dir);
+  const headSha = git(["rev-parse", "HEAD"], dir);
+  git(["update-ref", `refs/pull/${number}/head`, headSha], dir);
+  git(["checkout", "-q", repo.branch], dir);
+  git(["branch", "-q", "-D", "pr-branch"], dir);
+  return { path: dir, baseSha, headSha };
+}
+
+/** A new commit on top of the PR head, published as `refs/pull/<number>/head`. */
+export function pushPrHead(remote: string, number: number, content: string): string {
+  const head = git(["rev-parse", `refs/pull/${number}/head`], remote);
+  const branch = git(["rev-parse", "--abbrev-ref", "HEAD"], remote);
+  git(["checkout", "-q", "--detach", head], remote);
+  fs.writeFileSync(path.join(remote, "pricing.ts"), content);
+  git(["commit", "-q", "-am", "pr update"], remote);
+  const sha = git(["rev-parse", "HEAD"], remote);
+  git(["update-ref", `refs/pull/${number}/head`, sha], remote);
+  git(["checkout", "-q", branch], remote);
+  return sha;
+}
+
+/** `git clone` — the reader's own copy of the repo. */
+export function cloneRepo(from: string, dir: string, opts: { bare?: boolean } = {}): string {
+  // --no-local: a plain local clone copies the whole object store, unreachable
+  // PR commits included; a real clone only has what its refs reach.
+  git(["clone", "-q", "--no-local", ...(opts.bare ? ["--bare"] : []), from, dir], path.dirname(dir));
+  return dir;
+}

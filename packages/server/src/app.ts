@@ -104,6 +104,7 @@ import { generateLanToken, readConfig, writeConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
+import { pruneCheckouts } from "./pr-checkout.js";
 
 export const DEFAULT_PORT = 4779;
 
@@ -493,6 +494,13 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw new HttpError(400, "invalid_body", "Body must include { archived: boolean }");
     }
     const meta = updateMeta(key, { archived: body.archived }, root);
+    // An archived PR no longer needs its managed checkout; drop it in the
+    // background (the response never waits on a worktree removal).
+    if (meta.archived) {
+      void pruneCheckouts(root).catch((err: unknown) =>
+        console.warn(`[checkouts] prune failed: ${(err as Error).message}`),
+      );
+    }
     return c.json({ ok: true, archived: meta.archived === true });
   });
 
@@ -1248,6 +1256,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisModel: config.analysisModel,
       chatModel: config.chatModel,
       analysisEffort: config.analysisEffort,
+      managedCheckouts: config.managedCheckouts,
       /** what `null` resolves to here — the end of the inheritance chain */
       defaults: {
         analysisModel: BUILTIN_DEFAULTS.analysisModel,
@@ -1262,6 +1271,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisModel: ClaudeModelSchema.nullable().optional(),
       chatModel: ClaudeModelSchema.nullable().optional(),
       analysisEffort: AnalysisEffortSchema.nullable().optional(),
+      managedCheckouts: z.boolean().optional(),
     })
     .strict();
 
@@ -1282,10 +1292,12 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisModel?: ClaudeModel | null;
       chatModel?: ClaudeModel | null;
       analysisEffort?: AnalysisEffort | null;
+      managedCheckouts?: boolean;
     } = {};
     if ("analysisModel" in body) patch.analysisModel = body.analysisModel ?? null;
     if ("chatModel" in body) patch.chatModel = body.chatModel ?? null;
     if ("analysisEffort" in body) patch.analysisEffort = body.analysisEffort ?? null;
+    if (body.managedCheckouts !== undefined) patch.managedCheckouts = body.managedCheckouts;
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
   });

@@ -22,7 +22,7 @@ import {
 import { createApp } from "../src/app.js";
 import { chatInstructionsLayers, chatInstructionsSection } from "../src/chat-instructions.js";
 import { chatSystemPrompt } from "../src/chat.js";
-import { writeConfig } from "../src/config.js";
+import { readConfig, writeConfig } from "../src/config.js";
 import {
   autoAnalyzeAllowed,
   effectiveAnalysisEffort,
@@ -1057,8 +1057,27 @@ describe("/api/config", () => {
       analysisModel: null,
       chatModel: null,
       analysisEffort: "medium",
+      managedCheckouts: true,
       defaults: { analysisModel: "sonnet", chatModel: "sonnet", analysisEffort: "medium" },
     });
+  });
+
+  it("toggles managedCheckouts and rejects a non-boolean", async () => {
+    const put = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ managedCheckouts: false }),
+    });
+    expect(put.status).toBe(200);
+    expect((await put.json()).managedCheckouts).toBe(false);
+    expect(readConfig(root).managedCheckouts).toBe(false);
+
+    const bad = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ managedCheckouts: "yes" }),
+    });
+    expect(bad.status).toBe(400);
   });
 
   it("writes them, and they become the global layer of the resolver", async () => {

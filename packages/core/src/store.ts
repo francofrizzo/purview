@@ -25,6 +25,7 @@ import type {
 } from "./schemas.js";
 import { fold } from "./reducer.js";
 import {
+  CHECKOUTS_DIR_NAME,
   diffPath,
   eventsPath,
   filesJsonPath,
@@ -206,7 +207,9 @@ export function listPrs(root = stateRoot()): PrKey[] {
       .readdirSync(p, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name);
-  for (const host of dirs(root)) {
+  // `checkouts/` holds managed working trees, never PR state: skip it before
+  // descending, so no walk ever wanders into a full checkout.
+  for (const host of dirs(root).filter((d) => d !== CHECKOUTS_DIR_NAME)) {
     for (const owner of dirs(path.join(root, host))) {
       for (const repo of dirs(path.join(root, host, owner))) {
         for (const number of dirs(path.join(root, host, owner, repo))) {
@@ -339,7 +342,9 @@ export function listRepos(root = stateRoot()): RepoKey[] {
       .readdirSync(p, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name);
-  for (const host of dirs(root)) {
+  // `checkouts/` holds managed working trees, never PR state: skip it before
+  // descending, so no walk ever wanders into a full checkout.
+  for (const host of dirs(root).filter((d) => d !== CHECKOUTS_DIR_NAME)) {
     for (const owner of dirs(path.join(root, host))) {
       for (const repo of dirs(path.join(root, host, owner))) {
         const key = { host, owner, repo };

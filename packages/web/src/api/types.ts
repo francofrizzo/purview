@@ -359,6 +359,8 @@ export interface GlobalConfig {
   analysisModel: ClaudeModel | null;
   chatModel: ClaudeModel | null;
   analysisEffort: AnalysisEffort | null;
+  /** Purview's own exact checkout of each PR's head for Claude runs */
+  managedCheckouts: boolean;
   defaults: { analysisModel: ClaudeModel; chatModel: ClaudeModel; analysisEffort: AnalysisEffort };
 }
 
@@ -366,6 +368,7 @@ export interface GlobalConfigPatch {
   analysisModel?: ClaudeModel | null;
   chatModel?: ClaudeModel | null;
   analysisEffort?: AnalysisEffort | null;
+  managedCheckouts?: boolean;
 }
 
 /**

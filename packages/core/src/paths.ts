@@ -51,6 +51,29 @@ export function configPath(root = stateRoot()): string {
   return path.join(root, "config.json");
 }
 
+/**
+ * Directory name, directly under the state root, of Purview's managed PR
+ * checkouts. Deliberately a sibling of the host dirs rather than anything
+ * inside a PR dir: a checkout is a full working tree (hundreds of MB), and
+ * nothing that walks PR state — `listPrs`, a grep over a state dir, an
+ * analysis run's cwd — may ever descend into one. The state walkers skip this
+ * name explicitly; no real host is spelled like it.
+ */
+export const CHECKOUTS_DIR_NAME = "checkouts";
+
+/** `~/.purview/checkouts/` — root of every managed PR checkout. */
+export function checkoutsRoot(root = stateRoot()): string {
+  return path.join(root, CHECKOUTS_DIR_NAME);
+}
+
+/**
+ * `~/.purview/checkouts/<host>/<owner>/<repo>/<number>/` — Purview's own
+ * detached worktree at the PR's head commit (see server/pr-checkout.ts).
+ */
+export function prCheckoutPath(key: PrKey, root = stateRoot()): string {
+  return path.join(checkoutsRoot(root), key.host, key.owner, key.repo, String(key.number));
+}
+
 /** `~/.purview/<host>/<owner>/<repo>/` — per-repo settings + the PR dirs. */
 export function repoDir(key: RepoKey, root = stateRoot()): string {
   return path.join(root, key.host, key.owner, key.repo);

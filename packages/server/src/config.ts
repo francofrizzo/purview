@@ -66,6 +66,14 @@ export const ConfigSchema = z.object({
    */
   analysisEffort: AnalysisEffortSchema.nullable().default("medium"),
   /**
+   * Give every analysis run and chat turn Purview's own detached worktree of
+   * the PR's exact head commit, under `~/.purview/checkouts/` (see
+   * pr-checkout.ts), instead of whatever the reader's configured checkout
+   * happens to be on. `false` restores the old behavior: the configured path,
+   * or the sibling worktree holding the PR's branch.
+   */
+  managedCheckouts: z.boolean().default(true),
+  /**
    * The secret for LAN access (`--lan`; see main.ts). *Whether* the server
    * listens on the network is a per-run decision and is deliberately not
    * stored — only the token is, because a device that scanned the QR code has

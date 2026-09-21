@@ -94,6 +94,12 @@ export const DOD_REV3 = bigHunk("newer5");
 export function buildFixture(
   root: string,
   patch: string = REV1_PATCH,
+  /** real commit shas, for tests that exercise the managed checkout */
+  shas: { baseSha: string; headSha: string; mergeBase: string } = {
+    baseSha: "base1",
+    headSha: "head1",
+    mergeBase: "mb1",
+  },
 ): { key: PrKey; hunkIds: string[] } {
   const files = parseDiff(patch);
   const hunkIds = files.flatMap((f) => f.hunks.map((h) => h.id));
@@ -129,7 +135,7 @@ export function buildFixture(
     1,
     patch,
     files,
-    { baseSha: "base1", headSha: "head1", mergeBase: "mb1" },
+    shas,
     root,
   );
   appendEvents(
@@ -138,9 +144,7 @@ export function buildFixture(
       {
         type: "revision-added",
         revision: 1,
-        baseSha: "base1",
-        headSha: "head1",
-        mergeBase: "mb1",
+        ...shas,
         baseOnly: false,
         files: toRevisionFiles(files),
       },

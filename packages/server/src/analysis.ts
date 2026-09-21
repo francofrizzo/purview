@@ -21,10 +21,11 @@ import {
 import { runClaude, type ClaudeRun } from "./claude-runner.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 import { readConfig } from "./config.js";
-import { effectiveAnalysisEffort, effectiveAnalysisModel, effectiveRepoPath } from "./repo-config.js";
+import { effectiveAnalysisEffort, effectiveAnalysisModel } from "./repo-config.js";
 import { rubricSection } from "./rubric.js";
 import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
-import { resolveCheckout, type CheckoutResolution } from "./worktree.js";
+import type { CheckoutResolution } from "./worktree.js";
+import { resolveRunCheckout } from "./pr-checkout.js";
 import { HttpError } from "./http-error.js";
 
 /**
@@ -115,7 +116,20 @@ export { cliCommand, cliPath, skillDir } from "./skill-paths.js";
  * by the analysis prompt and the chat system prompt so both say the same
  * thing, in the same words, about the same three situations.
  */
-export function checkoutNote(resolution: CheckoutResolution, headSha?: string): string {
+export function checkoutNote(
+  resolution: CheckoutResolution,
+  headSha?: string,
+  key?: PrKey,
+): string {
+  if (resolution.managed && resolution.path && !resolution.error) {
+    const sha = resolution.managed.headSha.slice(0, 12);
+    const keyStr = key ? keyToString(key) : "<key>";
+    return (
+      `An exact checkout of the PR head (${sha}) is at ${resolution.path}. ` +
+      "It is the code as this PR leaves it — read from it freely, never modify it. " +
+      `To see a file as it was before the PR, run \`${cliCommand()} base-file ${keyStr} <path>\`.`
+    );
+  }
   if (resolution.error) {
     return `NOTE: the configured local checkout is unavailable (${resolution.error}). Work from the diff alone; do not guess at surrounding code.`;
   }
@@ -254,7 +268,7 @@ export function analysisPrompt(
     `NEVER parse ${path.join(dir, "revisions", String(state.currentRevision), "files.json")} or diff.patch`,
     "with python/node/jq one-liners — the triage view and `show` already give you every field",
     "(path, status, hunk ids, headers, +/- sizes, addedLines/removedLines, full text, moved-code).",
-    opts.checkout ? "\n" + checkoutNote(opts.checkout, opts.headSha) : "",
+    opts.checkout ? "\n" + checkoutNote(opts.checkout, opts.headSha, key) : "",
     "\n" + findingsNote(opts.checkout),
     movedNote(movedCodeSummary(key, state.currentRevision, root)),
     rubric ? "\n" + rubric : "",
@@ -365,6 +379,7 @@ export function analysisToolFlags(scratchDir: string): {
       `Bash(${cmd} list:*)`,
       `Bash(${cmd} triage:*)`,
       `Bash(${cmd} show:*)`,
+      `Bash(${cmd} base-file:*)`,
       `Bash(${cmd} set-analysis:*)`,
       `Bash(${cmd} set-unit:*)`,
       // Read-only investigation, batchable into one call. `sed` is allowed only
@@ -669,15 +684,25 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   fs.mkdirSync(scratch, { recursive: true });
   const flags = analysisToolFlags(scratch);
   const addDirs = [skillDir(), path.dirname(cliPath())];
-  // Resolved per run, not at set time: the worktree holding this PR's branch
-  // may have been created (or removed) since the reader configured the path.
-  const headSha = state.revisions.find((r) => r.revision === revision)?.headSha;
-  // The checkout path comes from the layered config: the PR's own override
-  // first, then the repo-level one.
-  const checkout = resolveCheckout(effectiveRepoPath(key, root, { meta: meta ?? null }), {
-    headRef: meta?.headRef,
-    headSha,
+  // Resolved per run, not at set time: the managed checkout is moved to this
+  // revision's head, and (when that is unavailable) the worktree holding the
+  // PR's branch may have been created or removed since the path was set. The
+  // repo path comes from the layered config: PR override, then repo-level.
+  const revisionInfo = state.revisions.find((r) => r.revision === revision);
+  const headSha = revisionInfo?.headSha;
+  const checkout = await resolveRunCheckout(key, root, {
+    meta: meta ?? null,
+    revision: revisionInfo,
+    label: "analysis",
+    onPreparing: () => {
+      const latest = readJob(key, root);
+      if (latest) writeJob(key, { ...latest, progress: "preparing checkout" }, root);
+    },
   });
+  if (slot.cancelled) {
+    finish(key, root, revision, "cancelled");
+    return;
+  }
   // One read per revision (cached in the revision dir); best-effort.
   const committed = loadCommittedConfig(key, root);
   if (checkout.path) addDirs.push(checkout.path);
