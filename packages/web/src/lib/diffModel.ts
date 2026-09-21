@@ -1,5 +1,6 @@
 import { diffWordsWithSpace } from "diff";
-import { ATTENTIONS, type FileEntry, type FilesJson, type Hunk, type PrDetail, type ReviewUnit } from "../api/types";
+import { unitDisplayOrder } from "./unitOrder";
+import { type FileEntry, type FilesJson, type Hunk, type PrDetail, type ReviewUnit } from "../api/types";
 
 export type LineType = "add" | "del" | "context" | "meta";
 
@@ -288,11 +289,8 @@ export function unitHunks(detail: PrDetail, unit: ReviewUnit): { hunk: Hunk; fil
  * bucket. `order` alone is gappy across buckets, so this is not a plain sort.
  */
 export function sortUnitsForDisplay(units: ReviewUnit[]): ReviewUnit[] {
-  return [...units].sort((a, b) => {
-    const ra = ATTENTIONS.indexOf(a.attention);
-    const rb = ATTENTIONS.indexOf(b.attention);
-    return ra !== rb ? ra - rb : a.order - b.order;
-  });
+  // Same order (and the same husk exclusion) as the sidebar's numbering.
+  return unitDisplayOrder(units);
 }
 
 export function unitProgress(detail: PrDetail, unit: ReviewUnit) {

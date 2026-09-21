@@ -244,6 +244,35 @@ describe("reviewEffort", () => {
     expect(reviewEffort(key, root)?.riskCount).toBe(2);
   });
 
+  it("ignores husks (units whose hunks all left the PR)", () => {
+    build(
+      root,
+      [hunk("h1", 50)],
+      [
+        unit({ id: "u1", attention: "must-read", riskFlags: ["auth"], hunkIds: ["h1"] }),
+        unit({
+          id: "gone",
+          attention: "must-read",
+          riskFlags: ["money", "security"],
+          hunkIds: [],
+          removedAtRevision: 1,
+        }),
+      ],
+    );
+    const effort = reviewEffort(key, root)!;
+    expect(effort.mustReadUnits).toBe(1);
+    expect(effort.riskCount).toBe(1);
+  });
+
+  it("returns null when only husks remain", () => {
+    build(
+      root,
+      [hunk("h1", 50)],
+      [unit({ id: "gone", attention: "must-read", riskFlags: [], hunkIds: [], removedAtRevision: 1 })],
+    );
+    expect(reviewEffort(key, root)).toBeNull();
+  });
+
   it("tolerates a unit hunk id absent from files.json, contributing 0 lines", () => {
     build(
       root,

@@ -1,5 +1,5 @@
 import { formatMigrationReport } from "./migration.js";
-import { unitProgress } from "./reducer.js";
+import { removedUnits, unitProgress } from "./reducer.js";
 import type { MigrationReport, State } from "./schemas.js";
 
 function bar(viewed: number, total: number): string {
@@ -71,6 +71,20 @@ export function formatReport(
       for (const f of state.units.find((u) => u.id === p.unitId)?.findings ?? []) {
         out.push(`      ${f.severity === "warning" ? "!" : "-"} ${f.text}  [${f.evidence}]`);
       }
+    }
+  }
+
+  // Husks: listed so an incremental run knows these decisions were dropped
+  // (and can revive one if new hunks genuinely belong to it).
+  const husks = removedUnits(state);
+  if (husks.length > 0) {
+    out.push("");
+    out.push(`Removed units (${husks.length}) — every hunk left the PR; gone on the next revision:`);
+    for (const u of husks) {
+      out.push(
+        `  ~ [${u.attention}/${u.kind}] ${u.id}: ${u.title}  (removed in r${u.removedAtRevision}` +
+          `${u.readBeforeRemoval ? ", had been read" : ""})`,
+      );
     }
   }
 

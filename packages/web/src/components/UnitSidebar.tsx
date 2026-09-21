@@ -43,6 +43,9 @@ export function UnitSidebar({
   const hide = settings.hideReviewedUnits;
 
   const units = [...detail.state.units].sort((a, b) => a.order - b.order);
+  // Husks live apart from `units` (the client adapter splits them off), so
+  // nothing above counts, numbers or hides them.
+  const removed = [...(detail.state.removedUnits ?? [])].sort((a, b) => a.order - b.order);
 
   // "Reviewed" is every hunk viewed. A unit with no hunks at all is not
   // "reviewed", it is empty — hiding those would make them unreachable.
@@ -66,6 +69,7 @@ export function UnitSidebar({
     return (
       <div className="p-4 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
         No review units yet — the banner above tracks the analysis of this revision.
+        {removed.length ? <RemovedGroup units={removed} /> : null}
       </div>
     );
   }
@@ -157,7 +161,82 @@ export function UnitSidebar({
           </section>
         );
       })}
+      {removed.length ? <RemovedGroup units={removed} /> : null}
     </div>
+  );
+}
+
+const removedTitle = (revision: number | undefined) =>
+  `Every hunk of this unit left the PR in revision ${revision ?? "?"}. It disappears on the next revision.`;
+
+/**
+ * Units whose every hunk left the PR in this revision ("husks"). Shown for
+ * one revision so a dropped decision doesn't just silently vanish; they have
+ * no hunks, so a row expands its summary instead of opening the diff.
+ */
+function RemovedGroup({ units }: { units: ReviewUnit[] }) {
+  const [isOpen, setIsOpen] = useState(true);
+  return (
+    <section className="mb-1" data-testid="removed-units">
+      <button
+        type="button"
+        onClick={() => setIsOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-2xs uppercase tracking-wider transition-colors hover:opacity-100"
+        style={{ color: "var(--fg-faint)" }}
+      >
+        <IconChevron open={isOpen} width={10} height={10} />
+        removed
+        <span>({units.length})</span>
+      </button>
+      {isOpen ? (
+        <ul>
+          {units.map((u) => (
+            <RemovedRow key={u.id} unit={u} />
+          ))}
+        </ul>
+      ) : null}
+    </section>
+  );
+}
+
+function RemovedRow({ unit }: { unit: ReviewUnit }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        title={removedTitle(unit.removedAtRevision)}
+        data-testid={`removed-unit-${unit.id}`}
+        className="sidebar-row-btn w-full border-l-2 px-2.5 py-2 text-left transition-colors"
+        style={{ borderColor: "transparent", background: "transparent" }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "var(--bg-hover)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+        }}
+      >
+        <div className="flex items-start gap-1.5 pl-5">
+          <span
+            className="min-w-0 flex-1 break-words pr-3 text-[13px] leading-[18px]"
+            style={{ color: "var(--fg-faint)" }}
+          >
+            {unit.title}
+          </span>
+        </div>
+        <div className="mt-1 pl-5 text-2xs" style={{ color: "var(--fg-faint)" }}>
+          removed in revision {unit.removedAtRevision ?? "?"}
+          {unit.readBeforeRemoval ? " · you had read it" : ""}
+        </div>
+        {expanded && unit.summary ? (
+          <p className="mt-1.5 pl-5 text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
+            {unit.summary}
+          </p>
+        ) : null}
+      </button>
+    </li>
   );
 }
 

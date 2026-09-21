@@ -1,6 +1,7 @@
 import { keyToString, type PrKey } from "./paths.js";
 import { loadState, readFilesJson, readMeta } from "./store.js";
 import { setAnalysis } from "./service.js";
+import { liveUnits } from "./reducer.js";
 import { AnalysisExportSchema, type AnalysisExport, type State } from "./schemas.js";
 
 /**
@@ -110,7 +111,9 @@ export function extractAnalysisFromComment(body: string): AnalysisExport | null 
 export function buildAnalysisExport(key: PrKey, root: string): AnalysisExport {
   const meta = readMeta(key, root);
   const state = loadState(key, root);
-  if (state.units.length === 0) {
+  // Husks carry no hunks: an importer would only count them as dropped.
+  const units = liveUnits(state);
+  if (units.length === 0) {
     throw new Error(
       `No analysis to export for ${keyToString(key)} — run an analysis first.`,
     );
@@ -125,7 +128,7 @@ export function buildAnalysisExport(key: PrKey, root: string): AnalysisExport {
     mergeBase: revisionInfo?.mergeBase ?? "",
     exportedAt: new Date().toISOString(),
     summary: state.summary,
-    units: state.units,
+    units,
   });
 }
 

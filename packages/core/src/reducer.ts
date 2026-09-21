@@ -1,3 +1,4 @@
+import { STATE_SHAPE_VERSION, isRemovedUnit } from "./schemas.js";
 import type {
   ReviewUnit,
   ReviewerEvent,
@@ -8,6 +9,7 @@ import type {
 
 export function initialState(): State {
   return {
+    shapeVersion: STATE_SHAPE_VERSION,
     currentRevision: 0,
     revisions: [],
     summary: "",
@@ -23,6 +25,16 @@ export function initialState(): State {
 
 function freshHunkState(): HunkState {
   return { viewed: false, changedSinceViewed: false };
+}
+
+/** A unit given hunks again is no longer a husk. */
+function reviveIfPopulated(unit: ReviewUnit): ReviewUnit {
+  if (unit.hunkIds.length === 0) return unit;
+  if (!isRemovedUnit(unit) && unit.readBeforeRemoval === undefined) return unit;
+  const next = { ...unit };
+  delete next.removedAtRevision;
+  delete next.readBeforeRemoval;
+  return next;
 }
 
 function recomputeRollups(state: State): void {
@@ -70,6 +82,14 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       });
       state.revisions.sort((a, b) => a.revision - b.revision);
       state.currentRevision = event.revision;
+
+      // A husk (see ReviewUnit.removedAtRevision) lives for exactly one
+      // revision: the one that emptied it. Any later revision deletes it.
+      // Re-adding the *same* revision keeps it, so a replayed event is a no-op.
+      state.units = state.units.filter(
+        (u) =>
+          !(isRemovedUnit(u) && u.hunkIds.length === 0 && u.removedAtRevision !== event.revision),
+      );
 
       const previousHunks = state.hunks;
       const nextHunks: Record<string, HunkState> = {};
@@ -162,6 +182,15 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           const keepFindings = u.findings?.length ? findingsSurvive(u) : false;
           const next: ReviewUnit = { ...u, hunkIds: remap(u.hunkIds) };
           if (!keepFindings) delete next.findings;
+          // Every hunk of the unit left the PR: keep it as a visible husk for
+          // this one revision (title, summary, kind, attention intact) so the
+          // reader sees the decision was dropped rather than it vanishing.
+          // `readBeforeRemoval` is judged on the hunk states *before* this
+          // revision — afterwards those hunks no longer exist.
+          if (u.hunkIds.length > 0 && next.hunkIds.length === 0) {
+            next.removedAtRevision = event.revision;
+            next.readBeforeRemoval = u.hunkIds.every((id) => previousHunks[id]?.viewed === true);
+          }
           return next;
         });
         state.unassignedHunkIds = remap(state.unassignedHunkIds);
@@ -183,7 +212,9 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
 
     case "analysis-set": {
       state.summary = event.summary;
-      state.units = event.units.map((u) => ({ ...u }));
+      // A full analysis replaces every unit, so husks drop out unless re-sent;
+      // one re-sent with hunks is a live unit again.
+      state.units = event.units.map((u) => reviveIfPopulated({ ...u }));
       state.unassignedHunkIds = [...(event.unassigned ?? [])];
       state.analysisRevision = event.revision;
       state.analysisOrigin = event.origin;
@@ -205,9 +236,9 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           order: state.units.length,
           ...event.patch,
         } as ReviewUnit;
-        state.units.push(created);
+        state.units.push(reviveIfPopulated(created));
       } else {
-        state.units[idx] = { ...state.units[idx], ...event.patch };
+        state.units[idx] = reviveIfPopulated({ ...state.units[idx], ...event.patch });
       }
       break;
     }
@@ -329,8 +360,19 @@ export interface UnitProgress {
   changed: boolean;
 }
 
+/** Units still in the PR — everything but husks (see ReviewUnit.removedAtRevision). */
+export function liveUnits(state: Pick<State, "units">): ReviewUnit[] {
+  return state.units.filter((u) => !isRemovedUnit(u));
+}
+
+/** Husks: units every hunk of which left the PR in the current revision. */
+export function removedUnits(state: Pick<State, "units">): ReviewUnit[] {
+  return state.units.filter(isRemovedUnit);
+}
+
+/** Per-unit progress over live units; husks count toward nothing. */
 export function unitProgress(state: State): UnitProgress[] {
-  return [...state.units]
+  return liveUnits(state)
     .sort((a, b) => a.order - b.order)
     .map((u) => {
       const states = u.hunkIds.map((id) => state.hunks[id]).filter(Boolean);

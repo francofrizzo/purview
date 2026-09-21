@@ -9,15 +9,20 @@
  * before it, so a bad value can't jump a unit to the front of the list.
  */
 
-import { ATTENTIONS, type Attention, type ReviewUnit } from "../api/types";
+import { ATTENTIONS, isRemovedUnit, type Attention, type ReviewUnit } from "../api/types";
 
 function attentionRank(attention: Attention): number {
   const idx = ATTENTIONS.indexOf(attention);
   return idx === -1 ? ATTENTIONS.length : idx;
 }
 
+/**
+ * Husks (units whose hunks all left the PR) are never part of the reading
+ * order. The client adapter already keeps them out of `state.units`; this is
+ * the backstop so numbering can't gap if one ever slips through.
+ */
 export function unitDisplayOrder(units: ReviewUnit[]): ReviewUnit[] {
-  return [...units].sort((a, b) => {
+  return units.filter((u) => !isRemovedUnit(u)).sort((a, b) => {
     const ra = attentionRank(a.attention);
     const rb = attentionRank(b.attention);
     return ra !== rb ? ra - rb : a.order - b.order;

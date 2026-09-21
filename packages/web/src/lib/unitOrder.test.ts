@@ -67,3 +67,28 @@ describe("unitDisplayNumbers", () => {
     expect(unitDisplayNumbers([]).size).toBe(0);
   });
 });
+
+describe("husks", () => {
+  const husk = (id: string, attention: ReviewUnit["attention"], order: number) =>
+    ({ ...unit(id, attention, order), removedAtRevision: 3 }) as ReviewUnit;
+
+  it("leaves husks out of the reading order", () => {
+    const units = [unit("must1", "must-read", 1), husk("gone", "must-read", 0), unit("skim1", "skim", 2)];
+    expect(unitDisplayOrder(units).map((u) => u.id)).toEqual(["must1", "skim1"]);
+  });
+
+  it("numbers live units without gaps and gives husks no number", () => {
+    const units = [
+      husk("gone", "must-read", 0),
+      unit("must1", "must-read", 1),
+      husk("gone2", "skim", 2),
+      unit("skim1", "skim", 3),
+    ];
+    const numbers = unitDisplayNumbers(units);
+    expect([...numbers]).toEqual([
+      ["must1", 1],
+      ["skim1", 2],
+    ]);
+    expect(numbers.has("gone")).toBe(false);
+  });
+});

@@ -14,6 +14,7 @@ import {
   type ClaudeModel,
   type Hunk,
   type PrKey,
+  liveUnits,
 } from "@reviewer/core";
 import { readComments } from "./comments.js";
 import { checkoutNote } from "./analysis.js";
@@ -329,8 +330,8 @@ function showingLines(panel: boolean): string[] {
 function prOverviewLines(key: PrKey, root: string, checkout?: ChatCheckout): string[] {
   const state = loadState(key, root);
   const meta = readMeta(key, root);
-  const units = state.units
-    .slice()
+  // Husks are left out: they have no hunks in the diff the chat is about.
+  const units = liveUnits(state)
     .sort((a, b) => a.order - b.order)
     .map(
       (u) =>

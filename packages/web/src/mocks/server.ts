@@ -1079,6 +1079,8 @@ export const mockApi = {
     const unassigned = [...currentIds].filter((id) => !matched.has(id));
 
     target.state.units = units;
+    // An import is a full analysis-set: husks drop out, as in core's reducer.
+    target.state.removedUnits = [];
     target.state.summary = envelope.summary ?? target.state.summary;
     if (target === detail) recomputeFileRollups();
 
@@ -1156,6 +1158,7 @@ export const mockApi = {
     const unassigned = [...currentIds].filter((id) => !matched.has(id));
 
     target.state.units = units;
+    target.state.removedUnits = [];
     target.state.summary = shared.envelope.summary;
     if (target === detail) recomputeFileRollups();
 

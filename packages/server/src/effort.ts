@@ -4,6 +4,7 @@ import {
   readFilesJson,
   stateRoot,
   type PrKey,
+  liveUnits,
 } from "@reviewer/core";
 
 /**
@@ -99,10 +100,20 @@ export function clearEffortCache(): void {
  */
 export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | null {
   const state = loadState(key, root);
-  if (state.units.length === 0) return null;
+  // Husks (units whose hunks all left the PR) have no lines to read and no
+  // bearing on the remaining effort.
+  const units = liveUnits(state);
+  if (units.length === 0) return null;
 
   const revision = state.analysisRevision ?? state.currentRevision;
-  const cacheKey = `${root}#${keyToString(key)}#${revision}`;
+  // Keyed on what the badge is computed from, not just the analysis revision:
+  // a new revision (hunks archived, units turned into husks) or an
+  // incremental set-unit patch changes the must-read surface without a new
+  // analysis-set, and must not leave a stale badge behind.
+  const unitsSig = units
+    .map((u) => `${u.id}:${u.kind}:${u.attention}:${u.riskFlags.length}:${u.hunkIds.join(",")}`)
+    .join("|");
+  const cacheKey = `${root}#${keyToString(key)}#${revision}#${state.currentRevision}#${unitsSig}`;
   const hit = cache.get(cacheKey);
   if (hit) return hit.result;
 
@@ -119,7 +130,7 @@ export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | nul
     // contributes 0 lines rather than failing the whole computation.
   }
 
-  const mustReadUnitList = state.units.filter((u) => u.attention === "must-read");
+  const mustReadUnitList = units.filter((u) => u.attention === "must-read");
   const mustReadHunkIds = new Set(mustReadUnitList.flatMap((u) => u.hunkIds));
   let mustReadLines = 0;
   for (const id of mustReadHunkIds) mustReadLines += hunkLines.get(id) ?? 0;
@@ -138,7 +149,7 @@ export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | nul
   for (const [id, w] of hunkWeight) weightedMustReadLines += (hunkLines.get(id) ?? 0) * w;
   weightedMustReadLines = Math.round(weightedMustReadLines);
 
-  const riskFlags = new Set(state.units.flatMap((u) => u.riskFlags));
+  const riskFlags = new Set(units.flatMap((u) => u.riskFlags));
   const riskCount = riskFlags.size;
   const mustReadUnits = mustReadUnitList.length;
 

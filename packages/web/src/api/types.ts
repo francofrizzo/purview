@@ -97,6 +97,19 @@ export interface ReviewUnit {
   order: number;
   /** absent on units that verified nothing, and on any state predating findings */
   findings?: Finding[];
+  /**
+   * Set only on a "husk": a unit every hunk of which left the PR in this
+   * revision. Husks never appear in `PrState.units` — the client adapter
+   * moves them to `PrState.removedUnits` — and they vanish on the next revision.
+   */
+  removedAtRevision?: number;
+  /** On a husk: the reader had viewed every hunk of it before they left. */
+  readBeforeRemoval?: boolean;
+}
+
+/** A unit whose hunks all left the PR (see `ReviewUnit.removedAtRevision`). */
+export function isRemovedUnit(u: Pick<ReviewUnit, "removedAtRevision">): boolean {
+  return u.removedAtRevision !== undefined;
 }
 
 /**
@@ -182,7 +195,13 @@ export interface BasePr {
 export interface PrState {
   revision: number;
   summary?: string;
+  /**
+   * Live units only. Every consumer (progress, numbering, the rail, search,
+   * space-to-next, counts) reads this, so husks are excluded at the source.
+   */
   units: ReviewUnit[];
+  /** Husks, shown only in the sidebar's "Removed" group. Absent = none. */
+  removedUnits?: ReviewUnit[];
   hunks: Record<string, HunkState>;
   files?: Record<string, FileRollup>;
   baseOnly?: boolean;

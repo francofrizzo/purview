@@ -17,6 +17,7 @@ import {
   type AnalysisMetrics,
   type MovePairSummary,
   type PrKey,
+  liveUnits,
 } from "@reviewer/core";
 import { runClaude, type ClaudeRun } from "./claude-runner.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
@@ -309,6 +310,9 @@ export function analysisPrompt(
           "classify ONLY hunks that are new or unassigned, then patch just the",
           `affected units with \`${cmd} set-unit ${keyStr} --id <unitId> --file <patch.json>\`.`,
           "Never regenerate the whole analysis with set-analysis on a refresh.",
+          "Units listed under \"Removed units\" in the report (`removedAtRevision` in state) are husks of",
+          "decisions the PR dropped: do not patch them, except to revive one (set-unit its hunkIds) when",
+          "new hunks genuinely belong to that same decision.",
         ].join(" ")
       : [
           "This PR has no analysis yet. Produce the full analysis and write it with",
@@ -735,7 +739,9 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   const run = runClaude({
     label: "analysis",
     prompt: analysisPrompt(key, root, {
-      incremental: state.units.length > 0,
+      // Husks alone are not an analysis to build on: with no live unit left
+      // the run must produce a full analysis (which drops the husks).
+      incremental: liveUnits(state).length > 0,
       checkout,
       headSha,
       committed,

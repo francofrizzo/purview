@@ -402,11 +402,30 @@ const units: ReviewUnit[] = [
   },
 ];
 
+/** A husk: every hunk of it left the PR in revision 3 (see ReviewUnit.removedAtRevision). */
+const removedUnits: ReviewUnit[] = [
+  {
+    id: "ledger-cleanup-job",
+    title: "Nightly job pruning settled ledger rows",
+    summary:
+      "A cron job deleted charge_ledger rows older than 30 days once their charge settled. Revision 3 dropped it: ledger retention is now left to the table's TTL policy.",
+    kind: "core-logic",
+    attention: "skim",
+    attentionWhy: "Deletes money records; worth a look while it existed.",
+    riskFlags: ["money"],
+    hunkIds: [],
+    order: 4,
+    removedAtRevision: 3,
+    readBeforeRemoval: true,
+  },
+];
+
 const state: PrState = {
   revision: 3,
   summary:
     "Payment charges become replay-safe. A key derived from (orderId, amount, currency) is recorded in a new charge_ledger table before the gateway call, so retries — whether from the client, the queue, or the new backoff wrapper — return the original result instead of charging twice. Two things deserve real attention: the key derivation (it must not include anything volatile) and the interaction between the retry loop and the ledger write ordering.",
   units,
+  removedUnits,
   hunks: {
     a1b2c3d4e5f60001: { viewed: true, viewedAtRevision: 2, changedSinceViewed: true, migration: "fuzzy", predecessorId: "a1b2c3d4e5f6ff01" },
     a1b2c3d4e5f60002: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false, migration: "identical" },

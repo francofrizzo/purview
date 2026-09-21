@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   fold,
   lastReviewSubmission,
+  liveUnits,
   readiness,
+  removedUnits,
   unitProgress,
   viewedFiles,
 } from "../src/reducer.js";
-import type { ReviewerEvent } from "../src/schemas.js";
+import type { MigrationEntry, ReviewerEvent } from "../src/schemas.js";
 
 const ts = "2026-01-01T00:00:00.000Z";
 
@@ -237,5 +239,162 @@ describe("analysis run events", () => {
     expect(before.analysisRun).toBeUndefined();
     const after = fold([...events, { ts, type: "analysis-started", revision: 1 }]);
     expect({ ...after, analysisRun: undefined }).toEqual({ ...before, analysisRun: undefined });
+  });
+});
+
+describe("husks: units whose every hunk left the PR", () => {
+  /**
+   * A revision-added event with a migration report. `carry` maps old->new
+   * ids that survive (identical); `archive` lists old ids that left; `added`
+   * lists brand-new ids.
+   */
+  function revision(
+    n: number,
+    opts: { carry?: Record<string, string>; archive?: string[]; added?: string[] },
+  ): ReviewerEvent {
+    const entries: MigrationEntry[] = [
+      ...Object.entries(opts.carry ?? {}).map(([prev, next]) => ({
+        status: "identical" as const,
+        hunkId: next,
+        previousHunkId: prev,
+        file: "a.ts",
+      })),
+      ...(opts.archive ?? []).map((id) => ({ status: "archived" as const, hunkId: id, file: "a.ts" })),
+      ...(opts.added ?? []).map((id) => ({ status: "new" as const, hunkId: id, file: "a.ts" })),
+    ];
+    const live = [...Object.values(opts.carry ?? {}), ...(opts.added ?? [])];
+    return {
+      ts,
+      type: "revision-added",
+      revision: n,
+      baseSha: `base${n}`,
+      headSha: `head${n}`,
+      mergeBase: `mb${n}`,
+      baseOnly: false,
+      files: [{ path: "a.ts", hunkIds: live }],
+      migration: {
+        revision: n,
+        previousRevision: n - 1,
+        baseOnly: false,
+        counts: { identical: 0, fuzzy: 0, renamed: 0, archived: 0, new: 0 },
+        entries,
+      },
+    };
+  }
+
+  // r2 drops every hunk of "core" (h1, h2) and keeps "wire" (h3).
+  const dropCore = revision(2, { carry: { h3: "h3" }, archive: ["h1", "h2"] });
+
+  it("turns a fully emptied unit into a husk, keeping what it said", () => {
+    const s = fold([...events, dropCore]);
+    const core = s.units.find((u) => u.id === "core")!;
+    expect(core).toMatchObject({
+      hunkIds: [],
+      removedAtRevision: 2,
+      readBeforeRemoval: false,
+      title: "Widget core",
+      summary: "The logic.",
+      kind: "core-logic",
+      attention: "must-read",
+    });
+    expect(removedUnits(s).map((u) => u.id)).toEqual(["core"]);
+    expect(liveUnits(s).map((u) => u.id)).toEqual(["wire"]);
+  });
+
+  it("records readBeforeRemoval only when every previous hunk was viewed", () => {
+    const partly = fold([
+      ...events,
+      { ts, type: "hunk-viewed", hunkId: "h1", revision: 1 },
+      dropCore,
+    ]);
+    expect(partly.units.find((u) => u.id === "core")!.readBeforeRemoval).toBe(false);
+
+    const fully = fold([...events, { ts, type: "unit-viewed", unitId: "core", revision: 1 }, dropCore]);
+    expect(fully.units.find((u) => u.id === "core")!.readBeforeRemoval).toBe(true);
+  });
+
+  it("deletes the husk on the next revision", () => {
+    const s = fold([...events, dropCore, revision(3, { carry: { h3: "h3" } })]);
+    expect(s.units.map((u) => u.id)).toEqual(["wire"]);
+  });
+
+  it("keeps the husk when the same revision is replayed", () => {
+    const s = fold([...events, dropCore, dropCore]);
+    expect(removedUnits(s).map((u) => u.id)).toEqual(["core"]);
+  });
+
+  it("revives a husk given hunks again via set-unit (unit-updated)", () => {
+    const s = fold([
+      ...events,
+      dropCore,
+      { ts, type: "unit-updated", unitId: "core", patch: { hunkIds: ["h3"] } },
+      { ts, type: "unit-updated", unitId: "wire", patch: { hunkIds: [] } },
+    ]);
+    const core = s.units.find((u) => u.id === "core")!;
+    expect(core.hunkIds).toEqual(["h3"]);
+    expect(core.removedAtRevision).toBeUndefined();
+    expect(core.readBeforeRemoval).toBeUndefined();
+    // and a revived unit survives the next revision like any other
+    const later = fold([
+      ...events,
+      dropCore,
+      { ts, type: "unit-updated", unitId: "core", patch: { hunkIds: ["h3"] } },
+      revision(3, { carry: { h3: "h3" } }),
+    ]);
+    expect(later.units.find((u) => u.id === "core")?.hunkIds).toEqual(["h3"]);
+  });
+
+  it("drops husks on analysis-set unless re-sent, and revives a re-sent one with hunks", () => {
+    const withHusk = fold([...events, dropCore]);
+    const wire = withHusk.units.find((u) => u.id === "wire")!;
+    const core = withHusk.units.find((u) => u.id === "core")!;
+    const replaced = fold([
+      ...events,
+      dropCore,
+      { ts, type: "analysis-set", revision: 2, summary: "", unassigned: [], units: [wire] },
+    ]);
+    expect(replaced.units.map((u) => u.id)).toEqual(["wire"]);
+
+    const resent = fold([
+      ...events,
+      dropCore,
+      {
+        ts,
+        type: "analysis-set",
+        revision: 2,
+        summary: "",
+        unassigned: [],
+        units: [{ ...core, hunkIds: ["h3"] }, { ...wire, hunkIds: [] }],
+      },
+    ]);
+    expect(resent.units.find((u) => u.id === "core")!.removedAtRevision).toBeUndefined();
+  });
+
+  it("leaves husks out of progress, completion and readiness", () => {
+    const s = fold([...events, dropCore]);
+    expect(unitProgress(s).map((p) => p.unitId)).toEqual(["wire"]);
+    const r = readiness(s);
+    expect(r.units.total).toBe(1);
+    // the only must-read unit is a husk: nothing must-read is left to read
+    expect(r.mustRead.total).toBe(0);
+    expect(r.ready).toBe(true);
+  });
+
+  it("keeps a partially emptied unit a normal unit", () => {
+    const s = fold([...events, revision(2, { carry: { h1: "h1", h3: "h3" }, archive: ["h2"] })]);
+    const core = s.units.find((u) => u.id === "core")!;
+    expect(core.hunkIds).toEqual(["h1"]);
+    expect(core.removedAtRevision).toBeUndefined();
+    expect(core.readBeforeRemoval).toBeUndefined();
+    expect(removedUnits(s)).toEqual([]);
+  });
+
+  it("does not make a husk of a unit that never had hunks", () => {
+    const s = fold([
+      ...events,
+      { ts, type: "unit-updated", unitId: "wire", patch: { hunkIds: [] } },
+      revision(2, { carry: { h1: "h1", h2: "h2" }, archive: ["h3"] }),
+    ]);
+    expect(s.units.find((u) => u.id === "wire")!.removedAtRevision).toBeUndefined();
   });
 });

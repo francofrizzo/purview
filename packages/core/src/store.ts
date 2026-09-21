@@ -9,6 +9,7 @@ import {
   MetaSchema,
   MigrationReportSchema,
   RepoConfigSchema,
+  STATE_SHAPE_VERSION,
   StateSchema,
   TeamConfigCacheSchema,
 } from "./schemas.js";
@@ -131,15 +132,24 @@ export function rebuildState(key: PrKey, root = stateRoot()): State {
   return state;
 }
 
-/** Reads the snapshot if present, otherwise rebuilds it from the event log. */
+/**
+ * Reads the snapshot if present, otherwise rebuilds it from the event log.
+ * A snapshot written by an older reducer (its `shapeVersion` is behind
+ * STATE_SHAPE_VERSION, or absent) is re-folded too: the log is the source of
+ * truth, and a new reducer rule must reach stored PRs on their next read, not
+ * only once something appends an event to them.
+ */
 export function loadState(key: PrKey, root = stateRoot()): State {
   const file = statePath(key, root);
   if (!fs.existsSync(file)) return rebuildState(key, root);
+  let state: State;
   try {
-    return StateSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
+    state = StateSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
   } catch {
     return rebuildState(key, root);
   }
+  if ((state.shapeVersion ?? 0) < STATE_SHAPE_VERSION) return rebuildState(key, root);
+  return state;
 }
 
 export function writeRevision(

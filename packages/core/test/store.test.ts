@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { listPrs, listRepos, writeRevision } from "../src/store.js";
-import { triagePath } from "../src/paths.js";
+import { appendEvent, listPrs, listRepos, loadState, writeRevision } from "../src/store.js";
+import { statePath, triagePath } from "../src/paths.js";
+import { STATE_SHAPE_VERSION } from "../src/schemas.js";
 import { computeHunkId } from "../src/hunk-id.js";
 import type { FileDiff, Hunk, PrKey } from "../src/schemas.js";
 
@@ -64,5 +65,39 @@ describe("listPrs / listRepos and checkouts/", () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("loadState", () => {
+  it("re-folds a state.json written by an older reducer (no or stale shapeVersion)", () => {
+    appendEvent(
+      key,
+      { type: "pr-initialized", host: key.host, owner: key.owner, repo: key.repo, number: 1, url: "u" },
+      tmp,
+    );
+    const file = statePath(key, tmp);
+    const fresh = JSON.parse(fs.readFileSync(file, "utf8"));
+    expect(fresh.shapeVersion).toBe(STATE_SHAPE_VERSION);
+
+    // Simulate a snapshot from before shapeVersion, carrying a value the log
+    // does not support: loading must discard it and re-fold from events.
+    const { shapeVersion: _drop, ...old } = fresh;
+    fs.writeFileSync(file, JSON.stringify({ ...old, summary: "stale" }));
+    const loaded = loadState(key, tmp);
+    expect(loaded.summary).toBe("");
+    expect(loaded.shapeVersion).toBe(STATE_SHAPE_VERSION);
+    expect(JSON.parse(fs.readFileSync(file, "utf8")).shapeVersion).toBe(STATE_SHAPE_VERSION);
+  });
+
+  it("trusts a current-shape snapshot as is", () => {
+    appendEvent(
+      key,
+      { type: "pr-initialized", host: key.host, owner: key.owner, repo: key.repo, number: 1, url: "u" },
+      tmp,
+    );
+    const file = statePath(key, tmp);
+    const cur = JSON.parse(fs.readFileSync(file, "utf8"));
+    fs.writeFileSync(file, JSON.stringify({ ...cur, summary: "kept" }));
+    expect(loadState(key, tmp).summary).toBe("kept");
   });
 });

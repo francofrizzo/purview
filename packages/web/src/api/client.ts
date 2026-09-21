@@ -1,6 +1,7 @@
 import { mockApi } from "../mocks/server";
 import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
+import { isRemovedUnit } from "./types";
 import type {
   AddCommentInput,
   AnalysisImportReport,
@@ -294,7 +295,10 @@ function adaptState(s: WireState): PrState {
   return {
     revision: s.currentRevision,
     summary: s.summary,
-    units: s.units ?? [],
+    // Husks are split off here, once, so nothing that counts, numbers or
+    // navigates units ever sees one; only the sidebar's Removed group reads them.
+    units: (s.units ?? []).filter((u) => !isRemovedUnit(u)),
+    removedUnits: (s.units ?? []).filter(isRemovedUnit),
     hunks: s.hunks ?? {},
     files,
     baseOnly: s.revisions?.find((r) => r.revision === s.currentRevision)?.baseOnly ?? false,

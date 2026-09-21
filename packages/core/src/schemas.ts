@@ -133,8 +133,24 @@ export const ReviewUnitSchema = z.object({
    * so by having no `findings` key rather than an empty array.
    */
   findings: z.array(FindingSchema).max(MAX_UNIT_FINDINGS).optional(),
+  /**
+   * Set by the reducer, never by analysis: the revision in which every hunk
+   * of this unit left the PR. Such a unit is a "husk" — kept for exactly one
+   * revision so the reader can see a decision was dropped, then deleted on
+   * the next `revision-added`. Husks have no hunks and count toward nothing
+   * (progress, readiness, effort, numbering). Giving one hunks again revives
+   * it and clears both fields.
+   */
+  removedAtRevision: z.number().int().optional(),
+  /** On a husk: every hunk it had was viewed when they left the PR. */
+  readBeforeRemoval: z.boolean().optional(),
 });
 export type ReviewUnit = z.infer<typeof ReviewUnitSchema>;
+
+/** A unit whose hunks all left the PR (see `removedAtRevision`). */
+export function isRemovedUnit(u: { removedAtRevision?: number }): boolean {
+  return u.removedAtRevision !== undefined;
+}
 
 export const ReviewUnitPatchSchema = ReviewUnitSchema.partial();
 export type ReviewUnitPatch = z.infer<typeof ReviewUnitPatchSchema>;
@@ -707,7 +723,17 @@ export const ArchivedHunkSchema = z.object({
 });
 export type ArchivedHunk = z.infer<typeof ArchivedHunkSchema>;
 
+/**
+ * Bumped whenever the reducer's output for an existing event log changes
+ * (a new derived field, a new rule). `loadState` re-folds any state.json
+ * written under an older version, so stored PRs pick the change up on their
+ * next read instead of only on their next appended event.
+ */
+export const STATE_SHAPE_VERSION = 2;
+
 export const StateSchema = z.object({
+  /** see STATE_SHAPE_VERSION; absent on every state.json written before it existed */
+  shapeVersion: z.number().int().optional(),
   pr: z
     .object({
       host: z.string(),
