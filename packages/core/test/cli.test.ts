@@ -180,7 +180,7 @@ describe("cli triage", () => {
     expect(res.status).toBe(0);
     expect(res.stdout).toContain("revision 1");
     expect(res.stdout).toContain(hunk.id);
-    expect(res.stdout).toContain(`show ${keyToString(key)} <hunk-id|path|glob>...`);
+    expect(res.stdout).toContain(`show ${keyToString(key)} <hunk-id|path|'glob'>...`);
     expect(res.stdout).toContain(cliPath);
   });
 });
@@ -191,7 +191,8 @@ describe("cli show", () => {
     const res = run(["show", keyToString(key), hunk.id]);
     expect(res.status).toBe(0);
     expect(res.stdout).toContain(`=== src/a.ts   ${hunk.id}`);
-    expect(res.stdout).toContain("-  return a;");
+    expect(res.stdout).toContain("1   │-  return a;");
+    expect(res.stdout).toContain("  1 │+  return a + b;");
     expect(res.stdout).toContain("-- 1 hunks, 1 files");
   });
 
@@ -232,6 +233,9 @@ describe("cli show", () => {
     const written = fs.readFileSync(file!, "utf8");
     expect(written).toContain(`=== src/a.ts   ${hunk.id}`);
     expect(written).toContain("line799");
+    // Spilled output carries the source line numbers, not the scratch file's.
+    expect(written).toContain(`800 │+  const line799 = `);
+    expect(res.stdout).toContain("never the file's own line numbers");
 
     // --inline opts out.
     const inline = run(["show", keyToString(key), hunk.id, "--inline"]);
@@ -324,6 +328,108 @@ describe("cli set-unit", () => {
     expect(res.status).toBe(0);
     // kind is unchanged from the original "core-logic", not reset to "wiring"
     expect(res.stdout).toContain("skip/core-logic");
+  });
+});
+
+function writeJson(name: string, value: unknown): string {
+  const file = path.join(tmp, name);
+  fs.writeFileSync(file, JSON.stringify(value));
+  return file;
+}
+
+const unitJson = (id: string, hunkIds: string[], extra: Record<string, unknown> = {}) => ({
+  id,
+  title: id,
+  summary: "s",
+  kind: "core-logic",
+  attention: "must-read",
+  attentionWhy: "why",
+  riskFlags: [],
+  hunkIds,
+  order: 0,
+  ...extra,
+});
+
+describe("cli hunk ownership", () => {
+  it("set-analysis rejects a hunk listed in two units, naming the units", () => {
+    const { hunk } = seed();
+    const before = eventCount();
+    const file = writeJson("dupe.json", {
+      summary: "s",
+      units: [unitJson("one", [hunk.id]), unitJson("two", [hunk.id])],
+    });
+    const res = run(["set-analysis", keyToString(key), "--file", file]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("more than one place");
+    expect(res.stderr).toContain(`${hunk.id}: one, two`);
+    expect(eventCount()).toBe(before);
+  });
+
+  it("set-analysis rejects a hunk both in a unit and unassigned", () => {
+    const { hunk } = seed();
+    const file = writeJson("dupe2.json", {
+      summary: "s",
+      units: [unitJson("one", [hunk.id])],
+      unassigned: [hunk.id],
+    });
+    const res = run(["set-analysis", keyToString(key), "--file", file]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain(`${hunk.id}: one, unassigned`);
+  });
+
+  it("set-unit rejects taking a hunk another unit owns, and allows a move in two patches", () => {
+    const { hunk } = seed(); // unit "core" owns the hunk
+    const before = eventCount();
+    const take = run([
+      "set-unit", keyToString(key), "--id", "other",
+      "--file", writeJson("take.json", unitJson("other", [hunk.id])),
+    ]);
+    expect(take.status).toBe(1);
+    expect(take.stderr).toContain(`${hunk.id}: core, other`);
+    expect(eventCount()).toBe(before);
+
+    // Re-sending a unit's own hunk list is not a clash with itself.
+    const same = run(["set-unit", keyToString(key), "--id", "core", "--file", writeJson("same.json", { hunkIds: [hunk.id] })]);
+    expect(same.status).toBe(0);
+
+    const drop = run(["set-unit", keyToString(key), "--id", "core", "--file", writeJson("drop.json", { hunkIds: [] })]);
+    expect(drop.status).toBe(0);
+    const add = run(["set-unit", keyToString(key), "--id", "other", "--file", writeJson("add.json", unitJson("other", [hunk.id]))]);
+    expect(add.status).toBe(0);
+    expect(add.stdout).toContain("Unit other saved");
+  });
+});
+
+describe("cli finding length", () => {
+  const longText = Array.from({ length: 80 }, (_, i) => `word${i}`).join(" ");
+
+  it("set-analysis truncates an over-long finding and warns instead of rejecting", () => {
+    const { hunk } = seed();
+    const file = writeJson("long.json", {
+      summary: "s",
+      units: [
+        unitJson("core", [hunk.id], {
+          findings: [{ severity: "note", text: longText, evidence: "src/a.ts:1" }],
+        }),
+      ],
+    });
+    const res = run(["set-analysis", keyToString(key), "--file", file]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("warning: unit core finding 1 truncated (text");
+    const state = JSON.parse(run(["report", keyToString(key), "--json"]).stdout);
+    const text: string = state.units[0].findings[0].text;
+    expect(text.length).toBeLessThanOrEqual(300);
+    expect(text.endsWith("…")).toBe(true);
+  });
+
+  it("set-unit truncates too", () => {
+    seed();
+    const file = writeJson("long-unit.json", {
+      findings: [{ severity: "warning", text: "t", evidence: longText }],
+    });
+    const res = run(["set-unit", keyToString(key), "--id", "core", "--file", file]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("warning: unit core finding 1 truncated (evidence");
   });
 });
 

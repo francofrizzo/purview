@@ -604,7 +604,8 @@ describe("chat instructions layering", () => {
     const prompt = chatSystemPrompt(key, root);
     expect(prompt).toContain(`triage ${keyToString(key)}\``);
     expect(prompt).toContain("triage overview (read this first)");
-    expect(prompt).toContain(`show ${keyToString(key)} <hunk-id|path|glob>...`);
+    expect(prompt).toContain(`show ${keyToString(key)} <hunk-id|path|'glob'>...`);
+    expect(prompt).toContain("single-quote globs, e.g. `'internal/**/*_test.go'`");
   });
 });
 

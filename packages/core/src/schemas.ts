@@ -102,11 +102,15 @@ export type FilesJson = z.infer<typeof FilesJsonSchema>;
 export const FindingSeveritySchema = z.enum(["warning", "note"]);
 export type FindingSeverity = z.infer<typeof FindingSeveritySchema>;
 
+/** Stored-state limits. The CLI truncates to these instead of rejecting (see truncateFindings). */
+export const FINDING_TEXT_MAX = 300;
+export const FINDING_EVIDENCE_MAX = 200;
+
 export const FindingSchema = z.object({
   severity: FindingSeveritySchema,
-  text: z.string().min(1).max(300),
+  text: z.string().min(1).max(FINDING_TEXT_MAX),
   /** concrete location(s) checked, e.g. `internal/api/handler.go:88, internal/vep/client.go:41` */
-  evidence: z.string().min(1).max(200),
+  evidence: z.string().min(1).max(FINDING_EVIDENCE_MAX),
 });
 export type Finding = z.infer<typeof FindingSchema>;
 

@@ -106,7 +106,12 @@ export interface CheckoutResolution {
    * the stored path (better than nothing), but every consumer is expected to
    * say out loud that the code may not match the diff.
    */
-  mismatch?: { checkedOutBranch: string; prHeadRef: string };
+  mismatch?: {
+    checkedOutBranch: string;
+    prHeadRef: string;
+    /** the stored checkout's own HEAD commit — not the PR head */
+    checkedOutSha?: string;
+  };
   /** set when the stored path is unusable (deleted, no longer a repo) */
   error?: string;
   /**
@@ -169,7 +174,11 @@ export function resolveCheckout(
     path: top,
     resolvedWorktree: false,
     mismatch: pr.headRef
-      ? { checkedOutBranch, prHeadRef: pr.headRef }
+      ? {
+          checkedOutBranch,
+          prHeadRef: pr.headRef,
+          ...(self?.head ? { checkedOutSha: self.head } : {}),
+        }
       : undefined,
   };
 }

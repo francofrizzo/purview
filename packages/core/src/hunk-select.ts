@@ -112,3 +112,46 @@ export function selectHunks(filesJson: FilesJson, selectors: string[]): SelectRe
 export function allSelectedHunks(filesJson: FilesJson): SelectedHunk[] {
   return flatten(filesJson);
 }
+
+/**
+ * One hunk as `show` prints it: a header line, then every body line behind a
+ * gutter of its real line numbers in the source file (old, then new), so a
+ * finding can cite `path:line` straight off it even when the output was
+ * spilled to a scratch file whose own line offsets mean nothing. A context
+ * line advances both numbers, `-` only the old one, `+` only the new one;
+ * `\ No newline at end of file` advances neither.
+ *
+ *   === path   id   +a -r   @@header@@
+ *   88 90 │ context line
+ *   89    │-removed line
+ *      91 │+added line
+ */
+export function renderShowHunk(sh: SelectedHunk): string {
+  const { file, hunk } = sh;
+  const head =
+    `=== ${file.path}   ${hunk.id}   +${hunk.addedLines.length} -${hunk.removedLines.length}   ` +
+    `@@${hunk.header}@@\n`;
+  const lines = hunk.text === "" ? [] : hunk.text.split("\n");
+  const width = Math.max(
+    String(hunk.oldStart + hunk.oldLines).length,
+    String(hunk.newStart + hunk.newLines).length,
+  );
+  const blank = " ".repeat(width);
+  let oldNo = hunk.oldStart;
+  let newNo = hunk.newStart;
+  const body = lines.map((line) => {
+    const mark = line[0];
+    let o = blank;
+    let n = blank;
+    if (mark === "-") {
+      o = String(oldNo++).padStart(width);
+    } else if (mark === "+") {
+      n = String(newNo++).padStart(width);
+    } else if (mark !== "\\") {
+      o = String(oldNo++).padStart(width);
+      n = String(newNo++).padStart(width);
+    }
+    return `${o} ${n} │${line}`;
+  });
+  return head + body.join("\n") + "\n\n";
+}

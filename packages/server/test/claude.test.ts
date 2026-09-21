@@ -622,12 +622,14 @@ describe("POST /repo-path", () => {
     expect((await set.json()).checkoutMismatch).toEqual({
       checkedOutBranch: "main",
       prHeadRef: "feature-x",
+      checkedOutSha: expect.stringMatching(/^[0-9a-f]{40}$/),
     });
 
     const detail = await (await app.request(`/api/prs/${encodedKey}`)).json();
     expect(detail.checkoutMismatch).toEqual({
       checkedOutBranch: "main",
       prHeadRef: "feature-x",
+      checkedOutSha: expect.stringMatching(/^[0-9a-f]{40}$/),
     });
 
     await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });

@@ -136,10 +136,16 @@ export function checkoutNote(
   }
   if (!resolution.path) return "";
   if (resolution.mismatch) {
+    const m = resolution.mismatch;
+    // `headSha` is the PR head, not what the checkout sits on: each sha is
+    // named next to the ref it belongs to.
+    const coSha = m.checkedOutSha ? m.checkedOutSha.slice(0, 12) : "";
+    const where = m.checkedOutBranch.startsWith("detached")
+      ? m.checkedOutBranch
+      : `on branch ${m.checkedOutBranch}${coSha ? ` at ${coSha}` : ""}`;
     return (
-      `A local checkout is available at ${resolution.path}, but it is on branch ` +
-      `${resolution.mismatch.checkedOutBranch}${headSha ? ` at ${headSha.slice(0, 12)}` : ""} ` +
-      `while the PR head is ${resolution.mismatch.prHeadRef} — surrounding code may not match the diff. ` +
+      `A local checkout is available at ${resolution.path}, but it is ${where} ` +
+      `while the PR head is ${m.prHeadRef}${headSha ? ` at ${headSha.slice(0, 12)}` : ""} — surrounding code may not match the diff. ` +
       `Treat anything you read there as possibly stale, and prefer the diff when they disagree. Never modify anything in it.`
     );
   }
@@ -172,14 +178,17 @@ export function findingsNote(resolution?: CheckoutResolution): string {
     "only place a claim may be verified (grep/read it; never modify it).",
     "",
     "Each `ReviewUnit` may carry an optional `findings` array — at most 5 entries, each",
-    '`{"severity": "warning" | "note", "text": "<= 300 chars", "evidence": "<= 200 chars"}`:',
+    '`{"severity": "warning" | "note", "text": "...", "evidence": "..."}`:',
     '  - `warning` — you checked and something is likely wrong (a caller mishandles a new error',
     "    path, a missed update, a real mismatch).",
     '  - `note` — you checked and it is fine; the finding is the answer to a question the',
     '    reviewer would otherwise have had to chase ("all 3 callers map both paths to 403").',
     "  - `evidence` is REQUIRED and non-empty: the concrete location(s) you actually read, e.g.",
     '    "internal/api/handler.go:88, internal/vep/client.go:41". A finding without evidence is',
-    "    rejected by the CLI.",
+    "    rejected by the CLI. `path:line` is the SOURCE file's line: the new-side number from the",
+    "    `show` gutter, or the line in the checkout file — never a line in a scratch file.",
+    "  - Limits: `text` 300 chars, `evidence` 200. The CLI truncates anything longer at a word",
+    "    boundary and prints a warning; it does not reject it, so don't spend turns trimming.",
     "Findings are local annotations for the human reader. They never block, never approve, and",
     "are never posted anywhere. Omit `findings` on units where you verified nothing.",
   ].join("\n");
@@ -265,10 +274,13 @@ export function analysisPrompt(
     `(Pass 1). Then fetch the hunk bodies you actually need with \`${cmd} show ${keyStr} <selectors>\`,`,
     "batched into as few calls as possible — one call with every must-read/ambiguous/risk-surface",
     "selector is the goal, not one call per hunk. A selector is a hunk id (exact or a unique prefix",
-    "of >=6 chars), an exact file path, or a `*`/`**` glob over file paths. A result too big to",
-    "print inline is written to the scratch directory and `show` prints its path: Read that file",
-    "next. Never redirect `show` output to a file yourself, and never split one selection into",
-    "several `show` calls just to keep each one small.",
+    "of >=6 chars), an exact file path, or a `*`/`**` glob over file paths. Single-quote every glob",
+    `selector, or the shell expands or rejects it first: \`${cmd} show ${keyStr} 'internal/**/*_test.go'\`.`,
+    "Each body line starts with a gutter of its real old/new line numbers in the source file",
+    "(`88 90 │ context`, `89    │-removed`, `   91 │+added`). A result too big to print inline is",
+    "written to the scratch directory and `show` prints its path: Read that file next. Never",
+    "redirect `show` output to a file yourself, and never split one selection into several `show`",
+    "calls just to keep each one small.",
     `NEVER parse ${path.join(dir, "revisions", String(state.currentRevision), "files.json")} or diff.patch`,
     "with python/node/jq one-liners — the triage view and `show` already give you every field",
     "(path, status, hunk ids, headers, +/- sizes, addedLines/removedLines, full text, moved-code).",

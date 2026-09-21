@@ -60,7 +60,9 @@ first three as "carried".
    (adding the new hunk — send the **full** resulting array, the patch replaces the field,
    it does not append) and, only if the new hunk changes what's true about the unit, its
    `summary` / `attentionWhy` / `riskFlags`. Units untouched by new hunks are not patched
-   at all.
+   at all. A hunk belongs to one unit only: `set-unit` rejects a `hunkIds` array that takes
+   a hunk another unit still owns. To move one, patch its current unit without it first,
+   then add it to the new unit.
 
    Two `set-unit` behaviors to know: patching an existing unit's `kind` or `attention` also
    emits a `classification-corrected` event for each of its hunks (that's the learning

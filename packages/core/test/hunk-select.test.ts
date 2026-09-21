@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeHunkId } from "../src/hunk-id.js";
-import { allSelectedHunks, globToRegExp, selectHunks } from "../src/hunk-select.js";
+import { allSelectedHunks, globToRegExp, renderShowHunk, selectHunks } from "../src/hunk-select.js";
 import type { FileDiff, FilesJson, Hunk } from "../src/schemas.js";
 
 function mkHunk(file: string, added: string[], removed: string[]): Hunk {
@@ -96,5 +96,48 @@ describe("globToRegExp", () => {
     expect(globToRegExp("**/*_test.go").test("a_test.go")).toBe(true);
     expect(globToRegExp("src/**").test("src/deep/a.ts")).toBe(true);
     expect(globToRegExp("src/*.ts").test("src/x/a.ts")).toBe(false);
+  });
+});
+
+describe("renderShowHunk", () => {
+  it("prefixes every body line with its old/new source line numbers", () => {
+    const hunk: Hunk = {
+      ...mkHunk("src/a.go", ["b2", "b3"], ["a2"]),
+      oldStart: 98,
+      oldLines: 4,
+      newStart: 98,
+      newLines: 5,
+      header: " func F()",
+      text: [" ctx1", "-a2", "+b2", "+b3", " ctx2", "", "\\ No newline at end of file"].join("\n"),
+    };
+    const file: FileDiff = { path: "src/a.go", status: "modified", binary: false, hunks: [hunk] };
+    expect(renderShowHunk({ file, hunk })).toBe(
+      [
+        `=== src/a.go   ${hunk.id}   +2 -1   @@ func F()@@`,
+        " 98  98 │ ctx1",
+        " 99     │-a2",
+        "     99 │+b2",
+        "    100 │+b3",
+        "100 101 │ ctx2",
+        "101 102 │",
+        "        │\\ No newline at end of file",
+        "",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("numbers an added file's lines from its new side only", () => {
+    const hunk: Hunk = {
+      ...mkHunk("src/new.ts", ["x", "y"], []),
+      oldStart: 0,
+      oldLines: 0,
+      newStart: 1,
+      newLines: 2,
+      text: "+x\n+y",
+    };
+    const file: FileDiff = { path: "src/new.ts", status: "added", binary: false, hunks: [hunk] };
+    const body = renderShowHunk({ file, hunk }).split("\n").slice(1, 3);
+    expect(body).toEqual(["  1 │+x", "  2 │+y"]);
   });
 });

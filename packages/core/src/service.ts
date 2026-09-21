@@ -36,6 +36,8 @@ import type {
 } from "./schemas.js";
 import {
   AnalysisSchema,
+  FINDING_EVIDENCE_MAX,
+  FINDING_TEXT_MAX,
   ReviewUnitPatchSchema,
   ReviewUnitSchema,
 } from "./schemas.js";
@@ -303,6 +305,87 @@ export function analysisCoverage(
   };
 }
 
+export interface DuplicateHunk {
+  hunkId: string;
+  /** unit ids (and `unassigned`) the hunk appears in, in payload order */
+  owners: string[];
+}
+
+/** Hunk ids listed more than once across units' `hunkIds` and `unassigned`. */
+export function duplicateHunks(analysis: {
+  units: { id: string; hunkIds: string[] }[];
+  unassigned?: string[];
+}): DuplicateHunk[] {
+  const owners = new Map<string, string[]>();
+  const add = (id: string, owner: string) => {
+    const list = owners.get(id);
+    if (list) list.push(owner);
+    else owners.set(id, [owner]);
+  };
+  for (const u of analysis.units) for (const id of u.hunkIds) add(id, u.id);
+  for (const id of analysis.unassigned ?? []) add(id, "unassigned");
+  return [...owners]
+    .filter(([, list]) => list.length > 1)
+    .map(([hunkId, list]) => ({ hunkId, owners: list }));
+}
+
+/** Cut `s` to at most `max` chars at a word boundary, ending in "…". */
+export function truncateAtWord(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const room = s.slice(0, max - 1);
+  const cut = room.search(/\s\S*$/);
+  // A single very long token (a path, say): cut mid-word rather than to nothing.
+  const kept = cut > max / 2 ? room.slice(0, cut) : room;
+  return kept.replace(/[\s,;:.]+$/, "") + "…";
+}
+
+/**
+ * Pre-schema pass for `set-analysis` / `set-unit` payloads: over-long finding
+ * `text`/`evidence` are truncated to the stored-state limits rather than
+ * failing the whole payload, and each truncated finding yields one warning
+ * line. A model trimming prose to fit a char count across several retries
+ * costs far more than a clipped sentence. Accepts an analysis (`units[]`) or a
+ * single unit/patch (`findings[]`); anything else passes through untouched,
+ * and the schema still has the last word on shape.
+ */
+export function truncateFindings(
+  payload: unknown,
+  fallbackUnitId?: string,
+): { payload: unknown; warnings: string[] } {
+  const warnings: string[] = [];
+  const fixUnit = (unit: unknown): unknown => {
+    if (!unit || typeof unit !== "object") return unit;
+    const u = unit as Record<string, unknown>;
+    if (!Array.isArray(u.findings)) return unit;
+    const unitId = typeof u.id === "string" ? u.id : (fallbackUnitId ?? "?");
+    const findings = u.findings.map((f, i) => {
+      if (!f || typeof f !== "object") return f;
+      const finding = f as Record<string, unknown>;
+      const cut: string[] = [];
+      const next = { ...finding };
+      for (const [field, max] of [
+        ["text", FINDING_TEXT_MAX],
+        ["evidence", FINDING_EVIDENCE_MAX],
+      ] as const) {
+        const v = finding[field];
+        if (typeof v === "string" && v.length > max) {
+          next[field] = truncateAtWord(v, max);
+          cut.push(`${field} ${v.length}->${max}`);
+        }
+      }
+      if (cut.length > 0) {
+        warnings.push(`warning: unit ${unitId} finding ${i + 1} truncated (${cut.join(", ")} chars)`);
+      }
+      return next;
+    });
+    return { ...u, findings };
+  };
+  if (!payload || typeof payload !== "object") return { payload, warnings };
+  const p = payload as Record<string, unknown>;
+  if (Array.isArray(p.units)) return { payload: { ...p, units: p.units.map(fixUnit) }, warnings };
+  return { payload: fixUnit(p), warnings };
+}
+
 export interface SetAnalysisOptions {
   /** Provenance: set to "import" when the units came from another reader's
    *  exported analysis (see analysis-share.ts) rather than a fresh Claude run. */
@@ -331,6 +414,18 @@ export function setAnalysis(
       `Analysis references ${coverage.unknown.length} hunk id(s) that are not in ` +
         `revision ${state.currentRevision}:\n  ${coverage.unknown.join("\n  ")}`,
     );
+  }
+  // An imported analysis comes from another reader's (possibly older) CLI and
+  // is re-anchored mechanically; it is taken as it is rather than refused.
+  if (opts.origin !== "import") {
+    const dupes = duplicateHunks(analysis);
+    if (dupes.length > 0) {
+      throw new Error(
+        `Analysis lists ${dupes.length} hunk id(s) in more than one place; each hunk ` +
+          `belongs to exactly one unit (or "unassigned"):\n  ` +
+          dupes.map((d) => `${d.hunkId}: ${d.owners.join(", ")}`).join("\n  "),
+      );
+    }
   }
   const next = appendEvent(
     key,
@@ -394,6 +489,23 @@ export function setUnit(
     patch = result.data;
   } else {
     patch = ReviewUnitPatchSchema.parse(patchInput);
+  }
+
+  // The patched unit's own old list is replaced, not added to, so only the
+  // *other* units can clash. Moving a hunk is two patches: drop it from its
+  // old unit first, then add it to the new one.
+  if (patch.hunkIds) {
+    const dupes = duplicateHunks({
+      units: [...state.units.filter((u) => u.id !== unitId), { id: unitId, hunkIds: patch.hunkIds }],
+    });
+    if (dupes.length > 0) {
+      throw new Error(
+        `Unit "${unitId}" would share ${dupes.length} hunk id(s) with another unit; each ` +
+          `hunk belongs to exactly one (to move one, first set-unit its current unit ` +
+          `without it):\n  ` +
+          dupes.map((d) => `${d.hunkId}: ${d.owners.join(", ")}`).join("\n  "),
+      );
+    }
   }
 
   const events: NewEvent[] = [{ type: "unit-updated", unitId, patch }];

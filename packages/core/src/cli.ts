@@ -19,12 +19,13 @@ import {
   setUnit,
   setUnitViewed,
   syncPr,
+  truncateFindings,
 } from "./service.js";
 import { loadState, prExists, readFilesJson, readMigrationReport, listPrs } from "./store.js";
 import { migrateStateDirOnStartup } from "./state-dir.js";
 import { formatReport } from "./report.js";
 import { renderTriage } from "./triage.js";
-import { allSelectedHunks, selectHunks, type SelectedHunk } from "./hunk-select.js";
+import { allSelectedHunks, renderShowHunk, selectHunks } from "./hunk-select.js";
 
 // The state dir was renamed `~/.reviewer` -> `~/.purview`; whichever entry
 // point runs first does the one-time move. Logged on stderr so `--json` output
@@ -44,13 +45,6 @@ function resolveRevision(state: { currentRevision: number }, rev?: string): numb
   const n = Number(rev);
   if (!Number.isInteger(n)) throw new Error(`Invalid --rev "${rev}"`);
   return n;
-}
-
-function renderHunk(sh: SelectedHunk): string {
-  return (
-    `=== ${sh.file.path}   ${sh.hunk.id}   +${sh.hunk.addedLines.length} -${sh.hunk.removedLines.length}   @@${sh.hunk.header}@@\n` +
-    `${sh.hunk.text}\n\n`
-  );
 }
 
 /**
@@ -181,7 +175,7 @@ program
 
     const files = new Set(hunks.map((sh) => sh.file.path));
     const summary = `-- ${hunks.length} hunks, ${files.size} files`;
-    const body = hunks.map(renderHunk).join("") + summary + "\n";
+    const body = hunks.map(renderShowHunk).join("") + summary + "\n";
 
     if (opts.inline || body.length <= SHOW_INLINE_LIMIT) {
       process.stdout.write(body);
@@ -193,6 +187,7 @@ program
       console.log(`${summary}, ${Math.round(body.length / 1024)} KB: too large to print inline.`);
       console.log(`Written to ${file}`);
       console.log("Read that file with the Read tool (page with offset/limit if it is very long).");
+      console.log("Cite source lines from its gutter (old new │), never the file's own line numbers.");
     }
 
     if (unknown.length > 0) {
@@ -277,7 +272,9 @@ program
   .description("replace the analysis for the current revision")
   .action((keyArg: string, opts: { file: string }) => {
     const key = requireExistingKey(keyArg);
-    const { state, coverage } = setAnalysis(key, readJsonFile(opts.file));
+    const { payload, warnings } = truncateFindings(readJsonFile(opts.file));
+    const { state, coverage } = setAnalysis(key, payload);
+    for (const w of warnings) console.log(w);
     console.log(
       `Analysis set for revision ${state.currentRevision}: ` +
         `${state.units.length} units covering ${coverage.covered.length} hunks` +
@@ -302,7 +299,9 @@ program
       throw new Error("Unit id missing: pass --id or include `id` in the JSON");
     // setUnit validates strictly against the full schema for a brand-new
     // unit id, and as a partial patch when the unit id already exists.
-    const state = setUnit(key, unitId, raw, { note: opts.note });
+    const { payload, warnings } = truncateFindings(raw, unitId);
+    const state = setUnit(key, unitId, payload, { note: opts.note });
+    for (const w of warnings) console.log(w);
     const unit = state.units.find((u) => u.id === unitId)!;
     console.log(
       `Unit ${unit.id} saved: [${unit.attention}/${unit.kind}] ${unit.title} ` +

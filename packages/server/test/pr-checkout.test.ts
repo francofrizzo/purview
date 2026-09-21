@@ -478,4 +478,31 @@ describe("checkoutNote", () => {
     expect(note).toContain(`An exact checkout of the PR head (${"a".repeat(12)}) is at /co/7.`);
     expect(note).toContain(`base-file ${keyToString(key)} <path>`);
   });
+
+  it("attributes each sha to its own ref on a mismatched checkout", () => {
+    const note = checkoutNote(
+      {
+        path: "/src/widgets",
+        resolvedWorktree: false,
+        mismatch: { checkedOutBranch: "main", prHeadRef: "feature-x", checkedOutSha: "c".repeat(40) },
+      },
+      "a".repeat(40),
+      key,
+    );
+    expect(note).toContain(
+      `it is on branch main at ${"c".repeat(12)} while the PR head is feature-x at ${"a".repeat(12)}`,
+    );
+  });
+
+  it("names a detached checkout by its own sha, not the PR head", () => {
+    const note = checkoutNote(
+      {
+        path: "/src/widgets",
+        resolvedWorktree: false,
+        mismatch: { checkedOutBranch: `detached at ${"c".repeat(12)}`, prHeadRef: "feature-x" },
+      },
+      "a".repeat(40),
+    );
+    expect(note).toContain(`it is detached at ${"c".repeat(12)} while the PR head is feature-x at ${"a".repeat(12)}`);
+  });
 });

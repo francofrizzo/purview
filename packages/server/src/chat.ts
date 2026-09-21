@@ -365,7 +365,8 @@ function readingMoreLines(
     `  - current diff: ${path.join(dir, "revisions", String(state.currentRevision), "diff.patch")}`,
     `  - parsed hunks: ${path.join(dir, "revisions", String(state.currentRevision), "files.json")}`,
     `  - triage overview (read this first): \`${cmd} triage ${keyToString(key)}\``,
-    `  - hunk bodies: \`${cmd} show ${keyToString(key)} <hunk-id|path|glob>...\``,
+    `  - hunk bodies: \`${cmd} show ${keyToString(key)} <hunk-id|path|'glob'>...\` ` +
+      "(single-quote globs, e.g. `'internal/**/*_test.go'`; each body line is prefixed with its old/new source line numbers)",
     `  - review rubric: ${path.join(skillDir(), "RUBRIC.md")}`,
   ];
   const status = [

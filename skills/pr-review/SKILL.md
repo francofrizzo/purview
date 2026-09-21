@@ -81,13 +81,29 @@ reviewer-state show <key> <selector...>
 
 A selector is a hunk id (exact, or a unique prefix of 6+ chars — triage's ids are
 already unique-prefix-friendly), an exact file path, or a `*`/`**` glob over file paths.
+**Single-quote every glob selector** — unquoted, the shell expands it against your working
+directory or fails outright (zsh: "no matches found") before `show` ever sees it:
+`reviewer-state show <key> 'internal/**/*_test.go'`.
 Pass every selector you need in **one call** — `show` is built to take many at once, so
 batch Pass 2's whole selection into a single invocation rather than one hunk per call. Add
 `--all` to dump every hunk of the revision when you genuinely need all of them.
 
+Every body line carries a gutter with its real line numbers in the source file, old then new
+(a context line has both, `-` only the old, `+` only the new):
+
+```
+=== internal/api/handler.go   3f9c2a1b   +1 -1   @@ func Handle(w http.ResponseWriter) {@@
+88 90 │ 	if err != nil {
+89    │-		return err
+   91 │+		return fmt.Errorf("handle: %w", err)
+```
+
+Cite those numbers, not the position of a line in `show`'s output.
+
 A result too big to print inline (over ~25 KB) is written to the PR's `scratch/` directory,
 and `show` prints only its path: Read that file next, paging with offset/limit if it is very
-long. Don't redirect `show` into a file yourself, and don't split one selection into several
+long; its lines carry the same gutter, and a scratch file's own line numbers mean nothing.
+Don't redirect `show` into a file yourself, and don't split one selection into several
 small `show` calls to dodge the size: both just add turns.
 
 **Never parse `files.json` or `diff.patch` with `python3 -c`, `node -e`, `jq`, or any other
@@ -203,7 +219,7 @@ them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy` 
 One more field, `findings`, is optional and is only ever filled in by the verification
 pass (step 5). Leave it off entirely here.
 
-Rules — the first two are **enforced by the CLI**, which rejects the whole payload:
+Rules — the first three are **enforced by the CLI**, which rejects the whole payload:
 
 - **Coverage: every hunk id of the current revision must appear either in some unit's
   `hunkIds` or in the top-level `"unassigned"` array.** `set-analysis` throws and writes
@@ -211,8 +227,10 @@ Rules — the first two are **enforced by the CLI**, which rejects the whole pay
   hunks you deliberately refuse to put in a unit; do not invent a junk-drawer unit.
 - **No unknown ids**: every id you reference must belong to the current revision.
   Referencing an archived or stale id is a hard error.
-- Aim for **exactly one unit per hunk**. Overlap is *not* rejected by the CLI, so this one
-  is on you: cross-check that no hunk id appears twice.
+- **Exactly one unit per hunk**: a hunk id may appear in only one unit's `hunkIds` (and not
+  also in `"unassigned"`). `set-analysis` rejects a duplicate, listing each id and the units
+  it appears in. `set-unit` rejects a `hunkIds` patch that takes a hunk another unit already
+  owns — to move a hunk, first patch its current unit without it, then add it to the new one.
 - Units are **logical changes**, not files. A unit may span multiple files (e.g. a
   function rename touches its definition and every call site as one unit) when they
   represent one decision.
@@ -284,8 +302,14 @@ Then record one of two outcomes on that unit:
 
 A finding is `{"severity": "warning" | "note", "text": "...", "evidence": "..."}`; at most
 5 per unit; `evidence` is required, non-empty, and is the concrete location(s) you read,
-e.g. `internal/api/handler.go:88, internal/vep/client.go:41`. Units where you verified
-nothing carry no `findings` key.
+e.g. `internal/api/handler.go:88, internal/vep/client.go:41`. A `path:line` is always the
+**source file's** line — the new-side number from the `show` gutter, or the line in the
+checkout file — never a line in a `scratch/` file. Units where you verified nothing carry no
+`findings` key.
+
+Limits: `text` 300 chars, `evidence` 200. The CLI truncates anything longer at a word
+boundary and prints one warning line per truncated finding; it never rejects the payload
+for length, so don't spend turns trimming.
 
 Read **"Findings discipline" in RUBRIC.md before writing a single finding.** It is the
 guardrail against the failure mode this step invites: turning a verification pass into
@@ -327,8 +351,8 @@ On success it prints `Analysis set for revision <n>: <u> units covering <h> hunk
 CLI reports validation errors, fix the file with the **Edit tool** — a targeted edit, not
 a rewrite — and re-run the same command. Do not hand-wave past a validation failure.
 Common causes: a hunk id of the current revision missing from every unit's
-`hunkIds` *and* from `"unassigned"` (the error lists the exact ids), a referenced id that
-isn't in this revision, an invalid `kind`/`attention`/`riskFlags` enum value, or a missing
+`hunkIds` *and* from `"unassigned"` (the error lists the exact ids), a hunk id listed in
+two units (the error names the units), a referenced id that isn't in this revision, an invalid `kind`/`attention`/`riskFlags` enum value, or a missing
 required field such as `attentionWhy` or `order`.
 
 ## 8. On refresh of an already-analyzed PR
@@ -378,7 +402,8 @@ re-verification reads the same way. In short:
   demand (useful if you want a revision other than the current one; the file on disk
   always covers the current revision already).
 - `reviewer-state show <key> <selector...> [--rev <n>] [--all]` — prints full hunk bodies
-  for the given selectors (hunk id/prefix, file path, or glob), batched in one call.
+  for the given selectors (hunk id/prefix, file path, or single-quoted glob), batched in one
+  call, each line behind an old/new source line-number gutter.
 - `reviewer-state view <key> <hunkId|unit:<unitId>> [--unview]` — marks reading progress.
   That's the human reviewer's action (or the web app's); don't mark things viewed on the
   user's behalf unless asked.

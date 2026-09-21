@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fold } from "../src/reducer.js";
-import { setAnalysis, setUnit } from "../src/service.js";
+import { setAnalysis, setUnit, truncateAtWord, truncateFindings } from "../src/service.js";
 import { appendEvent, writeMeta, writeRevision } from "../src/store.js";
 import { computeHunkId } from "../src/hunk-id.js";
 import { toRevisionFiles } from "../src/migration.js";
@@ -292,5 +292,55 @@ describe("findings through the CLI-facing service", () => {
     expect(state.units[0].findings).toEqual([warning]);
     expect(state.units[0].attention).toBe("must-read");
     expect(state.units[0].hunkIds).toEqual([hunkId]);
+  });
+});
+
+describe("truncateFindings", () => {
+  const long = (n: number) => Array.from({ length: n }, (_, i) => `word${i}`).join(" ");
+
+  it("cuts at a word boundary, ends in an ellipsis and fits the limit", () => {
+    const out = truncateAtWord(long(80), 300);
+    expect(out.length).toBeLessThanOrEqual(300);
+    expect(out.endsWith("…")).toBe(true);
+    expect(out.slice(0, -1)).toMatch(/word\d+$/); // no half word before the "…"
+    expect(long(80).startsWith(out.slice(0, -1))).toBe(true);
+  });
+
+  it("leaves in-limit strings alone and cuts one long token mid-word", () => {
+    expect(truncateAtWord("short", 300)).toBe("short");
+    const out = truncateAtWord("x".repeat(500), 200);
+    expect(out).toBe("x".repeat(199) + "…");
+  });
+
+  it("truncates an analysis payload's findings, one warning per finding, and the schema accepts it", () => {
+    const payload = {
+      summary: "s",
+      units: [
+        {
+          ...unit({ id: "u1" }),
+          findings: [
+            { ...warning, text: long(80), evidence: long(40) },
+            note,
+            { ...note, text: long(80) },
+          ],
+        },
+      ],
+    };
+    const { payload: out, warnings } = truncateFindings(payload);
+    expect(warnings).toEqual([
+      expect.stringMatching(/^warning: unit u1 finding 1 truncated \(text \d+->300, evidence \d+->200 chars\)$/),
+      expect.stringMatching(/^warning: unit u1 finding 3 truncated \(text \d+->300 chars\)$/),
+    ]);
+    const units = (out as { units: ReviewUnit[] }).units;
+    expect(units[0].findings![1]).toEqual(note);
+    for (const f of units[0].findings!) expect(FindingSchema.safeParse(f).success).toBe(true);
+    // the input is not mutated
+    expect(payload.units[0].findings![0].text).toBe(long(80));
+  });
+
+  it("handles a set-unit patch, naming the unit from the fallback id", () => {
+    const { payload, warnings } = truncateFindings({ findings: [{ ...note, evidence: long(40) }] }, "u7");
+    expect(warnings).toEqual([expect.stringContaining("unit u7 finding 1")]);
+    expect((payload as { findings: { evidence: string }[] }).findings[0].evidence.length).toBeLessThanOrEqual(200);
   });
 });

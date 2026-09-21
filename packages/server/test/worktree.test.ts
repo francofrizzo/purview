@@ -95,7 +95,11 @@ describe("resolveCheckout", () => {
     const res = resolveCheckout(repo.path, { headRef: "feature-x", headSha: "deadbeef" });
     expect(res.path).toBe(fs.realpathSync(repo.path));
     expect(res.resolvedWorktree).toBe(false);
-    expect(res.mismatch).toEqual({ checkedOutBranch: "main", prHeadRef: "feature-x" });
+    expect(res.mismatch).toEqual({
+      checkedOutBranch: "main",
+      prHeadRef: "feature-x",
+      checkedOutSha: expect.stringMatching(/^[0-9a-f]{40}$/),
+    });
   });
 
   it("reports an error instead of a path when the checkout was deleted", () => {
@@ -120,7 +124,11 @@ describe("resolveCheckout", () => {
     fs.rmSync(wt.path, { recursive: true, force: true }); // still listed, gone on disk
     const res = resolveCheckout(repo.path, { headRef: "feature-x" });
     expect(res.path).toBe(fs.realpathSync(repo.path));
-    expect(res.mismatch).toEqual({ checkedOutBranch: "main", prHeadRef: "feature-x" });
+    expect(res.mismatch).toEqual({
+      checkedOutBranch: "main",
+      prHeadRef: "feature-x",
+      checkedOutSha: expect.stringMatching(/^[0-9a-f]{40}$/),
+    });
   });
 
   it("degrades to no checkout when git itself fails", () => {
