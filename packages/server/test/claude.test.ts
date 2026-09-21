@@ -760,6 +760,51 @@ describe("chat reference resolution", () => {
 /* -------------------------------------------------------------------- chat */
 
 describe("chat", () => {
+  it("saves only the text after the last tool call, falling back to narration", async () => {
+    buildFixture(root);
+    claude.restore();
+    const sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const say = (text: string) => ({ type: "assistant", session_id: sid, message: { content: [{ type: "text", text }] } });
+    const use = (name: string) => ({
+      type: "assistant",
+      session_id: sid,
+      message: { content: [{ type: "tool_use", name, input: { command: "grep x" } }] },
+    });
+    const [init, ...rest] = scriptedRun({ sessionId: sid });
+    claude = fakeClaude({
+      lines: [
+        init,
+        say("Git is denied. I'll check the files directly."),
+        use("Bash"),
+        say("Files are there now."),
+        use("Read"),
+        say("The else branch compares against policies[0]."),
+        ...rest,
+      ],
+    });
+    claude.install();
+    await app.request(`/api/prs/${encodedKey}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Check again?" }),
+    });
+    await chatTurnDone(key);
+    const saved = () => JSON.parse(fs.readFileSync(chatPath(key, root), "utf8")).messages.at(-1).text;
+    expect(saved()).toBe("The else branch compares against policies[0].");
+
+    // A turn that ends on a tool call keeps the last narration rather than nothing.
+    claude.restore();
+    claude = fakeClaude({ lines: [init, say("Reading the handler now."), use("Read"), ...rest] });
+    claude.install();
+    await app.request(`/api/prs/${encodedKey}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "And now?" }),
+    });
+    await chatTurnDone(key);
+    expect(saved()).toBe("Reading the handler now.");
+  });
+
   it("streams delta/tool/done and persists the transcript", async () => {
     buildFixture(root);
     claude.restore();

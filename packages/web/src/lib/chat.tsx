@@ -247,10 +247,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // A plain object rather than locals: these are written from the event
     // callback, and TypeScript's narrowing of captured `let`s across an await
     // is not something to lean on.
-    const outcome: { failed: string | null; message: LocalMessage | null; text: string } = {
+    const outcome: {
+      failed: string | null;
+      message: LocalMessage | null;
+      text: string;
+      narration: string;
+    } = {
       failed: null,
       message: null,
       text: "",
+      narration: "",
     };
 
     void (async () => {
@@ -261,8 +267,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           setStreaming((cur) => (cur ? { ...cur, text: cur.text + event.text } : cur));
         } else if (event.type === "tool") {
           seenTools = [...seenTools, { name: event.name, detail: event.detail }];
+          // Text before a tool call is narration, not the answer; the server
+          // saves only what follows the last tool call, so the live bubble
+          // starts over too rather than gluing blocks together. Keep the old
+          // text as the fallback for a stream that ends before any new text.
+          const fresh = event.name === "result-error" ? null : "";
+          if (fresh !== null && outcome.text) outcome.narration = outcome.text;
+          if (fresh !== null) outcome.text = fresh;
           setStreaming((cur) =>
-            cur ? { ...cur, tools: [...cur.tools, { name: event.name, detail: event.detail }] } : cur,
+            cur
+              ? {
+                  ...cur,
+                  text: fresh ?? cur.text,
+                  tools: [...cur.tools, { name: event.name, detail: event.detail }],
+                }
+              : cur,
           );
         } else if (event.type === "done") {
           outcome.message = { ...event.message, tools: seenTools.length ? seenTools : undefined };
@@ -298,7 +317,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // produce; keeping it beats discarding a mostly-complete answer.
       const message: LocalMessage = outcome.message ?? {
         role: "assistant",
-        text: outcome.text,
+        text: outcome.text || outcome.narration,
         ts: new Date().toISOString(),
         tools: seenTools.length ? seenTools : undefined,
       };

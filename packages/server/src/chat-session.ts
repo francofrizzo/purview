@@ -117,6 +117,8 @@ export function startChatTurn(
 
   const done = (async () => {
     let full = "";
+    /** text Claude wrote before its latest tool call (see the `tool` case) */
+    let narration = "";
     let streamed = false;
     let failure: string | undefined;
     let resolvedSessionId: string | null = chat.sessionId;
@@ -189,6 +191,16 @@ export function startChatTurn(
             if (!streamed) emit({ type: "delta", text: event.text });
             break;
           case "tool":
+            // Text before a tool call is narration ("Git is denied, I'll read
+            // the files directly"), not the answer: the saved reply is what
+            // Claude wrote after its last tool call. The narration is kept
+            // only as a fallback for a turn that ends on a tool call.
+            // `result-error` is the runner's end-of-run error report, not a
+            // tool Claude used, and must not discard the answer before it.
+            if (event.name !== "result-error" && full) {
+              narration = full;
+              full = "";
+            }
             emit({ type: "tool", name: event.name, detail: event.detail });
             break;
           case "done":
@@ -200,6 +212,7 @@ export function startChatTurn(
       failure = (err as Error).message;
     }
 
+    if (!full) full = narration;
     const ts = new Date().toISOString();
     const session = { sessionId: resolvedSessionId, sessionCwd: resolvedSessionId ? cwd : null };
     if (failure && !full) {
