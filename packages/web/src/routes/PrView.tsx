@@ -26,6 +26,7 @@ import {
   useEditComment,
   useMoveComment,
   useProposeReanchor,
+  useRevisionLineChanges,
   useDiscardPendingReview,
   useExportAnalysis,
   useImportAnalysis,
@@ -88,6 +89,7 @@ import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
+import { buildHighlight, highlightTally, plural } from "../lib/revisionHighlight";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { prPageTitle, unitFromSearch, withUnitParam } from "../lib/prUrl";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
@@ -406,6 +408,54 @@ export function PrView() {
   const selectedUnit = units.find((u) => u.id === selectedUnitId) ?? null;
   const unplacedSelected = selectedUnitId === UNPLACED_ID && !unplacedEmpty;
 
+  // --- changelog highlight -------------------------------------------------
+  // Clicking a changelog row highlights, in the diff, the lines that revision
+  // changed in this unit's hunks. It belongs to the unit on screen: another
+  // unit, the files tab, or a new revision drops it.
+  // Held against the unit (and revision) it was set for, and derived from
+  // that, so switching away drops it in the same render rather than one
+  // effect later; the effect then forgets it for good.
+  const currentRevision = detail?.state.revision ?? 0;
+  const [highlightFor, setHighlightFor] = useState<{
+    unitId: string;
+    revision: number;
+    atRevision: number;
+  } | null>(null);
+  const highlightRevision =
+    highlightFor &&
+    tab === "units" &&
+    highlightFor.unitId === selectedUnit?.id &&
+    highlightFor.atRevision === currentRevision
+      ? highlightFor.revision
+      : null;
+  useEffect(() => {
+    if (highlightFor && highlightRevision === null) setHighlightFor(null);
+  }, [highlightFor, highlightRevision]);
+  const setHighlightRevision = useCallback(
+    (revision: number | null) =>
+      setHighlightFor(
+        revision === null || !selectedUnit
+          ? null
+          : { unitId: selectedUnit.id, revision, atRevision: currentRevision },
+      ),
+    [selectedUnit, currentRevision],
+  );
+  const toggleHighlight = useCallback(
+    (revision: number) => setHighlightRevision(highlightRevision === revision ? null : revision),
+    [highlightRevision, setHighlightRevision],
+  );
+  const highlightActive = highlightRevision !== null;
+  const lineChanges = useRevisionLineChanges(
+    prKey,
+    highlightActive ? highlightRevision : null,
+    currentRevision,
+  );
+  const highlight = useMemo(() => {
+    if (!highlightActive || !selectedUnit || !lineChanges.data) return null;
+    if (lineChanges.data.revision !== highlightRevision) return null;
+    return buildHighlight(lineChanges.data, { hunkIds: selectedUnit.hunkIds, unitId: selectedUnit.id });
+  }, [highlightActive, selectedUnit, lineChanges.data, highlightRevision]);
+
   // The composer's auto-attach chip follows whatever unit is in context; the
   // files tab has no such concept, so it sees null and shows nothing.
   const { setUnitContext } = chat;
@@ -571,11 +621,34 @@ export function PrView() {
       } else if (e.key === "Escape" && sidebarMode === "drawer" && drawerOpen) {
         e.preventDefault();
         setDrawerOpen(false);
+      } else if (
+        e.key === "Escape" &&
+        highlightRevision !== null &&
+        // Last in line: an open popover, overlay, composer or line selection
+        // claims Escape first (they mark it handled, or stop it outright).
+        !e.defaultPrevented &&
+        !summaryOpen &&
+        !commentTarget
+      ) {
+        e.preventDefault();
+        setHighlightRevision(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [chat, openSearch, search.open, search.close, toggleSidebar, sidebarMode, drawerOpen]);
+  }, [
+    chat,
+    openSearch,
+    search.open,
+    search.close,
+    toggleSidebar,
+    sidebarMode,
+    drawerOpen,
+    highlightRevision,
+    setHighlightRevision,
+    summaryOpen,
+    commentTarget,
+  ]);
 
   // Keep the focused hunk inside the currently shown set.
   useEffect(() => {
@@ -1126,6 +1199,17 @@ export function PrView() {
                   {/* Collapsed, the findings list is gone — the badge is what
                       keeps a warning from disappearing with it. */}
                   {headerCollapsed ? <FindingsBadge unit={selectedUnit} /> : null}
+                  {headerCollapsed && highlightRevision !== null ? (
+                    <button
+                      type="button"
+                      className="changed-in-chip chip"
+                      data-testid="highlight-chip"
+                      title={`Showing the lines r${highlightRevision} changed · click or esc to clear`}
+                      onClick={() => setHighlightRevision(null)}
+                    >
+                      r{highlightRevision} changes · clear
+                    </button>
+                  ) : null}
                 </div>
                 <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
                   {showNarrowNote ? <NarrowPaneNote /> : null}
@@ -1174,7 +1258,21 @@ export function PrView() {
                   <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
                     {selectedUnit.summary}
                   </p>
-                  <UnitChangelog changelog={selectedUnit.changelog} currentRevision={detail.state.revision} />
+                  <UnitChangelog
+                    changelog={selectedUnit.changelog}
+                    currentRevision={detail.state.revision}
+                    activeRevision={highlightRevision}
+                    onSelectRevision={toggleHighlight}
+                  />
+                  {highlightRevision !== null ? (
+                    <HighlightSummary
+                      revision={highlightRevision}
+                      highlight={highlight}
+                      loading={lineChanges.isLoading}
+                      error={lineChanges.error as Error | null}
+                      onClear={() => setHighlightRevision(null)}
+                    />
+                  ) : null}
                   {selectedUnit.attentionWhy ? (
                     <p className="mt-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
                       why {selectedUnit.attention}: {selectedUnit.attentionWhy}
@@ -1296,6 +1394,7 @@ export function PrView() {
               onDefinitionClick={handleDefinitionClick}
               isDefinedInDiff={isDefinedInDiff}
               jumpToHunk={jumpToHunk}
+              highlight={tab === "units" ? highlight : null}
               unitForHunkId={unitForHunkId}
               onUnitClick={onHunkUnitClick}
               showFileRows={tab === "units"}
@@ -1440,6 +1539,64 @@ function UnplacedHeader({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The line under the changelog while a revision is highlighted: what is
+ * marked, what the revision touched that is gone, and the way out.
+ */
+function HighlightSummary({
+  revision,
+  highlight,
+  loading,
+  error,
+  onClear,
+}: {
+  revision: number;
+  highlight: ReturnType<typeof buildHighlight> | null;
+  loading: boolean;
+  error: Error | null;
+  onClear: () => void;
+}) {
+  let body: ReactNode;
+  if (error) body = `Couldn't load the changes from r${revision}: ${error.message}`;
+  else if (loading || !highlight) body = `Loading the changes from r${revision}…`;
+  else {
+    const { lines, hunks } = highlightTally(highlight);
+    const parts = [`Showing changes from r${revision}`];
+    parts.push(
+      hunks === 0
+        ? "none in this unit's current hunks"
+        : `${plural(lines, "line")} in ${plural(hunks, "hunk")}`,
+    );
+    if (highlight.goneCount > 0) parts.push(`${plural(highlight.goneCount, "hunk")} since removed`);
+    body = parts.join(" · ");
+  }
+  return (
+    <p
+      className="mt-1 flex max-w-4xl flex-wrap items-baseline gap-x-1 text-2xs"
+      data-testid="highlight-summary"
+      style={{ color: error ? "var(--risk)" : "var(--fg-muted)" }}
+    >
+      <span
+        aria-hidden
+        className="mr-1 inline-block h-2.5 w-[3px] flex-none self-center rounded-full"
+        style={{ background: "var(--changed-in-bar)" }}
+      />
+      <span>{body}</span>
+      <span aria-hidden>·</span>
+      <button
+        type="button"
+        data-testid="highlight-clear"
+        className="underline-offset-2 hover:underline"
+        style={{ color: "var(--accent)" }}
+        title="Clear the highlight (esc)"
+        onClick={onClear}
+      >
+        clear
+      </button>
+    </p>
   );
 }
 

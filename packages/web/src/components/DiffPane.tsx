@@ -25,6 +25,11 @@ import {
   type MoveFoldRegion,
 } from "../lib/foldRegions";
 import { identifierRangeAtPoint } from "../lib/identifierAt";
+import {
+  hunkChangedLabel,
+  markedByHunk as computeMarkedByHunk,
+  type RevisionHighlight,
+} from "../lib/revisionHighlight";
 import { detectMoves, type HunkMoves } from "../lib/moveDetection";
 import {
   mergeStickyIntoRange,
@@ -165,6 +170,13 @@ export interface DiffPaneProps {
   unitForHunkId?: (hunkId: string) => { id: string; title: string; attention: Attention } | null;
   /** Clicking that label: host switches to the units tab, same unit, same hunk. */
   onUnitClick?: (unitId: string, hunkId: string) => void;
+  /**
+   * The unit changelog's "highlight changes from rN": per current hunk id,
+   * the lines that revision introduced. Marked rows get the changed-in
+   * treatment, their hunks a "changed in rN" label; hunks and moved-code
+   * folds holding one open, and the pane scrolls to the first.
+   */
+  highlight?: RevisionHighlight | null;
 }
 
 /** Past this many px from the top, the host header may collapse. */
@@ -231,6 +243,7 @@ export function DiffPane({
   jumpToHunk,
   unitForHunkId,
   onUnitClick,
+  highlight = null,
 }: DiffPaneProps) {
   const { appearance, settings } = useSettings();
   const theme = shikiThemeFor(appearance.theme);
@@ -431,6 +444,13 @@ export function DiffPane({
 
   const grouped = useMemo(() => groupComments(drafts), [drafts]);
 
+  // Changelog highlight: which unified rows of each shown hunk the revision
+  // introduced. Matched once per (entries, highlight), never per row render.
+  const markedByHunk = useMemo(
+    () => computeMarkedByHunk(hunks, highlight, detail.diff),
+    [hunks, highlight, detail.diff],
+  );
+
   /**
    * Which comment blocks are open, keyed by anchor rather than by row index:
    * the anchor survives a unified/split switch, a wrap toggle and a font
@@ -479,6 +499,7 @@ export function DiffPane({
       // which both split-pair cells and unified rows address it by.
       const exemptAt = (unifiedIdx: number): boolean => {
         if (searchMarks?.has(lineKey(hunk.id, unifiedIdx))) return true;
+        if (markedByHunk.get(hunk.id)?.has(unifiedIdx)) return true;
         if (activeMatch && activeMatch.hunkId === hunk.id && activeMatch.lineIdx === unifiedIdx) {
           return true;
         }
@@ -538,7 +559,7 @@ export function DiffPane({
       }
     }
     return map;
-  }, [entries, detail.diff, moves, mode, grouped, expandedAnchors, searchMarks, activeMatch]);
+  }, [entries, detail.diff, moves, mode, grouped, expandedAnchors, searchMarks, activeMatch, markedByHunk]);
 
   // Manually opened regions, by key (see lib/foldRegions.ts) — never a manual
   // *close* set, since the default is already folded; opening one is the only
@@ -996,13 +1017,17 @@ export function DiffPane({
     setSelection(null);
   }, [setSignature]);
 
+  // Captured, and marked handled: a selection claims Escape ahead of the
+  // host's own Escape (which would otherwise also clear a line highlight).
   useEffect(() => {
     if (!selection) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelection(null);
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setSelection(null);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [selection]);
 
   const quoteSelection = () => {
@@ -1172,6 +1197,80 @@ export function DiffPane({
     foldRegionsByHunk,
     isRegionFolded,
     collapsed,
+  ]);
+
+  /** Split view marks by side: a '-' row on the left, '+' and context rows on
+   *  the right — so a context row (on both halves) marks once. */
+  const splitChanged = useCallback(
+    (hunkId: string, rowIdx: number, hunk: Hunk): { left: boolean; right: boolean } => {
+      const marked = markedByHunk.get(hunkId);
+      if (!marked || marked.size === 0) return { left: false, right: false };
+      const pair = buildSplitRows(hunk, detail.diff)[rowIdx];
+      return {
+        left: Boolean(pair?.left && pair.left.row.type === "del" && marked.has(pair.left.index)),
+        right: Boolean(pair?.right && pair.right.row.type !== "del" && marked.has(pair.right.index)),
+      };
+    },
+    [markedByHunk, detail.diff],
+  );
+
+  // A new highlight opens what hides its lines and brings the first into
+  // view — once per (revision, shown set), so the reader can fold things
+  // back afterwards. Collapsed hunks are unfolded here; folded moved-code
+  // regions already opened (a marked row is a fold exemption, like a search
+  // hit). The flag is set inside the frame, so a rerun before it lands just
+  // reschedules instead of losing the scroll.
+  const highlightKey = highlight ? `${highlight.revision}|${setSignature}` : null;
+  const highlightScrolled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!highlight || !highlightKey) {
+      highlightScrolled.current = null;
+      return;
+    }
+    if (highlightScrolled.current === highlightKey) return;
+    const toOpen = [...markedByHunk]
+      .filter(([id, marked]) => marked.size > 0 && isCollapsed(collapsed, id))
+      .map(([id]) => id);
+    if (toOpen.length) {
+      setCollapsedState((prev) => toOpen.reduce((acc, id) => setCollapsed(acc, id, false), prev));
+      return;
+    }
+    let target = -1;
+    for (let i = 0; i < rows.length && target === -1; i++) {
+      const r = rows[i];
+      if (r.type === "line" && markedByHunk.get(r.hunkId)?.has(r.lineIdx)) target = i;
+      else if (r.type === "split") {
+        const side = splitChanged(r.hunkId, r.rowIdx, r.entry.hunk);
+        if (side.left || side.right) target = i;
+      }
+    }
+    // Only removals (nothing to mark): land on the first highlighted hunk.
+    if (target === -1) {
+      const first = entries.find((e) => highlight.byHunk.has(e.hunk.id));
+      target = first ? (hunkRowIndex.get(first.hunk.id) ?? -1) : -1;
+    }
+    if (target === -1) {
+      highlightScrolled.current = highlightKey;
+      return;
+    }
+    const row = rows[target];
+    const frame = requestAnimationFrame(() => {
+      highlightScrolled.current = highlightKey;
+      if ("hunkId" in row) onFocusHunk(row.hunkId);
+      virtualizer.scrollToIndex(target, { align: "center" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [
+    highlight,
+    highlightKey,
+    markedByHunk,
+    collapsed,
+    rows,
+    entries,
+    hunkRowIndex,
+    splitChanged,
+    virtualizer,
+    onFocusHunk,
   ]);
 
   /** Search hits on one rendered row, plus the active one if it lives here. */
@@ -1704,6 +1803,21 @@ export function DiffPane({
             </span>
           ) : null}
           {(() => {
+            const h = highlight?.byHunk.get(row.hunkId);
+            if (!highlight || !h) return null;
+            const label = hunkChangedLabel(highlight.revision, h);
+            return (
+              <span
+                className="changed-in-chip chip flex-none whitespace-nowrap"
+                data-testid={`hunk-changed-in-${row.hunkId}`}
+                data-exact={h.exactAtCurrent ? "true" : "false"}
+                title={label.title}
+              >
+                {label.text}
+              </span>
+            );
+          })()}
+          {(() => {
             const hunkMoves = moves.get(row.hunkId);
             if (!hunkMoves || hunkMoves.counterparts.length === 0) return null;
             const hasOut = hunkMoves.counterparts.some((c) => c.direction === "out");
@@ -1786,8 +1900,11 @@ export function DiffPane({
       const leftNo = left && left.row.type === "del" ? left.row.oldNumber : undefined;
       const rightNo = right ? right.row.newNumber : undefined;
       const opened = openedRegionStarts.get(`${row.hunkId}:${row.rowIdx}`);
+      const changedSide = splitChanged(row.hunkId, row.rowIdx, row.entry.hunk);
       return (
         <SplitDiffLine
+          changedLeft={changedSide.left}
+          changedRight={changedSide.right}
           foldActionLeft={refoldButton(opened?.find((r) => r.kind === "out"))}
           foldActionRight={refoldButton(opened?.find((r) => r.kind === "in"))}
           left={left?.row ?? null}
@@ -1857,6 +1974,7 @@ export function DiffPane({
         tokens={tokens[row.hunkId]?.[row.lineIdx]}
         marks={marksFor(row.hunkId, row.lineIdx)}
         moved={movedAt(row.hunkId, row.entry.hunk, row.lineIdx, line.type)}
+        changed={markedByHunk.get(row.hunkId)?.has(row.lineIdx) ?? false}
         comments={anchor ? grouped.byLine.get(anchor) : undefined}
         expanded={anchor ? expandedAnchors.has(anchor) : false}
         onToggleComments={anchor ? () => toggleAnchor(anchor) : undefined}

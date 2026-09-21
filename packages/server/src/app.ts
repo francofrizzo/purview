@@ -29,6 +29,9 @@ import {
   readLocalRubric,
   readMigrationReport,
   readRepoConfig,
+  revisionLineChanges,
+  UnknownRevisionError,
+  type RevisionLineChanges,
   refreshPr,
   repoKeyOf,
   repoKeyToString,
@@ -1567,6 +1570,38 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
 
     return c.json(repoConfigPayload(repo));
+  });
+
+  /* ------------------------------------------------ revision line changes */
+
+  /**
+   * The lines one revision changed, mapped forward onto the current
+   * revision's hunk ids — what the unit changelog highlights in the diff.
+   * Revisions never change once written, so the answer only moves when the
+   * PR gains a revision: cached per (PR, revision, current revision).
+   */
+  const lineChangesCache = new Map<string, RevisionLineChanges>();
+  app.get("/api/prs/:key/revisions/:n/line-changes", (c) => {
+    const key = keyParam(c);
+    const n = Number(c.req.param("n"));
+    const state = loadState(key, root);
+    const cacheKey = `${keyToString(key)}|${n}|${state.currentRevision}`;
+    const cached = lineChangesCache.get(cacheKey);
+    if (cached) return c.json(cached);
+    let result: RevisionLineChanges;
+    try {
+      result = revisionLineChanges(key, n, root);
+    } catch (err) {
+      if (err instanceof UnknownRevisionError) throw new HttpError(404, "not_found", err.message);
+      throw err;
+    }
+    // Bounded: a reader clicks through a handful of revisions, not hundreds.
+    if (lineChangesCache.size >= 64) {
+      const oldest = lineChangesCache.keys().next().value;
+      if (oldest !== undefined) lineChangesCache.delete(oldest);
+    }
+    lineChangesCache.set(cacheKey, result);
+    return c.json(result);
   });
 
   /* -------------------------------------------------------- misc / debug */

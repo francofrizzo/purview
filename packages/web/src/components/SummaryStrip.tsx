@@ -121,6 +121,7 @@ export function SummaryStrip({
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault(); // claimed: the page's own Escape leaves it alone
         clearTimer();
         setPeeking(false);
         onClose();

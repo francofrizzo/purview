@@ -56,6 +56,8 @@ export const TOKEN_NAMES = [
   "moved-out-fg",
   "search-match",
   "search-active",
+  "changed-in-bar",
+  "changed-in-bg",
   "risk",
   "risk-soft",
   "warn",
@@ -203,6 +205,13 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
 
     "search-match": rgba(searchTint, dark ? 0.24 : 0.28),
     "search-active": rgba(palette.orange, dark ? 0.55 : 0.48),
+
+    // "Changed in rN" (the changelog highlight): the accent, as a 3px gutter
+    // bar plus a tint faint enough to sit over an add/del row and stay under
+    // the line-selection wash. Blue is neither search (yellow/orange) nor a
+    // move (violet/cyan).
+    "changed-in-bar": accent,
+    "changed-in-bg": rgba(accent, dark ? 0.08 : 0.07),
 
     risk,
     "risk-soft": rgba(risk, softAlpha),
@@ -443,6 +452,8 @@ const REVIEWER_DARK: ThemeDef = {
     "moved-out-fg": "#6fd6de",
     "search-match": "rgba(227, 179, 65, 0.22)",
     "search-active": "rgba(255, 166, 87, 0.55)",
+    "changed-in-bar": "#7aa2f7",
+    "changed-in-bg": "rgba(122, 162, 247, 0.08)",
     risk: "#f0787a",
     "risk-soft": "rgba(240, 120, 122, 0.13)",
     warn: "#e3b341",
@@ -507,6 +518,8 @@ const REVIEWER_LIGHT: ThemeDef = {
     "moved-out-fg": "#0b6f7c",
     "search-match": "rgba(226, 168, 22, 0.3)",
     "search-active": "rgba(247, 148, 30, 0.6)",
+    "changed-in-bar": "#2f6feb",
+    "changed-in-bg": "rgba(47, 111, 235, 0.07)",
     risk: "#c0403f",
     "risk-soft": "rgba(192, 64, 63, 0.1)",
     warn: "#a06a08",

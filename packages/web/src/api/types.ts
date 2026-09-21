@@ -147,6 +147,39 @@ export interface DiffOfDiffs {
   changed: boolean;
 }
 
+/**
+ * The lines one revision changed, mapped onto the current revision's hunks —
+ * `GET /api/prs/:key/revisions/:n/line-changes` (core's RevisionLineChanges).
+ */
+export interface HunkLineChange {
+  currentHunkId: string;
+  originHunkId: string;
+  file: string;
+  status: "fuzzy" | "renamed" | "new";
+  /** raw body lines (with their ' '/'+'/'-' prefix) the revision introduced, as a multiset */
+  introduced: string[];
+  droppedCount: number;
+  /** no later revision touched the hunk */
+  exactAtCurrent: boolean;
+  truncated?: boolean;
+}
+
+export interface GoneLineChangeHunk {
+  originHunkId: string;
+  lastHunkId: string;
+  file: string;
+  goneAtRevision: number;
+  unitId?: string;
+}
+
+export interface RevisionLineChanges {
+  revision: number;
+  currentRevision: number;
+  hunks: HunkLineChange[];
+  goneCount: number;
+  gone: GoneLineChangeHunk[];
+}
+
 export interface HunkState {
   viewed: boolean;
   viewedAtRevision?: number;

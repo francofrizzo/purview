@@ -370,3 +370,58 @@ describe("GET /api/prs/:key/hunks/:id/diff-of-diffs", () => {
   });
 });
 
+
+describe("GET /api/prs/:key/revisions/:n/line-changes", () => {
+  function refreshOnto(patch: string, headSha: string) {
+    setGhRunner((args) => {
+      const joined = args.join(" ");
+      if (joined.includes("Accept: application/vnd.github.v3.diff")) return patch;
+      if (joined.includes("/compare/")) {
+        return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
+      }
+      return JSON.stringify({
+        node_id: "PR_1",
+        number: key.number,
+        title: "Add widgets",
+        html_url: "https://example.invalid/pr",
+        state: "open",
+        base: { ref: "main", sha: "base1" },
+        head: { ref: "feature", sha: headSha },
+      });
+    });
+    return refreshPr(key, root);
+  }
+
+  it("returns revision N's changed lines keyed by the current hunk id", async () => {
+    buildFixture(root, DOD_REV1);
+    const r2 = refreshOnto(DOD_REV2, "head2");
+    const reworked = r2.report!.entries.find((e) => e.status === "fuzzy")!;
+    refreshOnto(DOD_REV3, "head3"); // carries it over identically
+
+    const res = await app.request(`/api/prs/${encodedKey}/revisions/2/line-changes`);
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.revision).toBe(2);
+    expect(body.currentRevision).toBe(3);
+    expect(body.goneCount).toBe(0);
+    expect(body.hunks).toHaveLength(1);
+    expect(body.hunks[0]).toMatchObject({
+      currentHunkId: reworked.hunkId,
+      status: "fuzzy",
+      introduced: ["+newer5"],
+      droppedCount: 1,
+      exactAtCurrent: true,
+    });
+
+    // served again from the cache, same answer
+    const again = await app.request(`/api/prs/${encodedKey}/revisions/2/line-changes`);
+    expect(await again.json()).toEqual(body);
+  });
+
+  it("404s for a revision the PR never had", async () => {
+    const res = await app.request(`/api/prs/${encodedKey}/revisions/9/line-changes`);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toBeTruthy();
+  });
+});

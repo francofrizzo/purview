@@ -12,6 +12,7 @@ import type {
   AnalysisImportReport,
   AnalysisJob,
   DiffOfDiffs,
+  RevisionLineChanges,
   DiscardPendingResult,
   AddCommentInput,
   DraftComment,
@@ -51,7 +52,23 @@ export const qk = {
   analysisJob: (key: string) => ["analysis-job", key] as const,
   staleness: (key: string) => ["staleness", key] as const,
   diffOfDiffs: (key: string, hunkId: string) => ["dod", key, hunkId] as const,
+  lineChanges: (key: string, n: number, currentRevision: number) =>
+    ["line-changes", key, n, currentRevision] as const,
 };
+
+/**
+ * The lines one revision changed (for the changelog highlight). Keyed on the
+ * current revision too: the forward mapping moves only when the PR does.
+ */
+export function useRevisionLineChanges(key: string, revision: number | null, currentRevision: number) {
+  return useQuery<RevisionLineChanges>({
+    queryKey: qk.lineChanges(key, revision ?? 0, currentRevision),
+    queryFn: () => api.revisionLineChanges(key, revision!),
+    enabled: Boolean(key && revision !== null),
+    staleTime: Infinity,
+    retry: false,
+  });
+}
 
 /**
  * Fetched lazily, only when the reader expands a changed hunk's badge: the

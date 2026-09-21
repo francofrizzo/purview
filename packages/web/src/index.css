@@ -52,6 +52,10 @@
     --moved-fg: #c4a7ff;
     --moved-out-fg: #6fd6de;
 
+    /* "changed in rN" — the unit changelog's line highlight (see lib/themes.ts) */
+    --changed-in-bar: #7aa2f7;
+    --changed-in-bg: rgba(122, 162, 247, 0.08);
+
     --risk: #f0787a;
     --risk-soft: rgba(240, 120, 122, 0.13);
     --warn: #e3b341;
@@ -110,6 +114,9 @@
       --moved-out-gutter: rgba(11, 125, 140, 0.13);
       --moved-fg: #6b3fd4;
       --moved-out-fg: #0b6f7c;
+
+      --changed-in-bar: #2f6feb;
+      --changed-in-bg: rgba(47, 111, 235, 0.07);
 
       --risk: #c0403f;
       --risk-soft: rgba(192, 64, 63, 0.1);
@@ -512,6 +519,40 @@
   }
   .diff-nowrap [data-type="none"] > .diff-fixed {
     background-image: linear-gradient(var(--bg-inset), var(--bg-inset));
+  }
+
+  /* "Changed in rN" (the unit changelog's highlight): a 3px accent bar on the
+     row's first gutter, plus a faint accent tint the row sets inline over its
+     own add/del tint (see DiffLine's `changed`). With wrap off the pinned
+     column repaints the same two layers. Not the search hues, not the flash. */
+  [data-changed="true"] > .diff-fixed > .diff-gutter:first-child {
+    box-shadow: inset 3px 0 0 var(--changed-in-bar);
+  }
+  /* A clickable unit changelog row (highlights that revision's lines). */
+  .changelog-row {
+    transition: background-color 120ms ease-out;
+  }
+  .changelog-row:hover {
+    background: var(--bg-hover);
+  }
+  .changelog-row[data-active="true"] {
+    background: var(--accent-soft);
+    box-shadow: inset 2px 0 0 var(--changed-in-bar);
+  }
+  /* The hunk header's "changed in rN" label: the same bar, in miniature. */
+  .changed-in-chip {
+    color: var(--accent);
+    background: var(--accent-soft);
+    box-shadow: inset 3px 0 0 var(--changed-in-bar);
+    padding-left: 0.5rem;
+  }
+  .changed-in-chip[data-exact="false"] {
+    cursor: help;
+  }
+  .diff-nowrap [data-changed="true"][data-type] > .diff-fixed {
+    background-image:
+      linear-gradient(var(--changed-in-bg), var(--changed-in-bg)),
+      linear-gradient(var(--row-bg, transparent), var(--row-bg, transparent));
   }
 }
 

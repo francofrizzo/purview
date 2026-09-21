@@ -34,6 +34,7 @@ import type {
   ReviewEvent,
   ReviewStatus,
   ReviewUnit,
+  RevisionLineChanges,
   ShareAnalysisResult,
   SharedAnalysisProbe,
   Staleness,
@@ -781,6 +782,56 @@ export const mockApi = {
       reviewUrl: `${detail.meta.url}#pullrequestreview-mock`,
       message: "Mock sync: nothing left the machine.",
     };
+  },
+
+  /**
+   * Plausible line changes for the fixture's changelog unit
+   * (idempotent-charge-path, changelog r2 + r3), picked out of the fixture
+   * hunks' own lines so the highlight lands on real rows.
+   */
+  async revisionLineChanges(_key: string, n: number): Promise<RevisionLineChanges> {
+    await delay(120);
+    const current = detail.state.revision;
+    if (!Number.isInteger(n) || n < 1 || n > current) {
+      throw new ApiError("not_found", 404, `No revision ${n} on record`);
+    }
+    const linesOf = (id: string) =>
+      detail.files.files.flatMap((f) => f.hunks).find((hk) => hk.id === id)?.lines ?? [];
+    const pick = (id: string, test: (l: string) => boolean) => linesOf(id).filter(test);
+    const plus = (id: string, count: number) => pick(id, (l) => l.startsWith("+")).slice(0, count);
+    const change = (
+      id: string,
+      status: "fuzzy" | "new",
+      introduced: string[],
+      droppedCount: number,
+      exactAtCurrent: boolean,
+    ) => ({ currentHunkId: id, originHunkId: `${id.slice(0, 12)}ff${n}0`, file: "", status, introduced, droppedCount, exactAtCurrent });
+    const result: RevisionLineChanges = { revision: n, currentRevision: current, hunks: [], goneCount: 0, gone: [] };
+    if (n === 3) {
+      result.hunks = [
+        change("a1b2c3d4e5f60001", "fuzzy", pick("a1b2c3d4e5f60001", (l) => l.startsWith("+") && l.includes("idempotencyKey")), 1, true),
+        change("a1b2c3d4e5f60005", "fuzzy", plus("a1b2c3d4e5f60005", 4), 0, true),
+      ];
+    } else if (n === 2) {
+      result.hunks = [
+        change("a1b2c3d4e5f60001", "fuzzy", pick("a1b2c3d4e5f60001", (l) => l.startsWith("+") && l.includes("ledger")), 0, false),
+        change("a1b2c3d4e5f60003", "new", plus("a1b2c3d4e5f60003", 3), 0, true),
+      ];
+      result.gone = [
+        {
+          originHunkId: "a1b2c3d4e5f6ee02",
+          lastHunkId: "a1b2c3d4e5f6ee02",
+          file: "src/billing/legacy.ts",
+          goneAtRevision: 3,
+          unitId: "idempotent-charge-path",
+        },
+      ];
+      result.goneCount = 1;
+    }
+    for (const hc of result.hunks) {
+      hc.file = detail.files.files.find((f) => f.hunks.some((hk) => hk.id === hc.currentHunkId))?.path ?? "";
+    }
+    return result;
   },
 
   async diffOfDiffs(_key: string, hunkId: string): Promise<DiffOfDiffs> {

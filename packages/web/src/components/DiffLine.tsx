@@ -168,6 +168,11 @@ function bgFor(type: DiffRow["type"], moved?: boolean) {
   if (type === "del") return moved ? "var(--moved-out-bg)" : "var(--del-bg)";
   return "transparent";
 }
+/** Row background, with the "changed in rN" tint layered over it when marked. */
+function rowBackground(type: DiffRow["type"], moved?: boolean, changed?: boolean) {
+  const base = bgFor(type, moved);
+  return changed ? `linear-gradient(var(--changed-in-bg), var(--changed-in-bg)), ${base}` : base;
+}
 function gutterBgFor(type: DiffRow["type"], moved?: boolean) {
   if (type === "add") return moved ? "var(--moved-gutter)" : "var(--add-gutter)";
   if (type === "del") return moved ? "var(--moved-out-gutter)" : "var(--del-gutter)";
@@ -300,6 +305,8 @@ export interface DiffLineProps extends GutterSelectProps, LineCommentProps {
   /** a control overlaid on the gutter — the "fold back up" button on the
    *  first line of an opened moved-code region */
   foldAction?: ReactNode;
+  /** the highlighted changelog revision introduced this line (see lib/revisionHighlight.ts) */
+  changed?: boolean;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -318,6 +325,7 @@ export const DiffLine = memo(function DiffLine({
   selectedNew,
   moved,
   foldAction,
+  changed,
   onDefinitionClick,
   isDefinedInDiff,
 }: DiffLineProps) {
@@ -339,8 +347,10 @@ export const DiffLine = memo(function DiffLine({
       data-type={row.type}
       data-moved={moved ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
+      data-changed={changed ? "true" : undefined}
       style={{
-        background: bgFor(row.type, moved),
+        background: rowBackground(row.type, moved, changed),
+        ...(changed ? { ["--row-bg" as string]: bgFor(row.type, moved) } : {}),
         ["--intra-bg" as string]: intraBg,
         boxShadow: selected ? "inset 0 0 0 9999px var(--accent-soft)" : undefined,
       }}
@@ -396,6 +406,7 @@ export interface SplitHalfProps extends LineCommentProps {
   /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
   moved?: boolean;
   foldAction?: ReactNode;
+  changed?: boolean;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -415,6 +426,7 @@ function SplitHalf({
   onSelectEnter,
   moved,
   foldAction,
+  changed,
   onDefinitionClick,
   isDefinedInDiff,
 }: SplitHalfProps) {
@@ -445,8 +457,10 @@ function SplitHalf({
       data-type={row.type}
       data-moved={moved ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
+      data-changed={changed ? "true" : undefined}
       style={{
-        background: bgFor(row.type, moved),
+        background: rowBackground(row.type, moved, changed),
+        ...(changed ? { ["--row-bg" as string]: bgFor(row.type, moved) } : {}),
         ["--intra-bg" as string]: intraBg,
         boxShadow: selected ? "inset 0 0 0 9999px var(--accent-soft)" : undefined,
       }}
@@ -511,6 +525,12 @@ export interface SplitDiffLineProps {
   /** "fold back up" control, on whichever half carries the moved region */
   foldActionLeft?: ReactNode;
   foldActionRight?: ReactNode;
+  /**
+   * "Changed in rN", per side: '-' lines mark on the left, '+' and context
+   * lines on the right (a context row is on both sides; it marks only once).
+   */
+  changedLeft?: boolean;
+  changedRight?: boolean;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -538,6 +558,8 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   movedRight,
   foldActionLeft,
   foldActionRight,
+  changedLeft,
+  changedRight,
   onDefinitionClick,
   isDefinedInDiff,
 }: SplitDiffLineProps) {
@@ -557,6 +579,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectEnter={onSelectEnter}
         moved={movedLeft}
         foldAction={foldActionLeft}
+        changed={changedLeft}
         onDefinitionClick={onDefinitionClick}
         isDefinedInDiff={isDefinedInDiff}
       />
@@ -575,6 +598,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectEnter={onSelectEnter}
         moved={movedRight}
         foldAction={foldActionRight}
+        changed={changedRight}
         onDefinitionClick={onDefinitionClick}
         isDefinedInDiff={isDefinedInDiff}
       />

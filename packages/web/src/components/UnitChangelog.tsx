@@ -12,18 +12,28 @@ import { IconChevron, IconHistory } from "./icons";
  * `inline` is for places that are themselves inside a button (a husk's
  * expanded row): no nested toggle, the header is a plain label and every
  * entry is listed.
+ *
+ * With `onSelectRevision`, each row is a button: clicking it highlights, in
+ * the diff, the lines that revision changed (clicking the active row again
+ * clears it). Inline changelogs never offer this.
  */
 export function UnitChangelog({
   changelog,
   currentRevision,
   inline = false,
   className = "mt-1.5",
+  activeRevision = null,
+  onSelectRevision,
 }: {
   changelog: UnitChangelogEntry[] | undefined;
   /** When the newest entry is this revision, the header says so. */
   currentRevision?: number;
   inline?: boolean;
   className?: string;
+  /** the revision whose changes the diff is highlighting, if any */
+  activeRevision?: number | null;
+  /** row click: toggle the highlight for that revision */
+  onSelectRevision?: (revision: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const view = changelogView(changelog);
@@ -63,18 +73,51 @@ export function UnitChangelog({
       )}
       {expanded ? (
         <ol className="mt-1.5 space-y-1 border-l pl-3" style={{ borderColor: "var(--border)" }}>
-          {entries.map((e) => (
-            <li key={e.revision} className="flex items-baseline gap-2 leading-[18px]">
+          {entries.map((e) => {
+            const active = activeRevision === e.revision;
+            const badge = (
               <span
                 className="chip flex-none font-mono"
-                style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+                style={{
+                  background: active ? "var(--accent-soft)" : "var(--bg-inset)",
+                  color: active ? "var(--accent)" : "var(--fg-muted)",
+                }}
                 title={`Revision ${e.revision}`}
               >
                 r{e.revision}
               </span>
-              <span style={{ color: "var(--fg)" }}>{e.text}</span>
-            </li>
-          ))}
+            );
+            const note = <span style={{ color: "var(--fg)" }}>{e.text}</span>;
+            if (inline || !onSelectRevision) {
+              return (
+                <li key={e.revision} className="flex items-baseline gap-2 leading-[18px]">
+                  {badge}
+                  {note}
+                </li>
+              );
+            }
+            return (
+              <li key={e.revision}>
+                <button
+                  type="button"
+                  data-testid={`changelog-row-r${e.revision}`}
+                  aria-label={`Highlight changes from r${e.revision}`}
+                  aria-pressed={active}
+                  title={
+                    active
+                      ? `Showing the lines r${e.revision} changed · click or esc to clear`
+                      : `Highlight the lines r${e.revision} changed`
+                  }
+                  onClick={() => onSelectRevision(e.revision)}
+                  className="changelog-row -mx-1.5 flex w-[calc(100%+0.75rem)] items-baseline gap-2 rounded px-1.5 text-left leading-[18px]"
+                  data-active={active ? "true" : undefined}
+                >
+                  {badge}
+                  {note}
+                </button>
+              </li>
+            );
+          })}
         </ol>
       ) : null}
     </div>

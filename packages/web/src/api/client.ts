@@ -45,6 +45,7 @@ import type {
   ReviewStatus,
   ReanchorResult,
   ReviewUnit,
+  RevisionLineChanges,
   ShareAnalysisResult,
   SharedAnalysisNote,
   SharedAnalysisProbe,
@@ -550,6 +551,12 @@ export const api = {
     return request<DiffOfDiffs>(
       `/prs/${encodeKey(key)}/hunks/${encodeURIComponent(hunkId)}/diff-of-diffs`,
     );
+  },
+
+  /** The lines revision `n` changed, keyed by the current revision's hunk ids. */
+  async revisionLineChanges(key: string, n: number): Promise<RevisionLineChanges> {
+    if (MOCK) return mockApi.revisionLineChanges(key, n);
+    return request<RevisionLineChanges>(`/prs/${encodeKey(key)}/revisions/${n}/line-changes`);
   },
 
   async setHunkViewed(key: string, hunkId: string, viewed: boolean): Promise<void> {
