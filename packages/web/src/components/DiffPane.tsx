@@ -112,6 +112,9 @@ export interface DiffPaneProps {
   focusedHunkId: string | null;
   onFocusHunk: (id: string | null) => void;
   onToggleViewed: (hunkId: string, viewed: boolean) => void;
+  /** Mark several hunks at once (the per-file checkbox); falls back to one
+   *  onToggleViewed per hunk when omitted. */
+  onSetHunksViewed?: (hunkIds: string[], viewed: boolean) => void;
   onComment: (target: CommentTarget) => void;
   /**
    * Edit / delete / quote / copy for comments read inline. Omitted, the
@@ -209,6 +212,7 @@ export function DiffPane({
   focusedHunkId,
   onFocusHunk,
   onToggleViewed,
+  onSetHunksViewed,
   onComment,
   commentActions,
   viewMode = "unified",
@@ -611,6 +615,21 @@ export function DiffPane({
     if (previous === viewedNow) return;
     setCollapsedState((prev) => reconcileViewed(prev, previous, viewedNow, autoCollapseViewedHunks));
   }, [viewedNow, autoCollapseViewedHunks]);
+
+  /** Hunk ids this pane shows, per file, for the per-file viewed checkbox. */
+  const hunkIdsByFile = useMemo(() => {
+    const byFile = new Map<string, string[]>();
+    for (const { hunk, file } of entries) {
+      const list = byFile.get(file.path);
+      if (list) list.push(hunk.id);
+      else byFile.set(file.path, [hunk.id]);
+    }
+    return byFile;
+  }, [entries]);
+  const totalHunkCount = useMemo(
+    () => detail.files.files.reduce((n, f) => n + f.hunks.length, 0),
+    [detail.files.files],
+  );
 
   const rows = useMemo<FlatRow[]>(() => {
     const out: FlatRow[] = [];
@@ -1406,6 +1425,19 @@ export function DiffPane({
     if (row.type === "file") {
       const rollup = detail.state.files?.[row.path];
       const fileComments = grouped.byFile.get(row.path);
+      // The checkbox covers the hunks of this file that this pane shows: in a
+      // unit, the unit's hunks of it; in the files view, all of them.
+      const shownIds = hunkIdsByFile.get(row.path) ?? [];
+      const shownViewed = shownIds.filter((id) => detail.state.hunks[id]?.viewed).length;
+      const allViewed = shownIds.length > 0 && shownViewed === shownIds.length;
+      const someViewed = shownViewed > 0 && !allViewed;
+      const scope = showFileRows && entries.length !== totalHunkCount ? "shown here" : "in this file";
+      const setFileViewed = (viewed: boolean) => {
+        const ids = shownIds.filter((id) => (detail.state.hunks[id]?.viewed ?? false) !== viewed);
+        if (ids.length === 0) return;
+        if (onSetHunksViewed) onSetHunksViewed(ids, viewed);
+        else for (const id of ids) onToggleViewed(id, viewed);
+      };
       return (
         <div
           className="flex items-center gap-2 border-y px-3 py-1.5 font-mono text-xs"
@@ -1416,6 +1448,35 @@ export function DiffPane({
           }}
         >
           <span className="row-head-fixed flex min-w-0 items-center gap-2">
+            {shownIds.length > 0 ? (
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={allViewed ? "true" : someViewed ? "mixed" : "false"}
+                data-testid={`file-viewed-${row.path}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFileViewed(!allViewed);
+                }}
+                title={
+                  allViewed
+                    ? `Mark the ${shownIds.length} hunk${shownIds.length === 1 ? "" : "s"} ${scope} as not viewed`
+                    : `Mark the ${shownIds.length} hunk${shownIds.length === 1 ? "" : "s"} ${scope} as viewed`
+                }
+                className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
+                style={{
+                  borderColor: allViewed || someViewed ? "var(--ok)" : "var(--border-strong)",
+                  background: allViewed ? "var(--ok)" : "transparent",
+                  color: allViewed ? "var(--bg)" : "var(--ok)",
+                }}
+              >
+                {allViewed ? (
+                  <IconCheck width={11} height={11} />
+                ) : someViewed ? (
+                  <span className="block h-0.5 w-2 rounded-full" style={{ background: "var(--ok)" }} />
+                ) : null}
+              </button>
+            ) : null}
             <MiddleTruncate text={row.path} tail={18} />
             {row.file.status && row.file.status !== "modified" ? (
               <span
@@ -1445,14 +1506,16 @@ export function DiffPane({
             <button
               type="button"
               data-testid={`add-file-comment-${row.path}`}
-              className="btn"
+              aria-label={`Comment on ${row.path} as a whole`}
               title={`Comment on ${row.path} as a whole`}
+              className="inline-flex items-center hover:!text-[var(--fg)]"
+              style={{ color: "var(--fg-faint)" }}
               onClick={(e) => {
                 e.stopPropagation();
                 onComment({ subjectType: "file", file: row.path });
               }}
             >
-              + file
+              <IconComment width={13} height={13} />
             </button>
             {onQuote ? (
               <QuoteButton

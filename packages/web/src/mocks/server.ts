@@ -674,6 +674,20 @@ export const mockApi = {
     recomputeFileRollups();
   },
 
+  async setHunksViewed(_key: string, hunkIds: string[], viewed: boolean): Promise<void> {
+    await delay(60);
+    for (const hunkId of hunkIds) {
+      const prev = detail.state.hunks[hunkId] ?? { viewed: false, changedSinceViewed: false };
+      detail.state.hunks[hunkId] = {
+        ...prev,
+        viewed,
+        viewedAtRevision: viewed ? detail.state.revision : undefined,
+        changedSinceViewed: viewed ? prev.changedSinceViewed : false,
+      };
+    }
+    recomputeFileRollups();
+  },
+
   async setUnitViewed(_key: string, unitId: string): Promise<void> {
     await delay(90);
     const unit = detail.state.units.find((u) => u.id === unitId);

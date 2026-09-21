@@ -36,6 +36,7 @@ import {
   useReview,
   useSaveReviewBody,
   useSetHunkViewed,
+  useSetHunksViewed,
   useSetUnitViewed,
   useStaleness,
   useSubmitReview,
@@ -109,6 +110,7 @@ export function PrView() {
   const qc = useQueryClient();
 
   const setHunkViewed = useSetHunkViewed(prKey);
+  const setHunksViewed = useSetHunksViewed(prKey);
   const setUnitViewed = useSetUnitViewed(prKey);
   const patchUnit = usePatchUnit(prKey);
   const refresh = useRefresh(prKey);
@@ -1166,6 +1168,7 @@ export function PrView() {
               focusedHunkId={focusedHunkId}
               onFocusHunk={setFocusedHunkId}
               onToggleViewed={(hunkId, viewed) => setHunkViewed.mutate({ hunkId, viewed })}
+              onSetHunksViewed={(hunkIds, viewed) => setHunksViewed.mutate({ hunkIds, viewed })}
               onComment={(t) => setCommentTarget(t)}
               commentActions={commentActions}
               viewMode={viewMode}

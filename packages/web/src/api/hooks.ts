@@ -266,6 +266,37 @@ export function useSetHunkViewed(key: string) {
   });
 }
 
+/** Optimistic batch toggle for the per-file checkbox; same contract as useSetHunkViewed. */
+export function useSetHunksViewed(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ hunkIds, viewed }: { hunkIds: string[]; viewed: boolean }) =>
+      api.setHunksViewed(key, hunkIds, viewed),
+    onMutate: async ({ hunkIds, viewed }) => {
+      await qc.cancelQueries({ queryKey: qk.pr(key) });
+      const previous = qc.getQueryData<PrDetail>(qk.pr(key));
+      if (previous) {
+        const hunks = { ...previous.state.hunks };
+        for (const id of hunkIds) {
+          const prev = hunks[id] ?? { viewed: false, changedSinceViewed: false };
+          hunks[id] = {
+            ...prev,
+            viewed,
+            viewedAtRevision: viewed ? previous.state.revision : undefined,
+            changedSinceViewed: viewed ? prev.changedSinceViewed : false,
+          };
+        }
+        qc.setQueryData(qk.pr(key), recomputeRollups({ ...previous, state: { ...previous.state, hunks } }));
+      }
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) qc.setQueryData(qk.pr(key), ctx.previous);
+    },
+    onSettled: () => void qc.invalidateQueries({ queryKey: qk.pr(key) }),
+  });
+}
+
 export function useSetUnitViewed(key: string) {
   const qc = useQueryClient();
   return useMutation({

@@ -87,6 +87,32 @@ describe("hunk viewed toggle", () => {
     expect(rollup2.viewed).toBe(true);
   });
 
+  it("marks several hunks in one call, and rejects the whole batch on an unknown id", async () => {
+    const stateRes = await app.request(`/api/prs/${encodedKey}`);
+    const { state } = await stateRes.json();
+    const hunkIds: string[] = state.files[0].hunkIds;
+    const post = (body: unknown) =>
+      app.request(`/api/prs/${encodedKey}/hunks/viewed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+    const res = await post({ hunkIds, viewed: true });
+    expect(res.status).toBe(200);
+    const rollup = (await res.json()).state.files.find((f: { path: string }) => f.path === "src/foo.ts");
+    expect(rollup.viewedCount).toBe(2);
+    expect(rollup.viewed).toBe(true);
+
+    const bad = await post({ hunkIds: [hunkIds[0], "nope"], viewed: false });
+    expect(bad.status).toBe(400);
+    // Nothing recorded: both hunks are still viewed.
+    const after = await (await app.request(`/api/prs/${encodedKey}`)).json();
+    expect(after.state.files[0].viewedCount).toBe(2);
+
+    expect((await post({ hunkIds, viewed: "yes" })).status).toBe(400);
+  });
+
   it("rejects a body without a boolean `viewed`", async () => {
     const res = await app.request(`/api/prs/${encodedKey}/hunks/whatever/viewed`, {
       method: "POST",

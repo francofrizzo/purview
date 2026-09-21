@@ -30,6 +30,7 @@ import {
   repoKeyOf,
   repoKeyToString,
   setHunkViewed,
+  setHunksViewed,
   setUnit,
   setUnitViewed,
   stateRoot,
@@ -788,6 +789,26 @@ export function createApp(opts: AppOptions = {}): Hono {
     rewindChat(key, index, root);
     const turn = startChatTurn(key, { text, refs }, root);
     return streamChatTurn(c, turn);
+  });
+
+  // Batch form (the per-file checkbox). Registered before the per-hunk route
+  // so "viewed" is never read as a hunk id.
+  app.post("/api/prs/:key/hunks/viewed", async (c) => {
+    const key = keyParam(c);
+    const body = (await readJsonBody(c)) as { hunkIds?: unknown; viewed?: unknown };
+    if (
+      !Array.isArray(body.hunkIds) ||
+      !body.hunkIds.every((id) => typeof id === "string") ||
+      typeof body.viewed !== "boolean"
+    ) {
+      throw new HttpError(400, "invalid_body", "Body must be { hunkIds: string[], viewed: boolean }");
+    }
+    try {
+      const state = setHunksViewed(key, body.hunkIds as string[], body.viewed, root);
+      return c.json({ state });
+    } catch (err) {
+      throw new HttpError(400, "unknown_hunk", (err as Error).message);
+    }
   });
 
   app.post("/api/prs/:key/hunks/:id/viewed", async (c) => {

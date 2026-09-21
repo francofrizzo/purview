@@ -579,6 +579,38 @@ export function setHunkViewed(
   );
 }
 
+/**
+ * Mark several hunks viewed (or not) in one append: one request, one event
+ * batch, one state rebuild. Used by the diff pane's per-file checkbox. Every
+ * id must belong to the current revision; an unknown id rejects the whole
+ * batch rather than recording part of it.
+ */
+export function setHunksViewed(
+  key: PrKey,
+  hunkIds: string[],
+  viewed: boolean,
+  root = stateRoot(),
+): State {
+  const state = loadState(key, root);
+  const unknown = hunkIds.filter((id) => !state.hunks[id]);
+  if (unknown.length > 0) {
+    throw new Error(
+      `Hunk(s) not in revision ${state.currentRevision}: ${unknown.join(", ")}; nothing was recorded.`,
+    );
+  }
+  const ids = [...new Set(hunkIds)];
+  if (ids.length === 0) return state;
+  return appendEvents(
+    key,
+    ids.map((hunkId) => ({
+      type: viewed ? ("hunk-viewed" as const) : ("hunk-unviewed" as const),
+      hunkId,
+      revision: state.currentRevision,
+    })),
+    root,
+  );
+}
+
 export function setUnitViewed(
   key: PrKey,
   unitId: string,

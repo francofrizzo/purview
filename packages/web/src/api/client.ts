@@ -553,6 +553,11 @@ export const api = {
     await post(`/prs/${encodeKey(key)}/hunks/${encodeURIComponent(hunkId)}/viewed`, { viewed });
   },
 
+  async setHunksViewed(key: string, hunkIds: string[], viewed: boolean): Promise<void> {
+    if (MOCK) return mockApi.setHunksViewed(key, hunkIds, viewed);
+    await post(`/prs/${encodeKey(key)}/hunks/viewed`, { hunkIds, viewed });
+  },
+
   async setUnitViewed(key: string, unitId: string): Promise<void> {
     if (MOCK) return mockApi.setUnitViewed(key, unitId);
     await post(`/prs/${encodeKey(key)}/units/${encodeURIComponent(unitId)}/viewed`);
