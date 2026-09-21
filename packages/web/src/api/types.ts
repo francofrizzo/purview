@@ -155,6 +155,22 @@ export interface PrMeta {
    * `null` = not stacked (or no PR heads that branch), absent = not resolved.
    */
   basePr?: BasePr | null;
+  /** See `ReviewRequest`; `null` = none pending, absent = not looked up yet. */
+  reviewRequest?: ReviewRequest | null;
+  /** GitHub lifecycle state as of the last fetch (absent on older state). */
+  prState?: PrGithubState;
+}
+
+/**
+ * The user's still-pending review request on a PR. `via` is `"you"` for a
+ * direct request or `"team:<slug>"` for one that came through a team.
+ */
+export interface ReviewRequest {
+  /** ISO timestamp of the request. */
+  at: string;
+  /** Login of whoever requested it ("" when unknown). */
+  by: string;
+  via: string;
 }
 
 export interface BasePr {
@@ -274,6 +290,8 @@ export interface PrListEntry {
   /** GitHub lifecycle state, as of the last fetch. */
   state: PrGithubState;
   reviewDecision: ReviewDecision | null;
+  /** Pending review request for the user; `null` = none, absent = not looked up yet. */
+  reviewRequest?: ReviewRequest | null;
   /** ISO timestamp of when this PR was added locally. */
   addedAt: string;
   /** Local-only: hides the PR behind the repo group's archived disclosure. */
@@ -408,6 +426,8 @@ export interface PrDetail {
   analysisJob?: AnalysisJob | null;
   /** `meta.basePr` is tracked in Purview too (so it can be linked in-app). */
   basePrTracked?: boolean;
+  /** Pending review request for the user; `null` = none, absent = not looked up yet. */
+  reviewRequest?: ReviewRequest | null;
 }
 
 export interface MigrationReportItem {

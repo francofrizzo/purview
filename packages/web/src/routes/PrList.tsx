@@ -5,11 +5,18 @@ import { useAddPr, useImportReviews, usePrs, useRepos, useSetArchived } from "..
 import type { PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
-import { EffortChip, Progress, PrStateChip, ReviewDecisionChip } from "../components/Chips";
+import {
+  EffortChip,
+  Progress,
+  PrStateChip,
+  ReviewDecisionChip,
+  ReviewRequestAge,
+} from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
 import { IconArchive, IconChevron, IconSettings } from "../components/icons";
 import { errorText } from "../api/errors";
 import { formatImportResult } from "../lib/reviewImport";
+import { visibleReviewRequest } from "../lib/reviewRequest";
 import {
   formatAddedAt,
   formatFullTimestamp,
@@ -314,6 +321,12 @@ function PrRow({ pr }: { pr: PrListEntry }) {
                 <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
                 {meta.author}
               </span>
+              <span>·</span>
+            </>
+          ) : null}
+          {visibleReviewRequest(pr.reviewRequest, pr.state) ? (
+            <>
+              <ReviewRequestAge request={pr.reviewRequest} state={pr.state} />
               <span>·</span>
             </>
           ) : null}

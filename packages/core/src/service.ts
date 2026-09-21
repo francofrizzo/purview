@@ -6,6 +6,7 @@ import {
   fetchPullRequest,
   fetchRemoteViewedState,
   fetchReviewDecision,
+  resolveReviewRequest,
   setFileViewedOnGithub,
 } from "./github.js";
 import { migrate, toRevisionFiles } from "./migration.js";
@@ -124,6 +125,30 @@ export function resolveBaseMeta(
   return patch;
 }
 
+/**
+ * The `reviewRequest` meta patch for a PR in `prState`: a fresh lookup, or
+ * nothing at all for a merged/closed PR (nobody is waiting on a review there,
+ * and the call would be wasted). A failed lookup keeps the previous value but
+ * still stamps `reviewRequestCheckedAt`, so a broken `gh` is not re-asked on
+ * every pass.
+ */
+export function reviewRequestPatch(
+  key: PrKey,
+  prState: string | undefined,
+  root = stateRoot(),
+  now: number = Date.now(),
+): Partial<Meta> {
+  if (prState === "merged" || prState === "closed") return {};
+  const patch: Partial<Meta> = { reviewRequestCheckedAt: new Date(now).toISOString() };
+  try {
+    const next = resolveReviewRequest(key, root);
+    if (next !== undefined) patch.reviewRequest = next;
+  } catch {
+    // best-effort
+  }
+  return patch;
+}
+
 export interface InitResult {
   key: PrKey;
   state: State;
@@ -216,6 +241,8 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   if ((meta.reviewDecision ?? null) !== reviewDecision) {
     metaPatch.reviewDecision = reviewDecision;
   }
+  // Whether the user's review is still being waited on, and since when.
+  Object.assign(metaPatch, reviewRequestPatch(key, pr.prState, root));
   if (Object.keys(metaPatch).length > 0) updateMeta(key, metaPatch, root);
   const mergeBase = fetchMergeBase(key, pr.baseSha, pr.headSha);
   const state = loadState(key, root);

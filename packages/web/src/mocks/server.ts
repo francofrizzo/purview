@@ -658,6 +658,7 @@ export const mockApi = {
     const { host, owner, repo } = target.meta;
     target.basePrTracked =
       !!basePr && list.some((p) => p.key === `${host}/${owner}/${repo}/${basePr.number}`);
+    target.reviewRequest = list.find((p) => p.key === key)?.reviewRequest;
     return structuredClone(target);
   },
 

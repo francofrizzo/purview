@@ -218,6 +218,20 @@ export const BasePrSchema = z.object({
 });
 export type BasePr = z.infer<typeof BasePrSchema>;
 
+/**
+ * A still-pending request for the authenticated user's review (see
+ * `Meta.reviewRequest`). `via` is `"you"` for a direct request, or
+ * `"team:<slug>"` when it came through one of the user's teams.
+ */
+export const ReviewRequestSchema = z.object({
+  /** ISO timestamp of the `review_requested` event. */
+  at: z.string(),
+  /** Login of whoever requested it ("" when GitHub does not say). */
+  by: z.string(),
+  via: z.string(),
+});
+export type ReviewRequest = z.infer<typeof ReviewRequestSchema>;
+
 export const MetaSchema = z.object({
   host: z.string(),
   owner: z.string(),
@@ -268,6 +282,15 @@ export const MetaSchema = z.object({
    * query failed, which must never break a refresh.
    */
   reviewDecision: ReviewDecisionSchema.nullable().optional(),
+  /**
+   * The user's still-pending review request on this PR, folded out of the
+   * issue timeline (`github.ts` `foldReviewRequest`). `null` = none pending;
+   * absent = not fetched yet. Refreshed on init/refresh, by the staleness
+   * poll, and in the background when the PR list is served.
+   */
+  reviewRequest: ReviewRequestSchema.nullable().optional(),
+  /** When `reviewRequest` was last looked up (success or not); rate-limits it. */
+  reviewRequestCheckedAt: z.string().optional(),
   /**
    * Archived PRs stay fully readable; they are only kept out of the way (and
    * out of the automatic analysis triggers, which cost money).

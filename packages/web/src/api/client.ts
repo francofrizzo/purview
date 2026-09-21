@@ -36,6 +36,7 @@ import type {
   RepoSummary,
   RewindChatResult,
   ReviewDecision,
+  ReviewRequest,
   ReviewEffort,
   ReviewEvent,
   RepoPathResult,
@@ -132,6 +133,7 @@ interface WireListEntry {
   effort?: ReviewEffort | null;
   state?: PrGithubState;
   reviewDecision?: ReviewDecision | null;
+  reviewRequest?: ReviewRequest | null;
   addedAt?: string;
   archived?: boolean;
 }
@@ -179,6 +181,7 @@ interface WirePrDetail {
   meta: PrListEntry["meta"];
   analysisJob?: AnalysisJob | null;
   basePrTracked?: boolean;
+  reviewRequest?: ReviewRequest | null;
 }
 
 interface WireMigrationEntry {
@@ -307,6 +310,8 @@ function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
     diff: raw.diff ?? "",
     analysisJob: raw.analysisJob ?? null,
     basePrTracked: raw.basePrTracked === true,
+    // Explicit, like basePrTracked: absent stays absent ("not looked up yet").
+    reviewRequest: raw.reviewRequest !== undefined ? raw.reviewRequest : raw.meta?.reviewRequest,
   };
 }
 
@@ -416,6 +421,7 @@ export const api = {
       // blanking the row: it simply reads as a never-archived open PR.
       state: e.state ?? "open",
       reviewDecision: e.reviewDecision ?? null,
+      reviewRequest: e.reviewRequest !== undefined ? e.reviewRequest : e.meta?.reviewRequest,
       addedAt: e.addedAt ?? e.meta?.createdAt ?? new Date(0).toISOString(),
       archived: Boolean(e.archived),
     }));

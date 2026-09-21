@@ -294,6 +294,8 @@ background polling, so a refresh is what moves them. The review decision comes f
 GraphQL query (REST has no such field); if it fails, it degrades to `null` instead of failing
 the refresh.
 
+**Waiting on you.** While your review request on a PR is pending (direct, or via one of your teams), the list row and PR header show how long it has waited — "requested 3d ago", in the warning color from 3 days — read from the PR's timeline on refresh, by the staleness poll, and in the background (≤2 `gh` calls at a time, each open PR at most every 15 min) when the list loads.
+
 **Upstream drift.** While a PR is open in the app, `GET /api/prs/:key/staleness` checks it
 against GitHub with one cheap `gh` call (cached 60s per PR, never failing the request) on
 mount, on tab focus, and every 5 minutes; when the head or base sha moved or the state

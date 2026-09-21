@@ -5,6 +5,7 @@ import {
   loadState,
   readMeta,
   resolveBaseMeta,
+  reviewRequestPatch,
   stateRoot,
   updateMeta,
   type Meta,
@@ -12,6 +13,7 @@ import {
   type PrState,
   type ReviewDecision,
 } from "@reviewer/core";
+import { reviewRequestDue } from "./review-request-refresh.js";
 
 /**
  * Why the local copy of a PR is behind GitHub.
@@ -48,6 +50,13 @@ export interface StalenessResult {
 
 /** How long one answer is reused before another `gh` call is spent. */
 export const STALENESS_TTL_MS = 60_000;
+
+/**
+ * `reviewRequest` is re-read by a staleness check at most this often — a bit
+ * under the UI's 5-minute poll, so every poll refreshes it while mount/focus
+ * checks in between (and forced ones) do not spend a timeline fetch each.
+ */
+export const REVIEW_REQUEST_POLL_MS = 4 * 60_000;
 
 interface CacheEntry {
   at: number;
@@ -89,7 +98,8 @@ function localRevision(key: PrKey, root: string) {
  * the PR's state or review decision, meta is patched in place so the home
  * page's chips stay honest without a full refresh; and the base branch
  * (`baseRef`/`basePr`) is backfilled or followed the same way, so older PRs
- * learn what they target without anyone refreshing them. Revisions, hunks and the
+ * learn what they target without anyone refreshing them; and `reviewRequest`
+ * is refreshed (at most every `REVIEW_REQUEST_POLL_MS`). Revisions, hunks and the
  * event log are never touched here — that is `refreshPr`'s job.
  */
 export function checkStaleness(
@@ -162,6 +172,11 @@ export function checkStaleness(
       } catch {
         // leave the base fields for the next check
       }
+    }
+    // Keep "requested 3d ago" honest for the open page; rate-limited on its
+    // own stamp, and best-effort like everything else here.
+    if (reviewRequestDue(meta.reviewRequestCheckedAt, at, REVIEW_REQUEST_POLL_MS)) {
+      Object.assign(patch, reviewRequestPatch(key, pr.prState, root, at));
     }
     if (Object.keys(patch).length > 0) updateMeta(key, patch, root);
   } catch (err) {

@@ -107,6 +107,7 @@ import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
 import { pruneCheckouts } from "./pr-checkout.js";
+import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
 
 export const DEFAULT_PORT = 4779;
 
@@ -129,6 +130,12 @@ export interface AppOptions {
    * is the interface scan, done once there rather than per request.
    */
   lan?: { token: string; hosts: string[] };
+  /**
+   * The background `reviewRequest` refresh `GET /api/prs` kicks off (see
+   * review-request-refresh.ts). `false` turns it off; an object swaps its
+   * clock/resolver (tests).
+   */
+  reviewRequestRefresh?: RefreshDeps | false;
 }
 
 function keyParam(c: { req: { param(name: string): string | undefined } }): PrKey {
@@ -233,8 +240,10 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.get("/api/prs", (c) => {
     const keys = listPrs(root);
+    const metas: { key: PrKey; meta: Meta }[] = [];
     const prs = keys.map((key) => {
       const meta = readMeta(key, root);
+      metas.push({ key, meta });
       const state = loadState(key, root);
       return {
         key: keyToString(key),
@@ -244,6 +253,8 @@ export function createApp(opts: AppOptions = {}): Hono {
         title: meta.title ?? state.pr?.title ?? "",
         state: meta.prState ?? "open",
         reviewDecision: meta.reviewDecision ?? null,
+        // Absent (not `null`) until first looked up: `null` means "nothing pending".
+        reviewRequest: meta.reviewRequest,
         addedAt: meta.createdAt,
         archived: meta.archived === true,
         currentRevision: state.currentRevision,
@@ -255,6 +266,16 @@ export function createApp(opts: AppOptions = {}): Hono {
         effort: safeEffort(key),
       };
     });
+    // Nothing else re-reads every tracked PR, so the list load is the trigger
+    // for keeping "requested 3d ago" fresh. Fire-and-forget: rate-limited per
+    // PR, capped in concurrency, and never awaited by this response.
+    if (opts.reviewRequestRefresh !== false) {
+      try {
+        scheduleReviewRequestRefresh(metas, root, opts.reviewRequestRefresh ?? {});
+      } catch (err) {
+        console.warn(`[review-request] not scheduled: ${(err as Error).message}`);
+      }
+    }
     return c.json({ prs });
   });
 
@@ -361,6 +382,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       basePrTracked: meta.basePr
         ? prExists({ ...repoKeyOf(key), number: meta.basePr.number }, root)
         : false,
+      reviewRequest: meta.reviewRequest,
     });
   });
 

@@ -5,10 +5,18 @@ import type {
   PrGithubState,
   ReviewDecision,
   ReviewEffort,
+  ReviewRequest,
   RiskFlag,
 } from "../api/types";
 import { Link } from "react-router-dom";
 import { formatMustReadLines } from "../lib/prList";
+import {
+  formatRequestedAgo,
+  isReviewRequestOverdue,
+  reviewRequestTooltip,
+  visibleReviewRequest,
+} from "../lib/reviewRequest";
+import { useNow } from "../lib/useNow";
 import type { StackedOnLink } from "../lib/stacked";
 import { IconBolt, IconCheck, IconWeight, RISK_META } from "./icons";
 
@@ -83,6 +91,37 @@ export function ReviewDecisionChip({ decision }: { decision: ReviewDecision | nu
     >
       {s.label}
       {s.check ? <IconCheck width={10} height={10} /> : null}
+    </span>
+  );
+}
+
+/**
+ * "requested 3d ago" — how long the user's review has been waited on. Plain
+ * faint text, not a chip: it is context. It turns the warning color once the
+ * request is three days old, and re-renders every minute so the age stays
+ * right on a page left open. Renders nothing when no request is pending.
+ */
+export function ReviewRequestAge({
+  request,
+  state,
+  className,
+}: {
+  request: ReviewRequest | null | undefined;
+  state?: PrGithubState | null;
+  className?: string;
+}) {
+  const now = useNow();
+  const shown = visibleReviewRequest(request, state);
+  if (!shown) return null;
+  const at = new Date(now);
+  return (
+    <span
+      className={className}
+      style={{ color: isReviewRequestOverdue(shown.at, at) ? "var(--warn)" : "var(--fg-faint)" }}
+      title={reviewRequestTooltip(shown)}
+      data-testid="review-request-age"
+    >
+      {formatRequestedAgo(shown.at, at)}
     </span>
   );
 }

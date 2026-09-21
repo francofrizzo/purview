@@ -100,6 +100,15 @@ export function repoGithubCachePath(key: RepoKey, root = stateRoot()): string {
   return path.join(repoDir(key, root), "github-cache.json");
 }
 
+/**
+ * `~/.purview/github-user.json` — the authenticated `gh` user's login, per
+ * host. A machine-level fact (it never changes in practice), so it sits beside
+ * `config.json` rather than under any repo.
+ */
+export function githubUserCachePath(root = stateRoot()): string {
+  return path.join(root, "github-user.json");
+}
+
 /** `~/.purview/<host>/<owner>/<repo>/repo.json` */
 export function repoConfigPath(key: RepoKey, root = stateRoot()): string {
   return path.join(repoDir(key, root), "repo.json");

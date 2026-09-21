@@ -1,8 +1,14 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { repoGithubCachePath, stateRoot, type PrKey, type RepoKey } from "./paths.js";
-import type { BasePr, PrState, ReviewDecision } from "./schemas.js";
+import {
+  githubUserCachePath,
+  repoGithubCachePath,
+  stateRoot,
+  type PrKey,
+  type RepoKey,
+} from "./paths.js";
+import type { BasePr, PrState, ReviewDecision, ReviewRequest } from "./schemas.js";
 
 /**
  * Every `gh` invocation in the project funnels through here so the server
@@ -33,6 +39,35 @@ export function setGhRunner(next: GhRunner | null): void {
 
 export function gh(args: string[], input?: string): string {
   return runner(args, input);
+}
+
+/**
+ * The non-blocking twin of `gh`, for background work that must not stall the
+ * server's event loop. An injected runner (tests) is honoured, still resolved
+ * asynchronously so callers see the same shape either way.
+ */
+export function ghAsync(args: string[], input?: string): Promise<string> {
+  if (runner !== defaultRunner) {
+    const injected = runner;
+    return Promise.resolve().then(() => injected(args, input));
+  }
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      "gh",
+      args,
+      { encoding: "utf8", maxBuffer: 128 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) {
+          const detail = (stderr || stdout || err.message || "").toString().trim();
+          reject(new Error(`gh ${args.join(" ")} failed: ${detail}`));
+        } else {
+          resolve(stdout);
+        }
+      },
+    );
+    if (input !== undefined) child.stdin?.end(input);
+    else child.stdin?.end();
+  });
 }
 
 function hostArgs(host: string): string[] {
@@ -432,6 +467,378 @@ export function fetchDefaultBranch(
     });
     return stale;
   }
+}
+
+/* ---------------------------------------------------- viewer login & teams */
+
+/** A failed login/teams lookup is not retried (in this process) for this long. */
+const VIEWER_FAILURE_TTL_MS = 5 * 60_000;
+/** Team membership is re-read this often (memory only; it does change). */
+export const VIEWER_TEAMS_TTL_MS = 6 * 60 * 60_000;
+
+interface LoginEntry {
+  login: string | null;
+  failedAt?: number;
+}
+
+const loginMemo = new Map<string, LoginEntry>();
+const loginInflight = new Map<string, Promise<string | null>>();
+const viewerKey = (host: string, root: string) => `${root}|${host}`;
+
+interface TeamsEntry {
+  /** `{ slug, org }` for every team the user is in on this host. */
+  teams: { slug: string; org: string }[];
+  fetchedAt: number;
+}
+
+const teamsMemo = new Map<string, TeamsEntry>();
+const teamsInflight = new Map<string, Promise<TeamsEntry>>();
+
+/** Tests: forget the in-memory login and team caches. */
+export function clearViewerCache(): void {
+  loginMemo.clear();
+  loginInflight.clear();
+  teamsMemo.clear();
+  teamsInflight.clear();
+}
+
+function readLoginFile(host: string, root: string): string | null {
+  try {
+    const raw = JSON.parse(fs.readFileSync(githubUserCachePath(root), "utf8")) as Record<
+      string,
+      { login?: unknown } | undefined
+    >;
+    const login = raw?.[host]?.login;
+    return typeof login === "string" && login !== "" ? login : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLoginFile(host: string, root: string, login: string, now: number): void {
+  try {
+    const file = githubUserCachePath(root);
+    let data: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(fs.readFileSync(file, "utf8")) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        data = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // absent or unreadable: start over
+    }
+    data[host] = { login, fetchedAt: new Date(now).toISOString() };
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(data, null, 2) + "\n", "utf8");
+  } catch {
+    // An unwritable cache only costs a re-read next process.
+  }
+}
+
+/** The cached answer, or `undefined` when `gh` has to be asked. */
+function cachedLogin(host: string, root: string, now: number): string | null | undefined {
+  const mk = viewerKey(host, root);
+  const hit = loginMemo.get(mk);
+  if (hit?.login) return hit.login;
+  if (hit?.failedAt !== undefined && now - hit.failedAt < VIEWER_FAILURE_TTL_MS) return null;
+  const file = readLoginFile(host, root);
+  if (file) {
+    loginMemo.set(mk, { login: file });
+    return file;
+  }
+  return undefined;
+}
+
+function settleLogin(host: string, root: string, raw: string | Error, now: number): string | null {
+  let login = "";
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as { login?: unknown };
+      if (typeof parsed?.login === "string") login = parsed.login.trim();
+    } catch {
+      // not JSON: no login
+    }
+  }
+  if (login === "") {
+    loginMemo.set(viewerKey(host, root), { login: null, failedAt: now });
+    return null;
+  }
+  loginMemo.set(viewerKey(host, root), { login });
+  writeLoginFile(host, root, login, now);
+  return login;
+}
+
+/** Plain `gh api user` (the JSON's `.login` is read here, not with `-q`). */
+const loginArgs = (host: string) => ["api", ...hostArgs(host), "user"];
+
+/**
+ * The authenticated `gh` user's login on `host` (`gh api user` → `.login`),
+ * cached for the process and in `github-user.json`: it never changes in
+ * practice. `null` when it cannot be read; never throws.
+ */
+export function viewerLogin(host: string, root = stateRoot(), now = Date.now()): string | null {
+  const hit = cachedLogin(host, root, now);
+  if (hit !== undefined) return hit;
+  let raw: string | Error;
+  try {
+    raw = gh(loginArgs(host));
+  } catch (err) {
+    raw = err as Error;
+  }
+  return settleLogin(host, root, raw, now);
+}
+
+/** `viewerLogin` without blocking the event loop; concurrent callers share one `gh`. */
+export function viewerLoginAsync(
+  host: string,
+  root = stateRoot(),
+  now = Date.now(),
+): Promise<string | null> {
+  const hit = cachedLogin(host, root, now);
+  if (hit !== undefined) return Promise.resolve(hit);
+  const mk = viewerKey(host, root);
+  const pending = loginInflight.get(mk);
+  if (pending) return pending;
+  const p = ghAsync(loginArgs(host))
+    .then(
+      (out) => settleLogin(host, root, out, now),
+      (err: Error) => settleLogin(host, root, err, now),
+    )
+    .finally(() => loginInflight.delete(mk));
+  loginInflight.set(mk, p);
+  return p;
+}
+
+const teamsArgs = (host: string) => [
+  "api",
+  ...hostArgs(host),
+  "--paginate",
+  "user/teams?per_page=100",
+  "--jq",
+  ".[] | {slug: .slug, org: .organization.login}",
+];
+
+/** JSON-lines `{slug, org}` → entries; unparseable lines are skipped. */
+function parseTeams(out: string): { slug: string; org: string }[] {
+  const teams: { slug: string; org: string }[] = [];
+  for (const line of out.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const t = JSON.parse(line) as { slug?: unknown; org?: unknown };
+      if (typeof t.slug === "string" && typeof t.org === "string") {
+        teams.push({ slug: t.slug, org: t.org });
+      }
+    } catch {
+      // skip
+    }
+  }
+  return teams;
+}
+
+const teamsFor = (entry: TeamsEntry, org: string) =>
+  entry.teams.filter((t) => t.org.toLowerCase() === org.toLowerCase()).map((t) => t.slug);
+
+function freshTeams(host: string, root: string, now: number): TeamsEntry | undefined {
+  const hit = teamsMemo.get(viewerKey(host, root));
+  if (!hit) return undefined;
+  // An empty answer (usually: the token lacks `read:org`) is retried sooner.
+  const ttl = hit.teams.length > 0 ? VIEWER_TEAMS_TTL_MS : VIEWER_FAILURE_TTL_MS * 12;
+  return now - hit.fetchedAt < ttl ? hit : undefined;
+}
+
+/**
+ * Slugs of the user's teams in `org` (`gh api user/teams`), cached in memory.
+ * A failure — typically a token without `read:org` — or an empty answer means
+ * "no teams": team requests are then simply not recognised as the user's.
+ * Never throws.
+ */
+export function viewerTeams(
+  host: string,
+  org: string,
+  root = stateRoot(),
+  now = Date.now(),
+): string[] {
+  const hit = freshTeams(host, root, now);
+  if (hit) return teamsFor(hit, org);
+  let teams: { slug: string; org: string }[] = [];
+  try {
+    teams = parseTeams(gh(teamsArgs(host)));
+  } catch {
+    // no scope / no network: no teams
+  }
+  const entry = { teams, fetchedAt: now };
+  teamsMemo.set(viewerKey(host, root), entry);
+  return teamsFor(entry, org);
+}
+
+/** `viewerTeams` without blocking the event loop. */
+export async function viewerTeamsAsync(
+  host: string,
+  org: string,
+  root = stateRoot(),
+  now = Date.now(),
+): Promise<string[]> {
+  const hit = freshTeams(host, root, now);
+  if (hit) return teamsFor(hit, org);
+  const mk = viewerKey(host, root);
+  let pending = teamsInflight.get(mk);
+  if (!pending) {
+    pending = ghAsync(teamsArgs(host))
+      .then(parseTeams, () => [] as { slug: string; org: string }[])
+      .then((teams) => {
+        const entry = { teams, fetchedAt: now };
+        teamsMemo.set(mk, entry);
+        return entry;
+      })
+      .finally(() => teamsInflight.delete(mk));
+    teamsInflight.set(mk, pending);
+  }
+  return teamsFor(await pending, org);
+}
+
+/* --------------------------------------------------------- review request */
+
+/** The subset of an issue-timeline event `foldReviewRequest` reads. */
+export interface TimelineEvent {
+  event?: string | null;
+  created_at?: string | null;
+  submitted_at?: string | null;
+  state?: string | null;
+  user?: { login?: string | null } | null;
+  requested_reviewer?: { login?: string | null } | null;
+  requested_team?: { slug?: string | null } | null;
+  review_requester?: { login?: string | null } | null;
+}
+
+const eq = (a: string | null | undefined, b: string) =>
+  typeof a === "string" && a.toLowerCase() === b.toLowerCase();
+
+/**
+ * Fold a PR's issue timeline into the user's pending review request, or
+ * `null`. Each target (the user directly, or one of `teams`) is tracked on its
+ * own: a `review_requested` for it opens a request, a `review_request_removed`
+ * for it closes that one, and a submitted `reviewed` by the user closes all of
+ * them — so a re-request after a review opens a fresh one ("waiting on me
+ * since"). Of the requests left open, the latest wins. Other people's events
+ * are ignored, and the input need not be in order.
+ */
+export function foldReviewRequest(
+  events: TimelineEvent[],
+  login: string,
+  teams: string[] = [],
+): ReviewRequest | null {
+  const targetOf = (e: TimelineEvent): string | null => {
+    if (eq(e.requested_reviewer?.login, login)) return "you";
+    const slug = e.requested_team?.slug;
+    if (typeof slug === "string" && teams.some((t) => eq(slug, t))) return `team:${slug}`;
+    return null;
+  };
+
+  const timed = events
+    .map((e, i) => {
+      const stamp = e.event === "reviewed" ? e.submitted_at ?? e.created_at : e.created_at;
+      return { e, i, stamp: stamp ?? "", t: Date.parse(stamp ?? "") };
+    })
+    .filter((x) => Number.isFinite(x.t))
+    .sort((a, b) => a.t - b.t || a.i - b.i);
+
+  const open = new Map<string, ReviewRequest & { t: number }>();
+  for (const { e, stamp, t } of timed) {
+    if (e.event === "review_requested") {
+      const target = targetOf(e);
+      if (target) open.set(target, { at: stamp, by: e.review_requester?.login ?? "", via: target, t });
+    } else if (e.event === "review_request_removed") {
+      const target = targetOf(e);
+      if (target) open.delete(target);
+    } else if (e.event === "reviewed") {
+      // A pending (unsubmitted) review has not answered anything yet.
+      if (eq(e.user?.login, login) && !eq(e.state, "pending")) open.clear();
+    }
+  }
+
+  let latest: (ReviewRequest & { t: number }) | null = null;
+  for (const r of open.values()) if (!latest || r.t > latest.t) latest = r;
+  return latest ? { at: latest.at, by: latest.by, via: latest.via } : null;
+}
+
+/** Only the three event kinds that matter, trimmed to the fields read above. */
+const TIMELINE_JQ =
+  '.[] | select(.event == "review_requested" or .event == "review_request_removed" or .event == "reviewed")' +
+  " | {event, created_at, submitted_at, state," +
+  " user: {login: .user.login}," +
+  " requested_reviewer: {login: .requested_reviewer.login}," +
+  " requested_team: {slug: .requested_team.slug}," +
+  " review_requester: {login: .review_requester.login}}";
+
+const timelineArgs = (key: PrKey) => [
+  "api",
+  ...hostArgs(key.host),
+  "--paginate",
+  `repos/${key.owner}/${key.repo}/issues/${key.number}/timeline?per_page=100`,
+  "--jq",
+  TIMELINE_JQ,
+];
+
+/** `--jq` prints one compact JSON object per line, across every page. */
+function parseTimeline(out: string): TimelineEvent[] {
+  return out
+    .split("\n")
+    .filter((l) => l.trim() !== "")
+    .map((l) => JSON.parse(l) as TimelineEvent);
+}
+
+/**
+ * The user's pending review request on `key` (see `foldReviewRequest`), from
+ * one paginated timeline fetch. `undefined` when the fetch failed, so callers
+ * keep whatever they knew before.
+ */
+export function fetchReviewRequest(
+  key: PrKey,
+  login: string,
+  teams: string[] = [],
+): ReviewRequest | null | undefined {
+  try {
+    return foldReviewRequest(parseTimeline(gh(timelineArgs(key))), login, teams);
+  } catch {
+    return undefined;
+  }
+}
+
+/** `fetchReviewRequest` without blocking the event loop. */
+export async function fetchReviewRequestAsync(
+  key: PrKey,
+  login: string,
+  teams: string[] = [],
+): Promise<ReviewRequest | null | undefined> {
+  try {
+    return foldReviewRequest(parseTimeline(await ghAsync(timelineArgs(key))), login, teams);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Login + teams + timeline in one: the pending request for whoever `gh` is
+ * authenticated as. `undefined` when any of it could not be determined.
+ */
+export function resolveReviewRequest(
+  key: PrKey,
+  root = stateRoot(),
+): ReviewRequest | null | undefined {
+  const login = viewerLogin(key.host, root);
+  if (!login) return undefined;
+  return fetchReviewRequest(key, login, viewerTeams(key.host, key.owner, root));
+}
+
+/** `resolveReviewRequest` without blocking the event loop. */
+export async function resolveReviewRequestAsync(
+  key: PrKey,
+  root = stateRoot(),
+): Promise<ReviewRequest | null | undefined> {
+  const login = await viewerLoginAsync(key.host, root);
+  if (!login) return undefined;
+  const teams = await viewerTeamsAsync(key.host, key.owner, root);
+  return fetchReviewRequestAsync(key, login, teams);
 }
 
 /* ------------------------------------------------------ PR by head branch */

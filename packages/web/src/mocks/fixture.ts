@@ -477,6 +477,8 @@ export const mockList: PrListEntry[] = [
     effort: { mustReadLines: 1840, weightedMustReadLines: 1710, mustReadUnits: 3, riskCount: 2, badge: "heavy" },
     state: "open",
     reviewDecision: "changes_requested",
+    // Past the 3-day mark, so the list shows it in the warning color.
+    reviewRequest: { at: ago(4 * DAY + 2 * HOUR), by: "dana", via: "you" },
     addedAt: ago(2 * DAY + 3 * HOUR),
     archived: false,
   },
@@ -555,6 +557,7 @@ export const mockList: PrListEntry[] = [
     totalHunks: 0,
     state: "open",
     reviewDecision: "review_required",
+    reviewRequest: { at: ago(5 * HOUR + 20 * MINUTE), by: "priya", via: "team:platform-core" },
     addedAt: ago(5 * HOUR),
     archived: false,
   },
