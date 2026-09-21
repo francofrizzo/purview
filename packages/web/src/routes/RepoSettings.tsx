@@ -538,7 +538,7 @@ function Autosize({
   return (
     <textarea
       ref={ref}
-      className="input mt-1 resize-none font-mono text-xs leading-[18px]"
+      className="input mt-1 resize-none text-xs leading-[18px]"
       data-testid="rubric-textarea"
       spellCheck={false}
       placeholder={placeholder}

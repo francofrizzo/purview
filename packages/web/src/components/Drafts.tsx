@@ -97,7 +97,7 @@ export function CommentComposer({
       </div>
       <textarea
         ref={ref}
-        className="input h-24 resize-none font-mono text-xs"
+        className="input h-24 resize-none text-xs leading-[18px]"
         data-testid="composer-textarea"
         placeholder={
           fileLevel
@@ -319,7 +319,7 @@ export function CommentBody({
       <textarea
         ref={ref}
         data-testid={`editor-${comment.id}`}
-        className="input h-24 resize-none font-mono text-xs"
+        className="input h-24 resize-none text-xs leading-[18px]"
         value={value}
         onChange={(e) => setValue(e.target.value)}
       />

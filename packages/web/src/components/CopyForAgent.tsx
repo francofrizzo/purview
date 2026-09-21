@@ -215,7 +215,7 @@ function CopyFallback({ text, onClose }: { text: string; onClose: () => void }) 
         <textarea
           ref={ref}
           readOnly
-          className="input h-72 resize-none font-mono text-xs"
+          className="input h-72 resize-none text-xs leading-[18px]"
           value={text}
         />
       </div>
