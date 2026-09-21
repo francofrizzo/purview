@@ -1585,7 +1585,8 @@ export function createApp(opts: AppOptions = {}): Hono {
     const key = keyParam(c);
     const n = Number(c.req.param("n"));
     const state = loadState(key, root);
-    const cacheKey = `${keyToString(key)}|${n}|${state.currentRevision}`;
+    // `v2`: positional payload (lines/removedAt); never serve a text-multiset entry.
+    const cacheKey = `v2|${keyToString(key)}|${n}|${state.currentRevision}`;
     const cached = lineChangesCache.get(cacheKey);
     if (cached) return c.json(cached);
     let result: RevisionLineChanges;

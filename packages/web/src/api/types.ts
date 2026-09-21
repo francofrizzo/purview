@@ -156,11 +156,24 @@ export interface HunkLineChange {
   originHunkId: string;
   file: string;
   status: "fuzzy" | "renamed" | "new";
-  /** raw body lines (with their ' '/'+'/'-' prefix) the revision introduced, as a multiset */
-  introduced: string[];
-  droppedCount: number;
+  /**
+   * Sorted indexes into the current hunk's body lines (`hunk.lines`, the
+   * `buildRows` index space) of the lines the revision introduced.
+   */
+  lines: number[];
+  /** lines the revision deleted outright (an edit's old side is not counted) */
+  removedCount: number;
+  /**
+   * Where those deletions sit now: `line` is the body index of the line right
+   * after the deleted run (the body's length when it was at the very end).
+   */
+  removedAt: { line: number; count: number }[];
+  /** how many of the revision's lines later revisions rewrote or removed */
+  rewrittenSince: number;
   /** no later revision touched the hunk */
   exactAtCurrent: boolean;
+  /** a later step couldn't be followed; positions assumed carried over */
+  uncertain?: boolean;
   truncated?: boolean;
 }
 

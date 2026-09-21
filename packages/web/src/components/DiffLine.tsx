@@ -294,7 +294,33 @@ function Gutter({
   );
 }
 
-export interface DiffLineProps extends GutterSelectProps, LineCommentProps {
+/**
+ * "K lines removed in rN" (the changelog highlight's pure deletions): a thin
+ * dashed rule on the top edge of the row that now follows the deleted run, or
+ * on the bottom edge of a hunk's last row. Absolutely positioned inside the
+ * code column so it never changes the row's height (virtualization measures it).
+ */
+export interface RemovalMarkerProps {
+  /** tooltip for lines removed just above this row */
+  removedAbove?: string;
+  /** tooltip for lines removed just below this row (a hunk's last row only) */
+  removedBelow?: string;
+}
+
+function RemovalMarkers({ removedAbove, removedBelow }: RemovalMarkerProps) {
+  return (
+    <>
+      {removedAbove ? (
+        <span className="removed-marker" data-edge="above" title={removedAbove} aria-label={removedAbove} />
+      ) : null}
+      {removedBelow ? (
+        <span className="removed-marker" data-edge="below" title={removedBelow} aria-label={removedBelow} />
+      ) : null}
+    </>
+  );
+}
+
+export interface DiffLineProps extends GutterSelectProps, LineCommentProps, RemovalMarkerProps {
   row: DiffRow;
   tokens?: Tok[];
   onComment?: () => void;
@@ -326,6 +352,8 @@ export const DiffLine = memo(function DiffLine({
   moved,
   foldAction,
   changed,
+  removedAbove,
+  removedBelow,
   onDefinitionClick,
   isDefinedInDiff,
 }: DiffLineProps) {
@@ -384,16 +412,17 @@ export const DiffLine = memo(function DiffLine({
         </span>
       </span>
       <span
-        className="diff-code min-w-0 flex-1 pr-4"
+        className="diff-code relative min-w-0 flex-1 pr-4"
         onClick={(e) => handleDefinitionClick(e, onDefinitionClick, isDefinedInDiff)}
       >
+        <RemovalMarkers removedAbove={removedAbove} removedBelow={removedBelow} />
         {renderContent(row.content, tokens, row.intra, marks)}
       </span>
     </div>
   );
 });
 
-export interface SplitHalfProps extends LineCommentProps {
+export interface SplitHalfProps extends LineCommentProps, RemovalMarkerProps {
   row: DiffRow | null;
   /** which gutter number this side shows */
   side: LineSide;
@@ -427,6 +456,8 @@ function SplitHalf({
   moved,
   foldAction,
   changed,
+  removedAbove,
+  removedBelow,
   onDefinitionClick,
   isDefinedInDiff,
 }: SplitHalfProps) {
@@ -438,7 +469,9 @@ function SplitHalf({
           <span className="flex-none" style={{ width: COMMENT_COL_WIDTH }} />
           <span className="diff-marker" />
         </span>
-        <span className="diff-code min-w-0 flex-1" />
+        <span className="diff-code relative min-w-0 flex-1">
+          <RemovalMarkers removedAbove={removedAbove} removedBelow={removedBelow} />
+        </span>
       </div>
     );
   }
@@ -486,9 +519,10 @@ function SplitHalf({
         </span>
       </span>
       <span
-        className="diff-code min-w-0 flex-1 pr-3"
+        className="diff-code relative min-w-0 flex-1 pr-3"
         onClick={(e) => handleDefinitionClick(e, onDefinitionClick, isDefinedInDiff)}
       >
+        <RemovalMarkers removedAbove={removedAbove} removedBelow={removedBelow} />
         {renderContent(row.content, tokens, row.intra, marks)}
       </span>
     </div>
@@ -531,6 +565,9 @@ export interface SplitDiffLineProps {
    */
   changedLeft?: boolean;
   changedRight?: boolean;
+  /** "K lines removed in rN" markers; split view draws them on the left (old) half */
+  removedAboveLeft?: string;
+  removedBelowLeft?: string;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -560,6 +597,8 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   foldActionRight,
   changedLeft,
   changedRight,
+  removedAboveLeft,
+  removedBelowLeft,
   onDefinitionClick,
   isDefinedInDiff,
 }: SplitDiffLineProps) {
@@ -580,6 +619,8 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         moved={movedLeft}
         foldAction={foldActionLeft}
         changed={changedLeft}
+        removedAbove={removedAboveLeft}
+        removedBelow={removedBelowLeft}
         onDefinitionClick={onDefinitionClick}
         isDefinedInDiff={isDefinedInDiff}
       />

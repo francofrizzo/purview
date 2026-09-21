@@ -797,25 +797,38 @@ export const mockApi = {
     }
     const linesOf = (id: string) =>
       detail.files.files.flatMap((f) => f.hunks).find((hk) => hk.id === id)?.lines ?? [];
-    const pick = (id: string, test: (l: string) => boolean) => linesOf(id).filter(test);
+    // positions (body line indexes) of the fixture hunk's own lines
+    const pick = (id: string, test: (l: string) => boolean) =>
+      linesOf(id).flatMap((l, i) => (test(l) ? [i] : []));
     const plus = (id: string, count: number) => pick(id, (l) => l.startsWith("+")).slice(0, count);
     const change = (
       id: string,
       status: "fuzzy" | "new",
-      introduced: string[],
-      droppedCount: number,
+      lines: number[],
+      removed: { count: number; at?: number },
       exactAtCurrent: boolean,
-    ) => ({ currentHunkId: id, originHunkId: `${id.slice(0, 12)}ff${n}0`, file: "", status, introduced, droppedCount, exactAtCurrent });
+      rewrittenSince = 0,
+    ) => ({
+      currentHunkId: id,
+      originHunkId: `${id.slice(0, 12)}ff${n}0`,
+      file: "",
+      status,
+      lines,
+      removedCount: removed.count,
+      removedAt: removed.at === undefined ? [] : [{ line: removed.at, count: removed.count }],
+      rewrittenSince,
+      exactAtCurrent,
+    });
     const result: RevisionLineChanges = { revision: n, currentRevision: current, hunks: [], goneCount: 0, gone: [] };
     if (n === 3) {
       result.hunks = [
-        change("a1b2c3d4e5f60001", "fuzzy", pick("a1b2c3d4e5f60001", (l) => l.startsWith("+") && l.includes("idempotencyKey")), 1, true),
-        change("a1b2c3d4e5f60005", "fuzzy", plus("a1b2c3d4e5f60005", 4), 0, true),
+        change("a1b2c3d4e5f60001", "fuzzy", pick("a1b2c3d4e5f60001", (l) => l.startsWith("+") && l.includes("idempotencyKey")), { count: 1, at: 1 }, true),
+        change("a1b2c3d4e5f60005", "fuzzy", plus("a1b2c3d4e5f60005", 4), { count: 0 }, true),
       ];
     } else if (n === 2) {
       result.hunks = [
-        change("a1b2c3d4e5f60001", "fuzzy", pick("a1b2c3d4e5f60001", (l) => l.startsWith("+") && l.includes("ledger")), 0, false),
-        change("a1b2c3d4e5f60003", "new", plus("a1b2c3d4e5f60003", 3), 0, true),
+        change("a1b2c3d4e5f60001", "fuzzy", pick("a1b2c3d4e5f60001", (l) => l.startsWith("+") && l.includes("ledger")), { count: 0 }, false, 1),
+        change("a1b2c3d4e5f60003", "new", plus("a1b2c3d4e5f60003", 3), { count: 0 }, true),
       ];
       result.gone = [
         {

@@ -3,18 +3,26 @@ import { extractHunkBody } from "./diffModel";
 
 /**
  * "Highlight what revision N changed": the changelog row the reader clicked,
- * turned into per-hunk line sets the diff pane can match rows against. The
- * server sends raw body lines (prefix + content); the pane marks a rendered
- * row when its raw line is one of them, consuming matches so a line
- * introduced once marks once even when the hunk repeats it.
+ * turned into per-hunk row positions the diff pane marks. The server sends
+ * positions, not text: indexes into each current hunk's body lines
+ * (`hunk.lines`, the `buildRows` index space; see core's line-changes.ts and
+ * `hunkBodyLines` in diffModel.ts), carried blame-style from revision N
+ * through every later revision. A position is exact, so a repeated line
+ * (`}`, a blank, `return err`) marks only where N put it.
  */
 
 export interface HunkHighlight {
-  /** raw line -> how many times the revision introduced it */
-  introduced: ReadonlyMap<string, number>;
-  introducedCount: number;
-  droppedCount: number;
+  /** unified row indexes the revision introduced */
+  lines: ReadonlySet<number>;
+  lineCount: number;
+  /** lines the revision deleted outright (an edit's old side is not counted) */
+  removedCount: number;
+  /** where those deletions sit now (row index of the line after; rows.length = past the end) */
+  removedAt: readonly { line: number; count: number }[];
+  /** the revision's lines later revisions rewrote or removed */
+  rewrittenSince: number;
   exactAtCurrent: boolean;
+  uncertain: boolean;
 }
 
 export interface RevisionHighlight {
@@ -23,12 +31,6 @@ export interface RevisionHighlight {
   byHunk: ReadonlyMap<string, HunkHighlight>;
   /** hunks of this revision's changes that the scope held and that are gone now */
   goneCount: number;
-}
-
-export function toMultiset(lines: readonly string[]): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const l of lines) out.set(l, (out.get(l) ?? 0) + 1);
-  return out;
 }
 
 /**
@@ -45,10 +47,13 @@ export function buildHighlight(
   for (const h of data.hunks) {
     if (allowed && !allowed.has(h.currentHunkId)) continue;
     byHunk.set(h.currentHunkId, {
-      introduced: toMultiset(h.introduced),
-      introducedCount: h.introduced.length,
-      droppedCount: h.droppedCount,
+      lines: new Set(h.lines),
+      lineCount: h.lines.length,
+      removedCount: h.removedCount,
+      removedAt: h.removedAt,
+      rewrittenSince: h.rewrittenSince,
       exactAtCurrent: h.exactAtCurrent,
+      uncertain: Boolean(h.uncertain),
     });
   }
   const goneCount = scope?.unitId
@@ -61,22 +66,69 @@ export function buildHighlight(
 
 /**
  * Which of a hunk's rows (indexes into its raw body lines, the same index
- * space as `buildRows`) the revision introduced. First occurrences win: a
- * line introduced twice marks the first two rows carrying it, no more.
+ * space as `buildRows`) the revision introduced: the server's positions,
+ * minus any outside the rows actually rendered.
  */
-export function markedRowIndexes(
-  rawLines: readonly string[],
-  introduced: ReadonlyMap<string, number>,
-): Set<number> {
+export function markedRowIndexes(rowCount: number, lines: Iterable<number>): Set<number> {
   const out = new Set<number>();
-  if (introduced.size === 0) return out;
-  const left = new Map(introduced);
-  rawLines.forEach((line, i) => {
-    const n = left.get(line);
-    if (!n) return;
-    out.add(i);
-    left.set(line, n - 1);
+  for (const i of lines) if (Number.isInteger(i) && i >= 0 && i < rowCount) out.add(i);
+  return out;
+}
+
+/** A deletion marker on one row: lines removed just above it, or (last row only) just below. */
+export interface RemovalMark {
+  above?: number;
+  below?: number;
+}
+
+/**
+ * Where to draw "K lines removed" markers: on the top edge of the row that
+ * now follows each deleted run, or on the last row's bottom edge for a run
+ * that ended the hunk.
+ */
+export function removalMarks(
+  rowCount: number,
+  removedAt: readonly { line: number; count: number }[],
+): Map<number, RemovalMark> {
+  const out = new Map<number, RemovalMark>();
+  if (rowCount === 0) return out;
+  for (const { line, count } of removedAt) {
+    if (!Number.isInteger(line) || line < 0 || line > rowCount || count <= 0) continue;
+    const atEnd = line === rowCount;
+    const at = atEnd ? rowCount - 1 : line;
+    const mark = out.get(at) ?? {};
+    if (atEnd) mark.below = (mark.below ?? 0) + count;
+    else mark.above = (mark.above ?? 0) + count;
+    out.set(at, mark);
+  }
+  return out;
+}
+
+/**
+ * The same markers in split view, keyed by split row: a marker sits on the
+ * first split row holding its unified row (either half); a "below" marker on
+ * the last split row. Split view draws them on the left (old) half.
+ */
+export function splitRemovalMarks(
+  marks: ReadonlyMap<number, RemovalMark>,
+  splitRows: readonly { left: { index: number } | null; right: { index: number } | null }[],
+): Map<number, RemovalMark> {
+  const out = new Map<number, RemovalMark>();
+  if (marks.size === 0 || splitRows.length === 0) return out;
+  const splitOf = new Map<number, number>();
+  splitRows.forEach((r, i) => {
+    for (const cell of [r.left, r.right]) if (cell && !splitOf.has(cell.index)) splitOf.set(cell.index, i);
   });
+  for (const [u, m] of marks) {
+    if (m.above) {
+      const i = splitOf.get(u);
+      if (i !== undefined) out.set(i, { ...out.get(i), above: (out.get(i)?.above ?? 0) + m.above });
+    }
+    if (m.below) {
+      const i = splitRows.length - 1;
+      out.set(i, { ...out.get(i), below: (out.get(i)?.below ?? 0) + m.below });
+    }
+  }
   return out;
 }
 
@@ -96,24 +148,58 @@ export function markedByHunk(
   for (const hunk of hunks) {
     const h = highlight.byHunk.get(hunk.id);
     if (!h) continue;
-    out.set(hunk.id, markedRowIndexes(rawHunkLines(hunk, diffText), h.introduced));
+    out.set(hunk.id, markedRowIndexes(rawHunkLines(hunk, diffText).length, h.lines));
   }
   return out;
 }
 
+/** Every deletion marker, per hunk, for the hunks shown. */
+export function removalMarksByHunk(
+  hunks: readonly Hunk[],
+  highlight: RevisionHighlight | null | undefined,
+  diffText: string,
+): Map<string, Map<number, RemovalMark>> {
+  const out = new Map<string, Map<number, RemovalMark>>();
+  if (!highlight) return out;
+  for (const hunk of hunks) {
+    const h = highlight.byHunk.get(hunk.id);
+    if (!h || h.removedAt.length === 0) continue;
+    const marks = removalMarks(rawHunkLines(hunk, diffText).length, h.removedAt);
+    if (marks.size > 0) out.set(hunk.id, marks);
+  }
+  return out;
+}
+
+/** The deletion marker's tooltip. */
+export function removalLabel(revision: number, count: number): string {
+  return `${plural(count, "line")} removed in r${revision}`;
+}
+
 /** The hunk header's label and tooltip. */
 export function hunkChangedLabel(revision: number, h: HunkHighlight): { text: string; title: string } {
-  const dropped = h.droppedCount > 0 ? ` · ${plural(h.droppedCount, "line")} removed` : "";
-  const title = h.exactAtCurrent
-    ? `Lines this hunk gained in r${revision}`
-    : `Changed again after r${revision}; lines matched by content.`;
-  return { text: `changed in r${revision}${dropped}`, title };
+  const removed = h.removedCount > 0 ? ` · ${plural(h.removedCount, "line")} removed` : "";
+  const rewritten = h.rewrittenSince > 0 ? ` · ${h.rewrittenSince} since rewritten` : "";
+  const r = `r${revision}`;
+  let title: string;
+  if (h.exactAtCurrent) {
+    title = `Lines this hunk gained in ${r}`;
+  } else if (h.uncertain) {
+    title = `Changed again after ${r}, across a revision only partly on record; the marks assume ${r}'s lines stayed put there.`;
+  } else {
+    const n = h.rewrittenSince;
+    const since =
+      n === 0
+        ? `None of ${r}'s lines were rewritten by later revisions.`
+        : `${n} of ${r}'s lines ${n === 1 ? "was" : "were"} rewritten by later revisions.`;
+    title = `Changed again after ${r}. The marks are exact: they follow ${r}'s own lines. ${since}`;
+  }
+  return { text: `changed in ${r}${removed}${rewritten}`, title };
 }
 
 /** "N lines in M hunks" for the unit header. */
 export function highlightTally(h: RevisionHighlight): { lines: number; hunks: number } {
   let lines = 0;
-  for (const v of h.byHunk.values()) lines += v.introducedCount;
+  for (const v of h.byHunk.values()) lines += v.lineCount;
   return { lines, hunks: h.byHunk.size };
 }
 

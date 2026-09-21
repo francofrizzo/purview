@@ -28,6 +28,9 @@ import { identifierRangeAtPoint } from "../lib/identifierAt";
 import {
   hunkChangedLabel,
   markedByHunk as computeMarkedByHunk,
+  removalLabel,
+  removalMarksByHunk,
+  splitRemovalMarks,
   type RevisionHighlight,
 } from "../lib/revisionHighlight";
 import { detectMoves, type HunkMoves } from "../lib/moveDetection";
@@ -450,6 +453,22 @@ export function DiffPane({
     () => computeMarkedByHunk(hunks, highlight, detail.diff),
     [hunks, highlight, detail.diff],
   );
+  // Its pure deletions: "K lines removed" markers, per hunk, by unified row,
+  // and the same by split row (split draws them on the left half).
+  const removalsByHunk = useMemo(
+    () => removalMarksByHunk(hunks, highlight, detail.diff),
+    [hunks, highlight, detail.diff],
+  );
+  const splitRemovalsByHunk = useMemo(() => {
+    const out = new Map<string, ReturnType<typeof splitRemovalMarks>>();
+    for (const hunk of hunks) {
+      const marks = removalsByHunk.get(hunk.id);
+      if (marks) out.set(hunk.id, splitRemovalMarks(marks, buildSplitRows(hunk, detail.diff)));
+    }
+    return out;
+  }, [hunks, removalsByHunk, detail.diff]);
+  const removalTitle = (count: number | undefined) =>
+    count && highlight ? removalLabel(highlight.revision, count) : undefined;
 
   /**
    * Which comment blocks are open, keyed by anchor rather than by row index:
@@ -1901,10 +1920,13 @@ export function DiffPane({
       const rightNo = right ? right.row.newNumber : undefined;
       const opened = openedRegionStarts.get(`${row.hunkId}:${row.rowIdx}`);
       const changedSide = splitChanged(row.hunkId, row.rowIdx, row.entry.hunk);
+      const removal = splitRemovalsByHunk.get(row.hunkId)?.get(row.rowIdx);
       return (
         <SplitDiffLine
           changedLeft={changedSide.left}
           changedRight={changedSide.right}
+          removedAboveLeft={removalTitle(removal?.above)}
+          removedBelowLeft={removalTitle(removal?.below)}
           foldActionLeft={refoldButton(opened?.find((r) => r.kind === "out"))}
           foldActionRight={refoldButton(opened?.find((r) => r.kind === "in"))}
           left={left?.row ?? null}
@@ -1975,6 +1997,8 @@ export function DiffPane({
         marks={marksFor(row.hunkId, row.lineIdx)}
         moved={movedAt(row.hunkId, row.entry.hunk, row.lineIdx, line.type)}
         changed={markedByHunk.get(row.hunkId)?.has(row.lineIdx) ?? false}
+        removedAbove={removalTitle(removalsByHunk.get(row.hunkId)?.get(row.lineIdx)?.above)}
+        removedBelow={removalTitle(removalsByHunk.get(row.hunkId)?.get(row.lineIdx)?.below)}
         comments={anchor ? grouped.byLine.get(anchor) : undefined}
         expanded={anchor ? expandedAnchors.has(anchor) : false}
         onToggleComments={anchor ? () => toggleAnchor(anchor) : undefined}

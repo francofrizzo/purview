@@ -22,6 +22,18 @@ export interface DiffRow {
 const CACHE = new Map<string, DiffRow[]>();
 
 /**
+ * A hunk's body lines from core's `text`: the raw split, prefix included,
+ * nothing filtered ("\ No newline" markers and empty lines stay rows). This
+ * is `hunk.lines`, the index space of `buildRows` — and the index space core's
+ * line positions (`hunkBodyLines` in core/src/line-changes.ts, the changelog
+ * highlight) are expressed in. Keep the two identical.
+ */
+export function hunkBodyLines(text: string | undefined): string[] | undefined {
+  // An empty body must stay empty, not [""]; undefined sends buildRows to the fallback.
+  return text ? text.split("\n") : undefined;
+}
+
+/**
  * Fallback only. files.json normally carries each hunk's raw body (core's
  * `text`, surfaced as `hunk.lines` by the API client), so this is used solely
  * for state written before that field existed. We never re-derive structure —

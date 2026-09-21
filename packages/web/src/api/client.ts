@@ -1,4 +1,5 @@
 import { mockApi } from "../mocks/server";
+import { hunkBodyLines } from "../lib/diffModel";
 import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
 import { isRemovedUnit } from "./types";
@@ -260,8 +261,7 @@ interface WireReviewStatus {
 function adaptHunk(h: WireHunk): Hunk {
   // core stores the body as a single newline-joined string; the renderer wants
   // one entry per line. An empty body must stay empty, not [""].
-  const lines = h.text ? h.text.split("\n") : undefined;
-  return { ...h, lines };
+  return { ...h, lines: hunkBodyLines(h.text) };
 }
 
 function adaptFile(f: WireFile): FileEntry {

@@ -408,8 +408,9 @@ describe("GET /api/prs/:key/revisions/:n/line-changes", () => {
     expect(body.hunks[0]).toMatchObject({
       currentHunkId: reworked.hunkId,
       status: "fuzzy",
-      introduced: ["+newer5"],
-      droppedCount: 1,
+      lines: [expect.any(Number)],
+      removedCount: 0,
+      rewrittenSince: 0,
       exactAtCurrent: true,
     });
 

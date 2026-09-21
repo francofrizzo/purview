@@ -528,6 +528,24 @@
   [data-changed="true"] > .diff-fixed > .diff-gutter:first-child {
     box-shadow: inset 3px 0 0 var(--changed-in-bar);
   }
+  /* Lines the highlighted revision deleted outright: a dashed rule on the
+     edge of the row now next to where they were. Absolute inside the code
+     column, so it never changes a row's height (the list is virtualized). */
+  .removed-marker {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 4px;
+    cursor: help;
+  }
+  .removed-marker[data-edge="above"] {
+    top: 0;
+    border-top: 2px dashed var(--changed-in-bar);
+  }
+  .removed-marker[data-edge="below"] {
+    bottom: 0;
+    border-bottom: 2px dashed var(--changed-in-bar);
+  }
   /* A clickable unit changelog row (highlights that revision's lines). */
   .changelog-row {
     transition: background-color 120ms ease-out;
