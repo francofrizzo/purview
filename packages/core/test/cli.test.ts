@@ -5,9 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { keyToString, prCheckoutPath, type PrKey } from "../src/paths.js";
-import { appendEvent, writeMeta, writeRevision } from "../src/store.js";
+import { appendEvent, readFilesJson, writeMeta, writeMigrationReport, writeRevision } from "../src/store.js";
 import { computeHunkId } from "../src/hunk-id.js";
-import { toRevisionFiles } from "../src/migration.js";
+import { migrate, toRevisionFiles } from "../src/migration.js";
 import type { FileDiff, Hunk } from "../src/schemas.js";
 
 const cliPath = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
@@ -95,6 +95,31 @@ function seed(added: string[] = ["  return a + b;"]): { hunk: Hunk } {
         order: 0,
       },
     ],
+  });
+  return { hunk };
+}
+
+/** Add revision 2 whose only hunk replaces revision 1's, migrated for real. */
+function seedRev2(added: string[]): { hunk: Hunk } {
+  const hunk = mkHunk("src/a.ts", added, ["  return a;"]);
+  const files: FileDiff[] = [{ path: "src/a.ts", status: "modified", binary: false, hunks: [hunk] }];
+  writeRevision(key, 2, "diff", files, { baseSha: "base2", headSha: "head2", mergeBase: "mb2" });
+  const report = migrate({
+    revision: 2,
+    previousRevision: 1,
+    previousFiles: readFilesJson(key, 1).files,
+    nextFiles: files,
+  });
+  writeMigrationReport(key, report);
+  appendEvent(key, {
+    type: "revision-added",
+    revision: 2,
+    baseSha: "base2",
+    headSha: "head2",
+    mergeBase: "mb2",
+    baseOnly: false,
+    files: toRevisionFiles(files),
+    migration: report,
   });
   return { hunk };
 }
@@ -247,6 +272,81 @@ describe("cli show", () => {
     const res = run(["show", keyToString(key)]);
     expect(res.status).toBe(1);
     expect(res.stderr).toMatch(/at least one selector/);
+  });
+});
+
+describe("cli changes", () => {
+  it("says so when no unit changed (no migration yet, or an identical one)", () => {
+    seed();
+    const r1 = run(["changes", keyToString(key)]);
+    expect(r1.status).toBe(0);
+    expect(r1.stdout).toBe("No units changed in revision 1.\n");
+    seedRev2(["  return a + b;"]);
+    expect(run(["changes", keyToString(key)]).stdout).toBe("No units changed in revision 2.\n");
+  });
+
+  it("prints the changed unit's description and a compact before->after", () => {
+    const { hunk: old } = seed();
+    const { hunk } = seedRev2(["  return a + b + c;"]);
+    const res = run(["changes", keyToString(key)]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("Changed units in revision 2 (vs r1)");
+    expect(res.stdout).toContain("## core — Core  [must-read/core-logic]");
+    expect(res.stdout).toContain("summary: s");
+    expect(res.stdout).toContain("attentionWhy: why");
+    expect(res.stdout).toContain(`~ fuzzy score`);
+    expect(res.stdout).toContain(`${hunk.id} <- ${old.id}  src/a.ts`);
+    expect(res.stdout).toContain("    was│+  return a + b;");
+    expect(res.stdout).toContain("    now│+  return a + b + c;");
+    expect(res.stdout).toContain("-- 1 changed unit: 1 reworked hunks, 0 archived, 0 related hints");
+    // --rev reads an earlier revision's migration
+    expect(run(["changes", keyToString(key), "--rev", "1"]).stdout).toBe("No units changed in revision 1.\n");
+  });
+
+  it("prints a heavily reworked hunk whole, and spills a large result to scratch like show", () => {
+    const big = Array.from({ length: 800 }, (_, i) => `  const line${i} = "${"x".repeat(30)}";`);
+    seed(big);
+    const reworked = big.map((l, i) => (i % 16 === 0 ? l.replace("x", "y") : l));
+    seedRev2(reworked);
+    const res = run(["changes", keyToString(key)]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("-- 1 changed unit");
+    expect(res.stdout).toContain("too large to print inline");
+    const file = /Written to (\S+)/.exec(res.stdout)?.[1];
+    expect(path.dirname(file!)).toBe(path.join(tmp, key.host, key.owner, key.repo, String(key.number), "scratch"));
+    expect(path.basename(file!)).toMatch(/^changes-\d+\.txt$/);
+    const written = fs.readFileSync(file!, "utf8");
+    expect(written).toContain("reworked heavily");
+    // the full body comes with show's line-number gutter
+    expect(written).toContain(`800 │+  const line799 = `);
+
+    const inline = run(["changes", keyToString(key), "--inline"]);
+    expect(inline.stdout).toContain("line799");
+  });
+});
+
+describe("cli set-unit changelogEntry", () => {
+  it("records the entry under the current revision and truncates an over-long one with a warning", () => {
+    seed();
+    seedRev2(["  return a + b + c;"]);
+    const long = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+    const res = run([
+      "set-unit", keyToString(key), "--id", "core",
+      "--file", writeJson("log.json", { summary: "now adds c", changelogEntry: long }),
+    ]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain(`warning: unit core changelogEntry truncated (${long.length}->160 chars)`);
+    const state = JSON.parse(run(["report", keyToString(key), "--json"]).stdout);
+    const log = state.units[0].changelog;
+    expect(log).toHaveLength(1);
+    expect(log[0].revision).toBe(2);
+    expect(log[0].text.length).toBeLessThanOrEqual(160);
+    expect(log[0].text.endsWith("…")).toBe(true);
+
+    // A re-run for the same revision replaces the entry.
+    run(["set-unit", keyToString(key), "--id", "core", "--file", writeJson("log2.json", { changelogEntry: "adds c" })]);
+    const again = JSON.parse(run(["report", keyToString(key), "--json"]).stdout);
+    expect(again.units[0].changelog).toEqual([{ revision: 2, text: "adds c" }]);
   });
 });
 

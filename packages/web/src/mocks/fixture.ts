@@ -351,6 +351,10 @@ const units: ReviewUnit[] = [
         evidence: "src/api/pay.ts:88, src/jobs/retryQueue.ts:41, test/payments/charge.test.ts:120",
       },
     ],
+    changelog: [
+      { revision: 2, text: "ledger write moved before the gateway call; failures are now recorded too" },
+      { revision: 3, text: "key derivation drops the timestamp; added a replay-after-timeout test" },
+    ],
     hunkIds: [
       "a1b2c3d4e5f60001",
       "a1b2c3d4e5f60003",
@@ -417,6 +421,7 @@ const removedUnits: ReviewUnit[] = [
     order: 4,
     removedAtRevision: 3,
     readBeforeRemoval: true,
+    changelog: [{ revision: 2, text: "retention window cut from 90 to 30 days" }],
   },
 ];
 

@@ -117,6 +117,20 @@ export type Finding = z.infer<typeof FindingSchema>;
 /** At most this many findings ride on one unit; beyond it, keep the material ones. */
 export const MAX_UNIT_FINDINGS = 5;
 
+/** Stored-state limit for one changelog line. The CLI truncates to it (see truncateFindings). */
+export const CHANGELOG_TEXT_MAX = 160;
+
+/**
+ * One line about what a revision changed in a unit ("rounding switched to
+ * banker's; added a .5 test"). Written by the incremental analysis through a
+ * unit patch's `changelogEntry`; at most one per revision.
+ */
+export const UnitChangelogEntrySchema = z.object({
+  revision: z.number().int(),
+  text: z.string().min(1).max(CHANGELOG_TEXT_MAX),
+});
+export type UnitChangelogEntry = z.infer<typeof UnitChangelogEntrySchema>;
+
 export const ReviewUnitSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
@@ -133,6 +147,14 @@ export const ReviewUnitSchema = z.object({
    * so by having no `findings` key rather than an empty array.
    */
   findings: z.array(FindingSchema).max(MAX_UNIT_FINDINGS).optional(),
+  /**
+   * What each later revision changed in this unit, oldest first, one entry per
+   * revision. Optional like `findings`. Grown by `changelogEntry` on a unit
+   * patch (see ReviewUnitPatchSchema); carried through migration and kept on
+   * husks. `analysis-set` replaces units wholesale, so a full re-analysis
+   * starts fresh changelogs unless its payload carries them.
+   */
+  changelog: z.array(UnitChangelogEntrySchema).optional(),
   /**
    * Set by the reducer, never by analysis: the revision in which every hunk
    * of this unit left the PR. Such a unit is a "husk" — kept for exactly one
@@ -152,7 +174,21 @@ export function isRemovedUnit(u: { removedAtRevision?: number }): boolean {
   return u.removedAtRevision !== undefined;
 }
 
-export const ReviewUnitPatchSchema = ReviewUnitSchema.partial();
+/**
+ * `changelogEntry` is patch-only: the reducer adds it to `changelog` under the
+ * state's current revision, replacing that revision's entry if there is one,
+ * so a re-run never duplicates.
+ */
+const changelogEntryField = z.string().min(1).max(CHANGELOG_TEXT_MAX).optional();
+
+export const ReviewUnitPatchSchema = ReviewUnitSchema.partial().extend({
+  changelogEntry: changelogEntryField,
+});
+
+/** A brand-new unit sent through `set-unit`: the full unit, plus the patch-only field. */
+export const NewReviewUnitSchema = ReviewUnitSchema.extend({
+  changelogEntry: changelogEntryField,
+});
 export type ReviewUnitPatch = z.infer<typeof ReviewUnitPatchSchema>;
 
 /** Payload accepted by `reviewer-state set-analysis --file <json>`. */
@@ -720,6 +756,8 @@ export const ArchivedHunkSchema = z.object({
   file: z.string(),
   archivedAtRevision: z.number().int(),
   wasViewed: z.boolean(),
+  /** the live unit that held this hunk when it was archived (see `changedUnits`) */
+  unitId: z.string().optional(),
 });
 export type ArchivedHunk = z.infer<typeof ArchivedHunkSchema>;
 
@@ -729,7 +767,7 @@ export type ArchivedHunk = z.infer<typeof ArchivedHunkSchema>;
  * written under an older version, so stored PRs pick the change up on their
  * next read instead of only on their next appended event.
  */
-export const STATE_SHAPE_VERSION = 2;
+export const STATE_SHAPE_VERSION = 3;
 
 export const StateSchema = z.object({
   /** see STATE_SHAPE_VERSION; absent on every state.json written before it existed */

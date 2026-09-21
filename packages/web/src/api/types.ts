@@ -85,6 +85,12 @@ export interface Finding {
   evidence: string;
 }
 
+/** One line about what a revision changed in a unit (see `ReviewUnit.changelog`). */
+export interface UnitChangelogEntry {
+  revision: number;
+  text: string;
+}
+
 export interface ReviewUnit {
   id: string;
   title: string;
@@ -97,6 +103,12 @@ export interface ReviewUnit {
   order: number;
   /** absent on units that verified nothing, and on any state predating findings */
   findings?: Finding[];
+  /**
+   * What each later revision changed in this unit, oldest first, one entry per
+   * revision. Absent until an incremental analysis writes one; a full
+   * re-analysis starts it fresh.
+   */
+  changelog?: UnitChangelogEntry[];
   /**
    * Set only on a "husk": a unit every hunk of which left the PR in this
    * revision. Husks never appear in `PrState.units` — the client adapter

@@ -234,6 +234,7 @@ describe("full migration scenario", () => {
         file: "src/legacy.ts",
         archivedAtRevision: 2,
         wasViewed: true,
+        unitId: "cleanup",
       },
     ]);
 

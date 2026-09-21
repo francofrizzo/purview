@@ -249,6 +249,7 @@ describe("chatSystemPrompt after the section refactor", () => {
       `  - parsed hunks: ${dir}/revisions/1/files.json`,
       `  - triage overview (read this first): \`${cli()} triage github.com/acme/widgets/7\``,
       `  - hunk bodies: \`${cli()} show github.com/acme/widgets/7 <hunk-id|path|'glob'>...\` (single-quote globs, e.g. \`'internal/**/*_test.go'\`; each body line is prefixed with its old/new source line numbers)`,
+      `  - what the latest revision reworked, per unit: \`${cli()} changes github.com/acme/widgets/7\``,
       `  - review rubric: ${process.env.REVIEWER_SKILL_DIR}/RUBRIC.md`,
       `  - read-only status: \`${cli()} report github.com/acme/widgets/7\` (add --json for raw state), \`${cli()} list\``,
       `  - An exact checkout of the PR head (aaaaaaaaaaaa) is at /co/7. It is the code as this PR leaves it — read from it freely, never modify it. To see a file as it was before the PR, run \`${cli()} base-file github.com/acme/widgets/7 <path>\`.`,

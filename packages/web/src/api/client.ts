@@ -297,6 +297,7 @@ function adaptState(s: WireState): PrState {
     summary: s.summary,
     // Husks are split off here, once, so nothing that counts, numbers or
     // navigates units ever sees one; only the sidebar's Removed group reads them.
+    // Units pass through whole: optional fields (findings, changelog) ride along.
     units: (s.units ?? []).filter((u) => !isRemovedUnit(u)),
     removedUnits: (s.units ?? []).filter(isRemovedUnit),
     hunks: s.hunks ?? {},

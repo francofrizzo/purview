@@ -26,6 +26,7 @@ import { migrateStateDirOnStartup } from "./state-dir.js";
 import { formatReport } from "./report.js";
 import { renderTriage } from "./triage.js";
 import { allSelectedHunks, renderShowHunk, selectHunks } from "./hunk-select.js";
+import { renderChanges } from "./changes.js";
 
 // The state dir was renamed `~/.reviewer` -> `~/.purview`; whichever entry
 // point runs first does the one-time move. Logged on stderr so `--json` output
@@ -55,6 +56,29 @@ function resolveRevision(state: { currentRevision: number }, rev?: string): numb
  * prints the path, so the model goes straight to one Read.
  */
 export const SHOW_INLINE_LIMIT = 25_000;
+
+/**
+ * Print `body`, or — above SHOW_INLINE_LIMIT, unless `inline` — write it to
+ * the PR's scratch dir and print `summary` plus the path to Read instead.
+ */
+function printOrSpill(
+  key: PrKey,
+  body: string,
+  opts: { summary: string; name: string; inline?: boolean },
+): void {
+  if (opts.inline || body.length <= SHOW_INLINE_LIMIT) {
+    process.stdout.write(body);
+    return;
+  }
+  const dir = path.join(prDir(key), "scratch");
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${opts.name}-${Date.now()}.txt`);
+  fs.writeFileSync(file, body, "utf8");
+  console.log(`${opts.summary}, ${Math.round(body.length / 1024)} KB: too large to print inline.`);
+  console.log(`Written to ${file}`);
+  console.log("Read that file with the Read tool (page with offset/limit if it is very long).");
+  console.log("Cite source lines from its gutter (old new │), never the file's own line numbers.");
+}
 
 function readJsonFile(file: string): unknown {
   if (file === "-") return JSON.parse(fs.readFileSync(0, "utf8"));
@@ -177,23 +201,43 @@ program
     const summary = `-- ${hunks.length} hunks, ${files.size} files`;
     const body = hunks.map(renderShowHunk).join("") + summary + "\n";
 
-    if (opts.inline || body.length <= SHOW_INLINE_LIMIT) {
-      process.stdout.write(body);
-    } else {
-      const dir = path.join(prDir(key), "scratch");
-      fs.mkdirSync(dir, { recursive: true });
-      const file = path.join(dir, `show-${Date.now()}.txt`);
-      fs.writeFileSync(file, body, "utf8");
-      console.log(`${summary}, ${Math.round(body.length / 1024)} KB: too large to print inline.`);
-      console.log(`Written to ${file}`);
-      console.log("Read that file with the Read tool (page with offset/limit if it is very long).");
-      console.log("Cite source lines from its gutter (old new │), never the file's own line numbers.");
-    }
+    printOrSpill(key, body, { summary, name: "show", inline: opts.inline });
 
     if (unknown.length > 0) {
       console.error(`error: unknown selector(s): ${unknown.join(", ")}`);
       process.exitCode = 1;
     }
+  });
+
+program
+  .command("changes")
+  .argument("<key>")
+  .option("--rev <n>", "revision whose migration to read (defaults to the current one)")
+  .option("--inline", "always print to stdout, even when the result is large")
+  .description(
+    "units a revision reworked (fuzzy/renamed/archived hunks): current description plus a compact before->after",
+  )
+  .action((keyArg: string, opts: { rev?: string; inline?: boolean }) => {
+    const key = requireExistingKey(keyArg);
+    const state = loadState(key);
+    const revision = resolveRevision(state, opts.rev);
+    const report = readMigrationReport(key, revision);
+    const filesOf = (rev: number | undefined) => {
+      if (rev === undefined) return undefined;
+      try {
+        return readFilesJson(key, rev).files;
+      } catch {
+        return undefined;
+      }
+    };
+    const { body, summary } = renderChanges({
+      state,
+      report,
+      revision,
+      previousFiles: filesOf(report?.previousRevision),
+      currentFiles: filesOf(revision),
+    });
+    printOrSpill(key, body, { summary, name: "changes", inline: opts.inline });
   });
 
 /** Exit with a message on stderr (no `error:` prefix — the text is the answer). */

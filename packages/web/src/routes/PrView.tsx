@@ -60,6 +60,7 @@ import {
 } from "../components/Drafts";
 import { CommentBubble, InlineCommentList } from "../components/InlineComments";
 import { groupComments } from "../lib/comments";
+import { UnitChangelog } from "../components/UnitChangelog";
 import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
@@ -1082,6 +1083,7 @@ export function PrView() {
                   <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
                     {selectedUnit.summary}
                   </p>
+                  <UnitChangelog changelog={selectedUnit.changelog} />
                   {selectedUnit.attentionWhy ? (
                     <p className="mt-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
                       why {selectedUnit.attention}: {selectedUnit.attentionWhy}

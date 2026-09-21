@@ -47,11 +47,29 @@ first three as "carried".
    revision's one plus a "Needs classification" list.
 2. `reviewer-state report <key>`'s "Needs classification" list is exactly the `new`/
    unassigned hunk ids. Fetch every one of their bodies with a **single**
-   `reviewer-state show <key> <id1> <id2> ...` call, then classify only those hunks. Do
-   not re-examine or reclassify carried/fuzzy/renamed hunks — their unit membership and
-   attention already reflect prior human review context (including any
-   `classification-corrected` events), and re-deriving them from scratch risks
-   contradicting that history.
+   `reviewer-state show <key> <id1> <id2> ...` call, then classify those hunks. Do not
+   re-group carried/fuzzy/renamed hunks — their unit membership and attention already
+   reflect prior human review context (including any `classification-corrected` events),
+   and re-deriving them from scratch risks contradicting that history.
+
+   But **do** refresh the description of every *changed unit*. Run
+   `reviewer-state changes <key>`: it lists each live unit (husks excluded) that this
+   revision reworked — one of its current hunks migrated `fuzzy` (or `renamed` with
+   different content), or a hunk it held was `archived` — with its current `summary` /
+   `attentionWhy`, a compact before→after of each reworked hunk (diff of the old and new
+   hunk bodies), the archived hunk ids with their old header and sizes, and new/unassigned
+   hunks in the same files as hints only. A unit is also changed once you attach a `new`
+   hunk to it. For each changed unit, in its one `set-unit` patch:
+   - rewrite `summary` and `attentionWhy` to describe the code as it is **now**;
+   - re-check `kind` / `attention` / `riskFlags` (a correction needs `--note`);
+   - send a `changelogEntry`: one line, ≤160 chars, about what *this revision* changed in
+     the unit (e.g. `"rounding switched to banker's; added a .5 test"`) — not a restatement
+     of the summary. It is recorded under the state's current revision in the unit's
+     `changelog`; re-sending replaces that revision's entry rather than adding another.
+     A longer one is truncated at a word boundary with a warning;
+   - re-verify its findings (see "What happens to findings").
+
+   Units `changes` does not list and that take no new hunk are not patched at all.
 3. Patch only the units affected by new hunks, via
    `reviewer-state set-unit <key> --id <unitId> --file patch.json` (unit id is the `--id`
    flag or an `id` field in the JSON; write patch.json with the Write tool into the scratch
@@ -59,8 +77,8 @@ first three as "carried".
    kind/attention correction). A "patch" here means updating that one unit's `hunkIds`
    (adding the new hunk — send the **full** resulting array, the patch replaces the field,
    it does not append) and, only if the new hunk changes what's true about the unit, its
-   `summary` / `attentionWhy` / `riskFlags`. Units untouched by new hunks are not patched
-   at all. A hunk belongs to one unit only: `set-unit` rejects a `hunkIds` array that takes
+   `summary` / `attentionWhy` / `riskFlags`. Units untouched by new hunks and not listed by
+   `changes` are not patched at all. A hunk belongs to one unit only: `set-unit` rejects a `hunkIds` array that takes
    a hunk another unit still owns. To move one, patch its current unit without it first,
    then add it to the new unit.
 
@@ -75,7 +93,9 @@ first three as "carried".
    SKILL.md step 3 over the entire diff on a refresh — that would silently discard
    accumulated viewed-state semantics and reviewer trust in the existing structure. The
    only exception is the very first `set-analysis` call on a PR that has no prior
-   analysis at all (that's `init`'s flow, not `refresh`'s).
+   analysis at all (that's `init`'s flow, not `refresh`'s). `set-analysis` replaces units
+   wholesale, so it also starts every unit's `changelog` fresh unless the payload carries
+   it.
 
 ## What happens to findings
 
@@ -110,6 +130,11 @@ a unit assignment: they are still unassigned and still listed under "Needs class
 The hint is deliberate, since these hunks aren't part of the PR author's actual changes,
 just base drift.
 
+A fuzzy rework in a `baseOnly` revision came from the base branch, not the PR author. Such
+a unit still shows up in `changes`, but a refresh does not start an analysis for it alone
+(the server's auto-trigger ignores fuzzy-only changes on `baseOnly` revisions), and it
+needs no description rewrite unless the drift changes what is true about the unit.
+
 **Exception**: if a new hunk in a `baseOnly` revision touches a file that an existing
 `must-read` unit already covers, don't leave it at the default skip — classify it
 normally and attach it to that unit (or a new one) instead, since it may interact with
@@ -125,6 +150,7 @@ code a reviewer is already scrutinizing closely.
   real PR on GitHub.
 - Never delete or re-home archived hunks yourself; the migration engine already moved
   them out of active unit membership.
-- Never touch units that have no new/unassigned hunks in them.
+- Never touch units that have no new/unassigned hunks in them and that `changes` does not
+  list.
 - Never overwrite the whole `units` array with `set-analysis` on a refresh — that command
   is for the initial full analysis only. Use `set-unit` for incremental patches.

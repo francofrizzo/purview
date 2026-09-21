@@ -37,10 +37,11 @@ import type {
 } from "./schemas.js";
 import {
   AnalysisSchema,
+  CHANGELOG_TEXT_MAX,
   FINDING_EVIDENCE_MAX,
   FINDING_TEXT_MAX,
+  NewReviewUnitSchema,
   ReviewUnitPatchSchema,
-  ReviewUnitSchema,
 } from "./schemas.js";
 
 /**
@@ -368,9 +369,9 @@ export function truncateAtWord(s: string, max: number): string {
 
 /**
  * Pre-schema pass for `set-analysis` / `set-unit` payloads: over-long finding
- * `text`/`evidence` are truncated to the stored-state limits rather than
- * failing the whole payload, and each truncated finding yields one warning
- * line. A model trimming prose to fit a char count across several retries
+ * `text`/`evidence`, a unit patch's `changelogEntry` and `changelog[].text`
+ * are truncated to the stored-state limits rather than failing the whole
+ * payload, and each truncated one yields one warning line. A model trimming prose to fit a char count across several retries
  * costs far more than a clipped sentence. Accepts an analysis (`units[]`) or a
  * single unit/patch (`findings[]`); anything else passes through untouched,
  * and the schema still has the last word on shape.
@@ -380,11 +381,37 @@ export function truncateFindings(
   fallbackUnitId?: string,
 ): { payload: unknown; warnings: string[] } {
   const warnings: string[] = [];
+  const fixChangelog = (u: Record<string, unknown>, unitId: string): Record<string, unknown> => {
+    const next = { ...u };
+    const entry = u.changelogEntry;
+    if (typeof entry === "string" && entry.length > CHANGELOG_TEXT_MAX) {
+      next.changelogEntry = truncateAtWord(entry, CHANGELOG_TEXT_MAX);
+      warnings.push(
+        `warning: unit ${unitId} changelogEntry truncated (${entry.length}->${CHANGELOG_TEXT_MAX} chars)`,
+      );
+    }
+    if (Array.isArray(u.changelog)) {
+      next.changelog = u.changelog.map((e) => {
+        if (!e || typeof e !== "object") return e;
+        const text = (e as Record<string, unknown>).text;
+        if (typeof text !== "string" || text.length <= CHANGELOG_TEXT_MAX) return e;
+        warnings.push(
+          `warning: unit ${unitId} changelog r${(e as Record<string, unknown>).revision} truncated ` +
+            `(${text.length}->${CHANGELOG_TEXT_MAX} chars)`,
+        );
+        return { ...e, text: truncateAtWord(text, CHANGELOG_TEXT_MAX) };
+      });
+    }
+    return next;
+  };
   const fixUnit = (unit: unknown): unknown => {
     if (!unit || typeof unit !== "object") return unit;
-    const u = unit as Record<string, unknown>;
-    if (!Array.isArray(u.findings)) return unit;
-    const unitId = typeof u.id === "string" ? u.id : (fallbackUnitId ?? "?");
+    const unitId =
+      typeof (unit as Record<string, unknown>).id === "string"
+        ? ((unit as Record<string, unknown>).id as string)
+        : (fallbackUnitId ?? "?");
+    const u = fixChangelog(unit as Record<string, unknown>, unitId);
+    if (!Array.isArray(u.findings)) return u;
     const findings = u.findings.map((f, i) => {
       if (!f || typeof f !== "object") return f;
       const finding = f as Record<string, unknown>;
@@ -496,7 +523,7 @@ export function setUnit(
 
   let patch: ReviewUnitPatch;
   if (!existing) {
-    const result = ReviewUnitSchema.safeParse({
+    const result = NewReviewUnitSchema.safeParse({
       ...(patchInput as Record<string, unknown>),
       id: unitId,
     });

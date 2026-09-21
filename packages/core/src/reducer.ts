@@ -1,10 +1,12 @@
 import { STATE_SHAPE_VERSION, isRemovedUnit } from "./schemas.js";
 import type {
   ReviewUnit,
+  ReviewUnitPatch,
   ReviewerEvent,
   State,
   HunkState,
   FileRollup,
+  UnitChangelogEntry,
 } from "./schemas.js";
 
 export function initialState(): State {
@@ -34,6 +36,29 @@ function reviveIfPopulated(unit: ReviewUnit): ReviewUnit {
   const next = { ...unit };
   delete next.removedAtRevision;
   delete next.readBeforeRemoval;
+  return next;
+}
+
+/**
+ * `changelog` with `text` recorded for `revision`: one entry per revision, so
+ * a re-run for the same revision replaces its entry instead of adding one.
+ * Oldest first.
+ */
+export function upsertChangelog(
+  changelog: UnitChangelogEntry[] | undefined,
+  revision: number,
+  text: string,
+): UnitChangelogEntry[] {
+  return [...(changelog ?? []).filter((e) => e.revision !== revision), { revision, text }].sort(
+    (a, b) => a.revision - b.revision,
+  );
+}
+
+/** Merge a unit patch; the patch-only `changelogEntry` lands in `changelog`. */
+function applyUnitPatch(unit: ReviewUnit, patch: ReviewUnitPatch, revision: number): ReviewUnit {
+  const { changelogEntry, ...fields } = patch;
+  const next = { ...unit, ...fields } as ReviewUnit;
+  if (changelogEntry) next.changelog = upsertChangelog(next.changelog, revision, changelogEntry);
   return next;
 }
 
@@ -97,6 +122,14 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       /** old hunk id -> how it migrated; used for the findings staleness rule */
       const statusByOldId = new Map<string, string>();
 
+      // Which live unit held each outgoing hunk, so an archived hunk remembers
+      // the unit it left (`changedUnits` reads it back).
+      const unitOfOldHunk = new Map<string, string>();
+      for (const u of state.units) {
+        if (isRemovedUnit(u)) continue;
+        for (const id of u.hunkIds) unitOfOldHunk.set(id, u.id);
+      }
+
       if (event.migration) {
         for (const entry of event.migration.entries) {
           if (entry.status === "archived") statusByOldId.set(entry.hunkId, "archived");
@@ -108,6 +141,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
               file: entry.file,
               archivedAtRevision: event.revision,
               wasViewed: entry.wasViewed ?? false,
+              unitId: unitOfOldHunk.get(entry.hunkId),
             });
             continue;
           }
@@ -224,7 +258,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
     case "unit-updated": {
       const idx = state.units.findIndex((u) => u.id === event.unitId);
       if (idx === -1) {
-        const created = {
+        const blank: ReviewUnit = {
           id: event.unitId,
           title: "",
           summary: "",
@@ -234,11 +268,12 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           riskFlags: [],
           hunkIds: [],
           order: state.units.length,
-          ...event.patch,
-        } as ReviewUnit;
-        state.units.push(reviveIfPopulated(created));
+        };
+        state.units.push(reviveIfPopulated(applyUnitPatch(blank, event.patch, state.currentRevision)));
       } else {
-        state.units[idx] = reviveIfPopulated({ ...state.units[idx], ...event.patch });
+        state.units[idx] = reviveIfPopulated(
+          applyUnitPatch(state.units[idx], event.patch, state.currentRevision),
+        );
       }
       break;
     }

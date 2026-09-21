@@ -21,6 +21,9 @@ import {
   prExists,
   readDiff,
   readFilesJson,
+  changedUnits,
+  changesWorthRefreshing,
+  liveUnits,
   readMeta,
   readLocalChatInstructions,
   readLocalRubric,
@@ -45,6 +48,7 @@ import {
   type Hunk,
   type Meta,
   type PrKey,
+  type MigrationReport,
   type RepoKey,
   type State,
 } from "@reviewer/core";
@@ -172,6 +176,39 @@ function progressOf(state: State) {
       total: state.files.length,
     },
   };
+}
+
+/**
+ * Re-analyzing costs real money and time, so a refresh only triggers one when
+ * the migration actually left work to do: hunks the existing analysis cannot
+ * already account for (new or unassigned), or — on an analyzed PR — units
+ * whose code the revision reworked, so their description went stale (see
+ * core's `changedUnits`). On a baseOnly revision (base moved, head unchanged)
+ * a fuzzy/renamed rework came from the base branch, not the PR author, so it
+ * does not count on its own (`changesWorthRefreshing`; MIGRATION-NOTES treats
+ * baseOnly revisions the same way).
+ */
+export function refreshLeavesWork(
+  key: PrKey,
+  report: MigrationReport,
+  root: string,
+): boolean {
+  const state = loadState(key, root);
+  if (report.counts.new > 0 || state.unassignedHunkIds.length > 0) return true;
+  if (liveUnits(state).length === 0) return false;
+  const filesOf = (rev: number | undefined) => {
+    if (rev === undefined) return undefined;
+    try {
+      return readFilesJson(key, rev, root).files;
+    } catch {
+      return undefined;
+    }
+  };
+  const changes = changedUnits(state, report, {
+    previousFiles: filesOf(report.previousRevision),
+    currentFiles: filesOf(report.revision),
+  });
+  return changesWorthRefreshing(changes).length > 0;
 }
 
 export function createApp(opts: AppOptions = {}): Hono {
@@ -319,6 +356,7 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /* -------------------------------------------------------------- one PR */
 
+
   app.post("/api/prs/:key/refresh", (c) => {
     const key = keyParam(c);
     const result = refreshPr(key, root);
@@ -339,13 +377,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // We just fetched the truth; any cached "this PR moved" answer is now
     // about a revision we hold, so it must not outlive the refresh.
     clearStalenessCache(key, root);
-    // Re-analyzing costs real money and time, so a refresh only triggers one
-    // when the migration actually left work to do: hunks the existing analysis
-    // cannot already account for.
-    const hasNewWork =
-      !!result.report &&
-      (result.report.counts.new > 0 ||
-        loadState(key, root).unassignedHunkIds.length > 0);
+    const hasNewWork = !!result.report && refreshLeavesWork(key, result.report, root);
     const job = hasNewWork && analyzeRequested(c, key) ? triggerAnalysis(key) : null;
     return c.json({
       key: keyToString(key),

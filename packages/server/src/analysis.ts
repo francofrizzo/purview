@@ -229,6 +229,25 @@ function movedCodeSummary(key: PrKey, revision: number, root: string): MovePairS
   }
 }
 
+/**
+ * Incremental runs only: refresh the description of units whose code this
+ * revision reworked (see core's `changedUnits`), and log what changed.
+ */
+export function changesBlock(cmd: string, keyStr: string): string {
+  return [
+    `CHANGED UNITS: run \`${cmd} changes ${keyStr}\` first. It lists every unit this revision reworked`,
+    "(fuzzy/renamed hunks as a compact before->after, archived hunks, related new hunks as hints).",
+    "For each unit it lists: rewrite `summary` and `attentionWhy` so they describe the code as it is NOW;",
+    "re-check `kind`/`attention`/`riskFlags` (a correction needs `--note`); and send a `changelogEntry`:",
+    "one line, <=160 chars, about what this revision changed in that unit, e.g. \"rounding switched to",
+    "banker's; added a .5 test\". Don't restate the summary. Re-verify the findings of changed units",
+    "(MIGRATION-NOTES: findings of reworked units were dropped). Send all of it in that unit's one",
+    "`set-unit` patch. A unit you attach a new hunk to has changed too: give it a `changelogEntry`",
+    "in that same patch. Don't re-group a listed unit's hunks (membership stays), and don't patch a unit",
+    "that is neither listed nor taking a new hunk.",
+  ].join("\n");
+}
+
 export function analysisPrompt(
   key: PrKey,
   root: string,
@@ -313,7 +332,9 @@ export function analysisPrompt(
           "Units listed under \"Removed units\" in the report (`removedAtRevision` in state) are husks of",
           "decisions the PR dropped: do not patch them, except to revive one (set-unit its hunkIds) when",
           "new hunks genuinely belong to that same decision.",
-        ].join(" ")
+        ].join(" ") +
+        "\n\n" +
+        changesBlock(cmd, keyStr)
       : [
           "This PR has no analysis yet. Produce the full analysis and write it with",
           `\`${cmd} set-analysis ${keyStr} --file <analysis.json>\`.`,
@@ -400,6 +421,7 @@ export function analysisToolFlags(scratchDir: string): {
       `Bash(${cmd} list:*)`,
       `Bash(${cmd} triage:*)`,
       `Bash(${cmd} show:*)`,
+      `Bash(${cmd} changes:*)`,
       `Bash(${cmd} base-file:*)`,
       `Bash(${cmd} set-analysis:*)`,
       `Bash(${cmd} set-unit:*)`,

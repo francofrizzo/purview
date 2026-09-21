@@ -34,8 +34,8 @@ State lives under `~/.purview/` unless `PURVIEW_STATE_DIR` (or the legacy `REVIE
 set in your environment, the state root is that directory instead, and all paths below are
 relative to it.
 
-Subcommands that exist: `init`, `refresh`, `report`, `triage`, `show`, `set-analysis`,
-`set-unit`, `view`, `sync`, `list`. There are no others.
+Subcommands that exist: `init`, `refresh`, `report`, `triage`, `show`, `changes`,
+`base-file`, `set-analysis`, `set-unit`, `view`, `sync`, `list`. There are no others.
 
 ## 1. Determine state: init, refresh, or report
 
@@ -345,7 +345,9 @@ with piped input. The permission layer rejects any Bash command containing quote
 whole context. A file written once is also cheap to retry: the save command is one short
 line.
 
-This **replaces** the whole analysis for the current revision.
+This **replaces** the whole analysis for the current revision. Units are replaced
+wholesale, so a unit's `changelog` (the per-revision "what changed" lines written on
+refresh, see step 8) starts fresh unless the payload carries it.
 
 On success it prints `Analysis set for revision <n>: <u> units covering <h> hunks`. If the
 CLI reports validation errors, fix the file with the **Edit tool** — a targeted edit, not
@@ -362,34 +364,51 @@ See `MIGRATION-NOTES.md` for the full mechanics. This is the flow the ~40-turn b
 re-verification reads the same way. In short:
 
 1. Run `reviewer-state refresh <key>`. Read the printed migration report.
-2. Run `reviewer-state report <key>` and take the hunk ids listed under "Needs
+2. Run `reviewer-state changes <key>`. It lists every **changed unit**: a live unit one of
+   whose hunks migrated `fuzzy` (or `renamed` with different content), or lost a hunk to
+   `archived`, with its current `summary`/`attentionWhy`, a compact before→after of each
+   reworked hunk, and new/unassigned hunks in the same files as hints. It prints
+   `No units changed in revision <n>.` when there are none.
+3. Run `reviewer-state report <key>` and take the hunk ids listed under "Needs
    classification" — those are exactly the `new`/unassigned hunks. Fetch all of their
-   bodies in **one** `reviewer-state show <key> <id1> <id2> ...` call (not one per hunk).
-   Carried, fuzzy-matched, and renamed hunks keep their existing unit membership — do not
-   touch or re-fetch them.
-3. Patch only the affected units with
+   bodies in **one** `reviewer-state show <key> <id1> <id2> ...` call (not one per hunk),
+   and classify them.
+   Carried, fuzzy-matched, and renamed hunks keep their existing unit membership — don't
+   re-group them. But **do** refresh the description of every changed unit: rewrite its
+   `summary` and `attentionWhy` so they describe the code as it is *now*, re-check
+   `kind`/`attention`/`riskFlags` (a correction needs `--note`), and send a
+   `changelogEntry` — one line, ≤160 chars, about what this revision changed in that unit
+   (e.g. `"rounding switched to banker's; added a .5 test"`), not a restatement of the
+   summary. A unit you attach a new hunk to has changed too and gets an entry as well.
+   The entry is recorded under the current revision; re-sending replaces it, so there is
+   one per revision. Units that are neither changed nor taking a new hunk are not patched.
+4. Patch the affected units with
    `reviewer-state set-unit <key> --id <unitId> --file patch.json` — the unit id is the
    `--id` **flag** (or an `id` field inside the JSON), not a positional argument. The file
-   may be a partial patch (e.g. just `{"hunkIds": [...]}`) — write it with the Write tool
-   into the scratch directory, never via stdin/heredoc. Add
+   may be a partial patch (e.g. `{"hunkIds": [...]}`, or
+   `{"summary": "...", "attentionWhy": "...", "changelogEntry": "..."}`) — write it with
+   the Write tool into the scratch directory, never via stdin/heredoc. Add
    `--note "<why>"` when you are correcting a `kind`/`attention` — that note is recorded on
    the `classification-corrected` events. **Never regenerate the whole analysis** on a
    refresh.
-4. If a revision is marked `baseOnly: true`, its new hunks get
+5. If a revision is marked `baseOnly: true`, its new hunks get
    `defaultAttention: "skip"` / `defaultAttentionWhy: "base moved"` on their hunk state
    (shown in `report` as `(default skip: base moved)`). That default is informational only
    — it does not assign the hunk to anything, so such hunks keep showing up under the
    report's "Needs classification" list until you attach them. Leave them at the default
    attention unless one touches the files of an existing `must-read` unit, in which case
    classify it normally and attach it to that unit.
-5. Unmatched old hunks are archived by the migration engine automatically — don't try to
+   On such a revision a fuzzy rework came from the base branch, not the PR author: a unit
+   `changes` lists only for that needs no description rewrite unless the drift changes
+   what is true about it.
+6. Unmatched old hunks are archived by the migration engine automatically — don't try to
    delete or re-home them yourself; just don't reference archived hunk ids in any unit you
    patch.
-6. Findings from the previous pass are kept only on units whose hunks all carried over
+7. Findings from the previous pass are kept only on units whose hunks all carried over
    `identical`; migration drops them everywhere else, because the code they were verified
    against moved. Re-run step 5's verification (checkout permitting) for the units you are
-   patching, and send the resulting `findings` array in the same `set-unit` patch. Don't
-   re-assert a dropped finding from memory — re-check it.
+   patching — every changed unit included — and send the resulting `findings` array in the
+   same `set-unit` patch. Don't re-assert a dropped finding from memory — re-check it.
 
 ## 9. Other commands (rarely yours to run)
 
@@ -404,6 +423,11 @@ re-verification reads the same way. In short:
 - `reviewer-state show <key> <selector...> [--rev <n>] [--all]` — prints full hunk bodies
   for the given selectors (hunk id/prefix, file path, or single-quoted glob), batched in one
   call, each line behind an old/new source line-number gutter.
+- `reviewer-state changes <key> [--rev <n>]` — the changed units of a revision (see step 8):
+  each one's current description, a compact before→after of its fuzzy/renamed hunks
+  (diff of the two hunk bodies, `was│`/`now│` lines), its archived hunks with their old
+  header and sizes, and related new/unassigned hunks as hints. Large output goes to a
+  scratch file, like `show`.
 - `reviewer-state view <key> <hunkId|unit:<unitId>> [--unview]` — marks reading progress.
   That's the human reviewer's action (or the web app's); don't mark things viewed on the
   user's behalf unless asked.

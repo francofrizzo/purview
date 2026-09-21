@@ -6,6 +6,7 @@ import { filterUnits, hiddenHint } from "../lib/unitFilter";
 import { unitDisplayNumbers } from "../lib/unitOrder";
 import { ChangedBadge, KindChip, Progress, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
+import { UnitChangelog } from "./UnitChangelog";
 import { IconChevron } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
 
@@ -235,6 +236,7 @@ function RemovedRow({ unit }: { unit: ReviewUnit }) {
             {unit.summary}
           </p>
         ) : null}
+        {expanded ? <UnitChangelog changelog={unit.changelog} inline className="mt-1 pl-5" /> : null}
       </button>
     </li>
   );

@@ -324,6 +324,15 @@ function showingLines(panel: boolean): string[] {
 }
 
 /**
+ * The unit's newest changelog entry as a line suffix, e.g. " (r3: …)". Only the
+ * latest: the unit list rides on every chat turn.
+ */
+export function latestChangelogNote(u: { changelog?: { revision: number; text: string }[] }): string {
+  const last = u.changelog?.[u.changelog.length - 1];
+  return last ? ` (r${last.revision}: ${last.text})` : "";
+}
+
+/**
  * PR url/title/key/revision, what it targets (stacked or not), the analysis
  * summary and the unit list.
  */
@@ -337,7 +346,7 @@ function prOverviewLines(key: PrKey, root: string, checkout?: ChatCheckout): str
       (u) =>
         `  - ${u.id} [${u.attention}/${u.kind}] ${u.title} (${u.hunkIds.length} hunks)${
           u.riskFlags.length ? ` risk: ${u.riskFlags.join(",")}` : ""
-        }`,
+        }${latestChangelogNote(u)}`,
     );
   return [
     `PR: ${meta.url}`,
@@ -368,6 +377,7 @@ function readingMoreLines(
     `  - triage overview (read this first): \`${cmd} triage ${keyToString(key)}\``,
     `  - hunk bodies: \`${cmd} show ${keyToString(key)} <hunk-id|path|'glob'>...\` ` +
       "(single-quote globs, e.g. `'internal/**/*_test.go'`; each body line is prefixed with its old/new source line numbers)",
+    `  - what the latest revision reworked, per unit: \`${cmd} changes ${keyToString(key)}\``,
     `  - review rubric: ${path.join(skillDir(), "RUBRIC.md")}`,
   ];
   const status = [
@@ -502,6 +512,7 @@ export function chatToolFlags(): {
       `Bash(${cmd} list:*)`,
       `Bash(${cmd} triage:*)`,
       `Bash(${cmd} show:*)`,
+      `Bash(${cmd} changes:*)`,
       `Bash(${cmd} base-file:*)`,
     ],
     disallowedTools: [

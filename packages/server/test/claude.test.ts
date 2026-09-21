@@ -20,6 +20,7 @@ import {
 import { createApp } from "../src/app.js";
 import {
   analysisIdle,
+  analysisPrompt,
   analysisToolFlags,
   findingsNote,
   movedNote,
@@ -27,7 +28,16 @@ import {
   reconcileStaleJobs,
 } from "../src/analysis.js";
 import { chatTurnDone } from "../src/chat-session.js";
-import { buildChatPrompt, readChat, replayTranscript, resolveRefs, rewindChat, writeChat } from "../src/chat.js";
+import {
+  buildChatPrompt,
+  chatToolFlags,
+  latestChangelogNote,
+  readChat,
+  replayTranscript,
+  resolveRefs,
+  rewindChat,
+  writeChat,
+} from "../src/chat.js";
 import type { ChatMessage } from "../src/chat.js";
 import { ownerRepoFromRemote } from "../src/repo-path.js";
 import { HttpError } from "../src/http-error.js";
@@ -46,7 +56,12 @@ let claude: FakeClaude;
  * `sha` distinguishes revisions: refresh only stores a new one when the shas
  * move, so each stage of a test needs its own.
  */
-function ghFor(patches: string[], sha = "1"): GhRunner {
+function ghFor(
+  patches: string[],
+  sha = "1",
+  /** head sha suffix, when it must differ from `sha` (a base-only move) */
+  headSha = sha,
+): GhRunner {
   let calls = 0;
   return (args) => {
     const joined = args.join(" ");
@@ -64,7 +79,7 @@ function ghFor(patches: string[], sha = "1"): GhRunner {
         html_url: `https://github.com/${key.owner}/${key.repo}/pull/${key.number}`,
         state: "open",
         base: { ref: "main", sha: `base${sha}` },
-        head: { ref: "feature", sha: `head${sha}` },
+        head: { ref: "feature", sha: `head${headSha}` },
       });
     }
     return "{}";
@@ -165,6 +180,8 @@ describe("analysis tool allowlist", () => {
     const cliCmd = `${process.execPath} ${process.env.REVIEWER_CLI_PATH}`;
     expect(allowedTools).toContain(`Bash(${cliCmd} triage:*)`);
     expect(allowedTools).toContain(`Bash(${cliCmd} show:*)`);
+    expect(allowedTools).toContain(`Bash(${cliCmd} changes:*)`);
+    expect(chatToolFlags().allowedTools).toContain(`Bash(${cliCmd} changes:*)`);
     // In-place sed must not be reachable through the `sed` allowance.
     expect(allowedTools).not.toContain("Bash(sed:*)");
     for (const rule of ["Bash(gh:*)", "Bash(git:*)"]) {
@@ -330,6 +347,11 @@ describe("analysis job lifecycle", () => {
     await analysisIdle();
     expect(claude.promptOf(0)).toContain("MIGRATION-NOTES.md");
     expect(claude.promptOf(0)).toContain("set-unit");
+    // The changed-units block rides only on the incremental flow.
+    const cliCmd = `${process.execPath} ${process.env.REVIEWER_CLI_PATH}`;
+    expect(claude.promptOf(0)).toContain(`CHANGED UNITS: run \`${cliCmd} changes ${keyToString(key)}\` first.`);
+    expect(claude.promptOf(0)).toContain("changelogEntry");
+    expect(analysisPrompt(key, root, { incremental: false })).not.toContain("CHANGED UNITS");
   });
 
   it("accumulates tool/result events into job.metrics and carries them on analysis-finished", async () => {
@@ -443,20 +465,50 @@ describe("automatic triggers", () => {
     expect(claude.runs).toHaveLength(0);
   });
 
-  it("re-analyzes on refresh only when the migration produced new hunks", async () => {
+  it("does not re-analyze when a refresh changed nothing an analysis must account for", async () => {
     buildFixture(root, DOD_REV1);
-    // The next revision edits one line of a wide hunk: it fuzzy-matches, so
-    // there is nothing new to classify and no run should start.
-    setGhRunner(ghFor([DOD_REV2], "2"));
+    // Same hunk content under new shas: everything carries over identically.
+    setGhRunner(ghFor([DOD_REV1], "2"));
     const quiet = await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
     const quietBody = await quiet.json();
-    expect(quietBody.report.counts.new).toBe(0);
+    expect(quietBody.added).toBe(true);
+    expect(quietBody.report.counts).toMatchObject({ fuzzy: 0, renamed: 0, archived: 0, new: 0 });
     expect(quietBody.analysisJob).toBeNull();
     expect(claude.runs).toHaveLength(0);
+  });
 
+  it("re-analyzes when a revision reworks an analyzed unit's code (fuzzy)", async () => {
+    buildFixture(root, DOD_REV1);
+    // One line of the unit's wide hunk changes: it fuzzy-matches, nothing is
+    // new, but the unit's description was written against the old code.
+    setGhRunner(ghFor([DOD_REV2], "2"));
+    const res = await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
+    const body = await res.json();
+    expect(body.report.counts.new).toBe(0);
+    expect(body.report.counts.fuzzy).toBe(1);
+    expect(body.analysisJob.status).toBe("queued");
+    await analysisIdle();
+    expect(claude.promptOf(0)).toContain("CHANGED UNITS");
+  });
+
+  it("does not re-analyze for a fuzzy-only change on a base-only revision", async () => {
+    buildFixture(root, DOD_REV1);
+    // Head unchanged (head1), base and merge base moved: the rework came from
+    // the base branch, not the PR author.
+    setGhRunner(ghFor([DOD_REV2], "2", "1"));
+    const res = await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
+    const body = await res.json();
+    expect(body.baseOnly).toBe(true);
+    expect(body.report.counts.fuzzy).toBe(1);
+    expect(body.analysisJob).toBeNull();
+    expect(claude.runs).toHaveLength(0);
+  });
+
+  it("still re-analyzes when the migration produced new hunks", async () => {
+    buildFixture(root, DOD_REV1);
     // A brand-new file adds unclassified hunks: that does trigger a run.
     const withNewFile =
-      DOD_REV2 +
+      DOD_REV1 +
       `diff --git a/src/bar.ts b/src/bar.ts
 new file mode 100644
 index 0000000..4444444
@@ -470,8 +522,24 @@ index 0000000..4444444
     const res = await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
     const body = await res.json();
     expect(body.report.counts.new).toBeGreaterThan(0);
+    expect(body.report.counts.fuzzy).toBe(0);
     expect(body.analysisJob.status).toBe("queued");
     await analysisIdle();
+  });
+});
+
+describe("latestChangelogNote", () => {
+  it("appends only the newest entry, and nothing without a changelog", () => {
+    expect(latestChangelogNote({})).toBe("");
+    expect(latestChangelogNote({ changelog: [] })).toBe("");
+    expect(
+      latestChangelogNote({
+        changelog: [
+          { revision: 2, text: "first rework" },
+          { revision: 3, text: "rounding switched to banker's" },
+        ],
+      }),
+    ).toBe(" (r3: rounding switched to banker's)");
   });
 });
 
