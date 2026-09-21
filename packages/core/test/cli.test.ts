@@ -39,7 +39,7 @@ function mkHunk(file: string, added: string[], removed: string[]): Hunk {
 let tmp: string;
 
 /** Seed a minimal, fully-initialized PR state (no `gh` calls involved). */
-function seed(): { hunk: Hunk } {
+function seed(added: string[] = ["  return a + b;"]): { hunk: Hunk } {
   writeMeta(key, {
     host: key.host,
     owner: key.owner,
@@ -59,7 +59,7 @@ function seed(): { hunk: Hunk } {
     title: "Add widgets",
   });
 
-  const hunk = mkHunk("src/a.ts", ["  return a + b;"], ["  return a;"]);
+  const hunk = mkHunk("src/a.ts", added, ["  return a;"]);
   const files: FileDiff[] = [
     { path: "src/a.ts", status: "modified", binary: false, hunks: [hunk] },
   ];
@@ -216,6 +216,26 @@ describe("cli show", () => {
     const res = run(["show", keyToString(key), "--all"]);
     expect(res.status).toBe(0);
     expect(res.stdout).toContain(hunk.id);
+  });
+
+  it("writes a result too large to print inline to the scratch dir and prints its path", () => {
+    const big = Array.from({ length: 800 }, (_, i) => `  const line${i} = "${"x".repeat(30)}";`);
+    const { hunk } = seed(big);
+    const res = run(["show", keyToString(key), hunk.id]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("-- 1 hunks, 1 files");
+    expect(res.stdout).toContain("too large to print inline");
+    expect(res.stdout).not.toContain("line799");
+    const file = /Written to (\S+)/.exec(res.stdout)?.[1];
+    expect(file).toBeTruthy();
+    expect(path.dirname(file!)).toBe(path.join(tmp, key.host, key.owner, key.repo, String(key.number), "scratch"));
+    const written = fs.readFileSync(file!, "utf8");
+    expect(written).toContain(`=== src/a.ts   ${hunk.id}`);
+    expect(written).toContain("line799");
+
+    // --inline opts out.
+    const inline = run(["show", keyToString(key), hunk.id, "--inline"]);
+    expect(inline.stdout).toContain("line799");
   });
 
   it("requires at least one selector without --all", () => {

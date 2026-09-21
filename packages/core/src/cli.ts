@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import path from "node:path";
 import { Command } from "commander";
 import {
   parseKey,
@@ -45,13 +46,21 @@ function resolveRevision(state: { currentRevision: number }, rev?: string): numb
   return n;
 }
 
-function printHunk(sh: SelectedHunk): void {
-  console.log(
-    `=== ${sh.file.path}   ${sh.hunk.id}   +${sh.hunk.addedLines.length} -${sh.hunk.removedLines.length}   @@${sh.hunk.header}@@`,
+function renderHunk(sh: SelectedHunk): string {
+  return (
+    `=== ${sh.file.path}   ${sh.hunk.id}   +${sh.hunk.addedLines.length} -${sh.hunk.removedLines.length}   @@${sh.hunk.header}@@\n` +
+    `${sh.hunk.text}\n\n`
   );
-  console.log(sh.hunk.text);
-  console.log("");
 }
+
+/**
+ * Above this, Claude Code does not show a Bash result inline: it saves it to
+ * a file and hands the model a pointer, which costs a turn to discover and
+ * another to read. (Its threshold is fixed; BASH_MAX_OUTPUT_LENGTH does not
+ * move it.) `show` writes big results to the PR's scratch dir itself and
+ * prints the path, so the model goes straight to one Read.
+ */
+export const SHOW_INLINE_LIMIT = 25_000;
 
 function readJsonFile(file: string): unknown {
   if (file === "-") return JSON.parse(fs.readFileSync(0, "utf8"));
@@ -154,8 +163,9 @@ program
   .argument("[selectors...]", "hunk id (exact or unique prefix >=6 chars), file path, or glob")
   .option("--rev <n>", "revision to read from (defaults to the current one)")
   .option("--all", "print every hunk of the revision, ignoring selectors")
-  .description("print full hunk bodies for the given selectors")
-  .action((keyArg: string, selectors: string[], opts: { rev?: string; all?: boolean }) => {
+  .option("--inline", "always print to stdout, even when the result is large")
+  .description("print full hunk bodies for the given selectors (large results go to a scratch file)")
+  .action((keyArg: string, selectors: string[], opts: { rev?: string; all?: boolean; inline?: boolean }) => {
     const key = requireExistingKey(keyArg);
     const state = loadState(key);
     const revision = resolveRevision(state, opts.rev);
@@ -169,10 +179,21 @@ program
       ? { hunks: allSelectedHunks(filesJson), unknown: [] as string[] }
       : selectHunks(filesJson, selectors);
 
-    for (const sh of hunks) printHunk(sh);
-
     const files = new Set(hunks.map((sh) => sh.file.path));
-    console.log(`-- ${hunks.length} hunks, ${files.size} files`);
+    const summary = `-- ${hunks.length} hunks, ${files.size} files`;
+    const body = hunks.map(renderHunk).join("") + summary + "\n";
+
+    if (opts.inline || body.length <= SHOW_INLINE_LIMIT) {
+      process.stdout.write(body);
+    } else {
+      const dir = path.join(prDir(key), "scratch");
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `show-${Date.now()}.txt`);
+      fs.writeFileSync(file, body, "utf8");
+      console.log(`${summary}, ${Math.round(body.length / 1024)} KB: too large to print inline.`);
+      console.log(`Written to ${file}`);
+      console.log("Read that file with the Read tool (page with offset/limit if it is very long).");
+    }
 
     if (unknown.length > 0) {
       console.error(`error: unknown selector(s): ${unknown.join(", ")}`);

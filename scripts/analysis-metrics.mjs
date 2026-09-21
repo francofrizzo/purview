@@ -16,7 +16,8 @@ const root =
   process.env.REVIEWER_STATE_DIR ||
   path.join(os.homedir(), ".purview");
 
-/** Every `<host>/<owner>/<repo>/<number>` dir under root that looks like a PR. */
+/** Every `<host>/<owner>/<repo>/<number>` dir under root that looks like a PR
+ *  (root is depth 0, so the number is at depth 3; managed checkouts are skipped). */
 function findPrDirs(dir, depth = 0) {
   const out = [];
   let entries;
@@ -28,11 +29,11 @@ function findPrDirs(dir, depth = 0) {
   for (const e of entries) {
     if (!e.isDirectory()) continue;
     const p = path.join(dir, e.name);
-    if (depth === 2 && /^[0-9]+$/.test(e.name)) {
+    if (depth === 3 && /^[0-9]+$/.test(e.name)) {
       out.push(p);
       continue;
     }
-    if (depth < 2) out.push(...findPrDirs(p, depth + 1));
+    if (depth < 3 && e.name !== "checkouts") out.push(...findPrDirs(p, depth + 1));
   }
   return out;
 }

@@ -85,6 +85,11 @@ Pass every selector you need in **one call** — `show` is built to take many at
 batch Pass 2's whole selection into a single invocation rather than one hunk per call. Add
 `--all` to dump every hunk of the revision when you genuinely need all of them.
 
+A result too big to print inline (over ~25 KB) is written to the PR's `scratch/` directory,
+and `show` prints only its path: Read that file next, paging with offset/limit if it is very
+long. Don't redirect `show` into a file yourself, and don't split one selection into several
+small `show` calls to dodge the size: both just add turns.
+
 **Never parse `files.json` or `diff.patch` with `python3 -c`, `node -e`, `jq`, or any other
 ad-hoc one-liner.** `triage` and `show` already expose every field those hacks were
 reaching for (path, status, hunk ids, headers, +/- sizes, full added/removed text, moved
