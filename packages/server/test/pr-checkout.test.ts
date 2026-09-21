@@ -389,6 +389,29 @@ describe("runs with a managed checkout", () => {
     expect(readChat(key, root).sessionCwd).toBe(real(managedPath()));
   });
 
+  it("hands the chat to the terminal from the managed checkout, with the base-file hint", async () => {
+    const user = cloneRepo(remote.path, path.join(work, "user"));
+    updateMeta(key, { repoPath: user }, root);
+    await chat("hi");
+
+    const res = await app.request(`/api/prs/${encodedKey}/chat/handoff`, { method: "POST" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const managed = real(managedPath());
+    expect(body.cwd).toBe(managed);
+    expect(body.command.startsWith(`cd '${managed}' && claude --resume ${body.sessionId} --fork-session`)).toBe(true);
+
+    const context = fs.readFileSync(body.contextPath, "utf8");
+    expect(context).toContain(
+      `An exact checkout of the PR head (${remote.headSha.slice(0, 12)}) is at ${managed}.`,
+    );
+    expect(context).toContain(`\`${cli()} base-file ${keyToString(key)} <path>\``);
+    expect(context).toContain("Review units:");
+    expect(context).not.toContain("HARD RULES");
+    // Nothing was fetched or moved to build it.
+    expect(headOf(managed)).toBe(remote.headSha);
+  });
+
   describe("chat session cwd", () => {
     it("resumes when the cwd is unchanged", async () => {
       await chat("first");

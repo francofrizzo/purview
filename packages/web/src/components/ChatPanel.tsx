@@ -18,8 +18,10 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { Link } from "react-router-dom";
+import { api, errorText } from "../api/client";
 import { CLAUDE_MODELS } from "../api/types";
-import type { ChatRef, ClaudeModel, DraftComment, PrDetail } from "../api/types";
+import type { ChatHandoff, ChatRef, ClaudeModel, DraftComment, PrDetail } from "../api/types";
+import { copyText, handoffDisabledReason, isLoopbackHostname } from "../lib/chatHandoff";
 import { refContext, refKey, refLabel, refTitle } from "../lib/chatRefs";
 import { useChat, type LocalMessage, type ToolActivity } from "../lib/chat";
 import {
@@ -33,14 +35,17 @@ import { useModalBackground } from "./Modal";
 import {
   IconArrowDown,
   IconChat,
+  IconCheck,
   IconChevron,
   IconClose,
+  IconCopy,
   IconEdit,
   IconFile,
   IconQuote,
   IconRewind,
   IconSettings,
   IconSpinner,
+  IconTerminal,
 } from "./icons";
 
 const STARTERS = [
@@ -440,6 +445,7 @@ export function ChatPanel({
           pinned={chat.sessionModel !== null}
           onChange={(m) => void chat.setModel(m)}
         />
+        <HandoffButton prKey={prKey} messageCount={chat.messages.length} busy={chat.busy} />
         <button
           type="button"
           title="Claude settings for this PR"
@@ -747,6 +753,155 @@ function ModelSelect({
         ))}
       </select>
     </label>
+  );
+}
+
+type HandoffState =
+  | { phase: "loading" }
+  | { phase: "ready"; handoff: ChatHandoff; copied: boolean }
+  | { phase: "error"; message: string };
+
+/**
+ * "Continue in Claude Code": fetches the one-liner that forks this chat's
+ * session into the reader's own terminal, copies it, and shows it in a popover
+ * in case the copy did not take (or they want to read it first). The server
+ * refuses it over the LAN, so the button says so up front instead.
+ */
+function HandoffButton({
+  prKey,
+  messageCount,
+  busy,
+}: {
+  prKey: string;
+  messageCount: number;
+  busy: boolean;
+}) {
+  const [state, setState] = useState<HandoffState | null>(null);
+  const [recopied, setRecopied] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+  /** Bumped on every open/close, so a reply that lands after a close is dropped. */
+  const request = useRef(0);
+  const reason = handoffDisabledReason({
+    messageCount,
+    busy,
+    loopback: isLoopbackHostname(window.location.hostname),
+  });
+  const open = state !== null;
+  const close = useCallback(() => {
+    request.current++;
+    setState(null);
+    setRecopied(false);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Captured and stopped: Escape here closes the popover, not the panel.
+      e.stopPropagation();
+      close();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open, close]);
+
+  const start = async () => {
+    if (open) return close();
+    const id = ++request.current;
+    setState({ phase: "loading" });
+    try {
+      const handoff = await api.chatHandoff(prKey);
+      if (id !== request.current) return;
+      const copied = await copyText(handoff.command);
+      if (id !== request.current) return;
+      setState({ phase: "ready", handoff, copied });
+    } catch (err) {
+      if (id === request.current) setState({ phase: "error", message: errorText(err) });
+    }
+  };
+
+  const copyAgain = async (command: string) => {
+    if (await copyText(command)) {
+      setRecopied(true);
+      window.setTimeout(() => setRecopied(false), 1500);
+    }
+  };
+
+  return (
+    <span ref={wrapRef} className="relative inline-flex" title={reason ?? "Continue in Claude Code"}>
+      <button
+        type="button"
+        data-testid="chat-handoff"
+        aria-label="Continue in Claude Code"
+        aria-expanded={open}
+        disabled={reason !== null}
+        onClick={() => void start()}
+        className="disabled:cursor-not-allowed disabled:opacity-40"
+        style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
+      >
+        <IconTerminal width={12} height={12} />
+      </button>
+      {state ? (
+        <div
+          role="dialog"
+          aria-label="Continue in Claude Code"
+          data-testid="chat-handoff-popover"
+          className="surface absolute right-0 top-6 z-30 w-72 rounded-md p-2 elev-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {state.phase === "loading" ? (
+            <p className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
+              <IconSpinner width={10} height={10} />
+              Preparing the command…
+            </p>
+          ) : state.phase === "error" ? (
+            <p className="text-2xs leading-4" data-testid="chat-handoff-error" style={{ color: "var(--risk)" }}>
+              {state.message}
+            </p>
+          ) : (
+            <>
+              <p className="text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
+                {state.copied
+                  ? "Copied. Paste into a terminal to continue this chat in Claude Code."
+                  : "Copy this and paste it into a terminal to continue this chat in Claude Code."}
+              </p>
+              <code
+                data-testid="chat-handoff-command"
+                className="mt-1.5 block select-text whitespace-pre-wrap rounded px-2 py-1 font-mono text-2xs"
+                style={{
+                  background: "var(--bg-inset)",
+                  color: "var(--fg-muted)",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {state.handoff.command}
+              </code>
+              <div className="mt-1.5 flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => void copyAgain(state.handoff.command)}
+                  style={recopied ? { color: "var(--ok)", borderColor: "var(--ok)" } : undefined}
+                >
+                  {recopied ? <IconCheck width={11} height={11} /> : <IconCopy width={11} height={11} />}
+                  {recopied ? "copied" : "copy"}
+                </button>
+              </div>
+              <p className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+                Forks the conversation: what you do there won&apos;t appear here.
+              </p>
+            </>
+          )}
+        </div>
+      ) : null}
+    </span>
   );
 }
 

@@ -85,7 +85,7 @@ import {
   resolveAutoSharedAnalysis,
   shareAnalysisToPr,
 } from "./analysis-share-server.js";
-import { chatBusy, startChatTurn, type ChatStreamEvent, type ChatTurn } from "./chat-session.js";
+import { chatBusy, chatHandoff, startChatTurn, type ChatStreamEvent, type ChatTurn } from "./chat-session.js";
 import { ChatRefSchema, clearChat, readChat, resolveRefs, rewindChat, setChatModel } from "./chat.js";
 import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
@@ -686,6 +686,19 @@ export function createApp(opts: AppOptions = {}): Hono {
     const refs = z.array(ChatRefSchema).default([]).parse(body.refs ?? []);
     const turn = startChatTurn(key, { text: body.text ?? "", refs }, root);
     return streamChatTurn(c, turn);
+  });
+
+  /**
+   * "Continue in Claude Code": the shell one-liner that forks this chat's
+   * session into the reader's own terminal, with the PR context written to a
+   * file next to the state. Loopback-only, like `/api/lan`: the command spells
+   * out local paths, and it only runs on the machine Purview runs on anyway.
+   */
+  app.use("/api/prs/:key/chat/handoff", loopbackOnly({ port }));
+  app.post("/api/prs/:key/chat/handoff", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    return c.json(chatHandoff(key, root));
   });
 
   /**

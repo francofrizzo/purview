@@ -18,6 +18,7 @@ import type {
   MigrationReport,
   PrDetail,
   PrListEntry,
+  ChatHandoff,
   ChatModelResult,
   ClaudeModel,
   GlobalConfig,
@@ -1298,6 +1299,30 @@ export const mockApi = {
         cancelled = true;
       },
     });
+  },
+
+  /**
+   * Mirrors the real route's refusals (with the server's `{ error, detail }`
+   * body, so `errorText` shows the prose) and its exact command shape.
+   */
+  async chatHandoff(key: string): Promise<ChatHandoff> {
+    await delay(120);
+    if (!(chats[key] ?? []).length) {
+      throw new ApiError("no_session", 409, {
+        error: "no_session",
+        detail: "This chat has no Claude session yet. Send a message first, then continue in Claude Code.",
+      });
+    }
+    const cwd = `/Users/you/.purview/checkouts/${key}`;
+    const sessionId = `mock-session-${key.replace(/[^A-Za-z0-9]/g, "-")}`;
+    const contextPath = `/Users/you/.purview/${key}/terminal-context.md`;
+    const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
+    return {
+      cwd,
+      sessionId,
+      contextPath,
+      command: `cd ${q(cwd)} && claude --resume ${sessionId} --fork-session --append-system-prompt "$(cat ${q(contextPath)})"`,
+    };
   },
 
   /**

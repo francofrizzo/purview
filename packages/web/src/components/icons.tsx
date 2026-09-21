@@ -189,6 +189,14 @@ export const IconCopy = (p: P) => (
   </svg>
 );
 
+/** Prompt in a window — continue in a terminal. */
+export const IconTerminal = (p: P) => (
+  <svg {...base} {...p}>
+    <rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.6" />
+    <path d="M4.6 6.3 6.6 8l-2 1.7M8.4 10h3" />
+  </svg>
+);
+
 /** Three dots — overflow menu. */
 export const IconMore = (p: P) => (
   <svg {...base} {...p} strokeWidth={0} fill="currentColor">

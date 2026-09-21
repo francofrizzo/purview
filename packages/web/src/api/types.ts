@@ -660,6 +660,18 @@ export interface RewindChatResult {
   removed: number;
 }
 
+/**
+ * POST /api/prs/:key/chat/handoff — loopback-only. `command` forks the chat's
+ * Claude session into the reader's terminal with the PR context file appended
+ * to its system prompt.
+ */
+export interface ChatHandoff {
+  command: string;
+  cwd: string;
+  sessionId: string;
+  contextPath: string;
+}
+
 /** POST /api/prs/:key/repo-path */
 export interface RepoPathResult {
   ok: boolean;
