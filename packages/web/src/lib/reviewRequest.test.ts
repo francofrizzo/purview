@@ -42,10 +42,11 @@ describe("formatCompactAge", () => {
 
 describe("formatRequestedAgo", () => {
   it("phrases the age", () => {
-    expect(formatRequestedAgo(ago(3 * DAY + HOUR), NOW)).toBe("requested 3d ago");
-    expect(formatRequestedAgo(ago(20 * MINUTE), NOW)).toBe("requested 20m ago");
-    expect(formatRequestedAgo(ago(10_000), NOW)).toBe("requested just now");
-    expect(formatRequestedAgo(ago(15 * DAY), NOW)).toBe("requested 2w ago");
+    expect(formatRequestedAgo(ago(3 * DAY + HOUR), NOW)).toBe("asked you 3d ago");
+    expect(formatRequestedAgo(ago(20 * MINUTE), NOW)).toBe("asked you 20m ago");
+    expect(formatRequestedAgo(ago(10_000), NOW)).toBe("asked you just now");
+    expect(formatRequestedAgo(ago(15 * DAY), NOW)).toBe("asked you 2w ago");
+    expect(formatRequestedAgo(ago(3 * DAY), NOW, "team:backend")).toBe("asked your team 3d ago");
   });
 
   it("is empty for a bad stamp", () => {

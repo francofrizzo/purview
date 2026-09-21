@@ -68,10 +68,12 @@ const DECISION_STYLE: Record<
     color: "var(--warn)",
     title: "Changes requested on GitHub",
   },
+  // Not "review requested": this is the PR's merge gate, not a request of the
+  // reader. Whether *you* were asked is ReviewRequestAge's "asked you 3d ago".
   review_required: {
-    label: "review required",
+    label: "awaiting approval",
     color: "var(--fg-faint)",
-    title: "GitHub is still waiting for a required review",
+    title: "GitHub still needs an approving review before this can merge (from anyone, not necessarily you)",
   },
 };
 
@@ -96,7 +98,7 @@ export function ReviewDecisionChip({ decision }: { decision: ReviewDecision | nu
 }
 
 /**
- * "requested 3d ago" — how long the user's review has been waited on. Plain
+ * "asked you 3d ago" — how long the user's review has been waited on. Plain
  * faint text, not a chip: it is context. It turns the warning color once the
  * request is three days old, and re-renders every minute so the age stays
  * right on a page left open. Renders nothing when no request is pending.
@@ -121,7 +123,7 @@ export function ReviewRequestAge({
       title={reviewRequestTooltip(shown)}
       data-testid="review-request-age"
     >
-      {formatRequestedAgo(shown.at, at)}
+      {formatRequestedAgo(shown.at, at, shown.via)}
     </span>
   );
 }

@@ -1,5 +1,5 @@
 /**
- * How a pending review request reads: "requested 3d ago", with a tooltip that
+ * How a pending review request reads: "asked you 3d ago", with a tooltip that
  * spells out when, by whom and how. Pure, so the formatting and the "overdue"
  * threshold are unit-testable apart from the component.
  */
@@ -30,12 +30,21 @@ export function formatCompactAge(ageMs: number): string {
 
 const ageOf = (iso: string, now: Date) => now.getTime() - new Date(iso).getTime();
 
-/** "requested 3d ago" / "requested just now"; "" for an unparseable stamp. */
-export function formatRequestedAgo(iso: string, now: Date = new Date()): string {
+/**
+ * "asked you 3d ago" / "asked your team just now"; "" for an unparseable
+ * stamp. It names *you* on purpose: next to GitHub's "awaiting approval" chip,
+ * a bare "requested" read as if every PR had been requested of the reader.
+ */
+export function formatRequestedAgo(
+  iso: string,
+  now: Date = new Date(),
+  via: string = "you",
+): string {
   const age = ageOf(iso, now);
   if (Number.isNaN(age)) return "";
   const compact = formatCompactAge(age);
-  return compact === "just now" ? "requested just now" : `requested ${compact} ago`;
+  const who = via === "you" ? "you" : "your team";
+  return compact === "just now" ? `asked ${who} just now` : `asked ${who} ${compact} ago`;
 }
 
 /** True once the request has waited `REVIEW_REQUEST_OVERDUE_MS` or longer. */
