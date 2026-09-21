@@ -259,6 +259,14 @@ export const IconBolt = (p: P) => (
   </svg>
 );
 
+/** A stopwatch — how long an analysis run took (its stats popover). */
+export const IconStopwatch = (p: P) => (
+  <svg {...base} {...p}>
+    <circle cx="8" cy="9" r="5" />
+    <path d="M8 9V6.5M6.5 1.8h3M12 4.6l1-1" />
+  </svg>
+);
+
 /** Stacked weight plates — the "heavy" effort badge. */
 export const IconWeight = (p: P) => (
   <svg {...base} {...p}>

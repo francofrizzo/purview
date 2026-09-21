@@ -7,8 +7,9 @@
  * units simply appear when it finishes.
  */
 
+import { useEffect, useRef, useState } from "react";
 import type { AnalysisJob, AnalysisMetrics } from "../api/types";
-import { IconRefresh, IconSpinner } from "./icons";
+import { IconRefresh, IconSpinner, IconStopwatch } from "./icons";
 
 const STATUS_TEXT: Record<AnalysisJob["status"], string> = {
   queued: "queued",
@@ -31,34 +32,96 @@ function toneFor(status: AnalysisJob["status"]): { fg: string; bg: string } {
   }
 }
 
-/** "7.4 min · 62 turns · $1.83 · reads 4 / bash 31"; null when nothing to show. */
-function formatMetricsLine(metrics: AnalysisMetrics): string | null {
-  const parts: string[] = [];
-  if (metrics.durationMs !== undefined) parts.push(`${(metrics.durationMs / 60_000).toFixed(1)} min`);
-  if (metrics.turns !== undefined) parts.push(`${metrics.turns} turns`);
-  if (metrics.costUsd !== undefined) parts.push(`$${metrics.costUsd.toFixed(2)}`);
-  const reads = metrics.toolCalls.Read ?? 0;
-  const bash = metrics.toolCalls.Bash ?? 0;
-  if (reads || bash) parts.push(`reads ${reads} / bash ${bash}`);
-  return parts.length > 0 ? parts.join(" · ") : null;
+/** Rows of the stats popover; a row whose value is unknown is left out. */
+export function analysisStatsRows(m: AnalysisMetrics): [string, string][] {
+  const rows: [string, string][] = [];
+  if (m.durationMs !== undefined) rows.push(["Duration", `${(m.durationMs / 60_000).toFixed(1)} min`]);
+  if (m.turns !== undefined) rows.push(["Turns", String(m.turns)]);
+  if (m.costUsd !== undefined) rows.push(["Cost", `$${m.costUsd.toFixed(2)}`]);
+  if (m.usage?.output !== undefined) rows.push(["Output tokens", `${(m.usage.output / 1000).toFixed(1)}k`]);
+  const tools = Object.entries(m.toolCalls)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, n]) => `${name} ${n}`)
+    .join(" · ");
+  if (tools) rows.push(["Tool calls", tools]);
+  return rows;
 }
 
-/** List-row chip. A finished job with metrics gets a quiet summary line instead. */
-export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
-  if (!job) return null;
-  if (job.status === "done") {
-    const line = job.metrics ? formatMetricsLine(job.metrics) : null;
-    if (!line) return null;
-    return (
-      <span
-        className="flex-none whitespace-nowrap text-2xs"
-        data-testid="analysis-metrics"
-        style={{ color: "var(--fg-faint)" }}
+/**
+ * A finished analysis's run stats, behind a small stopwatch trigger in the PR
+ * header: there when you want them, silent otherwise. Nothing for a job with
+ * no metrics (runs from before they were recorded).
+ */
+export function AnalysisStats({ job }: { job?: AnalysisJob | null }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [open]);
+
+  if (job?.status !== "done" || !job.metrics) return null;
+  const rows = analysisStatsRows(job.metrics);
+  if (rows.length === 0) return null;
+
+  return (
+    <span ref={wrapRef} className="relative inline-flex flex-none">
+      <button
+        type="button"
+        data-testid="analysis-stats"
+        aria-label="Analysis run stats"
+        aria-expanded={open}
+        title="Analysis run stats"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center"
+        style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
       >
-        {line}
-      </span>
-    );
-  }
+        <IconStopwatch width={12} height={12} />
+      </button>
+      {open ? (
+        <div
+          role="dialog"
+          aria-label="Analysis run stats"
+          className="surface absolute left-0 top-6 z-30 w-60 rounded-md p-2 elev-2"
+        >
+          <table className="w-full text-2xs tabular-nums">
+            <tbody>
+              {rows.map(([label, value]) => (
+                <tr key={label}>
+                  <td className="py-0.5 pr-3 align-top" style={{ color: "var(--fg-faint)" }}>
+                    {label}
+                  </td>
+                  <td className="py-0.5 text-right" style={{ color: "var(--fg-muted)" }}>
+                    {value}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+/** List-row chip. Rendered only for a job that is not a plain success; a
+ *  finished run's stats live behind AnalysisStats in the PR header. */
+export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
+  if (!job || job.status === "done") return null;
   const tone = toneFor(job.status);
   const live = job.status === "queued" || job.status === "running";
   return (

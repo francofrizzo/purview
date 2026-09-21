@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { AnalysisJob, PrDetail } from "../api/types";
 import { isJobLive } from "../api/types";
-import { AnalysisChip } from "./Analysis";
+import { AnalysisChip, AnalysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { StackedOnChip } from "./Chips";
 import { stackedOnLink } from "../lib/stacked";
@@ -134,6 +134,7 @@ export function TopBar({
         <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
         {/* Only interesting while the analysis is not a plain success. */}
         <AnalysisChip job={analysisJob} />
+        <AnalysisStats job={analysisJob} />
       </div>
 
       <div className="ml-auto flex flex-none items-center gap-1.5">
