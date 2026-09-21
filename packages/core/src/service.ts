@@ -1,5 +1,7 @@
 import {
+  fetchDefaultBranch,
   fetchMergeBase,
+  findOpenPrByHead,
   fetchPullDiff,
   fetchPullRequest,
   fetchRemoteViewedState,
@@ -13,6 +15,7 @@ import {
   appendEvent,
   appendEvents,
   ensureRepoConfig,
+  listPrs,
   loadState,
   prExists,
   readFilesJson,
@@ -24,6 +27,7 @@ import {
 } from "./store.js";
 import type {
   Analysis,
+  BasePr,
   Meta,
   MigrationReport,
   NewEvent,
@@ -35,6 +39,88 @@ import {
   ReviewUnitPatchSchema,
   ReviewUnitSchema,
 } from "./schemas.js";
+
+/**
+ * A locally tracked, still-open PR of the same repo whose head is `branch` —
+ * the free answer to "which PR is this one stacked on?". Unreadable meta is
+ * skipped rather than failing the caller.
+ */
+export function findTrackedPrByHead(
+  key: PrKey,
+  branch: string,
+  root = stateRoot(),
+): BasePr | null {
+  const matches: Meta[] = [];
+  for (const other of listPrs(root)) {
+    if (
+      other.host !== key.host ||
+      other.owner !== key.owner ||
+      other.repo !== key.repo ||
+      other.number === key.number
+    ) {
+      continue;
+    }
+    try {
+      const m = readMeta(other, root);
+      if (m.headRef !== branch) continue;
+      if (m.prState === "merged" || m.prState === "closed") continue;
+      matches.push(m);
+    } catch {
+      // skip unreadable state
+    }
+  }
+  if (matches.length === 0) return null;
+  // Branch names get reused; the newest PR is the live one.
+  const m = matches.sort((a, b) => b.number - a.number)[0];
+  return { number: m.number, title: m.title ?? "", url: m.url };
+}
+
+const sameBasePr = (a: BasePr | null | undefined, b: BasePr | null | undefined) =>
+  (a ?? null) === (b ?? null) ||
+  (!!a && !!b && a.number === b.number && a.title === b.title && a.url === b.url);
+
+/**
+ * The meta fields that say what a PR targets: `baseRef`, and — when that is
+ * not the repo's default branch — `basePr`, the PR it is stacked on. Returns
+ * only what changed. Best-effort throughout: an unknown default branch leaves
+ * `basePr` alone (cleared if the base itself moved), and a failed `gh` lookup
+ * keeps the previous value.
+ */
+export function resolveBaseMeta(
+  key: PrKey,
+  meta: Pick<Meta, "baseRef" | "basePr">,
+  baseRef: string,
+  root = stateRoot(),
+): Partial<Meta> {
+  const patch: Partial<Meta> = {};
+  const moved = meta.baseRef !== baseRef;
+  if (moved) patch.baseRef = baseRef;
+  const previous = moved ? undefined : meta.basePr;
+
+  let next: BasePr | null | undefined = previous;
+  const defaultBranch = fetchDefaultBranch(repoKeyOf(key), root);
+  if (defaultBranch !== null) {
+    if (baseRef === defaultBranch) {
+      next = null;
+    } else {
+      const local = findTrackedPrByHead(key, baseRef, root);
+      if (local) {
+        next = local;
+      } else {
+        const remote = findOpenPrByHead(repoKeyOf(key), baseRef);
+        // `undefined` = the lookup failed: keep what we knew.
+        if (remote !== undefined) next = remote;
+      }
+    }
+  }
+  if (next === undefined) {
+    // Unresolved: only a moved base needs its stale basePr dropped.
+    if (meta.basePr !== undefined) patch.basePr = undefined;
+  } else if (!sameBasePr(next, meta.basePr) || meta.basePr === undefined) {
+    patch.basePr = next;
+  }
+  return patch;
+}
 
 export interface InitResult {
   key: PrKey;
@@ -66,6 +152,7 @@ export function initPr(key: PrKey, root = stateRoot()): InitResult {
         author: pr.author,
         authorAvatarUrl: pr.authorAvatarUrl,
         headRef: pr.headRef,
+        baseRef: pr.baseRef,
         prState: pr.prState,
         reviewDecision: fetchReviewDecision(key),
         archived: false,
@@ -115,6 +202,9 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   const reviewDecision = fetchReviewDecision(key);
   const metaPatch: Partial<Meta> = {};
   if (meta.headRef !== pr.headRef) metaPatch.headRef = pr.headRef;
+  // Same for the base branch, plus the PR it is stacked on (when it targets
+  // anything but the default branch) — the prompts tell Claude about it.
+  Object.assign(metaPatch, resolveBaseMeta(key, meta, pr.baseRef, root));
   // Backfills state written before the author was recorded.
   if (pr.author && meta.author !== pr.author) metaPatch.author = pr.author;
   if (pr.authorAvatarUrl && meta.authorAvatarUrl !== pr.authorAvatarUrl) {

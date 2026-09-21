@@ -19,6 +19,13 @@ const meta = {
   title: "Charge retries: idempotency keys + backoff",
   author: "dana",
   createdAt: "2026-08-09T10:12:00Z",
+  // Stacked on #491 (tracked below), so the header's "stacked on" chip shows.
+  baseRef: "dana/ledger-writer-split",
+  basePr: {
+    number: 491,
+    title: "WIP: split the ledger writer out of ChargeService",
+    url: "https://github.com/acme/billing/pull/491",
+  },
 };
 
 export const MOCK_KEY = "github.com/acme/billing/482";

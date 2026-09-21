@@ -256,7 +256,8 @@ describe("opportunistic meta update", () => {
   });
 
   it("writes nothing when nothing moved", () => {
-    updateMeta(key, { prState: "open" }, root);
+    // baseRef/basePr already resolved, so there is nothing to backfill either.
+    updateMeta(key, { prState: "open", baseRef: "main", basePr: null }, root);
     const metaFile = path.join(
       root,
       key.host,

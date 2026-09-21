@@ -7,7 +7,9 @@ import type {
   ReviewEffort,
   RiskFlag,
 } from "../api/types";
+import { Link } from "react-router-dom";
 import { formatMustReadLines } from "../lib/prList";
+import type { StackedOnLink } from "../lib/stacked";
 import { IconBolt, IconCheck, IconWeight, RISK_META } from "./icons";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
@@ -82,6 +84,33 @@ export function ReviewDecisionChip({ decision }: { decision: ReviewDecision | nu
       {s.label}
       {s.check ? <IconCheck width={10} height={10} /> : null}
     </span>
+  );
+}
+
+/**
+ * "stacked on #n" in the PR header. Quiet on purpose — neutral colors, like a
+ * qualifier on the title — since it is context, not a status.
+ */
+export function StackedOnChip({ link }: { link: StackedOnLink | null }) {
+  if (!link) return null;
+  const cls = "chip flex-none self-center hover:underline";
+  const style = { color: "var(--fg-faint)", background: "var(--bg-inset)" };
+  return link.internal ? (
+    <Link to={link.href} className={cls} style={style} title={link.title} data-testid="stacked-on-chip">
+      {link.label}
+    </Link>
+  ) : (
+    <a
+      href={link.href}
+      target="_blank"
+      rel="noreferrer"
+      className={cls}
+      style={style}
+      title={link.title}
+      data-testid="stacked-on-chip"
+    >
+      {link.label}
+    </a>
   );
 }
 

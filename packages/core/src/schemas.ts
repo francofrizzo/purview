@@ -206,6 +206,14 @@ export const ReviewDecisionSchema = z.enum([
 ]);
 export type ReviewDecision = z.infer<typeof ReviewDecisionSchema>;
 
+/** The PR a stacked PR sits on (see `Meta.basePr`). */
+export const BasePrSchema = z.object({
+  number: z.number().int(),
+  title: z.string(),
+  url: z.string(),
+});
+export type BasePr = z.infer<typeof BasePrSchema>;
+
 export const MetaSchema = z.object({
   host: z.string(),
   owner: z.string(),
@@ -224,6 +232,18 @@ export const MetaSchema = z.object({
    * because state written before this existed simply doesn't have it.
    */
   headRef: z.string().optional(),
+  /**
+   * The branch the PR targets (GitHub's `base.ref`), refreshed like `headRef`.
+   * Optional because state written before it existed doesn't have it; the
+   * staleness poll backfills it (server/staleness.ts).
+   */
+  baseRef: z.string().optional(),
+  /**
+   * The open PR whose head is `baseRef`, when the PR is stacked (targets a
+   * branch other than the repo's default). `null` = not stacked, or stacked on
+   * a branch no open PR heads; absent = not resolved yet.
+   */
+  basePr: BasePrSchema.nullable().optional(),
   /**
    * Absolute path to a local checkout of the PR's repo, when the reader has
    * pointed us at one. Optional and purely additive: everything works without
