@@ -70,6 +70,12 @@ export interface HunkLineChange {
   removedAt: RemovedAnchor[];
   /** how many of the lines N introduced a later revision rewrote or removed */
   rewrittenSince: number;
+  /**
+   * `rewrittenSince` by the revision that rewrote or removed them, sorted by
+   * revision; absent when it is 0. Lets the web, highlighting several
+   * revisions at once, leave out the rewrites another highlighted one made.
+   */
+  rewrittenBy?: { revision: number; count: number }[];
   /** no revision after N changed this hunk's body: it is the one N produced */
   exactAtCurrent: boolean;
   /**
@@ -378,6 +384,7 @@ export function computeRevisionLineChanges(input: RevisionLineChangesInput): Rev
     lines: number[];
     anchors: RemovedAnchor[];
     rewrittenSince: number;
+    rewrittenBy: { revision: number; count: number }[];
     exact: boolean;
     uncertain: boolean;
     /** index of the next step to take */
@@ -467,6 +474,7 @@ export function computeRevisionLineChanges(input: RevisionLineChangesInput): Rev
       removedCount: c.removedCount,
       removedAt: anchors,
       rewrittenSince: b.rewrittenSince,
+      ...(b.rewrittenBy.length ? { rewrittenBy: b.rewrittenBy } : {}),
       exactAtCurrent: b.exact,
       ...(b.uncertain ? { uncertain: true } : {}),
       ...(truncated ? { truncated: true } : {}),
@@ -482,6 +490,7 @@ export function computeRevisionLineChanges(input: RevisionLineChangesInput): Rev
         lines: c.lines,
         anchors: c.removedAt,
         rewrittenSince: 0,
+        rewrittenBy: [],
         exact: true,
         uncertain: false,
         k: 0,
@@ -503,7 +512,13 @@ export function computeRevisionLineChanges(input: RevisionLineChangesInput): Rev
         // A line no successor kept was rewritten; count it once (on the
         // first branch), not once per half of a split.
         const lost = b.lines.filter((l) => !moved.some((m) => m.kept.has(l))).length;
-        moved[0].branch.rewrittenSince += lost;
+        if (lost > 0) {
+          const by = moved[0].branch;
+          const at = step?.revision ?? stepRevision(k);
+          by.rewrittenSince += lost;
+          // Steps run in revision order, so appending keeps it sorted.
+          by.rewrittenBy = [...by.rewrittenBy, { revision: at, count: lost }];
+        }
         if (moved.length > 1) {
           work.push(...moved.map((m) => m.branch));
           forked = true;

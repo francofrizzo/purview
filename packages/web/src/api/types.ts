@@ -170,6 +170,8 @@ export interface HunkLineChange {
   removedAt: { line: number; count: number }[];
   /** how many of the revision's lines later revisions rewrote or removed */
   rewrittenSince: number;
+  /** `rewrittenSince` by the revision that did it, sorted; absent when 0 (or from an older server) */
+  rewrittenBy?: { revision: number; count: number }[];
   /** no later revision touched the hunk */
   exactAtCurrent: boolean;
   /** a later step couldn't be followed; positions assumed carried over */

@@ -142,6 +142,21 @@ describe("computeRevisionLineChanges", () => {
     expect(out.hunks[0]).toMatchObject({ lines: [4, 6], rewrittenSince: 1, exactAtCurrent: false });
   });
 
+  it("says which later revision rewrote them", () => {
+    const r3 = r2.map((l) => (l === "+\treturn err" ? "+\treturn wrap(err)" : l));
+    const r4 = r3.map((l) => (l === "+if b {" ? "+if b != nil {" : l));
+    const out = chain([r1, r2, r3, r4]);
+    expect(out.hunks[0]).toMatchObject({
+      lines: [6],
+      rewrittenSince: 2,
+      rewrittenBy: [
+        { revision: 3, count: 1 },
+        { revision: 4, count: 1 },
+      ],
+    });
+    expect(chain([r1, r2]).hunks[0].rewrittenBy).toBeUndefined();
+  });
+
   it("keeps positions through identical steps and stays exact", () => {
     const out = chain([r1, r2, r2, r2], ["fuzzy", "identical", "identical"]);
     expect(out.hunks[0]).toMatchObject({ currentHunkId: "H2", lines: [4, 5, 6], exactAtCurrent: true });

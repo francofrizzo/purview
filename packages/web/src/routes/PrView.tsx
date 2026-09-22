@@ -27,7 +27,7 @@ import {
   useEditComment,
   useMoveComment,
   useProposeReanchor,
-  useRevisionLineChanges,
+  useRevisionsLineChanges,
   useDiscardPendingReview,
   useDiscardRevision,
   useExportAnalysis,
@@ -92,7 +92,12 @@ import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
-import { buildHighlight, highlightTally, plural } from "../lib/revisionHighlight";
+import {
+  buildHighlight,
+  highlightSummaryText,
+  revisionsLabel,
+  type RevisionHighlight,
+} from "../lib/revisionHighlight";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { prPageTitle, unitFromSearch, withUnitParam } from "../lib/prUrl";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
@@ -102,6 +107,9 @@ import { useDiffViewPrefs, useSettings } from "../lib/settings";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
 import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
+
+/** No changelog highlight; one shared array, so nothing downstream sees a new one each render. */
+const NO_REVISIONS: number[] = [];
 
 export function PrView() {
   const params = useParams();
@@ -442,45 +450,45 @@ export function PrView() {
   const unplacedSelected = selectedUnitId === UNPLACED_ID && !unplacedEmpty;
 
   // --- changelog highlight -------------------------------------------------
-  // Clicking a changelog row highlights, in the diff, the lines that revision
-  // changed. It follows the reader from unit to unit (each unit shows its own
-  // share of that revision's changes, or says it has none) until cleared; it
-  // shows on the units tab only, and a new revision drops it.
+  // Clicking changelog rows highlights, in the diff, the lines those
+  // revisions changed: each click toggles one revision in or out, and the
+  // union shows in one color. It follows the reader from unit to unit (each
+  // unit shows its own share of those changes, or says it has none) until
+  // cleared; it shows on the units tab only, and a new revision drops it.
   // Held against the revision it was set at and derived from that, so a new
   // revision drops it in the same render; the effect then forgets it for good.
   const currentRevision = detail?.state.revision ?? 0;
   const [highlightFor, setHighlightFor] = useState<{
-    revision: number;
+    /** ascending, never empty */
+    revisions: number[];
     atRevision: number;
   } | null>(null);
   const highlightStale = highlightFor !== null && highlightFor.atRevision !== currentRevision;
-  const highlightRevision =
+  const highlightRevisions =
     highlightFor && !highlightStale && tab === "units" && selectedUnit
-      ? highlightFor.revision
-      : null;
+      ? highlightFor.revisions
+      : NO_REVISIONS;
   useEffect(() => {
     if (highlightStale) setHighlightFor(null);
   }, [highlightStale]);
-  const setHighlightRevision = useCallback(
-    (revision: number | null) =>
-      setHighlightFor(revision === null ? null : { revision, atRevision: currentRevision }),
+  const clearHighlight = useCallback(() => setHighlightFor(null), []);
+  const toggleHighlight = useCallback(
+    (revision: number) =>
+      setHighlightFor((prev) => {
+        const held = prev && prev.atRevision === currentRevision ? prev.revisions : [];
+        const next = held.includes(revision)
+          ? held.filter((r) => r !== revision)
+          : [...held, revision].sort((a, b) => a - b);
+        return next.length ? { revisions: next, atRevision: currentRevision } : null;
+      }),
     [currentRevision],
   );
-  const toggleHighlight = useCallback(
-    (revision: number) => setHighlightRevision(highlightRevision === revision ? null : revision),
-    [highlightRevision, setHighlightRevision],
-  );
-  const highlightActive = highlightRevision !== null;
-  const lineChanges = useRevisionLineChanges(
-    prKey,
-    highlightActive ? highlightRevision : null,
-    currentRevision,
-  );
+  const highlightActive = highlightRevisions.length > 0;
+  const lineChanges = useRevisionsLineChanges(prKey, highlightRevisions, currentRevision);
   const highlight = useMemo(() => {
     if (!highlightActive || !selectedUnit || !lineChanges.data) return null;
-    if (lineChanges.data.revision !== highlightRevision) return null;
     return buildHighlight(lineChanges.data, { hunkIds: selectedUnit.hunkIds, unitId: selectedUnit.id });
-  }, [highlightActive, selectedUnit, lineChanges.data, highlightRevision]);
+  }, [highlightActive, selectedUnit, lineChanges.data]);
 
   // The composer's auto-attach chip follows whatever unit is in context; the
   // files tab has no such concept, so it sees null and shows nothing.
@@ -649,7 +657,7 @@ export function PrView() {
         setDrawerOpen(false);
       } else if (
         e.key === "Escape" &&
-        highlightRevision !== null &&
+        highlightActive &&
         // Last in line: an open popover, overlay, composer or line selection
         // claims Escape first (they mark it handled, or stop it outright).
         !e.defaultPrevented &&
@@ -657,7 +665,7 @@ export function PrView() {
         !commentTarget
       ) {
         e.preventDefault();
-        setHighlightRevision(null);
+        clearHighlight();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -670,8 +678,8 @@ export function PrView() {
     toggleSidebar,
     sidebarMode,
     drawerOpen,
-    highlightRevision,
-    setHighlightRevision,
+    highlightActive,
+    clearHighlight,
     summaryOpen,
     commentTarget,
   ]);
@@ -1233,15 +1241,15 @@ export function PrView() {
                   {/* Collapsed, the findings list is gone — the badge is what
                       keeps a warning from disappearing with it. */}
                   {headerCollapsed ? <FindingsBadge unit={selectedUnit} /> : null}
-                  {headerCollapsed && highlightRevision !== null ? (
+                  {headerCollapsed && highlightActive ? (
                     <button
                       type="button"
                       className="changed-in-chip chip"
                       data-testid="highlight-chip"
-                      title={`Showing the lines r${highlightRevision} changed · click or esc to clear`}
-                      onClick={() => setHighlightRevision(null)}
+                      title={`Showing the lines ${revisionsLabel(highlightRevisions, " + ")} changed · click or esc to clear`}
+                      onClick={clearHighlight}
                     >
-                      r{highlightRevision} changes · clear
+                      {revisionsLabel(highlightRevisions, " + ")} changes · clear
                     </button>
                   ) : null}
                 </div>
@@ -1295,16 +1303,15 @@ export function PrView() {
                   <UnitChangelog
                     changelog={selectedUnit.changelog}
                     currentRevision={detail.state.revision}
-                    activeRevision={highlightRevision}
+                    activeRevisions={highlightRevisions}
                     onSelectRevision={toggleHighlight}
                   />
-                  {highlightRevision !== null ? (
+                  {highlightActive ? (
                     <HighlightSummary
-                      revision={highlightRevision}
+                      revisions={highlightRevisions}
                       highlight={highlight}
-                      loading={lineChanges.isLoading}
-                      error={lineChanges.error as Error | null}
-                      onClear={() => setHighlightRevision(null)}
+                      failed={lineChanges.failed}
+                      onClear={clearHighlight}
                     />
                   ) : null}
                   {selectedUnit.attentionWhy ? (
@@ -1580,36 +1587,22 @@ function UnplacedHeader({
 }
 
 /**
- * The line under the changelog while a revision is highlighted: what is
- * marked, what the revision touched that is gone, and the way out.
+ * The line under the changelog while revisions are highlighted: what is
+ * marked, what they touched that is gone, and the way out.
  */
 function HighlightSummary({
-  revision,
+  revisions,
   highlight,
-  loading,
-  error,
+  failed,
   onClear,
 }: {
-  revision: number;
-  highlight: ReturnType<typeof buildHighlight> | null;
-  loading: boolean;
-  error: Error | null;
+  revisions: readonly number[];
+  highlight: RevisionHighlight | null;
+  failed: { revision: number; error: Error } | null;
   onClear: () => void;
 }) {
-  let body: ReactNode;
-  if (error) body = `Couldn't load the changes from r${revision}: ${error.message}`;
-  else if (loading || !highlight) body = `Loading the changes from r${revision}…`;
-  else {
-    const { lines, hunks } = highlightTally(highlight);
-    const parts = [`Showing changes from r${revision}`];
-    parts.push(
-      hunks === 0
-        ? "none in this unit's current hunks"
-        : `${plural(lines, "line")} in ${plural(hunks, "hunk")}`,
-    );
-    if (highlight.goneCount > 0) parts.push(`${plural(highlight.goneCount, "hunk")} since removed`);
-    body = parts.join(" · ");
-  }
+  const error = failed?.error ?? null;
+  const body = highlightSummaryText(revisions, highlight, failed);
   return (
     <p
       className="mt-1 flex max-w-4xl flex-wrap items-baseline gap-x-1 text-2xs"

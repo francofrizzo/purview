@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import type { Hunk, RevisionLineChanges } from "../api/types";
+import type { Hunk, HunkLineChange, RevisionLineChanges } from "../api/types";
 import { buildRows, buildSplitRows, hunkBodyLines } from "./diffModel";
 import {
   buildHighlight,
+  highlightSummaryText,
   highlightTally,
   hunkChangedLabel,
   markedByHunk,
@@ -11,6 +12,7 @@ import {
   removalLabel,
   removalMarks,
   removalMarksByHunk,
+  revisionsLabel,
   splitRemovalMarks,
 } from "./revisionHighlight";
 
@@ -112,6 +114,14 @@ describe("removalMarks", () => {
       ]),
     );
     expect(splitRemovalMarks(new Map([[4, { below: 1 }]]), split)).toEqual(new Map([[3, { below: 1 }]]));
+    expect(
+      splitRemovalMarks(new Map([[4, { above: 2, aboveIn: [3] }], [3, { above: 1, aboveIn: [5] }]]), split),
+    ).toEqual(
+      new Map([
+        [3, { above: 2, aboveIn: [3] }],
+        [2, { above: 1, aboveIn: [5] }],
+      ]),
+    );
   });
 
   it("is computed per hunk from the highlight", () => {
@@ -125,9 +135,11 @@ describe("removalMarks", () => {
       goneCount: 0,
       gone: [],
     };
-    expect(removalMarksByHunk([h], buildHighlight(data), "").get("rm1")).toEqual(new Map([[1, { above: 2 }]]));
-    expect(removalLabel(3, 2)).toBe("2 lines removed in r3");
-    expect(removalLabel(3, 1)).toBe("1 line removed in r3");
+    expect(removalMarksByHunk([h], buildHighlight(data), "").get("rm1")).toEqual(
+      new Map([[1, { above: 2, aboveIn: [3] }]]),
+    );
+    expect(removalLabel([3], 2)).toBe("2 lines removed in r3");
+    expect(removalLabel([3], 1)).toBe("1 line removed in r3");
   });
 });
 
@@ -157,17 +169,184 @@ describe("buildHighlight", () => {
 
   it("labels the hunk header: removals, later rewrites, and the exact-marks tooltip", () => {
     const h = buildHighlight(data);
-    expect(hunkChangedLabel(5, h.byHunk.get("a")!)).toEqual({
+    expect(hunkChangedLabel(h.byHunk.get("a")!)).toEqual({
       text: "changed in r5 · 3 lines removed · 2 since rewritten",
       title:
         "Changed again after r5. The marks are exact: they follow r5's own lines. 2 of r5's lines were rewritten by later revisions.",
     });
-    expect(hunkChangedLabel(5, h.byHunk.get("b")!)).toEqual({
+    expect(hunkChangedLabel(h.byHunk.get("b")!)).toEqual({
       text: "changed in r5",
       title: "Lines this hunk gained in r5",
     });
-    const c = hunkChangedLabel(5, h.byHunk.get("c")!);
+    const c = hunkChangedLabel(h.byHunk.get("c")!);
     expect(c.text).toBe("changed in r5");
     expect(c.title).toContain("None of r5's lines were rewritten");
+  });
+});
+
+describe("several revisions at once", () => {
+  const change = (over: Partial<HunkLineChange> & { currentHunkId: string }): HunkLineChange => ({
+    originHunkId: over.currentHunkId,
+    file: "a.ts",
+    status: "fuzzy",
+    lines: [],
+    removedCount: 0,
+    removedAt: [],
+    rewrittenSince: 0,
+    exactAtCurrent: false,
+    ...over,
+  });
+  const rev = (revision: number, hunks: HunkLineChange[], gone: RevisionLineChanges["gone"] = []) => ({
+    revision,
+    currentRevision: 7,
+    hunks,
+    goneCount: gone.length,
+    gone,
+  });
+  // r3 added rows 1-3 of `a`; r5 rewrote one of them (now row 3) and added row 6.
+  // r4, not highlighted, rewrote another of r3's lines.
+  const r3 = rev(
+    3,
+    [
+      change({
+        currentHunkId: "a",
+        originHunkId: "a3",
+        lines: [1, 2],
+        removedCount: 2,
+        removedAt: [{ line: 5, count: 2 }],
+        rewrittenSince: 2,
+        rewrittenBy: [
+          { revision: 4, count: 1 },
+          { revision: 5, count: 1 },
+        ],
+      }),
+      change({ currentHunkId: "b", originHunkId: "b3", lines: [0] }),
+    ],
+    [{ originHunkId: "g3", lastHunkId: "g", file: "g.ts", goneAtRevision: 6, unitId: "u1" }],
+  );
+  const r5 = rev(
+    5,
+    [
+      change({
+        currentHunkId: "a",
+        originHunkId: "a5",
+        lines: [2, 3, 6],
+        removedCount: 1,
+        removedAt: [
+          { line: 5, count: 1 },
+          { line: 7, count: 1 },
+        ],
+        exactAtCurrent: true,
+      }),
+    ],
+    [{ originHunkId: "g5", lastHunkId: "g", file: "g.ts", goneAtRevision: 6, unitId: "u1" }],
+  );
+
+  it("unions the marked lines and lists the revisions per hunk", () => {
+    const h = buildHighlight([r5, r3]);
+    expect(h.revisions).toEqual([3, 5]);
+    const a = h.byHunk.get("a")!;
+    expect(a.revisions).toEqual([3, 5]);
+    expect([...a.lines].sort()).toEqual([1, 2, 3, 6]);
+    expect(a.lineCount).toBe(4);
+    expect(h.byHunk.get("b")!.revisions).toEqual([3]);
+    expect(highlightTally(h)).toEqual({ lines: 5, hunks: 2 });
+  });
+
+  it("adds up deletions from different revisions at one anchor, and keeps who made them", () => {
+    const a = buildHighlight([r3, r5]).byHunk.get("a")!;
+    expect(a.removedCount).toBe(3);
+    expect(a.removedAt).toEqual([
+      { line: 5, count: 3, revisions: [3, 5] },
+      { line: 7, count: 1, revisions: [5] },
+    ]);
+    expect(removalMarks(8, a.removedAt)).toEqual(
+      new Map([
+        [5, { above: 3, aboveIn: [3, 5] }],
+        [7, { above: 1, aboveIn: [5] }],
+      ]),
+    );
+    expect(removalLabel([3, 5], 3)).toBe("3 lines removed in r3, r5");
+  });
+
+  it("counts the same deletion once when one origin reaches a hunk twice", () => {
+    const twice = rev(3, [
+      change({ currentHunkId: "m", originHunkId: "o", lines: [1], removedCount: 2, removedAt: [{ line: 4, count: 2 }] }),
+      change({ currentHunkId: "m", originHunkId: "o", lines: [2], removedCount: 2, removedAt: [{ line: 4, count: 2 }] }),
+    ]);
+    const m = buildHighlight(twice).byHunk.get("m")!;
+    expect([...m.lines]).toEqual([1, 2]);
+    expect(m.removedCount).toBe(2);
+    expect(m.removedAt).toEqual([{ line: 4, count: 2, revisions: [3] }]);
+  });
+
+  it("two origins of one revision merged into one hunk both count (no overwrite)", () => {
+    const merged = rev(3, [
+      change({ currentHunkId: "m", originHunkId: "o1", lines: [1], removedCount: 1, removedAt: [{ line: 4, count: 1 }] }),
+      change({ currentHunkId: "m", originHunkId: "o2", lines: [6], removedCount: 2, removedAt: [{ line: 4, count: 2 }] }),
+    ]);
+    const m = buildHighlight(merged).byHunk.get("m")!;
+    expect([...m.lines]).toEqual([1, 6]);
+    expect(m.removedCount).toBe(3);
+    expect(m.removedAt).toEqual([{ line: 4, count: 3, revisions: [3] }]);
+  });
+
+  it("leaves out of 'since rewritten' what another highlighted revision rewrote", () => {
+    expect(buildHighlight(r3).byHunk.get("a")!.rewrittenSince).toBe(2);
+    expect(buildHighlight([r3, r5]).byHunk.get("a")!.rewrittenSince).toBe(1);
+    // an older server: no breakdown, the plain count stands
+    const old = rev(3, [change({ currentHunkId: "a", lines: [1], rewrittenSince: 2 })]);
+    expect(buildHighlight([old, r5]).byHunk.get("a")!.rewrittenSince).toBe(2);
+  });
+
+  it("takes exactness from the latest revision, uncertainty from any", () => {
+    const h = buildHighlight([r3, r5]);
+    expect(h.byHunk.get("a")!.exactAtCurrent).toBe(true);
+    expect(h.byHunk.get("a")!.uncertain).toBe(false);
+    const shaky = rev(5, [change({ currentHunkId: "a", lines: [6], uncertain: true })]);
+    const u = buildHighlight([r3, shaky]).byHunk.get("a")!;
+    expect(u.exactAtCurrent).toBe(false);
+    expect(u.uncertain).toBe(true);
+  });
+
+  it("counts a gone hunk once however many revisions lead to it", () => {
+    expect(buildHighlight([r3, r5], { hunkIds: ["a"], unitId: "u1" }).goneCount).toBe(1);
+    expect(buildHighlight([r3, r5], { hunkIds: ["a"], unitId: "u2" }).goneCount).toBe(0);
+    expect(buildHighlight([r3, r5]).goneCount).toBe(1);
+  });
+
+  it("labels the hunk chip with every revision, the tooltip in words", () => {
+    const h = buildHighlight([r3, r5]);
+    expect(hunkChangedLabel(h.byHunk.get("a")!)).toEqual({
+      text: "changed in r3, r5 · 3 lines removed · 1 since rewritten",
+      title: "Lines this hunk gained in r3 and r5. 1 of their lines was rewritten by revisions outside the highlight.",
+    });
+    const r6 = rev(6, [change({ currentHunkId: "a", originHunkId: "a6", lines: [0] })]);
+    const later = hunkChangedLabel(buildHighlight([r3, r5, r6]).byHunk.get("a")!);
+    expect(later.text).toBe("changed in r3, r5, r6 · 3 lines removed · 1 since rewritten");
+    expect(later.title).toBe(
+      "Changed again after r6. The marks are exact: they follow each revision's own lines. 1 of their lines was rewritten by revisions outside the highlight.",
+    );
+    // one revision in the set keeps the single-revision wording
+    expect(hunkChangedLabel(h.byHunk.get("b")!).text).toBe("changed in r3");
+  });
+
+  it("joins revisions for the summary and header chip", () => {
+    expect(revisionsLabel([3])).toBe("r3");
+    expect(revisionsLabel([3, 5], " + ")).toBe("r3 + r5");
+  });
+
+  it("summarises: loading until all are in, the failing revision by name, then the tally", () => {
+    expect(highlightSummaryText([3, 5], null, null)).toBe("Loading the changes from r3 + r5…");
+    expect(highlightSummaryText([3, 5], null, { revision: 5, error: new Error("boom") })).toBe(
+      "Couldn't load the changes from r5: boom",
+    );
+    const h = buildHighlight([r3, r5], { hunkIds: ["a", "b"], unitId: "u1" });
+    expect(highlightSummaryText([3, 5], h, null)).toBe(
+      "Showing changes from r3 + r5 · 5 lines in 2 hunks · 1 hunk since removed",
+    );
+    expect(highlightSummaryText([3], buildHighlight(r3, { hunkIds: ["zz"] }), null)).toBe(
+      "Showing changes from r3 · none in this unit's current hunks",
+    );
   });
 });

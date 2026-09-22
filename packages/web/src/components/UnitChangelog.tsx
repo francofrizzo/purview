@@ -13,16 +13,17 @@ import { IconChevron, IconHistory } from "./icons";
  * expanded row): no nested toggle, the header is a plain label and every
  * entry is listed.
  *
- * With `onSelectRevision`, each row is a button: clicking it highlights, in
- * the diff, the lines that revision changed (clicking the active row again
- * clears it). Inline changelogs never offer this.
+ * With `onSelectRevision`, each row is a toggle: clicking it adds that
+ * revision to the highlight in the diff (the lines it changed), clicking an
+ * active row takes it out again; several can be on at once. Inline
+ * changelogs never offer this.
  */
 export function UnitChangelog({
   changelog,
   currentRevision,
   inline = false,
   className = "mt-1.5",
-  activeRevision = null,
+  activeRevisions = [],
   onSelectRevision,
 }: {
   changelog: UnitChangelogEntry[] | undefined;
@@ -30,9 +31,9 @@ export function UnitChangelog({
   currentRevision?: number;
   inline?: boolean;
   className?: string;
-  /** the revision whose changes the diff is highlighting, if any */
-  activeRevision?: number | null;
-  /** row click: toggle the highlight for that revision */
+  /** the revisions whose changes the diff is highlighting */
+  activeRevisions?: readonly number[];
+  /** row click: toggle that revision in or out of the highlight */
   onSelectRevision?: (revision: number) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -74,7 +75,7 @@ export function UnitChangelog({
       {expanded ? (
         <ol className="mt-1.5 space-y-1 border-l pl-3" style={{ borderColor: "var(--border)" }}>
           {entries.map((e) => {
-            const active = activeRevision === e.revision;
+            const active = activeRevisions.includes(e.revision);
             const badge = (
               <span
                 className="chip flex-none font-mono"
@@ -105,8 +106,10 @@ export function UnitChangelog({
                   aria-pressed={active}
                   title={
                     active
-                      ? `Showing the lines r${e.revision} changed · click or esc to clear`
-                      : `Highlight the lines r${e.revision} changed`
+                      ? `Showing the lines r${e.revision} changed · click to take it out, esc to clear all`
+                      : activeRevisions.length > 0
+                        ? `Also highlight the lines r${e.revision} changed`
+                        : `Highlight the lines r${e.revision} changed`
                   }
                   onClick={() => onSelectRevision(e.revision)}
                   className="changelog-row -mx-1.5 flex w-[calc(100%+0.75rem)] items-baseline gap-2 rounded px-1.5 text-left leading-[18px]"

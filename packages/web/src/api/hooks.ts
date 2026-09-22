@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import {
   useMutation,
+  useQueries,
   useQuery,
   useQueryClient,
   type UseMutationResult,
@@ -58,16 +59,31 @@ export const qk = {
 };
 
 /**
- * The lines one revision changed (for the changelog highlight). Keyed on the
- * current revision too: the forward mapping moves only when the PR does.
+ * The lines each highlighted revision changed (for the changelog highlight):
+ * one query per revision, so adding or dropping one refetches nothing else.
+ * Keyed on the current revision too: the forward mapping moves only when the
+ * PR does. `data` waits for every revision; `failed` names the first that
+ * didn't load.
  */
-export function useRevisionLineChanges(key: string, revision: number | null, currentRevision: number) {
-  return useQuery<RevisionLineChanges>({
-    queryKey: qk.lineChanges(key, revision ?? 0, currentRevision),
-    queryFn: () => api.revisionLineChanges(key, revision!),
-    enabled: Boolean(key && revision !== null),
-    staleTime: Infinity,
-    retry: false,
+export function useRevisionsLineChanges(key: string, revisions: readonly number[], currentRevision: number) {
+  return useQueries({
+    queries: revisions.map((revision) => ({
+      queryKey: qk.lineChanges(key, revision, currentRevision),
+      queryFn: () => api.revisionLineChanges(key, revision),
+      enabled: Boolean(key),
+      staleTime: Infinity,
+      retry: false,
+    })),
+    // Structurally shared by the observer, so an unchanged set keeps its identity.
+    combine: (results) => {
+      const at = results.findIndex((r) => r.error);
+      const failed = at === -1 ? null : { revision: revisions[at], error: results[at].error as Error };
+      const loaded = results.every((r, i) => r.data?.revision === revisions[i]);
+      return {
+        data: loaded && results.length > 0 ? results.map((r) => r.data as RevisionLineChanges) : null,
+        failed,
+      };
+    },
   });
 }
 
