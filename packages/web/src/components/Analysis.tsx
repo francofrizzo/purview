@@ -35,6 +35,10 @@ function toneFor(status: AnalysisJob["status"]): { fg: string; bg: string } {
 /** Rows of the stats popover; a row whose value is unknown is left out. */
 export function analysisStatsRows(m: AnalysisMetrics): [string, string][] {
   const rows: [string, string][] = [];
+  const run = m.run;
+  if (run?.kind) rows.push(["Run", run.kind]);
+  const model = run?.resolvedModel ?? run?.model;
+  if (model) rows.push(["Model", run?.effort ? `${model} · ${run.effort}` : model]);
   if (m.durationMs !== undefined) rows.push(["Duration", `${(m.durationMs / 60_000).toFixed(1)} min`]);
   if (m.turns !== undefined) rows.push(["Turns", String(m.turns)]);
   if (m.costUsd !== undefined) rows.push(["Cost", `$${m.costUsd.toFixed(2)}`]);

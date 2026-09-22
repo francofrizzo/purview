@@ -317,6 +317,27 @@ export interface AnalysisMetrics {
     firstWriteAt?: number;
     setAnalysisAt?: number;
   };
+  /** what the run was (see server's AnalysisRunInfoSchema); absent on older runs */
+  run?: {
+    kind?: "initial" | "refresh" | "rerun";
+    sessionId?: string;
+    cwd?: string;
+    checkout?: string;
+    model?: string;
+    resolvedModel?: string;
+    effort?: string;
+    claudeVersion?: string;
+    promptVersion?: string;
+    size?: { files: number; hunks: number; added: number; removed: number };
+    migration?: {
+      identical: number;
+      fuzzy: number;
+      renamed: number;
+      archived: number;
+      new: number;
+      changedUnits: number;
+    };
+  };
 }
 
 /** GET /api/prs/:key/analysis-job → `{ job }` (null when none was ever run). */

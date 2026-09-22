@@ -22,6 +22,28 @@ describe("analysisStatsRows", () => {
     ]);
   });
 
+  it("names the run kind and model, never session ids or prompt hashes", () => {
+    const rows = analysisStatsRows({
+      turns: 3,
+      toolCalls: {},
+      bash: { cli: 0, state: 0, grep: 0, sed: 0, other: 0 },
+      reads: { filesJson: 0, diffPatch: 0, skill: 0, checkout: 0, other: 0 },
+      run: {
+        kind: "refresh",
+        model: "opus",
+        resolvedModel: "claude-opus-4-6",
+        effort: "high",
+        sessionId: "11111111-2222-3333-4444-555555555555",
+        promptVersion: "abcdef012345",
+      },
+    });
+    expect(rows).toEqual([
+      ["Run", "refresh"],
+      ["Model", "claude-opus-4-6 · high"],
+      ["Turns", "3"],
+    ]);
+  });
+
   it("leaves out what the run did not record", () => {
     expect(
       analysisStatsRows({

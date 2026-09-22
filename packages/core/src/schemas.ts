@@ -467,6 +467,58 @@ export const AnalysisJobStatusSchema = z.enum([
 export type AnalysisJobStatus = z.infer<typeof AnalysisJobStatusSchema>;
 
 /**
+ * An analysis run's identity and settings, recorded so past runs can be
+ * compared after the fact (scripts/analysis-metrics.mjs). Every field is
+ * optional: a run that fails before a value is known simply omits it.
+ */
+export const AnalysisRunInfoSchema = z.object({
+  /**
+   * `initial` = no analysis to build on (full set-analysis); `refresh` =
+   * incremental, after a new revision; `rerun` = this revision already had
+   * an analysis and is analyzed again.
+   */
+  kind: z.enum(["initial", "refresh", "rerun"]).optional(),
+  /** Claude Code session id; the transcript is `~/.claude/projects/<cwd with non-alphanumerics as "-">/<sessionId>.jsonl` */
+  sessionId: z.string().optional(),
+  /** the `claude` process's working directory (the PR state dir) */
+  cwd: z.string().optional(),
+  /** the checkout/worktree the run could read, when one resolved */
+  checkout: z.string().optional(),
+  /** `--model` as passed */
+  model: z.string().optional(),
+  /** the model the CLI reported in its init line, when it did */
+  resolvedModel: z.string().optional(),
+  /** `--effort` as passed; absent when the flag was omitted */
+  effort: z.string().optional(),
+  /** `claude_code_version` from the init line */
+  claudeVersion: z.string().optional(),
+  /** first 12 hex of sha256 over the prompt-building code and skill files */
+  promptVersion: z.string().optional(),
+  /** size of the analyzed revision's diff */
+  size: z
+    .object({
+      files: z.number().int(),
+      hunks: z.number().int(),
+      added: z.number().int(),
+      removed: z.number().int(),
+    })
+    .optional(),
+  /** refresh/rerun only: the migration into this revision and its fallout */
+  migration: z
+    .object({
+      identical: z.number().int(),
+      fuzzy: z.number().int(),
+      renamed: z.number().int(),
+      archived: z.number().int(),
+      new: z.number().int(),
+      /** live units `changedUnits` reports for this revision */
+      changedUnits: z.number().int(),
+    })
+    .optional(),
+});
+export type AnalysisRunInfo = z.infer<typeof AnalysisRunInfoSchema>;
+
+/**
  * One Claude analysis run for a (PR, revision), persisted as
  * `analysis-job.json` in the PR's state dir so its status survives a server
  * restart (a "running" record with no process behind it is reconciled to
@@ -527,6 +579,8 @@ export const AnalysisMetricsSchema = z.object({
       setAnalysisAt: z.number().int().optional(),
     })
     .optional(),
+  /** What the run was, as opposed to what it spent; absent on older runs. */
+  run: AnalysisRunInfoSchema.optional(),
 });
 export type AnalysisMetrics = z.infer<typeof AnalysisMetricsSchema>;
 

@@ -1,14 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import {
   AnalysisJobSchema,
   analysisJobPath,
   appendEvent,
+  changedUnits,
   keyToString,
   listPrs,
   loadState,
   prDir,
+  readEvents,
   readFilesJson,
   readMeta,
   updateMeta,
@@ -16,8 +19,10 @@ import {
   summarizeMoves,
   type AnalysisJob,
   type AnalysisMetrics,
+  type AnalysisRunInfo,
   type MovePairSummary,
   type PrKey,
+  type State,
   liveUnits,
 } from "@reviewer/core";
 import { runClaude, type ClaudeRun } from "./claude-runner.js";
@@ -690,6 +695,102 @@ function recordTool(
   }
 }
 
+/* ------------------------------------------------------------ run identity */
+
+/** The skill files a run is pointed at (MIGRATION-NOTES only on incremental runs). */
+const PROMPT_SKILL_FILES = ["SKILL.md", "RUBRIC.md", "MIGRATION-NOTES.md"];
+
+/**
+ * A short, stable fingerprint of what a run is told: the source of the
+ * prompt builders (their text is the prompt template; a PR's own values only
+ * fill it in) plus the skill files the prompt points at. Two runs with the
+ * same value got the same instructions, so metrics can be split by it.
+ * Per-repo rubric overlays are configuration, not a prompt version, and are
+ * left out. A missing skill file hashes as missing rather than failing.
+ */
+export function promptVersion(skills = skillDir()): string {
+  const hash = createHash("sha256");
+  for (const fn of [analysisPrompt, checkoutNote, findingsNote, movedNote, changesBlock, baseNote, rubricSection]) {
+    hash.update(fn.toString()).update("\0");
+  }
+  for (const name of PROMPT_SKILL_FILES) {
+    hash.update(name).update("\0");
+    try {
+      hash.update(fs.readFileSync(path.join(skills, name)));
+    } catch {
+      hash.update("<missing>");
+    }
+    hash.update("\0");
+  }
+  return hash.digest("hex").slice(0, 12);
+}
+
+/**
+ * `rerun` when this revision already had an analysis (an `analysis-set` at
+ * it, or a run that finished `done` on it); otherwise `refresh` for the
+ * incremental flow and `initial` for a full one.
+ */
+export function analysisRunKind(
+  key: PrKey,
+  root: string,
+  state: State,
+  incremental: boolean,
+): NonNullable<AnalysisRunInfo["kind"]> {
+  const revision = state.currentRevision;
+  if (state.analysisRevision === revision) return "rerun";
+  try {
+    const analyzed = readEvents(key, root).some(
+      (e) => e.type === "analysis-finished" && e.revision === revision && e.status === "done",
+    );
+    if (analyzed) return "rerun";
+  } catch {
+    /* an unreadable log reads as "never analyzed" */
+  }
+  return incremental ? "refresh" : "initial";
+}
+
+/**
+ * The size of the revision being analyzed and, past the first revision, how
+ * it migrated from the previous one. Best-effort: unreadable files leave the
+ * field out.
+ */
+export function analysisRunSize(
+  key: PrKey,
+  root: string,
+  state: State,
+): Pick<AnalysisRunInfo, "size" | "migration"> {
+  const filesOf = (rev: number | undefined) => {
+    if (rev === undefined) return undefined;
+    try {
+      return readFilesJson(key, rev, root).files;
+    } catch {
+      return undefined;
+    }
+  };
+  const out: Pick<AnalysisRunInfo, "size" | "migration"> = {};
+  const files = filesOf(state.currentRevision);
+  if (files) {
+    const size = { files: files.length, hunks: 0, added: 0, removed: 0 };
+    for (const f of files) {
+      size.hunks += f.hunks.length;
+      for (const h of f.hunks) {
+        size.added += h.addedLines.length;
+        size.removed += h.removedLines.length;
+      }
+    }
+    out.size = size;
+  }
+  const report = state.lastMigration;
+  if (report && report.revision === state.currentRevision) {
+    const changed = changedUnits(state, report, {
+      previousFiles: filesOf(report.previousRevision),
+      currentFiles: files,
+    });
+    out.migration = { ...report.counts, changedUnits: changed.length };
+  }
+  return out;
+}
+
 /**
  * Fill free slots from the queue. Synchronous and idempotent: every runOne
  * completion calls it again, so the pool refills as runs finish, and a
@@ -775,29 +876,43 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   // `claude` CLI too old to know the flag; every other value passes straight
   // through to runClaude.
   const effort = effectiveAnalysisEffort(key, root, { meta: meta ?? null });
+  // Always explicit: an analysis must never inherit the `claude` CLI's own
+  // default model, which is whatever the user happens to have configured.
+  const model = effectiveAnalysisModel(key, root, { meta: meta ?? null });
+  // Husks alone are not an analysis to build on: with no live unit left
+  // the run must produce a full analysis (which drops the husks).
+  const incremental = liveUnits(state).length > 0;
+  const cwd = prDir(key, root);
+
+  const metrics = emptyMetrics();
+  // Recorded before the spawn so a run that dies early still says what it was.
+  metrics.run = {
+    kind: analysisRunKind(key, root, state, incremental),
+    cwd,
+    checkout: checkout.path || undefined,
+    model,
+    effort: effort === "none" ? undefined : effort,
+    promptVersion: promptVersion(),
+    ...analysisRunSize(key, root, state),
+  };
 
   const run = runClaude({
     label: "analysis",
     prompt: analysisPrompt(key, root, {
-      // Husks alone are not an analysis to build on: with no live unit left
-      // the run must produce a full analysis (which drops the husks).
-      incremental: liveUnits(state).length > 0,
+      incremental,
       checkout,
       headSha,
       committed,
     }),
-    cwd: prDir(key, root),
+    cwd,
     addDirs,
     ...flags,
-    // Always explicit: an analysis must never inherit the `claude` CLI's own
-    // default model, which is whatever the user happens to have configured.
-    model: effectiveAnalysisModel(key, root, { meta: meta ?? null }),
+    model,
     effort: effort === "none" ? undefined : effort,
     timeoutMs: opts.timeoutMs,
   });
   slot.run = run;
 
-  const metrics = emptyMetrics();
   let toolIndex = 0;
   const metricsCtx = { cliCmd: cliCommand(), skillDir: skillDir(), prDir: prDir(key, root) };
 
@@ -805,7 +920,14 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   let ok = false;
   try {
     for await (const event of run.events) {
-      if (event.type === "tool") {
+      if (event.type === "session") {
+        metrics.run = {
+          ...metrics.run,
+          sessionId: event.sessionId,
+          resolvedModel: event.model,
+          claudeVersion: event.claudeVersion,
+        };
+      } else if (event.type === "tool") {
         if (event.name !== "result-error") {
           toolIndex++;
           recordTool(metrics, toolIndex, event.name, event.rawDetail ?? event.detail, metricsCtx);
@@ -828,6 +950,10 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
       } else if (event.type === "done") {
         ok = event.ok;
         error = event.error;
+        // A run whose init line never arrived may still know its id here.
+        if (event.sessionId && !metrics.run?.sessionId) {
+          metrics.run = { ...metrics.run, sessionId: event.sessionId };
+        }
       }
     }
   } catch (err) {

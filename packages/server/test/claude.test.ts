@@ -24,6 +24,7 @@ import {
   analysisToolFlags,
   findingsNote,
   movedNote,
+  promptVersion,
   readJob,
   reconcileStaleJobs,
 } from "../src/analysis.js";
@@ -422,6 +423,74 @@ describe("analysis job lifecycle", () => {
 
     const finished = readEvents(key, root).filter((e) => e.type === "analysis-finished");
     expect(finished.at(-1)).toMatchObject({ status: "done", metrics: { turns: 7, costUsd: 1.23 } });
+  });
+
+  it("records what the run was on metrics.run: kind, session, settings, size, migration", async () => {
+    buildFixture(root, DOD_REV1);
+    claude.restore();
+    const lines = scriptedRun({ sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" });
+    Object.assign(lines[0], { model: "claude-opus-4-6", claude_code_version: "2.1.99" });
+    claude = fakeClaude({ lines });
+    claude.install();
+
+    // A revision that reworks the analyzed unit (fuzzy) queues an incremental run.
+    setGhRunner(ghFor([DOD_REV2], "2"));
+    await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
+    await analysisIdle();
+
+    const argv = claude.runs[0].argv;
+    const run = readJob(key, root)!.metrics!.run!;
+    expect(run).toMatchObject({
+      kind: "refresh",
+      sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      resolvedModel: "claude-opus-4-6",
+      claudeVersion: "2.1.99",
+      cwd: claude.runs[0].cwd,
+      model: argv[argv.indexOf("--model") + 1],
+      effort: argv[argv.indexOf("--effort") + 1],
+      promptVersion: promptVersion(),
+      migration: { fuzzy: 1, new: 0, archived: 0, changedUnits: 1 },
+    });
+    expect(run.size).toMatchObject({ files: 1 });
+    expect(run.size!.hunks).toBeGreaterThan(0);
+    expect(run.size!.added + run.size!.removed).toBeGreaterThan(0);
+    const finished = readEvents(key, root).filter((e) => e.type === "analysis-finished");
+    expect(finished.at(-1)).toMatchObject({ metrics: { run: { kind: "refresh", sessionId: run.sessionId } } });
+
+    // Analyzing the same revision again, once it has an analysis, is a rerun.
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    expect(readJob(key, root)!.metrics!.run!.kind).toBe("rerun");
+  });
+
+  it("records a first run on a fresh PR as initial, with no migration", async () => {
+    setGhRunner(ghFor([REV1_PATCH]));
+    await app.request("/api/prs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: `https://github.com/${key.owner}/${key.repo}/pull/${key.number}` }),
+    });
+    await analysisIdle();
+    const run = readJob(key, root)!.metrics!.run!;
+    expect(run.kind).toBe("initial");
+    expect(run.migration).toBeUndefined();
+    expect(run.sessionId).toBe("11111111-2222-3333-4444-555555555555");
+    // scriptedRun's init line names no model: only the one passed is known.
+    expect(run.resolvedModel).toBeUndefined();
+    expect(run.model).toBeTruthy();
+  });
+
+  it("promptVersion is a stable short hash that moves with the skill files", () => {
+    const skills = process.env.REVIEWER_SKILL_DIR!;
+    const before = promptVersion(skills);
+    expect(before).toMatch(/^[0-9a-f]{12}$/);
+    expect(promptVersion(skills)).toBe(before);
+    fs.writeFileSync(path.join(skills, "SKILL.md"), "# skill v1\n");
+    const v1 = promptVersion(skills);
+    expect(v1).not.toBe(before);
+    expect(promptVersion(skills)).toBe(v1);
+    fs.writeFileSync(path.join(skills, "MIGRATION-NOTES.md"), "notes\n");
+    expect(promptVersion(skills)).not.toBe(v1);
   });
 
   it("omits --effort entirely when repo.json pins the 'none' escape hatch", async () => {

@@ -48,8 +48,9 @@ export function setClaudeSpawner(next: ClaudeSpawner | null): void {
 /* -------------------------------------------------------------- our events */
 
 export type ClaudeEvent =
-  /** the CLI reported the session id (first `system:init` line) */
-  | { type: "session"; sessionId: string }
+  /** the CLI reported the session id (first `system:init` line), plus the
+   *  model it resolved and its own version when the line carries them */
+  | { type: "session"; sessionId: string; model?: string; claudeVersion?: string }
   /** incremental text (only when partialMessages is on) */
   | { type: "delta"; text: string }
   /** a complete assistant text block */
@@ -332,7 +333,13 @@ export function translate(
   const type = raw.type as string | undefined;
 
   if (type === "system" && raw.subtype === "init" && raw.session_id) {
-    out.push({ type: "session", sessionId: String(raw.session_id) });
+    const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+    out.push({
+      type: "session",
+      sessionId: String(raw.session_id),
+      model: str(raw.model),
+      claudeVersion: str(raw.claude_code_version),
+    });
     return out;
   }
 

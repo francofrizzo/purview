@@ -8,6 +8,7 @@ import {
   unitProgress,
   viewedFiles,
 } from "../src/reducer.js";
+import { AnalysisJobSchema, EventSchema } from "../src/schemas.js";
 import type { MigrationEntry, ReviewerEvent } from "../src/schemas.js";
 
 const ts = "2026-01-01T00:00:00.000Z";
@@ -239,6 +240,48 @@ describe("analysis run events", () => {
     expect(before.analysisRun).toBeUndefined();
     const after = fold([...events, { ts, type: "analysis-started", revision: 1 }]);
     expect({ ...after, analysisRun: undefined }).toEqual({ ...before, analysisRun: undefined });
+  });
+
+  it("parses analysis-finished events and job records written before metrics.run existed", () => {
+    // Verbatim shapes from older logs: no metrics at all, and metrics without `run`.
+    const bare = { ts, type: "analysis-finished", revision: 1, status: "failed", error: "server restarted" };
+    expect(EventSchema.parse(bare)).toEqual(bare);
+    const oldMetrics = {
+      ts,
+      type: "analysis-finished",
+      revision: 2,
+      status: "done",
+      metrics: {
+        turns: 12,
+        costUsd: 0.8,
+        toolCalls: { Bash: 4 },
+        bash: { cli: 3, state: 0, grep: 1, sed: 0, other: 0 },
+        reads: { filesJson: 0, diffPatch: 0, skill: 2, checkout: 0, other: 0 },
+        phases: { setAnalysisAt: 4 },
+      },
+    };
+    const parsed = EventSchema.parse(oldMetrics);
+    expect(parsed.type === "analysis-finished" && parsed.metrics?.run).toBeUndefined();
+    expect(AnalysisJobSchema.parse({ revision: 2, status: "done", metrics: oldMetrics.metrics }).metrics?.turns).toBe(12);
+  });
+
+  it("round-trips metrics.run, every field of it optional", () => {
+    const run = {
+      kind: "refresh",
+      sessionId: "11111111-2222-3333-4444-555555555555",
+      cwd: "/state/github.com/acme/widgets/7",
+      model: "opus",
+      effort: "high",
+      promptVersion: "0123456789ab",
+      size: { files: 2, hunks: 5, added: 40, removed: 3 },
+      migration: { identical: 3, fuzzy: 1, renamed: 0, archived: 1, new: 1, changedUnits: 2 },
+    };
+    const event = { ts, type: "analysis-finished", revision: 2, status: "done", metrics: { toolCalls: {}, run } };
+    const parsed = EventSchema.parse(event);
+    expect(parsed.type === "analysis-finished" && parsed.metrics?.run).toEqual(run);
+    const partial = EventSchema.parse({ ...event, metrics: { toolCalls: {}, run: {} } });
+    expect(partial.type === "analysis-finished" && partial.metrics?.run).toEqual({});
+    expect(() => EventSchema.parse({ ...event, metrics: { toolCalls: {}, run: { kind: "bogus" } } })).toThrow();
   });
 });
 
