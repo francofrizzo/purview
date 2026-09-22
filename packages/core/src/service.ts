@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import {
   fetchDefaultBranch,
   fetchMergeBase,
@@ -11,7 +12,8 @@ import {
 } from "./github.js";
 import { migrate, toRevisionFiles } from "./migration.js";
 import { parseDiff } from "./parse-diff.js";
-import { repoKeyOf, stateRoot, type PrKey } from "./paths.js";
+import { analysisJobPath, commentsPath, repoKeyOf, stateRoot, type PrKey } from "./paths.js";
+import { nextRevisionNumber, priorRevisions } from "./reducer.js";
 import {
   appendEvent,
   appendEvents,
@@ -19,6 +21,7 @@ import {
   listPrs,
   loadState,
   prExists,
+  readEvents,
   readFilesJson,
   readMeta,
   updateMeta,
@@ -28,6 +31,7 @@ import {
 } from "./store.js";
 import type {
   Analysis,
+  AnalysisJob,
   BasePr,
   Meta,
   MigrationReport,
@@ -36,6 +40,7 @@ import type {
   State,
 } from "./schemas.js";
 import {
+  AnalysisJobSchema,
   AnalysisSchema,
   CHANGELOG_TEXT_MAX,
   FINDING_EVIDENCE_MAX,
@@ -267,7 +272,9 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
 
   const patch = fetchPullDiff(key);
   const files = parseDiff(patch);
-  const revision = (current?.revision ?? 0) + 1;
+  // Not current + 1: a discarded revision's number is never handed out again.
+  // The migration below still diffs against `current`, the revision in force.
+  const revision = nextRevisionNumber(readEvents(key, root));
   const baseOnly = !!current && current.headSha === pr.headSha;
 
   writeRevision(
@@ -308,6 +315,120 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   );
 
   return { state: next, revision, added: true, baseOnly, report };
+}
+
+export type DiscardRefusal =
+  | "not_latest"
+  | "only_revision"
+  | "analysis_in_progress"
+  | "comments_since";
+
+/** A guard refused `discardRevision`; `code` is what the HTTP layer answers with. */
+export class DiscardRefusedError extends Error {
+  constructor(
+    readonly code: DiscardRefusal,
+    message: string,
+  ) {
+    super(message);
+    this.name = "DiscardRefusedError";
+  }
+}
+
+/**
+ * Comments (any status) created at or after `since`, an ISO timestamp.
+ * comments.json belongs to the server; all this needs is `createdAt`, so it
+ * is read loosely rather than through the server's schema.
+ */
+export function commentsCreatedSince(key: PrKey, since: string, root = stateRoot()): number {
+  const file = commentsPath(key, root);
+  if (!fs.existsSync(file)) return 0;
+  const raw: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+  if (!Array.isArray(raw)) return 0;
+  // Submitted comments are public on GitHub and can't be deleted, so counting
+  // them would block the discard for good; they stay where GitHub put them.
+  return raw.filter(
+    (c) => typeof c?.createdAt === "string" && c.createdAt >= since && c.status !== "submitted",
+  ).length;
+}
+
+function readJobLoosely(key: PrKey, root: string): AnalysisJob | null {
+  try {
+    return AnalysisJobSchema.parse(JSON.parse(fs.readFileSync(analysisJobPath(key, root), "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+export interface DiscardResult {
+  state: State;
+  discarded: number;
+  /** the revision now in force */
+  revision: number;
+}
+
+/**
+ * Throw away the latest revision — a refresh that caught the author
+ * mid-rebase — so the next refresh diffs straight against the one before it.
+ * Appends `revision-discarded`; the fold then restores exactly the state as it
+ * was before `revision` was added, plus whatever was done on GitHub since.
+ * `revisions/<n>/` stays on disk and the number is never reused.
+ *
+ * Refused (DiscardRefusedError) unless `revision` is the current one and there
+ * is an earlier one to fall back to, no analysis is queued or running, and no
+ * comment was written since it was added: comments are stored by file+line,
+ * so one written against this revision's diff has no safe place to go.
+ */
+export function discardRevision(
+  key: PrKey,
+  revision: number,
+  root = stateRoot(),
+): DiscardResult {
+  const meta = readMeta(key, root);
+  const state = loadState(key, root);
+  if (revision !== state.currentRevision) {
+    throw new DiscardRefusedError(
+      "not_latest",
+      `r${revision} is not the current revision (r${state.currentRevision}); only the latest ` +
+        `revision can be discarded.`,
+    );
+  }
+  const info = state.revisions.find((r) => r.revision === revision);
+  const previous = priorRevisions(state)[0];
+  if (!info || previous === undefined) {
+    throw new DiscardRefusedError(
+      "only_revision",
+      `r${revision} is the only revision of this PR; there is nothing to fall back to.`,
+    );
+  }
+  const job = readJobLoosely(key, root);
+  if (job && (job.status === "queued" || job.status === "running")) {
+    throw new DiscardRefusedError(
+      "analysis_in_progress",
+      `An analysis is ${job.status} for r${job.revision}; cancel it or let it finish first.`,
+    );
+  }
+  const comments = commentsCreatedSince(key, info.addedAt, root);
+  if (comments > 0) {
+    throw new DiscardRefusedError(
+      "comments_since",
+      `${comments} comment${comments === 1 ? " was" : "s were"} written since r${revision} was ` +
+        `added. They point at lines of r${revision}'s diff, so delete ${comments === 1 ? "it" : "them"} ` +
+        `first ("copy & delete" in the comments drawer keeps the text).`,
+    );
+  }
+
+  const next = appendEvent(key, { type: "revision-discarded", revision }, root);
+
+  // What was recorded about the discarded revision outside the log goes too:
+  // the "archived, so not analyzed" note, and the last run's record (the log
+  // keeps its analysis-finished event; the header would otherwise show a
+  // run for a revision that no longer exists).
+  if (meta.analysisPending && meta.analysisPending.revision >= revision) {
+    updateMeta(key, { analysisPending: undefined }, root);
+  }
+  if (job && job.revision >= revision) fs.rmSync(analysisJobPath(key, root), { force: true });
+
+  return { state: next, discarded: revision, revision: next.currentRevision };
 }
 
 export interface AnalysisCoverage {

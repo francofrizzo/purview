@@ -10,6 +10,7 @@ import {
   analysisCoverage,
   applyAnalysisImport,
   buildAnalysisExport,
+  discardRevision,
   hunkDiffOfDiffs,
   initPr,
   keyToString,
@@ -416,6 +417,41 @@ export function createApp(opts: AppOptions = {}): Hono {
       state: result.state,
       analysisJob: job,
       analysisSkipped,
+    });
+  });
+
+  /**
+   * Throw away the latest revision — a refresh that caught the author
+   * mid-rebase — so the next refresh diffs against the one before it. Core
+   * guards the revision itself and comments written since it (409, with
+   * core's refusal code); the in-process work is guarded here, since a queued
+   * or running analysis, or a chat turn, could still write into it.
+   */
+  app.post("/api/prs/:key/revisions/:n/discard", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const n = Number(c.req.param("n"));
+    if (!Number.isInteger(n)) {
+      throw new HttpError(400, "invalid_revision", `Invalid revision "${c.req.param("n")}"`);
+    }
+    if (isBusy(key)) {
+      throw new HttpError(
+        409,
+        "analysis_in_progress",
+        `An analysis is queued or running for ${keyToString(key)}; cancel it or let it finish first.`,
+      );
+    }
+    if (chatBusy(key)) {
+      throw new HttpError(409, "chat_busy", "A chat reply is still streaming; wait for it to finish.");
+    }
+    const result = discardRevision(key, n, root);
+    // The staleness answer compared GitHub against the discarded head.
+    clearStalenessCache(key, root);
+    return c.json({
+      key: keyToString(key),
+      discarded: result.discarded,
+      revision: result.revision,
+      state: result.state,
     });
   });
 

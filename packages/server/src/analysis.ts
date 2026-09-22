@@ -443,6 +443,7 @@ export function analysisToolFlags(scratchDir: string): {
       `Bash(${cmd} sync:*)`,
       `Bash(${cmd} init:*)`,
       `Bash(${cmd} refresh:*)`,
+      `Bash(${cmd} discard-revision:*)`,
       `Bash(${cmd} view:*)`,
       "Bash(gh:*)",
       "Bash(git:*)",

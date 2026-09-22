@@ -707,6 +707,20 @@ export const AnalysisFinishedEventSchema = z.object({
   metrics: AnalysisMetricsSchema.optional(),
 });
 
+/**
+ * The reader threw away revision `revision` — typically a refresh that caught
+ * the author mid-rebase. Append-only like everything else: the log is never
+ * rewritten; instead the fold skips every event from that revision's
+ * `revision-added` up to this one, except the ones recording something that
+ * already happened on GitHub (see `withoutDiscarded` in reducer.ts). Its
+ * number is never handed out again (`nextRevisionNumber`).
+ */
+export const RevisionDiscardedEventSchema = z.object({
+  ...base,
+  type: z.literal("revision-discarded"),
+  revision: z.number().int(),
+});
+
 export const EventSchema = z.discriminatedUnion("type", [
   PrInitializedEventSchema,
   RevisionAddedEventSchema,
@@ -720,6 +734,7 @@ export const EventSchema = z.discriminatedUnion("type", [
   ReviewSubmittedEventSchema,
   AnalysisStartedEventSchema,
   AnalysisFinishedEventSchema,
+  RevisionDiscardedEventSchema,
 ]);
 export type ReviewerEvent = z.infer<typeof EventSchema>;
 export type EventType = ReviewerEvent["type"];

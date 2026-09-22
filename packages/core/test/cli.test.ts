@@ -5,7 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { keyToString, prCheckoutPath, type PrKey } from "../src/paths.js";
-import { appendEvent, readFilesJson, writeMeta, writeMigrationReport, writeRevision } from "../src/store.js";
+import {
+  appendEvent,
+  loadState,
+  readFilesJson,
+  writeMeta,
+  writeMigrationReport,
+  writeRevision,
+} from "../src/store.js";
 import { computeHunkId } from "../src/hunk-id.js";
 import { migrate, toRevisionFiles } from "../src/migration.js";
 import type { FileDiff, Hunk } from "../src/schemas.js";
@@ -631,5 +638,35 @@ describe("cli base-file", () => {
     const res = run(["base-file", keyToString(key), "a.ts"]);
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("No managed checkout");
+  });
+});
+
+describe("cli discard-revision", () => {
+  it("drops the latest revision and says where the PR is now", () => {
+    seed();
+    seedRev2(["  return a + b + c;"]);
+    const res = run(["discard-revision", keyToString(key), "2"]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("Discarded revision 2; back at revision 1.");
+    expect(res.stdout).toContain("the next refresh adds revision 3");
+    expect(loadState(key).currentRevision).toBe(1);
+  });
+
+  it("requires the current revision's number, spelled out", () => {
+    seed();
+    seedRev2(["  return a + b + c;"]);
+    const before = eventCount();
+    const res = run(["discard-revision", keyToString(key), "1"]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/r1 is not the current revision \(r2\)/);
+    expect(run(["discard-revision", keyToString(key)]).status).toBe(1);
+    expect(eventCount()).toBe(before);
+  });
+
+  it("refuses the only revision", () => {
+    seed();
+    const res = run(["discard-revision", keyToString(key), "1"]);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toMatch(/only revision/);
   });
 });

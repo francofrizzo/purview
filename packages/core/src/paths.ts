@@ -155,6 +155,11 @@ export function analysisJobPath(key: PrKey, root = stateRoot()): string {
   return path.join(prDir(key, root), "analysis-job.json");
 }
 
+/** Review comments; owned by the server (comments.ts), read by core only to guard a discard. */
+export function commentsPath(key: PrKey, root = stateRoot()): string {
+  return path.join(prDir(key, root), "comments.json");
+}
+
 /** Chat session id + transcript summary for the review-assistant chat. */
 export function chatPath(key: PrKey, root = stateRoot()): string {
   return path.join(prDir(key, root), "chat.json");

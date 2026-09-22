@@ -19,6 +19,7 @@ import type {
   CommentStatus,
   DiffOfDiffs,
   DiscardPendingResult,
+  DiscardRevisionResult,
   DraftComment,
   EditCommentResult,
   FileEntry,
@@ -46,6 +47,7 @@ import type {
   ReviewStatus,
   ReanchorResult,
   ReviewUnit,
+  RevisionInfo,
   RevisionLineChanges,
   ShareAnalysisResult,
   SharedAnalysisNote,
@@ -156,7 +158,7 @@ interface WireFileRollup {
 interface WireState {
   pr?: unknown;
   currentRevision: number;
-  revisions: { revision: number; baseOnly?: boolean }[];
+  revisions: RevisionInfo[];
   summary: string;
   units: ReviewUnit[];
   hunks: PrState["hunks"];
@@ -306,6 +308,12 @@ function adaptState(s: WireState): PrState {
     hunks: s.hunks ?? {},
     files,
     baseOnly: s.revisions?.find((r) => r.revision === s.currentRevision)?.baseOnly ?? false,
+    revisions: (s.revisions ?? []).map(({ revision, headSha, addedAt, baseOnly }) => ({
+      revision,
+      headSha,
+      addedAt,
+      baseOnly,
+    })),
   };
 }
 
@@ -526,6 +534,15 @@ export const api = {
   async refresh(key: string): Promise<MigrationReport> {
     if (MOCK) return mockApi.refresh(key);
     return adaptMigrationReport(await post<WireRefresh>(`/prs/${encodeKey(key)}/refresh`));
+  },
+
+  /** Drop the latest revision; the server refuses (409) when it is not safe to. */
+  async discardRevision(key: string, revision: number): Promise<DiscardRevisionResult> {
+    if (MOCK) return mockApi.discardRevision(key, revision);
+    const res = await post<DiscardRevisionResult>(
+      `/prs/${encodeKey(key)}/revisions/${revision}/discard`,
+    );
+    return { discarded: res.discarded, revision: res.revision };
   },
 
   /**

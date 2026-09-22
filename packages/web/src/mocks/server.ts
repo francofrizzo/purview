@@ -1079,6 +1079,34 @@ export const mockApi = {
     return structuredClone(jobs[key]!);
   },
 
+  /** Mirrors the server's guards that a mock can meaningfully hit. */
+  async discardRevision(key: string, revision: number): Promise<{ discarded: number; revision: number }> {
+    await delay(200);
+    const target = details[key];
+    if (!target) throw new ApiError("not_found", 404, { error: "not_found", detail: `No PR "${key}"` });
+    const refuse = (code: string, detail: string) => new ApiError(code, 409, { error: code, detail });
+    if (revision !== target.state.revision) {
+      throw refuse(
+        "not_latest",
+        `r${revision} is not the current revision (r${target.state.revision}); only the latest revision can be discarded.`,
+      );
+    }
+    const prior = (target.state.revisions ?? []).filter((r) => r.revision < revision);
+    if (prior.length === 0) {
+      throw refuse("only_revision", `r${revision} is the only revision of this PR; there is nothing to fall back to.`);
+    }
+    if (isLive(jobs[key])) {
+      throw refuse("analysis_in_progress", "An analysis is queued or running; cancel it or let it finish first.");
+    }
+    const back = prior[prior.length - 1].revision;
+    target.state = {
+      ...target.state,
+      revision: back,
+      revisions: (target.state.revisions ?? []).filter((r) => r.revision !== revision),
+    };
+    return { discarded: revision, revision: back };
+  },
+
   async dismissAnalysisPending(key: string): Promise<void> {
     await delay(60);
     delete analysisPending[key];

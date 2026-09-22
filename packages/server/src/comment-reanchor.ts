@@ -1,4 +1,4 @@
-import { loadState, prDir, readFilesJson, readMeta, type FileDiff, type Hunk, type PrKey } from "@reviewer/core";
+import { loadState, prDir, priorRevisions, readFilesJson, readMeta, type FileDiff, type Hunk, type PrKey } from "@reviewer/core";
 import { runClaude } from "./claude-runner.js";
 import { effectiveChatModel } from "./repo-config.js";
 import { findAnchoringHunk, type Comment, type CommentSide } from "./comments.js";
@@ -142,11 +142,12 @@ export async function proposeCommentReanchor(
   comment: Comment,
   root?: string,
 ): Promise<ReanchorResult> {
-  let currentRevision: number;
+  let prior: number[];
   let currentFiles: FileDiff[];
   try {
-    currentRevision = loadState(key, root).currentRevision;
-    currentFiles = readFilesJson(key, currentRevision, root).files;
+    const state = loadState(key, root);
+    prior = priorRevisions(state);
+    currentFiles = readFilesJson(key, state.currentRevision, root).files;
   } catch (err) {
     return { ok: false, reason: `Could not read the current diff: ${(err as Error).message}` };
   }
@@ -155,7 +156,7 @@ export async function proposeCommentReanchor(
   const side = comment.side!;
 
   let previousContext: string | undefined;
-  for (let rev = currentRevision - 1; rev >= 1; rev--) {
+  for (const rev of prior) {
     let files: FileDiff[];
     try {
       files = readFilesJson(key, rev, root).files;

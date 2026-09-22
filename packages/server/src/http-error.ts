@@ -20,6 +20,11 @@ export function classifyError(err: unknown): HttpError {
     const e = err as { code: string; message: string; detail?: string; status: number };
     return new HttpError(e.status, e.code, e.message);
   }
+  // core's discard guards (see `discardRevision`): a refusal, not a failure.
+  if ((err as { name?: string } | null)?.name === "DiscardRefusedError") {
+    const e = err as { code: string; message: string };
+    return new HttpError(409, e.code, e.message);
+  }
   const message = err instanceof Error ? err.message : String(err);
 
   if (/^No PR state at /.test(message) || /^No files\.json for revision/.test(message)) {

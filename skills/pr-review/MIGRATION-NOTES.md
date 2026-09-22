@@ -10,7 +10,8 @@ Triggered by `refresh` when the PR's `baseSha`, `headSha` or `mergeBase` has cha
 the last recorded revision. The CLI fetches the diff fresh from GitHub (`gh api ... v3.diff`)
 — never from local git — and creates a new `revisions/<n+1>/` directory with its own
 `diff.patch`, `files.json` and `migration.json` (the machine-readable migration report).
-Old revisions are kept, not overwritten. When nothing moved, `refresh` prints
+Old revisions are kept, not overwritten. (`n` is the highest revision number ever added,
+discarded ones included — see "Discarded revisions".) When nothing moved, `refresh` prints
 `No change; still at revision <n>.` and does nothing else.
 
 ## What identical / fuzzy / renamed / archived / new mean
@@ -142,8 +143,35 @@ needs no description rewrite unless the drift changes what is true about the uni
 normally and attach it to that unit (or a new one) instead, since it may interact with
 code a reviewer is already scrutinizing closely.
 
+## Discarded revisions
+
+A refresh that lands while the author is mid-rebase / force-push records a half-pushed
+revision. Migrating against it archives every hunk it is missing (units lose hunks and
+findings, may turn into husks, viewed marks go), and when the finished push lands those
+hunks come back as `new`. The reader can undo that with
+`reviewer-state discard-revision <key> <n>` (or "Discard" under the "rev n" chip in the PR
+header) before refreshing again:
+
+- It appends a `revision-discarded` event; `events.jsonl` is never rewritten. The fold
+  skips every event from that revision's `revision-added` up to the discard, **except**
+  `review-submitted` and `file-synced-github` (they record what already happened on
+  GitHub). State is back to exactly what it was at `n-1`: units, hunks, viewed marks,
+  changelogs, findings.
+- Only the current revision can be discarded, never the only one; it is refused while an
+  analysis is queued or running, and while any comment written since revision `n` was added
+  still exists (comments are stored by file+line against that diff).
+- `revisions/<n>/` stays on disk and `n` is never reused: the next refresh adds `n+1`,
+  migrated from `n-1` (its `migration.json` says `previousRevision: n-1`). If GitHub still
+  serves the half-pushed head, that refresh simply records it again — discard once the
+  author has finished pushing.
+
+For the skill, a discarded revision does not exist: never read `revisions/<n>/` of one, and
+look at `report` / `triage` (which follow the current revision) rather than guessing the
+number.
+
 ## What the skill must never do on refresh
 
+- Never run `reviewer-state discard-revision` — it is the reader's call.
 - Never hand-edit `events.jsonl`, `state.json`, or any `revisions/*/files.json` /
   `diff.patch` / `migration.json` directly — only `reviewer-state` CLI commands mutate
   state. (`state.json` is a derived snapshot, folded from `events.jsonl`; edits to it are

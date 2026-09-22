@@ -522,6 +522,7 @@ export function chatToolFlags(): {
       `Bash(${cmd} view:*)`,
       `Bash(${cmd} init:*)`,
       `Bash(${cmd} refresh:*)`,
+      `Bash(${cmd} discard-revision:*)`,
       "Bash(gh:*)",
       "Bash(git:*)",
       "Bash(curl:*)",

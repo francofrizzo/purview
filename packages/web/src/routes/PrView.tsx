@@ -29,6 +29,7 @@ import {
   useProposeReanchor,
   useRevisionLineChanges,
   useDiscardPendingReview,
+  useDiscardRevision,
   useExportAnalysis,
   useImportAnalysis,
   useImportAnalysisFromPr,
@@ -46,6 +47,7 @@ import {
   useSubmitReview,
   useSync,
 } from "../api/hooks";
+import { errorText } from "../api/errors";
 import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
@@ -132,6 +134,7 @@ export function PrView() {
   const saveReviewBody = useSaveReviewBody(prKey);
   const submitReview = useSubmitReview(prKey);
   const discardPending = useDiscardPendingReview(prKey);
+  const discardRevision = useDiscardRevision(prKey);
   const startAnalysis = useStartAnalysis(prKey);
   const cancelAnalysis = useCancelAnalysis(prKey);
   const unarchiveAndAnalyze = useUnarchiveAndAnalyze(prKey);
@@ -944,6 +947,13 @@ export function PrView() {
         onImportFilePicked={handleImportFilePicked}
         onShareToPr={handleOpenShareConfirm}
         onImportFromPr={handleOpenImportFromPrConfirm}
+        discardingRevision={discardRevision.isPending}
+        discardRevisionError={discardRevision.error ? errorText(discardRevision.error) : null}
+        onDiscardRevision={(n) =>
+          // A migration report still on screen described the revision just dropped.
+          discardRevision.mutate(n, { onSuccess: () => setReport(null) })
+        }
+        onResetDiscardRevision={() => discardRevision.reset()}
         onFinishReview={() => {
           setSubmitResult(null);
           submitReview.reset();

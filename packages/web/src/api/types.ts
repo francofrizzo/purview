@@ -252,8 +252,26 @@ export interface BasePr {
   url: string;
 }
 
+/** One revision still on record (a discarded one is gone from the list). */
+export interface RevisionInfo {
+  revision: number;
+  headSha?: string;
+  /** ISO timestamp of the refresh that recorded it */
+  addedAt?: string;
+  baseOnly?: boolean;
+}
+
+/** POST /api/prs/:key/revisions/:n/discard. */
+export interface DiscardRevisionResult {
+  discarded: number;
+  /** the revision now in force */
+  revision: number;
+}
+
 export interface PrState {
   revision: number;
+  /** Every revision on record, oldest first. Absent on a mock that predates it. */
+  revisions?: RevisionInfo[];
   summary?: string;
   /**
    * Live units only. Every consumer (progress, numbering, the rail, search,

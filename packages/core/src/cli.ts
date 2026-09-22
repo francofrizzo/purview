@@ -12,6 +12,7 @@ import {
   type PrKey,
 } from "./paths.js";
 import {
+  discardRevision,
   initPr,
   refreshPr,
   setAnalysis,
@@ -141,6 +142,25 @@ program
     );
     console.log("");
     console.log(formatReport(res.state, res.report));
+  });
+
+program
+  .command("discard-revision")
+  .argument("<key>")
+  .argument("<revision>", "the current revision's number, spelled out as a safety check")
+  .description(
+    "drop the latest revision (e.g. one fetched mid-rebase); the next refresh diffs against the one before it",
+  )
+  .action((keyArg: string, revArg: string) => {
+    const key = requireExistingKey(keyArg);
+    const revision = Number(revArg);
+    if (!Number.isInteger(revision)) throw new Error(`Invalid revision "${revArg}"`);
+    const res = discardRevision(key, revision);
+    console.log(`Discarded revision ${res.discarded}; back at revision ${res.revision}.`);
+    console.log(
+      `Revision ${res.discarded}'s number is not reused: the next refresh adds revision ` +
+        `${res.discarded + 1}, migrated from revision ${res.revision}.`,
+    );
   });
 
 program

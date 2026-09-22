@@ -14,6 +14,7 @@ import type {
   DiffOfDiffs,
   RevisionLineChanges,
   DiscardPendingResult,
+  DiscardRevisionResult,
   AddCommentInput,
   DraftComment,
   EditCommentResult,
@@ -384,6 +385,28 @@ export function useRefresh(key: string): UseMutationResult<MigrationReport, Erro
       // that job up right away so the banner goes live without a reload.
       void qc.invalidateQueries({ queryKey: qk.analysisJob(key) });
       // We just fetched upstream, so whatever the check last said is spent.
+      void qc.invalidateQueries({ queryKey: qk.staleness(key) });
+    },
+  });
+}
+
+/**
+ * Drop the latest revision. Everything derived from it goes stale at once: the
+ * PR (state falls back a revision), the list row, the review readiness, the
+ * last run's record (removed with the revision) and the staleness answer
+ * (it compared GitHub against the discarded head).
+ */
+export function useDiscardRevision(
+  key: string,
+): UseMutationResult<DiscardRevisionResult, Error, number> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (revision: number) => api.discardRevision(key, revision),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.pr(key) });
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+      void qc.invalidateQueries({ queryKey: qk.analysisJob(key) });
       void qc.invalidateQueries({ queryKey: qk.staleness(key) });
     },
   });

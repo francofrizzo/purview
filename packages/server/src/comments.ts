@@ -3,11 +3,12 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  commentsPath,
   computeHunkId,
   disambiguate,
   gh,
   loadState,
-  prDir,
+  priorRevisions,
   readFilesJson,
   stateRoot,
   type FileDiff,
@@ -162,10 +163,6 @@ export const NewCommentSchema = z
   }))
   .superRefine(subjectInvariant);
 export type NewComment = z.infer<typeof NewCommentSchema>;
-
-function commentsPath(key: PrKey, root = stateRoot()): string {
-  return path.join(prDir(key, root), "comments.json");
-}
 
 function normalize(raw: z.infer<typeof StoredCommentSchema>): Comment {
   let status: CommentStatus;
@@ -503,7 +500,8 @@ export interface DraftCommentMove {
  * to a new revision.
  *
  * A comment that still anchors in the current revision is left alone. One
- * that doesn't is looked up in every prior revision, newest first: the first
+ * that doesn't is looked up in every prior revision still on record (a
+ * discarded one is not history — see core's `priorRevisions`), newest first: the first
  * one where it *did* anchor gives us the hunk it was resting on. That hunk's
  * id is then looked up in the current revision (identical id => identical
  * added/removed lines, so the offset from the hunk's start transfers exactly)
@@ -537,7 +535,7 @@ export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftComm
     if (findAnchoringHunk(currentFiles, draft.file, line, side)) continue;
 
     let anchoringHunk: Hunk | undefined;
-    for (let rev = currentRevision - 1; rev >= 1; rev--) {
+    for (const rev of priorRevisions(state)) {
       let files: FileDiff[];
       try {
         files = readFilesJson(key, rev, root).files;

@@ -5,6 +5,7 @@ import { isJobLive } from "../api/types";
 import { AnalysisChip, AnalysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { ReviewRequestAge, StackedOnChip } from "./Chips";
+import { RevisionMenu } from "./RevisionMenu";
 import { stackedOnLink } from "../lib/stacked";
 import { ChatButton } from "./ChatPanel";
 import { useModalBackground } from "./Modal";
@@ -35,6 +36,8 @@ export function TopBar({
   exporting,
   sharing,
   importingFromPr,
+  discardingRevision,
+  discardRevisionError,
   fullscreenVisible,
   fullscreenActive,
   onToggleFullscreen,
@@ -49,6 +52,8 @@ export function TopBar({
   onImportFilePicked,
   onShareToPr,
   onImportFromPr,
+  onDiscardRevision,
+  onResetDiscardRevision,
 }: {
   detail: PrDetail;
   draftCount: number;
@@ -70,6 +75,9 @@ export function TopBar({
   sharing: boolean;
   /** importing the newest marked comment from the PR itself */
   importingFromPr: boolean;
+  discardingRevision: boolean;
+  /** the server's refusal of the last discard, shown in the "rev N" popover */
+  discardRevisionError: string | null;
   /** the Fullscreen API is supported and this isn't already a Home Screen app */
   fullscreenVisible?: boolean;
   fullscreenActive?: boolean;
@@ -88,6 +96,8 @@ export function TopBar({
   onShareToPr: () => void;
   /** "import analysis from PR" was picked — arms the confirm step (replaces the current analysis) */
   onImportFromPr: () => void;
+  onDiscardRevision: (revision: number) => void;
+  onResetDiscardRevision: () => void;
 }) {
   const importInputRef = useRef<HTMLInputElement>(null);
   const { meta, state } = detail;
@@ -118,9 +128,16 @@ export function TopBar({
           {meta.title ?? `${meta.owner}/${meta.repo}#${meta.number}`}
         </a>
         <span className="flex-none font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
-          {meta.owner}/{meta.repo}#{meta.number} · rev {state.revision}
-          {state.baseOnly ? " (base only)" : ""}
+          {meta.owner}/{meta.repo}#{meta.number} ·
         </span>
+        <RevisionMenu
+          state={state}
+          analysisLive={live}
+          discarding={discardingRevision}
+          error={discardRevisionError}
+          onDiscard={onDiscardRevision}
+          onResetError={onResetDiscardRevision}
+        />
         {meta.author ? (
           <span
             className="flex flex-none items-center gap-1 self-center text-2xs"

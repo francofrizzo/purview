@@ -424,6 +424,11 @@ const removedUnits: ReviewUnit[] = [
 
 const state: PrState = {
   revision: 3,
+  revisions: [
+    { revision: 1, headSha: "4f2a9c1e7b3d5a60", addedAt: "2026-05-11T09:12:00.000Z" },
+    { revision: 2, headSha: "9b1e3f7a2c4d8e10", addedAt: "2026-05-12T15:40:00.000Z" },
+    { revision: 3, headSha: "c7d2e8b4a9f1360e", addedAt: "2026-05-13T10:05:00.000Z" },
+  ],
   summary:
     "Payment charges become replay-safe. A key derived from (orderId, amount, currency) is recorded in a new charge_ledger table before the gateway call, so retries — whether from the client, the queue, or the new backoff wrapper — return the original result instead of charging twice. Two things deserve real attention: the key derivation (it must not include anything volatile) and the interaction between the retry loop and the ledger write ordering.",
   units,

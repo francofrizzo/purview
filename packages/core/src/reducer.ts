@@ -371,15 +371,85 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       ];
       break;
     }
+
+    case "revision-discarded":
+      // Consumed by `withoutDiscarded` before the fold reaches the reducer.
+      break;
   }
 
   recomputeRollups(state);
   return state;
 }
 
+/**
+ * Events that record something that already happened on GitHub. Discarding a
+ * revision cannot undo them, so they survive it (see `withoutDiscarded`).
+ */
+const SURVIVES_DISCARD: ReadonlySet<ReviewerEvent["type"]> = new Set([
+  "review-submitted",
+  "file-synced-github",
+]);
+
+/**
+ * The log as if every discarded revision had never been added: a
+ * `revision-discarded {revision: N}` drops everything from N's (last)
+ * `revision-added` up to itself, except SURVIVES_DISCARD events. Position is
+ * what counts, not per-event revision fields — `unit-updated` and
+ * `classification-corrected` carry none. Runs over the already-filtered list,
+ * so discarding N and then N-1 unwinds both, and a discard naming a revision
+ * that is not in the (filtered) log is a no-op. The discard events themselves
+ * are consumed here; the reducer never sees them.
+ */
+export function withoutDiscarded(events: ReviewerEvent[]): ReviewerEvent[] {
+  const out: ReviewerEvent[] = [];
+  for (const event of events) {
+    if (event.type !== "revision-discarded") {
+      out.push(event);
+      continue;
+    }
+    let from = out.length - 1;
+    while (from >= 0) {
+      const e = out[from];
+      if (e.type === "revision-added" && e.revision === event.revision) break;
+      from--;
+    }
+    if (from === -1) continue;
+    const kept = out.slice(from).filter((e) => SURVIVES_DISCARD.has(e.type));
+    out.splice(from, out.length - from, ...kept);
+  }
+  return out;
+}
+
+/**
+ * The number the next `revision-added` gets: one past every revision the log
+ * ever added, discarded ones included. Analysis jobs, caches and the
+ * `revisions/<n>/` dirs are keyed by number, so a number is never reused.
+ */
+export function nextRevisionNumber(events: ReviewerEvent[]): number {
+  let max = 0;
+  for (const e of events) {
+    if (e.type === "revision-added" || e.type === "revision-discarded") {
+      max = Math.max(max, e.revision);
+    }
+  }
+  return max + 1;
+}
+
 /** Pure fold: events -> state.json. state.json is always rebuildable from this. */
 export function fold(events: ReviewerEvent[]): State {
-  return events.reduce(applyEvent, initialState());
+  return withoutDiscarded(events).reduce(applyEvent, initialState());
+}
+
+/**
+ * Revisions before the current one that are still on record, newest first —
+ * what to walk when looking back through history. Never counts down by
+ * number: a discarded revision's files stay on disk but are not history.
+ */
+export function priorRevisions(state: Pick<State, "revisions" | "currentRevision">): number[] {
+  return state.revisions
+    .map((r) => r.revision)
+    .filter((n) => n < state.currentRevision)
+    .sort((a, b) => b - a);
 }
 
 /* --------------------------------------------------------------- selectors */
