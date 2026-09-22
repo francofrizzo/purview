@@ -304,7 +304,7 @@ function readStaleFlag(): { reasons: StalenessReason[]; sha: string } | null {
   const reasons = (raw === "1" ? ["new-commits"] : raw.split(","))
     .map((r) => r.trim())
     .filter((r): r is StalenessReason =>
-      r === "new-commits" || r === "base-moved" || r === "state-changed",
+      r === "new-commits" || r === "base-moved",
     );
   if (reasons.length === 0) return null;
   return { reasons, sha: sha || `upstream-${reasons.join("-")}` };
@@ -767,7 +767,6 @@ export const mockApi = {
       ...base,
       stale: true,
       reasons: flag.reasons,
-      upstreamState: flag.reasons.includes("state-changed") ? "merged" : localState,
     };
   },
 

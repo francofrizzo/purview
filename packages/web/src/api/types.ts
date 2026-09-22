@@ -341,7 +341,7 @@ export type ReviewDecision = "approved" | "changes_requested" | "review_required
  * fetched it? `error` is set when the `gh` call failed; the server still
  * answers 200 with `stale: false`, so a failing check is simply silent.
  */
-export type StalenessReason = "new-commits" | "base-moved" | "state-changed";
+export type StalenessReason = "new-commits" | "base-moved";
 
 export interface Staleness {
   stale: boolean;
@@ -350,6 +350,12 @@ export interface Staleness {
   localHeadSha: string | null;
   upstreamState: PrGithubState | null;
   localState: PrGithubState | null;
+  /**
+   * The PR's state or review decision moved and the server already recorded
+   * it: reload the PR instead of asking for a refresh. Absent from older
+   * servers.
+   */
+  metaUpdated?: boolean;
   checkedAt: string;
   error?: string;
 }

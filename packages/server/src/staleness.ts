@@ -22,10 +22,12 @@ import { reviewRequestDue } from "./review-request-refresh.js";
  *                     by how many commits: one REST call cannot tell us).
  *  - `base-moved`   — the PR's base sha moved under us, so the diff GitHub
  *                     shows is no longer the diff we stored.
- *  - `state-changed`— open/draft/merged/closed, or the aggregate review
- *                     decision, differs from what meta records.
+ *
+ * A change of open/draft/merged/closed or of the review decision is not a
+ * reason: the check writes it into meta itself (see `metaUpdated`), so there
+ * is nothing left for a refresh to fetch.
  */
-export type StalenessReason = "new-commits" | "base-moved" | "state-changed";
+export type StalenessReason = "new-commits" | "base-moved";
 
 export interface StalenessResult {
   stale: boolean;
@@ -38,6 +40,12 @@ export interface StalenessResult {
   localState: PrState | null;
   upstreamReviewDecision: ReviewDecision | null;
   localReviewDecision: ReviewDecision | null;
+  /**
+   * The PR's state or review decision moved upstream and this check already
+   * wrote it into meta — the client should reload the PR, not ask for a
+   * refresh.
+   */
+  metaUpdated: boolean;
   /** ISO timestamp of the check this answer came from (not of this request). */
   checkedAt: string;
   /**
@@ -141,7 +149,6 @@ export function checkStaleness(
     // meta. Clearing a decision stays `refreshPr`'s job.
     const decisionMoved =
       upstreamReviewDecision !== null && upstreamReviewDecision !== localReviewDecision;
-    if (stateMoved || decisionMoved) reasons.push("state-changed");
 
     result = {
       stale: reasons.length > 0,
@@ -154,6 +161,7 @@ export function checkStaleness(
       localState,
       upstreamReviewDecision,
       localReviewDecision,
+      metaUpdated: stateMoved || decisionMoved,
       checkedAt,
     };
 
@@ -191,6 +199,7 @@ export function checkStaleness(
       localState,
       upstreamReviewDecision: null,
       localReviewDecision,
+      metaUpdated: false,
       checkedAt,
       error: (err as Error).message,
     };

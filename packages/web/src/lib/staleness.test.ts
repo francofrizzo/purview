@@ -41,12 +41,11 @@ describe("reason wording", () => {
   it("never claims a commit count it cannot know", () => {
     expect(stalenessReasonText(["new-commits"])).toBe("new commits upstream");
     expect(stalenessReasonText(["base-moved"])).toBe("base branch moved");
-    expect(stalenessReasonText(["state-changed"])).toBe("PR state changed");
   });
 
   it("joins several reasons", () => {
-    expect(stalenessReasonText(["new-commits", "state-changed"])).toBe(
-      "new commits upstream · PR state changed",
+    expect(stalenessReasonText(["new-commits", "base-moved"])).toBe(
+      "new commits upstream · base branch moved",
     );
   });
 
@@ -92,7 +91,7 @@ describe("hint dismissal", () => {
   });
 
   it("tolerates a stale result with no upstream sha", () => {
-    const noSha = result({ upstreamHeadSha: null, reasons: ["state-changed"] });
+    const noSha = result({ upstreamHeadSha: null, reasons: ["base-moved"] });
     expect(shouldShowStalenessHint(noSha, null)).toBe(true);
     expect(shouldShowStalenessHint(noSha, stalenessDismissKey(noSha))).toBe(false);
   });

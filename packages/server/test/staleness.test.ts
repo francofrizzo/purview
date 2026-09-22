@@ -114,21 +114,27 @@ describe("staleness reasons", () => {
     expect(res.reasons).toEqual(["base-moved"]);
   });
 
-  it("reports state-changed when the PR state moved", () => {
+  it("records a PR state change itself instead of calling the PR stale", () => {
     updateMeta(key, { prState: "open" }, root);
     upstream.state = "closed";
     upstream.merged = true;
     const res = checkStaleness(key, root);
-    expect(res.reasons).toEqual(["state-changed"]);
+    expect(res.stale).toBe(false);
+    expect(res.reasons).toEqual([]);
+    expect(res.metaUpdated).toBe(true);
     expect(res.upstreamState).toBe("merged");
     expect(res.localState).toBe("open");
+    expect(readMeta(key, root).prState).toBe("merged");
+    // Once recorded, the next check has nothing to report.
+    expect(checkStaleness(key, root, { force: true }).metaUpdated).toBe(false);
   });
 
-  it("reports state-changed when only the review decision moved", () => {
+  it("records a review decision change the same way", () => {
     updateMeta(key, { prState: "open", reviewDecision: null }, root);
     upstream.reviewDecision = "APPROVED";
     const res = checkStaleness(key, root);
-    expect(res.reasons).toEqual(["state-changed"]);
+    expect(res.stale).toBe(false);
+    expect(res.metaUpdated).toBe(true);
     expect(res.upstreamReviewDecision).toBe("approved");
   });
 
@@ -138,15 +144,16 @@ describe("staleness reasons", () => {
     upstream.baseSha = "base2";
     upstream.state = "closed";
     const res = checkStaleness(key, root);
-    expect(res.reasons).toEqual(["new-commits", "base-moved", "state-changed"]);
+    expect(res.reasons).toEqual(["new-commits", "base-moved"]);
     expect(res.stale).toBe(true);
+    expect(res.metaUpdated).toBe(true);
   });
 
-  it("never reports state-changed off a meta that never recorded a state", () => {
+  it("never reports a state change off a meta that never recorded a state", () => {
     // Pre-`prState` state dirs: unknown is not a difference.
     expect(readMeta(key, root).prState).toBeUndefined();
     upstream.state = "closed";
-    expect(checkStaleness(key, root).reasons).toEqual([]);
+    expect(checkStaleness(key, root).metaUpdated).toBe(false);
   });
 
   it("treats a null upstream review decision as unknown, not as cleared", () => {

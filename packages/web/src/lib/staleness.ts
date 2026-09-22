@@ -25,8 +25,6 @@ export function stalenessReasonLabel(reason: StalenessReason): string {
       return "new commits upstream";
     case "base-moved":
       return "base branch moved";
-    case "state-changed":
-      return "PR state changed";
   }
 }
 

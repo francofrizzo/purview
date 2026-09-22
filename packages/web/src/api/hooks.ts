@@ -438,6 +438,17 @@ export function useStaleness(key: string, prState?: PrGithubState | null) {
     retry: false,
   });
 
+  // A state/review-decision change is already written server-side by the
+  // check itself; pull it into the PR view and the list rather than asking
+  // for a refresh.
+  const qc = useQueryClient();
+  const metaUpdatedAt = query.data?.metaUpdated ? query.data.checkedAt : null;
+  useEffect(() => {
+    if (!key || !metaUpdatedAt) return;
+    void qc.invalidateQueries({ queryKey: qk.pr(key) });
+    void qc.invalidateQueries({ queryKey: qk.prs });
+  }, [key, metaUpdatedAt, qc]);
+
   const refetch = query.refetch;
   useEffect(() => {
     if (!key) return;
