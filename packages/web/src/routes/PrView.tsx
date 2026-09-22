@@ -443,35 +443,28 @@ export function PrView() {
 
   // --- changelog highlight -------------------------------------------------
   // Clicking a changelog row highlights, in the diff, the lines that revision
-  // changed in this unit's hunks. It belongs to the unit on screen: another
-  // unit, the files tab, or a new revision drops it.
-  // Held against the unit (and revision) it was set for, and derived from
-  // that, so switching away drops it in the same render rather than one
-  // effect later; the effect then forgets it for good.
+  // changed. It follows the reader from unit to unit (each unit shows its own
+  // share of that revision's changes, or says it has none) until cleared; it
+  // shows on the units tab only, and a new revision drops it.
+  // Held against the revision it was set at and derived from that, so a new
+  // revision drops it in the same render; the effect then forgets it for good.
   const currentRevision = detail?.state.revision ?? 0;
   const [highlightFor, setHighlightFor] = useState<{
-    unitId: string;
     revision: number;
     atRevision: number;
   } | null>(null);
+  const highlightStale = highlightFor !== null && highlightFor.atRevision !== currentRevision;
   const highlightRevision =
-    highlightFor &&
-    tab === "units" &&
-    highlightFor.unitId === selectedUnit?.id &&
-    highlightFor.atRevision === currentRevision
+    highlightFor && !highlightStale && tab === "units" && selectedUnit
       ? highlightFor.revision
       : null;
   useEffect(() => {
-    if (highlightFor && highlightRevision === null) setHighlightFor(null);
-  }, [highlightFor, highlightRevision]);
+    if (highlightStale) setHighlightFor(null);
+  }, [highlightStale]);
   const setHighlightRevision = useCallback(
     (revision: number | null) =>
-      setHighlightFor(
-        revision === null || !selectedUnit
-          ? null
-          : { unitId: selectedUnit.id, revision, atRevision: currentRevision },
-      ),
-    [selectedUnit, currentRevision],
+      setHighlightFor(revision === null ? null : { revision, atRevision: currentRevision }),
+    [currentRevision],
   );
   const toggleHighlight = useCallback(
     (revision: number) => setHighlightRevision(highlightRevision === revision ? null : revision),
