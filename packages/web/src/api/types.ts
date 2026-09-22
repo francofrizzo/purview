@@ -221,6 +221,8 @@ export interface PrMeta {
   author?: string;
   authorAvatarUrl?: string;
   createdAt?: string;
+  /** The PR's own branch (GitHub's `head.ref`). */
+  headRef?: string;
   /** The branch this PR targets (absent on state not yet backfilled). */
   baseRef?: string;
   /**

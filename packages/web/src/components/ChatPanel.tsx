@@ -956,12 +956,13 @@ export function ChatButton({ open, onClick }: { open: boolean; onClick: () => vo
       type="button"
       className="btn"
       data-testid="chat-toggle"
+      aria-label="Chat"
       onClick={onClick}
       title="Ask Claude about this PR (c)"
       style={open ? { background: "var(--accent-soft)", color: "var(--accent)" } : undefined}
     >
       <IconChat width={11} height={11} />
-      chat
+      <span className="hidden xl:inline">chat</span>
     </button>
   );
 }

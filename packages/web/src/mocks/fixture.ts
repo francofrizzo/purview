@@ -19,6 +19,7 @@ const meta = {
   title: "Charge retries: idempotency keys + backoff",
   author: "dana",
   createdAt: "2026-08-09T10:12:00Z",
+  headRef: "dana/charge-retries-idempotency",
   // Stacked on #491 (tracked below), so the header's "stacked on" chip shows.
   baseRef: "dana/ledger-writer-split",
   basePr: {

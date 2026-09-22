@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { AnalysisJob, PrDetail } from "../api/types";
 import { isJobLive } from "../api/types";
 import { AnalysisChip, AnalysisStats } from "./Analysis";
@@ -8,6 +8,7 @@ import { ReviewRequestAge, StackedOnChip } from "./Chips";
 import { RevisionMenu } from "./RevisionMenu";
 import { stackedOnLink } from "../lib/stacked";
 import { ChatButton } from "./ChatPanel";
+import { CopyPathButton } from "./DiffPane";
 import { useModalBackground } from "./Modal";
 import {
   IconArrowLeft,
@@ -104,9 +105,10 @@ export function TopBar({
   const live = isJobLive(analysisJob);
   // The gear opens settings over this PR view instead of leaving it.
   const background = useModalBackground();
+  const navigate = useNavigate();
   return (
     <header
-      className="flex flex-none items-center gap-3 border-b px-3 py-2"
+      className="flex flex-none items-center gap-2 border-b px-2 py-2 sm:gap-3 sm:px-3"
       style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
     >
       <Link
@@ -117,19 +119,39 @@ export function TopBar({
       >
         <IconArrowLeft width={12} height={12} />
       </Link>
-      <div className="flex min-w-0 items-baseline gap-2">
+      {/* Narrow screens keep the title (truncating) and the revision; the rest
+          of the meta steps aside by width, least useful first. */}
+      <div className="flex min-w-0 flex-1 items-baseline gap-2">
         <a
           href={meta.url}
           target="_blank"
           rel="noreferrer"
-          className="truncate text-sm font-semibold hover:underline"
+          className="min-w-[3rem] truncate text-sm sm:min-w-[7rem] font-semibold hover:underline"
           style={{ color: "var(--fg)" }}
         >
           {meta.title ?? `${meta.owner}/${meta.repo}#${meta.number}`}
         </a>
-        <span className="flex-none font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+        <span
+          className="hidden flex-none font-mono text-2xs lg:inline"
+          style={{ color: "var(--fg-faint)" }}
+        >
           {meta.owner}/{meta.repo}#{meta.number} ·
         </span>
+        {meta.headRef ? (
+          <span
+            className="hidden min-w-0 max-w-[16rem] flex-shrink items-center gap-1 self-center 2xl:flex"
+            title={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
+            data-testid="topbar-branch"
+          >
+            <span className="truncate font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
+              {meta.headRef}
+            </span>
+            <CopyPathButton path={meta.headRef} what="branch name" />
+            <span className="font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+              ·
+            </span>
+          </span>
+        ) : null}
         <RevisionMenu
           state={state}
           analysisLive={live}
@@ -140,30 +162,38 @@ export function TopBar({
         />
         {meta.author ? (
           <span
-            className="flex flex-none items-center gap-1 self-center text-2xs"
+            className="hidden flex-none items-center gap-1 self-center text-2xs sm:flex"
             style={{ color: "var(--fg-faint)" }}
             title={`Opened by ${meta.author}`}
           >
             <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={16} />
-            {meta.author}
+            <span className="hidden 2xl:inline">{meta.author}</span>
           </span>
         ) : null}
-        <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
+        <span className="hidden flex-none self-center lg:inline-flex">
+          <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
+        </span>
         <ReviewRequestAge
           request={detail.reviewRequest}
           state={meta.prState}
-          className="flex-none self-center text-2xs"
+          className="hidden flex-none self-center text-2xs xl:inline"
         />
         {/* Only interesting while the analysis is not a plain success. */}
         <AnalysisChip job={analysisJob} />
         <AnalysisStats job={analysisJob} />
       </div>
 
-      <div className="ml-auto flex flex-none items-center gap-1.5">
+      <div className="ml-auto flex flex-none items-center gap-1 sm:gap-1.5">
         <ChatButton open={chatOpen} onClick={onToggleChat} />
-        <button type="button" className="btn" onClick={onToggleDrafts}>
+        <button
+          type="button"
+          className="btn"
+          onClick={onToggleDrafts}
+          title="Comments"
+          aria-label="Comments"
+        >
           <IconComment width={11} height={11} />
-          comments
+          <span className="hidden xl:inline">comments</span>
           {draftCount ? (
             <span
               className="rounded-full px-1 text-2xs"
@@ -178,12 +208,13 @@ export function TopBar({
           className="btn relative"
           data-testid="topbar-refresh"
           data-stale={stale ? "1" : undefined}
-          title={staleTooltip ?? undefined}
+          title={staleTooltip ?? "Refresh"}
+          aria-label="Refresh"
           onClick={onRefresh}
           disabled={refreshing}
         >
           <IconRefresh width={11} height={11} />
-          {refreshing ? "refreshing…" : "refresh"}
+          <span className="hidden xl:inline">{refreshing ? "refreshing…" : "refresh"}</span>
           {stale ? (
             <span
               data-testid="staleness-dot"
@@ -193,9 +224,16 @@ export function TopBar({
             />
           ) : null}
         </button>
-        <button type="button" className="btn" onClick={onSync} disabled={syncing}>
+        <button
+          type="button"
+          className="btn hidden sm:inline-flex"
+          onClick={onSync}
+          disabled={syncing}
+          title="Sync viewed files and comments to GitHub"
+          aria-label="Sync"
+        >
           <IconUpload width={11} height={11} />
-          {syncing ? "syncing…" : "sync"}
+          <span className="hidden xl:inline">{syncing ? "syncing…" : "sync"}</span>
         </button>
         <input
           ref={importInputRef}
@@ -211,6 +249,29 @@ export function TopBar({
         />
         <OverflowMenu
           items={[
+            // Phone width: the row keeps chat, comments, refresh and finish;
+            // these move in here.
+            {
+              label: syncing ? "syncing…" : "sync",
+              narrowOnly: true,
+              disabled: syncing,
+              hint: "Push viewed files and comments to GitHub.",
+              onClick: onSync,
+            },
+            ...(fullscreenVisible && onToggleFullscreen
+              ? [
+                  {
+                    label: fullscreenActive ? "exit full screen" : "full screen",
+                    narrowOnly: true,
+                    onClick: onToggleFullscreen,
+                  },
+                ]
+              : []),
+            {
+              label: "settings",
+              narrowOnly: true,
+              onClick: () => navigate("/settings", { state: { background } }),
+            },
             live
               ? {
                   label: analysisCancelling ? "cancelling analysis…" : "cancel analysis",
@@ -261,7 +322,7 @@ export function TopBar({
         {fullscreenVisible ? (
           <button
             type="button"
-            className="btn"
+            className="btn hidden sm:inline-flex"
             title={fullscreenActive ? "Exit full screen" : "Full screen"}
             aria-label={fullscreenActive ? "Exit full screen" : "Full screen"}
             onClick={onToggleFullscreen}
@@ -276,14 +337,14 @@ export function TopBar({
         <Link
           to="/settings"
           state={{ background }}
-          className="btn"
+          className="btn hidden sm:inline-flex"
           title="Settings"
           aria-label="Settings"
         >
           <IconSettings width={12} height={12} />
         </Link>
         <button type="button" className="btn btn-primary" onClick={onFinishReview}>
-          finish review
+          finish<span className="hidden sm:inline"> review</span>
           {pendingReview ? (
             <span
               className="rounded-full px-1 text-2xs"
@@ -305,6 +366,8 @@ interface MenuItem {
   disabled?: boolean;
   hint?: string;
   testId?: string;
+  /** listed only at phone width, where its button leaves the row */
+  narrowOnly?: boolean;
 }
 
 /** The rarely-used actions, kept out of the button row. */
@@ -351,7 +414,9 @@ function OverflowMenu({ items }: { items: MenuItem[] }) {
               type="button"
               data-testid={item.testId}
               disabled={item.disabled}
-              className="w-full rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50"
+              className={`w-full rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 ${
+                item.narrowOnly ? "sm:hidden" : ""
+              }`}
               onClick={() => {
                 setOpen(false);
                 item.onClick();

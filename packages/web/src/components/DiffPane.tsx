@@ -2146,7 +2146,7 @@ export function CommentIndicatorLegend() {
  * the clipboard; a refused write (insecure origin, denied permission) just
  * leaves the icon as it was.
  */
-export function CopyPathButton({ path }: { path: string }) {
+export function CopyPathButton({ path, what = "path" }: { path: string; what?: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | null>(null);
   useEffect(() => () => {
@@ -2157,7 +2157,7 @@ export function CopyPathButton({ path }: { path: string }) {
       type="button"
       data-testid={`copy-path-${path}`}
       aria-label={`Copy ${path}`}
-      title={copied ? "Copied" : "Copy path"}
+      title={copied ? "Copied" : `Copy ${what}`}
       className="inline-flex flex-none items-center hover:!text-[var(--fg)]"
       style={{ color: copied ? "var(--ok)" : "var(--fg-faint)" }}
       onMouseDown={(e) => e.stopPropagation()}
