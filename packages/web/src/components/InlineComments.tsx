@@ -14,7 +14,7 @@ import { formatComment, type DiffContext } from "../lib/agentExport";
 import { bubbleTitle, mostAdvancedStatus, statusColors } from "../lib/comments";
 import { QuoteButton } from "./ChatPanel";
 import { CopyForAgentButton } from "./CopyForAgent";
-import { CommentBody, commentRef, type EditComment } from "./Drafts";
+import { ByClaudeChip, ClaudeEditNote, CommentBody, commentRef, type EditComment } from "./Drafts";
 import { StatusChip } from "./FinishReview";
 import { IconClose, IconCommentFilled } from "./icons";
 
@@ -26,6 +26,9 @@ export interface InlineCommentActions {
   onQuote?: (ref: ChatRef) => void;
   /** the diff to slice a snippet out of, for copy-for-agent */
   exportCtx?: DiffContext;
+  /** take back the review chat's latest edit to a draft */
+  onUndoEdit?: (id: string) => void;
+  undoing?: boolean;
 }
 
 /**
@@ -165,7 +168,7 @@ function InlineComment({
   comment: DraftComment;
   actions: InlineCommentActions;
 }) {
-  const { onEdit, onDelete, deleting, onQuote, exportCtx } = actions;
+  const { onEdit, onDelete, deleting, onQuote, exportCtx, onUndoEdit, undoing } = actions;
   const status: CommentStatus = comment.status ?? "draft";
   return (
     <li
@@ -178,10 +181,12 @@ function InlineComment({
           {formatTimestamp(comment.createdAt)}
         </span>
         <StatusChip status={status} />
+        <ByClaudeChip comment={comment} />
       </div>
       {/* The edit flow — including the "this is already public" confirmation —
           is the drawer's, unchanged; only the rendering differs. */}
       <CommentBody comment={comment} edit={onEdit} markdown />
+      <ClaudeEditNote comment={comment} onUndo={onUndoEdit} busy={undoing} />
       <div className="mt-1 flex items-center gap-1.5">
         {onQuote ? (
           <QuoteButton

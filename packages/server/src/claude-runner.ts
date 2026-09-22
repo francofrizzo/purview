@@ -27,15 +27,16 @@ export interface ClaudeChild {
 
 export type ClaudeSpawner = (
   argv: string[],
-  opts: { cwd: string },
+  opts: { cwd: string; env?: Record<string, string> },
 ) => ClaudeChild;
 
 const defaultSpawner: ClaudeSpawner = (argv, opts) =>
   spawn(process.env.REVIEWER_CLAUDE_BIN ?? "claude", argv, {
     cwd: opts.cwd,
     stdio: ["pipe", "pipe", "pipe"],
-    // No secrets are injected; the CLI reuses the user's own auth.
-    env: process.env,
+    // No secrets are injected; the CLI reuses the user's own auth. `opts.env`
+    // only adds non-secret markers (e.g. the chat's PURVIEW_ACTOR).
+    env: { ...process.env, ...opts.env },
   }) as unknown as ClaudeChild;
 
 let spawner: ClaudeSpawner = defaultSpawner;
@@ -99,6 +100,8 @@ export interface ClaudeRunOptions {
   timeoutMs?: number;
   /** label used in the argv log line */
   label?: string;
+  /** extra environment for the child, on top of this process's own */
+  env?: Record<string, string>;
 }
 
 export interface ClaudeRun {
@@ -167,7 +170,7 @@ export function runClaude(opts: ClaudeRunOptions): ClaudeRun {
 
   let child: ClaudeChild;
   try {
-    child = spawner(argv, { cwd: opts.cwd });
+    child = spawner(argv, opts.env ? { cwd: opts.cwd, env: opts.env } : { cwd: opts.cwd });
   } catch (err) {
     const failed: ClaudeRun = {
       argv,

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { CommentStatus, DraftComment, FilesJson } from "../api/types";
+import type { CommentStatus, DeletedComment, DraftComment, FilesJson } from "../api/types";
 import {
   bubbleTitle,
+  canUndoClaudeEdit,
+  claudeDeletedDrafts,
+  isByClaude,
+  isCommentWriteTool,
   compareCommentOrder,
   groupComments,
   isCommentAnchored,
@@ -199,5 +203,47 @@ describe("presentation helpers", () => {
     expect(bubbleTitle([c()])).toContain("1 comment ");
     expect(bubbleTitle([c(), c({ status: "submitted" })])).toContain("2 comments");
     expect(bubbleTitle([c(), c({ status: "submitted" })])).toContain("submitted");
+  });
+});
+
+describe("comments the chat wrote", () => {
+  const hist = [{ body: "before", replacedAt: "2026-01-01T00:00:00Z", replacedBy: "claude" as const }];
+
+  it("marks only Claude-authored comments", () => {
+    expect(isByClaude(c({ author: "claude" }))).toBe(true);
+    expect(isByClaude(c({ author: "you" }))).toBe(false);
+    expect(isByClaude(c())).toBe(false);
+  });
+
+  it("offers undo only while Claude's edit to a draft is the latest one", () => {
+    expect(canUndoClaudeEdit(c({ lastEditedBy: "claude", history: hist }))).toBe(true);
+    expect(canUndoClaudeEdit(c({ lastEditedBy: "you", history: hist }))).toBe(false);
+    expect(canUndoClaudeEdit(c({ lastEditedBy: "claude", history: [] }))).toBe(false);
+    expect(canUndoClaudeEdit(c({ lastEditedBy: "claude", history: hist, status: "pushed" }))).toBe(false);
+  });
+
+  it("lists Claude's deletions newest first, minus the dismissed ones", () => {
+    const d = (id: string, deletedAt: string, deletedBy: "you" | "claude"): DeletedComment => ({
+      ...c({ id }),
+      deletedAt,
+      deletedBy,
+    });
+    const deleted = [
+      d("a", "2026-01-01T00:00:00Z", "claude"),
+      d("b", "2026-01-02T00:00:00Z", "claude"),
+      d("mine", "2026-01-03T00:00:00Z", "you"),
+    ];
+    expect(claudeDeletedDrafts(deleted).map((x) => x.id)).toEqual(["b", "a"]);
+    expect(claudeDeletedDrafts(deleted, new Set(["b"])).map((x) => x.id)).toEqual(["a"]);
+  });
+
+  it("recognises the chat's comment-writing tool calls", () => {
+    const cli = "/usr/bin/node /x/core/dist/cli.js";
+    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment add github.com/a/b/1 --file x --line 2 --body 'hi'` })).toBe(true);
+    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment edit github.com/a/b/1 id --body 'x'` })).toBe(true);
+    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment delete github.com/a/b/1 id` })).toBe(true);
+    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment list github.com/a/b/1` })).toBe(false);
+    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} show github.com/a/b/1 x` })).toBe(false);
+    expect(isCommentWriteTool({ name: "Read", detail: "comment add" })).toBe(false);
   });
 });

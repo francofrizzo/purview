@@ -5,11 +5,17 @@ import {
   type AddCommentInput,
   type ChatRef,
   type CommentStatus,
+  type DeletedComment,
   type DraftComment,
   type EditCommentResult,
 } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
-import { compareCommentOrder } from "../lib/comments";
+import {
+  canUndoClaudeEdit,
+  claudeDeletedDrafts,
+  compareCommentOrder,
+  isByClaude,
+} from "../lib/comments";
 import { QuoteButton } from "./ChatPanel";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
 import { StatusChip } from "./FinishReview";
@@ -138,6 +144,55 @@ export function CommentComposer({
         </button>
       </div>
     </div>
+  );
+}
+
+/** "by Claude" — on a draft the review chat created. */
+export function ByClaudeChip({ comment }: { comment: Pick<DraftComment, "author"> }) {
+  if (!isByClaude(comment)) return null;
+  return (
+    <span
+      className="chip flex-none"
+      data-testid="by-claude"
+      style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
+      title="Drafted by Claude in the review chat"
+    >
+      by Claude
+    </span>
+  );
+}
+
+/** "edited by Claude · undo" — while the chat's latest edit to a draft is still in effect. */
+export function ClaudeEditNote({
+  comment,
+  onUndo,
+  busy,
+}: {
+  comment: Pick<DraftComment, "id" | "status" | "lastEditedBy" | "history">;
+  onUndo?: (id: string) => void;
+  busy?: boolean;
+}) {
+  if (!canUndoClaudeEdit(comment)) return null;
+  return (
+    <p className="mt-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+      edited by Claude
+      {onUndo ? (
+        <>
+          {" · "}
+          <button
+            type="button"
+            data-testid={`undo-edit-${comment.id}`}
+            className="underline"
+            style={{ color: "var(--fg-muted)" }}
+            disabled={busy}
+            onClick={() => onUndo(comment.id)}
+            title="Go back to the text this draft had before Claude's edit"
+          >
+            undo
+          </button>
+        </>
+      ) : null}
+    </p>
   );
 }
 
@@ -364,8 +419,18 @@ export function DraftsDrawer({
   onDeleteMany,
   onEdit,
   onQuote,
+  deleted = [],
+  onRestore,
+  onUndoEdit,
+  undoing,
 }: {
   drafts: DraftComment[];
+  /** the server's trash; drafts the chat deleted get a restore notice */
+  deleted?: DeletedComment[];
+  onRestore?: (id: string) => void;
+  onUndoEdit?: (id: string) => void;
+  /** a restore or undo is in flight */
+  undoing?: boolean;
   deleting?: boolean;
   /** diff + PR identity the agent-facing markdown needs; omit to hide copying */
   bundle?: Omit<BundleSource, "comments">;
@@ -384,6 +449,10 @@ export function DraftsDrawer({
   const pushed = drafts.filter((d) => d.status === "pushed").sort(compareCommentOrder);
   const submitted = drafts.filter((d) => d.status === "submitted").sort(compareCommentOrder);
   const ordered = [...local, ...pushed, ...submitted];
+  // Dismissing a notice only hides it here; the draft stays restorable until
+  // the server's trash lets it go.
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
+  const chatDeleted = onRestore ? claudeDeletedDrafts(deleted, dismissed) : [];
 
   return (
     <aside
@@ -409,6 +478,41 @@ export function DraftsDrawer({
           />
         ) : null}
       </div>
+      {chatDeleted.length ? (
+        <ul className="flex-none border-b" style={{ borderColor: "var(--border)" }}>
+          {chatDeleted.map((d) => (
+            <li
+              key={d.id}
+              data-testid={`claude-deleted-${d.id}`}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-2xs"
+              style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+            >
+              <span className="min-w-0 flex-1 truncate" title={d.body}>
+                Claude deleted a draft on{" "}
+                <span className="font-mono">{commentAnchorLabel(d)}</span>
+              </span>
+              <button
+                type="button"
+                data-testid={`restore-${d.id}`}
+                className="flex-none underline"
+                disabled={undoing}
+                onClick={() => onRestore?.(d.id)}
+              >
+                undo
+              </button>
+              <button
+                type="button"
+                className="flex-none"
+                style={{ color: "var(--fg-faint)" }}
+                title="Dismiss"
+                onClick={() => setDismissed((cur) => new Set([...cur, d.id]))}
+              >
+                <IconClose width={9} height={9} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       <div className="flex-1 overflow-auto">
         {drafts.length === 0 ? (
           <p className="p-3 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
@@ -431,8 +535,10 @@ export function DraftsDrawer({
                     {isFileComment(d) ? "(file)" : `:${d.line}`}
                   </span>
                   <StatusChip status={d.status ?? "draft"} />
+                  <ByClaudeChip comment={d} />
                 </button>
                 <CommentBody comment={d} edit={onEdit} />
+                <ClaudeEditNote comment={d} onUndo={onUndoEdit} busy={undoing} />
                 <div className="mt-1 flex items-center gap-1.5">
                   {onQuote ? (
                     <QuoteButton

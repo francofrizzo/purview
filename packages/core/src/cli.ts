@@ -28,6 +28,16 @@ import { formatReport } from "./report.js";
 import { renderTriage } from "./triage.js";
 import { allSelectedHunks, renderShowHunk, selectHunks } from "./hunk-select.js";
 import { renderChanges } from "./changes.js";
+import {
+  callServer,
+  commentLocation,
+  commentsUrl,
+  formatCommentList,
+  newCommentPayload,
+  resolveBody,
+  serverBaseUrl,
+  type ServerComment,
+} from "./comment-client.js";
 
 // The state dir was renamed `~/.reviewer` -> `~/.purview`; whichever entry
 // point runs first does the one-time move. Logged on stderr so `--json` output
@@ -442,8 +452,114 @@ program
     }
   });
 
+/*
+ * Draft comments. Unlike every command above, these do not touch the state
+ * directory: comments.json belongs to the running server, so they go through
+ * its HTTP API on loopback (see comment-client.ts). Inside the review chat
+ * (PURVIEW_ACTOR=chat) the server records them as Claude's and refuses to
+ * touch anything that is not a draft.
+ */
+const comment = program
+  .command("comment")
+  .description("create, edit, delete or list draft review comments (through the running server)");
+
+function readBodyFile(file: string): string {
+  return fs.readFileSync(file === "-" ? 0 : file, "utf8");
+}
+
+async function findComment(key: PrKey, id: string): Promise<ServerComment> {
+  const { comments } = await callServer<{ comments: ServerComment[] }>(
+    "GET",
+    commentsUrl(serverBaseUrl(), key),
+  );
+  const found = comments.find((c) => c.id === id);
+  if (!found) {
+    throw new Error(
+      `No comment ${id} on ${keyToString(key)}. \`reviewer-state comment list ${keyToString(key)}\` shows the ids.`,
+    );
+  }
+  return found;
+}
+
+comment
+  .command("list")
+  .argument("<key>")
+  .description("list the PR's comments: id, status, author, location, first line")
+  .action(async (keyArg: string) => {
+    const key = parseKey(keyArg);
+    const { comments } = await callServer<{ comments: ServerComment[] }>(
+      "GET",
+      commentsUrl(serverBaseUrl(), key),
+    );
+    process.stdout.write(formatCommentList(comments));
+  });
+
+comment
+  .command("add")
+  .argument("<key>")
+  .requiredOption("--file <path>", "file path as it appears in the diff")
+  .option("--line <n>", "line number on --side (new side by default)")
+  .option("--side <RIGHT|LEFT>", "RIGHT = the new version (default), LEFT = the old one")
+  .option("--whole-file", "comment on the file as a whole instead of a line")
+  .option("--body <text>", "the comment text (single-quote it)")
+  .option("--body-file <path>", 'file with the comment text ("-" for stdin)')
+  .description("create a draft comment; prints its id")
+  .action(
+    async (
+      keyArg: string,
+      opts: { file: string; line?: string; side?: string; wholeFile?: boolean; body?: string; bodyFile?: string },
+    ) => {
+      const key = parseKey(keyArg);
+      const payload = { ...newCommentPayload(opts), body: resolveBody(opts, readBodyFile) };
+      const { comment: created } = await callServer<{ comment: ServerComment }>(
+        "POST",
+        commentsUrl(serverBaseUrl(), key),
+        payload,
+      );
+      console.log(`Created draft comment ${created.id} at ${commentLocation(created)}.`);
+    },
+  );
+
+comment
+  .command("edit")
+  .argument("<key>")
+  .argument("<commentId>")
+  .option("--body <text>", "the new comment text (single-quote it)")
+  .option("--body-file <path>", 'file with the new text ("-" for stdin)')
+  .description("replace a draft comment's text (the previous text stays undoable)")
+  .action(async (keyArg: string, id: string, opts: { body?: string; bodyFile?: string }) => {
+    const key = parseKey(keyArg);
+    const body = resolveBody(opts, readBodyFile);
+    const target = await findComment(key, id);
+    const res = await callServer<{ comment: ServerComment; remote?: { ok: boolean; reason?: string } | null }>(
+      "PATCH",
+      commentsUrl(serverBaseUrl(), key, `/${encodeURIComponent(id)}`),
+      { body },
+    );
+    console.log(`Edited ${target.status} comment ${res.comment.id} at ${commentLocation(res.comment)}.`);
+    if (res.remote && !res.remote.ok) console.log(`GitHub was not updated: ${res.remote.reason ?? "unknown error"}`);
+  });
+
+comment
+  .command("delete")
+  .argument("<key>")
+  .argument("<commentId>")
+  .description("delete a comment (a deleted draft stays restorable from Purview for a day)")
+  .action(async (keyArg: string, id: string) => {
+    const key = parseKey(keyArg);
+    const target = await findComment(key, id);
+    const res = await callServer<{ trashed?: boolean }>(
+      "DELETE",
+      commentsUrl(serverBaseUrl(), key, `/${encodeURIComponent(id)}`),
+    );
+    console.log(
+      `Deleted ${target.status} comment ${id} at ${commentLocation(target)}` +
+        (res.trashed ? "; it can be restored from Purview's comments panel." : "."),
+    );
+  });
+
 try {
-  program.parse(process.argv);
+  await program.parseAsync(process.argv);
 } catch (err) {
   if (err instanceof CliExit) {
     console.error(err.message);

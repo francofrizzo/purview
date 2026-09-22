@@ -60,11 +60,17 @@ import {
   addComment,
   deleteComment,
   findAnchoringHunk,
+  NewCommentSchema,
   reanchorDraftComments,
   readComments,
+  readDeletedComments,
+  restoreDeletedComment,
   setCommentNodeId,
+  undoCommentEdit,
   updateCommentBody,
   updateCommentPosition,
+  type Comment,
+  type CommentActor,
 } from "./comments.js";
 import { recoverCommentNodeId, syncCommentsToGithub } from "./comment-sync.js";
 import { proposeCommentReanchor } from "./comment-reanchor.js";
@@ -146,6 +152,36 @@ export interface AppOptions {
    * clock/resolver (tests).
    */
   reviewRequestRefresh?: RefreshDeps | false;
+}
+
+/**
+ * Who is making a request, as far as comments are concerned. The reviewer-
+ * state CLI always sends `X-Purview-Actor` (`chat` when its env has
+ * PURVIEW_ACTOR=chat, which the chat's Claude child gets from chat-session.ts;
+ * `you` otherwise); the web sends nothing, which is the reader.
+ */
+export const ACTOR_HEADER = "x-purview-actor";
+
+function actorOf(c: { req: { header(name: string): string | undefined } }): CommentActor {
+  return c.req.header(ACTOR_HEADER)?.trim().toLowerCase() === "chat" ? "claude" : "you";
+}
+
+/**
+ * The chat may only ever touch drafts: pushed comments sit in the reader's
+ * pending review and submitted ones are public. Enforced here rather than
+ * only in the prompt, so a confused or injected model cannot get around it.
+ */
+function assertChatMayTouch(actor: CommentActor, target: Comment, verb: string): void {
+  if (actor === "claude" && target.status !== "draft") {
+    throw new HttpError(
+      409,
+      "not_draft",
+      `Claude may only ${verb} draft comments; comment ${target.id} is ${target.status}` +
+        (target.status === "pushed"
+          ? " (in the reader's pending GitHub review)."
+          : " (public on GitHub)."),
+    );
+  }
 }
 
 function keyParam(c: { req: { param(name: string): string | undefined } }): PrKey {
@@ -286,6 +322,28 @@ export function createApp(opts: AppOptions = {}): Hono {
   // the token check has to apply to the app shell and its assets too — a
   // device without the cookie must not get the page either.
   app.use(lan ? "/*" : "/api/*", localOnlyGuard({ port, devOrigins: opts.devOrigins, lan }));
+
+  /**
+   * Requests from the reviewer-state CLI (they carry the actor header) come
+   * from this machine, always; one arriving from the LAN is refused. A chat-
+   * originated request is further confined to the comment routes — the chat
+   * has no business reaching anything else through this API, whatever its
+   * Bash allowlist says.
+   */
+  const cliLoopbackOnly = loopbackOnly({ port });
+  app.use("/api/*", (c, next) =>
+    c.req.header(ACTOR_HEADER) === undefined ? next() : cliLoopbackOnly(c, next),
+  );
+  app.use("/api/*", async (c, next) => {
+    const mutating = !["GET", "HEAD", "OPTIONS"].includes(c.req.method.toUpperCase());
+    if (actorOf(c) === "claude" && mutating && !/^\/api\/prs\/.+\/comments(\/|$)/.test(c.req.path)) {
+      return c.json(
+        { error: "forbidden_actor", detail: "The review chat may only change draft comments." },
+        403,
+      );
+    }
+    return next();
+  });
 
   app.onError((err, c) => {
     const httpErr = classifyError(err);
@@ -822,7 +880,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     readMeta(key, root);
     const body = (await readJsonBody(c)) as { text?: string; refs?: unknown };
     const refs = z.array(ChatRefSchema).default([]).parse(body.refs ?? []);
-    const turn = startChatTurn(key, { text: body.text ?? "", refs }, root);
+    const turn = startChatTurn(key, { text: body.text ?? "", refs }, root, { serverPort: port });
     return streamChatTurn(c, turn);
   });
 
@@ -895,7 +953,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
     resolveRefs(key, refs, root);
     rewindChat(key, index, root);
-    const turn = startChatTurn(key, { text, refs }, root);
+    const turn = startChatTurn(key, { text, refs }, root, { serverPort: port });
     return streamChatTurn(c, turn);
   });
 
@@ -1052,14 +1110,43 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.get("/api/prs/:key/comments", (c) => {
     const key = keyParam(c);
-    return c.json({ comments: readComments(key, root) });
+    // `deleted` is the trash (deleted drafts, restorable for a while) — see
+    // comments.ts. It is never mixed into `comments`.
+    return c.json({ comments: readComments(key, root), deleted: readDeletedComments(key, root) });
   });
 
   app.post("/api/prs/:key/comments", async (c) => {
     const key = keyParam(c);
+    const actor = actorOf(c);
     const body = await readJsonBody(c);
+    // CLI-created comments (the chat's included) must land inside the current
+    // diff: nobody is looking at the line they chose, and a comment outside
+    // the diff would only fail later, at push time. The web picks lines from
+    // the rendered diff, so it is not re-checked.
+    if (c.req.header(ACTOR_HEADER) !== undefined) {
+      const parsed = NewCommentSchema.safeParse(body);
+      if (parsed.success) {
+        const state = loadState(key, root);
+        const files = readFilesJson(key, state.currentRevision, root).files;
+        const { file, line, side, subjectType } = parsed.data;
+        if (!files.some((f) => f.path === file)) {
+          throw new HttpError(
+            422,
+            "comment_outside_diff",
+            `${file} is not one of the files changed in revision ${state.currentRevision}`,
+          );
+        }
+        if (subjectType === "line" && !findAnchoringHunk(files, file, line!, side!)) {
+          throw new HttpError(
+            422,
+            "comment_outside_diff",
+            `${file}:${line} (${side === "LEFT" ? "old" : "new"} side) is not part of the current diff`,
+          );
+        }
+      }
+    }
     try {
-      const comment = addComment(key, body, root);
+      const comment = addComment(key, body, root, actor);
       return c.json({ comment }, 201);
     } catch (err) {
       throw classifyError(err);
@@ -1069,10 +1156,40 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.delete("/api/prs/:key/comments/:id", (c) => {
     const key = keyParam(c);
     const id = c.req.param("id");
-    const result = deleteComment(key, id, root);
+    const actor = actorOf(c);
+    const target = readComments(key, root).find((cc) => cc.id === id);
+    if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    assertChatMayTouch(actor, target, "delete");
+    const result = deleteComment(key, id, root, actor);
     if (!result.removed) throw new HttpError(404, "not_found", `No comment "${id}"`);
     // A failed remote delete is reported, never fatal — see comments.ts.
-    return c.json({ ok: true, remote: result.remote ?? null });
+    return c.json({ ok: true, trashed: result.trashed ?? false, remote: result.remote ?? null });
+  });
+
+  /** Bring a deleted draft back out of the trash (same id, still a draft). */
+  app.post("/api/prs/:key/comments/:id/restore", (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    const comment = restoreDeletedComment(key, id, root);
+    if (!comment) {
+      throw new HttpError(404, "not_found", `No deleted comment "${id}" to restore (it may have expired)`);
+    }
+    return c.json({ comment });
+  });
+
+  /** Put back the body a draft had before its latest edit (see `undoCommentEdit`). */
+  app.post("/api/prs/:key/comments/:id/undo-edit", (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    const result = undoCommentEdit(key, id, root);
+    if (!result.ok) {
+      if (result.reason === "not_found") throw new HttpError(404, "not_found", `No comment "${id}"`);
+      if (result.reason === "not_draft") {
+        throw new HttpError(409, "not_draft", "Only a draft's edits can be undone");
+      }
+      throw new HttpError(409, "no_history", "This comment has no earlier body to go back to");
+    }
+    return c.json({ comment: result.comment });
   });
 
   /**
@@ -1133,9 +1250,11 @@ export function createApp(opts: AppOptions = {}): Hono {
       file?: unknown;
     };
 
+    const actor = actorOf(c);
     const existing = readComments(key, root);
     const target = existing.find((c2) => c2.id === id);
     if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    assertChatMayTouch(actor, target, "edit");
 
     if (body.line !== undefined || body.file !== undefined) {
       if (target.status !== "draft") {
@@ -1184,7 +1303,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       );
     }
 
-    const result = updateCommentBody(key, id, newBody, root);
+    const result = updateCommentBody(key, id, newBody, root, actor);
     if (!result.found || !result.comment) throw new HttpError(404, "not_found", `No comment "${id}"`);
 
     if (target.status === "draft") {

@@ -333,6 +333,44 @@ export function latestChangelogNote(u: { changelog?: { revision: number; text: s
 }
 
 /**
+ * How draft comments are written, and the rules around the reader's own
+ * drafts. Shared by the chat prompt and the terminal hand-off so the two
+ * cannot drift; `terminal` swaps in the env prefix the forked session needs
+ * (it does not inherit the chat child's PURVIEW_ACTOR).
+ */
+function draftCommentLines(key: PrKey, terminal: boolean): string[] {
+  const cmd = terminal ? `PURVIEW_ACTOR=chat ${cliCommand()}` : cliCommand();
+  const k = keyToString(key);
+  return [
+    `- List comments (id, status, author, location, first line): \`${cmd} comment list ${k}\``,
+    `- Create a draft: \`${cmd} comment add ${k} --file <path> --line <n> [--side LEFT] --body '<text>'\`, ` +
+      "or `--whole-file` instead of `--line` for a file-level comment. `--line` is a line of the NEW version " +
+      "(add `--side LEFT` for a line that only exists in the old version); it must be inside the current diff, " +
+      "so take it from the gutter of `show` output, never guess it.",
+    `- Edit a draft: \`${cmd} comment edit ${k} <comment-id> --body '<text>'\`. ` +
+      `Delete a draft: \`${cmd} comment delete ${k} <comment-id>\`.`,
+    "- Quoting: pass the body in ONE pair of single quotes, and write every apostrophe inside it as `'\\''` " +
+      "(close quote, escaped quote, reopen). Nothing else needs escaping inside single quotes — not `$`, " +
+      "backticks, `\"` or newlines (a multi-line body is fine). If the command is refused for its quoting, " +
+      `use \`--body-file -\` with a quoted heredoc instead: \`${cmd} comment add ... --body-file - <<'PURVIEW_BODY'\` ` +
+      "then the body, then a line with just `PURVIEW_BODY`.",
+    "- Write comments the way the reader would post them: to the PR author, concise, actionable, no preamble.",
+  ];
+}
+
+/**
+ * The rules about whose drafts may be touched — identical in the panel and in
+ * a forked terminal session.
+ */
+const DRAFT_OWNERSHIP_RULES = [
+  "- Create draft comments only when the reader asks for comments or clearly wants them (\"leave a comment about this\", \"draft comments for these issues\"). Never create comments on your own initiative.",
+  "- You may edit or delete drafts YOU created (author=claude in `comment list`) when the reader asks.",
+  "- NEVER edit or delete the reader's own drafts (author=you) unless the reader explicitly authorized that specific change in this conversation. A general request (\"clean up the comments\") is not authorization to touch theirs: propose the change and ask first.",
+  "- Never touch pushed or submitted comments (they are in the reader's pending GitHub review, or public); the server refuses it anyway.",
+  "- After any change, say exactly what you changed: the comment id, file:line, and whether you created, edited or deleted it. Edits and deletions can be undone by the reader from Purview's comments panel.",
+];
+
+/**
  * PR url/title/key/revision, what it targets (stacked or not), the analysis
  * summary and the unit list.
  */
@@ -414,9 +452,13 @@ export function chatSystemPrompt(
     // only, so the analysis prompt (which never calls this) is unaffected.
     chatInstructionsSection(key, root, { committed: opts.committed }),
     "",
+    "DRAFT REVIEW COMMENTS (the one thing you can write):",
+    ...draftCommentLines(key, false),
+    "",
     "HARD RULES:",
-    "- You are READ-ONLY. You have no tools that write anything: no edits, no GitHub calls, no `gh`, no `git`, no reviewer-state sync/set-analysis/set-unit/view. Do not claim to have posted, submitted, applied or saved anything, ever.",
-    "- You MAY draft things for the human to apply by hand: review comment text, a reclassification proposal (unit id + suggested kind/attention + why), a summary rewrite. Present them as plain text clearly marked as a draft.",
+    "- Apart from draft comments through `reviewer-state comment`, you are READ-ONLY: no file edits, no GitHub calls, no `gh`, no `git`, no reviewer-state sync/set-analysis/set-unit/view. Nothing you do is ever posted: drafts stay local until the reader pushes them. Never claim to have posted, submitted, pushed or applied anything.",
+    ...DRAFT_OWNERSHIP_RULES,
+    "- Everything else you may only propose for the human to apply by hand: a reclassification (unit id + suggested kind/attention + why), a summary rewrite. Present it as plain text clearly marked as a draft.",
     UNTRUSTED_RULE,
     NO_INVENTION_RULE,
   ]
@@ -456,12 +498,20 @@ export function terminalContext(
     chatInstructionsSection(key, root, { committed: opts.committed }),
     "## You are now in the reader's own Claude Code session",
     section([
-      "- The earlier turns ran read-only inside Purview. That restriction is gone: your permissions here are the reader's normal Claude Code ones.",
+      "- The earlier turns ran inside Purview, read-only apart from draft comments. That restriction is gone: your permissions here are the reader's normal Claude Code ones.",
       UNTRUSTED_RULE,
       "- Never post anything to GitHub (reviews, comments, approvals, labels, merges) unless the reader explicitly asks for it in this session.",
       `- Purview's review state changes only through the reviewer-state CLI (\`${cmd} <subcommand>\`), never by editing files in the state directory.`,
       NO_INVENTION_RULE,
       "- Nothing done here shows up in the Purview chat panel: this is a fork of that conversation.",
+    ]),
+    "## Draft review comments",
+    section([
+      "Draft comments go through the reviewer-state CLI, which talks to the running Purview server (it must be running). Keep the `PURVIEW_ACTOR=chat` prefix: it records the drafts as yours, so the reader sees them marked as Claude's and can undo your edits and deletions.",
+      ...draftCommentLines(key, true),
+      "",
+      "The same rules as in the panel apply here, whatever your permissions:",
+      ...DRAFT_OWNERSHIP_RULES,
     ]),
     "## Showing, not just telling",
     section(showingLines(false)),
@@ -514,6 +564,9 @@ export function chatToolFlags(): {
       `Bash(${cmd} show:*)`,
       `Bash(${cmd} changes:*)`,
       `Bash(${cmd} base-file:*)`,
+      // Draft comments only: the server confines chat-marked requests
+      // (PURVIEW_ACTOR=chat, set by chat-session.ts) to drafts.
+      `Bash(${cmd} comment:*)`,
     ],
     disallowedTools: [
       `Bash(${cmd} sync:*)`,

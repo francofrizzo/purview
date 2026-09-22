@@ -453,6 +453,7 @@ export function analysisToolFlags(scratchDir: string): {
       `Bash(${cmd} init:*)`,
       `Bash(${cmd} refresh:*)`,
       `Bash(${cmd} discard-revision:*)`,
+      `Bash(${cmd} comment:*)`,
       `Bash(${cmd} view:*)`,
       "Bash(gh:*)",
       "Bash(git:*)",

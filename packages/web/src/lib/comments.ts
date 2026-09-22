@@ -11,6 +11,7 @@ import {
   isFileComment,
   type CommentStatus,
   type CommentSubject,
+  type DeletedComment,
   type DraftComment,
 } from "../api/types";
 
@@ -128,4 +129,41 @@ export function bubbleTitle(comments: DraftComment[]): string {
   const n = comments.length;
   const noun = n === 1 ? "comment" : "comments";
   return `${n} ${noun} · ${mostAdvancedStatus(comments)} — click to ${n === 1 ? "read it" : "read them"}`;
+}
+
+/* ------------------------------------------------ comments the chat wrote */
+
+/** Created by the review chat (`reviewer-state comment add` under PURVIEW_ACTOR=chat). */
+export function isByClaude(c: Pick<DraftComment, "author">): boolean {
+  return c.author === "claude";
+}
+
+/**
+ * The chat's latest edit is still in effect and can be taken back: a draft
+ * whose last edit was Claude's, with an earlier body on record. Pushed and
+ * submitted comments are never undoable here (the server refuses it too).
+ */
+export function canUndoClaudeEdit(
+  c: Pick<DraftComment, "status" | "lastEditedBy" | "history">,
+): boolean {
+  return (c.status ?? "draft") === "draft" && c.lastEditedBy === "claude" && (c.history?.length ?? 0) > 0;
+}
+
+/** Drafts the chat deleted that are still restorable, newest first, minus the ones dismissed. */
+export function claudeDeletedDrafts(
+  deleted: DeletedComment[],
+  dismissed: ReadonlySet<string> = new Set(),
+): DeletedComment[] {
+  return deleted
+    .filter((d) => d.deletedBy === "claude" && !dismissed.has(d.id))
+    .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+}
+
+/**
+ * A chat tool call that changes comments: a Bash run of the reviewer-state
+ * CLI's `comment add|edit|delete`. The chat panel refreshes the comments
+ * query once such a call has finished.
+ */
+export function isCommentWriteTool(tool: { name: string; detail?: string }): boolean {
+  return tool.name === "Bash" && /\bcomment\s+(add|edit|delete)\b/.test(tool.detail ?? "");
 }

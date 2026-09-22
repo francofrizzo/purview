@@ -12,6 +12,7 @@ import type {
   DiffOfDiffs,
   DiscardPendingResult,
   AddCommentInput,
+  DeletedComment,
   DraftComment,
   EditCommentResult,
   ImportFromPrResult,
@@ -67,6 +68,7 @@ const MOCK_DOD_AFTER: Record<string, string[]> = {
 const detail: PrDetail = structuredClone(mockDetail);
 const list: PrListEntry[] = structuredClone(mockList);
 const drafts: DraftComment[] = structuredClone(mockDrafts);
+const deletedDrafts: DeletedComment[] = [];
 const repos: RepoSummary[] = structuredClone(mockRepos);
 const repoConfigs: Record<string, RepoConfig> = structuredClone(mockRepoConfigs);
 
@@ -939,7 +941,37 @@ export const mockApi = {
   async deleteComment(_key: string, id: string): Promise<void> {
     await delay(80);
     const i = drafts.findIndex((d) => d.id === id);
-    if (i >= 0) drafts.splice(i, 1);
+    if (i >= 0) {
+      const [gone] = drafts.splice(i, 1);
+      if ((gone.status ?? "draft") === "draft") {
+        deletedDrafts.push({ ...gone, deletedAt: new Date().toISOString(), deletedBy: "you" });
+      }
+    }
+  },
+
+  async listDeletedComments(_key: string): Promise<DeletedComment[]> {
+    await delay(40);
+    return structuredClone(deletedDrafts);
+  },
+
+  async restoreComment(_key: string, id: string): Promise<DraftComment> {
+    await delay(80);
+    const i = deletedDrafts.findIndex((d) => d.id === id);
+    if (i < 0) throw new ApiError("not_found", 404, `No deleted comment "${id}" to restore`);
+    const [{ deletedAt: _at, deletedBy: _by, ...comment }] = deletedDrafts.splice(i, 1);
+    drafts.push(comment);
+    return structuredClone(comment);
+  },
+
+  async undoCommentEdit(_key: string, id: string): Promise<DraftComment> {
+    await delay(80);
+    const target = drafts.find((d) => d.id === id);
+    if (!target) throw new ApiError("not_found", 404, `No comment "${id}"`);
+    const last = target.history?.pop();
+    if (!last) throw new ApiError("no_history", 409, "This comment has no earlier body to go back to");
+    target.body = last.body;
+    target.lastEditedBy = target.history?.[target.history.length - 1]?.replacedBy;
+    return structuredClone(target);
   },
 
   /** Mirrors the server's { line?, file? } PATCH: draft line comments only. */

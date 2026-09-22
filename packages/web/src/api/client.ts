@@ -16,7 +16,9 @@ import type {
   GlobalConfig,
   GlobalConfigPatch,
   ChatStreamEvent,
+  CommentActor,
   CommentStatus,
+  DeletedComment,
   DiffOfDiffs,
   DiscardPendingResult,
   DiscardRevisionResult,
@@ -237,6 +239,9 @@ interface WireComment {
   status: CommentStatus;
   subjectType?: "line" | "file";
   githubCommentId?: number;
+  author?: CommentActor;
+  lastEditedBy?: CommentActor;
+  history?: { body: string; replacedAt: string; replacedBy: CommentActor }[];
 }
 
 interface WireReviewStatus {
@@ -639,6 +644,37 @@ export const api = {
   async deleteComment(key: string, id: string): Promise<void> {
     if (MOCK) return mockApi.deleteComment(key, id);
     await del(`/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}`);
+  },
+
+  /** The trash: deleted drafts the server still keeps restorable. */
+  async listDeletedComments(key: string): Promise<DeletedComment[]> {
+    if (MOCK) return mockApi.listDeletedComments(key);
+    const res = await request<{ deleted?: (WireComment & { deletedAt: string; deletedBy: CommentActor })[] }>(
+      `/prs/${encodeKey(key)}/comments`,
+    );
+    return (res.deleted ?? []).map((c) => ({
+      ...adaptComment(c),
+      deletedAt: c.deletedAt,
+      deletedBy: c.deletedBy,
+    }));
+  },
+
+  /** Put a deleted draft back (same id, still a draft). */
+  async restoreComment(key: string, id: string): Promise<DraftComment> {
+    if (MOCK) return mockApi.restoreComment(key, id);
+    const res = await post<{ comment: WireComment }>(
+      `/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}/restore`,
+    );
+    return adaptComment(res.comment);
+  },
+
+  /** Go back to the body a draft had before its latest edit. */
+  async undoCommentEdit(key: string, id: string): Promise<DraftComment> {
+    if (MOCK) return mockApi.undoCommentEdit(key, id);
+    const res = await post<{ comment: WireComment }>(
+      `/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}/undo-edit`,
+    );
+    return adaptComment(res.comment);
   },
 
   /** Move a draft's anchor — the accept step of "Suggest new anchor", or a manual re-anchor. */

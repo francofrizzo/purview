@@ -17,6 +17,7 @@ import type {
   DiscardPendingResult,
   DiscardRevisionResult,
   AddCommentInput,
+  DeletedComment,
   DraftComment,
   EditCommentResult,
   GlobalConfig,
@@ -50,6 +51,8 @@ export const qk = {
   lan: ["lan"] as const,
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
+  /** under qk.comments, so every comments invalidation refreshes the trash too */
+  deletedComments: (key: string) => ["comments", key, "deleted"] as const,
   review: (key: string) => ["review", key] as const,
   analysisJob: (key: string) => ["analysis-job", key] as const,
   staleness: (key: string) => ["staleness", key] as const,
@@ -544,6 +547,37 @@ export function useEditComment(
       if (ctx?.previousComments) qc.setQueryData(qk.comments(key), ctx.previousComments);
       if (ctx?.previousReview) qc.setQueryData(qk.review(key), ctx.previousReview);
     },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
+/** Deleted drafts the server still keeps restorable. */
+export function useDeletedComments(key: string) {
+  return useQuery<DeletedComment[]>({
+    queryKey: qk.deletedComments(key),
+    queryFn: () => api.listDeletedComments(key),
+    enabled: Boolean(key),
+  });
+}
+
+export function useRestoreComment(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.restoreComment(key, id),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
+export function useUndoCommentEdit(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.undoCommentEdit(key, id),
     onSettled: () => {
       void qc.invalidateQueries({ queryKey: qk.comments(key) });
       void qc.invalidateQueries({ queryKey: qk.review(key) });

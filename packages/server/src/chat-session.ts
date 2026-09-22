@@ -61,6 +61,19 @@ export function chatBusy(key: PrKey): boolean {
 const CHAT_TIMEOUT_MS = 10 * 60_000;
 
 /**
+ * Environment the chat's Claude child (and so its Bash tool, and so the
+ * reviewer-state CLI it runs) gets on top of the server's own:
+ * PURVIEW_ACTOR=chat makes the CLI send `X-Purview-Actor: chat`, and
+ * PURVIEW_PORT points it at the port this server actually listens on.
+ */
+export function chatChildEnv(serverPort?: number): Record<string, string> {
+  return {
+    PURVIEW_ACTOR: "chat",
+    ...(serverPort !== undefined ? { PURVIEW_PORT: String(serverPort) } : {}),
+  };
+}
+
+/**
  * Start a turn. Throws before anything is persisted if a reference cannot be
  * resolved (no partial sends) or if a turn is already in flight for this PR.
  */
@@ -68,7 +81,7 @@ export function startChatTurn(
   key: PrKey,
   input: { text: string; refs?: ChatRef[] },
   root = stateRoot(),
-  opts: { timeoutMs?: number } = {},
+  opts: { timeoutMs?: number; serverPort?: number } = {},
 ): ChatTurn {
   const keyStr = keyToString(key);
   if (turns.has(keyStr)) {
@@ -173,6 +186,9 @@ export function startChatTurn(
         resumeSessionId: resume ? sessionId : undefined,
         partialMessages: true,
         timeoutMs: opts.timeoutMs ?? CHAT_TIMEOUT_MS,
+        // Marks the chat's `reviewer-state comment` calls as Claude's (the
+        // server enforces draft-only on them) and points them at this server.
+        env: chatChildEnv(opts.serverPort),
       });
 
       for await (const event of run.events) {

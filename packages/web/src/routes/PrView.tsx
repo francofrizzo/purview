@@ -23,6 +23,9 @@ import {
   useUnarchiveAndAnalyze,
   useComments,
   useDeleteComment,
+  useDeletedComments,
+  useRestoreComment,
+  useUndoCommentEdit,
   useDeleteComments,
   useEditComment,
   useMoveComment,
@@ -136,6 +139,9 @@ export function PrView() {
   const sync = useSync(prKey);
   const addComment = useAddComment(prKey);
   const deleteComment = useDeleteComment(prKey);
+  const deletedComments = useDeletedComments(prKey);
+  const restoreComment = useRestoreComment(prKey);
+  const undoCommentEdit = useUndoCommentEdit(prKey);
   const deleteComments = useDeleteComments(prKey);
   const editComment = useEditComment(prKey);
   const moveComment = useMoveComment(prKey);
@@ -790,6 +796,8 @@ export function PrView() {
     deleting: deleteComment.isPending,
     onQuote: quote,
     exportCtx,
+    onUndoEdit: (id: string) => undoCommentEdit.mutate(id),
+    undoing: undoCommentEdit.isPending,
   };
 
   const jumpToFile = (file: string) => {
@@ -1477,6 +1485,10 @@ export function PrView() {
             onDeleteMany={(ids) => deleteComments.mutateAsync(ids)}
             onEdit={(input) => editComment.mutateAsync(input)}
             onQuote={quote}
+            deleted={deletedComments.data}
+            onRestore={(id) => restoreComment.mutate(id)}
+            onUndoEdit={(id) => undoCommentEdit.mutate(id)}
+            undoing={restoreComment.isPending || undoCommentEdit.isPending}
           />
         ) : null}
 

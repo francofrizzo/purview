@@ -23,7 +23,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
+import { qk } from "../api/hooks";
 import { errorText } from "../api/errors";
 import type { ChatMessage, ChatRef, ChatStreamEvent, ClaudeModel, ConfigSource } from "../api/types";
 import {
@@ -33,6 +35,7 @@ import {
   isAutoRef as deriveIsAutoRef,
 } from "./autoRef";
 import { addRef as addRefTo, refKey, removeRef as removeRefFrom } from "./chatRefs";
+import { isCommentWriteTool } from "./comments";
 
 export interface ToolActivity {
   name: string;
@@ -108,6 +111,7 @@ interface ChatContextValue {
 const ChatContext = createContext<ChatContextValue | null>(null);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [prKey, setPrKeyState] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
@@ -259,9 +263,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       narration: "",
     };
 
+    // The chat can write draft comments (`reviewer-state comment ...`). A tool
+    // event arrives when Claude *starts* a call, so the comments are refetched
+    // on the next event after one (it has finished by then) and at turn end.
+    const refreshComments = () =>
+      void queryClient.invalidateQueries({ queryKey: qk.comments(key) });
+    let commentWritePending = false;
+
     void (async () => {
       let seenTools: ToolActivity[] = [];
       const onEvent = (event: ChatStreamEvent) => {
+        if (commentWritePending) {
+          commentWritePending = false;
+          refreshComments();
+        }
+        if (event.type === "tool" && isCommentWriteTool(event)) commentWritePending = true;
         if (event.type === "delta") {
           outcome.text += event.text;
           setStreaming((cur) => (cur ? { ...cur, text: cur.text + event.text } : cur));
@@ -301,9 +317,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           );
         }
       } catch (err) {
-        if (controller.signal.aborted) return;
-        outcome.failed = errorText(err);
+        if (!controller.signal.aborted) outcome.failed = errorText(err);
       }
+      // Even a cancelled or failed turn may have changed comments before it ended.
+      if (seenTools.some(isCommentWriteTool)) refreshComments();
       if (controller.signal.aborted || keyRef.current !== key) return;
 
       abortRef.current = null;
@@ -323,7 +340,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       };
       if (message.text.trim()) setMessages((cur) => [...cur, message]);
     })();
-  }, []);
+  }, [queryClient]);
 
   const send = useCallback(
     (text: string) => {

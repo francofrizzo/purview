@@ -629,7 +629,19 @@ export interface DraftComment {
   subjectType?: CommentSubject;
   /** set once the comment exists on GitHub; needed to mirror an edit remotely */
   githubCommentId?: number;
+  /** who created it; absent means the reader */
+  author?: CommentActor;
+  /** who made the latest body edit still in effect; absent = unedited (or undone) */
+  lastEditedBy?: CommentActor;
+  /** earlier bodies, oldest first — what "undo" goes back to */
+  history?: { body: string; replacedAt: string; replacedBy: CommentActor }[];
 }
+
+/** The reader, or the review chat writing through `reviewer-state comment`. */
+export type CommentActor = "you" | "claude";
+
+/** A deleted draft, still restorable for a while (the server's trash). */
+export type DeletedComment = DraftComment & { deletedAt: string; deletedBy: CommentActor };
 
 /** The one predicate the whole UI branches on. Tolerant of older payloads. */
 export function isFileComment(c: {

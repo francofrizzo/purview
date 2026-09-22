@@ -45,6 +45,28 @@ export const CommentSubjectTypeSchema = z.enum(["line", "file"]);
 export type CommentSubjectType = z.infer<typeof CommentSubjectTypeSchema>;
 
 /**
+ * Who wrote or changed a comment: the reader ("you") or the review chat
+ * ("claude", identified server-side by the `X-Purview-Actor: chat` header its
+ * CLI calls carry — see `actorOf` in app.ts). Absent on disk means "you":
+ * every comment written before the chat could write any was the reader's.
+ */
+export const CommentActorSchema = z.enum(["you", "claude"]);
+export type CommentActor = z.infer<typeof CommentActorSchema>;
+
+/** One body a comment used to have, newest last. */
+export const CommentBodyRevisionSchema = z.object({
+  body: z.string(),
+  /** when this body was replaced */
+  replacedAt: z.string(),
+  /** who replaced it */
+  replacedBy: CommentActorSchema,
+});
+export type CommentBodyRevision = z.infer<typeof CommentBodyRevisionSchema>;
+
+/** Previous bodies kept per comment — an undo stack, not an audit log. */
+export const COMMENT_HISTORY_CAP = 5;
+
+/**
  * The stored/exposed shape *without* the subject invariant, so `.pick`/`.omit`
  * stay available (a refined schema is a ZodEffects and loses them). Everything
  * that validates rather than merely types goes through `subjectInvariant`.
@@ -78,6 +100,15 @@ const CommentObjectSchema = z.object({
   submittedAt: z.string().optional(),
   /** Set whenever the body is edited after creation. Absent on untouched comments. */
   updatedAt: z.string().optional(),
+  /** Who created it; absent = "you" (see CommentActorSchema). */
+  author: CommentActorSchema.optional(),
+  /** Who made the latest body edit still in effect; absent = never edited (or undone). */
+  lastEditedBy: CommentActorSchema.optional(),
+  /**
+   * Bodies this comment had before its edits, oldest first, capped at
+   * COMMENT_HISTORY_CAP. Popped by `undoCommentEdit`.
+   */
+  history: z.array(CommentBodyRevisionSchema).optional(),
 });
 
 /** `subjectType` decides which of `line`/`side` are legal — both, or neither. */
@@ -202,13 +233,19 @@ export function writeComments(key: PrKey, comments: Comment[], root = stateRoot(
   fs.writeFileSync(file, JSON.stringify(comments, null, 2) + "\n", "utf8");
 }
 
-export function addComment(key: PrKey, input: unknown, root = stateRoot()): Comment {
+export function addComment(
+  key: PrKey,
+  input: unknown,
+  root = stateRoot(),
+  actor: CommentActor = "you",
+): Comment {
   const parsed = NewCommentSchema.parse(input);
   const comment: Comment = {
     id: randomUUID(),
     ...parsed,
     createdAt: new Date().toISOString(),
     status: "draft",
+    author: actor,
   };
   const comments = readComments(key, root);
   comments.push(comment);
@@ -218,6 +255,8 @@ export function addComment(key: PrKey, input: unknown, root = stateRoot()): Comm
 
 export interface DeleteCommentResult {
   removed: boolean;
+  /** the draft went to the trash and can be restored (see `restoreDeletedComment`) */
+  trashed?: boolean;
   /** set when we tried to remove it from GitHub too */
   remote?: { attempted: true; ok: boolean; error?: string };
 }
@@ -237,6 +276,7 @@ export function deleteComment(
   key: PrKey,
   id: string,
   root = stateRoot(),
+  actor: CommentActor = "you",
 ): DeleteCommentResult {
   const comments = readComments(key, root);
   const target = comments.find((c) => c.id === id);
@@ -264,12 +304,101 @@ export function deleteComment(
     }
   }
 
+  // A draft never left this machine, so deleting it would lose the text for
+  // good: it goes to the trash instead, restorable for a while. Pushed and
+  // submitted comments already exist (or existed) on GitHub; restoring one as
+  // a draft would duplicate it on the next push, so they are simply removed.
+  const trashed = target.status === "draft";
+  if (trashed) {
+    const trash = readDeletedComments(key, root);
+    trash.push({ ...target, deletedAt: new Date().toISOString(), deletedBy: actor });
+    writeDeletedComments(key, trash, root);
+  }
+
   writeComments(
     key,
     comments.filter((c) => c.id !== id),
     root,
   );
-  return { removed: true, remote };
+  return { removed: true, trashed, remote };
+}
+
+/* ------------------------------------------------------------------ trash */
+
+/**
+ * Deleted drafts live in their own file, `deleted-comments.json`, beside
+ * `comments.json` — not as a flag inside it. Everything that reads
+ * comments.json (push, submit, counts, re-anchoring, the chat's refs, the web)
+ * then ignores them by construction; a `deletedAt` flag would need a filter
+ * at every one of those call sites, and a missed one would push a deleted
+ * comment to GitHub.
+ *
+ * Kept for DELETED_COMMENT_TTL_MS and at most DELETED_COMMENT_CAP entries
+ * (oldest dropped first), purged whenever the trash is read.
+ */
+export const DELETED_COMMENT_TTL_MS = 24 * 60 * 60_000;
+export const DELETED_COMMENT_CAP = 20;
+
+export const DeletedCommentSchema = CommentObjectSchema.extend({
+  deletedAt: z.string(),
+  deletedBy: CommentActorSchema,
+});
+export type DeletedComment = z.infer<typeof DeletedCommentSchema>;
+
+export function deletedCommentsPath(key: PrKey, root = stateRoot()): string {
+  return path.join(path.dirname(commentsPath(key, root)), "deleted-comments.json");
+}
+
+/** The trash, purged of expired entries (the purge is written back). */
+export function readDeletedComments(
+  key: PrKey,
+  root = stateRoot(),
+  now = Date.now(),
+): DeletedComment[] {
+  const file = deletedCommentsPath(key, root);
+  if (!fs.existsSync(file)) return [];
+  let entries: DeletedComment[];
+  try {
+    entries = z.array(DeletedCommentSchema).parse(JSON.parse(fs.readFileSync(file, "utf8")));
+  } catch {
+    // The trash is a convenience; a corrupt one must never break comments.
+    return [];
+  }
+  const kept = entries.filter((e) => now - Date.parse(e.deletedAt) < DELETED_COMMENT_TTL_MS);
+  if (kept.length !== entries.length) writeDeletedComments(key, kept, root);
+  return kept;
+}
+
+function writeDeletedComments(key: PrKey, entries: DeletedComment[], root = stateRoot()): void {
+  const file = deletedCommentsPath(key, root);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    JSON.stringify(entries.slice(-DELETED_COMMENT_CAP), null, 2) + "\n",
+    "utf8",
+  );
+}
+
+/** Put a trashed draft back, same id, still a draft. `undefined` when it is not in the trash. */
+export function restoreDeletedComment(
+  key: PrKey,
+  id: string,
+  root = stateRoot(),
+): Comment | undefined {
+  const trash = readDeletedComments(key, root);
+  const entry = trash.find((e) => e.id === id);
+  if (!entry) return undefined;
+  const { deletedAt: _at, deletedBy: _by, ...comment } = entry;
+  const restored: Comment = { ...comment, status: "draft" };
+  const comments = readComments(key, root);
+  if (!comments.some((c) => c.id === id)) comments.push(restored);
+  writeComments(key, comments, root);
+  writeDeletedComments(
+    key,
+    trash.filter((e) => e.id !== id),
+    root,
+  );
+  return restored;
 }
 
 export interface UpdateCommentBodyResult {
@@ -291,6 +420,7 @@ export function updateCommentBody(
   id: string,
   body: string,
   root = stateRoot(),
+  actor: CommentActor = "you",
 ): UpdateCommentBodyResult {
   const comments = readComments(key, root);
   const idx = comments.findIndex((c) => c.id === id);
@@ -299,11 +429,51 @@ export function updateCommentBody(
   if (target.body === body) {
     return { found: true, changed: false, comment: target };
   }
-  const updated: Comment = { ...target, body, updatedAt: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const history = [
+    ...(target.history ?? []),
+    { body: target.body, replacedAt: now, replacedBy: actor },
+  ].slice(-COMMENT_HISTORY_CAP);
+  const updated: Comment = { ...target, body, updatedAt: now, lastEditedBy: actor, history };
   const next = [...comments];
   next[idx] = updated;
   writeComments(key, next, root);
   return { found: true, changed: true, comment: updated };
+}
+
+export type UndoCommentEditResult =
+  | { ok: true; comment: Comment }
+  | { ok: false; reason: "not_found" | "no_history" | "not_draft" };
+
+/**
+ * Put back the body a comment had before its latest edit. Drafts only: a
+ * pushed comment's body also lives on GitHub, and undo is a local safety net,
+ * not a second way to edit remotely (the regular edit route does that).
+ */
+export function undoCommentEdit(key: PrKey, id: string, root = stateRoot()): UndoCommentEditResult {
+  const comments = readComments(key, root);
+  const idx = comments.findIndex((c) => c.id === id);
+  if (idx === -1) return { ok: false, reason: "not_found" };
+  const target = comments[idx];
+  if (target.status !== "draft") return { ok: false, reason: "not_draft" };
+  const history = target.history ?? [];
+  const last = history[history.length - 1];
+  if (!last) return { ok: false, reason: "no_history" };
+  const rest = history.slice(0, -1);
+  const prev = rest[rest.length - 1];
+  const { history: _h, lastEditedBy: _l, ...base } = target;
+  const updated: Comment = {
+    ...base,
+    body: last.body,
+    updatedAt: new Date().toISOString(),
+    // Whoever made the edit before the one undone is now the latest editor.
+    ...(prev ? { lastEditedBy: prev.replacedBy } : {}),
+    ...(rest.length ? { history: rest } : {}),
+  };
+  const next = [...comments];
+  next[idx] = updated;
+  writeComments(key, next, root);
+  return { ok: true, comment: updated };
 }
 
 export interface UpdateCommentPositionResult {
