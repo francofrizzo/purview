@@ -382,6 +382,10 @@ re-verification reads the same way. In short:
    `changelogEntry` — a short note (a sentence or two) about what this revision changed in that unit
    (e.g. `"rounding switched to banker's; added a .5 test"`), not a restatement of the
    summary. A unit you attach a new hunk to has changed too and gets an entry as well.
+   The entry describes what changed in the **code** this revision (e.g. "renamed SendWindow to
+   CalendarSendWindow; migration dropped the CHECK constraint"), never migration bookkeeping
+   (attached/unassigned/new/archived/revived hunks); a hunk `changes` says was mostly already in
+   the previous revision is not a change of this revision.
    The entry is recorded under the current revision; re-sending replaces it, so there is
    one per revision. Units that are neither changed nor taking a new hunk are not patched.
 4. Patch the affected units with

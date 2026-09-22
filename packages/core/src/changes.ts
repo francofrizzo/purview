@@ -1,5 +1,6 @@
 import { diffOfDiffs, type DiffOfDiffsLine } from "./diff-of-diffs.js";
 import { renderShowHunk } from "./hunk-select.js";
+import { containment } from "./migration.js";
 import { liveUnits } from "./reducer.js";
 import type {
   FileDiff,
@@ -115,6 +116,37 @@ export function changesWorthRefreshing(changes: ChangedUnit[]): ChangedUnit[] {
   return changes.filter((c) => !c.baseOnly || c.archived.length > 0 || c.gained.length > 0);
 }
 
+/* ------------------------------------------------------- prior-code share */
+
+/** Below this share, "N% of its lines were already in rK" is noise and is not printed. */
+export const PRIOR_SHARE_MIN = 0.2;
+
+/**
+ * How much of `hunk` another set of hunks (typically every hunk of the same
+ * file in the other revision) already holds: `containment` against their
+ * pooled lines, so a hunk stitched together from several old hunks counts
+ * fully. 0 when the hunk has no significant lines.
+ */
+export function sharedShare(hunk: Hunk, pool: readonly Hunk[]): number {
+  return containment(hunk, {
+    addedLines: pool.flatMap((h) => h.addedLines),
+    removedLines: pool.flatMap((h) => h.removedLines),
+  }).score;
+}
+
+/** The previous revision's hunks of the file `current` (rename-aware) was. */
+function previousFileHunks(current: FileDiff, previousFiles: FileDiff[] | undefined): Hunk[] {
+  const path = current.oldPath ?? current.path;
+  return (previousFiles ?? []).filter((f) => f.path === path).flatMap((f) => f.hunks);
+}
+
+/** The current revision's hunks of the file a previous-revision `path` became (rename-aware). */
+function currentFileHunks(path: string, currentFiles: FileDiff[] | undefined): Hunk[] {
+  return (currentFiles ?? []).filter((f) => (f.oldPath ?? f.path) === path).flatMap((f) => f.hunks);
+}
+
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+
 /* ---------------------------------------------------------------- rendering */
 
 /** Above this many changed lines, a reworked hunk is printed whole instead. */
@@ -133,12 +165,26 @@ function sizes(h: Hunk): string {
  * context either side: `was│` is a line only the old body had, `now│` one only
  * the new body has. The body lines keep their own diff marks.
  */
-function renderDelta(lines: DiffOfDiffsLine[]): { text: string; changed: number } {
+function renderDelta(
+  lines: DiffOfDiffsLine[],
+  moved?: { wasStillElsewhere: Set<string>; nowWasElsewhere: Set<string> },
+): { text: string; changed: number } {
   const flat: { tag: "   " | "was" | "now"; line: string }[] = [];
   for (const l of lines) {
     if (l.type === "unchanged") flat.push({ tag: "   ", line: l.oldLine ?? "" });
-    if (l.type === "removed" || l.type === "modified") flat.push({ tag: "was", line: l.oldLine ?? "" });
-    if (l.type === "added" || l.type === "modified") flat.push({ tag: "now", line: l.newLine ?? "" });
+    // A containment match (split/merged hunk): a line that only crossed a
+    // hunk boundary — the old side's line now in a sibling hunk, or the new
+    // side's line that another old hunk already had — is not a change.
+    if (
+      (l.type === "removed" || l.type === "modified") &&
+      !moved?.wasStillElsewhere.has(bodyKey(l.oldLine ?? ""))
+    )
+      flat.push({ tag: "was", line: l.oldLine ?? "" });
+    if (
+      (l.type === "added" || l.type === "modified") &&
+      !moved?.nowWasElsewhere.has(bodyKey(l.newLine ?? ""))
+    )
+      flat.push({ tag: "now", line: l.newLine ?? "" });
   }
   const keep = new Set<number>();
   flat.forEach((f, i) => {
@@ -154,6 +200,22 @@ function renderDelta(lines: DiffOfDiffsLine[]): { text: string; changed: number 
     last = i;
   }
   return { text: out.join("\n"), changed: flat.filter((f) => f.tag !== "   ").length };
+}
+
+/** A '+'/'-' body line, whitespace-insensitive; "" for context and blank lines (never matched). */
+function bodyKey(line: string): string {
+  if (!line.startsWith("+") && !line.startsWith("-")) return "";
+  const t = line.slice(1).trim();
+  return t ? line[0] + t : "";
+}
+
+function bodyKeys(hunks: readonly Hunk[]): Set<string> {
+  const out = new Set<string>();
+  for (const h of hunks) for (const l of h.text.split("\n")) {
+    const k = bodyKey(l);
+    if (k) out.add(k);
+  }
+  return out;
 }
 
 export interface RenderChangesInput {
@@ -175,12 +237,31 @@ export interface RenderedChanges {
 export function renderChanges(input: RenderChangesInput): RenderedChanges {
   const { state, report, revision } = input;
   const changes = changedUnits(state, report, input);
-  if (changes.length === 0) {
+  const prev = hunkIndex(input.previousFiles);
+  const cur = hunkIndex(input.currentFiles);
+  const prevRev = report?.previousRevision !== undefined ? `r${report.previousRevision}` : "the previous revision";
+
+  // For every `new` hunk: how much of it the previous revision's same file
+  // already had. A hunk that is mostly old code only crossed a hunk boundary
+  // (a rebase re-cut the diff); it is not a change of this revision.
+  const priorShare = new Map<string, number>();
+  for (const e of report?.entries ?? []) {
+    if (e.status !== "new") continue;
+    const h = cur.get(e.hunkId);
+    if (!h) continue;
+    const share = sharedShare(h.hunk, previousFileHunks(h.file, input.previousFiles));
+    if (share >= PRIOR_SHARE_MIN) priorShare.set(e.hunkId, share);
+  }
+  const priorNote = (id: string): string => {
+    const share = priorShare.get(id);
+    return share === undefined ? "" : `  (${pct(share)} of its lines were already in ${prevRev})`;
+  };
+  const printedNew = new Set<string>();
+
+  if (changes.length === 0 && priorShare.size === 0) {
     const line = `No units changed in revision ${revision}.`;
     return { body: line + "\n", summary: line, count: 0 };
   }
-  const prev = hunkIndex(input.previousFiles);
-  const cur = hunkIndex(input.currentFiles);
 
   // Hints: hunks nobody owns yet that are new this revision or unassigned.
   const owned = new Set(liveUnits(state).flatMap((u) => u.hunkIds));
@@ -237,18 +318,40 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
 
     for (const e of c.reworked) {
       reworkedCount++;
-      const before = e.previousHunkId ? prev.get(e.previousHunkId)?.hunk : undefined;
+      const before = e.previousHunkId ? prev.get(e.previousHunkId) : undefined;
       const after = cur.get(e.hunkId);
-      const score = e.score !== undefined && e.status === "fuzzy" ? ` score ${e.score.toFixed(2)}` : "";
+      const contained = e.match === "containment";
+      const score =
+        e.score === undefined || e.status !== "fuzzy"
+          ? ""
+          : contained
+            ? ` (hunk boundaries moved: ${pct(e.score)} of its lines were already in ${e.previousHunkId ?? "?"})`
+            : ` score ${e.score.toFixed(2)}`;
+      const siblings = contained
+        ? (report?.entries ?? []).filter(
+            (o) => o !== e && o.status !== "archived" && o.previousHunkId === e.previousHunkId,
+          )
+        : [];
       const head =
         `~ ${e.status}${score}: ${e.hunkId} <- ${e.previousHunkId ?? "?"}  ${e.file}` +
-        (e.previousFile ? ` (was ${e.previousFile})` : "");
+        (e.previousFile ? ` (was ${e.previousFile})` : "") +
+        (siblings.length ? `  (also continued in ${siblings.map((o) => o.hunkId).join(", ")})` : "");
       if (!before || !after) {
         lines.push(`${head}  (bodies unavailable)`);
         continue;
       }
-      lines.push(`${head}${hdr(after.hunk)}  ${sizes(before)} -> ${sizes(after.hunk)}`);
-      const delta = renderDelta(diffOfDiffs(before.text, after.hunk.text).lines);
+      lines.push(`${head}${hdr(after.hunk)}  ${sizes(before.hunk)} -> ${sizes(after.hunk)}`);
+      const moved = contained
+        ? {
+            wasStillElsewhere: bodyKeys(
+              currentFileHunks(before.file.path, input.currentFiles).filter((h) => h.id !== after.hunk.id),
+            ),
+            nowWasElsewhere: bodyKeys(
+              previousFileHunks(after.file, input.previousFiles).filter((h) => h.id !== before.hunk.id),
+            ),
+          }
+        : undefined;
+      const delta = renderDelta(diffOfDiffs(before.hunk.text, after.hunk.text).lines, moved);
       if (delta.changed > MAX_DELTA_LINES) {
         lines.push(`    (reworked heavily: ${delta.changed} changed lines; current body)`);
         lines.push(renderShowHunk(after).trimEnd());
@@ -262,14 +365,22 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
     for (const e of c.archived) {
       archivedCount++;
       const old = prev.get(e.hunkId)?.hunk;
+      // An archived hunk whose lines mostly live on in the current file was
+      // re-cut into other hunks by a rebase, not deleted.
+      const still = old ? sharedShare(old, currentFileHunks(e.file, input.currentFiles)) : 0;
       lines.push(
-        `- archived: ${e.hunkId}  ${e.file}` + (old ? `${hdr(old)}  ${sizes(old)}` : ""),
+        `- archived: ${e.hunkId}  ${e.file}` +
+          (old ? `${hdr(old)}  ${sizes(old)}` : "") +
+          (still >= PRIOR_SHARE_MIN ? `  (${pct(still)} of its lines are still in r${revision})` : ""),
       );
     }
 
     for (const e of c.gained) {
       const h = cur.get(e.hunkId)?.hunk;
-      lines.push(`+ gained new: ${e.hunkId}  ${e.file}` + (h ? `${hdr(h)}  ${sizes(h)}` : ""));
+      printedNew.add(e.hunkId);
+      lines.push(
+        `+ gained new: ${e.hunkId}  ${e.file}` + (h ? `${hdr(h)}  ${sizes(h)}` : "") + priorNote(e.hunkId),
+      );
     }
 
     const unitFiles = new Set([
@@ -279,15 +390,33 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
     const hints = looseHunks.filter((l) => unitFiles.has(l.file.path));
     for (const l of hints) {
       hintCount++;
+      printedNew.add(l.hunk.id);
       lines.push(
-        `? related (unassigned, hint only): ${l.hunk.id}  ${l.file.path}${hdr(l.hunk)}  ${sizes(l.hunk)}`,
+        `? related (unassigned, hint only): ${l.hunk.id}  ${l.file.path}${hdr(l.hunk)}  ${sizes(l.hunk)}` +
+          priorNote(l.hunk.id),
       );
     }
     blocks.push(lines.join("\n"), "");
   }
 
+  // `new` hunks not printed above that are largely old code: listed so the
+  // analysis does not credit (or changelog) pre-existing code to this revision.
+  const priorOnly = [...priorShare.keys()].filter((id) => !printedNew.has(id));
+  if (changes.length === 0) blocks.push(`No units changed in revision ${revision}.`, "");
+  if (priorOnly.length > 0) {
+    blocks.push(
+      `New hunks partly made of code ${prevRev} already had (a rebase re-cut hunk boundaries; that share is not a change of r${revision}):`,
+      ...priorOnly.map((id) => {
+        const h = cur.get(id)!;
+        return `  ${id}  ${h.file.path}${hdr(h.hunk)}  ${sizes(h.hunk)}${priorNote(id)}`;
+      }),
+      "",
+    );
+  }
+
   const summary =
     `-- ${changes.length} changed unit${changes.length === 1 ? "" : "s"}: ` +
-    `${reworkedCount} reworked hunks, ${archivedCount} archived, ${hintCount} related hints`;
+    `${reworkedCount} reworked hunks, ${archivedCount} archived, ${hintCount} related hints` +
+    (priorShare.size > 0 ? `, ${priorShare.size} new hunks partly from ${prevRev}` : "");
   return { body: blocks.join("\n") + summary + "\n", summary, count: changes.length };
 }

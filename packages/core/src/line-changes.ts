@@ -215,17 +215,40 @@ function sameLines(a: readonly string[], b: readonly string[]): boolean {
 }
 
 interface Step {
-  /** previousHunkId -> entry, for identical/fuzzy/renamed */
-  forward: Map<string, MigrationEntry>;
+  /**
+   * previousHunkId -> entries, for identical/fuzzy/renamed. Usually one; a
+   * containment match (a split hunk) gives an old hunk several successors,
+   * and the walk forks into each of them.
+   */
+  forward: Map<string, MigrationEntry[]>;
   revision: number;
 }
 
 function stepOf(report: MigrationReport): Step {
-  const forward = new Map<string, MigrationEntry>();
+  const forward = new Map<string, MigrationEntry[]>();
   for (const e of report.entries) {
-    if (e.status !== "archived" && e.previousHunkId) forward.set(e.previousHunkId, e);
+    if (e.status === "archived" || !e.previousHunkId) continue;
+    forward.set(e.previousHunkId, [...(forward.get(e.previousHunkId) ?? []), e]);
   }
   return { forward, revision: report.revision };
+}
+
+/** A '+'/'-' body line, whitespace-insensitive; "" for anything else (never matched). */
+function bodyKey(line: string): string {
+  if (!isDiffLine(line)) return "";
+  const t = line.slice(1).trim();
+  return t ? line[0] + t : "";
+}
+
+function bodyKeys(hunks: Iterable<Hunk>): Set<string> {
+  const out = new Set<string>();
+  for (const h of hunks) {
+    for (const l of hunkBodyLines(h.text)) {
+      const k = bodyKey(l);
+      if (k) out.add(k);
+    }
+  }
+  return out;
 }
 
 interface Origin {
@@ -239,8 +262,23 @@ interface Origin {
   removedAt: RemovedAnchor[];
 }
 
+/**
+ * For a containment match (a split or merged hunk): diff lines that only
+ * crossed a hunk boundary. `nowWasElsewhere`: code another hunk of the
+ * previous revision's file already had (merged in); `wasStillElsewhere`: code
+ * another hunk of N's file still has (split off). Neither is a change of N.
+ */
+interface Moved {
+  nowWasElsewhere: Set<string>;
+  wasStillElsewhere: Set<string>;
+}
+
 /** What N did to one reworked hunk: marked lines and pure deletions. */
-function originDelta(prevBody: string[], body: string[]): Pick<Origin, "lines" | "removedCount" | "removedAt"> {
+function originDelta(
+  prevBody: string[],
+  body: string[],
+  moved?: Moved,
+): Pick<Origin, "lines" | "removedCount" | "removedAt"> {
   const lines: number[] = [];
   const removedAt: RemovedAnchor[] = [];
   let removedCount = 0;
@@ -251,8 +289,12 @@ function originDelta(prevBody: string[], body: string[]): Pick<Origin, "lines" |
     // the window shrinking, not code N deleted. So a block that only swaps
     // context for context is nothing, and one that trades diff lines for
     // context is a pure deletion.
-    const added = b.added.filter((k) => isDiffLine(body[k]));
-    const removed = b.removed.filter((k) => isDiffLine(prevBody[k]));
+    const added = b.added.filter(
+      (k) => isDiffLine(body[k]) && !moved?.nowWasElsewhere.has(bodyKey(body[k])),
+    );
+    const removed = b.removed.filter(
+      (k) => isDiffLine(prevBody[k]) && !moved?.wasStillElsewhere.has(bodyKey(prevBody[k])),
+    );
     if (added.length > 0) {
       lines.push(...added); // an edit, or a pure addition
     } else if (removed.length > 0) {
@@ -294,7 +336,14 @@ export function computeRevisionLineChanges(input: RevisionLineChangesInput): Rev
     // `renamed` with the same content only moved the file: nothing to show.
     if (e.status === "renamed" && (!prev || sameContent(prev, after))) continue;
     if (!prev) continue;
-    const delta = originDelta(hunkBodyLines(prev.text), body);
+    const moved: Moved | undefined =
+      e.match === "containment"
+        ? {
+            nowWasElsewhere: bodyKeys([...before.values()].filter((h) => h.file === prev.file && h.id !== prev.id)),
+            wasStillElsewhere: bodyKeys([...atN.values()].filter((h) => h.file === after.file && h.id !== after.id)),
+          }
+        : undefined;
+    const delta = originDelta(hunkBodyLines(prev.text), body, moved);
     if (delta.lines.length === 0 && delta.removedCount === 0) continue;
     changed.push({ originHunkId: e.hunkId, file: e.file, status: e.status, body, ...delta });
   }
@@ -320,72 +369,89 @@ export function computeRevisionLineChanges(input: RevisionLineChangesInput): Rev
 
   const hunks: HunkLineChange[] = [];
   const gone: GoneHunk[] = [];
-  for (const c of changed) {
-    let id = c.originHunkId;
-    let file = c.file;
-    let body: string[] | undefined = c.body;
-    let lines = c.lines;
-    let anchors = c.removedAt;
-    let rewrittenSince = 0;
-    let exact = true;
-    let uncertain = false;
-    let goneAt: number | undefined;
-    for (let k = 0; k < steps.length; k++) {
-      const step = steps[k];
-      let status: MigrationEntry["status"] | "unknown" = "unknown";
-      if (step) {
-        const next = step.forward.get(id);
-        if (!next) {
-          goneAt = step.revision;
-          break;
-        }
-        status = next.status;
-        id = next.hunkId;
-        file = next.file;
-      }
-      if (status !== "identical") exact = false;
-      const nextHunk = hunksAt(step?.revision ?? stepRevision(k))?.get(id);
-      const nextBody = nextHunk ? hunkBodyLines(nextHunk.text) : undefined;
-      if (body && nextBody) {
-        if (!sameLines(body, nextBody)) {
-          // `identical` ids can still differ in context lines: follow the body.
-          exact = false;
-          const { kept } = alignBodies(body, nextBody);
-          const mapped: number[] = [];
-          for (const l of lines) {
-            const to = kept.get(l);
-            if (to === undefined) rewrittenSince++;
-            else mapped.push(to);
-          }
-          lines = mapped;
-          const oldLen = body.length;
-          const newLen = nextBody.length;
-          anchors = anchors.flatMap((a) => {
-            const to = a.line >= oldLen ? newLen : kept.get(a.line);
-            return to === undefined ? [] : [{ ...a, line: to }];
-          });
-        }
-      } else {
-        // A body we can't see: assume positions carried over.
+
+  /** One line of descent of an origin hunk, carried forward step by step. */
+  interface Branch {
+    id: string;
+    file: string;
+    body: string[] | undefined;
+    lines: number[];
+    anchors: RemovedAnchor[];
+    rewrittenSince: number;
+    exact: boolean;
+    uncertain: boolean;
+    /** index of the next step to take */
+    k: number;
+  }
+
+  /**
+   * Take one step from `b` into `next` (or, with no report for the step, into
+   * the same id). Returns the moved branch and which of `b.lines` it kept.
+   */
+  const advance = (
+    b: Branch,
+    k: number,
+    next: MigrationEntry | undefined,
+  ): { branch: Branch; kept: Set<number> } => {
+    const status: MigrationEntry["status"] | "unknown" = next?.status ?? "unknown";
+    const id = next?.hunkId ?? b.id;
+    const file = next?.file ?? b.file;
+    let exact = b.exact && status === "identical";
+    let uncertain = b.uncertain;
+    let lines = b.lines;
+    let anchors = b.anchors;
+    const kept = new Set<number>(b.lines);
+    const nextHunk = hunksAt(steps[k]?.revision ?? stepRevision(k))?.get(id);
+    const nextBody = nextHunk ? hunkBodyLines(nextHunk.text) : undefined;
+    if (b.body && nextBody) {
+      if (!sameLines(b.body, nextBody)) {
+        // `identical` ids can still differ in context lines: follow the body.
         exact = false;
-        if (status !== "identical") uncertain = true;
+        const alignment = alignBodies(b.body, nextBody).kept;
+        kept.clear();
+        const mapped: number[] = [];
+        for (const l of b.lines) {
+          const to = alignment.get(l);
+          if (to !== undefined) {
+            mapped.push(to);
+            kept.add(l);
+          }
+        }
+        lines = mapped;
+        const oldLen = b.body.length;
+        const newLen = nextBody.length;
+        anchors = anchors.flatMap((a) => {
+          const to = a.line >= oldLen ? newLen : alignment.get(a.line);
+          return to === undefined ? [] : [{ ...a, line: to }];
+        });
       }
-      body = nextBody;
+    } else {
+      // A body we can't see: assume positions carried over.
+      exact = false;
+      if (status !== "identical") uncertain = true;
     }
-    if (goneAt === undefined && current && !current.has(id)) goneAt = currentRevision;
+    return {
+      branch: { ...b, id, file, body: nextBody, lines, anchors, exact, uncertain, k: k + 1 },
+      kept,
+    };
+  };
+
+  const finish = (c: Origin, b: Branch, goneAt: number | undefined) => {
+    if (goneAt === undefined && current && !current.has(b.id)) goneAt = currentRevision;
     if (goneAt !== undefined) {
-      const unitId = archivedUnit.get(`${goneAt}:${id}`);
+      const unitId = archivedUnit.get(`${goneAt}:${b.id}`);
       gone.push({
         originHunkId: c.originHunkId,
-        lastHunkId: id,
-        file,
+        lastHunkId: b.id,
+        file: b.file,
         goneAtRevision: goneAt,
         ...(unitId ? { unitId } : {}),
       });
-      continue;
+      return;
     }
-    if (body) {
-      const len = body.length;
+    let { lines, anchors } = b;
+    if (b.body) {
+      const len = b.body.length;
       lines = lines.filter((l) => l < len);
       anchors = anchors.filter((a) => a.line <= len);
     }
@@ -393,18 +459,60 @@ export function computeRevisionLineChanges(input: RevisionLineChangesInput): Rev
     anchors = [...anchors].sort((x, y) => x.line - y.line);
     const truncated = lines.length > MAX_INTRODUCED_LINES;
     hunks.push({
-      currentHunkId: id,
+      currentHunkId: b.id,
       originHunkId: c.originHunkId,
-      file,
+      file: b.file,
       status: c.status,
       lines: truncated ? lines.slice(0, MAX_INTRODUCED_LINES) : lines,
       removedCount: c.removedCount,
       removedAt: anchors,
-      rewrittenSince,
-      exactAtCurrent: exact,
-      ...(uncertain ? { uncertain } : {}),
-      ...(truncated ? { truncated } : {}),
+      rewrittenSince: b.rewrittenSince,
+      exactAtCurrent: b.exact,
+      ...(b.uncertain ? { uncertain: true } : {}),
+      ...(truncated ? { truncated: true } : {}),
     });
+  };
+
+  for (const c of changed) {
+    const work: Branch[] = [
+      {
+        id: c.originHunkId,
+        file: c.file,
+        body: c.body,
+        lines: c.lines,
+        anchors: c.removedAt,
+        rewrittenSince: 0,
+        exact: true,
+        uncertain: false,
+        k: 0,
+      },
+    ];
+    while (work.length > 0) {
+      let b = work.shift()!;
+      let goneAt: number | undefined;
+      let forked = false;
+      while (b.k < steps.length) {
+        const k = b.k;
+        const step = steps[k];
+        const nexts: (MigrationEntry | undefined)[] = step ? (step.forward.get(b.id) ?? []) : [undefined];
+        if (nexts.length === 0) {
+          goneAt = step!.revision;
+          break;
+        }
+        const moved = nexts.map((n) => advance(b, k, n));
+        // A line no successor kept was rewritten; count it once (on the
+        // first branch), not once per half of a split.
+        const lost = b.lines.filter((l) => !moved.some((m) => m.kept.has(l))).length;
+        moved[0].branch.rewrittenSince += lost;
+        if (moved.length > 1) {
+          work.push(...moved.map((m) => m.branch));
+          forked = true;
+          break;
+        }
+        b = moved[0].branch;
+      }
+      if (!forked) finish(c, b, goneAt);
+    }
   }
 
   return { revision, currentRevision, hunks, goneCount: gone.length, gone };

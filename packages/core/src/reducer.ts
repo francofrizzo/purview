@@ -118,9 +118,22 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
 
       const previousHunks = state.hunks;
       const nextHunks: Record<string, HunkState> = {};
-      const idRemap = new Map<string, string>();
-      /** old hunk id -> how it migrated; used for the findings staleness rule */
+      /**
+       * old hunk id -> every new hunk whose predecessor it is. Usually one; a
+       * containment match (MigrationEntry.match) can give an old hunk several
+       * successors — the halves of a split hunk.
+       */
+      const idRemap = new Map<string, string[]>();
+      /**
+       * old hunk id -> how it migrated; used for the findings staleness rule.
+       * With several successors, any non-identical one wins: the code under
+       * the finding moved for at least part of it.
+       */
       const statusByOldId = new Map<string, string>();
+      const noteStatus = (oldId: string, status: string) => {
+        const had = statusByOldId.get(oldId);
+        if (had === undefined || had === "identical") statusByOldId.set(oldId, status);
+      };
 
       // Which live unit held each outgoing hunk, so an archived hunk remembers
       // the unit it left (`changedUnits` reads it back).
@@ -132,9 +145,8 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
 
       if (event.migration) {
         for (const entry of event.migration.entries) {
-          if (entry.status === "archived") statusByOldId.set(entry.hunkId, "archived");
-          else if (entry.previousHunkId)
-            statusByOldId.set(entry.previousHunkId, entry.status);
+          if (entry.status === "archived") noteStatus(entry.hunkId, "archived");
+          else if (entry.previousHunkId) noteStatus(entry.previousHunkId, entry.status);
           if (entry.status === "archived") {
             state.archived.push({
               hunkId: entry.hunkId,
@@ -176,8 +188,11 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
             carried.viewed = false;
           }
           nextHunks[entry.hunkId] = carried;
-          if (entry.previousHunkId)
-            idRemap.set(entry.previousHunkId, entry.hunkId);
+          if (entry.previousHunkId) {
+            const successors = idRemap.get(entry.previousHunkId) ?? [];
+            successors.push(entry.hunkId);
+            idRemap.set(entry.previousHunkId, successors);
+          }
         }
       } else {
         for (const f of event.files) {
@@ -197,9 +212,20 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
 
       if (idRemap.size > 0 || event.migration) {
         const live = new Set(Object.keys(nextHunks));
+        // Successors of one old hunk go in new-revision order, at its place.
+        const position = new Map<string, number>();
+        for (const f of event.files) for (const id of f.hunkIds) position.set(id, position.size);
+        for (const successors of idRemap.values()) {
+          if (successors.length > 1)
+            successors.sort((a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0));
+        }
+        // Each new hunk has exactly one predecessor (MigrationEntry.previousHunkId),
+        // so remapping never puts one new hunk in two units: in a merge, the
+        // unit of the recorded predecessor (the larger contributor) keeps it
+        // and the other unit's old hunk is archived.
         const remap = (ids: string[]) =>
           Array.from(
-            new Set(ids.map((id) => idRemap.get(id) ?? id).filter((id) => live.has(id))),
+            new Set(ids.flatMap((id) => idRemap.get(id) ?? [id]).filter((id) => live.has(id))),
           );
         // Findings are verified against a specific hunk body. A hunk that
         // migrated `identical` is byte-for-byte the same code, so what was

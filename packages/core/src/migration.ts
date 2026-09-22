@@ -10,6 +10,77 @@ import type {
 
 export const FUZZY_THRESHOLD = 0.6;
 
+/** Minimum share of a new hunk's significant lines an old hunk must already hold (containment pass). */
+export const CONTAINMENT_THRESHOLD = 0.6;
+
+/** A new hunk needs at least this many significant lines to be containment-matched at all. */
+export const CONTAINMENT_MIN_LINES = 3;
+
+/** Trivial punctuation-only lines (`}`, `)`, `{`, `},`, `]`, `);`): never evidence of "same code". */
+const TRIVIAL_LINE = /^[\s{}()\[\],;]*$/;
+
+/**
+ * The lines of `lines` that carry meaning, trimmed: non-empty and not
+ * punctuation-only. Trimmed so a re-indent does not hide shared code.
+ */
+export function significantLines(lines: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const l of lines) {
+    const t = l.trim();
+    if (t.length > 0 && !TRIVIAL_LINE.test(t)) out.push(t);
+  }
+  return out;
+}
+
+function multiset(lines: readonly string[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const l of lines) m.set(l, (m.get(l) ?? 0) + 1);
+  return m;
+}
+
+/** How many of `lines` (a multiset) `pool` also has, consuming each pool line once. */
+function multisetOverlap(lines: readonly string[], pool: Map<string, number>): number {
+  const left = new Map(pool);
+  let n = 0;
+  for (const l of lines) {
+    const c = left.get(l) ?? 0;
+    if (c > 0) {
+      n++;
+      left.set(l, c - 1);
+    }
+  }
+  return n;
+}
+
+export interface Containment {
+  /** significant added+removed lines of the new side also present on the old side (added vs added, removed vs removed) */
+  overlap: number;
+  /** the new side's significant added+removed line count */
+  total: number;
+  /** overlap / total (0 when total is 0) */
+  score: number;
+}
+
+/**
+ * How much of `next`'s code `previous` already had: the share of `next`'s
+ * significant added lines found among `previous`'s added lines plus its
+ * significant removed lines found among `previous`'s removed lines, counted
+ * as multisets. Asymmetric on purpose — a half of a split hunk is fully
+ * contained in the whole it came from, however big that whole is.
+ */
+export function containment(
+  next: Pick<Hunk, "addedLines" | "removedLines">,
+  previous: Pick<Hunk, "addedLines" | "removedLines">,
+): Containment {
+  const added = significantLines(next.addedLines);
+  const removed = significantLines(next.removedLines);
+  const total = added.length + removed.length;
+  const overlap =
+    multisetOverlap(added, multiset(significantLines(previous.addedLines))) +
+    multisetOverlap(removed, multiset(significantLines(previous.removedLines)));
+  return { overlap, total, score: total === 0 ? 0 : overlap / total };
+}
+
 /** Hunks with this many or fewer changed (added+removed) lines on either
  * side get the token-level similarity fallback blended in (see `jaccard`). */
 const SMALL_HUNK_CHANGED_LINES = 6;
@@ -133,9 +204,25 @@ export interface MigrateInput {
 
 /**
  * Match the previous revision's hunks onto the new revision's hunks per SPEC
- * "Migration": identical id -> fuzzy (Jaccard >= 0.6, same file, best match,
- * 1:1) -> rename-aware recompute; unmatched old is archived, unmatched new is
- * `new`.
+ * "Migration": identical id -> rename-aware identical -> fuzzy (Jaccard >= 0.6,
+ * same file, best match, 1:1) -> containment; unmatched old is archived,
+ * unmatched new is `new`.
+ *
+ * Containment catches what a rebase does to hunk boundaries: one old hunk
+ * split into two, or two merged into one. Jaccard fails there (each half
+ * shares only half the lines of the whole). So for every new hunk still
+ * unmatched after the fuzzy pass, every old hunk of the same file
+ * (rename-aware) — including one already matched, which is how both halves
+ * of a split find the same predecessor — is scored by `containment`: the
+ * share of the new hunk's significant lines the old hunk already had. The
+ * best one at >= CONTAINMENT_THRESHOLD (ties: larger overlap, then first)
+ * becomes its predecessor: status `fuzzy`, `match: "containment"`, `score`
+ * the containment. New hunks with fewer than CONTAINMENT_MIN_LINES
+ * significant lines are never containment-matched. This is NOT 1:1: one old
+ * hunk may precede several new ones (a split), and an old hunk only some of
+ * whose lines survived is still a predecessor, not archived. In a merge the
+ * new hunk has one predecessor (the larger contributor); the other old hunk
+ * is archived unless something else claimed it.
  */
 export function migrate(input: MigrateInput): MigrationReport {
   const states = input.hunkStates ?? {};
@@ -152,6 +239,7 @@ export function migrate(input: MigrateInput): MigrationReport {
     n: Indexed,
     old: Hunk,
     score?: number,
+    match?: MigrationEntry["match"],
   ) => {
     const st = states[old.id];
     const wasViewed = st?.viewed ?? false;
@@ -168,6 +256,7 @@ export function migrate(input: MigrateInput): MigrationReport {
       score,
       wasViewed,
       changedSinceViewed,
+      ...(match ? { match } : {}),
     });
     usedOld.add(old.id);
     matchedNew.add(n.hunk.id);
@@ -208,6 +297,25 @@ export function migrate(input: MigrateInput): MigrationReport {
     const status: MigrationEntry["status"] =
       identicalContent && renamedFile ? "renamed" : "fuzzy";
     record(status, c.n, c.old, c.score);
+  }
+
+  // (b2) containment: split / merged hunks. Not 1:1 on the old side.
+  for (const n of newIndexed) {
+    if (matchedNew.has(n.hunk.id)) continue;
+    let best: { old: Hunk; c: Containment } | undefined;
+    for (const old of oldHunks) {
+      if (old.file !== n.matchPath) continue;
+      const c = containment(n.hunk, old);
+      if (c.total < CONTAINMENT_MIN_LINES || c.score < CONTAINMENT_THRESHOLD) continue;
+      if (
+        !best ||
+        c.score > best.c.score ||
+        (c.score === best.c.score && c.overlap > best.c.overlap)
+      ) {
+        best = { old, c };
+      }
+    }
+    if (best) record("fuzzy", n, best.old, best.c.score, "containment");
   }
 
   // (e) unmatched new hunks
@@ -266,7 +374,11 @@ export function formatMigrationReport(report: MigrationReport): string {
     if (e.previousHunkId) parts.push(`<- ${e.previousHunkId}`);
     if (e.previousFile) parts.push(`(was ${e.previousFile})`);
     if (e.score !== undefined && e.status === "fuzzy")
-      parts.push(`score=${e.score.toFixed(2)}`);
+      parts.push(
+        e.match === "containment"
+          ? `contained=${e.score.toFixed(2)}`
+          : `score=${e.score.toFixed(2)}`,
+      );
     if (e.changedSinceViewed) parts.push("[changed since viewed]");
     lines.push(parts.join(" "));
   }

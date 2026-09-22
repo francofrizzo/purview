@@ -553,6 +553,13 @@ export const MigrationEntrySchema = z.object({
   score: z.number().optional(),
   wasViewed: z.boolean().optional(),
   changedSinceViewed: z.boolean().optional(),
+  /**
+   * How a `fuzzy` entry was matched, when not by Jaccard similarity:
+   * `containment` = most of this hunk's lines were already in
+   * `previousHunkId` (a split or merged hunk; `score` is that share, and the
+   * predecessor may precede other new hunks too). Absent in older reports.
+   */
+  match: z.enum(["containment"]).optional(),
 });
 export type MigrationEntry = z.infer<typeof MigrationEntrySchema>;
 

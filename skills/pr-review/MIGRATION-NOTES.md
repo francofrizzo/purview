@@ -27,6 +27,14 @@ first three as "carried".
   added+removed lines ≥ 0.6 against an old hunk. State carries over, but
   `changedSinceViewed` is set to `true` if the old hunk was viewed, and the migration
   report flags it so a reviewer knows the content shifted.
+  A fuzzy entry with `"match": "containment"` comes from a second pass for hunks a rebase
+  re-cut (one old hunk split in two, or two merged): at least 60% of the new hunk's
+  significant lines (≥ 3 of them; blank and brace-only lines ignored) were already in that
+  old hunk of the same file, and `score` is that share. Unlike Jaccard it is not 1:1: both
+  halves of a split name the same `previousHunkId` and both sit in its unit; in a merge the
+  larger contributor is the predecessor and the other old hunk is archived. In `changes`
+  it reads `hunk boundaries moved: N% of its lines were already in <old id>`, and its
+  before→after leaves out lines that only crossed a hunk boundary.
 - **renamed** — GitHub's diff rename detection identifies the file as a rename; the hunk
   is matched to its old counterpart under the new path and then treated as (a) or (b)
   above.
@@ -35,7 +43,9 @@ first three as "carried".
   `hunkIds` (and from `unassignedHunkIds`) when the revision is folded into state, listed
   in the migration report and in `state.archived`. Don't reference an archived hunk id when
   patching units — `set-analysis` rejects unknown ids outright.
-- **new** — a new-revision hunk with no old counterpart. It is **always left unassigned**;
+- **new** — a new-revision hunk with no old counterpart. `changes` still says when part of it
+  is old code (`N% of its lines were already in r<prev>`, shown from 20%): that part is
+  not a change of this revision. It is **always left unassigned**;
   despite what SPEC suggests, the engine does no file-adjacency auto-attachment. Every new
   hunk is yours to classify, and shows up under "Needs classification" in
   `reviewer-state report <key>` until it's in a unit.
@@ -66,8 +76,10 @@ first three as "carried".
      summarized by what remains, not by what left; the history goes in the changelog only;
    - re-check `kind` / `attention` / `riskFlags` (a correction needs `--note`);
    - send a `changelogEntry`: a short note (a sentence or two) about what *this revision* changed in
-     the unit (e.g. `"rounding switched to banker's; added a .5 test"`) — not a restatement
-     of the summary. It is recorded under the state's current revision in the unit's
+     the unit's **code** (e.g. `"rounding switched to banker's; added a .5 test"`) — not a
+     restatement of the summary, and never migration bookkeeping (attached / unassigned /
+     new / archived / revived hunks). A hunk `changes` says was mostly already in the
+     previous revision is not a change of this revision. It is recorded under the state's current revision in the unit's
      `changelog`; re-sending replaces that revision's entry rather than adding another.
      Only runaway output is truncated;
    - re-verify its findings (see "What happens to findings").
