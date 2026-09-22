@@ -276,6 +276,34 @@ export function PrView() {
   }, []);
   const headerCollapsed = diffScrolled && !peek;
 
+  // What collapsing would hand the diff pane, for it to judge whether the
+  // collapse would stick (see lib/headerCollapse.ts). The open height is read
+  // live; the collapsed one can only be seen once it has happened, so it is
+  // remembered — the smallest seen, since a mid-animation reading is always
+  // taller. Until then the whole header counts, which errs toward keeping it.
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const headerRo = useRef<ResizeObserver | null>(null);
+  const collapsedHeaderHeight = useRef(0);
+  const setHeaderEl = useCallback((el: HTMLDivElement | null) => {
+    headerRo.current?.disconnect();
+    headerRo.current = null;
+    headerRef.current = el;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (el.dataset.collapsed !== "true") return;
+      const h = el.offsetHeight;
+      const seen = collapsedHeaderHeight.current;
+      if (h > 0 && (seen === 0 || h < seen)) collapsedHeaderHeight.current = h;
+    });
+    ro.observe(el);
+    headerRo.current = ro;
+  }, []);
+  const collapsedDelta = useCallback(() => {
+    const el = headerRef.current;
+    if (!el || el.dataset.collapsed === "true") return 0;
+    return Math.max(0, el.offsetHeight - collapsedHeaderHeight.current);
+  }, []);
+
   // A peek is a glance, not a mode: the next real scroll ends it. The listener
   // only exists while peeking, and the 8px floor ignores the scroll the
   // re-expansion itself can provoke when the pane is near its bottom.
@@ -1163,6 +1191,7 @@ export function PrView() {
         <main ref={mainRef} className="relative flex min-w-0 flex-1 flex-col">
           {tab === "units" && selectedUnit ? (
             <div
+              ref={setHeaderEl}
               data-testid="unit-header"
               data-collapsed={headerCollapsed ? "true" : "false"}
               className={`flex-none border-b px-4 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
@@ -1318,6 +1347,7 @@ export function PrView() {
 
           {tab === "files" && selectedPath ? (
             <div
+              ref={setHeaderEl}
               data-testid="file-header"
               data-collapsed={headerCollapsed ? "true" : "false"}
               className={`flex flex-none items-center gap-2 overflow-hidden border-b px-4 font-mono text-xs transition-[padding] duration-[140ms] motion-reduce:transition-none ${
@@ -1403,6 +1433,7 @@ export function PrView() {
               searchMarks={search.marksByLine}
               activeMatch={search.current}
               onScrolledAway={onScrolledAway}
+              collapsedDelta={collapsedDelta}
               onDefinitionClick={handleDefinitionClick}
               isDefinedInDiff={isDefinedInDiff}
               jumpToHunk={jumpToHunk}

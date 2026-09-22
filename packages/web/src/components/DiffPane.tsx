@@ -24,6 +24,7 @@ import {
   type FoldPlaceholder,
   type MoveFoldRegion,
 } from "../lib/foldRegions";
+import { COLLAPSE_PAST, EXPAND_UNDER, nextHeaderCollapsed } from "../lib/headerCollapse";
 import { identifierRangeAtPoint } from "../lib/identifierAt";
 import {
   hunkChangedLabel,
@@ -147,9 +148,16 @@ export interface DiffPaneProps {
   /**
    * Fires when the reader leaves (or returns to) the top of the diff, so the
    * host can shrink its header out of the way. Hysteretic: true past
-   * {@link COLLAPSE_PAST}px, false again only under {@link EXPAND_UNDER}px.
+   * {@link COLLAPSE_PAST}px, false again only at {@link EXPAND_UNDER}px or
+   * less — see lib/headerCollapse.ts.
    */
   onScrolledAway?: (scrolled: boolean) => void;
+  /**
+   * How many px this scroller would gain if the host header collapsed, read
+   * at the moment of deciding. Without it the pane can't tell whether the
+   * collapse would clamp the reader straight back to the top. Omitted, 0.
+   */
+  collapsedDelta?: () => number;
   /** Cmd/ctrl+click "go to definition" on an identifier — see DiffLine.tsx. */
   onDefinitionClick?: OnDefinitionClick;
   /** Whether an identifier has a definition in this diff — gates both the
@@ -181,21 +189,6 @@ export interface DiffPaneProps {
    */
   highlight?: RevisionHighlight | null;
 }
-
-/** Past this many px from the top, the host header may collapse. */
-const COLLAPSE_PAST = 40;
-/** Under this many px, it expands again. The gap between the two is the
- *  hysteresis that keeps a header parked on the boundary from flickering. */
-const EXPAND_UNDER = 10;
-/**
- * Collapsing the host header makes this scroller *taller*, which clamps
- * scrollTop down. On a diff short enough, that clamp lands back under
- * EXPAND_UNDER, the header re-expands, and the pair oscillates forever at the
- * bottom of the page. So the collapse only engages when the scroll slack
- * comfortably exceeds the height the header hand-back can return (~100px):
- * a diff too short to absorb the swap keeps its header whole instead.
- */
-const MIN_COLLAPSE_SLACK = 160;
 
 /** A range being selected in one file, on one side of the diff. */
 interface LineSelection {
@@ -241,6 +234,7 @@ export function DiffPane({
   searchMarks,
   activeMatch,
   onScrolledAway,
+  collapsedDelta,
   onDefinitionClick,
   isDefinedInDiff,
   jumpToHunk,
@@ -358,8 +352,11 @@ export function DiffPane({
   // against the scroller itself: the tall one stops intersecting once we are
   // past COLLAPSE_PAST, the short one starts intersecting again under
   // EXPAND_UNDER, and the band between them is dead air where neither fires —
-  // which *is* the hysteresis. No scroll handler, no scrollTop read per frame.
+  // which *is* the hysteresis. No scroll handler, no scrollTop read per frame:
+  // the geometry is read only on a crossing, for nextHeaderCollapsed to judge.
   const empty = entries.length === 0;
+  const collapsedDeltaRef = useRef(collapsedDelta);
+  collapsedDeltaRef.current = collapsedDelta;
   useEffect(() => {
     if (!onScrolledAway) return;
     const root = scrollRef.current;
@@ -370,12 +367,22 @@ export function DiffPane({
       onScrolledAway(false);
       return;
     }
+    const judge = (collapsed: boolean) =>
+      nextHeaderCollapsed({
+        scrollTop: root.scrollTop,
+        scrollHeight: root.scrollHeight,
+        clientHeight: root.clientHeight,
+        collapsedDelta: collapsedDeltaRef.current?.() ?? 0,
+        collapsed,
+      });
     const io = new IntersectionObserver(
       (records) => {
         for (const r of records) {
           if (r.target === past && !r.isIntersecting) {
-            if (root.scrollHeight - root.clientHeight >= MIN_COLLAPSE_SLACK) onScrolledAway(true);
-          } else if (r.target === near && r.isIntersecting) onScrolledAway(false);
+            if (judge(false)) onScrolledAway(true);
+          } else if (r.target === near && r.isIntersecting) {
+            if (!judge(true)) onScrolledAway(false);
+          }
         }
       },
       { root },
