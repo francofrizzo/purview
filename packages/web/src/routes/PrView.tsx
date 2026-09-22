@@ -52,6 +52,7 @@ import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
 import {
+  CopyPathButton,
   DiffPane,
   DiffViewToggle,
   NarrowPaneNote,
@@ -1356,6 +1357,7 @@ export function PrView() {
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
               <MiddleTruncate text={selectedPath} tail={20} />
+              <CopyPathButton path={selectedPath} />
               {detail.state.files?.[selectedPath] ? (
                 <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
                   {detail.state.files[selectedPath].viewedHunks}/

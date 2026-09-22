@@ -68,7 +68,17 @@ import { DiffOfDiffs } from "./DiffOfDiffs";
 import type { CommentTarget } from "./Drafts";
 import { CommentBubble, InlineCommentList, type InlineCommentActions } from "./InlineComments";
 import { MiddleTruncate } from "./Truncate";
-import { IconCheck, IconChevron, IconClose, IconComment, IconQuote, IconSplit, IconUnified, IconWrap } from "./icons";
+import {
+  IconCheck,
+  IconChevron,
+  IconClose,
+  IconComment,
+  IconCopy,
+  IconQuote,
+  IconSplit,
+  IconUnified,
+  IconWrap,
+} from "./icons";
 
 export interface HunkEntry {
   hunk: Hunk;
@@ -1613,6 +1623,7 @@ export function DiffPane({
               </button>
             ) : null}
             <MiddleTruncate text={row.path} tail={18} />
+            <CopyPathButton path={row.path} />
             {row.file.status && row.file.status !== "modified" ? (
               <span
                 className="chip"
@@ -2127,5 +2138,42 @@ export function CommentIndicatorLegend() {
     <span className="inline-flex items-center gap-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
       <IconComment width={11} height={11} /> hover a line to draft
     </span>
+  );
+}
+
+/**
+ * Copies a file's path. Shows a check for a moment once the path is really on
+ * the clipboard; a refused write (insecure origin, denied permission) just
+ * leaves the icon as it was.
+ */
+export function CopyPathButton({ path }: { path: string }) {
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (timer.current) window.clearTimeout(timer.current);
+  }, []);
+  return (
+    <button
+      type="button"
+      data-testid={`copy-path-${path}`}
+      aria-label={`Copy ${path}`}
+      title={copied ? "Copied" : "Copy path"}
+      className="inline-flex flex-none items-center hover:!text-[var(--fg)]"
+      style={{ color: copied ? "var(--ok)" : "var(--fg-faint)" }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        void navigator.clipboard?.writeText(path).then(
+          () => {
+            setCopied(true);
+            if (timer.current) window.clearTimeout(timer.current);
+            timer.current = window.setTimeout(() => setCopied(false), 1200);
+          },
+          () => {},
+        );
+      }}
+    >
+      {copied ? <IconCheck width={12} height={12} /> : <IconCopy width={12} height={12} />}
+    </button>
   );
 }
