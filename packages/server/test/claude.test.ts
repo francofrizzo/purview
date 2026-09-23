@@ -8,6 +8,7 @@ import {
   keyToString,
   parseDiff,
   readEvents,
+  readFilesJson,
   readMeta,
   setGhRunner,
   toRevisionFiles,
@@ -21,7 +22,9 @@ import { createApp } from "../src/app.js";
 import {
   analysisIdle,
   analysisPrompt,
+  analysisSystemPrompt,
   analysisToolFlags,
+  headlessDoc,
   findingsNote,
   movedNote,
   promptVersion,
@@ -163,33 +166,106 @@ describe("moved-code prompt note", () => {
 describe("analysis tool allowlist", () => {
   it("permits batched reads and scratch-scoped writes but never gh or git", () => {
     const scratch = "/tmp/purview-test/pr/scratch";
-    const { tools, allowedTools, disallowedTools } = analysisToolFlags(scratch);
+    const transcriptDir = "/home/u/.claude/projects/-tmp-purview-test-pr";
+    const { tools, allowedTools, disallowedTools, permissionMode } = analysisToolFlags(scratch, { transcriptDir });
+    // Anything no rule covers is denied, never handed to the user's own
+    // default mode (e.g. `auto`, whose classifier approved python3/rm/redirects).
+    expect(permissionMode).toBe("dontAsk");
     // Write/Edit exist solely for composing JSON payloads in scratch/ —
-    // path-scoped in the allowlist, never granted bare.
+    // path-scoped with Edit rules (Claude Code never consults a Write(path)
+    // rule), never granted bare.
     expect(tools).toContain("Write");
     expect(tools).toContain("Edit");
-    expect(allowedTools).toContain(`Write(/${scratch}/**)`);
     expect(allowedTools).toContain(`Edit(/${scratch}/**)`);
-    expect(allowedTools).toContain("Write(scratch/**)");
-    expect(allowedTools).not.toContain("Write");
+    expect(allowedTools).toContain("Edit(scratch/**)");
+    expect(allowedTools.filter((r) => r.startsWith("Write"))).toEqual([]);
     expect(allowedTools).not.toContain("Edit");
+    // Reads: working directories need no rule; nothing opens the whole disk.
+    for (const bare of ["Read", "Glob", "Grep"]) expect(allowedTools).not.toContain(bare);
+    // ...except Claude Code's own spill files for this session's cwd.
+    expect(allowedTools).toContain(`Read(/${transcriptDir}/**)`);
+    expect(analysisToolFlags(scratch).allowedTools.some((r) => r.startsWith("Read("))).toBe(false);
     // Batched investigation (`grep … && sed -n …`) needs these allowed outright.
     for (const rule of ["Bash(grep:*)", "Bash(sed -n:*)", "Bash(ls:*)", "Bash(cat:*)"]) {
       expect(allowedTools).toContain(rule);
     }
-    // The pre-built triage/show views replace ad-hoc slicing of files.json.
-    const cliCmd = `${process.execPath} ${process.env.REVIEWER_CLI_PATH}`;
-    expect(allowedTools).toContain(`Bash(${cliCmd} triage:*)`);
-    expect(allowedTools).toContain(`Bash(${cliCmd} show:*)`);
-    expect(allowedTools).toContain(`Bash(${cliCmd} changes:*)`);
+    // The CLI is one executable path; every subcommand the run uses is allowed.
+    const cliCmd = path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "reviewer-state");
+    for (const sub of ["report", "units", "triage", "show", "changes", "base-file", "set-analysis", "set-unit", "set-units"]) {
+      expect(allowedTools).toContain(`Bash(${cliCmd} ${sub}:*)`);
+    }
     expect(chatToolFlags().allowedTools).toContain(`Bash(${cliCmd} changes:*)`);
+    expect(chatToolFlags().allowedTools).toContain(`Bash(${cliCmd} units:*)`);
+    // `set-unit:*` does not cover `set-units`: the chat denies both.
+    expect(chatToolFlags().disallowedTools).toContain(`Bash(${cliCmd} set-units:*)`);
     // In-place sed must not be reachable through the `sed` allowance.
     expect(allowedTools).not.toContain("Bash(sed:*)");
+    expect(disallowedTools).toContain("Bash(sed * -i*)");
     for (const rule of ["Bash(gh:*)", "Bash(git:*)"]) {
       expect(disallowedTools).toContain(rule);
     }
+    // No generic interpreter or deletion is ever allowed.
+    for (const rule of allowedTools) expect(rule).not.toMatch(/^Bash\((python|node|rm|jq|bash|sh)\b/);
     // A bare Edit deny would beat the scoped allow; it must be absent.
     expect(disallowedTools).not.toContain("Edit");
+  });
+});
+
+describe("headless skill text", () => {
+  it("drops front matter and interactive-only regions, unwraps headless-only comments", () => {
+    const md = [
+      "---",
+      "name: x",
+      "---",
+      "# Skill",
+      "<!-- authoring note -->",
+      "keep this",
+      "<!-- interactive-only:start -->",
+      "## 0. Setup",
+      "pnpm build",
+      "<!-- interactive-only:end -->",
+      "inline: context lines<!-- interactive-only:start --> and gh api<!-- interactive-only:end -->. Done.",
+      "<!-- headless-only",
+      "The run prompt lists the corrections.",
+      "-->",
+      "",
+      "",
+      "",
+      "tail",
+    ].join("\n");
+    expect(headlessDoc(md)).toBe(
+      "# Skill\nkeep this\n\ninline: context lines. Done.\nThe run prompt lists the corrections.\n\ntail\n",
+    );
+  });
+
+  it("the real skill, headless: no setup/init/other-commands/report sections, no gh fallback, refresh rules once", () => {
+    const real = new URL("../../../skills/pr-review", import.meta.url).pathname;
+    const initial = analysisSystemPrompt({ incremental: false }, real);
+    const refresh = analysisSystemPrompt({ incremental: true }, real);
+    for (const text of [initial, refresh]) {
+      expect(text).toContain("===== SKILL.md =====");
+      expect(text).toContain("===== RUBRIC.md =====");
+      expect(text).toContain("## 2. Read the diff");
+      expect(text).toContain("## Findings discipline");
+      expect(text).not.toContain("CLI setup");
+      expect(text).not.toContain("Determine state: init, refresh");
+      expect(text).not.toContain("Other commands");
+      expect(text).not.toContain("Report to the user");
+      expect(text).not.toContain("gh api repos");
+      expect(text).not.toContain("interactive-only");
+      // corrections come inline; the skill no longer sends the run to events.jsonl
+      expect(text).toContain("The run prompt lists this PR's `classification-corrected` events");
+      expect(text).toContain("do NOT Read them");
+      expect(text).toContain("untrusted");
+    }
+    expect(initial).not.toContain("===== MIGRATION-NOTES.md =====");
+    expect(refresh).toContain("===== MIGRATION-NOTES.md =====");
+    // The refresh flow is stated once (MIGRATION-NOTES), not restated in SKILL.md §8.
+    expect(refresh.split("send a `changelogEntry`").length - 1).toBe(1);
+    expect(refresh).toContain("set-units <key> --file");
+    // It is a pure function of the skill files: nothing PR- or machine-specific.
+    expect(refresh).not.toContain(process.execPath);
+    expect(refresh).not.toMatch(/github\.com\/[^\s]+\/\d+/);
   });
 });
 
@@ -313,33 +389,74 @@ describe("analysis job lifecycle", () => {
     // Default reasoning effort for analysis runs (see config.ts).
     expect(argv).toContain("--effort medium");
     // Bash is allowed only for the reviewer-state CLI; gh/git are denied outright.
-    expect(argv).toContain(`Bash(${process.execPath} ${process.env.REVIEWER_CLI_PATH} report:*)`);
-    expect(argv).toContain(`Bash(${process.execPath} ${process.env.REVIEWER_CLI_PATH} triage:*)`);
-    expect(argv).toContain(`Bash(${process.execPath} ${process.env.REVIEWER_CLI_PATH} show:*)`);
+    expect(argv).toContain(`Bash(${path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "reviewer-state")} report:*)`);
+    expect(argv).toContain(`Bash(${path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "reviewer-state")} triage:*)`);
+    expect(argv).toContain(`Bash(${path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "reviewer-state")} show:*)`);
     expect(argv).toContain("Bash(gh:*)");
     expect(argv).toContain("Bash(git:*)");
     expect(argv).not.toContain("--dangerously-skip-permissions");
+    // Never the user's own default mode: anything unlisted is denied.
+    expect(argv).toContain("--permission-mode dontAsk");
     // Writes are path-scoped to the run's scratch dir, never granted bare.
     expect(run.argv).not.toContain("Write");
-    expect(argv).toContain(`Write(/${path.join(run.cwd, "scratch")}/**)`);
+    expect(argv).toContain(`Edit(/${path.join(run.cwd, "scratch")}/**)`);
+    expect(argv).not.toContain("Write(");
+
+    // The stable block is the system prompt; the per-run part is the prompt.
+    expect(argv).toContain("--exclude-dynamic-system-prompt-sections");
+    const system = run.argv[run.argv.indexOf("--append-system-prompt") + 1];
+    expect(system).toContain("===== SKILL.md =====");
+    expect(system).toContain("===== RUBRIC.md =====");
+    expect(system).toContain("untrusted");
+    expect(system).toContain("NEVER run `gh`");
+    expect(system).not.toContain(keyToString(key));
+    expect(system).not.toContain(root);
 
     const prompt = claude.promptOf(0);
-    expect(prompt).toContain("SKILL.md");
-    expect(prompt).toContain("RUBRIC.md");
-    expect(prompt).toContain("untrusted");
-    expect(prompt).toContain("NEVER run `gh`");
-    // The triage view is pointed at explicitly, and one-liner slicing of
-    // files.json/diff.patch is called out as forbidden.
+    // The skill files are inlined, so the prompt never sends the run to read them.
+    expect(prompt).not.toContain(path.join(process.env.REVIEWER_SKILL_DIR!, "SKILL.md"));
+    expect(prompt).not.toContain("Read these two files");
     // The command, not the saved file: older PRs have no triage.txt.
     expect(prompt).not.toContain("triage.txt");
-    expect(prompt).toContain(`triage ${keyToString(key)}\` first`);
     expect(prompt).toContain("NEVER parse");
     expect(prompt).toContain("show " + keyToString(key));
+    // Corrections come inline; events.jsonl is not to be read for them.
+    expect(prompt).toContain("CORRECTIONS: none recorded on this PR");
+    expect(prompt).not.toContain("events.jsonl\n");
     // No checkout is configured in the base fixture, so the verification pass
     // must be switched off explicitly rather than left to inference.
     expect(prompt).toContain("VERIFICATION PASS: SKIPPED");
     expect(prompt).toContain("Do NOT emit any findings");
     expect(prompt).not.toContain("VERIFICATION PASS: RUN IT");
+
+    // A first analysis starts from triage.
+    const first = analysisPrompt(key, root, { incremental: false });
+    expect(first).toContain(`triage ${keyToString(key)}\` first`);
+    expect(first).toContain("set-analysis");
+  });
+
+  it("puts the skill files in the system prompt ahead of everything per-run", async () => {
+    const skills = process.env.REVIEWER_SKILL_DIR!;
+    fs.writeFileSync(
+      path.join(skills, "SKILL.md"),
+      "---\nname: t\n---\nSKILL BODY\n<!-- interactive-only:start -->\nSETUP ONLY\n<!-- interactive-only:end -->\n",
+    );
+    fs.writeFileSync(path.join(skills, "RUBRIC.md"), "RUBRIC BODY\n");
+    fs.writeFileSync(path.join(skills, "MIGRATION-NOTES.md"), "MIGRATION BODY\n");
+    buildFixture(root);
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    const argv = claude.runs[0].argv;
+    const system = argv[argv.indexOf("--append-system-prompt") + 1];
+    expect(system).toContain("SKILL BODY");
+    expect(system).not.toContain("SETUP ONLY");
+    expect(system.indexOf("SKILL BODY")).toBeLessThan(system.indexOf("RUBRIC BODY"));
+    expect(system.indexOf("RUBRIC BODY")).toBeLessThan(system.indexOf("MIGRATION BODY"));
+    // identical for another PR of the same kind: nothing per-run leaks in
+    expect(system).toBe(analysisSystemPrompt({ incremental: true }, skills));
+    const prompt = claude.promptOf(0);
+    expect(prompt).not.toContain("SKILL BODY");
+    expect(prompt.startsWith(`Analyze PR ${keyToString(key)}`)).toBe(true);
   });
 
   it("uses the incremental flow when an analysis already exists", async () => {
@@ -349,7 +466,7 @@ describe("analysis job lifecycle", () => {
     expect(claude.promptOf(0)).toContain("MIGRATION-NOTES.md");
     expect(claude.promptOf(0)).toContain("set-unit");
     // The changed-units block rides only on the incremental flow.
-    const cliCmd = `${process.execPath} ${process.env.REVIEWER_CLI_PATH}`;
+    const cliCmd = path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "reviewer-state");
     expect(claude.promptOf(0)).toContain(`CHANGED UNITS: run \`${cliCmd} changes ${keyToString(key)}\` first.`);
     expect(claude.promptOf(0)).toContain("changelogEntry");
     expect(analysisPrompt(key, root, { incremental: false })).not.toContain("CHANGED UNITS");
@@ -360,7 +477,7 @@ describe("analysis job lifecycle", () => {
   it("accumulates tool/result events into job.metrics and carries them on analysis-finished", async () => {
     buildFixture(root);
     claude.restore();
-    const cliCmd = `${process.execPath} ${process.env.REVIEWER_CLI_PATH}`;
+    const cliCmd = path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "reviewer-state");
     const filesJsonPath = path.join(
       root,
       key.host,
@@ -420,6 +537,9 @@ describe("analysis job lifecycle", () => {
     expect(m.phases?.firstInvestigationAt).toBe(3); // the `grep` call, 1-based; the cat of files.json is not
     expect(m.phases?.firstWriteAt).toBe(5); // the `Write` call
     expect(m.phases?.setAnalysisAt).toBe(6); // the `set-analysis` Bash call
+    // Real wall time, bracketed by the server, next to the CLI's own durationMs.
+    expect(m.run?.wallMs).toBeGreaterThanOrEqual(0);
+    expect(Date.parse(m.run!.finishedAt!) - Date.parse(m.run!.startedAt!)).toBe(m.run!.wallMs);
 
     const finished = readEvents(key, root).filter((e) => e.type === "analysis-finished");
     expect(finished.at(-1)).toMatchObject({ status: "done", metrics: { turns: 7, costUsd: 1.23 } });
@@ -596,6 +716,39 @@ index 0000000..4444444
     expect(body.report.counts.fuzzy).toBe(0);
     expect(body.analysisJob.status).toBe("queued");
     await analysisIdle();
+
+    // The refresh prompt lists the hunks to classify (id, file, size), so the
+    // run needs neither triage nor report to find them.
+    const prompt = claude.promptOf(0);
+    const files = readFilesJson(key, 2, root).files;
+    const bar = files.find((f) => f.path === "src/bar.ts")!.hunks[0];
+    expect(prompt).toContain("HUNKS TO CLASSIFY (1 new or unassigned");
+    expect(prompt).toContain(`  ${bar.id}  src/bar.ts  +2 -0`);
+    expect(prompt).toContain(`show ${keyToString(key)} --needs`);
+    expect(prompt).toContain("set-units");
+    expect(prompt).not.toContain("HUNKS TO CLASSIFY: none");
+  });
+
+  it("inlines the PR's classification corrections, grouped, with their notes", async () => {
+    const { hunkIds } = buildFixture(root);
+    // A unit reclassified once: one event per hunk, same ts and note.
+    appendEvents(
+      key,
+      hunkIds.map((hunkId) => ({
+        type: "classification-corrected" as const,
+        hunkId,
+        from: "core-logic",
+        to: "wiring",
+        note: "config plumbing only",
+      })),
+      root,
+    );
+    const prompt = analysisPrompt(key, root, { incremental: true });
+    expect(prompt).toContain("CORRECTIONS recorded on this PR");
+    expect(prompt).toContain(`core-logic -> wiring: src/`);
+    expect(prompt).toContain(`(${hunkIds.length} hunks) — "config plumbing only"`);
+    expect(prompt).toContain("do not read");
+    expect(prompt).not.toContain("CORRECTIONS: none");
   });
 });
 

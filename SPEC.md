@@ -313,7 +313,11 @@ plus a fixed set of read-only inspection commands (`grep`, `rg`, `sed -n`, `ls`,
 rather than by the CLI's read-only heuristic; `sed` is allowed only in its `-n` form, and
 `sed -i` is blocked by the CLI's own edit guard regardless); `--disallowedTools` denies the
 writing subcommands plus `gh`/`git`/`curl`/`wget` and the web tools, and deny beats allow.
-In `-p` mode anything unmatched is denied outright (there is no prompt to accept it), and a
+Analysis runs pass `--permission-mode dontAsk`, so anything unmatched is denied outright.
+(Without it, `-p` inherits the user's own `permissions.defaultMode`: under `auto` a classifier
+approved unlisted commands — `python3 -c`, `rm -f`, `> /tmp/…` redirects — and Write/Edit
+anywhere in the cwd, which is the PR state dir. File writes are scoped with `Edit(<path>)`
+rules; Claude Code never consults a `Write(<path>)` rule.) A
 chained command is decomposed: `grep … && sed -n …` runs, while `node cli.js x; gh …` or
 `grep … ; gh pr list` is denied **as a whole** — the permission parser does not match only
 the head. Shell redirection and in-place edits outside the session's writable roots are

@@ -10,13 +10,19 @@ You turn a GitHub PR diff into a structured review plan: a short summary plus a 
 State lives on disk under `~/.purview/<host>/<owner>/<repo>/<number>/` and is mutated
 only through the `reviewer-state` CLI — never edit state files directly.
 
+<!-- Sections between `interactive-only` markers are for a person (or an interactive
+agent) running this skill by hand; Purview's automatic analysis strips them and gives the
+run the rest of this file, RUBRIC.md and (on a refresh) MIGRATION-NOTES.md inline.
+`headless-only` comments hold the text that run gets instead. -->
+
+<!-- interactive-only:start -->
 Read `RUBRIC.md` in this directory before classifying anything. It holds the kind
 definitions, worked examples, the attention ladder, risk-flag triggers, and learned
 corrections. Update it (see "Learn from corrections" below) as you go.
 
 Read `MIGRATION-NOTES.md` before touching an already-analyzed PR (refresh flow).
 
-## 0. CLI setup
+## 0. CLI setup (interactive only)
 
 The CLI ships from `@reviewer/core` (bin at `packages/core`). If `packages/core/dist` is
 missing or stale, build it first:
@@ -34,10 +40,11 @@ State lives under `~/.purview/` unless `PURVIEW_STATE_DIR` (or the legacy `REVIE
 set in your environment, the state root is that directory instead, and all paths below are
 relative to it.
 
-Subcommands that exist: `init`, `refresh`, `report`, `triage`, `show`, `changes`,
-`base-file`, `set-analysis`, `set-unit`, `view`, `sync`, `list`. There are no others.
+Subcommands that exist: `init`, `refresh`, `report`, `units`, `triage`, `show`, `changes`,
+`base-file`, `set-analysis`, `set-unit`, `set-units`, `view`, `sync`, `list`,
+`discard-revision`, `comment`. There are no others.
 
-## 1. Determine state: init, refresh, or report
+## 1. Determine state: init, refresh, or report (interactive only)
 
 Given a PR URL (or an already-known `<key>`). Every `<key>` argument accepts
 `host/owner/repo/number`, the short `owner/repo/number` (github.com implied), or a full
@@ -61,6 +68,7 @@ Revisions are **1-based** (`revisions/1` is the first). Each holds `diff.patch`,
 number: it's printed by `init`/`refresh`, appears in the `report` header line
 (`revision <n>  head=… base=… mergeBase=…`), and is `currentRevision` in
 `reviewer-state report <key> --json`. There is no flag to print it alone.
+<!-- interactive-only:end -->
 
 ## 2. Read the diff
 
@@ -72,6 +80,8 @@ It ends with a `bodies:` line showing you the exact `show` invocation to fetch f
 text. This is Pass 1's raw material (see step 3). (`init`/`refresh` also save a copy as
 `revisions/<n>/triage.txt`, but PRs initialized before that existed have none, and the
 saved copy's `bodies:` line can't know your CLI path — prefer the command.)
+On a refresh the hunks to classify are already known (see MIGRATION-NOTES.md), so `triage`
+is optional there — run it only if you need the whole-PR overview.
 
 When you need a hunk's full body (added/removed lines, complete text), fetch it with:
 
@@ -80,7 +90,10 @@ reviewer-state show <key> <selector...>
 ```
 
 A selector is a hunk id (exact, or a unique prefix of 6+ chars — triage's ids are
-already unique-prefix-friendly), an exact file path, or a `*`/`**` glob over file paths.
+already unique-prefix-friendly, and so are the 8-char short ids `units` and `changes`
+print), an exact file path, a `*`/`**` glob over file paths, or `unit:<unitId>` (every hunk
+that unit holds now). `--needs` adds every hunk that still needs classification (in no unit
+and not explicitly unassigned) — on a refresh, that one flag fetches all the new hunks.
 **Single-quote every glob selector** — unquoted, the shell expands it against your working
 directory or fails outright (zsh: "no matches found") before `show` ever sees it:
 `reviewer-state show <key> 'internal/**/*_test.go'`.
@@ -101,8 +114,10 @@ Every body line carries a gutter with its real line numbers in the source file, 
 Cite those numbers, not the position of a line in `show`'s output.
 
 A result too big to print inline (over ~25 KB) is written to the PR's `scratch/` directory,
-and `show` prints only its path: Read that file next, paging with offset/limit if it is very
-long; its lines carry the same gutter, and a scratch file's own line numbers mean nothing.
+and `show` prints its path plus a table of contents: each file's line range in that file and
+where each of its hunks starts (`3f9c2a1b@L120`). Read just the ranges you need with the
+Read tool's offset/limit rather than paging through it; its lines carry the same gutter, and
+a scratch file's own line numbers mean nothing.
 Don't redirect `show` into a file yourself, and don't split one selection into several
 small `show` calls to dodge the size: both just add turns.
 
@@ -151,10 +166,13 @@ Rules:
   is one `reviewer-state show <key> <selectors>` call away — batch every hunk you need into
   that single call instead of re-slicing the patch or the JSON by hand. Go to `diff.patch`
   only for file-level headers (mode/rename/binary).
-- Chained read-only commands (`grep`, `sed -n`, `ls`, `cat`, `head`, `tail`, `wc`, plus the
-  `reviewer-state` CLI) pass the permission allowlist. A chain that mixes in a denied
-  command (`git`, `gh`, `curl`, a redirect that writes) is denied **as a whole** — so never
-  put one of those in a chain, they will take the rest of the batch down with them.
+- Chained read-only commands (`grep`, `rg`, `sed -n`, `ls`, `cat`, `head`, `tail`, `wc`, plus
+  the `reviewer-state` CLI) pass the permission allowlist. A chain that mixes in anything
+  else (`git`, `gh`, `curl`, `python3`, `node`, `jq`, `rm`, a redirect that writes) is denied
+  **as a whole** — so never put one of those in a chain, they will take the rest of the batch
+  down with them.
+- Type the CLI's full path in every call. Never store it (or any command) in a shell
+  variable: `$CLI report` is not on the allowlist, and in zsh it does not even run.
 - **Soft budget: finish a typical incremental analysis in under ~40 assistant turns.** If
   you are past that and still exploring, stop: write the analysis with what you have and
   record the unresolved question in that unit's `attentionWhy` (a question is a perfectly
@@ -190,10 +208,10 @@ as possible (see "Batching" above) rather than one file per turn. When the promp
 leaves it, not a branch that may have drifted. For a file as it was *before* the PR, run
 `reviewer-state base-file <key> <path>` (a renamed file may be given by its new or old
 path; a file the PR added exits 1 with "not present at base"). Without such a checkout, use
-the diff's context lines first, and fall back to
+the diff's context lines<!-- interactive-only:start --> first, and fall back to
 `gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` (or
 `gh api repos/{owner}/{repo}/git/blobs/{sha}`) to fetch specific files at the PR's head SHA
-when the diff's own context is insufficient. Don't fetch whole-file context for
+when the diff's own context is insufficient<!-- interactive-only:end -->. Don't fetch whole-file context for
 skim/skip-bucketed hunks.
 
 ## 4. Build the analysis
@@ -230,7 +248,8 @@ Rules — the first three are **enforced by the CLI**, which rejects the whole p
 - **Exactly one unit per hunk**: a hunk id may appear in only one unit's `hunkIds` (and not
   also in `"unassigned"`). `set-analysis` rejects a duplicate, listing each id and the units
   it appears in. `set-unit` rejects a `hunkIds` patch that takes a hunk another unit already
-  owns — to move a hunk, first patch its current unit without it, then add it to the new one.
+  owns — to move a hunk, remove it from its current unit and add it to the new one in the
+  same `set-units` batch (see MIGRATION-NOTES.md).
 - Units are **logical changes**, not files. A unit may span multiple files (e.g. a
   function rename touches its definition and every call site as one unit) when they
   represent one decision.
@@ -322,12 +341,20 @@ the checkable questions are answered — not when you run out of opinions, and n
 
 ## 6. Learn from corrections
 
+<!-- interactive-only:start -->
 **Before classifying**, read `events.jsonl` for recent `classification-corrected` events
 (`{hunkId, from, to, note}`). Treat each as authoritative precedent: if a new hunk looks
 like one that was previously corrected, classify it the corrected way, not the way your
 heuristics would naively suggest. If you see a pattern of similar corrections (same
 mistake repeated), add a worked example to RUBRIC.md's "Learned corrections" section so
 future runs don't repeat it — see RUBRIC.md for the format.
+<!-- interactive-only:end -->
+<!-- headless-only
+The run prompt lists this PR's `classification-corrected` events under CORRECTIONS (or says
+there are none) — already extracted, so don't read `events.jsonl`. Treat each as
+authoritative precedent: if a hunk looks like one that was previously corrected, classify it
+the corrected way, not the way your heuristics would naively suggest.
+-->
 
 ## 7. Write the analysis
 
@@ -349,7 +376,9 @@ This **replaces** the whole analysis for the current revision. Units are replace
 wholesale, so a unit's `changelog` (the per-revision "what changed" lines written on
 refresh, see step 8) starts fresh unless the payload carries it.
 
-On success it prints `Analysis set for revision <n>: <u> units covering <h> hunks`. If the
+On success it prints `Analysis set for revision <n>: <u> units covering <h> hunks`, then
+what is left (hunks still needing classification, or "All hunks assigned") — no follow-up
+`report` is needed to check. If the
 CLI reports validation errors, fix the file with the **Edit tool** — a targeted edit, not
 a rewrite — and re-run the same command. Do not hand-wave past a validation failure.
 Common causes: a hunk id of the current revision missing from every unit's
@@ -359,65 +388,21 @@ required field such as `attentionWhy` or `order`.
 
 ## 8. On refresh of an already-analyzed PR
 
-See `MIGRATION-NOTES.md` for the full mechanics. This is the flow the ~40-turn budget in
-"Batching" is sized for — an incremental run touches a handful of units, so batch its
-re-verification reads the same way. In short:
+`MIGRATION-NOTES.md` is the one statement of the refresh flow — which hunks to classify,
+which units to patch and with what, how to write the patches (`set-units`, one batch), and
+what never to touch. Follow it; this skill's other steps apply to the hunks and units it
+names. This is the flow the ~40-turn budget in "Batching" is sized for — an incremental run
+touches a handful of units, so batch its reads and its re-verification the same way.
 
-1. Run `reviewer-state refresh <key>`. Read the printed migration report.
-2. Run `reviewer-state changes <key>`. It lists every **changed unit**: a live unit one of
-   whose hunks migrated `fuzzy` (or `renamed` with different content), or lost a hunk to
-   `archived`, with its current `summary`/`attentionWhy`, a compact before→after of each
-   reworked hunk, and new/unassigned hunks in the same files as hints. It prints
-   `No units changed in revision <n>.` when there are none.
-3. Run `reviewer-state report <key>` and take the hunk ids listed under "Needs
-   classification" — those are exactly the `new`/unassigned hunks. Fetch all of their
-   bodies in **one** `reviewer-state show <key> <id1> <id2> ...` call (not one per hunk),
-   and classify them.
-   Carried, fuzzy-matched, and renamed hunks keep their existing unit membership — don't
-   re-group them. But **do** refresh the description of every changed unit: rewrite its `title`, `summary` and `attentionWhy` so they describe exactly the hunks the unit
-   holds *now* (the `changes` output lists them). A unit that lost hunks gets a title and
-   summary about what remains, not about what left; history belongs in the changelog, never
-   in the summary, re-check
-   `kind`/`attention`/`riskFlags` (a correction needs `--note`), and send a
-   `changelogEntry` — a short note (a sentence or two) about what this revision changed in that unit
-   (e.g. `"rounding switched to banker's; added a .5 test"`), not a restatement of the
-   summary. A unit you attach a new hunk to has changed too and gets an entry as well.
-   The entry describes what changed in the **code** this revision (e.g. "renamed SendWindow to
-   CalendarSendWindow; migration dropped the CHECK constraint"), never migration bookkeeping
-   (attached/unassigned/new/archived/revived hunks); a hunk `changes` says was mostly already in
-   the previous revision is not a change of this revision.
-   The entry is recorded under the current revision; re-sending replaces it, so there is
-   one per revision. Units that are neither changed nor taking a new hunk are not patched.
-4. Patch the affected units with
-   `reviewer-state set-unit <key> --id <unitId> --file patch.json` — the unit id is the
-   `--id` **flag** (or an `id` field inside the JSON), not a positional argument. The file
-   may be a partial patch (e.g. `{"hunkIds": [...]}`, or
-   `{"summary": "...", "attentionWhy": "...", "changelogEntry": "..."}`) — write it with
-   the Write tool into the scratch directory, never via stdin/heredoc. Add
-   `--note "<why>"` when you are correcting a `kind`/`attention` — that note is recorded on
-   the `classification-corrected` events. **Never regenerate the whole analysis** on a
-   refresh.
-5. If a revision is marked `baseOnly: true`, its new hunks get
-   `defaultAttention: "skip"` / `defaultAttentionWhy: "base moved"` on their hunk state
-   (shown in `report` as `(default skip: base moved)`). That default is informational only
-   — it does not assign the hunk to anything, so such hunks keep showing up under the
-   report's "Needs classification" list until you attach them. Leave them at the default
-   attention unless one touches the files of an existing `must-read` unit, in which case
-   classify it normally and attach it to that unit.
-   On such a revision a fuzzy rework came from the base branch, not the PR author: a unit
-   `changes` lists only for that needs no description rewrite unless the drift changes
-   what is true about it.
-6. Unmatched old hunks are archived by the migration engine automatically — don't try to
-   delete or re-home them yourself; just don't reference archived hunk ids in any unit you
-   patch.
-7. Findings from the previous pass are kept only on units whose hunks all carried over
-   `identical`; migration drops them everywhere else, because the code they were verified
-   against moved. Re-run step 5's verification (checkout permitting) for the units you are
-   patching — every changed unit included — and send the resulting `findings` array in the
-   same `set-unit` patch. Don't re-assert a dropped finding from memory — re-check it.
+<!-- interactive-only:start -->
+## 9. Other commands (interactive only; rarely yours to run)
 
-## 9. Other commands (rarely yours to run)
-
+- `reviewer-state units <key> [unitId...]` — compact listing of the units: id,
+  attention/kind, title, hunk count, findings count, and each unit's hunk ids grouped by
+  file (8-char short ids, accepted wherever a hunk id is). Husks are marked `~`.
+- `reviewer-state set-unit <key> --id <unitId> --file patch.json` /
+  `reviewer-state set-units <key> --file patches.json` — patch one unit, or several in one
+  all-or-nothing batch; see MIGRATION-NOTES.md.
 - `reviewer-state report <key>` — human report: PR header, revision + shas, summary,
   migration report, hunk/file progress, per-unit progress bars, a "Needs classification"
   list of hunks in no unit, and recent archived hunks. Use it to verify your analysis
@@ -426,14 +411,16 @@ re-verification reads the same way. In short:
 - `reviewer-state triage <key> [--rev <n>]` — reprints `revisions/<n>/triage.txt` on
   demand (useful if you want a revision other than the current one; the file on disk
   always covers the current revision already).
-- `reviewer-state show <key> <selector...> [--rev <n>] [--all]` — prints full hunk bodies
-  for the given selectors (hunk id/prefix, file path, or single-quoted glob), batched in one
-  call, each line behind an old/new source line-number gutter.
+- `reviewer-state show <key> <selector...> [--needs] [--rev <n>] [--all]` — prints full hunk
+  bodies for the given selectors (hunk id/prefix, file path, single-quoted glob, or
+  `unit:<id>`; `--needs` adds every hunk still needing classification), batched in one call,
+  each line behind an old/new source line-number gutter.
 - `reviewer-state changes <key> [--rev <n>]` — the changed units of a revision (see step 8):
-  each one's current description, a compact before→after of its fuzzy/renamed hunks
-  (diff of the two hunk bodies, `was│`/`now│` lines), its archived hunks with their old
+  each one's current description, the hunk ids it holds now (by file), a compact
+  before→after of its fuzzy/renamed hunks (diff of the two hunk bodies, `was│`/`now│` lines,
+  capped at 30 lines per hunk — `show <id>` for the rest), its archived hunks with their old
   header and sizes, and related new/unassigned hunks as hints. Large output goes to a
-  scratch file, like `show`.
+  scratch file with a table of contents, like `show`.
 - `reviewer-state view <key> <hunkId|unit:<unitId>> [--unview]` — marks reading progress.
   That's the human reviewer's action (or the web app's); don't mark things viewed on the
   user's behalf unless asked.
@@ -441,7 +428,7 @@ re-verification reads the same way. In short:
   this on your own initiative**; it writes to the PR.
 - `reviewer-state list` — every PR with local state.
 
-## 10. Report to the user
+## 10. Report to the user (interactive only)
 
 Finish every run (init or refresh) by printing, in the user's working language:
 
@@ -449,3 +436,4 @@ Finish every run (init or refresh) by printing, in the user's working language:
 - A units table: `title | kind | attention | hunk count`, ordered by `order`.
 
 Keep it scannable — this is the reviewer's map of the PR, not a restatement of the diff.
+<!-- interactive-only:end -->

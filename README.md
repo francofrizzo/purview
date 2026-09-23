@@ -163,7 +163,8 @@ and are never posted to GitHub. A refresh drops them from any unit whose hunks c
 a stale claim can't outlive the code it was checked against.
 
 The CLI (`reviewer-state`, shipped by `packages/core`) is also usable directly:
-`init`, `refresh`, `set-analysis`, `set-unit`, `view`, `report`, `list`, `sync`, and
+`init`, `refresh`, `set-analysis`, `set-unit`, `set-units` (an all-or-nothing batch of
+unit patches), `units` (compact unit listing), `view`, `report`, `list`, `sync`, and
 `discard-revision <key> <n>` for a revision fetched while the author was mid-rebase (see
 `skills/pr-review/MIGRATION-NOTES.md`).
 

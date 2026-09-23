@@ -310,25 +310,121 @@ describe("cli changes", () => {
     expect(run(["changes", keyToString(key), "--rev", "1"]).stdout).toBe("No units changed in revision 1.\n");
   });
 
-  it("prints a heavily reworked hunk whole, and spills a large result to scratch like show", () => {
+  it("caps a heavily reworked hunk's body with a pointer to `show`, and lists the unit's hunk ids", () => {
     const big = Array.from({ length: 800 }, (_, i) => `  const line${i} = "${"x".repeat(30)}";`);
     seed(big);
     const reworked = big.map((l, i) => (i % 16 === 0 ? l.replace("x", "y") : l));
-    seedRev2(reworked);
+    const { hunk } = seedRev2(reworked);
     const res = run(["changes", keyToString(key)]);
     expect(res.status).toBe(0);
     expect(res.stdout).toContain("-- 1 changed unit");
+    expect(res.stdout).toContain("reworked heavily");
+    // capped: the body stops early and says how to get the rest
+    expect(res.stdout).not.toContain("line799");
+    expect(res.stdout).toMatch(new RegExp(`… \\d+ more lines — \`.* show ${keyToString(key)} ${hunk.id}\` for all`));
+    // the unit's current hunks, by file, with a short id
+    expect(res.stdout).toContain(`now holds 1 hunk:\n    src/a.ts +800 -1: ${hunk.id.slice(0, 8)}\n`);
+  });
+
+  it("spills a large result to scratch with a table of contents", () => {
+    // Many small units, each reworked: too much for one inline print.
+    seed();
+    const units = Array.from({ length: 60 }, (_, i) => i);
+    const files: FileDiff[] = units.map((i) => ({
+      path: `src/f${i}.ts`,
+      status: "modified",
+      binary: false,
+      hunks: [mkHunk(`src/f${i}.ts`, Array.from({ length: 12 }, (_, j) => `v${j} = ${i};`), ["old"])],
+    }));
+    writeRevision(key, 2, "diff", files, { baseSha: "b2", headSha: "h2", mergeBase: "m2" });
+    appendEvent(key, {
+      type: "revision-added",
+      revision: 2,
+      baseSha: "b2",
+      headSha: "h2",
+      mergeBase: "m2",
+      baseOnly: false,
+      files: toRevisionFiles(files),
+    });
+    appendEvent(key, {
+      type: "analysis-set",
+      revision: 2,
+      summary: "s",
+      unassigned: [],
+      units: units.map((i) => ({
+        id: `u${i}`,
+        title: `Unit ${i}`,
+        summary: "s",
+        kind: "core-logic" as const,
+        attention: "skim" as const,
+        attentionWhy: "w",
+        riskFlags: [],
+        hunkIds: [files[i].hunks[0].id],
+        order: i,
+      })),
+    });
+    const files3: FileDiff[] = units.map((i) => ({
+      path: `src/f${i}.ts`,
+      status: "modified",
+      binary: false,
+      hunks: [
+        mkHunk(
+          `src/f${i}.ts`,
+          Array.from({ length: 12 }, (_, j) => (j === 0 ? `v0 = ${i} + ${"z".repeat(300)};` : `v${j} = ${i};`)),
+          ["old"],
+        ),
+      ],
+    }));
+    writeRevision(key, 3, "diff", files3, { baseSha: "b3", headSha: "h3", mergeBase: "m3" });
+    const report = migrate({ revision: 3, previousRevision: 2, previousFiles: files, nextFiles: files3 });
+    writeMigrationReport(key, report);
+    appendEvent(key, {
+      type: "revision-added",
+      revision: 3,
+      baseSha: "b3",
+      headSha: "h3",
+      mergeBase: "m3",
+      baseOnly: false,
+      files: toRevisionFiles(files3),
+      migration: report,
+    });
+    const res = run(["changes", keyToString(key)]);
+    expect(res.status).toBe(0);
     expect(res.stdout).toContain("too large to print inline");
     const file = /Written to (\S+)/.exec(res.stdout)?.[1];
     expect(path.dirname(file!)).toBe(path.join(tmp, key.host, key.owner, key.repo, String(key.number), "scratch"));
     expect(path.basename(file!)).toMatch(/^changes-\d+\.txt$/);
-    const written = fs.readFileSync(file!, "utf8");
-    expect(written).toContain("reworked heavily");
-    // the full body comes with show's line-number gutter
-    expect(written).toContain(`800 │+  const line799 = `);
+    expect(res.stdout).toContain("Contents (line ranges in that file");
+    // Each TOC entry's range points at that unit's block in the file.
+    const written = fs.readFileSync(file!, "utf8").split("\n");
+    const m = /L(\d+)-(\d+) \(\d+ lines\)  unit u7\n/.exec(res.stdout);
+    expect(m).toBeTruthy();
+    expect(written[Number(m![1]) - 1]).toMatch(/^## u7 — Unit 7/);
+    expect(written[Number(m![2])]).toBe("");
 
     const inline = run(["changes", keyToString(key), "--inline"]);
-    expect(inline.stdout).toContain("line799");
+    expect(inline.stdout).toContain("## u59 — Unit 59");
+  });
+});
+
+describe("cli writes print what remains", () => {
+  it("names changed units not patched yet this revision, until they are", () => {
+    seed();
+    seedRev2(["  return a + b + c;"]);
+    // Another unit, created this revision: `core` (reworked) is still pending.
+    const other = run([
+      "set-unit", keyToString(key), "--id", "other",
+      "--file", writeJson("other.json", unitJson("other", [])),
+    ]);
+    expect(other.status, other.stderr).toBe(0);
+    expect(other.stdout).toContain("All hunks assigned");
+    expect(other.stdout).toContain("Changed units not patched yet this revision (1): core");
+    const core = run([
+      "set-unit", keyToString(key), "--id", "core",
+      "--file", writeJson("core.json", { summary: "now adds c too", changelogEntry: "adds c" }),
+    ]);
+    expect(core.status, core.stderr).toBe(0);
+    expect(core.stdout).toContain("Every unit `changes` lists has been patched this revision.");
   });
 });
 

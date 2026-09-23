@@ -293,7 +293,8 @@ describe("runs with a managed checkout", () => {
   let app: ReturnType<typeof createApp>;
   let claude: FakeClaude;
   const encodedKey = encodeURIComponent(keyToString(key));
-  const cli = () => `${process.execPath} ${process.env.REVIEWER_CLI_PATH}`;
+  // cliCommand() is one executable: a wrapper generated beside the CLI script.
+const cli = () => path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "reviewer-state");
 
   beforeEach(() => {
     process.env.REVIEWER_SKILL_DIR = path.join(root, "skills");

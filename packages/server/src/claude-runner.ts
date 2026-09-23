@@ -83,6 +83,19 @@ export interface ClaudeRunOptions {
   systemPrompt?: string;
   /** extra readable roots beyond cwd */
   addDirs?: string[];
+  /**
+   * `--permission-mode`. Without it the run inherits the user's own
+   * `permissions.defaultMode` (e.g. `auto`, where a classifier approves
+   * commands no allow rule names) — see analysisToolFlags.
+   */
+  permissionMode?: "default" | "dontAsk" | "acceptEdits" | "plan";
+  /**
+   * `--exclude-dynamic-system-prompt-sections`: per-machine sections (cwd,
+   * env, git status) move into the first user message, so the system prompt
+   * — Claude Code's own plus `systemPrompt` — is byte-identical across runs
+   * in different directories and its cache prefix can be reused.
+   */
+  stableSystemPrompt?: boolean;
   /** built-in tool surface (`--tools`); "" disables all tools */
   tools?: string[];
   allowedTools?: string[];
@@ -121,7 +134,9 @@ export function buildArgv(opts: ClaudeRunOptions): string[] {
   if (opts.partialMessages) argv.push("--include-partial-messages");
   if (opts.model) argv.push("--model", opts.model);
   if (opts.effort) argv.push("--effort", opts.effort);
+  if (opts.permissionMode) argv.push("--permission-mode", opts.permissionMode);
   if (opts.systemPrompt) argv.push("--append-system-prompt", opts.systemPrompt);
+  if (opts.stableSystemPrompt) argv.push("--exclude-dynamic-system-prompt-sections");
   for (const dir of opts.addDirs ?? []) argv.push("--add-dir", dir);
   if (opts.tools) argv.push("--tools", opts.tools.join(","));
   if (opts.allowedTools?.length) argv.push("--allowedTools", ...opts.allowedTools);

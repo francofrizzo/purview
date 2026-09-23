@@ -2,6 +2,7 @@ import { diffOfDiffs, type DiffOfDiffsLine } from "./diff-of-diffs.js";
 import { renderShowHunk } from "./hunk-select.js";
 import { containment } from "./migration.js";
 import { liveUnits } from "./reducer.js";
+import { hunkIdsByFile, shortIds } from "./unit-patch.js";
 import type {
   FileDiff,
   Hunk,
@@ -152,6 +153,19 @@ const pct = (x: number) => `${Math.round(x * 100)}%`;
 /** Above this many changed lines, a reworked hunk is printed whole instead. */
 const MAX_DELTA_LINES = 40;
 
+/**
+ * At most this many body lines are printed per reworked hunk (its
+ * before->after, or its whole body when heavily reworked); the rest is one
+ * `show` away. Keeps a revision that rewrote a few big hunks from spilling.
+ */
+export const MAX_HUNK_PRINT_LINES = 30;
+
+/** `lines` capped at MAX_HUNK_PRINT_LINES, with a pointer to the full body. */
+function capLines(lines: string[], more: (n: number) => string): string[] {
+  if (lines.length <= MAX_HUNK_PRINT_LINES) return lines;
+  return [...lines.slice(0, MAX_HUNK_PRINT_LINES), more(lines.length - MAX_HUNK_PRINT_LINES)];
+}
+
 function hdr(h: Hunk): string {
   return h.header ? `  @@${h.header}@@` : "";
 }
@@ -224,6 +238,8 @@ export interface RenderChangesInput {
   revision: number;
   previousFiles?: FileDiff[];
   currentFiles?: FileDiff[];
+  /** how to fetch one hunk's full body, e.g. `<cli> show <key>`; printed after a capped hunk */
+  showCommand?: string;
 }
 
 export interface RenderedChanges {
@@ -231,6 +247,8 @@ export interface RenderedChanges {
   /** one-line tally, also printed when the body spills to a file */
   summary: string;
   count: number;
+  /** one entry per block with its 1-based line range in `body`, for a spill's table of contents */
+  toc: { label: string; from: number; to: number }[];
 }
 
 /** What `reviewer-state changes` prints: one block per changed unit. */
@@ -260,7 +278,7 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
 
   if (changes.length === 0 && priorShare.size === 0) {
     const line = `No units changed in revision ${revision}.`;
-    return { body: line + "\n", summary: line, count: 0 };
+    return { body: line + "\n", summary: line, count: 0, toc: [] };
   }
 
   // Hints: hunks nobody owns yet that are new this revision or unassigned.
@@ -274,6 +292,10 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
   let reworkedCount = 0;
   let archivedCount = 0;
   let hintCount = 0;
+  const showCmd = input.showCommand ?? "show";
+  const shortId = shortIds([...cur.keys()]);
+  const moreLines = (id: string) => (n: number) => `      … ${n} more lines — \`${showCmd} ${id}\` for all`;
+  const toc: RenderedChanges["toc"] = [];
   const blocks: string[] = [
     `Changed units in revision ${revision}` +
       (report?.previousRevision !== undefined ? ` (vs r${report.previousRevision})` : "") +
@@ -292,29 +314,23 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
     const lastLog = u.changelog?.[u.changelog.length - 1];
     if (lastLog) lines.push(`last changelog: r${lastLog.revision} · ${lastLog.text}`);
     // What the unit holds *now*, so a unit that shrank (or grew) is obvious:
-    // its title and summary must describe exactly these hunks.
-    // Grouped by file (hunk count and +/- per file) so a 27-hunk unit stays one
-    // readable line; a small unit lists its hunk ids too.
+    // its title and summary must describe exactly these hunks. Grouped by
+    // file with short ids (accepted by `show` and the patch commands), so an
+    // add/remove patch needs no other lookup.
     const holding = u.hunkIds.map((id) => cur.get(id)).filter((h) => h !== undefined);
-    const byFile = new Map<string, { n: number; add: number; del: number; ids: string[] }>();
+    const byFile = new Map<string, { add: number; del: number }>();
     for (const h of holding) {
-      const f = byFile.get(h!.file.path) ?? { n: 0, add: 0, del: 0, ids: [] };
-      f.n++;
+      const f = byFile.get(h!.file.path) ?? { add: 0, del: 0 };
       f.add += h!.hunk.addedLines.length;
       f.del += h!.hunk.removedLines.length;
-      f.ids.push(h!.hunk.id.slice(0, 8));
       byFile.set(h!.file.path, f);
     }
-    const listIds = holding.length <= 4;
-    lines.push(
-      `now holds ${u.hunkIds.length} hunk${u.hunkIds.length === 1 ? "" : "s"}: ` +
-        [...byFile]
-          .map(
-            ([path, f]) =>
-              `${path}${f.n > 1 ? ` ×${f.n}` : ""} +${f.add} -${f.del}` + (listIds ? ` (${f.ids.join(",")})` : ""),
-          )
-          .join("; "),
-    );
+    const files = [...(input.currentFiles ?? [])].map((f) => ({ path: f.path, hunkIds: f.hunks.map((h) => h.id) }));
+    lines.push(`now holds ${u.hunkIds.length} hunk${u.hunkIds.length === 1 ? "" : "s"}:`);
+    for (const g of hunkIdsByFile(u.hunkIds, files, shortId)) {
+      const f = byFile.get(g.path);
+      lines.push(`    ${g.path}${f ? ` +${f.add} -${f.del}` : ""}: ${g.ids.join(" ")}`);
+    }
 
     for (const e of c.reworked) {
       reworkedCount++;
@@ -354,9 +370,10 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
       const delta = renderDelta(diffOfDiffs(before.hunk.text, after.hunk.text).lines, moved);
       if (delta.changed > MAX_DELTA_LINES) {
         lines.push(`    (reworked heavily: ${delta.changed} changed lines; current body)`);
-        lines.push(renderShowHunk(after).trimEnd());
+        const [head, ...body] = renderShowHunk(after).trimEnd().split("\n");
+        lines.push(head, ...capLines(body, moreLines(e.hunkId)));
       } else if (delta.changed > 0) {
-        lines.push(delta.text);
+        lines.push(...capLines(delta.text.split("\n"), moreLines(e.hunkId)));
       } else {
         lines.push("    (same lines; only position/context moved)");
       }
@@ -396,7 +413,9 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
           priorNote(l.hunk.id),
       );
     }
-    blocks.push(lines.join("\n"), "");
+    const from = blocks.length + 1;
+    blocks.push(...lines, "");
+    toc.push({ label: `unit ${u.id}`, from, to: blocks.length - 1 });
   }
 
   // `new` hunks not printed above that are largely old code: listed so the
@@ -404,6 +423,7 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
   const priorOnly = [...priorShare.keys()].filter((id) => !printedNew.has(id));
   if (changes.length === 0) blocks.push(`No units changed in revision ${revision}.`, "");
   if (priorOnly.length > 0) {
+    toc.push({ label: "new hunks partly from the previous revision", from: blocks.length + 1, to: blocks.length + 1 + priorOnly.length });
     blocks.push(
       `New hunks partly made of code ${prevRev} already had (a rebase re-cut hunk boundaries; that share is not a change of r${revision}):`,
       ...priorOnly.map((id) => {
@@ -418,5 +438,5 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
     `-- ${changes.length} changed unit${changes.length === 1 ? "" : "s"}: ` +
     `${reworkedCount} reworked hunks, ${archivedCount} archived, ${hintCount} related hints` +
     (priorShare.size > 0 ? `, ${priorShare.size} new hunks partly from ${prevRev}` : "");
-  return { body: blocks.join("\n") + summary + "\n", summary, count: changes.length };
+  return { body: blocks.join("\n") + summary + "\n", summary, count: changes.length, toc };
 }

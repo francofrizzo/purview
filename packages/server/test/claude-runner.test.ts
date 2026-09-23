@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { translate } from "../src/claude-runner.js";
+import { buildArgv, translate } from "../src/claude-runner.js";
 
 /**
  * Unit tests for `translate()`'s handling of the stream-json `result` line —
@@ -114,5 +114,27 @@ describe("translate: tool_use carries a raw, untruncated detail", () => {
     expect(event.rawDetail).toBe(longCommand);
     expect(event.detail.length).toBeLessThanOrEqual(200);
     expect(event.detail.endsWith("...")).toBe(true);
+  });
+});
+
+describe("buildArgv: permission mode and a stable system prompt", () => {
+  it("passes --permission-mode and moves dynamic sections out of the system prompt only when asked", () => {
+    const argv = buildArgv({
+      prompt: "p",
+      cwd: "/x",
+      permissionMode: "dontAsk",
+      systemPrompt: "STABLE",
+      stableSystemPrompt: true,
+    });
+    expect(argv.slice(argv.indexOf("--permission-mode"), argv.indexOf("--permission-mode") + 2)).toEqual([
+      "--permission-mode",
+      "dontAsk",
+    ]);
+    expect(argv).toContain("--exclude-dynamic-system-prompt-sections");
+    expect(argv[argv.indexOf("--append-system-prompt") + 1]).toBe("STABLE");
+
+    const plain = buildArgv({ prompt: "p", cwd: "/x" });
+    expect(plain).not.toContain("--permission-mode");
+    expect(plain).not.toContain("--exclude-dynamic-system-prompt-sections");
   });
 });

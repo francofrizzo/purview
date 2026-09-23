@@ -17,3 +17,4 @@ export * from "./hunk-select.js";
 export * from "./changes.js";
 export * from "./line-changes.js";
 export * from "./comment-client.js";
+export * from "./unit-patch.js";

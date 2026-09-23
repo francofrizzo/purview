@@ -494,6 +494,15 @@ export const AnalysisRunInfoSchema = z.object({
   claudeVersion: z.string().optional(),
   /** first 12 hex of sha256 over the prompt-building code and skill files */
   promptVersion: z.string().optional(),
+  /** wall-clock start of the `claude` child (ISO) */
+  startedAt: z.string().optional(),
+  /** wall-clock end: when its event stream ended (ISO) */
+  finishedAt: z.string().optional(),
+  /**
+   * finishedAt - startedAt in ms. The real elapsed time, stalls included;
+   * the result line's `durationMs` has been seen to under-report it badly.
+   */
+  wallMs: z.number().optional(),
   /** size of the analyzed revision's diff */
   size: z
     .object({

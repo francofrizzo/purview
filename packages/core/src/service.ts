@@ -14,6 +14,7 @@ import { migrate, toRevisionFiles } from "./migration.js";
 import { parseDiff } from "./parse-diff.js";
 import { analysisJobPath, commentsPath, repoKeyOf, stateRoot, type PrKey } from "./paths.js";
 import { nextRevisionNumber, priorRevisions } from "./reducer.js";
+import { planUnitPatches, remainingWork, type RemainingWork, type UnitPatchRequest } from "./unit-patch.js";
 import {
   appendEvent,
   appendEvents,
@@ -36,7 +37,6 @@ import type {
   Meta,
   MigrationReport,
   NewEvent,
-  ReviewUnitPatch,
   State,
 } from "./schemas.js";
 import {
@@ -45,8 +45,6 @@ import {
   CHANGELOG_TEXT_MAX,
   FINDING_EVIDENCE_MAX,
   FINDING_TEXT_MAX,
-  NewReviewUnitSchema,
-  ReviewUnitPatchSchema,
 } from "./schemas.js";
 
 /**
@@ -639,74 +637,43 @@ export function setUnit(
   opts: { note?: string } = {},
   root = stateRoot(),
 ): State {
+  return setUnits(key, [{ unitId, payload: patchInput, note: opts.note }], root).state;
+}
+
+/**
+ * Upsert several units in one batch (`set-units`). Every patch is validated
+ * first — schema, hunk ids, one-owner-per-hunk on the state the whole batch
+ * produces — and only then are all events appended in a single write, so an
+ * invalid patch anywhere means nothing is written. Each patch may use
+ * `addHunkIds`/`removeHunkIds` instead of a full `hunkIds` (see unit-patch.ts).
+ */
+export function setUnits(
+  key: PrKey,
+  requests: UnitPatchRequest[],
+  root = stateRoot(),
+): { state: State; warnings: string[]; unitIds: string[] } {
   const state = loadState(key, root);
-  const existing = state.units.find((u) => u.id === unitId);
+  const planned = planUnitPatches(state, requests);
+  const next = appendEvents(key, planned.events, root);
+  return { state: next, warnings: planned.warnings, unitIds: planned.unitIds };
+}
 
-  let patch: ReviewUnitPatch;
-  if (!existing) {
-    const result = NewReviewUnitSchema.safeParse({
-      ...(patchInput as Record<string, unknown>),
-      id: unitId,
-    });
-    if (!result.success) {
-      const fields = [
-        ...new Set(
-          result.error.issues
-            .map((i) => i.path.join(".") || "(root)")
-            .filter((p) => p !== "id"),
-        ),
-      ];
-      throw new Error(
-        `Unit "${unitId}" does not exist yet; creating a new unit requires ` +
-          `the full ReviewUnit schema. Missing/invalid field(s): ${fields.join(", ")}`,
-      );
+/** What is left to do on the current revision (printed after every write). */
+export function remainingWorkFor(key: PrKey, root = stateRoot()): RemainingWork {
+  const state = loadState(key, root);
+  const filesOf = (rev: number | undefined) => {
+    if (rev === undefined) return undefined;
+    try {
+      return readFilesJson(key, rev, root).files;
+    } catch {
+      return undefined;
     }
-    patch = result.data;
-  } else {
-    patch = ReviewUnitPatchSchema.parse(patchInput);
-  }
-
-  // The patched unit's own old list is replaced, not added to, so only the
-  // *other* units can clash. Moving a hunk is two patches: drop it from its
-  // old unit first, then add it to the new one.
-  if (patch.hunkIds) {
-    const dupes = duplicateHunks({
-      units: [...state.units.filter((u) => u.id !== unitId), { id: unitId, hunkIds: patch.hunkIds }],
-    });
-    if (dupes.length > 0) {
-      throw new Error(
-        `Unit "${unitId}" would share ${dupes.length} hunk id(s) with another unit; each ` +
-          `hunk belongs to exactly one (to move one, first set-unit its current unit ` +
-          `without it):\n  ` +
-          dupes.map((d) => `${d.hunkId}: ${d.owners.join(", ")}`).join("\n  "),
-      );
-    }
-  }
-
-  const events: NewEvent[] = [{ type: "unit-updated", unitId, patch }];
-  if (existing && patch.kind && patch.kind !== existing.kind) {
-    for (const hunkId of existing.hunkIds) {
-      events.push({
-        type: "classification-corrected",
-        hunkId,
-        from: existing.kind,
-        to: patch.kind,
-        note: opts.note ?? "",
-      });
-    }
-  }
-  if (existing && patch.attention && patch.attention !== existing.attention) {
-    for (const hunkId of existing.hunkIds) {
-      events.push({
-        type: "classification-corrected",
-        hunkId,
-        from: existing.attention,
-        to: patch.attention,
-        note: opts.note ?? "",
-      });
-    }
-  }
-  return appendEvents(key, events, root);
+  };
+  const report = state.lastMigration;
+  return remainingWork(state, readEvents(key, root), {
+    previous: filesOf(report?.previousRevision),
+    current: filesOf(state.currentRevision),
+  });
 }
 
 export function setHunkViewed(

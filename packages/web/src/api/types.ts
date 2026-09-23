@@ -328,6 +328,10 @@ export interface AnalysisMetrics {
     effort?: string;
     claudeVersion?: string;
     promptVersion?: string;
+    /** wall-clock bracket of the run's child process */
+    startedAt?: string;
+    finishedAt?: string;
+    wallMs?: number;
     size?: { files: number; hunks: number; added: number; removed: number };
     migration?: {
       identical: number;

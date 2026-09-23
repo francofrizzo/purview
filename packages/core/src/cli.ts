@@ -17,8 +17,9 @@ import {
   refreshPr,
   setAnalysis,
   setHunkViewed,
-  setUnit,
+  setUnits,
   setUnitViewed,
+  remainingWorkFor,
   syncPr,
   truncateFindings,
 } from "./service.js";
@@ -28,6 +29,7 @@ import { formatReport } from "./report.js";
 import { renderTriage } from "./triage.js";
 import { allSelectedHunks, renderShowHunk, selectHunks } from "./hunk-select.js";
 import { renderChanges } from "./changes.js";
+import { formatRemaining, needsClassification, renderUnits, type UnitPatchRequest } from "./unit-patch.js";
 import {
   callServer,
   commentLocation,
@@ -47,9 +49,14 @@ migrateStateDirOnStartup({
   warn: (s) => console.error(s),
 });
 
-/** This CLI's own real invocation, for the triage view's `bodies:` line. */
+/**
+ * This CLI's own real invocation, for the lines that tell the reader how to
+ * fetch more (`bodies:`, "… `show <id>` for all"). The server's wrapper
+ * script exports its own path as PURVIEW_CLI_SELF, so a run sees the single
+ * executable path it was told to use rather than `<node> <cli.js>`.
+ */
 function selfCliCommand(): string {
-  return `${process.execPath} ${process.argv[1]}`;
+  return process.env.PURVIEW_CLI_SELF || `${process.execPath} ${process.argv[1]}`;
 }
 
 function resolveRevision(state: { currentRevision: number }, rev?: string): number {
@@ -75,7 +82,7 @@ export const SHOW_INLINE_LIMIT = 25_000;
 function printOrSpill(
   key: PrKey,
   body: string,
-  opts: { summary: string; name: string; inline?: boolean },
+  opts: { summary: string; name: string; inline?: boolean; toc?: string[] },
 ): void {
   if (opts.inline || body.length <= SHOW_INLINE_LIMIT) {
     process.stdout.write(body);
@@ -87,8 +94,18 @@ function printOrSpill(
   fs.writeFileSync(file, body, "utf8");
   console.log(`${opts.summary}, ${Math.round(body.length / 1024)} KB: too large to print inline.`);
   console.log(`Written to ${file}`);
-  console.log("Read that file with the Read tool (page with offset/limit if it is very long).");
+  if (opts.toc && opts.toc.length > 0) {
+    console.log("Contents (line ranges in that file; Read just the parts you need with offset=<first line> limit=<count>):");
+    for (const line of opts.toc) console.log(`  ${line}`);
+  } else {
+    console.log("Read that file with the Read tool (page with offset/limit if it is very long).");
+  }
   console.log("Cite source lines from its gutter (old new │), never the file's own line numbers.");
+}
+
+/** `L<from>-<to>` plus the line count, as a table-of-contents cell. */
+function range(from: number, to: number): string {
+  return `L${from}-${to} (${to - from + 1} lines)`;
 }
 
 function readJsonFile(file: string): unknown {
@@ -208,30 +225,79 @@ program
 program
   .command("show")
   .argument("<key>")
-  .argument("[selectors...]", "hunk id (exact or unique prefix >=6 chars), file path, or glob")
+  .argument(
+    "[selectors...]",
+    "hunk id (exact or unique prefix >=6 chars), file path, glob, or unit:<unitId> (that unit's hunks)",
+  )
   .option("--rev <n>", "revision to read from (defaults to the current one)")
   .option("--all", "print every hunk of the revision, ignoring selectors")
+  .option("--needs", "add every hunk that still needs classification (in no unit, not explicitly unassigned)")
   .option("--inline", "always print to stdout, even when the result is large")
   .description("print full hunk bodies for the given selectors (large results go to a scratch file)")
-  .action((keyArg: string, selectors: string[], opts: { rev?: string; all?: boolean; inline?: boolean }) => {
+  .action(
+    (
+      keyArg: string,
+      selectors: string[],
+      opts: { rev?: string; all?: boolean; inline?: boolean; needs?: boolean },
+    ) => {
     const key = requireExistingKey(keyArg);
     const state = loadState(key);
     const revision = resolveRevision(state, opts.rev);
     const filesJson = readFilesJson(key, revision);
 
-    if (!opts.all && selectors.length === 0) {
-      throw new Error("Pass at least one selector, or --all to print every hunk.");
+    if (!opts.all && !opts.needs && selectors.length === 0) {
+      throw new Error("Pass at least one selector, --needs, or --all to print every hunk.");
     }
+    if ((opts.needs || selectors.some((s) => s.startsWith("unit:"))) && revision !== state.currentRevision) {
+      throw new Error("--needs and unit:<id> read the current revision's state; drop --rev.");
+    }
+
+    // unit:<id> and --needs expand to plain hunk ids before selection.
+    const unknownUnits: string[] = [];
+    const expanded = selectors.flatMap((sel) => {
+      if (!sel.startsWith("unit:")) return [sel];
+      const unit = state.units.find((u) => u.id === sel.slice("unit:".length));
+      if (!unit) {
+        unknownUnits.push(sel);
+        return [];
+      }
+      return unit.hunkIds;
+    });
+    if (opts.needs) expanded.push(...needsClassification(state).map((h) => h.id));
 
     const { hunks, unknown } = opts.all
       ? { hunks: allSelectedHunks(filesJson), unknown: [] as string[] }
-      : selectHunks(filesJson, selectors);
+      : selectHunks(filesJson, expanded);
+    unknown.push(...unknownUnits);
 
     const files = new Set(hunks.map((sh) => sh.file.path));
-    const summary = `-- ${hunks.length} hunks, ${files.size} files`;
-    const body = hunks.map(renderShowHunk).join("") + summary + "\n";
+    const summary =
+      hunks.length === 0 && opts.needs && expanded.length === 0
+        ? "-- 0 hunks: nothing needs classification"
+        : `-- ${hunks.length} hunks, ${files.size} files`;
+    // The body and a per-file table of contents (1-based line ranges), so a
+    // spilled result can be Read in pieces instead of paged blindly.
+    const toc: string[] = [];
+    let body = "";
+    let line = 1;
+    let group: { path: string; from: number; ids: string[] } | undefined;
+    const closeGroup = () => {
+      if (group) toc.push(`${range(group.from, line - 1)}  ${group.path}  ${group.ids.join(" ")}`);
+    };
+    for (const sh of hunks) {
+      if (group?.path !== sh.file.path) {
+        closeGroup();
+        group = { path: sh.file.path, from: line, ids: [] };
+      }
+      const text = renderShowHunk(sh);
+      group.ids.push(`${sh.hunk.id.slice(0, 8)}@L${line}`);
+      body += text;
+      line += text.split("\n").length - 1;
+    }
+    closeGroup();
+    body += summary + "\n";
 
-    printOrSpill(key, body, { summary, name: "show", inline: opts.inline });
+    printOrSpill(key, body, { summary, name: "show", inline: opts.inline, toc });
 
     if (unknown.length > 0) {
       console.error(`error: unknown selector(s): ${unknown.join(", ")}`);
@@ -260,14 +326,20 @@ program
         return undefined;
       }
     };
-    const { body, summary } = renderChanges({
+    const { body, summary, toc } = renderChanges({
       state,
       report,
       revision,
       previousFiles: filesOf(report?.previousRevision),
       currentFiles: filesOf(revision),
+      showCommand: `${selfCliCommand()} show ${keyToString(key)}`,
     });
-    printOrSpill(key, body, { summary, name: "changes", inline: opts.inline });
+    printOrSpill(key, body, {
+      summary,
+      name: "changes",
+      inline: opts.inline,
+      toc: toc.map((t) => `${range(t.from, t.to)}  ${t.label}`),
+    });
   });
 
 /** Exit with a message on stderr (no `error:` prefix — the text is the answer). */
@@ -356,6 +428,7 @@ program
           ? `, ${state.unassignedHunkIds.length} explicitly unassigned`
           : ""),
     );
+    console.log(formatRemaining(remainingWorkFor(key)));
   });
 
 program
@@ -364,7 +437,9 @@ program
   .requiredOption("--file <json>", 'JSON file with a unit or a partial patch ("-" for stdin)')
   .option("--id <unitId>", "unit id (required when the JSON has no id)")
   .option("--note <text>", "note recorded with any classification correction")
-  .description("create or patch a single review unit")
+  .description(
+    "create or patch a single review unit (hunkIds replaces the list; addHunkIds/removeHunkIds edit it)",
+  )
   .action((keyArg: string, opts: { file: string; id?: string; note?: string }) => {
     const key = requireExistingKey(keyArg);
     const raw = readJsonFile(opts.file) as Record<string, unknown>;
@@ -374,13 +449,61 @@ program
     // setUnit validates strictly against the full schema for a brand-new
     // unit id, and as a partial patch when the unit id already exists.
     const { payload, warnings } = truncateFindings(raw, unitId);
-    const state = setUnit(key, unitId, payload, { note: opts.note });
-    for (const w of warnings) console.log(w);
-    const unit = state.units.find((u) => u.id === unitId)!;
+    const res = setUnits(key, [{ unitId, payload, note: opts.note ?? (raw.note as string | undefined) }]);
+    for (const w of [...warnings, ...res.warnings]) console.log(w);
+    const unit = res.state.units.find((u) => u.id === unitId)!;
     console.log(
       `Unit ${unit.id} saved: [${unit.attention}/${unit.kind}] ${unit.title} ` +
         `(${unit.hunkIds.length} hunks)`,
     );
+    console.log(formatRemaining(remainingWorkFor(key)));
+  });
+
+program
+  .command("set-units")
+  .argument("<key>")
+  .requiredOption("--file <json>", 'JSON file with {"units": [{"id": ..., ...patch}]}')
+  .description(
+    "create or patch several units in one all-or-nothing batch (each entry like set-unit's JSON, plus an optional `note`)",
+  )
+  .action((keyArg: string, opts: { file: string }) => {
+    const key = requireExistingKey(keyArg);
+    const raw = readJsonFile(opts.file) as { units?: unknown };
+    if (!raw || typeof raw !== "object" || !Array.isArray(raw.units)) {
+      throw new Error('Expected {"units": [ {"id": "<unitId>", ...patch}, ... ]}');
+    }
+    const warnings: string[] = [];
+    const requests: UnitPatchRequest[] = raw.units.map((entry, i) => {
+      const e = (entry ?? {}) as Record<string, unknown>;
+      if (typeof e.id !== "string" || !e.id) throw new Error(`units[${i}] has no "id"; nothing was written`);
+      const fixed = truncateFindings(e, e.id);
+      warnings.push(...fixed.warnings);
+      return { unitId: e.id, payload: fixed.payload, note: typeof e.note === "string" ? e.note : undefined };
+    });
+    if (requests.length === 0) throw new Error('"units" is empty; nothing to write');
+    const res = setUnits(key, requests);
+    for (const w of [...warnings, ...res.warnings]) console.log(w);
+    for (const id of res.unitIds) {
+      const unit = res.state.units.find((u) => u.id === id)!;
+      console.log(`Unit ${unit.id} saved: [${unit.attention}/${unit.kind}] ${unit.title} (${unit.hunkIds.length} hunks)`);
+    }
+    console.log(formatRemaining(remainingWorkFor(key)));
+  });
+
+program
+  .command("units")
+  .argument("<key>")
+  .argument("[unitIds...]", "only these units (default: all)")
+  .description("compact unit listing: id, attention/kind, title, hunk ids by file (short ids), findings; husks marked ~")
+  .action((keyArg: string, unitIds: string[]) => {
+    const key = requireExistingKey(keyArg);
+    const state = loadState(key);
+    const { text, unknown } = renderUnits(state, unitIds);
+    process.stdout.write(text);
+    if (unknown.length > 0) {
+      console.error(`error: unknown unit(s): ${unknown.join(", ")}`);
+      process.exitCode = 1;
+    }
   });
 
 program

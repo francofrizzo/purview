@@ -222,7 +222,7 @@ describe("renderChanges", () => {
     expect(out.body).toContain("summary: core summary");
     expect(out.body).toContain("attentionWhy: core why");
     // What the unit holds now (h2 was archived out), so a shrunken unit is obvious.
-    expect(out.body).toContain("now holds 1 hunk: a.ts +11 -0 (h1b)");
+    expect(out.body).toContain("now holds 1 hunk:\n    a.ts +11 -0: h1b\n");
     expect(out.body).toContain("~ fuzzy score 0.80: h1b <- h1  a.ts  +11 -0 -> +11 -0");
     expect(out.body).toContain("    was│+round(x)");
     expect(out.body).toContain("    now│+bankersRound(x)");

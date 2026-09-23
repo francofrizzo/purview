@@ -92,6 +92,8 @@ beforeEach(() => {
           resolvedModel: "claude-opus-4-6",
           effort: "high",
           promptVersion: "0123456789ab",
+          // 21.8 real minutes against the CLI's 5: a stall.
+          wallMs: 1_308_000,
           size: { files: 4, hunks: 8, added: 150, removed: 50 },
           migration: { identical: 5, fuzzy: 2, renamed: 0, archived: 1, new: 1, changedUnits: 2 },
         },
@@ -120,6 +122,8 @@ describe("analysis-metrics script", () => {
     // Size falls back to files.json: 2 files, 2 hunks, +4 -1.
     expect(first.size).toEqual({ files: 2, hunks: 2, added: 4, removed: 1 });
     expect(first.minPer100).toBeCloseTo(40); // 2 min over 5 lines
+    // No wall time recorded: minutes fall back to the CLI's durationMs.
+    expect(first).toMatchObject({ minutes: 2, minutesSource: "durationMs", cliMinutes: 2, stalled: false });
     // The reader's reclassify counts; the agent's own and the retitle do not.
     expect(first.corrections).toBe(2);
     expect(first.edits).toBe(1);
@@ -134,6 +138,9 @@ describe("analysis-metrics script", () => {
       edits: 0,
     });
     expect(second.costPer100).toBeCloseTo(1); // $2 over 200 lines
+    // Wall time wins; the gap to the CLI's own number is flagged.
+    expect(second).toMatchObject({ minutesSource: "wall", cliMinutes: 5, stalled: true });
+    expect(second.minutes).toBeCloseTo(21.8);
     expect(second.transcript).toBe(
       path.join(
         os.homedir(),
@@ -166,6 +173,9 @@ describe("analysis-metrics script", () => {
     });
     expect(out.split("\n")[0]).toMatch(/^#\s+key\s+rev\s+finished\s+status\s+kind\s+model/);
     expect(out).toContain("claude-opus-4-6");
+    expect(out.split("\n")[0]).toMatch(/minutes\s+cli\.min\s+gap\s+turns/);
+    expect(out).toMatch(/21\.8\s+5\.0\s+!/);
+    expect(out).toMatch(/2\.0~\s+2\.0\s+/);
     expect(out).toContain("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jsonl  (missing)");
   });
 });

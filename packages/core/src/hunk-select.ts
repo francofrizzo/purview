@@ -20,7 +20,7 @@ export interface SelectResult {
   unknown: string[];
 }
 
-const MIN_PREFIX_LEN = 6;
+export const MIN_PREFIX_LEN = 6;
 
 /** Convert a `*`/`**` glob into an anchored RegExp. `*` never crosses `/`;
  *  `**` crosses any number of segments, and `**` followed by `/` also matches

@@ -87,7 +87,11 @@ export function rubricLayers(
 export function rubricSection(
   key: PrKey,
   root = stateRoot(),
-  opts: { committed?: CommittedConfig } = {},
+  opts: {
+    committed?: CommittedConfig;
+    /** the built-in rubric is already inlined (the analysis system prompt): say so instead of naming its path */
+    baseInline?: boolean;
+  } = {},
 ): string {
   const layers = rubricLayers(key, root, opts);
   if (layers.length === 1) return "";
@@ -97,7 +101,13 @@ export function rubricSection(
   ];
   for (const layer of layers) {
     out.push("", `----- RUBRIC LAYER ${layer.level}: ${layer.label} -----`);
-    if (layer.path) out.push(`Read it from: ${layer.path}`);
+    if (layer.path) {
+      out.push(
+        opts.baseInline
+          ? "Already in the system prompt (RUBRIC.md) — do not read it from disk."
+          : `Read it from: ${layer.path}`,
+      );
+    }
     // Provenance only: naming the path without this warning reliably baits
     // the model into `cat`ing a file outside its readable roots and burning a
     // turn on the denial.

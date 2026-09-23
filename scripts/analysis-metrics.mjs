@@ -19,6 +19,12 @@
 //   --group kind|model|effort|prompt|repo|status
 //                                  one aggregate row per value instead of per run
 //
+// `minutes` is wall-clock time: the server's own bracket around the child
+// process (`metrics.run.wallMs`). Runs recorded before that existed fall back
+// to the CLI's `durationMs` and are marked `~`. `cli.min` is always the CLI's
+// number; a run whose wall time exceeds it by more than half (and 2+ minutes)
+// is flagged `!` in `gap` — the CLI does not count stalls.
+//
 // Size columns come from the run's own record (`metrics.run.size`) and fall
 // back to the revision's files.json for runs recorded before that existed.
 // `min/100L` and `$/100L` normalize by added+removed lines of the whole
@@ -179,7 +185,11 @@ function collectRuns(root) {
       const run = m.run ?? {};
       const size = run.size ?? sizeFromFiles(prDir, e.revision);
       const lines = size ? size.added + size.removed : undefined;
-      const minutes = m.durationMs !== undefined ? m.durationMs / 60_000 : undefined;
+      const cliMinutes = m.durationMs !== undefined ? m.durationMs / 60_000 : undefined;
+      const wallMinutes = run.wallMs !== undefined ? run.wallMs / 60_000 : undefined;
+      const minutes = wallMinutes ?? cliMinutes;
+      const stalled =
+        wallMinutes !== undefined && cliMinutes !== undefined && wallMinutes > cliMinutes * 1.5 && wallMinutes - cliMinutes >= 2;
       const per100 = (v) => (v !== undefined && lines ? (v * 100) / lines : undefined);
       rows.push({
         key,
@@ -195,6 +205,9 @@ function collectRuns(root) {
         size,
         migration: run.migration,
         minutes,
+        minutesSource: wallMinutes !== undefined ? "wall" : cliMinutes !== undefined ? "durationMs" : undefined,
+        cliMinutes,
+        stalled,
         turns: m.turns,
         cost: m.costUsd,
         cacheRead: m.usage?.cacheRead,
@@ -283,6 +296,8 @@ function printRuns(rows, opts) {
     "size",
     "mig",
     "minutes",
+    "cli.min",
+    "gap",
     "turns",
     "cost",
     "min/100L",
@@ -306,7 +321,9 @@ function printRuns(rows, opts) {
     fmt.str(r.promptVersion?.slice(0, 7)),
     fmtSize(r.size),
     fmtMigration(r.migration),
-    fmt.num(r.minutes),
+    fmt.num(r.minutes) + (r.minutesSource === "durationMs" ? "~" : ""),
+    fmt.num(r.cliMinutes),
+    r.stalled ? "!" : "",
     fmt.int(r.turns),
     fmt.usd(r.cost),
     fmt.num(r.minPer100, 2),

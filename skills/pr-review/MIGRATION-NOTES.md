@@ -2,8 +2,10 @@
 
 Operator doc for what happens on `reviewer-state refresh <key>`, and what the skill is
 allowed to touch afterward. Read this before running `refresh` on a PR that already has an
-analysis.
+analysis. It is the one statement of the refresh flow: SKILL.md and Purview's run prompt
+point here rather than restating it.
 
+<!-- interactive-only:start -->
 ## When migration runs
 
 Triggered by `refresh` when the PR's `baseSha`, `headSha` or `mergeBase` has changed since
@@ -13,6 +15,7 @@ the last recorded revision. The CLI fetches the diff fresh from GitHub (`gh api 
 Old revisions are kept, not overwritten. (`n` is the highest revision number ever added,
 discarded ones included — see "Discarded revisions".) When nothing moved, `refresh` prints
 `No change; still at revision <n>.` and does nothing else.
+<!-- interactive-only:end -->
 
 ## What identical / fuzzy / renamed / archived / new mean
 
@@ -48,33 +51,40 @@ first three as "carried".
   not a change of this revision. It is **always left unassigned**;
   despite what SPEC suggests, the engine does no file-adjacency auto-attachment. Every new
   hunk is yours to classify, and shows up under "Needs classification" in
-  `reviewer-state report <key>` until it's in a unit.
+  `reviewer-state report <key>` (and in `show <key> --needs`) until it's in a unit.
 
 ## What the skill must do on refresh
 
-1. Run `refresh`, read the printed migration report (carried/fuzzy/renamed/archived/new
+<!-- interactive-only:start -->
+0. Run `refresh`, read the printed migration report (carried/fuzzy/renamed/archived/new
    counts + per-hunk list for everything except `identical`). The same report is on disk at
    `revisions/<n>/migration.json`, and `reviewer-state report <key>` reprints the current
    revision's one plus a "Needs classification" list.
-2. `reviewer-state report <key>`'s "Needs classification" list is exactly the `new`/
-   unassigned hunk ids. Fetch every one of their bodies with a **single**
-   `reviewer-state show <key> <id1> <id2> ...` call, then classify those hunks. Do not
-   re-group carried/fuzzy/renamed hunks — their unit membership and attention already
-   reflect prior human review context (including any `classification-corrected` events),
-   and re-deriving them from scratch risks contradicting that history.
+<!-- interactive-only:end -->
 
-   But **do** refresh the description of every *changed unit*. Run
-   `reviewer-state changes <key>`: it lists each live unit (husks excluded) that this
-   revision reworked — one of its current hunks migrated `fuzzy` (or `renamed` with
-   different content), or a hunk it held was `archived` — with its current `summary` /
-   `attentionWhy`, a compact before→after of each reworked hunk (diff of the old and new
-   hunk bodies), the archived hunk ids with their old header and sizes, and new/unassigned
-   hunks in the same files as hints only. A unit is also changed once you attach a `new`
-   hunk to it. For each changed unit, in its one `set-unit` patch:
+1. **Classify the new/unassigned hunks — and only those.** They are the hunks in no unit and
+   not explicitly unassigned: the run prompt lists them (id, file, size, header); by hand,
+   `report`'s "Needs classification" list. Fetch every body in **one**
+   `reviewer-state show <key> --needs` call (add other selectors to the same call if you
+   need context), then attach each hunk to the existing unit it belongs to, create a new
+   unit for it, or revive a husk (below). Do not re-group carried/fuzzy/renamed hunks —
+   their unit membership and attention already reflect prior human review context
+   (including any `classification-corrected` events), and re-deriving them from scratch
+   risks contradicting that history.
+
+2. **Refresh the description of every *changed unit*.** Run `reviewer-state changes <key>`:
+   it lists each live unit (husks excluded) that this revision reworked — one of its current
+   hunks migrated `fuzzy` (or `renamed` with different content), or a hunk it held was
+   `archived` — with its current `summary` / `attentionWhy`, the hunk ids it holds now
+   (grouped by file), a compact before→after of each reworked hunk (capped per hunk; `show
+   <id>` prints the rest), the archived hunk ids with their old header and sizes, and
+   new/unassigned hunks in the same files as hints only. A unit is also changed once you
+   attach a `new` hunk to it. For each changed unit, in its one patch:
    - rewrite `title`, `summary` and `attentionWhy` to describe exactly the hunks the unit holds
-     **now** (listed as "now holds" in the `changes` output). A unit that lost hunks is titled and
-     summarized by what remains, not by what left; the history goes in the changelog only;
-   - re-check `kind` / `attention` / `riskFlags` (a correction needs `--note`);
+     **now** (the "now holds" lines in `changes`, or `reviewer-state units <key> <id>`). A
+     unit that lost hunks is titled and summarized by what remains, not by what left; the
+     history goes in the changelog only;
+   - re-check `kind` / `attention` / `riskFlags` (a correction needs a `note`);
    - send a `changelogEntry`: a short note (a sentence or two) about what *this revision* changed in
      the unit's **code** (e.g. `"rounding switched to banker's; added a .5 test"`) — not a
      restatement of the summary, and never migration bookkeeping (attached / unassigned /
@@ -85,32 +95,55 @@ first three as "carried".
    - re-verify its findings (see "What happens to findings").
 
    Units `changes` does not list and that take no new hunk are not patched at all.
-3. Patch only the units affected by new hunks, via
-   `reviewer-state set-unit <key> --id <unitId> --file patch.json` (unit id is the `--id`
-   flag or an `id` field in the JSON; write patch.json with the Write tool into the scratch
-   directory — never stdin/heredoc; `--note "<why>"` annotates a
-   kind/attention correction). A "patch" here means updating that one unit's `hunkIds`
-   (adding the new hunk — send the **full** resulting array, the patch replaces the field,
-   it does not append) and, only if the new hunk changes what's true about the unit, its
-   `summary` / `attentionWhy` / `riskFlags`. Units untouched by new hunks and not listed by
-   `changes` are not patched at all. A hunk belongs to one unit only: `set-unit` rejects a `hunkIds` array that takes
-   a hunk another unit still owns. To move one, patch its current unit without it first,
-   then add it to the new unit.
 
-   Two `set-unit` behaviors to know: patching an existing unit's `kind` or `attention` also
-   emits a `classification-corrected` event for each of its hunks (that's the learning
-   loop — pass `--note`), and a `--id` that matches no existing unit **creates** one — but
-   only if the JSON is a complete `ReviewUnit` (every required field present); the CLI
-   rejects a create with a missing field (e.g. no `kind`) instead of silently filling in
-   defaults. So when you create a unit this way, send all the fields. Only when the `--id`
-   already exists does the JSON act as a partial patch of just the fields you send.
-4. **Never regenerate the whole analysis.** Do not re-run the full two-pass process from
-   SKILL.md step 3 over the entire diff on a refresh — that would silently discard
-   accumulated viewed-state semantics and reviewer trust in the existing structure. The
-   only exception is the very first `set-analysis` call on a PR that has no prior
-   analysis at all (that's `init`'s flow, not `refresh`'s). `set-analysis` replaces units
-   wholesale, so it also starts every unit's `changelog` fresh unless the payload carries
-   it.
+3. **Write every patch in one batch.** Put them all in one file (Write tool, scratch
+   directory — never stdin/heredoc) and run
+   `reviewer-state set-units <key> --file <scratch>/patches.json`:
+
+   ```json
+   {"units": [
+     {"id": "rounding", "addHunkIds": ["3f9c2a1b"], "summary": "...", "attentionWhy": "...",
+      "changelogEntry": "rounding switched to banker's; added a .5 test"},
+     {"id": "old-home", "removeHunkIds": ["5e6f7a8b"]},
+     {"id": "new-home", "addHunkIds": ["5e6f7a8b"], "kind": "wiring", "attention": "skim",
+      "note": "config plumbing, not logic"},
+     {"id": "brand-new", "title": "...", "summary": "...", "kind": "tests", "attention": "skim",
+      "attentionWhy": "...", "order": 12, "riskFlags": [], "hunkIds": ["9c0d1e2f"]}
+   ]}
+   ```
+
+   - `addHunkIds` / `removeHunkIds` edit a unit's hunk list in place — no need to know or
+     resend the rest of it. `hunkIds` still replaces the whole list; don't combine it with
+     add/remove in one patch. Hunk ids may be the 8-char short ids `units`/`changes` print.
+   - A hunk belongs to one unit only, checked on the result of the whole batch: to move one,
+     remove it from its current unit and add it to the new one **in the same batch** (either
+     order).
+   - The batch is all-or-nothing: if any patch is invalid, the CLI names every problem and
+     writes nothing — fix the file with the Edit tool and re-run the same command.
+   - On success it prints each saved unit, then what remains: hunks still needing
+     classification (or "All hunks assigned") and changed units not patched yet this
+     revision. No follow-up `report` is needed.
+   - `reviewer-state set-unit <key> --id <unitId> --file patch.json` takes one patch (same
+     JSON, `--note "<why>"` for a correction) and behaves the same way.
+
+   Two behaviors to know: patching an existing unit's `kind` or `attention` also emits a
+   `classification-corrected` event for each of its hunks (that's the learning loop — give
+   the patch a `note`), and an `id` that matches no existing unit **creates** one — but only
+   if the patch is a complete `ReviewUnit` (every required field present); the CLI rejects a
+   create with a missing field (e.g. no `kind`) instead of silently filling in defaults. Only
+   when the `id` already exists does the JSON act as a partial patch of just the fields you
+   send.
+
+4. **Husks.** Units listed under "Removed units" in `report` (marked `~` in `units`;
+   `removedAtRevision` in state) are husks of decisions the PR dropped: don't patch them,
+   except to revive one (give it hunks) when new hunks genuinely belong to that same
+   decision.
+
+5. **Never regenerate the whole analysis.** Do not re-run the full two-pass process from
+   SKILL.md step 3 over the entire diff on a refresh, and never `set-analysis` — that would
+   silently discard accumulated viewed-state semantics and reviewer trust in the existing
+   structure, and it starts every unit's `changelog` fresh unless the payload carries it.
+   `set-analysis` is only for the very first analysis of a PR that has none.
 
 ## What happens to findings
 
@@ -157,6 +190,7 @@ code a reviewer is already scrutinizing closely.
 
 ## Discarded revisions
 
+<!-- interactive-only:start -->
 A refresh that lands while the author is mid-rebase / force-push records a half-pushed
 revision. Migrating against it archives every hunk it is missing (units lose hunks and
 findings, may turn into husks, viewed marks go), and when the finished push lands those
@@ -177,6 +211,7 @@ header) before refreshing again:
   serves the half-pushed head, that refresh simply records it again — discard once the
   author has finished pushing.
 
+<!-- interactive-only:end -->
 For the skill, a discarded revision does not exist: never read `revisions/<n>/` of one, and
 look at `report` / `triage` (which follow the current revision) rather than guessing the
 number.
@@ -195,4 +230,4 @@ number.
 - Never touch units that have no new/unassigned hunks in them and that `changes` does not
   list.
 - Never overwrite the whole `units` array with `set-analysis` on a refresh — that command
-  is for the initial full analysis only. Use `set-unit` for incremental patches.
+  is for the initial full analysis only. Use `set-units` (or `set-unit`) for incremental patches.

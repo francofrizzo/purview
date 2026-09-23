@@ -212,6 +212,7 @@ to chase. "Checked, looks fine" about something nobody was going to check is noi
 
 *(Empty — populate as `classification-corrected` events accumulate.)*
 
+<!-- interactive-only:start -->
 When the skill reads `classification-corrected` events from `events.jsonl` (per SKILL.md
 step 6) and finds a pattern — the same kind of hunk gets corrected the same way more than
 once — add a worked example here, in this format:
@@ -229,3 +230,4 @@ Example: <one concrete code-shape example, generic enough to recognize future in
 Keep entries terse. This section exists to be read on every future run, so prune entries
 that get subsumed by a more general one above once you've added enough examples to update
 the main kind/attention sections instead.
+<!-- interactive-only:end -->

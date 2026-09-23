@@ -563,6 +563,7 @@ export function chatToolFlags(): {
       `Bash(${cmd} triage:*)`,
       `Bash(${cmd} show:*)`,
       `Bash(${cmd} changes:*)`,
+      `Bash(${cmd} units:*)`,
       `Bash(${cmd} base-file:*)`,
       // Draft comments only: the server confines chat-marked requests
       // (PURVIEW_ACTOR=chat, set by chat-session.ts) to drafts.
@@ -572,6 +573,8 @@ export function chatToolFlags(): {
       `Bash(${cmd} sync:*)`,
       `Bash(${cmd} set-analysis:*)`,
       `Bash(${cmd} set-unit:*)`,
+      // A rule matches whole words: `set-unit:*` does not cover `set-units`.
+      `Bash(${cmd} set-units:*)`,
       `Bash(${cmd} view:*)`,
       `Bash(${cmd} init:*)`,
       `Bash(${cmd} refresh:*)`,
