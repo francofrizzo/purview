@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { Finding, ReviewUnit } from "../api/types";
 import { findingsBadge, sortFindings } from "../lib/diffModel";
 import { IconCheck, IconWarning } from "./icons";
+import { InlineMarkdown } from "./Markdown";
 
 /**
  * Findings are what the analysis *verified* in the local checkout, as opposed
@@ -75,7 +76,9 @@ export function UnitFindings({ findings }: { findings: Finding[] | undefined }) 
               <s.icon width={10} height={10} />
             </span>
             <span className="min-w-0">
-              <span style={{ color: "var(--fg-muted)" }}>{f.text}</span>{" "}
+              <span style={{ color: "var(--fg-muted)" }}>
+                <InlineMarkdown text={f.text} />
+              </span>{" "}
               <span className="font-mono" style={{ color: "var(--fg-faint)" }}>
                 {f.evidence}
               </span>

@@ -10,6 +10,7 @@ import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
 import { IconChevron } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
+import { InlineMarkdown } from "./Markdown";
 
 const HIDE_REVIEWED_TITLE =
   "Drop fully-viewed units out of the list. The unit you are reading stays put, so the diff pane never changes under you.";
@@ -295,7 +296,7 @@ function RemovedRow({ unit }: { unit: ReviewUnit }) {
             className="min-w-0 flex-1 break-words pr-3 text-[13px] leading-[18px]"
             style={{ color: "var(--fg-faint)" }}
           >
-            {unit.title}
+            <InlineMarkdown text={unit.title} />
           </span>
         </div>
         <div className="mt-1 pl-5 text-2xs" style={{ color: "var(--fg-faint)" }}>
@@ -304,7 +305,7 @@ function RemovedRow({ unit }: { unit: ReviewUnit }) {
         </div>
         {expanded && unit.summary ? (
           <p className="mt-1.5 pl-5 text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
-            {unit.summary}
+            <InlineMarkdown text={unit.summary} />
           </p>
         ) : null}
         {expanded ? <UnitChangelog changelog={unit.changelog} inline className="mt-1 pl-5" /> : null}
@@ -364,7 +365,7 @@ function UnitRow({
             title={unit.title}
             style={{ color: p.total > 0 && p.viewed === p.total ? "var(--fg-muted)" : "var(--fg)" }}
           >
-            {unit.title}
+            <InlineMarkdown text={unit.title} />
           </span>
         </div>
         <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 pl-5">

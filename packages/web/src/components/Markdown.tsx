@@ -237,6 +237,14 @@ function MermaidBlock({ code, open }: { code: string; open: boolean }) {
   );
 }
 
+/**
+ * One line of prose that may carry inline markdown (`code`, **bold**, links) —
+ * analysis titles, summaries and findings — rendered inline, without blocks.
+ */
+export function InlineMarkdown({ text }: { text: string }) {
+  return <Inline nodes={parseInline(text)} />;
+}
+
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   const blocks = parseMarkdown(text);
   return (

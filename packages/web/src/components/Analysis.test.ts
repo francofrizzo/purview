@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysisStatsRows, archivedSkipText } from "./Analysis";
+import { analysisStatsRows, archivedSkipText, isToolProgress } from "./Analysis";
 
 describe("analysisStatsRows", () => {
   it("lists known stats and orders tool calls by count", () => {
@@ -68,5 +68,16 @@ describe("archivedSkipText", () => {
     expect(archivedSkipText(4, 0).detail).toBe(
       "Some unit descriptions may not reflect its latest changes.",
     );
+  });
+});
+
+
+describe("isToolProgress", () => {
+  it("tells a running tool call from a phase", () => {
+    expect(isToolProgress("Bash grep -rn foo internal/")).toBe(true);
+    expect(isToolProgress("Read /tmp/x.txt")).toBe(true);
+    expect(isToolProgress("preparing checkout")).toBe(false);
+    expect(isToolProgress("starting")).toBe(false);
+    expect(isToolProgress("cancelling")).toBe(false);
   });
 });

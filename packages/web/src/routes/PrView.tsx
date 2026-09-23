@@ -111,6 +111,7 @@ import { useDiffViewPrefs, useSettings } from "../lib/settings";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
 import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
+import { InlineMarkdown } from "../components/Markdown";
 
 /** No changelog highlight; one shared array, so nothing downstream sees a new one each render. */
 const NO_REVISIONS: number[] = [];
@@ -1240,7 +1241,7 @@ export function PrView() {
                   }`}
                   title={selectedUnit.title}
                 >
-                  {selectedUnit.title}
+                  <InlineMarkdown text={selectedUnit.title} />
                 </h2>
                 <div className="flex flex-none flex-wrap items-center gap-2">
                   <KindChip kind={selectedUnit.kind} />
@@ -1307,7 +1308,7 @@ export function PrView() {
               >
                 <div className="min-h-0 overflow-hidden">
                   <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
-                    {selectedUnit.summary}
+                    <InlineMarkdown text={selectedUnit.summary} />
                   </p>
                   <UnitChangelog
                     changelog={selectedUnit.changelog}
@@ -1325,7 +1326,7 @@ export function PrView() {
                   ) : null}
                   {selectedUnit.attentionWhy ? (
                     <p className="mt-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                      why {selectedUnit.attention}: {selectedUnit.attentionWhy}
+                      why {selectedUnit.attention}: <InlineMarkdown text={selectedUnit.attentionWhy} />
                     </p>
                   ) : null}
                   <UnitFindings findings={selectedUnit.findings} />

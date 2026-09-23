@@ -146,6 +146,24 @@ export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
   );
 }
 
+/**
+ * A live job's progress is either a phase ("preparing checkout") or the tool
+ * call running right now ("Bash grep -rn …", "Read /path/…"). Tool calls are
+ * code, so they get the code font; phases stay prose.
+ */
+export function isToolProgress(text: string): boolean {
+  return /^[A-Z][A-Za-z]+(\s|$)/.test(text);
+}
+
+function ProgressText({ text }: { text: string }) {
+  if (!isToolProgress(text)) return <>{text}</>;
+  return (
+    <span className="break-all font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+      {text}
+    </span>
+  );
+}
+
 /** Banner copy, split out so it can be tested without rendering. */
 export function archivedSkipText(
   revision: number,
@@ -297,8 +315,9 @@ export function AnalysisBanner({
 
       <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
         {live
-          ? (job?.progress ??
-            "Claude is reading the diff and grouping it into review units. The units appear here as soon as it finishes.")
+          ? job?.progress
+            ? <ProgressText text={job.progress} />
+            : "Claude is reading the diff and grouping it into review units. The units appear here as soon as it finishes."
           : failed
             ? (job?.error ?? "The analysis run did not complete.")
             : status === "cancelled"

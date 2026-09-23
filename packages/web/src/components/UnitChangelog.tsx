@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { UnitChangelogEntry } from "../api/types";
 import { changelogHeading, changelogView } from "../lib/changelog";
 import { IconChevron, IconHistory } from "./icons";
+import { InlineMarkdown } from "./Markdown";
 
 /**
  * A unit's changelog: one line per revision that changed it, newest first.
@@ -88,7 +89,11 @@ export function UnitChangelog({
                 r{e.revision}
               </span>
             );
-            const note = <span style={{ color: "var(--fg)" }}>{e.text}</span>;
+            const note = (
+              <span style={{ color: "var(--fg)" }}>
+                <InlineMarkdown text={e.text} />
+              </span>
+            );
             if (inline || !onSelectRevision) {
               return (
                 <li key={e.revision} className="flex items-baseline gap-2 leading-[18px]">
