@@ -7,12 +7,13 @@
  * is coloured by exactly the same theme as the diff next to it.
  */
 
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { parseInline, parseMarkdown, type MdInline } from "../lib/markdown";
 import { cachedTokens, tokenizeLines, type Tok } from "../lib/highlight";
 import { renderMermaid } from "../lib/mermaid";
 import { useSettings } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
+import { IconCheck, IconCopy, IconWrap } from "./icons";
 
 /** Stable, cheap cache key for a snippet (shiki's cache is keyed by string). */
 function hashCode(text: string): string {
@@ -116,22 +117,63 @@ function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
     };
   }, [cacheKey, code, resolved, theme]);
 
+  const [wrap, setWrap] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+    },
+    [],
+  );
+  const copy = () => {
+    void navigator.clipboard?.writeText(code).then(
+      () => {
+        setCopied(true);
+        if (copiedTimer.current) window.clearTimeout(copiedTimer.current);
+        copiedTimer.current = window.setTimeout(() => setCopied(false), 1200);
+      },
+      () => {},
+    );
+  };
+
   const lines = code.split("\n");
   return (
     <div
-      className="my-1.5 overflow-x-auto rounded"
+      className="my-1.5 rounded"
       style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
     >
-      {lang ? (
-        <div
-          className="border-b px-2 py-0.5 font-mono text-2xs"
-          style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
+      <div
+        className="flex items-center gap-1.5 border-b px-2 py-0.5 text-2xs"
+        style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
+      >
+        <span className="font-mono">{lang ?? ""}</span>
+        <button
+          type="button"
+          data-testid="code-wrap"
+          aria-pressed={wrap}
+          aria-label={wrap ? "Don't wrap lines" : "Wrap lines"}
+          title={wrap ? "Don't wrap lines" : "Wrap lines"}
+          className="ml-auto inline-flex items-center rounded p-0.5 hover:!text-[var(--fg)]"
+          style={{ color: wrap ? "var(--accent)" : "var(--fg-faint)" }}
+          onClick={() => setWrap((v) => !v)}
         >
-          {lang}
-        </div>
-      ) : null}
+          <IconWrap width={12} height={12} />
+        </button>
+        <button
+          type="button"
+          data-testid="code-copy"
+          aria-label="Copy code"
+          title={copied ? "Copied" : "Copy code"}
+          className="inline-flex items-center rounded p-0.5 hover:!text-[var(--fg)]"
+          style={{ color: copied ? "var(--ok)" : "var(--fg-faint)" }}
+          onClick={copy}
+        >
+          {copied ? <IconCheck width={12} height={12} /> : <IconCopy width={12} height={12} />}
+        </button>
+      </div>
       <pre
-        className="px-2 py-1.5 font-mono"
+        className={`px-2 py-1.5 font-mono ${wrap ? "whitespace-pre-wrap break-words" : "overflow-x-auto"}`}
         style={{
           fontSize: "var(--code-font-size)",
           lineHeight: "var(--code-line-height)",
