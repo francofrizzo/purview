@@ -47,6 +47,16 @@ fs.mkdirSync(distDir, { recursive: true });
 // it to the TS source keeps this script's only prerequisite "web is built".
 const coreAlias = { "@reviewer/core": path.join(repoRoot, "packages/core/src/index.ts") };
 
+// Some bundled dependencies (commander, and a few of the server's) are CJS and
+// call require("node:events") etc. In an ESM bundle esbuild turns those into a
+// `__require` shim that throws "Dynamic require of X is not supported" unless
+// a real `require` is in scope -- so give the bundle one. The package is
+// "type": "module" and bin/purview.js import()s dist/server.js, so the output
+// stays ESM rather than switching to CJS.
+const requireBanner =
+  'import { createRequire as __purviewCreateRequire } from "node:module";\n' +
+  "const require = __purviewCreateRequire(import.meta.url);";
+
 const sharedOptions = {
   bundle: true,
   platform: "node",
@@ -54,6 +64,7 @@ const sharedOptions = {
   target: "node20",
   outdir: distDir,
   alias: coreAlias,
+  banner: { js: requireBanner },
   logLevel: "info",
 };
 
