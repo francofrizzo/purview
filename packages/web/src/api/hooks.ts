@@ -146,9 +146,10 @@ export function useSetArchived() {
     onError: (_e, _v, ctx) => {
       if (ctx?.previous) qc.setQueryData(qk.prs, ctx.previous);
     },
-    onSettled: () => {
+    onSettled: (_d, _e, { key }) => {
       void qc.invalidateQueries({ queryKey: qk.prs });
       void qc.invalidateQueries({ queryKey: qk.repos });
+      void qc.invalidateQueries({ queryKey: qk.pr(key) });
     },
   });
 }

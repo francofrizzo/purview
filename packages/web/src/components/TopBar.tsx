@@ -11,6 +11,7 @@ import { ChatButton } from "./ChatPanel";
 import { CopyPathButton } from "./DiffPane";
 import { useModalBackground } from "./Modal";
 import {
+  IconArchive,
   IconArrowLeft,
   IconCollapse,
   IconComment,
@@ -55,6 +56,8 @@ export function TopBar({
   onImportFromPr,
   onDiscardRevision,
   onResetDiscardRevision,
+  archiving = false,
+  onSetArchived,
 }: {
   detail: PrDetail;
   draftCount: number;
@@ -99,6 +102,8 @@ export function TopBar({
   onImportFromPr: () => void;
   onDiscardRevision: (revision: number) => void;
   onResetDiscardRevision: () => void;
+  archiving?: boolean;
+  onSetArchived?: (archived: boolean) => void;
 }) {
   const importInputRef = useRef<HTMLInputElement>(null);
   const { meta, state } = detail;
@@ -178,6 +183,20 @@ export function TopBar({
           state={meta.prState}
           className="hidden flex-none self-center text-2xs xl:inline"
         />
+        {meta.archived && onSetArchived ? (
+          <button
+            type="button"
+            className="chip flex-none self-center hover:!text-[var(--fg)]"
+            data-testid="topbar-archived"
+            disabled={archiving}
+            title="Archived: hidden in the PR list and never analyzed automatically. Click to unarchive."
+            style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+            onClick={() => onSetArchived(false)}
+          >
+            <IconArchive out width={10} height={10} />
+            {archiving ? "unarchiving…" : "archived · unarchive"}
+          </button>
+        ) : null}
         {/* Only interesting while the analysis is not a plain success. */}
         <AnalysisChip job={analysisJob} />
         <AnalysisStats job={analysisJob} />
@@ -310,6 +329,19 @@ export function TopBar({
                 : "No analysis yet — analyze first.",
               onClick: onShareToPr,
             },
+            ...(onSetArchived
+              ? [
+                  {
+                    label: meta.archived ? "unarchive" : "archive",
+                    testId: "menu-archive",
+                    disabled: archiving,
+                    hint: meta.archived
+                      ? "Back in the PR list; new revisions are analyzed automatically again."
+                      : "Hide it in the PR list and stop automatic analyses. Nothing changes on GitHub.",
+                    onClick: () => onSetArchived(!meta.archived),
+                  },
+                ]
+              : []),
             {
               label: importingFromPr ? "importing…" : "import analysis from PR",
               testId: "menu-import-analysis-from-pr",

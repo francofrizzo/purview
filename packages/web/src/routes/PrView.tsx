@@ -20,6 +20,7 @@ import {
   useCancelAnalysis,
   useDismissAnalysisPending,
   useStartAnalysis,
+  useSetArchived,
   useUnarchiveAndAnalyze,
   useComments,
   useDeleteComment,
@@ -154,6 +155,7 @@ export function PrView() {
   const startAnalysis = useStartAnalysis(prKey);
   const cancelAnalysis = useCancelAnalysis(prKey);
   const unarchiveAndAnalyze = useUnarchiveAndAnalyze(prKey);
+  const setArchived = useSetArchived();
   const dismissAnalysisPending = useDismissAnalysisPending(prKey);
   const exportAnalysis = useExportAnalysis(prKey);
   const importAnalysis = useImportAnalysis(prKey);
@@ -961,6 +963,8 @@ export function PrView() {
     <div className="flex h-full flex-col">
       <TopBar
         detail={detail}
+        archiving={setArchived.isPending}
+        onSetArchived={(archived) => setArchived.mutate({ key: prKey, archived })}
         draftCount={unsubmittedDrafts.length}
         pendingReview={review.data?.pending.exists}
         refreshing={refresh.isPending}
