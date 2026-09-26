@@ -617,7 +617,7 @@ describe("analysis job lifecycle", () => {
     buildFixture(root);
     writeRepoConfig(
       { host: key.host, owner: key.owner, repo: key.repo },
-      { analysisEffort: "none" },
+      { analysisAgent: { harness: "claude-code", effort: "none" } },
       root,
     );
     await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
@@ -1444,7 +1444,7 @@ describe("rewindChat", () => {
       key,
       {
         session: { harness: "claude-code", id: "live-session", cwd: root },
-        model: "opus",
+        agent: { harness: "claude-code", model: "opus" },
         messages: [
           { role: "user", text: "one", ts: "t1" },
           { role: "assistant", text: "two", ts: "t2" },
@@ -1461,7 +1461,7 @@ describe("rewindChat", () => {
 
     const chat = readChat(key, root);
     expect(chat.session?.id ?? null).toBeNull();
-    expect(chat.model).toBe("opus");
+    expect(chat.agent).toEqual({ harness: "claude-code", model: "opus" });
     expect(chat.messages).toEqual([{ role: "user", text: "one", ts: "t1" }]);
   });
 
@@ -1469,7 +1469,7 @@ describe("rewindChat", () => {
     buildFixture(root);
     writeChat(
       key,
-      { session: { harness: "claude-code", id: "s", cwd: root }, model: null, messages: [{ role: "user", text: "one", ts: "t1" }] },
+      { session: { harness: "claude-code", id: "s", cwd: root }, agent: null, messages: [{ role: "user", text: "one", ts: "t1" }] },
       root,
     );
     expect(() => rewindChat(key, -1, root)).toThrow(/index/);
@@ -1487,7 +1487,7 @@ describe("chat rewind/edit routes", () => {
       key,
       {
         session: { harness: "claude-code", id: "live-session", cwd: root },
-        model: null,
+        agent: null,
         messages: [
           { role: "user", text: "first", ts: "t1", refs: [{ kind: "unit", id: "unit-1" }] },
           { role: "assistant", text: "reply one", ts: "t2" },
@@ -1666,6 +1666,52 @@ describe("model selection", () => {
     await chatTurnDone(key);
   };
 
+  it("fails the analysis with the reason when its agent cannot run, spawning nothing", async () => {
+    buildFixture(root);
+    writeRepoConfig(
+      { host: key.host, owner: key.owner, repo: key.repo },
+      { analysisAgent: { harness: "claude-code", model: "gpt-9" } },
+      root,
+    );
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    expect(claude.runs).toHaveLength(0);
+    const job = readJob(key, root)!;
+    expect(job.status).toBe("failed");
+    expect(job.error).toMatch(/Claude Code has no model "gpt-9" \(from the repo settings\)/);
+  });
+
+  it("rejects a chat send whose agent cannot run, before the message is saved", async () => {
+    buildFixture(root);
+    writeRepoConfig(
+      { host: key.host, owner: key.owner, repo: key.repo },
+      { chatAgent: { harness: "elsewhere", model: "x" } },
+      root,
+    );
+    const res = await app.request(`/api/prs/${encodedKey}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "hi" }),
+    });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe("invalid_agent_config");
+    expect(body.detail).toMatch(/"elsewhere" \(from the repo settings\) is not available here/);
+    expect(claude.runs).toHaveLength(0);
+    expect(readChat(key, root).messages).toEqual([]);
+  });
+
+  it("400s a chat pin the harness does not offer", async () => {
+    buildFixture(root);
+    const res = await app.request(`/api/prs/${encodedKey}/chat/model`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "gpt-9" }),
+    });
+    expect(res.status).toBe(400);
+    expect(readChat(key, root).agent).toBeNull();
+  });
+
   it("passes --model on every spawn, defaulting to sonnet for both kinds of run", async () => {
     buildFixture(root);
     await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
@@ -1683,7 +1729,7 @@ describe("model selection", () => {
     buildFixture(root);
     writeRepoConfig(
       { host: key.host, owner: key.owner, repo: key.repo },
-      { analysisModel: "opus", chatModel: "haiku" },
+      { analysisAgent: { harness: "claude-code", model: "opus" }, chatAgent: { harness: "claude-code", model: "haiku" } },
       root,
     );
 
@@ -1731,7 +1777,7 @@ describe("model selection", () => {
     buildFixture(root);
     writeRepoConfig(
       { host: key.host, owner: key.owner, repo: key.repo },
-      { chatModel: "haiku" },
+      { chatAgent: { harness: "claude-code", model: "haiku" } },
       root,
     );
     const before = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();

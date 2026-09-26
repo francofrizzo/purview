@@ -19,3 +19,12 @@ export function getHarness(id: HarnessId = DEFAULT_HARNESS): AgentHarness {
   if (!harness) throw new Error(`Unknown agent harness "${id}"`);
   return harness;
 }
+
+/** A registered harness, or undefined. */
+export function findHarness(id: HarnessId): AgentHarness | undefined {
+  return HARNESSES.get(id);
+}
+
+export function harnessIds(): HarnessId[] {
+  return [...HARNESSES.keys()];
+}

@@ -20,6 +20,15 @@ export interface HarnessManifest {
   name: string;
   /** what the agent is called in copy, e.g. "Claude" */
   agentName: string;
+  /** the models a selection may name; ids are what `AgentRunRequest.model` takes */
+  models: { id: string; label: string }[];
+  /** the effort levels a selection may name ("none": set no effort at all) */
+  efforts: string[];
+  /**
+   * What an unset model or effort resolves to. Always explicit: a run must
+   * never fall through to whatever the harness itself defaults to.
+   */
+  defaults: { model: string; effort: string };
   capabilities: {
     /** a session can be continued by a later run (see `canResume`) */
     resume: boolean;

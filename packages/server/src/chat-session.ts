@@ -15,7 +15,7 @@ import { resolveRunCheckout } from "./pr-checkout.js";
 import { getHarness } from "./agent/registry.js";
 import type { AgentAction, AgentHarness, AgentSession } from "./agent/types.js";
 import { skillDir } from "./skill-paths.js";
-import { effectiveChatModel, effectiveRepoPath } from "./repo-config.js";
+import { effectiveChatAgent, effectiveRepoPath } from "./repo-config.js";
 import { loadCommittedConfig } from "./team-config.js";
 import { resolveCheckout, type CheckoutResolution } from "./worktree.js";
 import {
@@ -95,15 +95,10 @@ export function startChatTurn(
   // history when the session is fresh, and must not replay the very message
   // it is about to send.
   const chat = readChat(key, root);
-  // Resolution first: it is the only step allowed to reject the send. The
-  // prompt itself is rebuilt once the checkout (and so the cwd) is known.
+  // Resolution first: it (and the agent choice below) are the only steps
+  // allowed to reject the send. The prompt itself is rebuilt once the
+  // checkout (and so the cwd) is known.
   resolveRefs(key, refs, root);
-
-  appendChatMessage(
-    key,
-    { role: "user", text, ts: new Date().toISOString(), refs: refs.length ? refs : undefined },
-    root,
-  );
 
   const meta = (() => {
     try {
@@ -112,8 +107,20 @@ export function startChatTurn(
       return undefined;
     }
   })();
+  // The conversation's own pin first, then the layered repo/global choice.
+  // Never absent: an unset model would fall through to the harness's own
+  // default. A choice that cannot run rejects the send like a bad reference
+  // does, before anything is persisted.
+  const agent = effectiveChatAgent(key, root, { meta: meta ?? null }, chat.agent);
+  const harness = getHarness(agent.harness);
+
+  appendChatMessage(
+    key,
+    { role: "user", text, ts: new Date().toISOString(), refs: refs.length ? refs : undefined },
+    root,
+  );
+
   const stateDir = prDir(key, root);
-  const harness = getHarness();
   const stored: AgentSession | undefined = chat.session ?? undefined;
   const state = loadState(key, root);
   const revisionInfo = state.revisions.find((r) => r.revision === state.currentRevision);
@@ -177,9 +184,7 @@ export function startChatTurn(
         // The instructions are re-sent on resume too: they are cheap, and they
         // keep the read-only contract in force for every turn.
         instructions: chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed }),
-        // Session pin first, then the layered repo/global default. Never
-        // absent: an unset model would fall through to the harness's own default.
-        model: chat.model ?? effectiveChatModel(key, root, { meta: meta ?? null }),
+        model: agent.model,
         session: resume ?? "new",
         timeoutMs: opts.timeoutMs ?? CHAT_TIMEOUT_MS,
         // Marks the chat's `reviewer-state comment` calls as the agent's (the

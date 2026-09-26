@@ -55,7 +55,7 @@ const seed = (over: { session?: { harness: string; id: string; cwd: string } | n
     key,
     {
       session: { harness: "claude-code", id: SESSION, cwd: prDir(key, root) },
-      model: null,
+      agent: null,
       messages: [
         { role: "user", text: "what is risky?", ts: "t1" },
         { role: "assistant", text: "the rounding", ts: "t2" },
@@ -352,7 +352,7 @@ describe("chat sessions and harness ownership", () => {
     );
     expect(readChat(key, root)).toEqual({
       session: { harness: "claude-code", id: SESSION, cwd: prDir(key, root) },
-      model: "opus",
+      agent: { harness: "claude-code", model: "opus" },
       messages: history,
     });
 
@@ -365,7 +365,8 @@ describe("chat sessions and harness ownership", () => {
     const onDisk = JSON.parse(fs.readFileSync(chatPath(key, root), "utf8"));
     expect(onDisk).not.toHaveProperty("sessionId");
     expect(onDisk).not.toHaveProperty("sessionCwd");
-    expect(onDisk.model).toBe("opus");
+    expect(onDisk).not.toHaveProperty("model");
+    expect(onDisk.agent).toEqual({ harness: "claude-code", model: "opus" });
     expect(onDisk.messages).toHaveLength(4);
     expect(onDisk.session.harness).toBe("claude-code");
   });
@@ -373,7 +374,7 @@ describe("chat sessions and harness ownership", () => {
   it("never hands a session to a harness that does not own it: starts fresh and replays", async () => {
     writeChat(
       key,
-      { session: { harness: "elsewhere", id: SESSION, cwd: prDir(key, root) }, model: null, messages: history },
+      { session: { harness: "elsewhere", id: SESSION, cwd: prDir(key, root) }, agent: null, messages: history },
       root,
     );
     await send("follow-up");

@@ -2,7 +2,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { AnalysisEffortSchema, ClaudeModelSchema, configPath, stateRoot } from "@reviewer/core";
+import {
+  AgentSelectionSchema,
+  ChatAgentSelectionSchema,
+  configPath,
+  migrateAgentFields,
+  stateRoot,
+} from "@reviewer/core";
 
 /**
  * `~/.purview/config.json` — the one piece of global (not per-PR) state.
@@ -36,35 +42,21 @@ export const ConfigSchema = z.object({
    */
   devOrigins: z.array(z.string()).default(DEFAULT_DEV_ORIGINS),
   /**
-   * Machine-wide model defaults for the two kinds of Claude run. `null` means
-   * "inherit", which at this (outermost) layer means the built-in default in
-   * repo-config.ts — never the `claude` CLI's own default, which is exactly
-   * what these settings exist to stop us from picking up.
+   * Machine-wide agent defaults for the two kinds of run. `null` means
+   * "inherit", which at this (outermost) layer means the default harness with
+   * its manifest's default model and effort — never the harness's own
+   * default, which is exactly what these settings exist to stop us from
+   * picking up. See repo-config.ts for the layering.
    */
-  analysisModel: ClaudeModelSchema.nullable().default(null),
-  chatModel: ClaudeModelSchema.nullable().default(null),
+  analysisAgent: AgentSelectionSchema.nullable().default(null),
+  chatAgent: ChatAgentSelectionSchema.nullable().default(null),
   /**
-   * How many analysis runs may execute at once. Each run is its own `claude`
+   * How many analysis runs may execute at once. Each run is its own agent
    * process, so this multiplies the *rate* of spend, never the total; 2 keeps
    * a big PR from making every later one wait out its whole wall time.
    * `PURVIEW_ANALYSIS_CONCURRENCY` overrides without editing the file.
    */
   analysisConcurrency: z.number().int().min(1).max(4).default(2),
-  /**
-   * Reasoning effort for analysis runs (`claude --effort`). Measured on a
-   * 153-hunk PR: medium matched high's classification quality at ~10% less
-   * wall time and ~15% less cost — thinking volume is the dominant cost of a
-   * run, which is why "medium" (not the CLI's own default) is what a fresh
-   * install gets.
-   *
-   * This is now a layered setting like `analysisModel` (see repo-config.ts):
-   * `null` here means "inherit", which at this outermost layer resolves to
-   * the built-in default above. To actually omit `--effort` — the escape
-   * hatch for a `claude` CLI too old to know the flag — pin the value
-   * `"none"` at whichever layer needs it; that is a real, distinct choice,
-   * not the same thing as `null`.
-   */
-  analysisEffort: AnalysisEffortSchema.nullable().default("medium"),
   /**
    * Give every analysis run and chat turn Purview's own detached worktree of
    * the PR's exact head commit, under `~/.purview/checkouts/` (see
@@ -107,7 +99,8 @@ export function readConfig(root = stateRoot()): ReviewerConfig {
   } catch {
     return { ...DEFAULT_CONFIG };
   }
-  const parsed = ConfigSchema.safeParse(raw);
+  // Files from before agent selections carry `analysisModel` & co.
+  const parsed = ConfigSchema.safeParse(migrateAgentFields(raw));
   if (!parsed.success) {
     console.warn(`[config] ignoring invalid ${file}: ${parsed.error.issues[0]?.message ?? "invalid"}`);
     return { ...DEFAULT_CONFIG };

@@ -1,6 +1,6 @@
 import { loadState, prDir, priorRevisions, readFilesJson, readMeta, type FileDiff, type Hunk, type PrKey } from "@reviewer/core";
 import { getHarness } from "./agent/registry.js";
-import { effectiveChatModel } from "./repo-config.js";
+import { resolveChatAgent } from "./repo-config.js";
 import { findAnchoringHunk, type Comment, type CommentSide } from "./comments.js";
 
 /**
@@ -181,14 +181,16 @@ export async function proposeCommentReanchor(
 
   const prompt = buildPrompt({ comment, previousContext, currentSection });
 
-  const meta = readMeta(key, root);
-  const model = effectiveChatModel(key, root, { meta });
+  // The chat's agent, as the layers configure it (a conversation's own pin
+  // is about that conversation, not about placing comments).
+  const agent = resolveChatAgent(key, root, { meta: readMeta(key, root) });
+  if (agent.problem) return { ok: false, reason: agent.problem };
 
-  const run = getHarness().run({
+  const run = getHarness(agent.harness.value).run({
     task: { kind: "reanchor" },
     prompt,
     cwd: prDir(key, root),
-    model,
+    model: agent.model.value,
     timeoutMs: 90_000,
   });
 

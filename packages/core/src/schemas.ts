@@ -370,10 +370,33 @@ export type Meta = z.infer<typeof MetaSchema>;
 /* ------------------------------------------------------- repo-level config */
 
 /**
- * Which Claude model a run uses. Only the CLI's own aliases are accepted: they
- * are stable across model releases, whereas a pinned `claude-sonnet-5` id rots.
- * `--model` is always passed, so a run never silently inherits whatever the
- * user's `claude` CLI happens to default to (which may be an expensive model).
+ * The harness every record written before harness ids existed belongs to:
+ * old `*Model`/`*Effort` settings, chat sessions and analysis runs were all
+ * Claude Code's.
+ */
+export const LEGACY_HARNESS = "claude-code";
+
+/**
+ * Which agent runs one kind of work: a harness, and optionally that harness's
+ * model and effort. Model and effort only mean something to the harness named
+ * next to them, which is why they are stored together — the server resolves
+ * them layer by layer and validates them against the harness's own manifest.
+ */
+export const AgentSelectionSchema = z.object({
+  harness: z.string().min(1),
+  model: z.string().min(1).optional(),
+  effort: z.string().min(1).optional(),
+});
+export type AgentSelection = z.infer<typeof AgentSelectionSchema>;
+
+/** A chat has no effort setting. */
+export const ChatAgentSelectionSchema = AgentSelectionSchema.omit({ effort: true });
+export type ChatAgentSelection = z.infer<typeof ChatAgentSelectionSchema>;
+
+/**
+ * The Claude model aliases the old `analysisModel`/`chatModel` fields took.
+ * Only legacy reads use it now; a selection's model is validated against its
+ * harness's manifest instead.
  */
 export const ClaudeModelSchema = z.enum(["sonnet", "opus", "haiku"]);
 export type ClaudeModel = z.infer<typeof ClaudeModelSchema>;
@@ -381,16 +404,43 @@ export type ClaudeModel = z.infer<typeof ClaudeModelSchema>;
 export const CLAUDE_MODELS = ClaudeModelSchema.options;
 
 /**
- * Reasoning effort for a Claude run (`claude --effort`). `"none"` is not a
- * level — it is the escape hatch that means "omit the flag entirely", for a
- * `claude` CLI old enough not to know it. It is a real, pinnable value at
- * every layer, distinct from `null` ("inherit"), so it needs its own spot in
- * the enum rather than being folded into the nullability.
+ * The Claude effort levels the old `analysisEffort` field took (`"none"`
+ * meaning "omit `--effort`"). Legacy reads only, like `ClaudeModelSchema`.
  */
 export const AnalysisEffortSchema = z.enum(["low", "medium", "high", "none"]);
 export type AnalysisEffort = z.infer<typeof AnalysisEffortSchema>;
 
 export const ANALYSIS_EFFORTS = AnalysisEffortSchema.options;
+
+/**
+ * An old model/effort pair as a selection: Claude Code's, keeping whichever
+ * of the two was valid. `null` when neither was set.
+ */
+export function legacyAgentSelection(model: unknown, effort?: unknown): AgentSelection | null {
+  const m = ClaudeModelSchema.safeParse(model).data;
+  const e = AnalysisEffortSchema.safeParse(effort).data;
+  if (!m && !e) return null;
+  return { harness: LEGACY_HARNESS, ...(m ? { model: m } : {}), ...(e ? { effort: e } : {}) };
+}
+
+/**
+ * A settings object as written before selections: its `analysisModel`,
+ * `analysisEffort` and `chatModel` become `analysisAgent`/`chatAgent`
+ * (unless those are already there, which win), and the old keys go. Every
+ * other key is left alone.
+ */
+export function migrateAgentFields(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const { analysisModel, analysisEffort, chatModel, ...rest } = raw as Record<string, unknown>;
+  if (analysisModel === undefined && analysisEffort === undefined && chatModel === undefined) return raw;
+  const out: Record<string, unknown> = { ...rest };
+  if (!("analysisAgent" in rest)) out.analysisAgent = legacyAgentSelection(analysisModel, analysisEffort);
+  if (!("chatAgent" in rest)) {
+    const chat = legacyAgentSelection(chatModel);
+    out.chatAgent = chat ? { harness: chat.harness, model: chat.model } : null;
+  }
+  return out;
+}
 
 /**
  * `~/.purview/<host>/<owner>/<repo>/repo.json` — settings that apply to every
@@ -404,10 +454,10 @@ export const ANALYSIS_EFFORTS = AnalysisEffortSchema.options;
 export const RepoConfigSchema = z.object({
   autoAnalyze: z.boolean().nullable().default(null),
   repoPath: z.string().nullable().default(null),
-  analysisModel: ClaudeModelSchema.nullable().default(null),
-  chatModel: ClaudeModelSchema.nullable().default(null),
-  /** Reasoning effort for analysis runs; `null` inherits, same as the models above. */
-  analysisEffort: AnalysisEffortSchema.nullable().default(null),
+  /** Who runs analyses for this repo; `null` inherits. */
+  analysisAgent: AgentSelectionSchema.nullable().default(null),
+  /** Who answers the review chat for this repo; `null` inherits. */
+  chatAgent: ChatAgentSelectionSchema.nullable().default(null),
   /**
    * Poll GitHub every few minutes for review requests and import them
    * automatically (see review-watch.ts). Machine behavior, not team policy —
@@ -434,13 +484,30 @@ export const EMPTY_REPO_CONFIG: RepoConfig = RepoConfigSchema.parse({});
  * `.purview/config.json` committed in the *target* repo: the team's shared
  * defaults. Unknown keys are ignored (zod strips them), so a newer team config
  * never breaks an older client.
+ *
+ * Teams keep committing the old `analysisModel`/`chatModel`/`analysisEffort`
+ * keys (their repos are not ours to migrate), so both spellings are read;
+ * the selections win when both are present. The parsed value only has the
+ * selections.
  */
-export const TeamConfigSchema = z.object({
-  autoAnalyze: z.boolean().optional(),
-  analysisModel: ClaudeModelSchema.optional(),
-  chatModel: ClaudeModelSchema.optional(),
-  analysisEffort: AnalysisEffortSchema.optional(),
-});
+export const TeamConfigSchema = z
+  .object({
+    autoAnalyze: z.boolean().optional(),
+    analysisAgent: AgentSelectionSchema.optional(),
+    chatAgent: ChatAgentSelectionSchema.optional(),
+    analysisModel: ClaudeModelSchema.optional(),
+    chatModel: ClaudeModelSchema.optional(),
+    analysisEffort: AnalysisEffortSchema.optional(),
+  })
+  .transform(({ autoAnalyze, analysisAgent, chatAgent, analysisModel, chatModel, analysisEffort }) => {
+    const analysis = analysisAgent ?? legacyAgentSelection(analysisModel, analysisEffort);
+    const chat = chatAgent ?? legacyAgentSelection(chatModel);
+    return {
+      ...(autoAnalyze !== undefined ? { autoAnalyze } : {}),
+      ...(analysis ? { analysisAgent: analysis } : {}),
+      ...(chat ? { chatAgent: { harness: chat.harness, ...(chat.model ? { model: chat.model } : {}) } } : {}),
+    };
+  });
 export type TeamConfig = z.infer<typeof TeamConfigSchema>;
 
 /**
@@ -539,9 +606,6 @@ const AnalysisRunInfoFields = z.object({
     .optional(),
 });
 
-/** Every run recorded before runs named their harness was Claude Code's. */
-const LEGACY_RUN_HARNESS = "claude-code";
-
 /**
  * Run info as stored, normalized on read: records from before harness ids
  * existed name Claude Code and carry `claudeVersion`, which becomes
@@ -550,7 +614,7 @@ const LEGACY_RUN_HARNESS = "claude-code";
  */
 export const AnalysisRunInfoSchema = AnalysisRunInfoFields.transform(({ claudeVersion, ...run }) => {
   const harnessVersion = run.harnessVersion ?? claudeVersion;
-  return { ...run, harness: run.harness ?? LEGACY_RUN_HARNESS, ...(harnessVersion ? { harnessVersion } : {}) };
+  return { ...run, harness: run.harness ?? LEGACY_HARNESS, ...(harnessVersion ? { harnessVersion } : {}) };
 });
 export type AnalysisRunInfo = z.infer<typeof AnalysisRunInfoSchema>;
 

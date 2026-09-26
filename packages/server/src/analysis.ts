@@ -30,7 +30,7 @@ import { getHarness } from "./agent/registry.js";
 import type { AgentAction, AgentRun, HarnessManifest, ReviewerCommand } from "./agent/types.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 import { readConfig } from "./config.js";
-import { effectiveAnalysisEffort, effectiveAnalysisModel } from "./repo-config.js";
+import { effectiveAnalysisAgent, type AgentChoice } from "./repo-config.js";
 import { rubricSection } from "./rubric.js";
 import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
@@ -932,7 +932,18 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   const scratch = path.join(prDir(key, root), "scratch");
   fs.mkdirSync(scratch, { recursive: true });
   const cwd = prDir(key, root);
-  const harness = getHarness();
+  // Always explicit: an analysis must never inherit the harness's own default
+  // model, which is whatever the user happens to have configured. A selection
+  // that cannot run (unknown harness, a model it lacks) fails the run with
+  // the reason rather than falling back to something else.
+  let agent: AgentChoice;
+  try {
+    agent = effectiveAnalysisAgent(key, root, { meta: meta ?? null });
+  } catch (err) {
+    finish(key, root, revision, "failed", err instanceof HttpError ? String(err.detail) : (err as Error).message);
+    return;
+  }
+  const harness = getHarness(agent.harness);
   const readRoots = [skillDir(), path.dirname(cliPath())];
   // Resolved per run, not at set time: the managed checkout is moved to this
   // revision's head, and (when that is unavailable) the worktree holding the
@@ -962,10 +973,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
 
   // "none" (pinnable at any layer) means "set no effort at all"; the harness
   // omits it, and every other value passes straight through.
-  const effort = effectiveAnalysisEffort(key, root, { meta: meta ?? null });
-  // Always explicit: an analysis must never inherit the harness's own
-  // default model, which is whatever the user happens to have configured.
-  const model = effectiveAnalysisModel(key, root, { meta: meta ?? null });
+  const { model, effort } = agent;
   // Husks alone are not an analysis to build on: with no live unit left
   // the run must produce a full analysis (which drops the husks).
   const incremental = liveUnits(state).length > 0;

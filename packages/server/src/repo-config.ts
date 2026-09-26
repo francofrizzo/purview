@@ -6,16 +6,19 @@ import {
   listPrs,
   repoKeyOf,
   stateRoot,
-  type AnalysisEffort,
   type Meta,
   type PrKey,
   type RepoConfig,
   type RepoKey,
   type TeamConfig,
-  type ClaudeModel,
   type TeamConfigCache,
+  type AgentSelection,
+  type ChatAgentSelection,
 } from "@reviewer/core";
 import { configExists, readConfig, type ReviewerConfig } from "./config.js";
+import { DEFAULT_HARNESS, findHarness, harnessIds } from "./agent/registry.js";
+import type { HarnessId } from "./agent/types.js";
+import { HttpError } from "./http-error.js";
 
 /**
  * Configuration layering.
@@ -41,22 +44,38 @@ import { configExists, readConfig, type ReviewerConfig } from "./config.js";
  * (see team-config.ts, which is what fills it).
  */
 
-export type ConfigSource = "pr" | "repo" | "committed" | "global" | "default";
+/** `chat`: a conversation's own pin (chat.json), more specific than any layer. */
+export type ConfigSource = "chat" | "pr" | "repo" | "committed" | "global" | "default";
 
 export interface Resolved<T> {
   value: T;
   source: ConfigSource;
 }
 
+/**
+ * Which harness runs a kind of work, with which of its models (and, for
+ * analysis, effort). Each part says where it came from.
+ */
+export interface ResolvedAgent {
+  harness: Resolved<HarnessId>;
+  model: Resolved<string>;
+  /** analysis only; "none" means "set no effort" */
+  effort?: Resolved<string>;
+  /**
+   * Why this selection cannot run: a harness this server does not have, or a
+   * model/effort the harness does not offer. Never papered over with a
+   * default — a different harness or model can mean a different bill.
+   */
+  problem?: string;
+}
+
 export interface EffectiveConfig {
   autoAnalyze: Resolved<boolean>;
   repoPath: Resolved<string | null>;
-  /** model for automated/manual analysis runs */
-  analysisModel: Resolved<ClaudeModel>;
-  /** model for review-chat turns, unless the chat session pins its own */
-  chatModel: Resolved<ClaudeModel>;
-  /** reasoning effort for analysis runs; "none" means omit `--effort` */
-  analysisEffort: Resolved<AnalysisEffort>;
+  /** who runs automated/manual analyses */
+  analysisAgent: ResolvedAgent;
+  /** who answers review-chat turns (and re-anchors comments), before a chat's own pin */
+  chatAgent: ResolvedAgent;
 }
 
 /** Every layer, already read. Injectable so callers can avoid re-reading. */
@@ -68,25 +87,76 @@ export interface ConfigLayers {
   globalIsExplicit: boolean;
 }
 
+/**
+ * What the app does with no configuration at all. Agent defaults are not
+ * here: an unset model or effort resolves to its harness's own manifest
+ * defaults (see `resolveAgent`).
+ */
 export const BUILTIN_DEFAULTS = {
   autoAnalyze: true,
   repoPath: null,
-  // Sonnet, not "whatever the CLI defaults to". Inheriting the user's Claude
-  // Code default silently billed every analysis and every chat turn at that
-  // model's rate, which for an Opus default is an order of magnitude more.
-  analysisModel: "sonnet",
-  chatModel: "sonnet",
-  // Matches the global ConfigSchema's own default (config.ts): medium matched
-  // high's classification quality on a 153-hunk PR at ~10% less wall time and
-  // ~15% less cost.
-  analysisEffort: "medium",
 } as const satisfies {
   autoAnalyze: boolean;
   repoPath: string | null;
-  analysisModel: ClaudeModel;
-  chatModel: ClaudeModel;
-  analysisEffort: AnalysisEffort;
 };
+
+const SOURCE_NAMES: Record<ConfigSource, string> = {
+  chat: "this chat's own setting",
+  pr: "this PR's settings",
+  repo: "the repo settings",
+  committed: "the repo's committed .purview/config.json",
+  global: "the global settings",
+  default: "the built-in default",
+};
+
+/**
+ * One agent, layer by layer, most specific first. The harness is the first
+ * one any layer names. A model or effort only counts from a layer that names
+ * that same harness: a Claude model set globally means nothing to a repo that
+ * switched to another harness, which gets that harness's defaults instead.
+ */
+export function resolveAgent(
+  label: string,
+  candidates: [ConfigSource, AgentSelection | ChatAgentSelection | null | undefined][],
+  withEffort: boolean,
+): ResolvedAgent {
+  const named = candidates.find(([, sel]) => sel);
+  const harness: Resolved<HarnessId> = named
+    ? { value: named[1]!.harness, source: named[0] }
+    : { value: DEFAULT_HARNESS, source: "default" };
+  const same = candidates.filter(([, sel]) => sel?.harness === harness.value);
+  const found = findHarness(harness.value);
+  const problems: string[] = [];
+  if (!found) {
+    problems.push(
+      `The ${label} agent "${harness.value}" (from ${SOURCE_NAMES[harness.source]}) is not available here; ` +
+        `available: ${harnessIds().join(", ")}.`,
+    );
+  }
+
+  const pick = (field: "model" | "effort", fallback: string | undefined, allowed: string[] | undefined) => {
+    const hit = same.find(([, sel]) => (sel as AgentSelection)[field] !== undefined);
+    const resolved: Resolved<string> = hit
+      ? { value: (hit[1] as AgentSelection)[field]!, source: hit[0] }
+      : { value: fallback ?? "", source: "default" };
+    if (found && hit && allowed && !allowed.includes(resolved.value)) {
+      problems.push(
+        `${found.manifest.name} has no ${field} "${resolved.value}" (from ${SOURCE_NAMES[resolved.source]}); ` +
+          `it has ${allowed.join(", ")}.`,
+      );
+    }
+    return resolved;
+  };
+
+  const model = pick("model", found?.manifest.defaults.model, found?.manifest.models.map((m) => m.id));
+  const effort = withEffort ? pick("effort", found?.manifest.defaults.effort, found?.manifest.efforts) : undefined;
+  return {
+    harness,
+    model,
+    ...(effort ? { effort } : {}),
+    ...(problems.length ? { problem: problems.join(" ") } : {}),
+  };
+}
 
 function isPrKey(key: PrKey | RepoKey): key is PrKey {
   return typeof (key as PrKey).number === "number";
@@ -181,14 +251,6 @@ export function effectiveConfig(
           ? { value: layers.global.autoAnalyze, source: "global" }
           : { value: BUILTIN_DEFAULTS.autoAnalyze, source: "default" };
 
-  const model = (key: "analysisModel" | "chatModel"): Resolved<ClaudeModel> =>
-    layers.local[key] !== null
-      ? { value: layers.local[key], source: "repo" }
-      : layers.committed?.[key] !== undefined
-        ? { value: layers.committed[key], source: "committed" }
-        : layers.global[key] !== null
-          ? { value: layers.global[key], source: "global" }
-          : { value: BUILTIN_DEFAULTS[key], source: "default" };
 
   const repoPath: Resolved<string | null> = layers.meta?.repoPath
     ? { value: layers.meta.repoPath, source: "pr" }
@@ -196,24 +258,27 @@ export function effectiveConfig(
       ? { value: layers.local.repoPath, source: "repo" }
       : { value: BUILTIN_DEFAULTS.repoPath, source: "default" };
 
-  // Same shape as `model()` above, but its own function: "none" is a real,
-  // pinnable value here (not an absence), so the type is `AnalysisEffort`
-  // rather than `ClaudeModel`, and it can't share `model()`'s signature.
-  const analysisEffort: Resolved<AnalysisEffort> =
-    layers.local.analysisEffort !== null
-      ? { value: layers.local.analysisEffort, source: "repo" }
-      : layers.committed?.analysisEffort !== undefined
-        ? { value: layers.committed.analysisEffort, source: "committed" }
-        : layers.global.analysisEffort !== null
-          ? { value: layers.global.analysisEffort, source: "global" }
-          : { value: BUILTIN_DEFAULTS.analysisEffort, source: "default" };
-
   return {
     autoAnalyze,
     repoPath,
-    analysisModel: model("analysisModel"),
-    chatModel: model("chatModel"),
-    analysisEffort,
+    analysisAgent: resolveAgent(
+      "analysis",
+      [
+        ["repo", layers.local.analysisAgent],
+        ["committed", layers.committed?.analysisAgent],
+        ["global", layers.global.analysisAgent],
+      ],
+      true,
+    ),
+    chatAgent: resolveAgent(
+      "chat",
+      [
+        ["repo", layers.local.chatAgent],
+        ["committed", layers.committed?.chatAgent],
+        ["global", layers.global.chatAgent],
+      ],
+      false,
+    ),
   };
 }
 
@@ -308,33 +373,111 @@ export function autoAnalyzeBlocker(
   return null;
 }
 
-/** The model an analysis run for this PR (or repo) should be spawned with. */
-export function effectiveAnalysisModel(
-  key: PrKey | RepoKey,
-  root = stateRoot(),
-  overrides: Partial<ConfigLayers> = {},
-): ClaudeModel {
-  return effectiveConfig(key, root, overrides).analysisModel.value;
+/** What a run is spawned with: a harness that exists, and a model (and effort) it has. */
+export interface AgentChoice {
+  harness: HarnessId;
+  model: string;
+  effort?: string;
 }
 
-/** The model a chat turn should use when the session has not pinned one. */
-export function effectiveChatModel(
+function runnable(agent: ResolvedAgent): AgentChoice {
+  if (agent.problem) throw new HttpError(400, "invalid_agent_config", agent.problem);
+  return {
+    harness: agent.harness.value,
+    model: agent.model.value,
+    ...(agent.effort ? { effort: agent.effort.value } : {}),
+  };
+}
+
+/** Who runs an analysis for this PR (or repo). Throws a 400 when the configuration cannot run. */
+export function effectiveAnalysisAgent(
   key: PrKey | RepoKey,
   root = stateRoot(),
   overrides: Partial<ConfigLayers> = {},
-): ClaudeModel {
-  return effectiveConfig(key, root, overrides).chatModel.value;
+): AgentChoice {
+  return runnable(effectiveConfig(key, root, overrides).analysisAgent);
 }
 
 /**
- * The reasoning effort an analysis run for this PR (or repo) should be
- * spawned with. `"none"` means the caller should omit `--effort` entirely
- * rather than pass it through — see the field's doc comment in config.ts.
+ * The chat's agent as the layers resolve it, with a conversation's own pin
+ * (chat.json) as the most specific layer.
  */
-export function effectiveAnalysisEffort(
+export function resolveChatAgent(
   key: PrKey | RepoKey,
   root = stateRoot(),
   overrides: Partial<ConfigLayers> = {},
-): AnalysisEffort {
-  return effectiveConfig(key, root, overrides).analysisEffort.value;
+  pin: ChatAgentSelection | null = null,
+): ResolvedAgent {
+  const layers = readLayers(key, root, overrides);
+  return resolveAgent(
+    "chat",
+    [
+      ["chat", pin],
+      ["repo", layers.local.chatAgent],
+      ["committed", layers.committed?.chatAgent],
+      ["global", layers.global.chatAgent],
+    ],
+    false,
+  );
+}
+
+/** Who answers a chat turn (or re-anchors a comment). Throws a 400 when the configuration cannot run. */
+export function effectiveChatAgent(
+  key: PrKey | RepoKey,
+  root = stateRoot(),
+  overrides: Partial<ConfigLayers> = {},
+  pin: ChatAgentSelection | null = null,
+): AgentChoice {
+  return runnable(resolveChatAgent(key, root, overrides, pin));
+}
+
+/* ------------------------------------------------ flat API compatibility */
+
+/**
+ * The settings API still speaks the flat `analysisModel`/`analysisEffort`/
+ * `chatModel` fields its clients know; these translate between them and a
+ * layer's selections. A flat edit applies to the layer's own harness, or the
+ * effective one when the layer names none.
+ */
+export function flatAgentFields(
+  analysis: AgentSelection | null | undefined,
+  chat: ChatAgentSelection | null | undefined,
+): { analysisModel: string | null; analysisEffort: string | null; chatModel: string | null } {
+  return {
+    analysisModel: analysis?.model ?? null,
+    analysisEffort: analysis?.effort ?? null,
+    chatModel: chat?.model ?? null,
+  };
+}
+
+/**
+ * One flat field edit applied to a selection. `null` clears the field; a
+ * selection left with neither model nor effort is `null` again (inherit).
+ * Values are checked against the harness's manifest — a 400 names the
+ * choices, rather than storing something no run could use.
+ */
+export function patchAgentSelection<T extends AgentSelection | ChatAgentSelection>(
+  current: T | null,
+  field: "model" | "effort",
+  value: string | null,
+  fallbackHarness: HarnessId,
+  apiField: string,
+): T | null {
+  const harnessId = current?.harness ?? fallbackHarness;
+  const harness = findHarness(harnessId);
+  if (value !== null) {
+    if (!harness) throw new HttpError(400, "invalid_body", `${apiField}: agent harness "${harnessId}" is not available`);
+    const allowed = field === "model" ? harness.manifest.models.map((m) => m.id) : harness.manifest.efforts;
+    if (!allowed.includes(value)) {
+      throw new HttpError(
+        400,
+        "invalid_body",
+        `${apiField}: "${value}" is not one of ${harness.manifest.name}'s ${field === "model" ? "models" : "effort levels"}: ${allowed.join(", ")}`,
+      );
+    }
+  }
+  const next: Record<string, string> = { ...(current ?? {}), harness: harnessId };
+  if (value === null) delete next[field];
+  else next[field] = value;
+  return next.model === undefined && next.effort === undefined ? null : (next as unknown as T);
 }

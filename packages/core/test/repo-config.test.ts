@@ -23,7 +23,7 @@ import {
   repoDir,
   repoRubricPath,
 } from "../src/paths.js";
-import { EMPTY_REPO_CONFIG } from "../src/schemas.js";
+import { EMPTY_REPO_CONFIG, TeamConfigSchema } from "../src/schemas.js";
 
 const repo = { host: "github.com", owner: "acme", repo: "widgets" };
 
@@ -160,33 +160,92 @@ describe("deleteRepoState", () => {
   });
 });
 
-describe("model settings in repo.json", () => {
-  it("round-trips the CLI aliases and defaults them to inherit", () => {
-    expect(readRepoConfig(repo, root).analysisModel).toBeNull();
-    writeRepoConfig(repo, { analysisModel: "opus" }, root);
-    expect(readRepoConfig(repo, root).analysisModel).toBe("opus");
+describe("agent selections in repo.json", () => {
+  it("round-trips selections and defaults them to inherit", () => {
+    expect(readRepoConfig(repo, root).analysisAgent).toBeNull();
+    writeRepoConfig(repo, { analysisAgent: { harness: "claude-code", model: "opus", effort: "high" } }, root);
+    expect(readRepoConfig(repo, root).analysisAgent).toEqual({ harness: "claude-code", model: "opus", effort: "high" });
     // Independent of each other, and of autoAnalyze.
-    expect(readRepoConfig(repo, root).chatModel).toBeNull();
-    writeRepoConfig(repo, { chatModel: "haiku" }, root);
+    expect(readRepoConfig(repo, root).chatAgent).toBeNull();
+    writeRepoConfig(repo, { chatAgent: { harness: "claude-code", model: "haiku" } }, root);
     expect(readRepoConfig(repo, root)).toMatchObject({
-      analysisModel: "opus",
-      chatModel: "haiku",
+      analysisAgent: { model: "opus" },
+      chatAgent: { harness: "claude-code", model: "haiku" },
     });
   });
 
-  it("rejects anything that is not an alias, salvaging the rest of the file", () => {
+  it("reads the old model/effort fields as Claude Code selections, keeps the rest, and writes only the new shape", () => {
     fs.mkdirSync(path.dirname(repoConfigPath(repo, root)), { recursive: true });
-    // A pinned model id is exactly the mistake this guards against: it rots.
+    fs.writeFileSync(
+      repoConfigPath(repo, root),
+      JSON.stringify({
+        autoAnalyze: false,
+        repoPath: "/keep",
+        analysisModel: "opus",
+        analysisEffort: "none",
+        chatModel: "haiku",
+        watchReviews: true,
+      }),
+    );
+    expect(readRepoConfig(repo, root)).toEqual({
+      ...EMPTY_REPO_CONFIG,
+      autoAnalyze: false,
+      repoPath: "/keep",
+      analysisAgent: { harness: "claude-code", model: "opus", effort: "none" },
+      chatAgent: { harness: "claude-code", model: "haiku" },
+      watchReviews: true,
+    });
+    writeRepoConfig(repo, { autoAnalyze: true }, root);
+    const onDisk = JSON.parse(fs.readFileSync(repoConfigPath(repo, root), "utf8"));
+    expect(onDisk).not.toHaveProperty("analysisModel");
+    expect(onDisk).not.toHaveProperty("chatModel");
+    expect(onDisk).not.toHaveProperty("analysisEffort");
+    expect(onDisk).toMatchObject({ autoAnalyze: true, repoPath: "/keep", watchReviews: true, chatAgent: { model: "haiku" } });
+  });
+
+  it("drops an old field that was not a valid alias, salvaging the rest of the file", () => {
+    fs.mkdirSync(path.dirname(repoConfigPath(repo, root)), { recursive: true });
+    // A pinned model id is exactly the mistake the old enum guarded against.
     fs.writeFileSync(
       repoConfigPath(repo, root),
       JSON.stringify({ analysisModel: "claude-opus-4-6", chatModel: "haiku", repoPath: "/keep" }),
     );
     expect(readRepoConfig(repo, root)).toEqual({
       ...EMPTY_REPO_CONFIG,
-      analysisModel: null,
-      chatModel: "haiku",
+      analysisAgent: null,
+      chatAgent: { harness: "claude-code", model: "haiku" },
       repoPath: "/keep",
     });
+  });
+
+  it("salvages a malformed selection to inherit", () => {
+    fs.mkdirSync(path.dirname(repoConfigPath(repo, root)), { recursive: true });
+    fs.writeFileSync(
+      repoConfigPath(repo, root),
+      JSON.stringify({ analysisAgent: { model: "opus" }, chatAgent: { harness: "claude-code" }, repoPath: "/keep" }),
+    );
+    expect(readRepoConfig(repo, root)).toEqual({
+      ...EMPTY_REPO_CONFIG,
+      chatAgent: { harness: "claude-code" },
+      repoPath: "/keep",
+    });
+  });
+});
+
+describe("committed team config", () => {
+  it("reads the old keys as Claude Code selections, and the new ones as they are", () => {
+    expect(TeamConfigSchema.parse({ autoAnalyze: false, analysisModel: "opus", chatModel: "haiku" })).toEqual({
+      autoAnalyze: false,
+      analysisAgent: { harness: "claude-code", model: "opus" },
+      chatAgent: { harness: "claude-code", model: "haiku" },
+    });
+    expect(TeamConfigSchema.parse({ analysisEffort: "low" })).toEqual({
+      analysisAgent: { harness: "claude-code", effort: "low" },
+    });
+    expect(TeamConfigSchema.parse({ chatAgent: { harness: "other", model: "m" }, chatModel: "haiku" })).toEqual({
+      chatAgent: { harness: "other", model: "m" },
+    });
+    expect(TeamConfigSchema.parse({})).toEqual({});
   });
 });
 

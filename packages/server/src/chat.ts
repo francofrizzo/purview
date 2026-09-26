@@ -2,15 +2,17 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import {
-  ClaudeModelSchema,
+  ChatAgentSelectionSchema,
+  LEGACY_HARNESS,
   chatPath,
+  legacyAgentSelection,
   keyToString,
   loadState,
   prDir,
   readFilesJson,
   readMeta,
   stateRoot,
-  type ClaudeModel,
+  type ChatAgentSelection,
   type Hunk,
   type PrKey,
   liveUnits,
@@ -67,38 +69,45 @@ export const ChatSessionSchema = z.object({
 });
 export type ChatSession = z.infer<typeof ChatSessionSchema>;
 
-/** Every chat written before sessions carried a harness id was Claude Code's. */
-const LEGACY_HARNESS = "claude-code";
-
 export const ChatFileSchema = z.object({
   session: ChatSessionSchema.nullable().default(null),
   messages: z.array(ChatMessageSchema).default([]),
   /**
-   * Model pinned for this conversation, or `null` to follow the repo/global
-   * `chatModel`. It takes effect on the next message: every turn names its
-   * model explicitly, and Claude Code resumes a session under a different
-   * model, so switching never costs the transcript.
+   * The agent pinned for this conversation, or `null` to follow the
+   * repo/committed/global `chatAgent`. It takes effect on the next message:
+   * every turn names its model explicitly, and Claude Code resumes a session
+   * under a different model, so switching model never costs the transcript
+   * (switching harness starts a new session and replays it).
    */
-  model: ClaudeModelSchema.nullable().default(null),
+  agent: ChatAgentSelectionSchema.nullable().default(null),
 });
 export type ChatFile = z.infer<typeof ChatFileSchema>;
 
-const EMPTY_CHAT: ChatFile = { session: null, messages: [], model: null };
+const EMPTY_CHAT: ChatFile = { session: null, messages: [], agent: null };
 
 /**
- * chat.json as first written: a bare `sessionId` plus (later) `sessionCwd`,
- * always Claude Code's. A session with no recorded cwd could never be
- * resumed or handed off, so it reads as no session at all. Everything else
- * in the file is kept as is.
+ * chat.json as first written, always Claude Code's: a bare `sessionId` plus
+ * (later) `sessionCwd`, and a `model` alias as the pin. A session with no
+ * recorded cwd could never be resumed or handed off, so it reads as no
+ * session at all. Everything else in the file is kept as is.
  */
 function migrateChatFile(raw: unknown): unknown {
-  if (!raw || typeof raw !== "object" || "session" in raw) return raw;
-  const { sessionId, sessionCwd, ...rest } = raw as Record<string, unknown>;
-  const session =
-    typeof sessionId === "string" && sessionId && typeof sessionCwd === "string" && sessionCwd
-      ? { harness: LEGACY_HARNESS, id: sessionId, cwd: sessionCwd }
-      : null;
-  return { ...rest, session };
+  if (!raw || typeof raw !== "object") return raw;
+  let out = raw as Record<string, unknown>;
+  if (!("session" in out)) {
+    const { sessionId, sessionCwd, ...rest } = out;
+    const session =
+      typeof sessionId === "string" && sessionId && typeof sessionCwd === "string" && sessionCwd
+        ? { harness: LEGACY_HARNESS, id: sessionId, cwd: sessionCwd }
+        : null;
+    out = { ...rest, session };
+  }
+  if (!("agent" in out)) {
+    const { model, ...rest } = out;
+    const pin = legacyAgentSelection(model);
+    out = { ...rest, agent: pin ? { harness: pin.harness, model: pin.model } : null };
+  }
+  return out;
 }
 
 export function readChat(key: PrKey, root = stateRoot()): ChatFile {
@@ -590,16 +599,17 @@ export function buildChatPrompt(
 }
 
 /**
- * Pin (or unpin, with `null`) the model for this PR's conversation. The
- * session id is deliberately left alone: a resumed session happily switches
- * models, so the reader keeps their history across a switch.
+ * Pin (or unpin, with `null`) the agent for this PR's conversation. The
+ * session is deliberately left alone: its own harness decides on the next
+ * turn whether it can continue it (a model switch keeps it, a harness switch
+ * starts over and replays the transcript).
  */
-export function setChatModel(
+export function setChatAgent(
   key: PrKey,
-  model: ClaudeModel | null,
+  agent: ChatAgentSelection | null,
   root = stateRoot(),
 ): ChatFile {
-  return writeChat(key, { ...readChat(key, root), model }, root);
+  return writeChat(key, { ...readChat(key, root), agent }, root);
 }
 
 /**

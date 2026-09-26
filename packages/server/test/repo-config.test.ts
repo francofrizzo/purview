@@ -25,9 +25,8 @@ import { chatSystemPrompt } from "../src/chat.js";
 import { readConfig, writeConfig } from "../src/config.js";
 import {
   autoAnalyzeAllowed,
-  effectiveAnalysisEffort,
-  effectiveAnalysisModel,
-  effectiveChatModel,
+  effectiveAnalysisAgent,
+  effectiveChatAgent,
   effectiveConfig,
   effectiveRepoPath,
 } from "../src/repo-config.js";
@@ -249,37 +248,75 @@ describe("effectiveConfig precedence", () => {
   ];
 
   for (const c of modelCases) {
-    for (const field of ["analysisModel", "chatModel"] as const) {
-      it(`${field}: ${c.name}`, () => {
-        if (c.repoLocal !== undefined) writeRepoConfig(repo, { [field]: c.repoLocal }, root);
-        if (c.global !== undefined) writeConfig({ [field]: c.global }, root);
+    for (const field of ["analysisAgent", "chatAgent"] as const) {
+      it(`${field} model: ${c.name}`, () => {
+        const sel = (model: ClaudeModel) => ({ harness: "claude-code", model });
+        if (c.repoLocal !== undefined) {
+          writeRepoConfig(repo, { [field]: c.repoLocal === null ? null : sel(c.repoLocal) }, root);
+        }
+        if (c.global !== undefined) writeConfig({ [field]: c.global === null ? null : sel(c.global) }, root);
         const resolved = effectiveConfig(key, root, {
-          committed: c.committed === undefined ? null : { [field]: c.committed },
+          committed: c.committed === undefined ? null : { [field]: sel(c.committed) },
         });
-        expect(resolved[field].value).toBe(c.expected);
-        expect(resolved[field].source).toBe(c.source);
-        // The two keys are independent: setting one must not move the other.
-        const other = field === "analysisModel" ? "chatModel" : "analysisModel";
+        expect(resolved[field].model.value).toBe(c.expected);
+        expect(resolved[field].model.source).toBe(c.source);
+        expect(resolved[field].harness.value).toBe("claude-code");
+        expect(resolved[field].problem).toBeUndefined();
+        // The two agents are independent: setting one must not move the other.
+        const other = field === "analysisAgent" ? "chatAgent" : "analysisAgent";
         if (c.repoLocal || c.committed || c.global) {
-          expect(resolved[other].source).toBe("default");
+          expect(resolved[other].model.source).toBe("default");
         }
       });
     }
   }
 
-  it("effectiveAnalysisModel / effectiveChatModel are the resolver's values", () => {
-    writeRepoConfig(repo, { analysisModel: "haiku", chatModel: "opus" }, root);
-    expect(effectiveAnalysisModel(key, root)).toBe("haiku");
-    expect(effectiveChatModel(key, root)).toBe("opus");
+  it("effectiveAnalysisAgent / effectiveChatAgent are the resolver's values", () => {
+    writeRepoConfig(
+      repo,
+      { analysisAgent: { harness: "claude-code", model: "haiku" }, chatAgent: { harness: "claude-code", model: "opus" } },
+      root,
+    );
+    expect(effectiveAnalysisAgent(key, root)).toEqual({ harness: "claude-code", model: "haiku", effort: "medium" });
+    expect(effectiveChatAgent(key, root)).toEqual({ harness: "claude-code", model: "opus" });
+  });
+
+  it("a model or effort only counts under the harness its layer names", () => {
+    // Global pins a Claude model; the repo switches to another harness.
+    writeConfig({ analysisAgent: { harness: "claude-code", model: "opus", effort: "high" } }, root);
+    writeRepoConfig(repo, { analysisAgent: { harness: "elsewhere" } }, root);
+    const resolved = effectiveConfig(key, root).analysisAgent;
+    expect(resolved.harness).toEqual({ value: "elsewhere", source: "repo" });
+    // opus/high are Claude Code's: they do not carry over to "elsewhere".
+    expect(resolved.model.source).toBe("default");
+    expect(resolved.effort!.source).toBe("default");
+    // And "elsewhere" is not a harness this server has: that is an error, not a fallback.
+    expect(resolved.problem).toMatch(/"elsewhere" \(from the repo settings\) is not available here; available: claude-code/);
+    expect(() => effectiveAnalysisAgent(key, root)).toThrow(/invalid_agent_config/);
+  });
+
+  it("a model the harness does not offer is an error naming its layer and the choices", () => {
+    writeRepoConfig(repo, { chatAgent: { harness: "claude-code", model: "gpt-9" } }, root);
+    const resolved = effectiveConfig(key, root).chatAgent;
+    expect(resolved.model).toEqual({ value: "gpt-9", source: "repo" });
+    expect(resolved.problem).toBe(
+      'Claude Code has no model "gpt-9" (from the repo settings); it has sonnet, opus, haiku.',
+    );
+  });
+
+  it("a layer that names the harness without a model inherits the model from a deeper layer of the same harness", () => {
+    writeConfig({ chatAgent: { harness: "claude-code", model: "haiku" } }, root);
+    const resolved = effectiveConfig(key, root, {
+      committed: { chatAgent: { harness: "claude-code" } },
+    }).chatAgent;
+    expect(resolved.harness.source).toBe("committed");
+    expect(resolved.model).toEqual({ value: "haiku", source: "global" });
   });
 
   /**
-   * Effort precedence: the same repo > committed > global > built-in chain as
-   * the model cases above, with one wrinkle — the global ConfigSchema default
-   * is "medium" itself (not null, unlike the model fields), so an untouched
-   * config.json already resolves from the *global* layer. Only an explicit
-   * `null` written there reaches the built-in default. `"none"` is exercised
-   * as what it is: a normal pinnable value, not an absence.
+   * Effort precedence: the same repo > committed > global > harness-default
+   * chain as the model cases above. `"none"` is exercised as what it is: a
+   * normal pinnable value, not an absence.
    */
   const effortCases: {
     name: string;
@@ -290,9 +327,9 @@ describe("effectiveConfig precedence", () => {
     source: string;
   }[] = [
     {
-      name: "nothing set anywhere resolves to the schema's own default",
+      name: "nothing set anywhere resolves to the harness's own default",
       expected: "medium",
-      source: "global",
+      source: "default",
     },
     {
       name: "an explicit null written at the global layer inherits the built-in default",
@@ -331,20 +368,23 @@ describe("effectiveConfig precedence", () => {
   ];
 
   for (const c of effortCases) {
-    it(`analysisEffort: ${c.name}`, () => {
-      if (c.repoLocal !== undefined) writeRepoConfig(repo, { analysisEffort: c.repoLocal }, root);
-      if (c.global !== undefined) writeConfig({ analysisEffort: c.global }, root);
+    it(`analysis effort: ${c.name}`, () => {
+      const sel = (effort: AnalysisEffort) => ({ harness: "claude-code", effort });
+      if (c.repoLocal !== undefined) {
+        writeRepoConfig(repo, { analysisAgent: c.repoLocal === null ? null : sel(c.repoLocal) }, root);
+      }
+      if (c.global !== undefined) writeConfig({ analysisAgent: c.global === null ? null : sel(c.global) }, root);
       const resolved = effectiveConfig(key, root, {
-        committed: c.committed === undefined ? null : { analysisEffort: c.committed },
+        committed: c.committed === undefined ? null : { analysisAgent: sel(c.committed) },
       });
-      expect(resolved.analysisEffort.value).toBe(c.expected);
-      expect(resolved.analysisEffort.source).toBe(c.source);
+      expect(resolved.analysisAgent.effort!.value).toBe(c.expected);
+      expect(resolved.analysisAgent.effort!.source).toBe(c.source);
     });
   }
 
-  it("effectiveAnalysisEffort is the resolver's value, and 'none' round-trips through it", () => {
-    writeRepoConfig(repo, { analysisEffort: "none" }, root);
-    expect(effectiveAnalysisEffort(key, root)).toBe("none");
+  it("the analysis agent carries 'none' through unchanged (the harness omits the flag)", () => {
+    writeRepoConfig(repo, { analysisAgent: { harness: "claude-code", effort: "none" } }, root);
+    expect(effectiveAnalysisAgent(key, root).effort).toBe("none");
   });
 
   it("an archived PR never auto-analyzes, whatever the layers say", () => {
@@ -623,9 +663,8 @@ describe("init and refresh capture", () => {
     expect(JSON.parse(fs.readFileSync(repoConfigPath(other, root), "utf8"))).toEqual({
       autoAnalyze: null,
       repoPath: null,
-      analysisModel: null,
-      chatModel: null,
-      analysisEffort: null,
+      analysisAgent: null,
+      chatAgent: null,
       watchReviews: null,
       archived: null,
     });
@@ -992,7 +1031,8 @@ describe("/api/repos/:rkey/config", () => {
     const clearedBody = await cleared.json();
     expect(clearedBody.local.analysisEffort).toBeNull();
     expect(clearedBody.effective.analysisEffort).toBe("medium");
-    expect(clearedBody.sources.analysisEffort).toBe("global");
+    // A fresh global config pins nothing: medium is the harness's own default.
+    expect(clearedBody.sources.analysisEffort).toBe("default");
   });
 
   it("rejects an unknown model name", async () => {
@@ -1058,10 +1098,45 @@ describe("/api/config", () => {
     expect(body).toEqual({
       analysisModel: null,
       chatModel: null,
-      analysisEffort: "medium",
+      // Medium is the harness's default now, not a value every config.json pins.
+      analysisEffort: null,
       managedCheckouts: true,
       defaults: { analysisModel: "sonnet", chatModel: "sonnet", analysisEffort: "medium" },
     });
+  });
+
+  it("reads a config.json written before agent selections, as Claude Code's", async () => {
+    fs.writeFileSync(
+      path.join(root, "config.json"),
+      JSON.stringify({ autoAnalyze: false, analysisModel: "opus", chatModel: null, analysisEffort: "medium" }),
+    );
+    expect(readConfig(root)).toMatchObject({
+      autoAnalyze: false,
+      analysisAgent: { harness: "claude-code", model: "opus", effort: "medium" },
+      chatAgent: null,
+    });
+    const body = await (await app.request("/api/config")).json();
+    expect(body).toMatchObject({ analysisModel: "opus", analysisEffort: "medium", chatModel: null });
+    // Existing installs keep resolving effort from the global layer, as before.
+    expect(effectiveConfig(key, root).analysisAgent.effort).toEqual({ value: "medium", source: "global" });
+  });
+
+  it("rejects a model or effort the harness does not offer, naming the choices", async () => {
+    const bad = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisModel: "gpt-9" }),
+    });
+    expect(bad.status).toBe(400);
+    expect((await bad.json()).detail).toBe(
+      "analysisModel: \"gpt-9\" is not one of Claude Code's models: sonnet, opus, haiku",
+    );
+    const effort = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisEffort: "max" }),
+    });
+    expect(effort.status).toBe(400);
   });
 
   it("toggles managedCheckouts and rejects a non-boolean", async () => {
@@ -1092,9 +1167,10 @@ describe("/api/config", () => {
     expect((await put.json()).analysisModel).toBe("haiku");
 
     const resolved = effectiveConfig(key, root);
-    expect(resolved.analysisModel).toEqual({ value: "haiku", source: "global" });
-    // The other key was not written, so it still inherits the built-in default.
-    expect(resolved.chatModel).toEqual({ value: "sonnet", source: "default" });
+    expect(resolved.analysisAgent.model).toEqual({ value: "haiku", source: "global" });
+    expect(readConfig(root).analysisAgent).toEqual({ harness: "claude-code", model: "haiku" });
+    // The other agent was not written, so it still inherits the built-in default.
+    expect(resolved.chatAgent.model).toEqual({ value: "sonnet", source: "default" });
 
     // A partial PUT leaves the rest of config.json alone.
     const second = await app.request("/api/config", {
@@ -1106,14 +1182,14 @@ describe("/api/config", () => {
   });
 
   it("null re-inherits the built-in default", async () => {
-    writeConfig({ chatModel: "opus" }, root);
+    writeConfig({ chatAgent: { harness: "claude-code", model: "opus" } }, root);
     const put = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chatModel: null }),
     });
     expect((await put.json()).chatModel).toBeNull();
-    expect(effectiveConfig(key, root).chatModel.source).toBe("default");
+    expect(effectiveConfig(key, root).chatAgent.model.source).toBe("default");
   });
 
   it("PUT accepts and persists analysisEffort at the global layer, including 'none'", async () => {
@@ -1124,7 +1200,7 @@ describe("/api/config", () => {
     });
     expect(put.status).toBe(200);
     expect((await put.json()).analysisEffort).toBe("low");
-    expect(effectiveConfig(key, root).analysisEffort).toEqual({ value: "low", source: "global" });
+    expect(effectiveConfig(key, root).analysisAgent.effort).toEqual({ value: "low", source: "global" });
 
     const none = await app.request("/api/config", {
       method: "PUT",
@@ -1132,7 +1208,7 @@ describe("/api/config", () => {
       body: JSON.stringify({ analysisEffort: "none" }),
     });
     expect((await none.json()).analysisEffort).toBe("none");
-    expect(effectiveConfig(key, root).analysisEffort).toEqual({ value: "none", source: "global" });
+    expect(effectiveConfig(key, root).analysisAgent.effort).toEqual({ value: "none", source: "global" });
 
     const cleared = await app.request("/api/config", {
       method: "PUT",
@@ -1140,7 +1216,7 @@ describe("/api/config", () => {
       body: JSON.stringify({ analysisEffort: null }),
     });
     expect((await cleared.json()).analysisEffort).toBeNull();
-    expect(effectiveConfig(key, root).analysisEffort).toEqual({ value: "medium", source: "default" });
+    expect(effectiveConfig(key, root).analysisAgent.effort).toEqual({ value: "medium", source: "default" });
   });
 
   it("400s on an unknown model or an unknown key", async () => {
