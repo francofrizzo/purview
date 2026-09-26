@@ -42,7 +42,7 @@ describe("registry", () => {
  * The semantic tasks must translate to exactly the rules the callers used to
  * build by hand. Order is irrelevant to Claude Code; membership is the policy.
  */
-describe("task -> Claude tool policy (unchanged from the pre-harness rules)", () => {
+describe("task -> Claude tool policy", () => {
   const cmd = cliCommand();
   const sorted = (a: string[]) => [...a].sort();
 
@@ -82,7 +82,8 @@ describe("task -> Claude tool policy (unchanged from the pre-harness rules)", ()
 
   it("chat", () => {
     const policy = chatToolFlags();
-    expect(policy.permissionMode).toBeUndefined();
+    // Unnamed commands are refused, never left to the user's default mode.
+    expect(policy.permissionMode).toBe("dontAsk");
     expect(policy.tools).toEqual(["Read", "Glob", "Grep", "Bash"]);
     expect(sorted(policy.allowedTools)).toEqual(
       sorted([
@@ -90,6 +91,7 @@ describe("task -> Claude tool policy (unchanged from the pre-harness rules)", ()
         "Glob",
         "Grep",
         ...["report", "list", "triage", "show", "changes", "units", "base-file", "comment"].map((s) => `Bash(${cmd} ${s}:*)`),
+        ...["grep:*", "rg:*", "sed -n:*", "ls:*", "cat:*", "head:*", "tail:*", "wc:*"].map((r) => `Bash(${r})`),
       ]),
     );
     expect(sorted(policy.disallowedTools)).toEqual(
@@ -97,6 +99,8 @@ describe("task -> Claude tool policy (unchanged from the pre-harness rules)", ()
         ...["sync", "set-analysis", "set-unit", "set-units", "view", "init", "refresh", "discard-revision", "remove-repo"].map(
           (s) => `Bash(${cmd} ${s}:*)`,
         ),
+        "Bash(sed * -i*)",
+        "Bash(sed * --in-place*)",
         "Bash(gh:*)",
         "Bash(git:*)",
         "Bash(curl:*)",

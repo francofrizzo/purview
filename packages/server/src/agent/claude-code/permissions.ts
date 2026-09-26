@@ -25,6 +25,23 @@ function deniedReviewerCommands(cli: string, allowed: readonly ReviewerCommand[]
 const NETWORK_DENIALS = ["Bash(gh:*)", "Bash(git:*)", "Bash(curl:*)", "Bash(wget:*)"];
 
 /**
+ * Read-only inspection, batchable into one call (`grep … && sed -n …`).
+ * `sed` is allowed only as `sed -n`, and the in-place flag is denied on top
+ * (`sed -n -i …` would otherwise match the allowance).
+ */
+const INSPECTION_ALLOWS = [
+  "Bash(grep:*)",
+  "Bash(rg:*)",
+  "Bash(sed -n:*)",
+  "Bash(ls:*)",
+  "Bash(cat:*)",
+  "Bash(head:*)",
+  "Bash(tail:*)",
+  "Bash(wc:*)",
+];
+const INSPECTION_DENIALS = ["Bash(sed * -i*)", "Bash(sed * --in-place*)"];
+
+/**
  * The permission surface of an analysis run. Every piece is load-bearing:
  *
  *  - `permissionMode: "dontAsk"`: anything no allow rule (or Claude Code's
@@ -76,22 +93,11 @@ export function analysisPolicy(
       "Edit(scratch/**)",
       ...(opts.transcriptDir ? [`Read(/${opts.transcriptDir}/**)`] : []),
       ...task.reviewerCommands.map((sub) => `Bash(${cli} ${sub}:*)`),
-      // Read-only investigation, batchable into one call. `sed` is allowed only
-      // as `sed -n` so the in-place form can never be reached this way.
-      "Bash(grep:*)",
-      "Bash(rg:*)",
-      "Bash(sed -n:*)",
-      "Bash(ls:*)",
-      "Bash(cat:*)",
-      "Bash(head:*)",
-      "Bash(tail:*)",
-      "Bash(wc:*)",
+      ...INSPECTION_ALLOWS,
     ],
     disallowedTools: [
       ...deniedReviewerCommands(cli, task.reviewerCommands),
-      // `sed -n -i …` would otherwise match the `sed -n` allowance.
-      "Bash(sed * -i*)",
-      "Bash(sed * --in-place*)",
+      ...INSPECTION_DENIALS,
       ...NETWORK_DENIALS,
       "WebFetch",
       "WebSearch",
@@ -105,16 +111,32 @@ export function analysisPolicy(
 
 /**
  * The permission surface of a chat turn: reads anywhere it can reach, the
- * allowed reviewer-state subcommands, no file writes, no network. Draft-only
- * comment mutation is enforced by the server (the chat's actor marker), not
- * by these rules.
+ * allowed reviewer-state subcommands, read-only inspection, no file writes,
+ * no network. Draft-only comment mutation is enforced by the server (the
+ * chat's actor marker), not by these rules.
+ *
+ * `dontAsk` for the same reason as analysis: without it the turn inherits the
+ * user's default mode, and under `auto` a classifier could approve a shell
+ * command no rule names — a redirect into the PR state directory (around the
+ * server's draft-only check), or `python3 -c` reaching the network.
  */
-export function chatPolicy(task: Pick<ChatTask, "reviewerCommands">, cli: string): ClaudeToolPolicy {
+export function chatPolicy(
+  task: Pick<ChatTask, "reviewerCommands">,
+  cli: string,
+): ClaudeToolPolicy & { permissionMode: "dontAsk" } {
   return {
+    permissionMode: "dontAsk",
     tools: ["Read", "Glob", "Grep", "Bash"],
-    allowedTools: ["Read", "Glob", "Grep", ...task.reviewerCommands.map((sub) => `Bash(${cli} ${sub}:*)`)],
+    allowedTools: [
+      "Read",
+      "Glob",
+      "Grep",
+      ...task.reviewerCommands.map((sub) => `Bash(${cli} ${sub}:*)`),
+      ...INSPECTION_ALLOWS,
+    ],
     disallowedTools: [
       ...deniedReviewerCommands(cli, task.reviewerCommands),
+      ...INSPECTION_DENIALS,
       ...NETWORK_DENIALS,
       "Write",
       "Edit",

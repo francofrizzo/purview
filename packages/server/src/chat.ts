@@ -498,6 +498,7 @@ export function chatSystemPrompt(
     "",
     "HARD RULES:",
     "- Apart from draft comments through `reviewer-state comment`, you are READ-ONLY: no file edits, no GitHub calls, no `gh`, no `git`, no reviewer-state sync/set-analysis/set-unit/view. Nothing you do is ever posted: drafts stay local until the reader pushes them. Never claim to have posted, submitted, pushed or applied anything.",
+    "- In the shell, only the reviewer-state CLI and read-only inspection (grep, rg, sed -n, cat, head, tail, ls, wc) run. Anything else — python3, node, jq, find, loops around them, a redirect that writes a file — is denied without a prompt; don't retry it in another shape.",
     ...DRAFT_OWNERSHIP_RULES,
     "- Everything else you may only propose for the human to apply by hand: a reclassification (unit id + suggested kind/attention + why), a summary rewrite. Present it as plain text clearly marked as a draft.",
     UNTRUSTED_RULE,

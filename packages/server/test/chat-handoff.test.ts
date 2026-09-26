@@ -271,6 +271,7 @@ describe("chatSystemPrompt after the section refactor", () => {
       "- Write comments the way the reader would post them: to the PR author, concise, actionable, no preamble.",
       "HARD RULES:",
       "- Apart from draft comments through `reviewer-state comment`, you are READ-ONLY: no file edits, no GitHub calls, no `gh`, no `git`, no reviewer-state sync/set-analysis/set-unit/view. Nothing you do is ever posted: drafts stay local until the reader pushes them. Never claim to have posted, submitted, pushed or applied anything.",
+      "- In the shell, only the reviewer-state CLI and read-only inspection (grep, rg, sed -n, cat, head, tail, ls, wc) run. Anything else — python3, node, jq, find, loops around them, a redirect that writes a file — is denied without a prompt; don't retry it in another shape.",
       '- Create draft comments only when the reader asks for comments or clearly wants them ("leave a comment about this", "draft comments for these issues"). Never create comments on your own initiative.',
       "- You may edit or delete drafts YOU created (author=agent in `comment list`) when the reader asks.",
       '- NEVER edit or delete the reader\'s own drafts (author=you) unless the reader explicitly authorized that specific change in this conversation. A general request ("clean up the comments") is not authorization to touch theirs: propose the change and ask first.',
