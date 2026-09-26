@@ -11,10 +11,10 @@ import {
 } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
 import {
-  canUndoClaudeEdit,
-  claudeDeletedDrafts,
+  canUndoAgentEdit,
+  agentDeletedDrafts,
   compareCommentOrder,
-  isByClaude,
+  isByAgent,
 } from "../lib/comments";
 import { QuoteButton } from "./ChatPanel";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
@@ -149,7 +149,7 @@ export function CommentComposer({
 
 /** "by Claude" — on a draft the review chat created. */
 export function ByClaudeChip({ comment }: { comment: Pick<DraftComment, "author"> }) {
-  if (!isByClaude(comment)) return null;
+  if (!isByAgent(comment)) return null;
   return (
     <span
       className="chip flex-none"
@@ -172,7 +172,7 @@ export function ClaudeEditNote({
   onUndo?: (id: string) => void;
   busy?: boolean;
 }) {
-  if (!canUndoClaudeEdit(comment)) return null;
+  if (!canUndoAgentEdit(comment)) return null;
   return (
     <p className="mt-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
       edited by Claude
@@ -452,7 +452,7 @@ export function DraftsDrawer({
   // Dismissing a notice only hides it here; the draft stays restorable until
   // the server's trash lets it go.
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
-  const chatDeleted = onRestore ? claudeDeletedDrafts(deleted, dismissed) : [];
+  const chatDeleted = onRestore ? agentDeletedDrafts(deleted, dismissed) : [];
 
   return (
     <aside

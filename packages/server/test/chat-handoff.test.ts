@@ -272,7 +272,7 @@ describe("chatSystemPrompt after the section refactor", () => {
       "HARD RULES:",
       "- Apart from draft comments through `reviewer-state comment`, you are READ-ONLY: no file edits, no GitHub calls, no `gh`, no `git`, no reviewer-state sync/set-analysis/set-unit/view. Nothing you do is ever posted: drafts stay local until the reader pushes them. Never claim to have posted, submitted, pushed or applied anything.",
       '- Create draft comments only when the reader asks for comments or clearly wants them ("leave a comment about this", "draft comments for these issues"). Never create comments on your own initiative.',
-      "- You may edit or delete drafts YOU created (author=claude in `comment list`) when the reader asks.",
+      "- You may edit or delete drafts YOU created (author=agent in `comment list`) when the reader asks.",
       '- NEVER edit or delete the reader\'s own drafts (author=you) unless the reader explicitly authorized that specific change in this conversation. A general request ("clean up the comments") is not authorization to touch theirs: propose the change and ask first.',
       "- Never touch pushed or submitted comments (they are in the reader's pending GitHub review, or public); the server refuses it anyway.",
       "- After any change, say exactly what you changed: the comment id, file:line, and whether you created, edited or deleted it. Edits and deletions can be undone by the reader from Purview's comments panel.",
@@ -321,7 +321,7 @@ describe("terminalContext", () => {
     expect(doc).not.toContain("```mermaid");
     // The draft-comment rules follow the conversation into the terminal, with
     // the actor prefix the fork does not inherit from the chat's child env.
-    expect(doc).toContain(`PURVIEW_ACTOR=chat ${cli()} comment add ${keyToString(key)}`);
+    expect(doc).toContain(`PURVIEW_ACTOR=chat PURVIEW_AGENT=claude-code ${cli()} comment add ${keyToString(key)}`);
     expect(doc).toContain("NEVER edit or delete the reader's own drafts");
     expect(doc).toContain("Never touch pushed or submitted comments");
     expect(doc).not.toContain("render in this chat");

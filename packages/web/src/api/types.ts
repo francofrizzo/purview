@@ -666,7 +666,11 @@ export interface DraftComment {
 }
 
 /** The reader, or the review chat writing through `reviewer-state comment`. */
-export type CommentActor = "you" | "claude";
+/**
+ * The reader, or an agent in the review chat (and the harness it ran on).
+ * The server reads comments stored as "claude" as `{ agent: "claude-code" }`.
+ */
+export type CommentActor = "you" | { agent: string };
 
 /** A deleted draft, still restorable for a while (the server's trash). */
 export type DeletedComment = DraftComment & { deletedAt: string; deletedBy: CommentActor };

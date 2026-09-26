@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { CommentStatus, DeletedComment, DraftComment, FilesJson } from "../api/types";
+import type { CommentActor, CommentStatus, DeletedComment, DraftComment, FilesJson } from "../api/types";
 import {
   bubbleTitle,
-  canUndoClaudeEdit,
-  claudeDeletedDrafts,
-  isByClaude,
+  canUndoAgentEdit,
+  agentDeletedDrafts,
+  isByAgent,
   isCommentWriteTool,
   compareCommentOrder,
   groupComments,
@@ -207,34 +207,34 @@ describe("presentation helpers", () => {
 });
 
 describe("comments the chat wrote", () => {
-  const hist = [{ body: "before", replacedAt: "2026-01-01T00:00:00Z", replacedBy: "claude" as const }];
+  const hist = [{ body: "before", replacedAt: "2026-01-01T00:00:00Z", replacedBy: { agent: "claude-code" } }];
 
   it("marks only Claude-authored comments", () => {
-    expect(isByClaude(c({ author: "claude" }))).toBe(true);
-    expect(isByClaude(c({ author: "you" }))).toBe(false);
-    expect(isByClaude(c())).toBe(false);
+    expect(isByAgent(c({ author: { agent: "claude-code" } }))).toBe(true);
+    expect(isByAgent(c({ author: "you" }))).toBe(false);
+    expect(isByAgent(c())).toBe(false);
   });
 
   it("offers undo only while Claude's edit to a draft is the latest one", () => {
-    expect(canUndoClaudeEdit(c({ lastEditedBy: "claude", history: hist }))).toBe(true);
-    expect(canUndoClaudeEdit(c({ lastEditedBy: "you", history: hist }))).toBe(false);
-    expect(canUndoClaudeEdit(c({ lastEditedBy: "claude", history: [] }))).toBe(false);
-    expect(canUndoClaudeEdit(c({ lastEditedBy: "claude", history: hist, status: "pushed" }))).toBe(false);
+    expect(canUndoAgentEdit(c({ lastEditedBy: { agent: "claude-code" }, history: hist }))).toBe(true);
+    expect(canUndoAgentEdit(c({ lastEditedBy: "you", history: hist }))).toBe(false);
+    expect(canUndoAgentEdit(c({ lastEditedBy: { agent: "claude-code" }, history: [] }))).toBe(false);
+    expect(canUndoAgentEdit(c({ lastEditedBy: { agent: "claude-code" }, history: hist, status: "pushed" }))).toBe(false);
   });
 
   it("lists Claude's deletions newest first, minus the dismissed ones", () => {
-    const d = (id: string, deletedAt: string, deletedBy: "you" | "claude"): DeletedComment => ({
+    const d = (id: string, deletedAt: string, deletedBy: CommentActor): DeletedComment => ({
       ...c({ id }),
       deletedAt,
       deletedBy,
     });
     const deleted = [
-      d("a", "2026-01-01T00:00:00Z", "claude"),
-      d("b", "2026-01-02T00:00:00Z", "claude"),
+      d("a", "2026-01-01T00:00:00Z", { agent: "claude-code" }),
+      d("b", "2026-01-02T00:00:00Z", { agent: "other" }),
       d("mine", "2026-01-03T00:00:00Z", "you"),
     ];
-    expect(claudeDeletedDrafts(deleted).map((x) => x.id)).toEqual(["b", "a"]);
-    expect(claudeDeletedDrafts(deleted, new Set(["b"])).map((x) => x.id)).toEqual(["a"]);
+    expect(agentDeletedDrafts(deleted).map((x) => x.id)).toEqual(["b", "a"]);
+    expect(agentDeletedDrafts(deleted, new Set(["b"])).map((x) => x.id)).toEqual(["a"]);
   });
 
   it("recognises the chat's comment-writing tool calls", () => {

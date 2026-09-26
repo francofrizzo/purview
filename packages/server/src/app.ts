@@ -66,6 +66,7 @@ import {
   updateCommentBody,
   updateCommentPosition,
   type Comment,
+  isAgentActor,
   type CommentActor,
 } from "./comments.js";
 import { recoverCommentNodeId, syncCommentsToGithub } from "./comment-sync.js";
@@ -160,9 +161,18 @@ export interface AppOptions {
  * `you` otherwise); the web sends nothing, which is the reader.
  */
 export const ACTOR_HEADER = "x-purview-actor";
+/** Which harness a chat actor runs on (PURVIEW_AGENT in the chat's env). */
+export const AGENT_HEADER = "x-purview-agent";
 
+/**
+ * The chat is an agent; everything else is the reader. The harness only
+ * labels the agent (which one wrote a draft) — it grants nothing, and an
+ * absent or malformed one is the default harness.
+ */
 function actorOf(c: { req: { header(name: string): string | undefined } }): CommentActor {
-  return c.req.header(ACTOR_HEADER)?.trim().toLowerCase() === "chat" ? "claude" : "you";
+  if (c.req.header(ACTOR_HEADER)?.trim().toLowerCase() !== "chat") return "you";
+  const harness = c.req.header(AGENT_HEADER)?.trim();
+  return { agent: harness && /^[a-z0-9][a-z0-9-]{0,63}$/.test(harness) ? harness : DEFAULT_HARNESS };
 }
 
 /**
@@ -171,11 +181,11 @@ function actorOf(c: { req: { header(name: string): string | undefined } }): Comm
  * only in the prompt, so a confused or injected model cannot get around it.
  */
 function assertChatMayTouch(actor: CommentActor, target: Comment, verb: string): void {
-  if (actor === "claude" && target.status !== "draft") {
+  if (isAgentActor(actor) && target.status !== "draft") {
     throw new HttpError(
       409,
       "not_draft",
-      `Claude may only ${verb} draft comments; comment ${target.id} is ${target.status}` +
+      `The review chat may only ${verb} draft comments; comment ${target.id} is ${target.status}` +
         (target.status === "pushed"
           ? " (in the reader's pending GitHub review)."
           : " (public on GitHub)."),
@@ -335,7 +345,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   );
   app.use("/api/*", async (c, next) => {
     const mutating = !["GET", "HEAD", "OPTIONS"].includes(c.req.method.toUpperCase());
-    if (actorOf(c) === "claude" && mutating && !/^\/api\/prs\/.+\/comments(\/|$)/.test(c.req.path)) {
+    if (isAgentActor(actorOf(c)) && mutating && !/^\/api\/prs\/.+\/comments(\/|$)/.test(c.req.path)) {
       return c.json(
         { error: "forbidden_actor", detail: "The review chat may only change draft comments." },
         403,

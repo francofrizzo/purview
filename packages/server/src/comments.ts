@@ -3,6 +3,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
+  LEGACY_HARNESS,
   commentsPath,
   computeHunkId,
   disambiguate,
@@ -44,14 +45,27 @@ export type CommentStatus = z.infer<typeof CommentStatusSchema>;
 export const CommentSubjectTypeSchema = z.enum(["line", "file"]);
 export type CommentSubjectType = z.infer<typeof CommentSubjectTypeSchema>;
 
+/** An agent acting through the review chat, and which harness it ran on. */
+export const AgentActorSchema = z.object({ agent: z.string().min(1) });
+export type AgentActor = z.infer<typeof AgentActorSchema>;
+
 /**
- * Who wrote or changed a comment: the reader ("you") or the review chat
- * ("claude", identified server-side by the `X-Purview-Actor: chat` header its
- * CLI calls carry — see `actorOf` in app.ts). Absent on disk means "you":
+ * Who wrote or changed a comment: the reader ("you") or an agent in the
+ * review chat (identified server-side by the `X-Purview-Actor: chat` header
+ * its CLI calls carry — see `actorOf` in app.ts). Absent on disk means "you":
  * every comment written before the chat could write any was the reader's.
+ * `"claude"`, the spelling before harness ids, reads as Claude Code's agent.
  */
-export const CommentActorSchema = z.enum(["you", "claude"]);
-export type CommentActor = z.infer<typeof CommentActorSchema>;
+export const CommentActorSchema = z.preprocess(
+  (v) => (v === "claude" ? { agent: LEGACY_HARNESS } : v),
+  z.union([z.literal("you"), AgentActorSchema]),
+);
+export type CommentActor = "you" | AgentActor;
+
+/** Authorization asks this, never a display name. */
+export function isAgentActor(actor: CommentActor | undefined): actor is AgentActor {
+  return typeof actor === "object" && actor !== null;
+}
 
 /** One body a comment used to have, newest last. */
 export const CommentBodyRevisionSchema = z.object({

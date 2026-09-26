@@ -15,6 +15,8 @@ export const DEFAULT_SERVER_PORT = 4779;
 
 /** Header the server reads the actor from (see `actorOf` in the server's app.ts). */
 export const ACTOR_HEADER = "X-Purview-Actor";
+/** Which harness a chat actor runs on; a label, never a permission. */
+export const AGENT_HEADER = "X-Purview-Agent";
 
 /**
  * Where the running server is: PURVIEW_SERVER_URL wins outright, else loopback
@@ -33,6 +35,16 @@ export function actorHeaderValue(env: NodeJS.ProcessEnv = process.env): "chat" |
   return env.PURVIEW_ACTOR?.trim().toLowerCase() === "chat" ? "chat" : "you";
 }
 
+/** The actor headers for this process: the harness rides along only for the chat. */
+export function actorHeaders(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const actor = actorHeaderValue(env);
+  const harness = env.PURVIEW_AGENT?.trim();
+  return { [ACTOR_HEADER]: actor, ...(actor === "chat" && harness ? { [AGENT_HEADER]: harness } : {}) };
+}
+
+/** A comment's author or editor, as the server reports it. */
+export type ServerCommentActor = "you" | { agent: string };
+
 export function commentsUrl(base: string, key: PrKey, rest = ""): string {
   return `${base}/api/prs/${encodeURIComponent(keyToString(key))}/comments${rest}`;
 }
@@ -46,8 +58,8 @@ export interface ServerComment {
   side?: "LEFT" | "RIGHT";
   body: string;
   status: "draft" | "pushed" | "submitted";
-  author?: "you" | "claude";
-  lastEditedBy?: "you" | "claude";
+  author?: ServerCommentActor;
+  lastEditedBy?: ServerCommentActor;
 }
 
 /** `path:line`, `path:line (old side)`, or `path (whole file)`. */
@@ -67,8 +79,10 @@ export function formatCommentList(comments: ServerComment[]): string {
   return (
     comments
       .map((c) => {
-        const author = c.author ?? "you";
-        const edited = c.lastEditedBy && c.lastEditedBy !== author ? ` edited-by=${c.lastEditedBy}` : "";
+        // `agent`, whichever harness: to the chat reading this, it means "yours".
+        const who = (a: ServerCommentActor | undefined) => (a && a !== "you" ? "agent" : "you");
+        const author = who(c.author);
+        const edited = c.lastEditedBy && who(c.lastEditedBy) !== author ? ` edited-by=${who(c.lastEditedBy)}` : "";
         return `${c.id}  ${c.status.padEnd(9)} author=${author}${edited}  ${commentLocation(c)}  ${firstLine(c.body)}`;
       })
       .join("\n") + "\n"
@@ -134,7 +148,7 @@ export async function callServer<T>(
     res = await fetch(url, {
       method,
       headers: {
-        [ACTOR_HEADER]: actorHeaderValue(env),
+        ...actorHeaders(env),
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,

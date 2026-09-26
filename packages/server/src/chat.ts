@@ -27,7 +27,7 @@ import type { CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
 import { HttpError } from "./http-error.js";
 import { getHarness } from "./agent/registry.js";
-import type { HarnessManifest, ReviewerCommand } from "./agent/types.js";
+import type { HarnessId, HarnessManifest, ReviewerCommand } from "./agent/types.js";
 
 /**
  * The review-assistant chat: one resumable agent session per PR.
@@ -375,8 +375,12 @@ export function latestChangelogNote(u: { changelog?: { revision: number; text: s
  * cannot drift; `terminal` swaps in the env prefix the forked session needs
  * (it does not inherit the chat child's PURVIEW_ACTOR).
  */
-function draftCommentLines(key: PrKey, terminal: boolean): string[] {
-  const cmd = terminal ? `PURVIEW_ACTOR=chat ${cliCommand()}` : cliCommand();
+/**
+ * `terminal`: the continued session's harness. Out of Purview the CLI gets no
+ * chat environment, so the commands carry it themselves.
+ */
+function draftCommentLines(key: PrKey, terminal?: { harness: HarnessId }): string[] {
+  const cmd = terminal ? `PURVIEW_ACTOR=chat PURVIEW_AGENT=${terminal.harness} ${cliCommand()}` : cliCommand();
   const k = keyToString(key);
   return [
     `- List comments (id, status, author, location, first line): \`${cmd} comment list ${k}\``,
@@ -401,7 +405,7 @@ function draftCommentLines(key: PrKey, terminal: boolean): string[] {
  */
 const DRAFT_OWNERSHIP_RULES = [
   "- Create draft comments only when the reader asks for comments or clearly wants them (\"leave a comment about this\", \"draft comments for these issues\"). Never create comments on your own initiative.",
-  "- You may edit or delete drafts YOU created (author=claude in `comment list`) when the reader asks.",
+  "- You may edit or delete drafts YOU created (author=agent in `comment list`) when the reader asks.",
   "- NEVER edit or delete the reader's own drafts (author=you) unless the reader explicitly authorized that specific change in this conversation. A general request (\"clean up the comments\") is not authorization to touch theirs: propose the change and ask first.",
   "- Never touch pushed or submitted comments (they are in the reader's pending GitHub review, or public); the server refuses it anyway.",
   "- After any change, say exactly what you changed: the comment id, file:line, and whether you created, edited or deleted it. Edits and deletions can be undone by the reader from Purview's comments panel.",
@@ -490,7 +494,7 @@ export function chatSystemPrompt(
     chatInstructionsSection(key, root, { committed: opts.committed }),
     "",
     "DRAFT REVIEW COMMENTS (the one thing you can write):",
-    ...draftCommentLines(key, false),
+    ...draftCommentLines(key),
     "",
     "HARD RULES:",
     "- Apart from draft comments through `reviewer-state comment`, you are READ-ONLY: no file edits, no GitHub calls, no `gh`, no `git`, no reviewer-state sync/set-analysis/set-unit/view. Nothing you do is ever posted: drafts stay local until the reader pushes them. Never claim to have posted, submitted, pushed or applied anything.",
@@ -518,7 +522,7 @@ export function terminalContext(
 ): string {
   const cmd = cliCommand();
   const meta = readMeta(key, root);
-  const { name, agentName } = opts.harness ?? getHarness().manifest;
+  const { id, name, agentName } = opts.harness ?? getHarness().manifest;
   const reading = readingMoreLines(key, root, opts.checkout);
   const section = (lines: string[]) => lines.filter((l) => l !== "").join("\n");
 
@@ -545,8 +549,8 @@ export function terminalContext(
     ]),
     "## Draft review comments",
     section([
-      `Draft comments go through the reviewer-state CLI, which talks to the running Purview server (it must be running). Keep the \`PURVIEW_ACTOR=chat\` prefix: it records the drafts as yours, so the reader sees them marked as ${agentName}'s and can undo your edits and deletions.`,
-      ...draftCommentLines(key, true),
+      `Draft comments go through the reviewer-state CLI, which talks to the running Purview server (it must be running). Keep the \`PURVIEW_ACTOR=chat PURVIEW_AGENT=${id}\` prefix: it records the drafts as yours, so the reader sees them marked as ${agentName}'s and can undo your edits and deletions.`,
+      ...draftCommentLines(key, { harness: id }),
       "",
       "The same rules as in the panel apply here, whatever your permissions:",
       ...DRAFT_OWNERSHIP_RULES,

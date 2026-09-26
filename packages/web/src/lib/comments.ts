@@ -11,6 +11,7 @@ import {
   isFileComment,
   type CommentStatus,
   type CommentSubject,
+  type CommentActor,
   type DeletedComment,
   type DraftComment,
 } from "../api/types";
@@ -133,29 +134,34 @@ export function bubbleTitle(comments: DraftComment[]): string {
 
 /* ------------------------------------------------ comments the chat wrote */
 
+/** The review chat's agent, whichever harness it ran on. */
+export function isAgentActor(actor: CommentActor | undefined): actor is { agent: string } {
+  return typeof actor === "object" && actor !== null;
+}
+
 /** Created by the review chat (`reviewer-state comment add` under PURVIEW_ACTOR=chat). */
-export function isByClaude(c: Pick<DraftComment, "author">): boolean {
-  return c.author === "claude";
+export function isByAgent(c: Pick<DraftComment, "author">): boolean {
+  return isAgentActor(c.author);
 }
 
 /**
  * The chat's latest edit is still in effect and can be taken back: a draft
- * whose last edit was Claude's, with an earlier body on record. Pushed and
+ * whose last edit was the chat agent's, with an earlier body on record. Pushed and
  * submitted comments are never undoable here (the server refuses it too).
  */
-export function canUndoClaudeEdit(
+export function canUndoAgentEdit(
   c: Pick<DraftComment, "status" | "lastEditedBy" | "history">,
 ): boolean {
-  return (c.status ?? "draft") === "draft" && c.lastEditedBy === "claude" && (c.history?.length ?? 0) > 0;
+  return (c.status ?? "draft") === "draft" && isAgentActor(c.lastEditedBy) && (c.history?.length ?? 0) > 0;
 }
 
 /** Drafts the chat deleted that are still restorable, newest first, minus the ones dismissed. */
-export function claudeDeletedDrafts(
+export function agentDeletedDrafts(
   deleted: DeletedComment[],
   dismissed: ReadonlySet<string> = new Set(),
 ): DeletedComment[] {
   return deleted
-    .filter((d) => d.deletedBy === "claude" && !dismissed.has(d.id))
+    .filter((d) => isAgentActor(d.deletedBy) && !dismissed.has(d.id))
     .sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
 }
 

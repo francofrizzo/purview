@@ -623,7 +623,7 @@ program
  * Draft comments. Unlike every command above, these do not touch the state
  * directory: comments.json belongs to the running server, so they go through
  * its HTTP API on loopback (see comment-client.ts). Inside the review chat
- * (PURVIEW_ACTOR=chat) the server records them as Claude's and refuses to
+ * (PURVIEW_ACTOR=chat) the server records them as the agent's and refuses to
  * touch anything that is not a draft.
  */
 const comment = program

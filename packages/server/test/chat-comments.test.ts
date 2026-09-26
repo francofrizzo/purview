@@ -7,7 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { serve, type ServerType } from "@hono/node-server";
-import { DEFAULT_SERVER_PORT, setGhRunner } from "@reviewer/core";
+import { DEFAULT_SERVER_PORT, commentsPath, setGhRunner } from "@reviewer/core";
 import { createApp, DEFAULT_PORT } from "../src/app.js";
 import {
   DELETED_COMMENT_TTL_MS,
@@ -61,7 +61,7 @@ const commentsUrl = (rest = "") => `/api/prs/${encodedKey}/comments${rest}`;
 async function create(body: string, headers: Record<string, string> = {}, line = 2) {
   const res = await req("POST", commentsUrl(), { file: "src/foo.ts", line, side: "RIGHT", body }, headers);
   expect(res.status).toBe(201);
-  return (await res.json()).comment as { id: string; author?: string; status: string };
+  return (await res.json()).comment as { id: string; author?: unknown; status: string };
 }
 
 function setStatus(id: string, status: "pushed" | "submitted") {
@@ -83,7 +83,7 @@ describe("comment author", () => {
     const mine = await create("reader draft");
     const claudes = await create("claude draft", CHAT);
     expect(mine.author).toBe("you");
-    expect(claudes.author).toBe("claude");
+    expect(claudes.author).toEqual({ agent: "claude-code" });
     expect(claudes.status).toBe("draft");
   });
 
@@ -112,7 +112,7 @@ describe("chat guards", () => {
     const mine = await create("reader draft");
     const edit = await req("PATCH", commentsUrl(`/${mine.id}`), { body: "claude rewrote it" }, CHAT);
     expect(edit.status).toBe(200);
-    expect((await edit.json()).comment.lastEditedBy).toBe("claude");
+    expect((await edit.json()).comment.lastEditedBy).toEqual({ agent: "claude-code" });
     const del = await req("DELETE", commentsUrl(`/${mine.id}`), undefined, CHAT);
     expect(del.status).toBe(200);
     expect((await del.json()).trashed).toBe(true);
@@ -133,6 +133,48 @@ describe("chat guards", () => {
       expect(gh.deletedCommentIds).toEqual([]);
     });
   }
+
+  it("labels the chat's agent with its harness, and the label grants nothing", async () => {
+    const other = { ...CHAT, "X-Purview-Agent": "other-harness" };
+    expect((await create("from elsewhere", other)).author).toEqual({ agent: "other-harness" });
+    // Still the chat: draft-only, and confined to the comment routes.
+    const c = await create("reader draft");
+    setStatus(c.id, "pushed");
+    expect((await req("PATCH", commentsUrl(`/${c.id}`), { body: "x", confirm: true }, other)).status).toBe(409);
+    expect((await req("POST", `/api/prs/${encodedKey}/sync`, undefined, other)).status).toBe(403);
+    // The harness header alone does not make anyone an agent.
+    expect((await create("mine", { "X-Purview-Agent": "other-harness" })).author).toBe("you");
+    // A malformed harness is the default one, not whatever was sent.
+    expect((await create("odd", { ...CHAT, "X-Purview-Agent": "../../etc" })).author).toEqual({ agent: "claude-code" });
+  });
+
+  it("reads comments written as \"claude\" as Claude Code's agent, with the same restrictions", async () => {
+    const c = await create("legacy");
+    const [stored] = readComments(key, root);
+    // As a pre-harness server wrote them.
+    fs.writeFileSync(
+      commentsPath(key, root),
+      JSON.stringify([
+        {
+          ...stored,
+          author: "claude",
+          lastEditedBy: "claude",
+          history: [{ body: "older", replacedAt: stored.createdAt, replacedBy: "claude" }],
+        },
+      ]),
+    );
+    const [legacy] = readComments(key, root);
+    expect(legacy.author).toEqual({ agent: "claude-code" });
+    expect(legacy.lastEditedBy).toEqual({ agent: "claude-code" });
+    expect(legacy.history?.[0].replacedBy).toEqual({ agent: "claude-code" });
+    // Still undoable by the reader, still editable by the chat while a draft...
+    expect((await req("PATCH", commentsUrl(`/${c.id}`), { body: "chat edit" }, CHAT)).status).toBe(200);
+    // ...and never once it is not.
+    setStatus(c.id, "submitted");
+    expect((await req("DELETE", commentsUrl(`/${c.id}`), undefined, CHAT)).status).toBe(409);
+    // Rewritten in the new shape.
+    expect(fs.readFileSync(commentsPath(key, root), "utf8")).not.toContain('"claude"');
+  });
 
   it("confines the chat to the comment routes", async () => {
     const res = await req("POST", `/api/prs/${encodedKey}/sync`, undefined, CHAT);
@@ -170,10 +212,10 @@ describe("edit history and undo", () => {
     await req("PATCH", commentsUrl(`/${c.id}`), { body: "v3" }, CHAT);
     let stored = readComments(key, root)[0];
     expect(stored.body).toBe("v3");
-    expect(stored.lastEditedBy).toBe("claude");
+    expect(stored.lastEditedBy).toEqual({ agent: "claude-code" });
     expect(stored.history?.map((h) => [h.body, h.replacedBy])).toEqual([
       ["v1", "you"],
-      ["v2", "claude"],
+      ["v2", { agent: "claude-code" }],
     ]);
 
     const undo = await req("POST", commentsUrl(`/${c.id}/undo-edit`));
@@ -215,13 +257,13 @@ describe("deleted drafts (trash)", () => {
     const listed = await (await req("GET", commentsUrl())).json();
     expect(listed.comments).toEqual([]);
     expect(listed.deleted).toHaveLength(1);
-    expect(listed.deleted[0]).toMatchObject({ id: c.id, deletedBy: "claude", body: "claude draft" });
+    expect(listed.deleted[0]).toMatchObject({ id: c.id, deletedBy: { agent: "claude-code" }, body: "claude draft" });
 
     const restored = await req("POST", commentsUrl(`/${c.id}/restore`));
     expect(restored.status).toBe(200);
     const after = await (await req("GET", commentsUrl())).json();
     expect(after.comments.map((x: { id: string }) => x.id)).toEqual([c.id]);
-    expect(after.comments[0]).toMatchObject({ status: "draft", author: "claude" });
+    expect(after.comments[0]).toMatchObject({ status: "draft", author: { agent: "claude-code" } });
     expect(after.deleted).toEqual([]);
     expect((await req("POST", commentsUrl(`/${c.id}/restore`))).status).toBe(404);
   });
@@ -351,7 +393,7 @@ describe("reviewer-state comment (CLI -> server)", () => {
     }
   }
 
-  it("adds, lists, edits and deletes a draft as Claude", async () => {
+  it("adds, lists, edits and deletes a draft as the chat's agent", async () => {
     await listen();
 
     const add = await cli([
@@ -362,11 +404,11 @@ describe("reviewer-state comment (CLI -> server)", () => {
     const id = /Created draft comment (\S+) at src\/foo\.ts:2\./.exec(add.stdout)?.[1];
     expect(id).toBeTruthy();
     const stored = readComments(key, root)[0];
-    expect(stored).toMatchObject({ id, author: "claude", status: "draft", line: 2, side: "RIGHT" });
+    expect(stored).toMatchObject({ id, author: { agent: "claude-code" }, status: "draft", line: 2, side: "RIGHT" });
     expect(stored.body).toBe("Why 'new2'? $HOME stays literal\nsecond line");
 
     const list = await cli(["comment", "list", keyStr]);
-    expect(list.stdout).toContain(`${id}  draft     author=claude  src/foo.ts:2  Why 'new2'? $HOME stays literal`);
+    expect(list.stdout).toContain(`${id}  draft     author=agent  src/foo.ts:2  Why 'new2'? $HOME stays literal`);
 
     const bodyFile = path.join(root, "body.md");
     fs.writeFileSync(bodyFile, "Edited from a file\n");
@@ -379,7 +421,7 @@ describe("reviewer-state comment (CLI -> server)", () => {
     expect(del.code, del.stderr).toBe(0);
     expect(del.stdout).toContain("can be restored");
     expect(readComments(key, root)).toEqual([]);
-    expect(readDeletedComments(key, root)[0]).toMatchObject({ id, deletedBy: "claude" });
+    expect(readDeletedComments(key, root)[0]).toMatchObject({ id, deletedBy: { agent: "claude-code" } });
   });
 
   it("adds a file-level comment, and as the reader outside the chat", async () => {
@@ -398,7 +440,7 @@ describe("reviewer-state comment (CLI -> server)", () => {
     setStatus(c.id, "pushed");
     const edit = await cli(["comment", "edit", keyStr, c.id, "--body", "x"]);
     expect(edit.code).toBe(1);
-    expect(edit.stderr).toContain("Claude may only edit draft comments");
+    expect(edit.stderr).toContain("The review chat may only edit draft comments");
     expect(edit.stderr).toContain("409");
   });
 

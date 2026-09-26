@@ -13,7 +13,7 @@ import {
 } from "@reviewer/core";
 import { resolveRunCheckout } from "./pr-checkout.js";
 import { getHarness } from "./agent/registry.js";
-import type { AgentAction, AgentHarness, AgentSession } from "./agent/types.js";
+import type { AgentAction, AgentHarness, AgentSession, HarnessId } from "./agent/types.js";
 import { skillDir } from "./skill-paths.js";
 import { effectiveChatAgent, effectiveRepoPath } from "./repo-config.js";
 import { loadCommittedConfig } from "./team-config.js";
@@ -63,12 +63,14 @@ const CHAT_TIMEOUT_MS = 10 * 60_000;
 /**
  * Environment the chat's agent child (and so its shell tool, and so the
  * reviewer-state CLI it runs) gets on top of the server's own:
- * PURVIEW_ACTOR=chat makes the CLI send `X-Purview-Actor: chat`, and
+ * PURVIEW_ACTOR=chat makes the CLI send `X-Purview-Actor: chat`,
+ * PURVIEW_AGENT names the harness it runs on (which labels its drafts), and
  * PURVIEW_PORT points it at the port this server actually listens on.
  */
-export function chatChildEnv(serverPort?: number): Record<string, string> {
+export function chatChildEnv(serverPort?: number, harness?: HarnessId): Record<string, string> {
   return {
     PURVIEW_ACTOR: "chat",
+    ...(harness ? { PURVIEW_AGENT: harness } : {}),
     ...(serverPort !== undefined ? { PURVIEW_PORT: String(serverPort) } : {}),
   };
 }
@@ -189,7 +191,7 @@ export function startChatTurn(
         timeoutMs: opts.timeoutMs ?? CHAT_TIMEOUT_MS,
         // Marks the chat's `reviewer-state comment` calls as the agent's (the
         // server enforces draft-only on them) and points them at this server.
-        environment: chatChildEnv(opts.serverPort),
+        environment: chatChildEnv(opts.serverPort, harness.manifest.id),
       });
 
       for await (const event of run.events) {
