@@ -831,10 +831,17 @@ export interface ChatModelResult {
   restartedSession: boolean;
 }
 
+/**
+ * What an agent action does, whatever the harness calls the tool. Absent on
+ * Purview's own steps (e.g. preparing the checkout).
+ */
+export const TOOL_KINDS = ["command", "read", "write", "search", "tool"] as const;
+export type ToolKind = (typeof TOOL_KINDS)[number];
+
 /** POST /api/prs/:key/chat, decoded from the SSE frames. */
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
-  | { type: "tool"; name: string; detail?: string }
+  | { type: "tool"; name: string; detail?: string; kind?: ToolKind }
   | { type: "done"; message: ChatMessage }
   | { type: "error"; error: string };
 

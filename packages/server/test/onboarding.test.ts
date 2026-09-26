@@ -13,7 +13,7 @@ import {
   writeConfig,
 } from "../src/config.js";
 import {
-  checkClaude,
+  checkAgent,
   checkGh,
   checkNode,
   checkStateDir,
@@ -155,13 +155,13 @@ describe("environment checks", () => {
   });
 
   it("only warns when claude is missing — it is optional", () => {
-    const r = checkClaude(fakeExec({}));
+    const r = checkAgent(fakeExec({}));
     expect(r.status).toBe("warn");
     expect(r.hint).toMatch(/claude-code/);
   });
 
   it("passes claude and reports the version line", () => {
-    expect(checkClaude(fakeExec(HEALTHY))).toMatchObject({
+    expect(checkAgent(fakeExec(HEALTHY))).toMatchObject({
       status: "pass",
       detail: "2.0.14 (Claude Code)",
     });

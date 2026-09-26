@@ -858,7 +858,7 @@ export function createApp(opts: AppOptions = {}): Hono {
           } else if (event.type === "tool") {
             await stream.writeSSE({
               event: "tool",
-              data: JSON.stringify({ name: event.name, detail: event.detail }),
+              data: JSON.stringify({ name: event.name, detail: event.detail, kind: event.kind }),
             });
           } else if (event.type === "done") {
             await stream.writeSSE({

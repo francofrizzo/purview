@@ -2,7 +2,7 @@ import { mockApi } from "../mocks/server";
 import { hunkBodyLines } from "../lib/diffModel";
 import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
-import { isRemovedUnit } from "./types";
+import { isRemovedUnit, TOOL_KINDS } from "./types";
 import type {
   AddCommentInput,
   AnalysisImportReport,
@@ -57,6 +57,7 @@ import type {
   Staleness,
   SubmitReviewResult,
   SyncResult,
+  ToolKind,
 } from "./types";
 
 export const MOCK = import.meta.env.VITE_MOCK === "1";
@@ -992,10 +993,12 @@ export function decodeChatFrame(event: string, data: string): ChatStreamEvent | 
     case "tool": {
       const name = typeof payload?.name === "string" ? payload.name : null;
       if (!name) return null;
+      const kind = payload?.kind;
       return {
         type: "tool",
         name,
         detail: typeof payload?.detail === "string" ? payload.detail : undefined,
+        kind: TOOL_KINDS.includes(kind as ToolKind) ? (kind as ToolKind) : undefined,
       };
     }
     case "done": {

@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { setClaudeSpawner, type ClaudeChild } from "../src/claude-runner.js";
+import { setClaudeSpawner } from "../src/agent/claude-code/index.js";
+import type { ChildProcessLike } from "../src/agent/process-runner.js";
 
 const CHILD = fileURLToPath(new URL("./fake-claude-child.mjs", import.meta.url));
 
@@ -123,7 +124,7 @@ export function fakeClaude(opts: FakeClaudeOptions = {}): FakeClaude {
         if (fs.existsSync(promptFile)) runs[index].prompt = fs.readFileSync(promptFile, "utf8");
       });
       children.push(child);
-      return child as unknown as ClaudeChild;
+      return child as unknown as ChildProcessLike;
     });
   };
 

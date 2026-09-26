@@ -12,7 +12,8 @@ import {
   type PrKey,
 } from "@reviewer/core";
 import { resolveRunCheckout } from "./pr-checkout.js";
-import { runClaude } from "./claude-runner.js";
+import { getHarness } from "./agent/registry.js";
+import type { AgentAction, AgentSession } from "./agent/types.js";
 import { skillDir } from "./skill-paths.js";
 import { effectiveChatModel, effectiveRepoPath } from "./repo-config.js";
 import { loadCommittedConfig } from "./team-config.js";
@@ -20,10 +21,8 @@ import { resolveCheckout, type CheckoutResolution } from "./worktree.js";
 import {
   appendChatMessage,
   buildChatPrompt,
+  CHAT_CLI_SUBCOMMANDS,
   chatSystemPrompt,
-  chatToolFlags,
-  handoffCommand,
-  newSessionId,
   readChat,
   resolveRefs,
   terminalContext,
@@ -41,7 +40,8 @@ import { HttpError } from "./http-error.js";
 
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
-  | { type: "tool"; name: string; detail: string }
+  /** `kind` is the normalized action kind; absent on Purview's own steps (e.g. the checkout) */
+  | { type: "tool"; name: string; detail: string; kind?: AgentAction["kind"] }
   | { type: "done"; message: { role: "assistant"; text: string; ts: string } }
   | { type: "error"; error: string };
 
@@ -61,7 +61,7 @@ export function chatBusy(key: PrKey): boolean {
 const CHAT_TIMEOUT_MS = 10 * 60_000;
 
 /**
- * Environment the chat's Claude child (and so its Bash tool, and so the
+ * Environment the chat's agent child (and so its shell tool, and so the
  * reviewer-state CLI it runs) gets on top of the server's own:
  * PURVIEW_ACTOR=chat makes the CLI send `X-Purview-Actor: chat`, and
  * PURVIEW_PORT points it at the port this server actually listens on.
@@ -113,7 +113,12 @@ export function startChatTurn(
     }
   })();
   const stateDir = prDir(key, root);
-  const flags = chatToolFlags();
+  const harness = getHarness();
+  // chat.json predates harness ids: a stored session is the default harness's.
+  const stored: AgentSession | undefined =
+    chat.sessionId && chat.sessionCwd
+      ? { harness: harness.manifest.id, id: chat.sessionId, cwd: chat.sessionCwd }
+      : undefined;
   const state = loadState(key, root);
   const revisionInfo = state.revisions.find((r) => r.revision === state.currentRevision);
   const headSha = revisionInfo?.headSha;
@@ -130,12 +135,11 @@ export function startChatTurn(
 
   const done = (async () => {
     let full = "";
-    /** text Claude wrote before its latest tool call (see the `tool` case) */
+    /** text the agent wrote before its latest action (see the `action` case) */
     let narration = "";
     let streamed = false;
     let failure: string | undefined;
-    let resolvedSessionId: string | null = chat.sessionId;
-    let cwd = stateDir;
+    let session = stored;
     try {
       // Resolved per turn: the managed checkout follows the current head, and
       // a reader worktree for this PR's branch may have appeared or vanished.
@@ -148,79 +152,79 @@ export function startChatTurn(
       if (checkout.error) {
         console.warn(`[chat] ${keyStr}: ${checkout.error}; running without a checkout`);
       }
-      const addDirs = [skillDir()];
+      let cwd = stateDir;
+      const readRoots = [skillDir()];
       if (checkout.path) {
         // The checkout is the more useful working directory (grep/glob land in
         // the code), so the state dir becomes the extra root instead.
         cwd = checkout.path;
-        addDirs.push(stateDir);
+        readRoots.push(stateDir);
       }
 
-      // The CLI files sessions per cwd: resuming from another cwd may not find
-      // the session, so a changed (or unknown) cwd starts a fresh session and
-      // replays the kept transcript, exactly like a rewind does.
-      const resume = chat.sessionId !== null && chat.sessionCwd === cwd;
-      const sessionId = resume ? chat.sessionId! : newSessionId();
-      resolvedSessionId = sessionId;
+      // A session the harness cannot continue from this cwd (or none at all)
+      // means a fresh session that replays the kept transcript, exactly like
+      // a rewind does.
+      const resume = stored && harness.canResume(stored, cwd) ? stored : undefined;
       const prompt = buildChatPrompt(
         key,
         text,
         refs,
-        { sessionId: resume ? chat.sessionId : null, priorMessages: chat.messages },
+        { sessionId: resume ? resume.id : null, priorMessages: chat.messages },
         root,
       );
 
-      const run = runClaude({
-        label: "chat",
+      const run = harness.run({
+        task: { kind: "chat", reviewerCommands: CHAT_CLI_SUBCOMMANDS },
         prompt,
         cwd,
-        addDirs,
-        ...flags,
-        // The system prompt is re-sent on resume too: it is cheap, and it keeps
-        // the read-only contract in force for every turn.
-        systemPrompt: chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed }),
+        readRoots,
+        // The instructions are re-sent on resume too: they are cheap, and they
+        // keep the read-only contract in force for every turn.
+        instructions: chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed }),
         // Session pin first, then the layered repo/global default. Never
-        // absent: an unset model would fall through to the CLI's own default.
+        // absent: an unset model would fall through to the harness's own default.
         model: chat.model ?? effectiveChatModel(key, root, { meta: meta ?? null }),
-        sessionId: resume ? undefined : sessionId,
-        resumeSessionId: resume ? sessionId : undefined,
-        partialMessages: true,
+        session: resume ?? "new",
         timeoutMs: opts.timeoutMs ?? CHAT_TIMEOUT_MS,
-        // Marks the chat's `reviewer-state comment` calls as Claude's (the
+        // Marks the chat's `reviewer-state comment` calls as the agent's (the
         // server enforces draft-only on them) and points them at this server.
-        env: chatChildEnv(opts.serverPort),
+        environment: chatChildEnv(opts.serverPort),
       });
 
       for await (const event of run.events) {
         switch (event.type) {
           case "session":
-            resolvedSessionId = event.sessionId;
+            session = event.session;
             break;
-          case "delta":
+          case "output-delta":
             streamed = true;
             emit({ type: "delta", text: event.text });
             break;
-          case "text":
+          case "output":
             // Complete blocks are the authoritative transcript; when deltas
             // were streamed they already carried this text to the client.
             full += (full ? "\n" : "") + event.text;
             if (!streamed) emit({ type: "delta", text: event.text });
             break;
-          case "tool":
-            // Text before a tool call is narration ("Git is denied, I'll read
+          case "action":
+            // Text before an action is narration ("Git is denied, I'll read
             // the files directly"), not the answer: the saved reply is what
-            // Claude wrote after its last tool call. The narration is kept
-            // only as a fallback for a turn that ends on a tool call.
-            // `result-error` is the runner's end-of-run error report, not a
-            // tool Claude used, and must not discard the answer before it.
-            if (event.name !== "result-error" && full) {
+            // the agent wrote after its last action. The narration is kept
+            // only as a fallback for a turn that ends on an action.
+            if (full) {
               narration = full;
               full = "";
             }
-            emit({ type: "tool", name: event.name, detail: event.detail });
+            emit({
+              type: "tool",
+              name: event.action.name,
+              detail: event.action.summary,
+              kind: event.action.kind,
+            });
             break;
-          case "done":
-            if (!event.ok) failure = event.error ?? "claude run failed";
+          case "completed":
+            if (!event.ok) failure = event.error ?? "agent run failed";
+            if (event.session) session = event.session;
             break;
         }
       }
@@ -230,9 +234,9 @@ export function startChatTurn(
 
     if (!full) full = narration;
     const ts = new Date().toISOString();
-    const session = { sessionId: resolvedSessionId, sessionCwd: resolvedSessionId ? cwd : null };
+    const persisted = { sessionId: session?.id ?? null, sessionCwd: session?.cwd ?? null };
     if (failure && !full) {
-      writeChat(key, { ...readChat(key, root), ...session }, root);
+      writeChat(key, { ...readChat(key, root), ...persisted }, root);
       emit({ type: "error", error: failure });
     } else {
       const current = readChat(key, root);
@@ -240,7 +244,7 @@ export function startChatTurn(
         key,
         {
           ...current,
-          ...session,
+          ...persisted,
           messages: [...current.messages, { role: "assistant", text: full, ts }],
         },
         root,
@@ -279,8 +283,8 @@ function realOrSelf(p: string): string {
 
 /**
  * The checkout the session actually lives in, described without touching it:
- * the hand-off must not fetch, move or create anything, and `--resume` only
- * works from the cwd the session was filed under, so that cwd is the truth
+ * the hand-off must not fetch, move or create anything, and the session
+ * continues from the cwd it was started in, so that cwd is the truth
  * here — not whatever a fresh turn would resolve to.
  */
 function sessionCheckout(
@@ -325,16 +329,23 @@ function sessionCheckout(
 }
 
 /**
- * Hand the chat's Claude session to the reader's own terminal: write the PR
+ * Hand the chat's agent session to the reader's own terminal: write the PR
  * context next to the state (overwritten, so it always matches the current
- * analysis) and return the one-liner that forks the session with it.
+ * analysis) and return the harness's one-liner that continues the session
+ * with it.
  */
 export function chatHandoff(key: PrKey, root = stateRoot()): ChatHandoff {
+  const harness = getHarness();
+  const { name, agentName } = harness.manifest;
+  const continueIn = `continue in ${name}`;
+  if (!harness.createHandoff) {
+    throw new HttpError(409, "handoff_unsupported", `${name} cannot continue a chat in a terminal.`);
+  }
   if (chatBusy(key)) {
     throw new HttpError(
       409,
       "chat_busy",
-      "Claude is still answering. Wait for the reply to finish, then continue in Claude Code.",
+      `${agentName} is still answering. Wait for the reply to finish, then ${continueIn}.`,
     );
   }
   const chat = readChat(key, root);
@@ -342,7 +353,7 @@ export function chatHandoff(key: PrKey, root = stateRoot()): ChatHandoff {
     throw new HttpError(
       409,
       "no_session",
-      "This chat has no Claude session yet. Send a message first, then continue in Claude Code.",
+      `This chat has no ${agentName} session yet. Send a message first, then ${continueIn}.`,
     );
   }
   if (!chat.sessionCwd) {
@@ -350,7 +361,7 @@ export function chatHandoff(key: PrKey, root = stateRoot()): ChatHandoff {
       409,
       "no_session",
       "Purview does not know where this chat's session lives (it predates that being recorded). " +
-        "Send one more message first; from then on it can continue in Claude Code.",
+        `Send one more message first; from then on it can ${continueIn}.`,
     );
   }
   if (!fs.existsSync(chat.sessionCwd)) {
@@ -358,24 +369,27 @@ export function chatHandoff(key: PrKey, root = stateRoot()): ChatHandoff {
       409,
       "session_cwd_missing",
       `The chat's working directory ${chat.sessionCwd} no longer exists. ` +
-        "Send a message to move the session, then continue in Claude Code.",
+        `Send a message to move the session, then ${continueIn}.`,
     );
   }
 
   const context = terminalContext(key, root, {
     checkout: sessionCheckout(key, root, chat.sessionCwd),
     committed: loadCommittedConfig(key, root),
+    harness: harness.manifest,
   });
   const contextPath = terminalContextPath(key, root);
   fs.mkdirSync(path.dirname(contextPath), { recursive: true });
   fs.writeFileSync(contextPath, context, "utf8");
 
-  const handoff = { cwd: chat.sessionCwd, sessionId: chat.sessionId, contextPath };
-  // The context file sends the fork to the PR state dir (triage, show, the
-  // diff) and the skill docs; granting them up front spares a permission
-  // prompt on the first read. Skipped when the session already lives there.
-  const addDirs = [prDir(key, root), skillDir()].filter((d) => d !== chat.sessionCwd);
-  return { ...handoff, command: handoffCommand({ ...handoff, addDirs }) };
+  const session: AgentSession = { harness: harness.manifest.id, id: chat.sessionId, cwd: chat.sessionCwd };
+  // The context file sends the continued session to the PR state dir
+  // (triage, show, the diff) and the skill docs.
+  const { command } = harness.createHandoff(session, {
+    contextPath,
+    readRoots: [prDir(key, root), skillDir()],
+  });
+  return { cwd: chat.sessionCwd, sessionId: chat.sessionId, contextPath, command };
 }
 
 /** Only for tests: wait for any in-flight turn on this PR. */

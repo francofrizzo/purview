@@ -4,6 +4,8 @@ import readline from "node:readline";
 import { spawnSync } from "node:child_process";
 import { configPath, stateRoot } from "@reviewer/core";
 import { DEFAULT_CONFIG, configExists, writeConfig, type ReviewerConfig } from "./config.js";
+import { getHarness } from "./agent/registry.js";
+import type { AgentHarness, Exec } from "./agent/types.js";
 
 /**
  * First-run onboarding for the terminal.
@@ -64,7 +66,7 @@ export function colorsEnabled(
 export type CheckStatus = "pass" | "warn" | "fail";
 
 export interface CheckResult {
-  id: "node" | "gh" | "claude" | "statedir";
+  id: "node" | "gh" | "agent" | "statedir";
   label: string;
   status: CheckStatus;
   /** One-line result detail, e.g. the detected `gh` login or version. */
@@ -73,14 +75,7 @@ export interface CheckResult {
   hint?: string;
 }
 
-export interface ExecResult {
-  ok: boolean;
-  stdout: string;
-  stderr: string;
-}
-
-/** Injectable process runner. Returns ok:false rather than throwing. */
-export type Exec = (cmd: string, args: string[]) => ExecResult;
+export type { Exec, ExecResult } from "./agent/types.js";
 
 export const realExec: Exec = (cmd, args) => {
   try {
@@ -144,26 +139,23 @@ export function checkGh(exec: Exec): CheckResult {
 }
 
 /**
- * `claude` failing is soft: the diff viewer, GitHub sync and the whole review
- * lifecycle work without it. Only automatic analysis and the review chat do not.
+ * The agent harness failing is soft: the diff viewer, GitHub sync and the
+ * whole review lifecycle work without it. Only automatic analysis and the
+ * review chat do not.
  */
-export function checkClaude(exec: Exec): CheckResult {
-  const r = exec("claude", ["--version"]);
-  if (!r.ok) {
+export function checkAgent(exec: Exec, harness: AgentHarness = getHarness()): CheckResult {
+  const status = harness.probe(exec);
+  const label = `${harness.manifest.name} available`;
+  if (!status.available) {
     return {
-      id: "claude",
-      label: "claude CLI available",
+      id: "agent",
+      label,
       status: "warn",
-      detail: "not found",
-      hint: "Optional. Install to enable analysis + chat: https://claude.com/claude-code",
+      detail: status.detail ?? "not found",
+      hint: `Optional. Install to enable analysis + chat${status.setupHint ? `: ${status.setupHint}` : "."}`,
     };
   }
-  return {
-    id: "claude",
-    label: "claude CLI available",
-    status: "pass",
-    detail: r.stdout.trim().split("\n")[0] || "ok",
-  };
+  return { id: "agent", label, status: "pass", detail: status.detail ?? "ok" };
 }
 
 /** The state dir must be creatable and writable — everything persists there. */
@@ -362,7 +354,7 @@ export async function runOnboarding(deps: OnboardingDeps): Promise<OnboardingRes
 
   run(() => checkNode(deps.nodeVersion));
   const gh = run(() => checkGh(exec));
-  const claude = run(() => checkClaude(exec));
+  const agent = run(() => checkAgent(exec));
   run(() => checkStateDir(root));
 
   io.write("\n");
@@ -383,7 +375,7 @@ export async function runOnboarding(deps: OnboardingDeps): Promise<OnboardingRes
     }
   }
 
-  if (claude.status !== "pass") {
+  if (agent.status !== "pass") {
     io.write(
       p.warn("  Without the claude CLI, automatic analysis and review chat are unavailable.\n") +
         p.dim("  Everything else — diff viewer, comments, sync, review submit — still works.\n\n"),
@@ -418,7 +410,7 @@ export async function runOnboarding(deps: OnboardingDeps): Promise<OnboardingRes
   );
 
   io.write(
-    renderSummary({ root, port, claudeReady: claude.status === "pass", autoAnalyze }, p) + "\n\n",
+    renderSummary({ root, port, claudeReady: agent.status === "pass", autoAnalyze }, p) + "\n\n",
   );
 
   return { config, checks, aborted: false };

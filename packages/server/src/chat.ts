@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import {
   ClaudeModelSchema,
@@ -25,13 +24,15 @@ import { chatInstructionsSection } from "./chat-instructions.js";
 import type { CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
 import { HttpError } from "./http-error.js";
+import { getHarness } from "./agent/registry.js";
+import type { HarnessManifest, ReviewerCommand } from "./agent/types.js";
 
 /**
- * The review-assistant chat: one resumable Claude session per PR.
+ * The review-assistant chat: one resumable agent session per PR.
  *
- * The CLI keeps the real transcript (we only hold its session id); `chat.json`
- * keeps a summary list that the UI renders, so a reload shows the conversation
- * without re-reading the CLI's own storage format.
+ * The harness keeps the real transcript (we only hold its session id);
+ * `chat.json` keeps a summary list that the UI renders, so a reload shows the
+ * conversation without re-reading the harness's own storage format.
  */
 
 export const ChatRefSchema = z.object({
@@ -57,17 +58,17 @@ export const ChatFileSchema = z.object({
   messages: z.array(ChatMessageSchema).default([]),
   /**
    * Model pinned for this conversation, or `null` to follow the repo/global
-   * `chatModel`. It takes effect on the next message: every turn passes
-   * `--model` explicitly, and the CLI accepts a `--resume` with a different
+   * `chatModel`. It takes effect on the next message: every turn names its
+   * model explicitly, and Claude Code resumes a session under a different
    * model, so switching never costs the transcript.
    */
   model: ClaudeModelSchema.nullable().default(null),
   /**
-   * The working directory `sessionId` was created under. The CLI files a
-   * session under a per-cwd project directory, so `--resume` from a different
-   * cwd may not find it; a turn whose cwd differs starts a fresh session and
-   * replays the transcript instead. `null` = unknown (a chat written before
-   * this field existed), which is treated as "differs".
+   * The working directory `sessionId` was created under. A harness may only
+   * be able to continue a session from that cwd (`canResume` decides); a turn
+   * it cannot resume starts a fresh session and replays the transcript
+   * instead. `null` = unknown (a chat written before this field existed),
+   * which is never resumed.
    */
   sessionCwd: z.string().nullable().default(null),
 });
@@ -241,10 +242,10 @@ export function resolveRefs(key: PrKey, refs: ChatRef[], root = stateRoot()): st
 const REPLAY_BUDGET_CHARS = 24_000;
 
 /**
- * A fresh Claude session (after a rewind, or one that never started) has no
+ * A fresh agent session (after a rewind, or one that never started) has no
  * memory of messages the reader still sees in the transcript. This renders
  * the kept history back into text so it can be replayed at the front of the
- * next prompt — the CLI has no way to seed a session's memory other than
+ * next prompt — a harness has no general way to seed a session's memory other than
  * feeding it back through the prompt itself.
  *
  * Pure and side-effect free so it is testable without a chat.json on disk.
@@ -467,9 +468,9 @@ export function chatSystemPrompt(
 }
 
 /**
- * The document handed to a reader's own Claude Code session when they take a
- * Purview chat into their terminal (`claude --resume <id> --fork-session
- * --append-system-prompt "$(cat <file>)"`). Same PR context as the chat
+ * The document handed to a reader's own agent session when they take a
+ * Purview chat into their terminal (the harness's handoff command appends it
+ * to the continued session's instructions). Same PR context as the chat
  * prompt, from the same builders; what differs is the contract: the fork runs
  * with the reader's normal permissions, so the read-only HARD RULES give way
  * to the few rules that still matter outside the panel.
@@ -477,10 +478,11 @@ export function chatSystemPrompt(
 export function terminalContext(
   key: PrKey,
   root = stateRoot(),
-  opts: PromptOpts & { checkout?: ChatCheckout } = {},
+  opts: PromptOpts & { checkout?: ChatCheckout; harness?: HarnessManifest } = {},
 ): string {
   const cmd = cliCommand();
   const meta = readMeta(key, root);
+  const { name, agentName } = opts.harness ?? getHarness().manifest;
   const reading = readingMoreLines(key, root, opts.checkout);
   const section = (lines: string[]) => lines.filter((l) => l !== "").join("\n");
 
@@ -496,9 +498,9 @@ export function terminalContext(
     section([...reading.sources, ...reading.status]),
     rubricSection(key, root, { committed: opts.committed }),
     chatInstructionsSection(key, root, { committed: opts.committed }),
-    "## You are now in the reader's own Claude Code session",
+    `## You are now in the reader's own ${name} session`,
     section([
-      "- The earlier turns ran inside Purview, read-only apart from draft comments. That restriction is gone: your permissions here are the reader's normal Claude Code ones.",
+      `- The earlier turns ran inside Purview, read-only apart from draft comments. That restriction is gone: your permissions here are the reader's normal ${name} ones.`,
       UNTRUSTED_RULE,
       "- Never post anything to GitHub (reviews, comments, approvals, labels, merges) unless the reader explicitly asks for it in this session.",
       `- Purview's review state changes only through the reviewer-state CLI (\`${cmd} <subcommand>\`), never by editing files in the state directory.`,
@@ -507,7 +509,7 @@ export function terminalContext(
     ]),
     "## Draft review comments",
     section([
-      "Draft comments go through the reviewer-state CLI, which talks to the running Purview server (it must be running). Keep the `PURVIEW_ACTOR=chat` prefix: it records the drafts as yours, so the reader sees them marked as Claude's and can undo your edits and deletions.",
+      `Draft comments go through the reviewer-state CLI, which talks to the running Purview server (it must be running). Keep the \`PURVIEW_ACTOR=chat\` prefix: it records the drafts as yours, so the reader sees them marked as ${agentName}'s and can undo your edits and deletions.`,
       ...draftCommentLines(key, true),
       "",
       "The same rules as in the panel apply here, whatever your permissions:",
@@ -521,76 +523,20 @@ export function terminalContext(
     .concat("\n");
 }
 
-/** POSIX single-quoting: safe for any byte string, including `'` itself. */
-export function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
-/** Bare when it is plainly safe (a session UUID always is), quoted otherwise. */
-function shellWord(s: string): string {
-  return /^[A-Za-z0-9._-]+$/.test(s) ? s : shellQuote(s);
-}
-
-/** The one-liner that forks the chat's session into the reader's terminal. */
-export function handoffCommand(input: {
-  cwd: string;
-  sessionId: string;
-  contextPath: string;
-  /** extra readable roots (PR state, skill docs) the context file points at */
-  addDirs?: string[];
-}): string {
-  const dirs = (input.addDirs ?? []).map((d) => ` --add-dir ${shellQuote(d)}`).join("");
-  return (
-    `cd ${shellQuote(input.cwd)} && claude --resume ${shellWord(input.sessionId)} --fork-session ` +
-    `--append-system-prompt "$(cat ${shellQuote(input.contextPath)})"${dirs}`
-  );
-}
-
-export function chatToolFlags(): {
-  tools: string[];
-  allowedTools: string[];
-  disallowedTools: string[];
-} {
-  const cmd = cliCommand();
-  return {
-    tools: ["Read", "Glob", "Grep", "Bash"],
-    allowedTools: [
-      "Read",
-      "Glob",
-      "Grep",
-      `Bash(${cmd} report:*)`,
-      `Bash(${cmd} list:*)`,
-      `Bash(${cmd} triage:*)`,
-      `Bash(${cmd} show:*)`,
-      `Bash(${cmd} changes:*)`,
-      `Bash(${cmd} units:*)`,
-      `Bash(${cmd} base-file:*)`,
-      // Draft comments only: the server confines chat-marked requests
-      // (PURVIEW_ACTOR=chat, set by chat-session.ts) to drafts.
-      `Bash(${cmd} comment:*)`,
-    ],
-    disallowedTools: [
-      `Bash(${cmd} sync:*)`,
-      `Bash(${cmd} set-analysis:*)`,
-      `Bash(${cmd} set-unit:*)`,
-      // A rule matches whole words: `set-unit:*` does not cover `set-units`.
-      `Bash(${cmd} set-units:*)`,
-      `Bash(${cmd} view:*)`,
-      `Bash(${cmd} init:*)`,
-      `Bash(${cmd} refresh:*)`,
-      `Bash(${cmd} discard-revision:*)`,
-      "Bash(gh:*)",
-      "Bash(git:*)",
-      "Bash(curl:*)",
-      "Bash(wget:*)",
-      "Write",
-      "Edit",
-      "NotebookEdit",
-      "WebFetch",
-      "WebSearch",
-    ],
-  };
-}
+/**
+ * The reviewer-state subcommands a chat turn may run: reads, plus `comment`
+ * for drafts (the server confines chat-marked requests to drafts).
+ */
+export const CHAT_CLI_SUBCOMMANDS: readonly ReviewerCommand[] = [
+  "report",
+  "list",
+  "triage",
+  "show",
+  "changes",
+  "units",
+  "base-file",
+  "comment",
+];
 
 /**
  * The message actually sent to the CLI: a replayed transcript when the
@@ -627,10 +573,6 @@ export function setChatModel(
   root = stateRoot(),
 ): ChatFile {
   return writeChat(key, { ...readChat(key, root), model }, root);
-}
-
-export function newSessionId(): string {
-  return randomUUID();
 }
 
 /**

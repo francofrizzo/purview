@@ -1,5 +1,5 @@
 import { loadState, prDir, priorRevisions, readFilesJson, readMeta, type FileDiff, type Hunk, type PrKey } from "@reviewer/core";
-import { runClaude } from "./claude-runner.js";
+import { getHarness } from "./agent/registry.js";
 import { effectiveChatModel } from "./repo-config.js";
 import { findAnchoringHunk, type Comment, type CommentSide } from "./comments.js";
 
@@ -7,7 +7,7 @@ import { findAnchoringHunk, type Comment, type CommentSide } from "./comments.js
  * Agentic fallback for a draft comment `reanchorDraftComments` couldn't place
  * deterministically — its hunk changed shape or vanished, so there is no
  * exact offset to carry over. This never applies anything on its own: it asks
- * a one-shot `claude` run to propose a new file:line, validates the proposal
+ * a one-shot agent run to propose a new file:line, validates the proposal
  * against the current diff itself (never trust the model on the invariant
  * that matters), and hands the proposal back for the reader to accept or
  * dismiss. Applying it is a separate PATCH (see app.ts).
@@ -134,7 +134,7 @@ function extractJson(text: string): Record<string, unknown> | undefined {
 
 /**
  * Propose a new anchor for a draft line comment. Only ever reads state and
- * spawns a tool-less one-shot `claude` run — nothing is applied here; see
+ * spawns a tool-less one-shot agent run — nothing is applied here; see
  * `updateCommentPosition` in comments.ts for the apply step.
  */
 export async function proposeCommentReanchor(
@@ -184,13 +184,10 @@ export async function proposeCommentReanchor(
   const meta = readMeta(key, root);
   const model = effectiveChatModel(key, root, { meta });
 
-  const run = runClaude({
-    label: "comment-reanchor",
+  const run = getHarness().run({
+    task: { kind: "reanchor" },
     prompt,
     cwd: prDir(key, root),
-    // Everything the model needs is inline in the prompt; no filesystem or
-    // network access is warranted (or wanted) for a one-shot placement call.
-    tools: [],
     model,
     timeoutMs: 90_000,
   });
@@ -200,17 +197,17 @@ export async function proposeCommentReanchor(
   let error: string | undefined;
   try {
     for await (const event of run.events) {
-      if (event.type === "text") text += event.text;
-      else if (event.type === "done") {
+      if (event.type === "output") text += event.text;
+      else if (event.type === "completed") {
         ok = event.ok;
         error = event.error;
       }
     }
   } catch (err) {
-    return { ok: false, reason: `claude run failed: ${(err as Error).message}` };
+    return { ok: false, reason: `agent run failed: ${(err as Error).message}` };
   }
   if (!ok) {
-    return { ok: false, reason: error ?? "claude exited without a result" };
+    return { ok: false, reason: error ?? "the agent exited without a result" };
   }
 
   const parsed = extractJson(text);

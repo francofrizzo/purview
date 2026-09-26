@@ -23,7 +23,6 @@ import {
   analysisIdle,
   analysisPrompt,
   analysisSystemPrompt,
-  analysisToolFlags,
   headlessDoc,
   findingsNote,
   movedNote,
@@ -34,7 +33,6 @@ import {
 import { chatTurnDone } from "../src/chat-session.js";
 import {
   buildChatPrompt,
-  chatToolFlags,
   latestChangelogNote,
   readChat,
   replayTranscript,
@@ -47,6 +45,7 @@ import { ownerRepoFromRemote } from "../src/repo-path.js";
 import { HttpError } from "../src/http-error.js";
 import { buildFixture, key, DOD_REV1, DOD_REV2, REV1_PATCH } from "./fixtures.js";
 import { fakeClaude, scriptedRun, type FakeClaude } from "./fake-claude.js";
+import { analysisToolFlags, chatToolFlags } from "./claude-policies.js";
 import { addWorktree, makeRepo } from "./git-fixtures.js";
 
 const encodedKey = encodeURIComponent(keyToString(key));

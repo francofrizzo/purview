@@ -15,10 +15,11 @@ import {
   readDeletedComments,
   writeComments,
 } from "../src/comments.js";
-import { chatToolFlags } from "../src/chat.js";
 import { chatChildEnv } from "../src/chat-session.js";
-import { analysisToolFlags } from "../src/analysis.js";
-import { runClaude, setClaudeSpawner, type ClaudeChild } from "../src/claude-runner.js";
+import { setClaudeSpawner } from "../src/agent/claude-code/index.js";
+import type { ChildProcessLike } from "../src/agent/process-runner.js";
+import { getHarness } from "../src/agent/registry.js";
+import { analysisToolFlags, chatToolFlags } from "./claude-policies.js";
 import { cliCommand } from "../src/skill-paths.js";
 import { buildFixture, key } from "./fixtures.js";
 import { fakeGh, type FakeGh } from "./fake-gh.js";
@@ -283,10 +284,16 @@ describe("tool permissions", () => {
           if (event === "exit") setTimeout(() => (listener as (c: number) => void)(0), 0);
           return this;
         },
-      } as unknown as ClaudeChild;
+      } as unknown as ChildProcessLike;
     });
     try {
-      const run = runClaude({ prompt: "hi", cwd: root, env: chatChildEnv(5123) });
+      const run = getHarness().run({
+        task: { kind: "chat", reviewerCommands: [] },
+        prompt: "hi",
+        cwd: root,
+        model: "sonnet",
+        environment: chatChildEnv(5123),
+      });
       for await (const _ of run.events) void _;
     } finally {
       setClaudeSpawner(null);

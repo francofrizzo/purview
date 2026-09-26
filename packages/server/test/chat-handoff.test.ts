@@ -8,13 +8,12 @@ import { createApp } from "../src/app.js";
 import { chatTurnDone, terminalContextPath } from "../src/chat-session.js";
 import {
   chatSystemPrompt,
-  handoffCommand,
-  shellQuote,
   terminalContext,
   writeChat,
 } from "../src/chat.js";
 import type { CommittedConfig } from "../src/team-config.js";
 import { skillDir } from "../src/skill-paths.js";
+import { handoffCommand, shellQuote } from "../src/agent/claude-code/handoff.js";
 import { buildFixture, key } from "./fixtures.js";
 import { fakeClaude, type FakeClaude } from "./fake-claude.js";
 

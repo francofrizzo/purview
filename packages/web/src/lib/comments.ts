@@ -160,10 +160,10 @@ export function claudeDeletedDrafts(
 }
 
 /**
- * A chat tool call that changes comments: a Bash run of the reviewer-state
- * CLI's `comment add|edit|delete`. The chat panel refreshes the comments
- * query once such a call has finished.
+ * A chat tool call that changes comments: a shell command running the
+ * reviewer-state CLI's `comment add|edit|delete`. The chat panel refreshes
+ * the comments query once such a call has finished.
  */
-export function isCommentWriteTool(tool: { name: string; detail?: string }): boolean {
-  return tool.name === "Bash" && /\bcomment\s+(add|edit|delete)\b/.test(tool.detail ?? "");
+export function isCommentWriteTool(tool: { name?: string; kind?: string; detail?: string }): boolean {
+  return tool.kind === "command" && /\bcomment\s+(add|edit|delete)\b/.test(tool.detail ?? "");
 }

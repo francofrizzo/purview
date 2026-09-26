@@ -3,7 +3,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { runClaude, setClaudeSpawner } from "../src/claude-runner.js";
+import { setClaudeSpawner } from "../src/agent/claude-code/index.js";
+import { getHarness } from "../src/agent/registry.js";
 
 /**
  * The one test that really spawns `claude`. It exists to catch a CLI whose
@@ -28,11 +29,11 @@ describe.skipIf(!claudeAvailable())("real claude CLI", () => {
     async () => {
       setClaudeSpawner(null);
       const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "reviewer-smoke-"));
-      const run = runClaude({
-        label: "smoke",
+      const run = getHarness().run({
+        task: { kind: "reanchor" },
         prompt: "reply with exactly: pong",
         cwd,
-        tools: [],
+        model: "haiku",
         timeoutMs: 120_000,
       });
 
@@ -40,8 +41,8 @@ describe.skipIf(!claudeAvailable())("real claude CLI", () => {
       let ok = false;
       let error: string | undefined;
       for await (const event of run.events) {
-        if (event.type === "text") text += event.text;
-        if (event.type === "done") {
+        if (event.type === "output") text += event.text;
+        if (event.type === "completed") {
           ok = event.ok;
           error = event.error;
         }

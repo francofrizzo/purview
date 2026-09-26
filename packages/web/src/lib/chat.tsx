@@ -27,7 +27,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { qk } from "../api/hooks";
 import { errorText } from "../api/errors";
-import type { ChatMessage, ChatRef, ChatStreamEvent, ClaudeModel, ConfigSource } from "../api/types";
+import type { ChatMessage, ChatRef, ChatStreamEvent, ClaudeModel, ConfigSource, ToolKind } from "../api/types";
 import {
   autoRefReducer,
   effectiveRefs as deriveEffectiveRefs,
@@ -40,6 +40,7 @@ import { isCommentWriteTool } from "./comments";
 export interface ToolActivity {
   name: string;
   detail?: string;
+  kind?: ToolKind;
 }
 
 /** A transcript entry; `tools` is local colour the wire format does not carry. */
@@ -282,23 +283,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           outcome.text += event.text;
           setStreaming((cur) => (cur ? { ...cur, text: cur.text + event.text } : cur));
         } else if (event.type === "tool") {
-          seenTools = [...seenTools, { name: event.name, detail: event.detail }];
+          const tool = { name: event.name, detail: event.detail, kind: event.kind };
+          seenTools = [...seenTools, tool];
           // Text before a tool call is narration, not the answer; the server
           // saves only what follows the last tool call, so the live bubble
           // starts over too rather than gluing blocks together. Keep the old
           // text as the fallback for a stream that ends before any new text.
-          const fresh = event.name === "result-error" ? null : "";
-          if (fresh !== null && outcome.text) outcome.narration = outcome.text;
-          if (fresh !== null) outcome.text = fresh;
-          setStreaming((cur) =>
-            cur
-              ? {
-                  ...cur,
-                  text: fresh ?? cur.text,
-                  tools: [...cur.tools, { name: event.name, detail: event.detail }],
-                }
-              : cur,
-          );
+          if (outcome.text) outcome.narration = outcome.text;
+          outcome.text = "";
+          setStreaming((cur) => (cur ? { ...cur, text: "", tools: [...cur.tools, tool] } : cur));
         } else if (event.type === "done") {
           outcome.message = { ...event.message, tools: seenTools.length ? seenTools : undefined };
         } else if (event.type === "error") {

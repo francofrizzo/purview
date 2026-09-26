@@ -239,11 +239,14 @@ describe("comments the chat wrote", () => {
 
   it("recognises the chat's comment-writing tool calls", () => {
     const cli = "/usr/bin/node /x/core/dist/cli.js";
-    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment add github.com/a/b/1 --file x --line 2 --body 'hi'` })).toBe(true);
-    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment edit github.com/a/b/1 id --body 'x'` })).toBe(true);
-    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment delete github.com/a/b/1 id` })).toBe(true);
-    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment list github.com/a/b/1` })).toBe(false);
-    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} show github.com/a/b/1 x` })).toBe(false);
-    expect(isCommentWriteTool({ name: "Read", detail: "comment add" })).toBe(false);
+    expect(isCommentWriteTool({ name: "Bash", kind: "command", detail: `${cli} comment add github.com/a/b/1 --file x --line 2 --body 'hi'` })).toBe(true);
+    expect(isCommentWriteTool({ name: "Bash", kind: "command", detail: `${cli} comment edit github.com/a/b/1 id --body 'x'` })).toBe(true);
+    expect(isCommentWriteTool({ name: "Bash", kind: "command", detail: `${cli} comment delete github.com/a/b/1 id` })).toBe(true);
+    expect(isCommentWriteTool({ name: "Bash", kind: "command", detail: `${cli} comment list github.com/a/b/1` })).toBe(false);
+    expect(isCommentWriteTool({ name: "Bash", kind: "command", detail: `${cli} show github.com/a/b/1 x` })).toBe(false);
+    expect(isCommentWriteTool({ name: "Read", kind: "read", detail: "comment add" })).toBe(false);
+    // The kind decides, not the harness's tool name.
+    expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment add github.com/a/b/1 --body x` })).toBe(false);
+    expect(isCommentWriteTool({ name: "shell", kind: "command", detail: `${cli} comment add github.com/a/b/1 --body x` })).toBe(true);
   });
 });

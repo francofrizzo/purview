@@ -474,10 +474,10 @@ than a *double* charge, which is the tradeoff you want on money paths. See the
 notes in [docs/billing.md](https://example.com/docs/billing) for the reconciliation
 job that would sweep reserved-but-unrecorded rows.`;
 
-const TOOL_CALLS: { name: string; detail: string; at: number }[] = [
-  { name: "read", detail: "src/billing/charge.ts", at: 0 },
-  { name: "grep", detail: "idempotencyKey — 6 matches", at: 3 },
-  { name: "read", detail: "src/billing/ledger.ts", at: 9 },
+const TOOL_CALLS: { name: string; detail: string; kind: string; at: number }[] = [
+  { name: "read", detail: "src/billing/charge.ts", kind: "read", at: 0 },
+  { name: "grep", detail: "idempotencyKey — 6 matches", kind: "search", at: 3 },
+  { name: "read", detail: "src/billing/ledger.ts", kind: "read", at: 9 },
 ];
 
 const encoder = new TextEncoder();
@@ -1442,7 +1442,7 @@ export const mockApi = {
         for (let i = 0; i < chunks.length; i++) {
           for (const tool of TOOL_CALLS) {
             if (tool.at === i) {
-              controller.enqueue(frame("tool", { name: tool.name, detail: tool.detail }));
+              controller.enqueue(frame("tool", { name: tool.name, detail: tool.detail, kind: tool.kind }));
               await delay(420);
             }
           }
