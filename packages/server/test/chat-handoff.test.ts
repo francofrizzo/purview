@@ -3,11 +3,12 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { keyToString, prDir, setGhRunner } from "@reviewer/core";
+import { chatPath, keyToString, prDir, setGhRunner } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { chatTurnDone, terminalContextPath } from "../src/chat-session.js";
 import {
   chatSystemPrompt,
+  readChat,
   terminalContext,
   writeChat,
 } from "../src/chat.js";
@@ -49,12 +50,11 @@ afterEach(() => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-const seed = (over: { sessionId?: string | null; sessionCwd?: string | null } = {}) =>
+const seed = (over: { session?: { harness: string; id: string; cwd: string } | null } = {}) =>
   writeChat(
     key,
     {
-      sessionId: SESSION,
-      sessionCwd: prDir(key, root),
+      session: { harness: "claude-code", id: SESSION, cwd: prDir(key, root) },
       model: null,
       messages: [
         { role: "user", text: "what is risky?", ts: "t1" },
@@ -145,16 +145,26 @@ describe("POST /chat/handoff", () => {
   });
 
   it("409s no_session for a legacy chat with no sessionCwd", async () => {
-    seed({ sessionCwd: null });
+    // Written before sessions recorded their cwd: it can never be continued.
+    fs.writeFileSync(
+      chatPath(key, root),
+      JSON.stringify({ sessionId: SESSION, model: null, messages: [{ role: "user", text: "q", ts: "t1" }] }),
+    );
     const res = await handoff();
     expect(res.status).toBe(409);
     const body = await res.json();
     expect(body.error).toBe("no_session");
-    expect(body.detail).toMatch(/Send one more message/);
+  });
+
+  it("409s unknown_harness for a session no registered harness owns", async () => {
+    seed({ session: { harness: "elsewhere", id: SESSION, cwd: prDir(key, root) } });
+    const res = await handoff();
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("unknown_harness");
   });
 
   it("409s when the session's directory is gone", async () => {
-    seed({ sessionCwd: path.join(root, "vanished") });
+    seed({ session: { harness: "claude-code", id: SESSION, cwd: path.join(root, "vanished") } });
     const res = await handoff();
     expect(res.status).toBe(409);
     expect((await res.json()).error).toBe("session_cwd_missing");
@@ -317,5 +327,60 @@ describe("terminalContext", () => {
     expect(doc).not.toContain("render in this chat");
     expect(doc).toContain("a markdown pipe table\n");
     expect(doc.startsWith("# Purview review context: Add widgets\n")).toBe(true);
+  });
+});
+
+describe("chat sessions and harness ownership", () => {
+  const send = async (text: string) => {
+    const res = await app.request(`/api/prs/${encodedKey}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    await res.text();
+    await chatTurnDone(key);
+  };
+  const history = [
+    { role: "user", text: "old question", ts: "t1" },
+    { role: "assistant", text: "old answer", ts: "t2" },
+  ];
+
+  it("reads a pre-harness chat.json as a Claude Code session, resumes it, and rewrites the new shape", async () => {
+    fs.writeFileSync(
+      chatPath(key, root),
+      JSON.stringify({ sessionId: SESSION, sessionCwd: prDir(key, root), model: "opus", messages: history }),
+    );
+    expect(readChat(key, root)).toEqual({
+      session: { harness: "claude-code", id: SESSION, cwd: prDir(key, root) },
+      model: "opus",
+      messages: history,
+    });
+
+    await send("follow-up");
+    const argv = claude.runs[0].argv;
+    expect(argv[argv.indexOf("--resume") + 1]).toBe(SESSION);
+    expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
+    expect(claude.promptOf(0)).not.toContain("old question");
+
+    const onDisk = JSON.parse(fs.readFileSync(chatPath(key, root), "utf8"));
+    expect(onDisk).not.toHaveProperty("sessionId");
+    expect(onDisk).not.toHaveProperty("sessionCwd");
+    expect(onDisk.model).toBe("opus");
+    expect(onDisk.messages).toHaveLength(4);
+    expect(onDisk.session.harness).toBe("claude-code");
+  });
+
+  it("never hands a session to a harness that does not own it: starts fresh and replays", async () => {
+    writeChat(
+      key,
+      { session: { harness: "elsewhere", id: SESSION, cwd: prDir(key, root) }, model: null, messages: history },
+      root,
+    );
+    await send("follow-up");
+    const argv = claude.runs[0].argv;
+    expect(argv).not.toContain("--resume");
+    expect(argv[argv.indexOf("--session-id") + 1]).not.toBe(SESSION);
+    expect(claude.promptOf(0)).toContain("You: old question");
+    expect(readChat(key, root).session?.harness).toBe("claude-code");
   });
 });

@@ -268,6 +268,8 @@ describe("analysis run events", () => {
   it("round-trips metrics.run, every field of it optional", () => {
     const run = {
       kind: "refresh",
+      harness: "claude-code",
+      harnessVersion: "2.1.99",
       sessionId: "11111111-2222-3333-4444-555555555555",
       cwd: "/state/github.com/acme/widgets/7",
       model: "opus",
@@ -279,9 +281,39 @@ describe("analysis run events", () => {
     const event = { ts, type: "analysis-finished", revision: 2, status: "done", metrics: { toolCalls: {}, run } };
     const parsed = EventSchema.parse(event);
     expect(parsed.type === "analysis-finished" && parsed.metrics?.run).toEqual(run);
+    // Only the harness is filled in: every run before harness ids was Claude Code's.
     const partial = EventSchema.parse({ ...event, metrics: { toolCalls: {}, run: {} } });
-    expect(partial.type === "analysis-finished" && partial.metrics?.run).toEqual({});
+    expect(partial.type === "analysis-finished" && partial.metrics?.run).toEqual({ harness: "claude-code" });
     expect(() => EventSchema.parse({ ...event, metrics: { toolCalls: {}, run: { kind: "bogus" } } })).toThrow();
+  });
+
+  it("reads a pre-harness run as Claude Code's, with claudeVersion as harnessVersion", () => {
+    const legacy = { kind: "initial", sessionId: "s", model: "sonnet", claudeVersion: "2.0.14" };
+    const parsed = EventSchema.parse({
+      ts,
+      type: "analysis-finished",
+      revision: 1,
+      status: "done",
+      metrics: { toolCalls: {}, run: legacy },
+    });
+    expect(parsed.type === "analysis-finished" && parsed.metrics?.run).toEqual({
+      kind: "initial",
+      sessionId: "s",
+      model: "sonnet",
+      harness: "claude-code",
+      harnessVersion: "2.0.14",
+    });
+  });
+
+  it("keeps a run's own harness and version over the legacy field", () => {
+    const parsed = EventSchema.parse({
+      ts,
+      type: "analysis-finished",
+      revision: 1,
+      status: "done",
+      metrics: { toolCalls: {}, run: { harness: "other", harnessVersion: "9", claudeVersion: "1" } },
+    });
+    expect(parsed.type === "analysis-finished" && parsed.metrics?.run).toEqual({ harness: "other", harnessVersion: "9" });
   });
 });
 

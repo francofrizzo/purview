@@ -53,8 +53,25 @@ export const ChatMessageSchema = z.object({
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
+/**
+ * The harness session a chat continues, owned by the harness that made it:
+ * it is only ever handed back to that harness (see `canResume`), and a chat
+ * whose session belongs to another harness starts fresh and replays the kept
+ * transcript. Opaque otherwise — Purview never reads the harness's storage.
+ */
+export const ChatSessionSchema = z.object({
+  harness: z.string().min(1),
+  id: z.string().min(1),
+  /** the working directory the session was started in */
+  cwd: z.string().min(1),
+});
+export type ChatSession = z.infer<typeof ChatSessionSchema>;
+
+/** Every chat written before sessions carried a harness id was Claude Code's. */
+const LEGACY_HARNESS = "claude-code";
+
 export const ChatFileSchema = z.object({
-  sessionId: z.string().nullable().default(null),
+  session: ChatSessionSchema.nullable().default(null),
   messages: z.array(ChatMessageSchema).default([]),
   /**
    * Model pinned for this conversation, or `null` to follow the repo/global
@@ -63,24 +80,34 @@ export const ChatFileSchema = z.object({
    * model, so switching never costs the transcript.
    */
   model: ClaudeModelSchema.nullable().default(null),
-  /**
-   * The working directory `sessionId` was created under. A harness may only
-   * be able to continue a session from that cwd (`canResume` decides); a turn
-   * it cannot resume starts a fresh session and replays the transcript
-   * instead. `null` = unknown (a chat written before this field existed),
-   * which is never resumed.
-   */
-  sessionCwd: z.string().nullable().default(null),
 });
 export type ChatFile = z.infer<typeof ChatFileSchema>;
 
+const EMPTY_CHAT: ChatFile = { session: null, messages: [], model: null };
+
+/**
+ * chat.json as first written: a bare `sessionId` plus (later) `sessionCwd`,
+ * always Claude Code's. A session with no recorded cwd could never be
+ * resumed or handed off, so it reads as no session at all. Everything else
+ * in the file is kept as is.
+ */
+function migrateChatFile(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || "session" in raw) return raw;
+  const { sessionId, sessionCwd, ...rest } = raw as Record<string, unknown>;
+  const session =
+    typeof sessionId === "string" && sessionId && typeof sessionCwd === "string" && sessionCwd
+      ? { harness: LEGACY_HARNESS, id: sessionId, cwd: sessionCwd }
+      : null;
+  return { ...rest, session };
+}
+
 export function readChat(key: PrKey, root = stateRoot()): ChatFile {
   const file = chatPath(key, root);
-  if (!fs.existsSync(file)) return { sessionId: null, messages: [], model: null, sessionCwd: null };
+  if (!fs.existsSync(file)) return { ...EMPTY_CHAT };
   try {
-    return ChatFileSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
+    return ChatFileSchema.parse(migrateChatFile(JSON.parse(fs.readFileSync(file, "utf8"))));
   } catch {
-    return { sessionId: null, messages: [], model: null, sessionCwd: null };
+    return { ...EMPTY_CHAT };
   }
 }
 
@@ -597,6 +624,6 @@ export function rewindChat(
   }
   const messages = chat.messages.slice(0, index);
   const removed = chat.messages.length - messages.length;
-  writeChat(key, { ...chat, sessionId: null, sessionCwd: null, messages }, root);
+  writeChat(key, { ...chat, session: null, messages }, root);
   return { messages, removed, sessionReset: true };
 }

@@ -563,7 +563,8 @@ describe("analysis job lifecycle", () => {
       kind: "refresh",
       sessionId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
       resolvedModel: "claude-opus-4-6",
-      claudeVersion: "2.1.99",
+      harness: "claude-code",
+      harnessVersion: "2.1.99",
       cwd: claude.runs[0].cwd,
       model: argv[argv.indexOf("--model") + 1],
       effort: argv[argv.indexOf("--effort") + 1],
@@ -1241,7 +1242,7 @@ describe("chat", () => {
     expect(body.indexOf("event: tool")).toBeLessThan(body.indexOf("event: done"));
 
     const chat = JSON.parse(fs.readFileSync(chatPath(key, root), "utf8"));
-    expect(chat.sessionId).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+    expect(chat.session?.id ?? null).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
     expect(chat.messages).toHaveLength(2);
     expect(chat.messages[0]).toMatchObject({ role: "user", text: "What should I look at first?" });
     expect(chat.messages[1]).toMatchObject({
@@ -1335,7 +1336,7 @@ describe("chat", () => {
     expect((await del.json()).ok).toBe(true);
     const after = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
     expect(after.messages).toHaveLength(0);
-    expect(after.sessionId).toBeNull();
+    expect(after.session?.id ?? null).toBeNull();
   });
 
   it("prepends resolved references to the prompt it sends", async () => {
@@ -1442,7 +1443,7 @@ describe("rewindChat", () => {
     writeChat(
       key,
       {
-        sessionId: "live-session",
+        session: { harness: "claude-code", id: "live-session", cwd: root },
         model: "opus",
         messages: [
           { role: "user", text: "one", ts: "t1" },
@@ -1459,7 +1460,7 @@ describe("rewindChat", () => {
     expect(result.messages).toEqual([{ role: "user", text: "one", ts: "t1" }]);
 
     const chat = readChat(key, root);
-    expect(chat.sessionId).toBeNull();
+    expect(chat.session?.id ?? null).toBeNull();
     expect(chat.model).toBe("opus");
     expect(chat.messages).toEqual([{ role: "user", text: "one", ts: "t1" }]);
   });
@@ -1468,7 +1469,7 @@ describe("rewindChat", () => {
     buildFixture(root);
     writeChat(
       key,
-      { sessionId: "s", model: null, messages: [{ role: "user", text: "one", ts: "t1" }] },
+      { session: { harness: "claude-code", id: "s", cwd: root }, model: null, messages: [{ role: "user", text: "one", ts: "t1" }] },
       root,
     );
     expect(() => rewindChat(key, -1, root)).toThrow(/index/);
@@ -1485,7 +1486,7 @@ describe("chat rewind/edit routes", () => {
     writeChat(
       key,
       {
-        sessionId: "live-session",
+        session: { harness: "claude-code", id: "live-session", cwd: root },
         model: null,
         messages: [
           { role: "user", text: "first", ts: "t1", refs: [{ kind: "unit", id: "unit-1" }] },
@@ -1572,7 +1573,7 @@ describe("chat rewind/edit routes", () => {
     // the conversation (and its live session) exactly as it was.
     const chat = readChat(key, root);
     expect(chat.messages).toHaveLength(4);
-    expect(chat.sessionId).toBe("live-session");
+    expect(chat.session?.id ?? null).toBe("live-session");
   });
 
   it("POST /chat/edit rejects an unresolvable ref without having truncated anything", async () => {
@@ -1589,7 +1590,7 @@ describe("chat rewind/edit routes", () => {
     expect(res.status).toBe(400);
     const chat = readChat(key, root);
     expect(chat.messages).toHaveLength(4);
-    expect(chat.sessionId).toBe("live-session");
+    expect(chat.session?.id ?? null).toBe("live-session");
   });
 
   it("POST /chat/edit truncates to the edited message and starts a fresh-session turn replaying what's kept", async () => {
@@ -1614,7 +1615,7 @@ describe("chat rewind/edit routes", () => {
     expect(body).toContain("event: done");
 
     const chat = JSON.parse(fs.readFileSync(chatPath(key, root), "utf8"));
-    expect(chat.sessionId).toBe("new-session-after-edit");
+    expect(chat.session?.id ?? null).toBe("new-session-after-edit");
     expect(chat.messages).toHaveLength(4);
     expect(chat.messages[0]).toMatchObject({ role: "user", text: "first" });
     expect(chat.messages[1]).toMatchObject({ role: "assistant", text: "reply one" });

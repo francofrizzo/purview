@@ -782,7 +782,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const configuredModel = effectiveConfig(key, root, { meta }).chatModel;
     return c.json({
       messages: chat.messages,
-      sessionId: chat.sessionId,
+      sessionId: chat.session?.id ?? null,
       busy: chatBusy(key),
       /** what the next message will actually be sent with */
       model: chat.model ?? configuredModel.value,
@@ -930,7 +930,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw new HttpError(400, "invalid_body", "Body must include { index: number }");
     }
     const { removed } = rewindChat(key, parsed.data.index, root);
-    return c.json({ ...readChat(key, root), removed });
+    const chat = readChat(key, root);
+    return c.json({ messages: chat.messages, model: chat.model, sessionId: chat.session?.id ?? null, removed });
   });
 
   /**

@@ -320,13 +320,15 @@ export interface AnalysisMetrics {
   /** what the run was (see server's AnalysisRunInfoSchema); absent on older runs */
   run?: {
     kind?: "initial" | "refresh" | "rerun";
+    /** the agent harness that ran it; the server fills in "claude-code" for older runs */
+    harness?: string;
+    harnessVersion?: string;
     sessionId?: string;
     cwd?: string;
     checkout?: string;
     model?: string;
     resolvedModel?: string;
     effort?: string;
-    claudeVersion?: string;
     promptVersion?: string;
     /** wall-clock bracket of the run's child process */
     startedAt?: string;

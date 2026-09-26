@@ -13,7 +13,7 @@ import {
 } from "@reviewer/core";
 import { resolveRunCheckout } from "./pr-checkout.js";
 import { getHarness } from "./agent/registry.js";
-import type { AgentAction, AgentSession } from "./agent/types.js";
+import type { AgentAction, AgentHarness, AgentSession } from "./agent/types.js";
 import { skillDir } from "./skill-paths.js";
 import { effectiveChatModel, effectiveRepoPath } from "./repo-config.js";
 import { loadCommittedConfig } from "./team-config.js";
@@ -114,11 +114,7 @@ export function startChatTurn(
   })();
   const stateDir = prDir(key, root);
   const harness = getHarness();
-  // chat.json predates harness ids: a stored session is the default harness's.
-  const stored: AgentSession | undefined =
-    chat.sessionId && chat.sessionCwd
-      ? { harness: harness.manifest.id, id: chat.sessionId, cwd: chat.sessionCwd }
-      : undefined;
+  const stored: AgentSession | undefined = chat.session ?? undefined;
   const state = loadState(key, root);
   const revisionInfo = state.revisions.find((r) => r.revision === state.currentRevision);
   const headSha = revisionInfo?.headSha;
@@ -234,7 +230,7 @@ export function startChatTurn(
 
     if (!full) full = narration;
     const ts = new Date().toISOString();
-    const persisted = { sessionId: session?.id ?? null, sessionCwd: session?.cwd ?? null };
+    const persisted = { session: session ?? null };
     if (failure && !full) {
       writeChat(key, { ...readChat(key, root), ...persisted }, root);
       emit({ type: "error", error: failure });
@@ -335,7 +331,20 @@ function sessionCheckout(
  * with it.
  */
 export function chatHandoff(key: PrKey, root = stateRoot()): ChatHandoff {
-  const harness = getHarness();
+  const chat = readChat(key, root);
+  // The session's own harness continues it; before there is one, the harness
+  // the next turn would use names things.
+  let harness: AgentHarness;
+  try {
+    harness = getHarness(chat.session?.harness);
+  } catch {
+    throw new HttpError(
+      409,
+      "unknown_harness",
+      `This chat's session belongs to "${chat.session?.harness}", which this Purview does not have. ` +
+        "Send a message to start a new session.",
+    );
+  }
   const { name, agentName } = harness.manifest;
   const continueIn = `continue in ${name}`;
   if (!harness.createHandoff) {
@@ -348,33 +357,25 @@ export function chatHandoff(key: PrKey, root = stateRoot()): ChatHandoff {
       `${agentName} is still answering. Wait for the reply to finish, then ${continueIn}.`,
     );
   }
-  const chat = readChat(key, root);
-  if (!chat.sessionId) {
+  const session = chat.session;
+  if (!session) {
     throw new HttpError(
       409,
       "no_session",
       `This chat has no ${agentName} session yet. Send a message first, then ${continueIn}.`,
     );
   }
-  if (!chat.sessionCwd) {
-    throw new HttpError(
-      409,
-      "no_session",
-      "Purview does not know where this chat's session lives (it predates that being recorded). " +
-        `Send one more message first; from then on it can ${continueIn}.`,
-    );
-  }
-  if (!fs.existsSync(chat.sessionCwd)) {
+  if (!fs.existsSync(session.cwd)) {
     throw new HttpError(
       409,
       "session_cwd_missing",
-      `The chat's working directory ${chat.sessionCwd} no longer exists. ` +
+      `The chat's working directory ${session.cwd} no longer exists. ` +
         `Send a message to move the session, then ${continueIn}.`,
     );
   }
 
   const context = terminalContext(key, root, {
-    checkout: sessionCheckout(key, root, chat.sessionCwd),
+    checkout: sessionCheckout(key, root, session.cwd),
     committed: loadCommittedConfig(key, root),
     harness: harness.manifest,
   });
@@ -382,14 +383,13 @@ export function chatHandoff(key: PrKey, root = stateRoot()): ChatHandoff {
   fs.mkdirSync(path.dirname(contextPath), { recursive: true });
   fs.writeFileSync(contextPath, context, "utf8");
 
-  const session: AgentSession = { harness: harness.manifest.id, id: chat.sessionId, cwd: chat.sessionCwd };
   // The context file sends the continued session to the PR state dir
   // (triage, show, the diff) and the skill docs.
   const { command } = harness.createHandoff(session, {
     contextPath,
     readRoots: [prDir(key, root), skillDir()],
   });
-  return { cwd: chat.sessionCwd, sessionId: chat.sessionId, contextPath, command };
+  return { cwd: session.cwd, sessionId: session.id, contextPath, command };
 }
 
 /** Only for tests: wait for any in-flight turn on this PR. */

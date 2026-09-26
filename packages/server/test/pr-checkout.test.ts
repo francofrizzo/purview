@@ -6,6 +6,7 @@ import {
   checkoutsRoot,
   keyToString,
   listPrs,
+  chatPath,
   prCheckoutPath,
   prDir,
   setGhRunner,
@@ -387,7 +388,7 @@ const cli = () => path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "revie
     expect(run.cwd).toBe(real(managedPath()));
     expect(run.argv.join(" ")).toContain("An exact checkout of the PR head");
     expect(run.argv).toContain(`Bash(${cli()} base-file:*)`);
-    expect(readChat(key, root).sessionCwd).toBe(real(managedPath()));
+    expect(readChat(key, root).session?.cwd).toBe(real(managedPath()));
   });
 
   it("hands the chat to the terminal from the managed checkout, with the base-file hint", async () => {
@@ -424,7 +425,7 @@ const cli = () => path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "revie
 
     it("starts a fresh session and replays when the cwd changed", async () => {
       await chat("first"); // no repo configured: cwd is the state dir
-      expect(readChat(key, root).sessionCwd).toBe(prDir(key, root));
+      expect(readChat(key, root).session?.cwd).toBe(prDir(key, root));
 
       const user = cloneRepo(remote.path, path.join(work, "user"));
       updateMeta(key, { repoPath: user }, root);
@@ -436,22 +437,21 @@ const cli = () => path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "revie
       expect(second.argv).toContain("--session-id");
       expect(claude.promptOf(1)).toContain("CONVERSATION SO FAR");
       expect(claude.promptOf(1)).toContain("You: first");
-      expect(readChat(key, root).sessionCwd).toBe(real(managedPath()));
+      expect(readChat(key, root).session?.cwd).toBe(real(managedPath()));
     });
 
     it("treats a chat saved before sessionCwd existed as unknown, and replays once", async () => {
       // A pre-upgrade chat.json: a live session id, no sessionCwd field.
-      writeChat(
-        key,
-        {
+      fs.writeFileSync(
+        chatPath(key, root),
+        JSON.stringify({
           sessionId: "c6501064-896c-4508-ae1c-42e0b21150e2",
           messages: [
             { role: "user", text: "old question", ts: new Date().toISOString() },
             { role: "assistant", text: "old answer", ts: new Date().toISOString() },
           ],
           model: null,
-        },
-        root,
+        }),
       );
       await chat("new question");
       const first = claude.runs[0];

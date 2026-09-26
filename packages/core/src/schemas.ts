@@ -480,30 +480,34 @@ export type AnalysisJobStatus = z.infer<typeof AnalysisJobStatusSchema>;
  * compared after the fact (scripts/analysis-metrics.mjs). Every field is
  * optional: a run that fails before a value is known simply omits it.
  */
-export const AnalysisRunInfoSchema = z.object({
+const AnalysisRunInfoFields = z.object({
   /**
    * `initial` = no analysis to build on (full set-analysis); `refresh` =
    * incremental, after a new revision; `rerun` = this revision already had
    * an analysis and is analyzed again.
    */
   kind: z.enum(["initial", "refresh", "rerun"]).optional(),
-  /** Claude Code session id; the transcript is `~/.claude/projects/<cwd with non-alphanumerics as "-">/<sessionId>.jsonl` */
+  /** the agent harness that ran it (e.g. "claude-code") */
+  harness: z.string().optional(),
+  /** the harness's own version, as it reported it */
+  harnessVersion: z.string().optional(),
+  /** the harness's session id — opaque; only the harness knows where it keeps it */
   sessionId: z.string().optional(),
-  /** the `claude` process's working directory (the PR state dir) */
+  /** the agent process's working directory (the PR state dir) */
   cwd: z.string().optional(),
   /** the checkout/worktree the run could read, when one resolved */
   checkout: z.string().optional(),
-  /** `--model` as passed */
+  /** the model as requested */
   model: z.string().optional(),
-  /** the model the CLI reported in its init line, when it did */
+  /** the model the harness reported it resolved to, when it did */
   resolvedModel: z.string().optional(),
-  /** `--effort` as passed; absent when the flag was omitted */
+  /** the effort as requested; absent when none was set */
   effort: z.string().optional(),
-  /** `claude_code_version` from the init line */
+  /** legacy spelling of `harnessVersion`; read, never written (see below) */
   claudeVersion: z.string().optional(),
   /** first 12 hex of sha256 over the prompt-building code and skill files */
   promptVersion: z.string().optional(),
-  /** wall-clock start of the `claude` child (ISO) */
+  /** wall-clock start of the agent process (ISO) */
   startedAt: z.string().optional(),
   /** wall-clock end: when its event stream ended (ISO) */
   finishedAt: z.string().optional(),
@@ -533,6 +537,20 @@ export const AnalysisRunInfoSchema = z.object({
       changedUnits: z.number().int(),
     })
     .optional(),
+});
+
+/** Every run recorded before runs named their harness was Claude Code's. */
+const LEGACY_RUN_HARNESS = "claude-code";
+
+/**
+ * Run info as stored, normalized on read: records from before harness ids
+ * existed name Claude Code and carry `claudeVersion`, which becomes
+ * `harnessVersion`. The event log is append-only, so old lines are never
+ * rewritten — every reader sees them through this.
+ */
+export const AnalysisRunInfoSchema = AnalysisRunInfoFields.transform(({ claudeVersion, ...run }) => {
+  const harnessVersion = run.harnessVersion ?? claudeVersion;
+  return { ...run, harness: run.harness ?? LEGACY_RUN_HARNESS, ...(harnessVersion ? { harnessVersion } : {}) };
 });
 export type AnalysisRunInfo = z.infer<typeof AnalysisRunInfoSchema>;
 

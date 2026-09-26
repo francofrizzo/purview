@@ -974,6 +974,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   // Recorded before the spawn so a run that dies early still says what it was.
   metrics.run = {
     kind: analysisRunKind(key, root, state, incremental),
+    harness: harness.manifest.id,
     cwd,
     checkout: checkout.path || undefined,
     model,
@@ -1020,7 +1021,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
           ...metrics.run,
           sessionId: event.session.id,
           resolvedModel: event.resolvedModel,
-          claudeVersion: event.harnessVersion,
+          harnessVersion: event.harnessVersion,
         };
       } else if (event.type === "action") {
         actionIndex++;

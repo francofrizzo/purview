@@ -92,6 +92,8 @@ beforeEach(() => {
           resolvedModel: "claude-opus-4-6",
           effort: "high",
           promptVersion: "0123456789ab",
+          // Written before runs named their harness.
+          claudeVersion: "2.1.99",
           // 21.8 real minutes against the CLI's 5: a stall.
           wallMs: 1_308_000,
           size: { files: 4, hunks: 8, added: 150, removed: 50 },
@@ -133,6 +135,8 @@ describe("analysis-metrics script", () => {
       model: "claude-opus-4-6",
       effort: "high",
       promptVersion: "0123456789ab",
+      harness: "claude-code",
+      harnessVersion: "2.1.99",
       migration: { fuzzy: 2, changedUnits: 2 },
       corrections: 1,
       edits: 0,

@@ -144,9 +144,15 @@ function sizeFromFiles(prDir, revision) {
   return size;
 }
 
-/** Claude Code keeps a session under its cwd with every non-alphanumeric as "-". */
+/** Runs recorded before runs named their harness were all Claude Code's. */
+const harnessOf = (run) => run?.harness ?? "claude-code";
+
+/**
+ * Claude Code keeps a session under its cwd with every non-alphanumeric as
+ * "-". Other harnesses keep theirs elsewhere; no path is guessed for them.
+ */
 function transcriptPath(run) {
-  if (!run?.sessionId || !run?.cwd) return undefined;
+  if (harnessOf(run) !== "claude-code" || !run?.sessionId || !run?.cwd) return undefined;
   return path.join(
     os.homedir(),
     ".claude",
@@ -201,7 +207,8 @@ function collectRuns(root) {
         model: run.resolvedModel ?? run.model,
         effort: run.effort,
         promptVersion: run.promptVersion,
-        claudeVersion: run.claudeVersion,
+        harness: harnessOf(run),
+        harnessVersion: run.harnessVersion ?? run.claudeVersion,
         size,
         migration: run.migration,
         minutes,
