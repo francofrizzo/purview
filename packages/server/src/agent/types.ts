@@ -67,6 +67,7 @@ export const REVIEWER_COMMANDS = [
   "init",
   "refresh",
   "discard-revision",
+  "remove-repo",
   "report",
   "triage",
   "show",

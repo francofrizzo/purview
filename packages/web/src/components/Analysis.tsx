@@ -168,9 +168,13 @@ function ProgressText({ text }: { text: string }) {
 export function archivedSkipText(
   revision: number,
   unplaced: number,
+  scope: "pr" | "repo" = "pr",
 ): { title: string; detail: string } {
   return {
-    title: `This PR is archived, so revision ${revision} wasn't analyzed.`,
+    title:
+      scope === "repo"
+        ? `This PR's repo is archived, so revision ${revision} wasn't analyzed.`
+        : `This PR is archived, so revision ${revision} wasn't analyzed.`,
     detail:
       unplaced > 0
         ? `${unplaced} ${unplaced === 1 ? "hunk isn't" : "hunks aren't"} in any unit yet.`
@@ -183,12 +187,17 @@ export function archivedSkipText(
  * (archived PRs never spend on their own). Persisted server-side, so this
  * shows after a reload or from another tab too — without it the new hunks
  * just sit outside every unit and the PR looks unchanged.
+ *
+ * `scope: "repo"` is a PR archived only through its repo: the action then
+ * analyzes this PR once and leaves the repo archived — unarchiving a whole
+ * repo is the header chip's job, not a side effect of this button.
  */
 export function ArchivedSkipBanner({
   revision,
   unplaced,
   working,
   error,
+  scope = "pr",
   onUnarchiveAndAnalyze,
   onDismiss,
 }: {
@@ -196,10 +205,11 @@ export function ArchivedSkipBanner({
   unplaced: number;
   working: boolean;
   error?: string | null;
+  scope?: "pr" | "repo";
   onUnarchiveAndAnalyze: () => void;
   onDismiss: () => void;
 }) {
-  const text = archivedSkipText(revision, unplaced);
+  const text = archivedSkipText(revision, unplaced, scope);
   return (
     <div
       className="flex-none border-b px-4 py-3"
@@ -231,7 +241,7 @@ export function ArchivedSkipBanner({
             onClick={onUnarchiveAndAnalyze}
           >
             <IconRefresh width={11} height={11} />
-            {working ? "starting…" : "Unarchive and analyze"}
+            {working ? "starting…" : scope === "repo" ? "Analyze anyway" : "Unarchive and analyze"}
           </button>
         </div>
       </div>

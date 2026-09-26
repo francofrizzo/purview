@@ -14,7 +14,7 @@ import {
   type RevisionInfo,
 } from "@reviewer/core";
 import { readConfig } from "./config.js";
-import { effectiveRepoPath } from "./repo-config.js";
+import { archiveSource, effectiveRepoPath } from "./repo-config.js";
 import { ownerRepoFromRemote } from "./repo-path.js";
 import { listWorktrees, resolveCheckout, type CheckoutResolution } from "./worktree.js";
 
@@ -354,11 +354,55 @@ export async function pruneCheckouts(root = stateRoot()): Promise<string[]> {
   return removed;
 }
 
+/**
+ * Remove every managed checkout of one repo — the ones of `prNumbers` (its
+ * tracked PRs) plus any other numbered checkout left under
+ * `checkoutsRoot/<host>/<owner>/<repo>/` — each one through the same path
+ * `pruneCheckouts` uses: `git worktree remove` against the checkout's own
+ * repository, else an rm plus `dropWorktreeEntry` for exactly that path. The
+ * reader's clones lose nothing but Purview's own worktree entries, and no
+ * global `git worktree prune` ever runs. Non-PR entries in that directory are
+ * left alone. Returns the removed paths.
+ */
+export async function removeRepoCheckouts(
+  repo: { host: string; owner: string; repo: string },
+  prNumbers: number[],
+  root = stateRoot(),
+): Promise<string[]> {
+  const base = checkoutsRoot(root);
+  const repoBase = path.join(base, repo.host, repo.owner, repo.repo);
+  if (!isUnder(repoBase, base)) return [];
+  const numbers = new Set(prNumbers);
+  try {
+    for (const d of fs.readdirSync(repoBase, { withFileTypes: true })) {
+      if (d.isDirectory() && !d.isSymbolicLink() && isPrDirName(d.name)) numbers.add(Number(d.name));
+    }
+  } catch {
+    /* no checkouts for this repo at all */
+  }
+  const removed: string[] = [];
+  for (const number of [...numbers].sort((a, b) => a - b)) {
+    const key: PrKey = { ...repo, number };
+    const dir = prCheckoutPath(key, root);
+    if (!fs.existsSync(dir)) continue;
+    await withLock(`pr:${keyToString(key)}`, () => removeCheckout(dir, base));
+    if (!fs.existsSync(dir)) {
+      console.log(`[checkouts] removed ${dir} (repo removed)`);
+      removed.push(dir);
+    }
+  }
+  removeIfEmpty(repoBase);
+  removeIfEmpty(path.dirname(repoBase));
+  removeIfEmpty(path.dirname(path.dirname(repoBase)));
+  return removed;
+}
+
 function pruneReason(key: PrKey, root: string): string | undefined {
   if (!prExists(key, root)) return "PR not tracked";
   try {
     const meta = readMeta(key, root);
-    if (meta.archived) return "PR archived";
+    const archived = archiveSource(key, root, { meta });
+    if (archived) return archived === "repo" ? "repo archived" : "PR archived";
     if (meta.prState === "merged" || meta.prState === "closed") return `PR ${meta.prState}`;
   } catch {
     return undefined; // unreadable meta: leave it alone rather than guess

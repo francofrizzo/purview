@@ -43,12 +43,19 @@ export function resetWatchStatus(): void {
   status = { lastTickAt: null, repos: {} };
 }
 
+/** Drop one repo's last poll (it was removed from Purview). */
+export function forgetWatchStatus(rkey: string): void {
+  if (!(rkey in status.repos)) return;
+  const { [rkey]: _gone, ...rest } = status.repos;
+  status = { ...status, repos: rest };
+}
+
 /**
  * One pass over every tracked repo: import review requests for whichever ones
- * have `watchReviews` on. A single repo's `gh` failure (or anything else that
- * goes wrong reading/importing it) is caught and recorded against that repo
- * alone — it must never take the other repos' polling, or the loop itself,
- * down with it.
+ * have `watchReviews` on and are not archived. A single repo's `gh` failure
+ * (or anything else that goes wrong reading/importing it) is caught and
+ * recorded against that repo alone — it must never take the other repos'
+ * polling, or the loop itself, down with it.
  */
 async function tick(root: string, deps: Required<Pick<WatchDeps, "windowMs" | "now">>, analyze: boolean): Promise<void> {
   const now = deps.now();
@@ -70,6 +77,10 @@ async function tick(root: string, deps: Required<Pick<WatchDeps, "windowMs" | "n
       continue;
     }
     if (config.watchReviews !== true) continue;
+    // An archived repo is on the shelf as a whole: importing new PRs into it
+    // would bring it back behind the reader's back. Its `watchReviews` stays
+    // as it was, so unarchiving resumes polling on the next tick.
+    if (config.archived === true) continue;
 
     try {
       const result = importReviewRequestsSince(repo, since, root, { analyze });

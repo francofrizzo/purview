@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { PrListEntry } from "../api/types";
 import {
   applyArchive,
+  applyRepoArchive,
   formatAbsoluteDate,
   formatAddedAt,
   formatFullTimestamp,
   formatMustReadLines,
   groupKeyOf,
   groupPrsByRepo,
+  partitionRepoGroups,
 } from "./prList";
 
 const NOW = new Date("2026-08-12T12:00:00Z");
@@ -150,5 +152,49 @@ describe("applyArchive", () => {
 
   it("is a no-op for an unknown key", () => {
     expect(applyArchive(prs, "nope", true)).toEqual(prs);
+  });
+});
+
+describe("archived repos", () => {
+  const prs = [
+    pr("github.com/acme/billing/482", "acme", "billing", ago(2 * DAY)),
+    pr("github.com/acme/billing/470", "acme", "billing", ago(9 * DAY), true),
+    pr("github.com/acme/platform/1190", "acme", "platform", ago(30 * MINUTE)),
+    pr("github.com/acme/infra/5", "acme", "infra", ago(HOUR)),
+  ];
+
+  it("keeps every group active until a repo is archived", () => {
+    const { active, archived } = partitionRepoGroups(groupPrsByRepo(prs));
+    expect(active.map((g) => g.repo)).toEqual(["platform", "infra", "billing"]);
+    expect(archived).toEqual([]);
+  });
+
+  it("moves a whole archived repo to its own tier, keeping the order in both", () => {
+    const next = applyRepoArchive(
+      applyRepoArchive(prs, "github.com/acme/billing", true),
+      "github.com/acme/platform",
+      true,
+    );
+    const { active, archived } = partitionRepoGroups(groupPrsByRepo(next));
+    expect(active.map((g) => g.repo)).toEqual(["infra"]);
+    expect(archived.map((g) => g.repo)).toEqual(["platform", "billing"]);
+    expect(archived.every((g) => g.repoArchived)).toBe(true);
+  });
+
+  it("leaves each PR's own archived flag alone, so unarchiving the repo restores it exactly", () => {
+    const archivedRepo = applyRepoArchive(prs, "github.com/acme/billing", true);
+    expect(archivedRepo.map((p) => p.archived)).toEqual(prs.map((p) => p.archived));
+    const billing = groupPrsByRepo(archivedRepo).find((g) => g.repo === "billing")!;
+    expect(billing.prs.map((p) => p.key)).toEqual(["github.com/acme/billing/482"]);
+    expect(billing.archived.map((p) => p.key)).toEqual(["github.com/acme/billing/470"]);
+
+    const restored = applyRepoArchive(archivedRepo, "github.com/acme/billing", false);
+    const { active, archived } = partitionRepoGroups(groupPrsByRepo(restored));
+    expect(archived).toEqual([]);
+    expect(active.find((g) => g.repo === "billing")!.archived.map((p) => p.key)).toEqual([
+      "github.com/acme/billing/470",
+    ]);
+    // Rows of other repos are the very same objects.
+    expect(restored[2]).toBe(prs[2]);
   });
 });

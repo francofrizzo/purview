@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
 import type { AnalysisJob, PrDetail } from "../api/types";
 import { isJobLive } from "../api/types";
@@ -58,6 +59,8 @@ export function TopBar({
   onResetDiscardRevision,
   archiving = false,
   onSetArchived,
+  repoArchiving = false,
+  onSetRepoArchived,
 }: {
   detail: PrDetail;
   draftCount: number;
@@ -104,6 +107,9 @@ export function TopBar({
   onResetDiscardRevision: () => void;
   archiving?: boolean;
   onSetArchived?: (archived: boolean) => void;
+  repoArchiving?: boolean;
+  /** archive state of the PR's whole repo (`detail.repoArchived`) */
+  onSetRepoArchived?: (archived: boolean) => void;
 }) {
   const importInputRef = useRef<HTMLInputElement>(null);
   const { meta, state } = detail;
@@ -195,6 +201,21 @@ export function TopBar({
           >
             <IconArchive out width={10} height={10} />
             {archiving ? "unarchiving…" : "archived · unarchive"}
+          </button>
+        ) : detail.repoArchived && onSetRepoArchived ? (
+          // Archived through its repo, not on its own: the way out is the
+          // repo's unarchive, which restores every PR in it as it was.
+          <button
+            type="button"
+            className="chip flex-none self-center hover:!text-[var(--fg)]"
+            data-testid="topbar-archived"
+            disabled={repoArchiving}
+            title={`The whole ${meta.owner}/${meta.repo} repo is archived, so this PR is never analyzed automatically. Click to unarchive the repo.`}
+            style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+            onClick={() => onSetRepoArchived(false)}
+          >
+            <IconArchive out width={10} height={10} />
+            {repoArchiving ? "unarchiving repo…" : "repo archived · unarchive repo"}
           </button>
         ) : null}
         {/* Only interesting while the analysis is not a plain success. */}
@@ -392,7 +413,7 @@ export function TopBar({
   );
 }
 
-interface MenuItem {
+export interface MenuItem {
   label: string;
   onClick: () => void;
   disabled?: boolean;
@@ -402,15 +423,54 @@ interface MenuItem {
   narrowOnly?: boolean;
 }
 
-/** The rarely-used actions, kept out of the button row. */
-function OverflowMenu({ items }: { items: MenuItem[] }) {
+/**
+ * The rarely-used actions, kept out of the button row. Also the repo group
+ * header's ⋯ in the PR list, which passes its own test id, label and a
+ * smaller trigger.
+ */
+export function OverflowMenu({
+  items,
+  testId = "topbar-overflow",
+  label = "More actions",
+  buttonClassName = "btn",
+  buttonStyle,
+  fixed = false,
+}: {
+  items: MenuItem[];
+  testId?: string;
+  label?: string;
+  buttonClassName?: string;
+  buttonStyle?: React.CSSProperties;
+  /**
+   * Render the menu in a portal, positioned against the viewport, so an
+   * ancestor's `overflow: hidden` or opacity (a PR-list repo card, dimmed
+   * when archived) cannot clip or fade it. It closes on scroll then, rather
+   * than drifting away from its button.
+   */
+  fixed?: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open || !fixed) return;
+    const close = () => setOpen(false);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open, fixed]);
 
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -425,45 +485,58 @@ function OverflowMenu({ items }: { items: MenuItem[] }) {
     };
   }, [open]);
 
+  const menu = (
+    <div
+      ref={menuRef}
+      className={`surface z-40 w-60 rounded-md p-1 elev-2 ${fixed ? "fixed" : "absolute right-0 top-7"}`}
+      style={fixed && anchor ? { top: anchor.top, right: anchor.right } : undefined}
+    >
+      {items.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          data-testid={item.testId}
+          disabled={item.disabled}
+          className={`w-full rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 ${
+            item.narrowOnly ? "sm:hidden" : ""
+          }`}
+          onClick={() => {
+            setOpen(false);
+            item.onClick();
+          }}
+        >
+          <span style={{ color: "var(--fg)" }}>{item.label}</span>
+          {item.hint ? (
+            <span className="mt-0.5 block text-2xs" style={{ color: "var(--fg-faint)" }}>
+              {item.hint}
+            </span>
+          ) : null}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
-        className="btn"
-        data-testid="topbar-overflow"
-        title="More actions"
-        aria-label="More actions"
+        className={buttonClassName}
+        data-testid={testId}
+        title={label}
+        aria-label={label}
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        style={buttonStyle}
+        onClick={(e) => {
+          if (fixed) {
+            const r = e.currentTarget.getBoundingClientRect();
+            setAnchor({ top: r.bottom + 4, right: window.innerWidth - r.right });
+          }
+          setOpen((v) => !v);
+        }}
       >
         <IconMore width={12} height={12} />
       </button>
-      {open ? (
-        <div className="surface absolute right-0 top-7 z-40 w-60 rounded-md p-1 elev-2">
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              data-testid={item.testId}
-              disabled={item.disabled}
-              className={`w-full rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 ${
-                item.narrowOnly ? "sm:hidden" : ""
-              }`}
-              onClick={() => {
-                setOpen(false);
-                item.onClick();
-              }}
-            >
-              <span style={{ color: "var(--fg)" }}>{item.label}</span>
-              {item.hint ? (
-                <span className="mt-0.5 block text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  {item.hint}
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-      ) : null}
+      {open ? (fixed ? createPortal(menu, document.body) : menu) : null}
     </div>
   );
 }

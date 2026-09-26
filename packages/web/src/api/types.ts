@@ -428,6 +428,11 @@ export interface PrListEntry {
   addedAt: string;
   /** Local-only: hides the PR behind the repo group's archived disclosure. */
   archived: boolean;
+  /**
+   * The PR's whole repo is archived (its own `archived` is kept apart, so
+   * unarchiving the repo restores it exactly). Absent from an older server.
+   */
+  repoArchived?: boolean;
 }
 
 /* --------------------------------------------------------- repos & config */
@@ -454,6 +459,21 @@ export interface RepoSummary {
   watchReviews: boolean;
   /** this repo's most recent poll, or null if the watcher has not reached it yet */
   watch: RepoWatchStatus | null;
+  /** the whole repo is archived (absent from an older server) */
+  archived?: boolean;
+}
+
+/** GET /api/repos/:rkey/removal — what removing the repo would lose. */
+export interface RepoRemovalSummary {
+  /** `host/owner/repo` */
+  repo: string;
+  prCount: number;
+  /** local-only drafts: lost with the repo */
+  draftComments: number;
+  /** in a pending review on GitHub; they stay there */
+  pushedComments: number;
+  /** PRs that block removal right now */
+  busy: { key: string; reason: "analysis" | "chat" }[];
 }
 
 /**
@@ -565,6 +585,8 @@ export interface PrDetail {
    * `"archived"` is recorded). `null`/absent = nothing pending.
    */
   analysisPending?: AnalysisPending | null;
+  /** the PR's whole repo is archived, so the PR behaves as archived too */
+  repoArchived?: boolean;
 }
 
 export interface AnalysisPending {

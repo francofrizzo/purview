@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { repoKey } from "../api/client";
 import { errorText } from "../api/errors";
 import { useRepoConfig, useSaveRepoConfig, useRepos } from "../api/hooks";
@@ -14,6 +14,7 @@ import { ANALYSIS_EFFORTS, CLAUDE_MODELS } from "../api/types";
 import type { AnalysisEffort, ClaudeModel, ConfigSource, RepoConfig } from "../api/types";
 import { Markdown } from "../components/Markdown";
 import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
+import { RepoDangerZone } from "../components/RepoActions";
 import { IconCheck, IconChevron, IconFile, IconSettings } from "../components/icons";
 
 /** Long committed rubrics start collapsed; short ones are shown whole. */
@@ -34,6 +35,9 @@ export function RepoSettingsModal() {
   const close = useCloseModal();
   const navigate = useNavigate();
   const background = useModalBackground();
+  // Set by the PR list's "remove from Purview…": open with the confirm expanded.
+  const confirmRemove =
+    (useLocation().state as { confirmRemove?: boolean } | null)?.confirmRemove === true;
 
   return (
     <Modal
@@ -72,6 +76,8 @@ export function RepoSettingsModal() {
           config={config}
           prCount={summary?.prCount}
           archivedCount={summary?.archivedCount}
+          repoArchived={summary?.archived === true}
+          confirmRemove={confirmRemove}
         />
       )}
     </Modal>
@@ -86,6 +92,8 @@ function RepoSettingsBody({
   config,
   prCount,
   archivedCount,
+  repoArchived,
+  confirmRemove,
 }: {
   rkey: string;
   host: string;
@@ -94,6 +102,8 @@ function RepoSettingsBody({
   config: RepoConfig;
   prCount?: number;
   archivedCount?: number;
+  repoArchived: boolean;
+  confirmRemove: boolean;
 }) {
   const save = useSaveRepoConfig(rkey);
 
@@ -108,6 +118,15 @@ function RepoSettingsBody({
             {host !== "github.com" ? (
               <span className="ml-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
                 on {host}
+              </span>
+            ) : null}
+            {repoArchived ? (
+              <span
+                className="chip ml-1.5"
+                data-testid="repo-settings-archived"
+                style={{ color: "var(--fg-muted)", background: "var(--bg-inset)" }}
+              >
+                archived
               </span>
             ) : null}
           </Stat>
@@ -142,6 +161,12 @@ function RepoSettingsBody({
       <CheckoutSection config={config} save={save} />
       <RubricSection config={config} save={save} />
       <ChatInstructionsSection config={config} save={save} />
+      <RepoDangerZone
+        repo={{ host, owner, repo }}
+        archived={repoArchived}
+        watchReviews={config.local.watchReviews === true}
+        startConfirming={confirmRemove}
+      />
 
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Saved on the server under <span className="font-mono">{rkey}</span>. The committed half is

@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  deleteRepoState,
   ensureRepoConfig,
   listPrs,
   listRepos,
@@ -15,7 +16,13 @@ import {
   writeMeta,
   writeRepoConfig,
 } from "../src/store.js";
-import { repoChatInstructionsPath, repoConfigPath, repoRubricPath } from "../src/paths.js";
+import {
+  checkoutsRoot,
+  repoChatInstructionsPath,
+  repoConfigPath,
+  repoDir,
+  repoRubricPath,
+} from "../src/paths.js";
 import { EMPTY_REPO_CONFIG } from "../src/schemas.js";
 
 const repo = { host: "github.com", owner: "acme", repo: "widgets" };
@@ -84,6 +91,72 @@ describe("repo.json", () => {
       autoAnalyze: null,
       repoPath: "/keep/me",
     });
+  });
+});
+
+describe("repo-level archive in repo.json", () => {
+  it("round-trips, and a repo.json written before the field existed reads as not archived", () => {
+    fs.mkdirSync(path.dirname(repoConfigPath(repo, root)), { recursive: true });
+    fs.writeFileSync(
+      repoConfigPath(repo, root),
+      JSON.stringify({ autoAnalyze: null, repoPath: "/keep", watchReviews: true }),
+    );
+    expect(readRepoConfig(repo, root)).toEqual({
+      ...EMPTY_REPO_CONFIG,
+      repoPath: "/keep",
+      watchReviews: true,
+      archived: null,
+    });
+
+    writeRepoConfig(repo, { archived: true }, root);
+    expect(readRepoConfig(repo, root)).toMatchObject({ repoPath: "/keep", watchReviews: true, archived: true });
+    writeRepoConfig(repo, { archived: null }, root);
+    expect(readRepoConfig(repo, root).archived).toBeNull();
+  });
+
+  it("salvages the flag, and drops a wrong-typed one, when another field is invalid", () => {
+    fs.mkdirSync(path.dirname(repoConfigPath(repo, root)), { recursive: true });
+    fs.writeFileSync(repoConfigPath(repo, root), JSON.stringify({ autoAnalyze: "yes", archived: true }));
+    expect(readRepoConfig(repo, root).archived).toBe(true);
+    fs.writeFileSync(repoConfigPath(repo, root), JSON.stringify({ autoAnalyze: "yes", archived: "yes" }));
+    expect(readRepoConfig(repo, root).archived).toBeNull();
+  });
+});
+
+describe("deleteRepoState", () => {
+  it("removes the repo dir (PRs and repo files) and nothing beside it", () => {
+    seedPr(7);
+    writeRepoConfig(repo, { archived: true }, root);
+    writeLocalRubric(repo, "overlay", root);
+    const sibling = { ...repo, repo: "gadgets" };
+    writeRepoConfig(sibling, {}, root);
+    fs.mkdirSync(checkoutsRoot(root), { recursive: true });
+
+    expect(deleteRepoState(repo, root)).toBe(true);
+    expect(fs.existsSync(repoDir(repo, root))).toBe(false);
+    expect(listPrs(root)).toEqual([]);
+    expect(listRepos(root)).toEqual([sibling]);
+    expect(fs.existsSync(checkoutsRoot(root))).toBe(true);
+    expect(deleteRepoState(repo, root)).toBe(false);
+  });
+
+  it("drops the owner and host dirs once empty, never the root", () => {
+    seedPr(7);
+    deleteRepoState(repo, root);
+    expect(fs.existsSync(path.join(root, repo.host))).toBe(false);
+    expect(fs.existsSync(root)).toBe(true);
+  });
+
+  it("refuses keys that could reach outside one repo dir", () => {
+    for (const bad of [
+      { ...repo, repo: ".." },
+      { ...repo, owner: "." },
+      { ...repo, repo: "" },
+      { ...repo, owner: "a/b" },
+      { host: "checkouts", owner: "acme", repo: "widgets" },
+    ]) {
+      expect(() => deleteRepoState(bad, root)).toThrow(/Refusing/);
+    }
   });
 });
 

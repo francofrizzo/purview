@@ -38,6 +38,7 @@ import type {
   PrState,
   RepoConfig,
   RepoConfigPatch,
+  RepoRemovalSummary,
   RepoSummary,
   RewindChatResult,
   ReviewDecision,
@@ -145,6 +146,7 @@ interface WireListEntry {
   reviewRequest?: ReviewRequest | null;
   addedAt?: string;
   archived?: boolean;
+  repoArchived?: boolean;
 }
 
 /** core's FileRollup — an array entry keyed by `path`, not a map. */
@@ -192,6 +194,7 @@ interface WirePrDetail {
   basePrTracked?: boolean;
   reviewRequest?: ReviewRequest | null;
   analysisPending?: AnalysisPending | null;
+  repoArchived?: boolean;
 }
 
 interface WireMigrationEntry {
@@ -335,6 +338,7 @@ function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
     // Explicit, like basePrTracked: absent stays absent ("not looked up yet").
     reviewRequest: raw.reviewRequest !== undefined ? raw.reviewRequest : raw.meta?.reviewRequest,
     analysisPending: raw.analysisPending ?? null,
+    repoArchived: raw.repoArchived === true,
   };
 }
 
@@ -447,6 +451,7 @@ export const api = {
       reviewRequest: e.reviewRequest !== undefined ? e.reviewRequest : e.meta?.reviewRequest,
       addedAt: e.addedAt ?? e.meta?.createdAt ?? new Date(0).toISOString(),
       archived: Boolean(e.archived),
+      repoArchived: Boolean(e.repoArchived),
     }));
   },
 
@@ -524,6 +529,24 @@ export const api = {
   async saveRepoConfig(rkey: string, patch: RepoConfigPatch): Promise<RepoConfig> {
     if (MOCK) return mockApi.saveRepoConfig(rkey, patch);
     return put<RepoConfig>(`/repos/${encodeURIComponent(rkey)}/config`, patch);
+  },
+
+  /** Local-only, like a PR's archive: every PR keeps its own flag. */
+  async setRepoArchived(rkey: string, archived: boolean): Promise<void> {
+    if (MOCK) return mockApi.setRepoArchived(rkey, archived);
+    await post(`/repos/${encodeURIComponent(rkey)}/archive`, { archived });
+  },
+
+  /** What removing the repo would lose, and whether something blocks it now. */
+  async repoRemoval(rkey: string): Promise<RepoRemovalSummary> {
+    if (MOCK) return mockApi.repoRemoval(rkey);
+    return request<RepoRemovalSummary>(`/repos/${encodeURIComponent(rkey)}/removal`);
+  },
+
+  /** Delete all local state for the repo; the server refuses (409) while it is busy. */
+  async removeRepo(rkey: string): Promise<void> {
+    if (MOCK) return mockApi.removeRepo(rkey);
+    await del(`/repos/${encodeURIComponent(rkey)}`);
   },
 
   /** Bulk-import review-requested PRs updated in the last `days` days. */

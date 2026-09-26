@@ -627,6 +627,7 @@ describe("init and refresh capture", () => {
       chatModel: null,
       analysisEffort: null,
       watchReviews: null,
+      archived: null,
     });
   });
 

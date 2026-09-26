@@ -42,7 +42,7 @@ relative to it.
 
 Subcommands that exist: `init`, `refresh`, `report`, `units`, `triage`, `show`, `changes`,
 `base-file`, `set-analysis`, `set-unit`, `set-units`, `view`, `sync`, `list`,
-`discard-revision`, `comment`. There are no others.
+`discard-revision`, `remove-repo`, `comment`. There are no others.
 
 ## 1. Determine state: init, refresh, or report (interactive only)
 

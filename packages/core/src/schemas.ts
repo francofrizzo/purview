@@ -416,6 +416,15 @@ export const RepoConfigSchema = z.object({
    * than through `effectiveConfig`. `null` (the default) is off.
    */
   watchReviews: z.boolean().nullable().default(null),
+  /**
+   * The whole repo is on the shelf: every PR in it behaves as archived (no
+   * automatic analysis, no background lookups, no managed checkout) and the
+   * review watcher stops importing for it — without touching any PR's own
+   * `meta.archived`, so unarchiving the repo restores each PR exactly as it
+   * was. Machine-local state, never layered: read it as `archived === true`
+   * (server `isRepoArchived`). `null` (the default) is not archived.
+   */
+  archived: z.boolean().nullable().default(null),
 });
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 

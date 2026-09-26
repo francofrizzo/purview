@@ -267,6 +267,7 @@ export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
     chatModel: model(obj.chatModel),
     analysisEffort: AnalysisEffortSchema.safeParse(obj.analysisEffort).data ?? null,
     watchReviews: typeof obj.watchReviews === "boolean" ? obj.watchReviews : null,
+    archived: typeof obj.archived === "boolean" ? obj.archived : null,
   };
 }
 
@@ -366,6 +367,36 @@ export function listRepos(root = stateRoot()): RepoKey[] {
     }
   }
   return out;
+}
+
+/**
+ * Delete every byte of local state for one repo: its PR directories and its
+ * repo-level files (`repo.json`, the local rubric, …) — then the owner and
+ * host directories if that left them empty. Managed checkouts are *not* here
+ * (they live under `checkouts/` and need git to unregister them; see the
+ * server's repo-removal.ts), and nothing outside `<root>/<host>/<owner>/<repo>`
+ * is ever touched. Returns whether there was anything to delete.
+ */
+export function deleteRepoState(key: RepoKey, root = stateRoot()): boolean {
+  const segmentOk = (s: string) =>
+    s.length > 0 && s !== "." && s !== ".." && !s.includes("/") && !s.includes("\\");
+  if (![key.host, key.owner, key.repo].every(segmentOk) || key.host === CHECKOUTS_DIR_NAME) {
+    throw new Error(`Refusing to delete state for an invalid repo key "${key.host}/${key.owner}/${key.repo}"`);
+  }
+  const dir = repoDir(key, root);
+  if (path.relative(path.resolve(root), path.resolve(dir)).split(path.sep).length !== 3) {
+    throw new Error(`Refusing to delete ${dir}: not a repo directory under ${root}`);
+  }
+  if (!fs.existsSync(dir)) return false;
+  fs.rmSync(dir, { recursive: true, force: true });
+  for (const parent of [path.dirname(dir), path.dirname(path.dirname(dir))]) {
+    try {
+      if (fs.readdirSync(parent).length === 0) fs.rmdirSync(parent);
+    } catch {
+      /* already gone, or not empty */
+    }
+  }
+  return true;
 }
 
 /* ------------------------------------------- committed team-config cache */

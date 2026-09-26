@@ -21,6 +21,7 @@ import {
   useDismissAnalysisPending,
   useStartAnalysis,
   useSetArchived,
+  useSetRepoArchived,
   useUnarchiveAndAnalyze,
   useComments,
   useDeleteComment,
@@ -156,6 +157,7 @@ export function PrView() {
   const cancelAnalysis = useCancelAnalysis(prKey);
   const unarchiveAndAnalyze = useUnarchiveAndAnalyze(prKey);
   const setArchived = useSetArchived();
+  const setRepoArchived = useSetRepoArchived();
   const dismissAnalysisPending = useDismissAnalysisPending(prKey);
   const exportAnalysis = useExportAnalysis(prKey);
   const importAnalysis = useImportAnalysis(prKey);
@@ -773,8 +775,12 @@ export function PrView() {
   // Hidden while a run is live: the explicit analyze clears the note server-
   // side, and the detail catches up when the run finishes.
   const skipNote = detail.analysisPending;
+  // The PR's own archive wins (see the server's archiveSource): unarchiving it
+  // is what brings it back, whereas a repo-only archive keeps the repo shelved.
+  const archiveScope: "pr" | "repo" | null =
+    detail.meta.archived === true ? "pr" : detail.repoArchived ? "repo" : null;
   const showArchivedSkipBanner =
-    !!skipNote && skipNote.reason === "archived" && detail.meta.archived === true && !analysisPending;
+    !!skipNote && skipNote.reason === "archived" && archiveScope !== null && !analysisPending;
   const quote = (ref: ChatRef) => chat.attachRef(ref);
 
   const noLocalAnalysis = units.length === 0;
@@ -965,6 +971,13 @@ export function PrView() {
         detail={detail}
         archiving={setArchived.isPending}
         onSetArchived={(archived) => setArchived.mutate({ key: prKey, archived })}
+        repoArchiving={setRepoArchived.isPending}
+        onSetRepoArchived={(archived) =>
+          setRepoArchived.mutate({
+            rkey: `${detail.meta.host}/${detail.meta.owner}/${detail.meta.repo}`,
+            archived,
+          })
+        }
         draftCount={unsubmittedDrafts.length}
         pendingReview={review.data?.pending.exists}
         refreshing={refresh.isPending}
@@ -1104,9 +1117,17 @@ export function PrView() {
         <ArchivedSkipBanner
           revision={skipNote.revision}
           unplaced={unplacedAll.length}
-          working={unarchiveAndAnalyze.isPending}
-          error={(unarchiveAndAnalyze.error as Error | null)?.message ?? null}
-          onUnarchiveAndAnalyze={() => unarchiveAndAnalyze.mutate()}
+          scope={archiveScope ?? "pr"}
+          working={
+            archiveScope === "repo" ? startAnalysis.isPending : unarchiveAndAnalyze.isPending
+          }
+          error={
+            ((archiveScope === "repo" ? startAnalysis.error : unarchiveAndAnalyze.error) as Error | null)
+              ?.message ?? null
+          }
+          onUnarchiveAndAnalyze={() =>
+            archiveScope === "repo" ? startAnalysis.mutate() : unarchiveAndAnalyze.mutate()
+          }
           onDismiss={() => dismissAnalysisPending.mutate()}
         />
       ) : null}

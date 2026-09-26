@@ -166,7 +166,9 @@ The CLI (`reviewer-state`, shipped by `packages/core`) is also usable directly:
 `init`, `refresh`, `set-analysis`, `set-unit`, `set-units` (an all-or-nothing batch of
 unit patches), `units` (compact unit listing), `view`, `report`, `list`, `sync`, and
 `discard-revision <key> <n>` for a revision fetched while the author was mid-rebase (see
-`skills/pr-review/MIGRATION-NOTES.md`).
+`skills/pr-review/MIGRATION-NOTES.md`), and `remove-repo <host/owner/repo> --yes`, which
+deletes all of Purview's local state for a repo (through the running server; nothing on
+GitHub changes).
 
 ## Claude integration
 

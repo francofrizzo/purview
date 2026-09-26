@@ -30,6 +30,7 @@ import type {
   RepoConfig,
   RepoConfigPatch,
   RepoPathResult,
+  RepoRemovalSummary,
   RepoSummary,
   RewindChatResult,
   ReviewEvent,
@@ -504,10 +505,13 @@ function chunkReply(text: string): string[] {
 /** Mirrors meta.analysisPending: "a refresh skipped the analysis because the PR is archived". */
 const analysisPending: Record<string, AnalysisPending> = {};
 
+/** Mirrors repo.json's `archived`: repo keys whose whole repo is on the shelf. */
+const archivedRepos = new Set<string>();
+
 export const mockApi = {
   async listPrs(): Promise<PrListEntry[]> {
     await delay(80);
-    return structuredClone(list);
+    return structuredClone(list.map((p) => ({ ...p, repoArchived: archivedRepos.has(repoKeyOfPr(p.key)) })));
   },
 
   async addPr(url: string): Promise<PrListEntry> {
@@ -550,7 +554,44 @@ export const mockApi = {
   async listRepos(): Promise<RepoSummary[]> {
     await delay(80);
     syncRepoCounts();
-    return structuredClone(repos);
+    return structuredClone(
+      repos.map((r) => ({ ...r, archived: archivedRepos.has(`${r.host}/${r.owner}/${r.repo}`) })),
+    );
+  },
+
+  async setRepoArchived(rkey: string, archived: boolean): Promise<void> {
+    await delay(120);
+    if (!repoConfigs[rkey]) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
+    if (archived) archivedRepos.add(rkey);
+    else archivedRepos.delete(rkey);
+  },
+
+  async repoRemoval(rkey: string): Promise<RepoRemovalSummary> {
+    await delay(100);
+    if (!repoConfigs[rkey]) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
+    const prs = list.filter((p) => repoKeyOfPr(p.key) === rkey);
+    const mine = prs.some((p) => p.key === detail.key) ? drafts : [];
+    return {
+      repo: rkey,
+      prCount: prs.length,
+      draftComments: mine.filter((d) => (d.status ?? "draft") === "draft").length,
+      pushedComments: mine.filter((d) => d.status === "pushed").length,
+      busy: prs
+        .filter((p) => isLive(jobs[p.key]))
+        .map((p) => ({ key: p.key, reason: "analysis" as const })),
+    };
+  },
+
+  async removeRepo(rkey: string): Promise<void> {
+    const summary = await mockApi.repoRemoval(rkey);
+    if (summary.busy.length) {
+      throw new ApiError("repo_busy", 409, `An analysis is queued or running for ${summary.busy[0].key}.`);
+    }
+    for (let i = list.length - 1; i >= 0; i--) if (repoKeyOfPr(list[i].key) === rkey) list.splice(i, 1);
+    const at = repos.findIndex((r) => `${r.host}/${r.owner}/${r.repo}` === rkey);
+    if (at !== -1) repos.splice(at, 1);
+    delete repoConfigs[rkey];
+    archivedRepos.delete(rkey);
   },
 
   async getRepoConfig(rkey: string): Promise<RepoConfig> {
@@ -668,6 +709,7 @@ export const mockApi = {
     const entry = list.find((p) => p.key === key);
     target.reviewRequest = entry?.reviewRequest;
     target.meta = { ...target.meta, archived: entry?.archived ?? false };
+    target.repoArchived = archivedRepos.has(`${host}/${owner}/${repo}`);
     target.analysisPending = analysisPending[key] ?? null;
     return structuredClone(target);
   },

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { initPr, setGhRunner, writeRepoConfig, type GhRunner, type RepoKey } from "@reviewer/core";
+import { initPr, listPrs, setGhRunner, writeRepoConfig, type GhRunner, type RepoKey } from "@reviewer/core";
 import { getWatchStatus, resetWatchStatus, startReviewWatch, type ReviewWatch } from "../src/review-watch.js";
 import { analysisIdle } from "../src/analysis.js";
 import { fakeClaude, type FakeClaude } from "./fake-claude.js";
@@ -117,6 +117,31 @@ describe("startReviewWatch", () => {
     writeRepoConfig(repoA, { watchReviews: true }, root);
     await watch.tick();
     expect(calls.filter((c) => c[0] === "pr" && c[1] === "list")).toHaveLength(1);
+    expect(getWatchStatus().repos["github.com/acme/widgets"]).toMatchObject({ imported: 1 });
+  });
+
+  it("skips an archived repo, and resumes on the next tick once it is unarchived", async () => {
+    const gh = ghFor({
+      "acme/widgets": [{ number: 5, title: "Five", updatedAt: "2024-01-01T00:00:00Z" }],
+    });
+    const calls: string[][] = [];
+    setGhRunner((args) => {
+      calls.push([...args]);
+      return gh(args);
+    });
+    writeRepoConfig(repoA, { watchReviews: true, archived: true }, root);
+    const searches = () => calls.filter((c) => c[0] === "pr" && c[1] === "list").length;
+
+    watch = startReviewWatch(root, { now: () => new Date("2024-01-05T00:00:00Z") });
+    await watch.tick();
+    expect(searches()).toBe(0);
+    expect(listPrs(root)).toEqual([]);
+    expect(getWatchStatus().repos["github.com/acme/widgets"]).toBeUndefined();
+
+    // Unarchiving leaves watchReviews as it was, so polling simply resumes.
+    writeRepoConfig(repoA, { archived: null }, root);
+    await watch.tick();
+    expect(searches()).toBe(1);
     expect(getWatchStatus().repos["github.com/acme/widgets"]).toMatchObject({ imported: 1 });
   });
 

@@ -231,9 +231,58 @@ export function effectiveRepoPath(
 }
 
 /**
+ * Whether the whole repo is archived (`repo.json`'s `archived`). Not layered:
+ * it is this machine's shelf, so the raw local value is the whole story.
+ */
+export function isRepoArchived(repo: RepoKey, root = stateRoot()): boolean {
+  return readRepoConfig(repo, root).archived === true;
+}
+
+/**
+ * Where a PR's archived state comes from: its own `meta.archived` (`"pr"`),
+ * its repo's (`"repo"`), or nowhere (`null`). The PR's own flag wins a tie so
+ * that unarchiving the repo is never shown as the way to unarchive a PR that
+ * would stay archived on its own.
+ */
+export function archiveSource(
+  key: PrKey,
+  root = stateRoot(),
+  overrides: Pick<Partial<ConfigLayers>, "meta" | "local"> = {},
+): "pr" | "repo" | null {
+  const meta =
+    overrides.meta !== undefined
+      ? overrides.meta
+      : (() => {
+          try {
+            return readMeta(key, root);
+          } catch {
+            return null;
+          }
+        })();
+  if (meta?.archived) return "pr";
+  const local = overrides.local ?? readRepoConfig(repoKeyOf(key), root);
+  return local.archived === true ? "repo" : null;
+}
+
+/**
+ * The one question every archive gate asks: does this PR behave as archived,
+ * either on its own or because its whole repo is? Everything that `meta.archived`
+ * used to gate on its own (automatic analysis, background review-request
+ * lookups, managed checkouts) goes through this, so a repo-level archive is
+ * honoured everywhere without flipping any PR's own flag.
+ */
+export function isEffectivelyArchived(
+  key: PrKey,
+  root = stateRoot(),
+  overrides: Pick<Partial<ConfigLayers>, "meta" | "local"> = {},
+): boolean {
+  return archiveSource(key, root, overrides) !== null;
+}
+
+/**
  * Whether an automatic analysis run may be triggered for this PR. Archived PRs
- * are excluded outright: they stay fully readable, but nothing about them is
- * allowed to spend money on its own.
+ * (on their own or through their repo) are excluded outright: they stay fully
+ * readable, but nothing about them is allowed to spend money on its own.
  */
 export function autoAnalyzeAllowed(
   key: PrKey,
@@ -255,7 +304,7 @@ export function autoAnalyzeBlocker(
 ): "archived" | "disabled" | null {
   const layers = readLayers(key, root, overrides);
   if (!effectiveConfig(key, root, layers).autoAnalyze.value) return "disabled";
-  if (layers.meta?.archived) return "archived";
+  if (isEffectivelyArchived(key, root, layers)) return "archived";
   return null;
 }
 

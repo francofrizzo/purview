@@ -6,9 +6,11 @@ import { Command } from "commander";
 import {
   parseKey,
   parsePrUrl,
+  parseRepoKey,
   prCheckoutPath,
   prDir,
   keyToString,
+  repoKeyToString,
   type PrKey,
 } from "./paths.js";
 import {
@@ -188,6 +190,48 @@ program
       `Revision ${res.discarded}'s number is not reused: the next refresh adds revision ` +
         `${res.discarded + 1}, migrated from revision ${res.revision}.`,
     );
+  });
+
+/*
+ * Removing a repo goes through the running server rather than deleting the
+ * state dir itself: the server is what knows whether an analysis or a chat
+ * reply is in flight for one of its PRs (it refuses then), and what removes
+ * the managed checkouts through git so the reader's clones forget them too.
+ */
+program
+  .command("remove-repo")
+  .argument("<repo>", "host/owner/repo (or owner/repo for github.com)")
+  .option("--yes", "confirm: delete all of Purview's local state for this repo")
+  .description(
+    "delete all local state for a repo (its PRs, drafts, settings, managed checkouts); nothing on GitHub changes",
+  )
+  .action(async (repoArg: string, opts: { yes?: boolean }) => {
+    const repo = parseRepoKey(repoArg);
+    const name = repoKeyToString(repo);
+    const url = `${serverBaseUrl()}/api/repos/${encodeURIComponent(name)}`;
+    const summary = await callServer<{
+      prCount: number;
+      draftComments: number;
+      pushedComments: number;
+    }>("GET", `${url}/removal`);
+    const lose =
+      `${summary.prCount} PR${summary.prCount === 1 ? "" : "s"}, ` +
+      `${summary.draftComments} draft comment${summary.draftComments === 1 ? "" : "s"}` +
+      (summary.pushedComments > 0
+        ? ` and Purview's copy of ${summary.pushedComments} pushed comment${summary.pushedComments === 1 ? "" : "s"} (they stay in your pending review on GitHub)`
+        : "");
+    if (!opts.yes) {
+      throw new CliExit(
+        `This would delete all local state for ${name}: ${lose}. ` +
+          `Re-run with --yes to remove it (\`reviewer-state remove-repo ${name} --yes\`).`,
+      );
+    }
+    const res = await callServer<{ removedCheckouts: string[] }>("DELETE", url);
+    console.log(`Removed ${name} from Purview: ${lose}.`);
+    if (res.removedCheckouts.length > 0) {
+      console.log(`Removed ${res.removedCheckouts.length} managed checkout(s).`);
+    }
+    console.log("Nothing on GitHub was changed.");
   });
 
 program

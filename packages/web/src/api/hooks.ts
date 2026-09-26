@@ -7,7 +7,7 @@ import {
   type UseMutationResult,
 } from "@tanstack/react-query";
 import { api } from "./client";
-import { applyArchive } from "../lib/prList";
+import { applyArchive, applyRepoArchive } from "../lib/prList";
 import { stalenessPollInterval } from "../lib/staleness";
 import type {
   AnalysisImportReport,
@@ -32,6 +32,7 @@ import type {
   RepoConfig,
   RepoConfigPatch,
   PrGithubState,
+  RepoRemovalSummary,
   RepoSummary,
   ReviewEvent,
   ReviewStatus,
@@ -47,6 +48,7 @@ export const qk = {
   prs: ["prs"] as const,
   repos: ["repos"] as const,
   repoConfig: (rkey: string) => ["repo-config", rkey] as const,
+  repoRemoval: (rkey: string) => ["repo-removal", rkey] as const,
   config: ["config"] as const,
   lan: ["lan"] as const,
   pr: (key: string) => ["pr", key] as const,
@@ -158,6 +160,71 @@ export function useSetArchived() {
 
 export function useRepos() {
   return useQuery<RepoSummary[]>({ queryKey: qk.repos, queryFn: api.listRepos });
+}
+
+/**
+ * Archive or unarchive a whole repo — optimistic like a PR's archive: the
+ * group moves into (or out of) "archived repos" before the request lands.
+ */
+export function useSetRepoArchived() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rkey, archived }: { rkey: string; archived: boolean }) =>
+      api.setRepoArchived(rkey, archived),
+    onMutate: async ({ rkey, archived }) => {
+      await qc.cancelQueries({ queryKey: qk.prs });
+      await qc.cancelQueries({ queryKey: qk.repos });
+      const previous = qc.getQueryData<PrListEntry[]>(qk.prs);
+      const previousRepos = qc.getQueryData<RepoSummary[]>(qk.repos);
+      if (previous) qc.setQueryData(qk.prs, applyRepoArchive(previous, rkey, archived));
+      if (previousRepos) {
+        qc.setQueryData(
+          qk.repos,
+          previousRepos.map((r) =>
+            `${r.host}/${r.owner}/${r.repo}` === rkey ? { ...r, archived } : r,
+          ),
+        );
+      }
+      return { previous, previousRepos };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) qc.setQueryData(qk.prs, ctx.previous);
+      if (ctx?.previousRepos) qc.setQueryData(qk.repos, ctx.previousRepos);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: qk.repos });
+      // Any open PR of the repo: its header chip reads the repo flag.
+      void qc.invalidateQueries({ queryKey: ["pr"] });
+    },
+  });
+}
+
+/** What removing a repo would lose. Fetched only while the confirm is open. */
+export function useRepoRemoval(rkey: string, enabled: boolean) {
+  return useQuery<RepoRemovalSummary>({
+    queryKey: qk.repoRemoval(rkey),
+    queryFn: () => api.repoRemoval(rkey),
+    enabled: Boolean(rkey) && enabled,
+    staleTime: 0,
+    retry: false,
+  });
+}
+
+/** Delete all local state for a repo. Not optimistic: it is destructive. */
+export function useRemoveRepo(rkey: string) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, void>({
+    mutationFn: () => api.removeRepo(rkey),
+    onSuccess: () => {
+      qc.removeQueries({ queryKey: qk.repoConfig(rkey) });
+      qc.removeQueries({ queryKey: qk.repoRemoval(rkey) });
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: qk.repos });
+    },
+    // A refusal (busy) may be stale by now: re-read what blocks it.
+    onError: () => void qc.invalidateQueries({ queryKey: qk.repoRemoval(rkey) }),
+  });
 }
 
 export function useRepoConfig(rkey: string) {

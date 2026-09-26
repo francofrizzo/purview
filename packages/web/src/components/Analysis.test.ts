@@ -64,6 +64,12 @@ describe("archivedSkipText", () => {
     expect(archivedSkipText(3, 1).detail).toBe("1 hunk isn't in any unit yet.");
   });
 
+  it("names the repo when the archive comes from it", () => {
+    expect(archivedSkipText(2, 3, "repo").title).toBe(
+      "This PR's repo is archived, so revision 2 wasn't analyzed.",
+    );
+  });
+
   it("still explains itself when every hunk is placed (reworked units only)", () => {
     expect(archivedSkipText(4, 0).detail).toBe(
       "Some unit descriptions may not reflect its latest changes.",

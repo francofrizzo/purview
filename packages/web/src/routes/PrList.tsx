@@ -21,8 +21,10 @@ import {
   formatAddedAt,
   formatFullTimestamp,
   groupPrsByRepo,
+  partitionRepoGroups,
   type RepoGroup,
 } from "../lib/prList";
+import { RepoMenu } from "../components/RepoActions";
 
 export function PrList() {
   const { data: prs = [], isLoading, error } = usePrs();
@@ -33,6 +35,8 @@ export function PrList() {
   const [url, setUrl] = useState("");
 
   const groups = useMemo(() => groupPrsByRepo(prs), [prs]);
+  const tiers = useMemo(() => partitionRepoGroups(groups), [groups]);
+  const [showArchivedRepos, setShowArchivedRepos] = useState(false);
   const repoByKey = useMemo(() => {
     const map = new Map<string, RepoSummary>();
     for (const r of repos) map.set(`${r.host}/${r.owner}/${r.repo}`, r);
@@ -116,9 +120,37 @@ export function PrList() {
           </p>
         ) : (
           <div className="flex flex-col gap-3 pb-6">
-            {groups.map((group) => (
+            {tiers.active.map((group) => (
               <RepoSection key={group.key} group={group} repo={repoByKey.get(group.key)} />
             ))}
+            {tiers.active.length === 0 ? (
+              <p
+                className="surface rounded-md p-4 text-xs leading-5"
+                style={{ color: "var(--fg-faint)" }}
+              >
+                Every repo is archived. Unarchive one below, or paste a PR URL above.
+              </p>
+            ) : null}
+            {tiers.archived.length ? (
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowArchivedRepos((v) => !v)}
+                  data-testid="archived-repos-toggle"
+                  aria-expanded={showArchivedRepos}
+                  className="flex items-center gap-1.5 self-start rounded px-1 py-0.5 text-2xs transition-colors hover:bg-[var(--bg-hover)]"
+                  style={{ color: "var(--fg-faint)" }}
+                >
+                  <IconChevron open={showArchivedRepos} width={10} height={10} />
+                  Archived repos ({tiers.archived.length})
+                </button>
+                {showArchivedRepos
+                  ? tiers.archived.map((group) => (
+                      <RepoSection key={group.key} group={group} repo={repoByKey.get(group.key)} />
+                    ))
+                  : null}
+              </div>
+            ) : null}
           </div>
         )}
       </div>
@@ -126,15 +158,24 @@ export function PrList() {
   );
 }
 
-/** One repo: a header row, its PRs, and the archived disclosure at the bottom. */
+/**
+ * One repo: a header row, its PRs, and the archived disclosure at the bottom.
+ * A whole archived repo renders the same way, dimmed and without the import
+ * form (its PRs stay one click away), and its ⋯ offers the unarchive.
+ */
 function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) {
   const [showArchived, setShowArchived] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
+  const repoArchived = group.repoArchived;
 
   return (
-    <section className="surface elev-1 overflow-hidden rounded-md">
+    <section
+      className="surface elev-1 overflow-hidden rounded-md"
+      data-testid={`repo-section-${group.key}`}
+      style={repoArchived ? { opacity: 0.6 } : undefined}
+    >
       <header
         className="flex items-center gap-2 border-b px-3 py-1.5"
         style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
@@ -151,7 +192,16 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
             {group.host}
           </span>
         ) : null}
-        {repo?.watchReviews ? (
+        {repoArchived ? (
+          <span
+            className="chip flex-none"
+            style={{ color: "var(--fg-muted)", background: "var(--bg-hover)" }}
+            title="Archived repo: no automatic analyses or watch imports. Unarchive from the ⋯ menu."
+          >
+            archived
+          </span>
+        ) : null}
+        {repo?.watchReviews && !repoArchived ? (
           <span
             className="chip px-0 font-normal flex-none"
             style={{ color: "var(--fg-faint)", background: "transparent" }}
@@ -167,15 +217,19 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
         <span className="flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
           {group.prs.length} {group.prs.length === 1 ? "PR" : "PRs"}
         </span>
-        <button
-          type="button"
-          className="btn ml-auto flex-none"
-          data-testid={`import-reviews-toggle-${group.key}`}
-          aria-expanded={importOpen}
-          onClick={() => setImportOpen((v) => !v)}
-        >
-          import review requests…
-        </button>
+        {repoArchived ? (
+          <span className="ml-auto" />
+        ) : (
+          <button
+            type="button"
+            className="btn ml-auto flex-none"
+            data-testid={`import-reviews-toggle-${group.key}`}
+            aria-expanded={importOpen}
+            onClick={() => setImportOpen((v) => !v)}
+          >
+            import review requests…
+          </button>
+        )}
         <Link
           to={settingsHref}
           state={{ background }}
@@ -187,9 +241,10 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
         >
           <IconSettings width={12} height={12} />
         </Link>
+        <RepoMenu repo={group} archived={repoArchived} />
       </header>
 
-      {importOpen ? (
+      {importOpen && !repoArchived ? (
         <ImportReviewsForm rkey={group.key} onClose={() => setImportOpen(false)} />
       ) : null}
 

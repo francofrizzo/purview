@@ -116,6 +116,7 @@ import {
   cachedCommittedConfigForRepo,
   effectiveConfig,
   effectiveRepoPath,
+  isRepoArchived,
 } from "./repo-config.js";
 import { BUILTIN_DEFAULTS } from "./repo-config.js";
 import { generateLanToken, readConfig, writeConfig } from "./config.js";
@@ -123,6 +124,7 @@ import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
 import { pruneCheckouts } from "./pr-checkout.js";
+import { removeRepo, repoRemovalSummary } from "./repo-removal.js";
 import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
 
 export const DEFAULT_PORT = 4779;
@@ -355,9 +357,16 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.get("/api/prs", (c) => {
     const keys = listPrs(root);
     const metas: { key: PrKey; meta: Meta }[] = [];
+    // One repo.json read per repo, not per PR.
+    const repoArchived = new Map<string, boolean>();
     const prs = keys.map((key) => {
       const meta = readMeta(key, root);
-      metas.push({ key, meta });
+      const rkey = repoKeyToString(repoKeyOf(key));
+      if (!repoArchived.has(rkey)) repoArchived.set(rkey, isRepoArchived(repoKeyOf(key), root));
+      const inArchivedRepo = repoArchived.get(rkey) === true;
+      // The background lookup gates on `archived`; hand it the effective
+      // value so a PR of an archived repo is left alone like an archived PR.
+      metas.push({ key, meta: inArchivedRepo ? { ...meta, archived: true } : meta });
       const state = loadState(key, root);
       return {
         key: keyToString(key),
@@ -370,7 +379,10 @@ export function createApp(opts: AppOptions = {}): Hono {
         // Absent (not `null`) until first looked up: `null` means "nothing pending".
         reviewRequest: meta.reviewRequest,
         addedAt: meta.createdAt,
+        // The PR's own flag. `repoArchived` is its repo's, kept apart so that
+        // unarchiving the repo restores each PR exactly as it was.
         archived: meta.archived === true,
+        repoArchived: inArchivedRepo,
         currentRevision: state.currentRevision,
         summary: state.summary,
         progress: progressOf(state),
@@ -540,6 +552,9 @@ export function createApp(opts: AppOptions = {}): Hono {
         : false,
       reviewRequest: meta.reviewRequest,
       analysisPending: meta.analysisPending ?? null,
+      // Whether the PR behaves as archived because its whole repo is; the
+      // header offers "unarchive repo" then rather than a per-PR unarchive.
+      repoArchived: isRepoArchived(repoKeyOf(key), root),
     });
   });
 
@@ -1425,6 +1440,9 @@ export function createApp(opts: AppOptions = {}): Hono {
         ...repo,
         prCount: prs.length,
         archivedCount,
+        // The repo-level shelf (see schemas.ts). State, not configuration, so
+        // it does not count towards `hasLocalConfig`.
+        archived: local.archived === true,
         // "Has local config" means something is actually set — the empty
         // repo.json auto-created with the first PR is not configuration.
         hasLocalConfig:
@@ -1658,11 +1676,71 @@ export function createApp(opts: AppOptions = {}): Hono {
     const { days } = parsed.data;
     // Repo-scoped, not PR-scoped, so there is no `meta.archived` to check —
     // `autoAnalyzeAllowed`'s archive guard only applies once a PR exists.
-    // Each newly imported PR is untracked by definition, so nothing here can
-    // be archived; the layered consent alone decides.
-    const analyze = autoAnalyze && effectiveConfig(repo, root).autoAnalyze.value;
+    // Each newly imported PR is untracked by definition, so only its repo can
+    // make it archived: an archived repo's imports land on the shelf too, and
+    // an explicit import is not consent to spend on them.
+    const analyze =
+      autoAnalyze && effectiveConfig(repo, root).autoAnalyze.value && !isRepoArchived(repo, root);
     const result = importReviewRequests(repo, days, root, { analyze });
     return c.json({ ...result, days });
+  });
+
+  /** 404 for a repo with no local state at all (no PR dir, no repo.json). */
+  function assertRepoTracked(repo: RepoKey): void {
+    const tracked = listRepos(root).some(
+      (r) => r.host === repo.host && r.owner === repo.owner && r.repo === repo.repo,
+    );
+    if (!tracked) {
+      throw new HttpError(404, "not_found", `${repoKeyToString(repo)} is not tracked in Purview`);
+    }
+  }
+
+  /**
+   * Archive (or unarchive) a whole repo. A flag in `repo.json`, not a sweep
+   * over the PRs: each PR's own `meta.archived` is left exactly as it was, so
+   * unarchiving restores the previous mix of archived and active PRs. While
+   * it is set, every PR in the repo behaves as archived (`isEffectivelyArchived`)
+   * and the review watcher stops importing for it.
+   */
+  app.post("/api/repos/:rkey/archive", async (c) => {
+    const repo = repoKeyParam(c);
+    assertRepoTracked(repo);
+    const body = (await readJsonBody(c)) as { archived?: unknown };
+    if (typeof body.archived !== "boolean") {
+      throw new HttpError(400, "invalid_body", "Body must include { archived: boolean }");
+    }
+    // `null`, not `false`, when unarchiving: absent and off are one state.
+    const local = writeRepoConfig(repo, { archived: body.archived ? true : null }, root);
+    // Same as a PR archive: its managed checkouts are no longer needed.
+    if (local.archived) {
+      void pruneCheckouts(root).catch((err: unknown) =>
+        console.warn(`[checkouts] prune failed: ${(err as Error).message}`),
+      );
+    }
+    return c.json({ ok: true, archived: local.archived === true });
+  });
+
+  /**
+   * What removing the repo would lose (PRs, unsubmitted comments) and what
+   * blocks it right now. Read-only; the confirm UI shows it before anything
+   * is deleted.
+   */
+  app.get("/api/repos/:rkey/removal", (c) => {
+    return c.json(repoRemovalSummary(repoKeyParam(c), root));
+  });
+
+  /**
+   * Remove a repo from Purview: every byte of its local state and its managed
+   * checkouts. Nothing on GitHub changes. Loopback-only — it is the one
+   * endpoint that deletes a whole tree of state — and 409 while any of its
+   * PRs has an analysis queued/running or a chat reply streaming.
+   */
+  app.delete("/api/repos/:rkey", loopbackOnly({ port }), async (c) => {
+    const repo = repoKeyParam(c);
+    const result = await removeRepo(repo, root);
+    const prefix = `v2|${repoKeyToString(repo)}/`;
+    for (const k of [...lineChangesCache.keys()]) if (k.startsWith(prefix)) lineChangesCache.delete(k);
+    return c.json({ ok: true, ...result });
   });
 
   /**

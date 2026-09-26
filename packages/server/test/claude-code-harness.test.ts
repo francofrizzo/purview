@@ -64,7 +64,9 @@ describe("task -> Claude tool policy (unchanged from the pre-harness rules)", ()
     );
     expect(sorted(policy.disallowedTools)).toEqual(
       sorted([
-        ...["sync", "init", "refresh", "discard-revision", "comment", "view"].map((s) => `Bash(${cmd} ${s}:*)`),
+        ...["sync", "init", "refresh", "discard-revision", "remove-repo", "comment", "view"].map(
+          (s) => `Bash(${cmd} ${s}:*)`,
+        ),
         "Bash(sed * -i*)",
         "Bash(sed * --in-place*)",
         "Bash(gh:*)",
@@ -92,7 +94,7 @@ describe("task -> Claude tool policy (unchanged from the pre-harness rules)", ()
     );
     expect(sorted(policy.disallowedTools)).toEqual(
       sorted([
-        ...["sync", "set-analysis", "set-unit", "set-units", "view", "init", "refresh", "discard-revision"].map(
+        ...["sync", "set-analysis", "set-unit", "set-units", "view", "init", "refresh", "discard-revision", "remove-repo"].map(
           (s) => `Bash(${cmd} ${s}:*)`,
         ),
         "Bash(gh:*)",

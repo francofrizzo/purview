@@ -92,6 +92,8 @@ export interface RepoGroup {
   archived: PrListEntry[];
   /** the newest `addedAt` in the group, archived rows included */
   latestAddedAt: string;
+  /** the whole repo is archived: the group lives under "archived repos" */
+  repoArchived: boolean;
 }
 
 const time = (iso: string | undefined) => {
@@ -123,10 +125,12 @@ export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
         prs: [],
         archived: [],
         latestAddedAt: pr.addedAt,
+        repoArchived: false,
       };
       groups.set(key, group);
     }
     (pr.archived ? group.archived : group.prs).push(pr);
+    if (pr.repoArchived) group.repoArchived = true;
     if (time(pr.addedAt) > time(group.latestAddedAt)) group.latestAddedAt = pr.addedAt;
   }
   const out = [...groups.values()];
@@ -151,4 +155,32 @@ export function applyArchive(
   archived: boolean,
 ): PrListEntry[] {
   return prs.map((p) => (p.key === key ? { ...p, archived } : p));
+}
+
+/**
+ * The list's two tiers: repos in use, in `groupPrsByRepo`'s order, and whole
+ * archived repos, which go into the collapsed "archived repos" disclosure at
+ * the bottom (same order among themselves).
+ */
+export function partitionRepoGroups(groups: RepoGroup[]): {
+  active: RepoGroup[];
+  archived: RepoGroup[];
+} {
+  return {
+    active: groups.filter((g) => !g.repoArchived),
+    archived: groups.filter((g) => g.repoArchived),
+  };
+}
+
+/**
+ * The optimistic counterpart of `POST /api/repos/:rkey/archive`: flip the
+ * repo flag on every row of that repo, leaving each row's own `archived`
+ * exactly as it was — which is what makes unarchiving the repo a true undo.
+ */
+export function applyRepoArchive(
+  prs: PrListEntry[],
+  rkey: string,
+  archived: boolean,
+): PrListEntry[] {
+  return prs.map((p) => (groupKeyOf(p) === rkey ? { ...p, repoArchived: archived } : p));
 }
