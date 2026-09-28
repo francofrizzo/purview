@@ -105,7 +105,12 @@ export function CommentComposer({
       className="surface absolute bottom-3 right-4 z-40 w-[26rem] rounded-md p-2.5 elev-3"
       onKeyDown={(e) => {
         if (e.key === "Escape") onCancel();
-        if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && body.trim()) onSubmit(body.trim());
+        if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey) || !body.trim()) return;
+        e.preventDefault();
+        // ⌘⇧↵ asks the chat; ⌘↵ saves the draft.
+        if (e.shiftKey) {
+          if (onSendToChat && !chatBusy) onSendToChat(body.trim());
+        } else onSubmit(body.trim());
       }}
     >
       <div className="mb-1.5 flex items-center gap-2 font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
@@ -121,11 +126,9 @@ export function CommentComposer({
         ref={ref}
         className="input h-24 resize-none text-xs leading-[18px]"
         data-testid="composer-textarea"
-        placeholder={
-          fileLevel
-            ? "Draft a comment about this whole file… (⌘↵ to save)"
-            : "Draft a comment… (⌘↵ to save)"
-        }
+        placeholder={`${fileLevel ? "Draft a comment about this whole file…" : "Draft a comment…"} (⌘↵ to save${
+          onSendToChat ? ", ⌘⇧↵ to ask the chat" : ""
+        })`}
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
@@ -139,7 +142,7 @@ export function CommentComposer({
             title={
               chatBusy
                 ? "The chat is still replying"
-                : "Ask the review chat instead, with this line attached. Nothing is saved as a draft."
+                : "Ask the review chat instead, with this line attached. Nothing is saved as a draft. (⌘⇧↵)"
             }
             onClick={() => onSendToChat(body.trim())}
           >
@@ -167,7 +170,7 @@ export function CommentComposer({
           type="button"
           className="btn btn-primary ml-auto"
           data-testid="composer-save"
-          title="Saved locally; pushed as a pending review on sync."
+          title="Saved locally; pushed as a pending review on sync. (⌘↵)"
           disabled={!body.trim() || pending}
           onClick={() => onSubmit(body.trim())}
         >
