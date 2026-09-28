@@ -130,6 +130,46 @@ describe("groupPrsByRepo", () => {
   });
 });
 
+describe("groupPrsByRepo — pending review requests", () => {
+  const asked = (p: PrListEntry, at: string): PrListEntry => ({
+    ...p,
+    reviewRequest: { at, by: "dana", via: "you" },
+  });
+  const prs = [
+    pr("github.com/acme/platform/1190", "acme", "platform", ago(30 * MINUTE)),
+    asked(pr("github.com/acme/billing/482", "acme", "billing", ago(2 * DAY)), ago(DAY)),
+    asked(pr("github.com/acme/billing/491", "acme", "billing", ago(HOUR)), ago(HOUR)),
+    asked(pr("github.com/acme/billing/475", "acme", "billing", ago(5 * DAY)), ago(4 * DAY)),
+    pr("github.com/acme/billing/499", "acme", "billing", ago(10 * MINUTE)),
+  ];
+
+  it("lifts requested PRs into their own bucket, longest-waiting first", () => {
+    const billing = groupPrsByRepo(prs).find((g) => g.repo === "billing")!;
+    expect(billing.needsReview.map((p) => p.key)).toEqual([
+      "github.com/acme/billing/475",
+      "github.com/acme/billing/482",
+      "github.com/acme/billing/491",
+    ]);
+    expect(billing.prs.map((p) => p.key)).toEqual(["github.com/acme/billing/499"]);
+  });
+
+  it("puts repos with a pending request ahead of more recently touched ones", () => {
+    expect(groupPrsByRepo([prs[0], prs[1]]).map((g) => g.key)).toEqual([
+      "github.com/acme/billing",
+      "github.com/acme/platform",
+    ]);
+  });
+
+  it("ignores requests on merged, closed or archived PRs", () => {
+    const merged = { ...prs[1], state: "merged" as const };
+    const archived = { ...prs[2], archived: true };
+    const billing = groupPrsByRepo([merged, archived]).find((g) => g.repo === "billing")!;
+    expect(billing.needsReview).toEqual([]);
+    expect(billing.prs.map((p) => p.key)).toEqual([merged.key]);
+    expect(billing.archived.map((p) => p.key)).toEqual([archived.key]);
+  });
+});
+
 describe("applyArchive", () => {
   const prs = [
     pr("github.com/acme/billing/482", "acme", "billing", ago(DAY)),

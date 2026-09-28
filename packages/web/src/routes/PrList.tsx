@@ -65,14 +65,11 @@ export function PrList() {
       <header className="mb-6 flex items-start">
         <div className="min-w-0 flex-1">
           <h1 className="text-lg font-semibold tracking-tight">Purview</h1>
-          <p className="mt-0.5 text-xs" style={{ color: "var(--fg-muted)" }}>
-            Local-first pull request review.{" "}
-            {MOCK ? (
-              <span style={{ color: "var(--warn)" }}>mock mode — no server, fixture data</span>
-            ) : (
-              <span>talking to localhost:4779</span>
-            )}
-          </p>
+          {MOCK ? (
+            <p className="mt-0.5 text-xs" style={{ color: "var(--warn)" }}>
+              mock mode — no server, fixture data
+            </p>
+          ) : null}
         </div>
         <Link to="/settings" state={{ background }} className="btn flex-none" title="Settings">
           <IconSettings width={12} height={12} />
@@ -160,8 +157,10 @@ export function PrList() {
 
 /**
  * One repo: a header row, its PRs, and the archived disclosure at the bottom.
- * A whole archived repo renders the same way, dimmed and without the import
- * form (its PRs stay one click away), and its ⋯ offers the unarchive.
+ * PRs waiting on your review get their own labeled block on top, marked by a
+ * warm rule down the left edge; the rest follow under "Other PRs". A repo with
+ * nothing waiting skips both labels. A whole archived repo renders the same
+ * way, dimmed and without the import entry, and its ⋯ offers the unarchive.
  */
 function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) {
   const [showArchived, setShowArchived] = useState(false);
@@ -169,6 +168,8 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
   const repoArchived = group.repoArchived;
+  const openCount = group.needsReview.length + group.prs.length;
+  const split = group.needsReview.length > 0;
 
   return (
     <section
@@ -176,12 +177,10 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
       data-testid={`repo-section-${group.key}`}
       style={repoArchived ? { opacity: 0.6 } : undefined}
     >
-      <header
-        className="flex items-center gap-2 border-b px-3 py-1.5"
-        style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
-      >
-        <span className="truncate text-xs font-semibold">
-          {group.owner}/{group.repo}
+      <header className="flex items-center gap-2 py-2 pl-3 pr-2">
+        <span className="truncate text-[13px] font-semibold">
+          <span style={{ color: "var(--fg-muted)", fontWeight: 400 }}>{group.owner}/</span>
+          {group.repo}
         </span>
         {group.host !== "github.com" ? (
           <span
@@ -203,33 +202,21 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
         ) : null}
         {repo?.watchReviews && !repoArchived ? (
           <span
-            className="chip px-0 font-normal flex-none"
-            style={{ color: "var(--fg-faint)", background: "transparent" }}
+            className="flex flex-none items-center gap-1 text-2xs"
+            style={{ color: "var(--fg-faint)" }}
             title={
               repo.watch
                 ? `Polling for review requests — last checked ${formatFullTimestamp(repo.watch.checkedAt)}`
                 : "Polling for review requests — no check yet"
             }
           >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--ok)" }} />
             watching
           </span>
         ) : null}
-        <span className="flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-          {group.prs.length} {group.prs.length === 1 ? "PR" : "PRs"}
+        <span className="ml-auto flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+          {openCount} {openCount === 1 ? "PR" : "PRs"}
         </span>
-        {repoArchived ? (
-          <span className="ml-auto" />
-        ) : (
-          <button
-            type="button"
-            className="btn ml-auto flex-none"
-            data-testid={`import-reviews-toggle-${group.key}`}
-            aria-expanded={importOpen}
-            onClick={() => setImportOpen((v) => !v)}
-          >
-            import review requests…
-          </button>
-        )}
         <Link
           to={settingsHref}
           state={{ background }}
@@ -241,21 +228,44 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
         >
           <IconSettings width={12} height={12} />
         </Link>
-        <RepoMenu repo={group} archived={repoArchived} />
+        <RepoMenu
+          repo={group}
+          archived={repoArchived}
+          onImport={repoArchived ? undefined : () => setImportOpen(true)}
+        />
       </header>
 
       {importOpen && !repoArchived ? (
         <ImportReviewsForm rkey={group.key} onClose={() => setImportOpen(false)} />
       ) : null}
 
+      {split ? (
+        <div data-testid={`needs-review-${group.key}`}>
+          <GroupLabel color="var(--warn)" count={group.needsReview.length}>
+            Waiting on your review
+          </GroupLabel>
+          <ul>
+            {group.needsReview.map((pr) => (
+              <PrRow key={pr.key} pr={pr} waiting />
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       {group.prs.length ? (
-        <ul>
-          {group.prs.map((pr) => (
-            <PrRow key={pr.key} pr={pr} />
-          ))}
-        </ul>
-      ) : (
-        <p className="px-3 py-2.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        <div>
+          {split ? <GroupLabel count={group.prs.length}>Other PRs</GroupLabel> : null}
+          <ul className={split ? undefined : "border-t"} style={{ borderColor: "var(--border)" }}>
+            {group.prs.map((pr) => (
+              <PrRow key={pr.key} pr={pr} />
+            ))}
+          </ul>
+        </div>
+      ) : openCount ? null : (
+        <p
+          className="border-t px-3 py-2.5 text-2xs leading-4"
+          style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
+        >
           Every PR in this repo is archived.
         </p>
       )}
@@ -286,6 +296,29 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
   );
 }
 
+/** The heading over one of a repo's two PR blocks. */
+function GroupLabel({
+  children,
+  count,
+  color = "var(--fg-muted)",
+}: {
+  children: React.ReactNode;
+  count: number;
+  color?: string;
+}) {
+  return (
+    <div
+      className="flex items-baseline gap-1.5 border-y px-3 py-1.5 text-2xs font-medium"
+      style={{ borderColor: "var(--border)", background: "var(--bg-inset)", color }}
+    >
+      {children}
+      <span className="tabular-nums" style={{ color: "var(--fg-faint)", fontWeight: 400 }}>
+        {count}
+      </span>
+    </div>
+  );
+}
+
 /**
  * Inline "import review requests…" form: one numeric input, an import
  * button, and a transient result line. Collapses back into the header's
@@ -301,7 +334,7 @@ function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => voi
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-2xs"
+      className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-2xs"
       style={{ borderColor: "var(--border)" }}
     >
       <span style={{ color: "var(--fg-faint)" }}>last</span>
@@ -343,75 +376,103 @@ function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => voi
 const ARCHIVE_HINT =
   "Archiving is local only — it hides the PR here and changes nothing on GitHub.";
 
-function PrRow({ pr }: { pr: PrListEntry }) {
+/**
+ * One PR. The title line carries only what is out of the ordinary: "open" and
+ * "awaiting approval" are what nearly every row would say, so the list shows
+ * the lifecycle state only when it is draft, merged or closed, and the review
+ * decision only once it is approved or has changes requested. `waiting` marks
+ * a row of the "waiting on your review" block with the warm left rule.
+ */
+function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) {
   const setArchived = useSetArchived();
   const archived = pr.archived;
   const meta = pr.meta;
 
   return (
     <li
-      className="flex items-center gap-2 border-b pr-2 transition-colors last:border-b-0 hover:bg-[var(--bg-hover)]"
+      className="group relative flex items-center gap-3 border-b pr-3 transition-colors last:border-b-0 hover:bg-[var(--bg-hover)]"
       style={{ borderColor: "var(--border)", opacity: archived ? 0.55 : 1 }}
       data-testid={`pr-row-${pr.key}`}
     >
-      <Link to={`/pr/${pr.key}`} className="min-w-0 flex-1 py-2 pl-3">
-        <div className="flex items-center gap-2">
+      {waiting ? (
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 w-0.5"
+          style={{ background: "var(--warn)" }}
+        />
+      ) : null}
+      <Link to={`/pr/${pr.key}`} className="min-w-0 flex-1 py-2.5 pl-3">
+        <div className="flex items-baseline gap-2">
           <span className="truncate text-[13px] font-medium">
             {pr.title ?? meta?.title ?? pr.key}
           </span>
-          <span className="flex-none font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+          <span className="flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
             #{meta?.number}
           </span>
-          <PrStateChip state={pr.state} />
-          <ReviewDecisionChip decision={pr.reviewDecision} />
-          <AnalysisChip job={pr.analysisJob} />
         </div>
         <div
-          className="mt-0.5 flex items-center gap-2 text-2xs"
+          className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs"
           style={{ color: "var(--fg-faint)" }}
         >
           {meta?.author ? (
-            <>
-              <span className="flex items-center gap-1" title={`Opened by ${meta.author}`}>
-                <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
-                {meta.author}
-              </span>
-              <span>·</span>
-            </>
+            <span className="flex items-center gap-1" title={`Opened by ${meta.author}`}>
+              <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
+              {meta.author}
+            </span>
           ) : null}
           {visibleReviewRequest(pr.reviewRequest, pr.state) ? (
-            <>
-              <ReviewRequestAge request={pr.reviewRequest} state={pr.state} />
-              <span>·</span>
-            </>
+            <ReviewRequestAge request={pr.reviewRequest} state={pr.state} />
           ) : null}
           <span title={formatFullTimestamp(pr.addedAt)}>added {formatAddedAt(pr.addedAt)}</span>
-          <span>·</span>
-          <span className="font-mono">
-            {pr.unitCount ? `${pr.unitCount} units` : "not analyzed"}
-          </span>
-          <EffortChip effort={pr.effort} />
+          <span>{pr.unitCount ? `${pr.unitCount} units` : "not analyzed"}</span>
         </div>
+        <RowStatus pr={pr} className="mt-1.5 flex flex-wrap sm:hidden" />
       </Link>
 
-      {pr.totalHunks ? (
-        <span className="flex-none">
-          <Progress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} />
-        </span>
-      ) : null}
+      <RowStatus pr={pr} className="hidden flex-none sm:flex" />
 
       <button
         type="button"
-        className="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-inset)]"
+        className="absolute right-2 top-1/2 flex-none -translate-y-1/2 rounded p-1.5 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
         data-testid={`archive-${pr.key}`}
         disabled={setArchived.isPending}
         title={`${archived ? "Unarchive" : "Archive"} — ${ARCHIVE_HINT}`}
         aria-label={archived ? "Unarchive" : "Archive"}
         onClick={() => setArchived.mutate({ key: pr.key, archived: !archived })}
-        style={{ color: "var(--fg-faint)" }}
+        style={{ color: "var(--fg-faint)", background: "var(--bg-hover)" }}
       >
         <IconArchive out={archived} width={12} height={12} />
       </button>
     </li>
+  );
+}
+
+/**
+ * A row's status cluster: the out-of-the-ordinary state and review decision,
+ * the analysis and effort chips, and how far you are through the hunks. Beside
+ * the row on wide screens, under the meta line at phone width.
+ */
+function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
+  const decision = pr.reviewDecision === "review_required" ? null : pr.reviewDecision;
+  return (
+    <div className={`items-center gap-2 ${className}`}>
+      {pr.state !== "open" ? <PrStateChip state={pr.state} /> : null}
+      <ReviewDecisionChip decision={decision} />
+      <AnalysisChip job={pr.analysisJob} />
+      <EffortChip effort={pr.effort} />
+      {pr.totalHunks ? (
+        pr.viewedHunks ? (
+          <Progress viewed={pr.viewedHunks} total={pr.totalHunks} />
+        ) : (
+          <span
+            className="text-2xs tabular-nums"
+            style={{ color: "var(--fg-faint)" }}
+            title={`0 of ${pr.totalHunks} hunks viewed`}
+          >
+            {pr.totalHunks} hunks
+          </span>
+        )
+      ) : null}
+    </div>
   );
 }

@@ -5,6 +5,7 @@
  */
 
 import type { PrListEntry } from "../api/types";
+import { visibleReviewRequest } from "./reviewRequest";
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -86,7 +87,9 @@ export interface RepoGroup {
   host: string;
   owner: string;
   repo: string;
-  /** unarchived PRs, most recently added first */
+  /** unarchived PRs with a pending request for your review, longest-waiting first */
+  needsReview: PrListEntry[];
+  /** the other unarchived PRs, most recently added first */
   prs: PrListEntry[];
   /** archived PRs, most recently added first */
   archived: PrListEntry[];
@@ -106,10 +109,18 @@ const byAddedAtDesc = (a: PrListEntry, b: PrListEntry) => time(b.addedAt) - time
 export const groupKeyOf = (pr: PrListEntry): string =>
   `${pr.meta?.host ?? "github.com"}/${pr.meta?.owner ?? "?"}/${pr.meta?.repo ?? "?"}`;
 
+const needsReviewOf = (pr: PrListEntry) =>
+  !pr.archived && visibleReviewRequest(pr.reviewRequest, pr.state) !== null;
+
+const byRequestAtAsc = (a: PrListEntry, b: PrListEntry) =>
+  time(a.reviewRequest?.at) - time(b.reviewRequest?.at) || byAddedAtDesc(a, b);
+
 /**
- * One group per repo, each sorted newest-added first; groups themselves are
- * ordered by their newest PR, so the repo you last touched floats to the top.
- * Ties fall back to the group key so the order is total (and stable in tests).
+ * One group per repo. Unarchived PRs still waiting on your review lead the
+ * group, longest-waiting first; the rest follow newest-added first. Repos with
+ * such a request come before repos without one; within each tier, the repo
+ * with the newest PR floats to the top. Ties fall back to the group key so the
+ * order is total (and stable in tests).
  */
 export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
   const groups = new Map<string, RepoGroup>();
@@ -122,6 +133,7 @@ export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
         host: pr.meta?.host ?? "github.com",
         owner: pr.meta?.owner ?? "?",
         repo: pr.meta?.repo ?? "?",
+        needsReview: [],
         prs: [],
         archived: [],
         latestAddedAt: pr.addedAt,
@@ -129,17 +141,21 @@ export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
       };
       groups.set(key, group);
     }
-    (pr.archived ? group.archived : group.prs).push(pr);
+    (pr.archived ? group.archived : needsReviewOf(pr) ? group.needsReview : group.prs).push(pr);
     if (pr.repoArchived) group.repoArchived = true;
     if (time(pr.addedAt) > time(group.latestAddedAt)) group.latestAddedAt = pr.addedAt;
   }
   const out = [...groups.values()];
   for (const g of out) {
+    g.needsReview.sort(byRequestAtAsc);
     g.prs.sort(byAddedAtDesc);
     g.archived.sort(byAddedAtDesc);
   }
   out.sort(
-    (a, b) => time(b.latestAddedAt) - time(a.latestAddedAt) || a.key.localeCompare(b.key),
+    (a, b) =>
+      Number(b.needsReview.length > 0) - Number(a.needsReview.length > 0) ||
+      time(b.latestAddedAt) - time(a.latestAddedAt) ||
+      a.key.localeCompare(b.key),
   );
   return out;
 }

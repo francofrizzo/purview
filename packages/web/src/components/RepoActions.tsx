@@ -35,9 +35,18 @@ const settingsPath = (r: RepoRef) => `/repo/${r.host}/${r.owner}/${r.repo}/setti
 /**
  * The repo header's ⋯. "Remove from Purview…" does not act here: it opens the
  * repo settings with the removal confirm already expanded, where the reader
- * sees what goes and types the repo's name.
+ * sees what goes and types the repo's name. `onImport`, when given, adds the
+ * entry that opens the list's inline "import review requests" form.
  */
-export function RepoMenu({ repo, archived }: { repo: RepoRef; archived: boolean }) {
+export function RepoMenu({
+  repo,
+  archived,
+  onImport,
+}: {
+  repo: RepoRef;
+  archived: boolean;
+  onImport?: () => void;
+}) {
   const setRepoArchived = useSetRepoArchived();
   const navigate = useNavigate();
   const background = useModalBackground();
@@ -51,6 +60,16 @@ export function RepoMenu({ repo, archived }: { repo: RepoRef; archived: boolean 
       buttonClassName="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
       buttonStyle={{ color: "var(--fg-faint)" }}
       items={[
+        ...(onImport
+          ? [
+              {
+                label: "import review requests…",
+                testId: `import-reviews-toggle-${rkey}`,
+                hint: "Add the PRs where your review was requested in the last few days.",
+                onClick: onImport,
+              },
+            ]
+          : []),
         {
           label: archived ? "unarchive repo" : "archive repo",
           testId: `repo-archive-${rkey}`,
