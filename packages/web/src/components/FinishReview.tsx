@@ -11,6 +11,7 @@ import { isCommentAnchored } from "../lib/comments";
 import type { BundleSource } from "./CopyForAgent";
 import { CopyBundleControls } from "./CopyForAgent";
 import { CommentBody, type EditComment } from "./Drafts";
+import { IconCheck, IconClose, IconExternal, IconWarning } from "./icons";
 
 const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }[] = [
   {
@@ -105,49 +106,31 @@ export function FinishReviewPanel({
       style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
     >
       <div
-        className="flex flex-none items-center gap-2 border-b px-3 py-2"
+        className="flex flex-none items-center gap-2 border-b px-4 py-2.5"
         style={{ borderColor: "var(--border)" }}
       >
-        <span className="text-xs font-semibold">Finish review</span>
+        <span className="text-[13px] font-semibold">Finish review</span>
         <button
           type="button"
-          className="ml-auto text-xs"
+          className="ml-auto rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
+          aria-label="Close"
           onClick={onClose}
           style={{ color: "var(--fg-faint)" }}
         >
-          ✕
+          <IconClose width={11} height={11} />
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        {loading ? (
-          <p className="p-3 text-xs" style={{ color: "var(--fg-faint)" }}>
-            Loading review state…
-          </p>
-        ) : error ? (
-          <Notice tone="error">Could not load the review: {error.message}</Notice>
-        ) : !review ? null : (
-          <>
-            {result ? (
-              <Notice tone="ok">
-                <div className="font-semibold">
-                  Review submitted ({labelFor(result.event)}) with {result.commentCount}{" "}
-                  {result.commentCount === 1 ? "comment" : "comments"}.
-                </div>
-                {result.url ? (
-                  <a
-                    href={result.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline"
-                    style={{ color: "var(--accent)" }}
-                  >
-                    View it on GitHub →
-                  </a>
-                ) : null}
-              </Notice>
-            ) : null}
-
+      {loading ? (
+        <p className="p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
+          Loading review state…
+        </p>
+      ) : error ? (
+        <Notice tone="error">Could not load the review: {error.message}</Notice>
+      ) : !review ? null : (
+        <>
+          <div className="min-h-0 flex-1 overflow-auto">
+            {result ? <SubmittedNotice result={result} /> : null}
             {submitError ? <Notice tone="error">{errorText(submitError)}</Notice> : null}
 
             <PendingBanner
@@ -162,111 +145,158 @@ export function FinishReviewPanel({
               }}
             />
 
-            {readiness ? (
-              <div className="border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
-                <div className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
-                  readiness
-                </div>
-                <p
-                  className="mt-1 text-xs leading-5"
-                  style={{ color: unviewed > 0 ? "var(--warn)" : "var(--fg-muted)" }}
-                >
-                  {unviewed > 0
-                    ? `${unviewed} must-read ${unviewed === 1 ? "unit is" : "units are"} still unviewed.`
-                    : "Every must-read unit has been read."}
-                </p>
-                <p className="mt-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  {readiness.hunks.viewed}/{readiness.hunks.total} hunks ·{" "}
-                  {readiness.units.complete}/{readiness.units.total} units
-                  {readiness.changedSinceViewed > 0
-                    ? ` · ${readiness.changedSinceViewed} changed since viewed`
-                    : ""}
-                </p>
-              </div>
-            ) : null}
+            <div className="flex flex-col gap-5 px-4 py-4">
+              {readiness ? <Readiness readiness={readiness} /> : null}
 
-            <div className="border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
-              <label
-                className="text-2xs uppercase tracking-wider"
-                style={{ color: "var(--fg-faint)" }}
-              >
-                review body
-              </label>
-              <textarea
-                className="input mt-1 h-28 resize-none text-xs"
-                placeholder="Summary of your review (optional)…"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                onBlur={() => onSaveBody(body)}
-              />
-              <p className="mt-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                Saved locally when you click away.
-              </p>
-            </div>
-
-            <IncludedComments
-              review={review}
-              onJump={onJumpToComment}
-              onEdit={onEditComment}
-              bundle={bundle}
-              reviewBody={body}
-              files={files}
-              onProposeReanchor={onProposeReanchor}
-              onApplyReanchor={onApplyReanchor}
-            />
-
-            <div className="px-3 py-3">
-              {arming ? (
-                <ConfirmStep
-                  event={arming}
-                  commentCount={review.included.length}
-                  unviewed={unviewed}
-                  submitting={submitting}
-                  onCancel={() => setArming(null)}
-                  onConfirm={() => {
-                    const chosen = arming;
-                    setArming(null);
-                    onSubmit(chosen, body);
-                  }}
+              <section>
+                <SectionTitle>Summary</SectionTitle>
+                <textarea
+                  className="input mt-1.5 h-28 resize-none text-xs leading-5"
+                  placeholder="What should the author take away? (optional)"
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  onBlur={() => onSaveBody(body)}
                 />
-              ) : (
-                <>
-                  <div
-                    className="mb-2 text-2xs uppercase tracking-wider"
-                    style={{ color: "var(--fg-faint)" }}
-                  >
-                    submit as
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    {EVENTS.map((e) => (
-                      <button
-                        key={e.event}
-                        type="button"
-                        className="btn w-full justify-start text-left"
-                        style={{ color: e.tone }}
-                        disabled={submitting}
-                        title={`${e.label} — ${e.blurb}`}
-                        onClick={() => setArming(e.event)}
-                      >
-                        {/* fixed label column + single-line blurb: without them
-                            "Request changes" wraps, and the three rows go ragged */}
-                        <span className="w-[7rem] flex-none whitespace-nowrap">{e.label}</span>
-                        <span
-                          className="min-w-0 flex-1 truncate text-2xs"
-                          style={{ color: "var(--fg-faint)" }}
-                        >
-                          {e.blurb}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
+                <p className="mt-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  Saved locally when you click away.
+                </p>
+              </section>
+
+              <IncludedComments
+                review={review}
+                onJump={onJumpToComment}
+                onEdit={onEditComment}
+                bundle={bundle}
+                reviewBody={body}
+                files={files}
+                onProposeReanchor={onProposeReanchor}
+                onApplyReanchor={onApplyReanchor}
+              />
             </div>
-          </>
-        )}
-      </div>
+          </div>
+
+          {/* The decision stays in view however long the comment list gets. */}
+          <div
+            className="flex-none border-t px-4 py-3"
+            style={{ borderColor: "var(--border)", background: "var(--bg)" }}
+          >
+            {arming ? (
+              <ConfirmStep
+                event={arming}
+                commentCount={review.included.length}
+                unviewed={unviewed}
+                submitting={submitting}
+                onCancel={() => setArming(null)}
+                onConfirm={() => {
+                  const chosen = arming;
+                  setArming(null);
+                  onSubmit(chosen, body);
+                }}
+              />
+            ) : (
+              <>
+                <SectionTitle>Submit as</SectionTitle>
+                <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+                  {EVENTS.map((e) => (
+                    <button
+                      key={e.event}
+                      type="button"
+                      className="btn justify-center whitespace-nowrap px-2"
+                      style={{ color: e.tone }}
+                      disabled={submitting}
+                      title={e.blurb}
+                      onClick={() => setArming(e.event)}
+                    >
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </aside>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-xs font-medium" style={{ color: "var(--fg-muted)" }}>
+      {children}
+    </div>
+  );
+}
+
+/** Where the review stands, stated first: the thing to weigh before a verdict. */
+function Readiness({ readiness }: { readiness: NonNullable<ReviewStatus["readiness"]> }) {
+  const unviewed = readiness.mustRead.unviewed;
+  const { viewed, total } = readiness.hunks;
+  const pct = total ? Math.round((viewed / total) * 100) : 0;
+  const tone = unviewed > 0 ? "var(--warn)" : "var(--ok)";
+  return (
+    <section data-testid="review-readiness">
+      <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: tone }}>
+        {unviewed > 0 ? (
+          <IconWarning width={12} height={12} />
+        ) : (
+          <IconCheck width={12} height={12} />
+        )}
+        {unviewed > 0
+          ? `${unviewed} must-read ${unviewed === 1 ? "unit is" : "units are"} still unviewed`
+          : "Every must-read unit has been read"}
+      </div>
+      <div
+        className="mt-2 h-1 overflow-hidden rounded-full"
+        style={{ background: "var(--bg-inset)" }}
+      >
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${pct}%`, background: viewed === total ? "var(--ok)" : "var(--accent)" }}
+        />
+      </div>
+      <p className="mt-1.5 text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+        {viewed}/{total} hunks · {readiness.units.complete}/{readiness.units.total} units
+        {readiness.changedSinceViewed > 0
+          ? ` · ${readiness.changedSinceViewed} changed since viewed`
+          : ""}
+      </p>
+    </section>
+  );
+}
+
+const SUBMITTED_AS: Record<ReviewEvent, string> = {
+  APPROVE: "Approved",
+  REQUEST_CHANGES: "Changes requested",
+  COMMENT: "Commented",
+};
+
+function SubmittedNotice({ result }: { result: SubmitReviewResult }) {
+  const n = result.commentCount;
+  return (
+    <div
+      className="flex items-center gap-2 border-b px-4 py-2.5 text-xs"
+      style={{ background: "var(--ok-soft)", borderColor: "var(--border)", color: "var(--ok)" }}
+    >
+      <IconCheck width={12} height={12} className="flex-none" />
+      <span className="font-medium">
+        {SUBMITTED_AS[result.event] ?? labelFor(result.event)} on GitHub
+      </span>
+      <span style={{ color: "var(--fg-muted)" }}>
+        {n === 0 ? "no comments" : `${n} ${n === 1 ? "comment" : "comments"}`}
+      </span>
+      {result.url ? (
+        <a
+          href={result.url}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-auto inline-flex flex-none items-center gap-1 hover:underline"
+          style={{ color: "var(--accent)" }}
+        >
+          view <IconExternal width={10} height={10} />
+        </a>
+      ) : null}
+    </div>
   );
 }
 
@@ -346,7 +376,7 @@ function PendingBanner({
   }
   if (!review.pending.exists) return null;
   return (
-    <div className="border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
+    <div className="border-b px-4 py-2.5" style={{ borderColor: "var(--border)" }}>
       <div className="text-xs" style={{ color: "var(--fg-muted)" }}>
         You have a <strong>pending review</strong> on GitHub holding{" "}
         {review.counts.pushed} pushed {review.counts.pushed === 1 ? "comment" : "comments"}. It is
@@ -393,34 +423,34 @@ function IncludedComments({
   onProposeReanchor?: (id: string) => Promise<ReanchorProposal>;
   onApplyReanchor?: (id: string, target: { file: string; line: number }) => Promise<void>;
 }) {
+  const n = review.included.length;
   return (
-    <div className="border-b" style={{ borderColor: "var(--border)" }}>
-      <div className="px-3 pt-2 text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
-        comments in this review ({review.included.length})
-        {review.counts.submitted > 0 ? (
-          <span className="ml-1 normal-case tracking-normal">
-            · {review.counts.submitted} already submitted
-          </span>
-        ) : null}
+    <section>
+      <div className="flex items-center gap-2">
+        <SectionTitle>Comments</SectionTitle>
+        <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+          {n}
+          {review.counts.submitted > 0 ? ` · ${review.counts.submitted} already submitted` : ""}
+        </span>
       </div>
-      {bundle ? (
+      {bundle && n > 0 ? (
         <CopyBundleControls
           testId="copy-bundle-review"
-          className="px-3 pt-1.5"
+          className="mt-1.5"
           source={{ ...bundle, comments: review.included, reviewBody }}
         />
       ) : null}
       {review.included.length === 0 ? (
-        <p className="px-3 py-2 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
-          No comments — the review will carry only the body above.
+        <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
+          No inline comments; only the summary goes out.
         </p>
       ) : (
-        <ul className="py-1">
+        <ul className="-mx-4 mt-1">
           {review.included.map((c) => {
             const outside =
               !!files && c.status === "draft" && c.subjectType !== "file" && !isCommentAnchored(files, c);
             return (
-              <li key={c.id} className="px-3 py-1.5">
+              <li key={c.id} className="px-4 py-1.5">
                 <button
                   type="button"
                   className="flex w-full items-center gap-1.5 text-left font-mono text-2xs"
@@ -447,7 +477,7 @@ function IncludedComments({
           })}
         </ul>
       )}
-    </div>
+    </section>
   );
 }
 
@@ -602,7 +632,7 @@ function Notice({
         : "var(--accent-soft)";
   return (
     <div
-      className="border-b px-3 py-2 text-xs leading-5"
+      className="border-b px-4 py-2.5 text-xs leading-5"
       style={{ background: bg, color: fg, borderColor: "var(--border)" }}
     >
       {children}
