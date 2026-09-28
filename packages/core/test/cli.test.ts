@@ -746,6 +746,33 @@ describe("cli base-file", () => {
     expect(res.status).toBe(1);
     expect(res.stderr).toContain("No managed checkout");
   });
+  it("history lists a file's commits, following its rename", () => {
+    seedWithCheckout();
+    const res = run(["history", keyToString(key), "modern.ts"]);
+    expect(res.status).toBe(0);
+    const lines = res.stdout.trim().split("\n");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/^[0-9a-f]{7,} \d{4}-\d{2}-\d{2} Test {2}head$/);
+    expect(lines[1]).toMatch(/Test {2}base$/);
+    expect(run(["history", keyToString(key), "a.ts", "--limit", "1"]).stdout.trim().split("\n")).toHaveLength(1);
+  });
+
+  it("history --lines blames a range", () => {
+    seedWithCheckout();
+    const res = run(["history", keyToString(key), "a.ts", "--lines", "1"]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toMatch(/\(Test \d{4}-\d{2}-\d{2} +1\) head a/);
+  });
+
+  it("history rejects a malformed range and reports git's own error", () => {
+    seedWithCheckout();
+    const bad = run(["history", keyToString(key), "a.ts", "--lines", "9-3"]);
+    expect(bad.status).toBe(1);
+    expect(bad.stderr).toMatch(/--lines takes a line or a range/);
+    const missing = run(["history", keyToString(key), "nope.ts", "--lines", "1"]);
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toMatch(/nope\.ts/);
+  });
 });
 
 describe("cli discard-revision", () => {

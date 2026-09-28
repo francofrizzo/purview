@@ -448,6 +448,51 @@ program
   });
 
 program
+  .command("history")
+  .argument("<key>")
+  .argument("<path>", "file path in the PR's checkout")
+  .option("--lines <range>", "blame these lines instead of listing commits, e.g. 40-60 or 42")
+  .option("--limit <n>", "how many commits to list (default 20)")
+  .description(
+    "who changed a file and when, from the managed checkout's own git history (no network): " +
+      "its commit log, or blame for a line range",
+  )
+  .action((keyArg: string, filePath: string, opts: { lines?: string; limit?: string }) => {
+    const key = requireExistingKey(keyArg);
+    const dir = prCheckoutPath(key);
+    if (!fs.existsSync(dir)) {
+      throw new Error(
+        `No managed checkout for ${keyToString(key)} at ${dir}. It is created when an analysis ` +
+          "or chat runs with a configured local repository (and managedCheckouts on).",
+      );
+    }
+    const cleaned = filePath.replace(/^\.\//, "");
+    let args: string[];
+    if (opts.lines !== undefined) {
+      const m = /^(\d+)(?:-(\d+))?$/.exec(opts.lines.trim());
+      const from = Number(m?.[1]);
+      const to = Number(m?.[2] ?? m?.[1]);
+      if (!m || from < 1 || to < from) {
+        throw new CliExit(`--lines takes a line or a range like 40-60, got "${opts.lines}"`);
+      }
+      args = ["blame", "--date=short", "-L", `${from},${to}`, "HEAD", "--", cleaned];
+    } else {
+      const limit = opts.limit === undefined ? 20 : Number(opts.limit);
+      if (!Number.isInteger(limit) || limit < 1) {
+        throw new CliExit(`--limit takes a positive whole number, got "${opts.limit}"`);
+      }
+      // --follow: a file this PR (or an earlier commit) renamed keeps its past.
+      args = ["log", `-n${limit}`, "--date=short", "--format=%h %ad %an  %s", "--follow", "HEAD", "--", cleaned];
+    }
+    try {
+      process.stdout.write(gitIn(dir, args));
+    } catch (err) {
+      const stderr = (err as { stderr?: Buffer }).stderr?.toString().trim();
+      throw new CliExit(`${cleaned}: ${stderr || (err as Error).message}`);
+    }
+  });
+
+program
   .command("set-analysis")
   .argument("<key>")
   .requiredOption("--file <json>", 'JSON file with {summary, units} ("-" for stdin)')

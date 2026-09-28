@@ -580,6 +580,7 @@ export const CHAT_CLI_SUBCOMMANDS: readonly ReviewerCommand[] = [
   "changes",
   "units",
   "base-file",
+  "history",
   "comment",
 ];
 

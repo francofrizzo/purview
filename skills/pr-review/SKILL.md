@@ -41,7 +41,7 @@ set in your environment, the state root is that directory instead, and all paths
 relative to it.
 
 Subcommands that exist: `init`, `refresh`, `report`, `units`, `triage`, `show`, `changes`,
-`base-file`, `set-analysis`, `set-unit`, `set-units`, `view`, `sync`, `list`,
+`base-file`, `history`, `set-analysis`, `set-unit`, `set-units`, `view`, `sync`, `list`,
 `discard-revision`, `remove-repo`, `comment`. There are no others.
 
 ## 1. Determine state: init, refresh, or report (interactive only)
@@ -207,7 +207,10 @@ as possible (see "Batching" above) rather than one file per turn. When the promp
 **exact checkout of the PR head**, read from it directly: it is the code exactly as this PR
 leaves it, not a branch that may have drifted. For a file as it was *before* the PR, run
 `reviewer-state base-file <key> <path>` (a renamed file may be given by its new or old
-path; a file the PR added exits 1 with "not present at base"). Without such a checkout, use
+path; a file the PR added exits 1 with "not present at base"). For who changed a file and
+when (`git` itself is not available to you), run `reviewer-state history <key> <path>` for its
+commit log, or add `--lines 40-60` to blame a range; both read the checkout's own history.
+Without such a checkout, use
 the diff's context lines<!-- interactive-only:start --> first, and fall back to
 `gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` (or
 `gh api repos/{owner}/{repo}/git/blobs/{sha}`) to fetch specific files at the PR's head SHA
