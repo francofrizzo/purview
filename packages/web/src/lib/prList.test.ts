@@ -160,6 +160,21 @@ describe("groupPrsByRepo — pending review requests", () => {
     ]);
   });
 
+  it("puts the PRs you opened in their own bucket, below the waiting ones", () => {
+    const mine = { ...prs[4], authoredByYou: true };
+    const billing = groupPrsByRepo([prs[1], mine, prs[0]]).find((g) => g.repo === "billing")!;
+    expect(billing.needsReview.map((p) => p.key)).toEqual([prs[1].key]);
+    expect(billing.mine.map((p) => p.key)).toEqual([mine.key]);
+    expect(billing.prs).toEqual([]);
+  });
+
+  it("keeps an archived PR of yours in the archived disclosure", () => {
+    const mine = { ...prs[4], authoredByYou: true, archived: true };
+    const [group] = groupPrsByRepo([mine]);
+    expect(group.mine).toEqual([]);
+    expect(group.archived.map((p) => p.key)).toEqual([mine.key]);
+  });
+
   it("ignores requests on merged, closed or archived PRs", () => {
     const merged = { ...prs[1], state: "merged" as const };
     const archived = { ...prs[2], archived: true };

@@ -520,6 +520,7 @@ export const mockList: PrListEntry[] = [
       number: 491,
       url: "https://github.com/acme/billing/pull/491",
       title: "WIP: split the ledger writer out of ChargeService",
+      author: "you",
     },
     title: "WIP: split the ledger writer out of ChargeService",
     unitCount: 3,
@@ -527,6 +528,8 @@ export const mockList: PrListEntry[] = [
     totalHunks: 6,
     state: "draft",
     reviewDecision: null,
+    // Your own draft: the list files it under "Your PRs".
+    authoredByYou: true,
     addedAt: ago(40 * MINUTE),
     archived: false,
   },

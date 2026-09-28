@@ -158,9 +158,10 @@ export function PrList() {
 /**
  * One repo: a header row, its PRs, and the archived disclosure at the bottom.
  * PRs waiting on your review get their own labeled block on top, marked by a
- * warm rule down the left edge; the rest follow under "Other PRs". A repo with
- * nothing waiting skips both labels. A whole archived repo renders the same
- * way, dimmed and without the import entry, and its ⋯ offers the unarchive.
+ * warm rule down the left edge; then "Your PRs" (the ones you opened), then
+ * "Other PRs". Those two are labeled only when there is another block to tell
+ * them from. A whole archived repo renders the same way, dimmed and without
+ * the import entry, and its ⋯ offers the unarchive.
  */
 function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) {
   const [showArchived, setShowArchived] = useState(false);
@@ -168,8 +169,9 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
   const repoArchived = group.repoArchived;
-  const openCount = group.needsReview.length + group.prs.length;
-  const split = group.needsReview.length > 0;
+  const openCount = group.needsReview.length + group.mine.length + group.prs.length;
+  // Labels only earn their place once there is more than one block to tell apart.
+  const labeled = [group.needsReview, group.mine, group.prs].filter((b) => b.length).length > 1;
 
   return (
     <section
@@ -239,28 +241,24 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
         <ImportReviewsForm rkey={group.key} onClose={() => setImportOpen(false)} />
       ) : null}
 
-      {split ? (
-        <div data-testid={`needs-review-${group.key}`}>
-          <GroupLabel color="var(--warn)" count={group.needsReview.length}>
-            Waiting on your review
-          </GroupLabel>
-          <ul>
-            {group.needsReview.map((pr) => (
-              <PrRow key={pr.key} pr={pr} waiting />
-            ))}
-          </ul>
-        </div>
+      {group.needsReview.length ? (
+        <PrBlock
+          testId={`needs-review-${group.key}`}
+          label="Waiting on your review"
+          color="var(--warn)"
+          prs={group.needsReview}
+          waiting
+        />
       ) : null}
-
+      {group.mine.length ? (
+        <PrBlock
+          testId={`mine-${group.key}`}
+          label={labeled ? "Your PRs" : null}
+          prs={group.mine}
+        />
+      ) : null}
       {group.prs.length ? (
-        <div>
-          {split ? <GroupLabel count={group.prs.length}>Other PRs</GroupLabel> : null}
-          <ul className={split ? undefined : "border-t"} style={{ borderColor: "var(--border)" }}>
-            {group.prs.map((pr) => (
-              <PrRow key={pr.key} pr={pr} />
-            ))}
-          </ul>
-        </div>
+        <PrBlock label={labeled ? "Other PRs" : null} prs={group.prs} />
       ) : openCount ? null : (
         <p
           className="border-t px-3 py-2.5 text-2xs leading-4"
@@ -296,7 +294,40 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
   );
 }
 
-/** The heading over one of a repo's two PR blocks. */
+/**
+ * One of a repo's PR blocks, under its label — or, when the repo has only one
+ * block (and it is not the waiting one), unlabeled under a plain divider.
+ */
+function PrBlock({
+  label,
+  prs,
+  color,
+  waiting = false,
+  testId,
+}: {
+  label: string | null;
+  prs: PrListEntry[];
+  color?: string;
+  waiting?: boolean;
+  testId?: string;
+}) {
+  return (
+    <div data-testid={testId}>
+      {label ? (
+        <GroupLabel color={color} count={prs.length}>
+          {label}
+        </GroupLabel>
+      ) : null}
+      <ul className={label ? undefined : "border-t"} style={{ borderColor: "var(--border)" }}>
+        {prs.map((pr) => (
+          <PrRow key={pr.key} pr={pr} waiting={waiting} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** The heading over one of a repo's PR blocks. */
 function GroupLabel({
   children,
   count,

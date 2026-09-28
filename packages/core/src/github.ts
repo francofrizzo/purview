@@ -588,6 +588,15 @@ export function viewerLogin(host: string, root = stateRoot(), now = Date.now()):
   return settleLogin(host, root, raw, now);
 }
 
+/**
+ * `viewerLogin` from the caches alone — never runs `gh`, so it is safe on a
+ * hot path. `null` until something else (adding a PR, the review-request
+ * refresh) has looked the login up once; after that it is on disk for good.
+ */
+export function cachedViewerLogin(host: string, root = stateRoot(), now = Date.now()): string | null {
+  return cachedLogin(host, root, now) ?? null;
+}
+
 /** `viewerLogin` without blocking the event loop; concurrent callers share one `gh`. */
 export function viewerLoginAsync(
   host: string,

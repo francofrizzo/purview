@@ -426,6 +426,8 @@ export interface PrListEntry {
   reviewDecision: ReviewDecision | null;
   /** Pending review request for the user; `null` = none, absent = not looked up yet. */
   reviewRequest?: ReviewRequest | null;
+  /** You opened it (its author is the `gh` user). Absent from an older server. */
+  authoredByYou?: boolean;
   /** ISO timestamp of when this PR was added locally. */
   addedAt: string;
   /** Local-only: hides the PR behind the repo group's archived disclosure. */

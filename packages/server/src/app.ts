@@ -44,6 +44,7 @@ import {
   writeLocalChatInstructions,
   writeLocalRubric,
   writeRepoConfig,
+  cachedViewerLogin,
   AgentSelectionSchema,
   ChatAgentSelectionSchema,
   type Hunk,
@@ -155,6 +156,9 @@ export interface AppOptions {
    */
   reviewRequestRefresh?: RefreshDeps | false;
 }
+
+const isYou = (author: string | undefined, login: string | null | undefined): boolean =>
+  !!author && !!login && author.toLowerCase() === login.toLowerCase();
 
 /**
  * Who is making a request, as far as comments are concerned. The reviewer-
@@ -365,6 +369,14 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.get("/api/prs", (c) => {
     const keys = listPrs(root);
+    // Whose PRs are "yours": the cached login only, so the list never waits on
+    // `gh`. Adding a PR and the review-request refresh below both look it up,
+    // so it is there from the second load on; until then nothing is marked.
+    const logins = new Map<string, string | null>();
+    const loginOf = (host: string) => {
+      if (!logins.has(host)) logins.set(host, cachedViewerLogin(host, root));
+      return logins.get(host) ?? null;
+    };
     const metas: { key: PrKey; meta: Meta }[] = [];
     // One repo.json read per repo, not per PR.
     const repoArchived = new Map<string, boolean>();
@@ -387,6 +399,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         reviewDecision: meta.reviewDecision ?? null,
         // Absent (not `null`) until first looked up: `null` means "nothing pending".
         reviewRequest: meta.reviewRequest,
+        authoredByYou: isYou(meta.author, loginOf(key.host)),
         addedAt: meta.createdAt,
         // The PR's own flag. `repoArchived` is its repo's, kept apart so that
         // unarchiving the repo restores each PR exactly as it was.

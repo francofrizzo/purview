@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadState, refreshPr, setGhRunner, setHunkViewed } from "@reviewer/core";
+import {
+  githubUserCachePath,
+  loadState,
+  refreshPr,
+  setGhRunner,
+  setHunkViewed,
+  updateMeta,
+} from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { DOD_REV1, DOD_REV2, DOD_REV3, buildFixture, key } from "./fixtures.js";
 
@@ -34,6 +41,25 @@ describe("GET /api/prs", () => {
     expect(pr.progress.hunks.total).toBe(2);
     expect(pr.progress.hunks.viewed).toBe(0);
     expect(pr.progress.units.total).toBe(1);
+  });
+
+  it("marks the PRs the cached gh user opened, and never asks gh itself", async () => {
+    setGhRunner(() => {
+      throw new Error("the list must not call gh");
+    });
+    updateMeta(key, { author: "Octocat" }, root);
+    // No background refresh: its own (failing) login lookup would be memoized.
+    const quiet = createApp({ stateDir: root, webDist: "/nonexistent", reviewRequestRefresh: false });
+    const list = async () => ((await (await quiet.request("/api/prs")).json()) as any).prs[0];
+
+    // No login cached yet: nothing is marked.
+    expect((await list()).authoredByYou).toBe(false);
+
+    fs.writeFileSync(
+      githubUserCachePath(root),
+      JSON.stringify({ [key.host]: { login: "octocat" } }),
+    );
+    expect((await list()).authoredByYou).toBe(true);
   });
 });
 

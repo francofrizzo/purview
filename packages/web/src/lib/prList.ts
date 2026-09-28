@@ -89,6 +89,8 @@ export interface RepoGroup {
   repo: string;
   /** unarchived PRs with a pending request for your review, longest-waiting first */
   needsReview: PrListEntry[];
+  /** unarchived PRs you opened, most recently added first */
+  mine: PrListEntry[];
   /** the other unarchived PRs, most recently added first */
   prs: PrListEntry[];
   /** archived PRs, most recently added first */
@@ -112,12 +114,19 @@ export const groupKeyOf = (pr: PrListEntry): string =>
 const needsReviewOf = (pr: PrListEntry) =>
   !pr.archived && visibleReviewRequest(pr.reviewRequest, pr.state) !== null;
 
+const bucketOf = (group: RepoGroup, pr: PrListEntry): PrListEntry[] => {
+  if (pr.archived) return group.archived;
+  if (needsReviewOf(pr)) return group.needsReview;
+  return pr.authoredByYou ? group.mine : group.prs;
+};
+
 const byRequestAtAsc = (a: PrListEntry, b: PrListEntry) =>
   time(a.reviewRequest?.at) - time(b.reviewRequest?.at) || byAddedAtDesc(a, b);
 
 /**
  * One group per repo. Unarchived PRs still waiting on your review lead the
- * group, longest-waiting first; the rest follow newest-added first. Repos with
+ * group, longest-waiting first; then the ones you opened, then the rest, both
+ * newest-added first. Repos with
  * such a request come before repos without one; within each tier, the repo
  * with the newest PR floats to the top. Ties fall back to the group key so the
  * order is total (and stable in tests).
@@ -134,6 +143,7 @@ export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
         owner: pr.meta?.owner ?? "?",
         repo: pr.meta?.repo ?? "?",
         needsReview: [],
+        mine: [],
         prs: [],
         archived: [],
         latestAddedAt: pr.addedAt,
@@ -141,13 +151,14 @@ export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
       };
       groups.set(key, group);
     }
-    (pr.archived ? group.archived : needsReviewOf(pr) ? group.needsReview : group.prs).push(pr);
+    bucketOf(group, pr).push(pr);
     if (pr.repoArchived) group.repoArchived = true;
     if (time(pr.addedAt) > time(group.latestAddedAt)) group.latestAddedAt = pr.addedAt;
   }
   const out = [...groups.values()];
   for (const g of out) {
     g.needsReview.sort(byRequestAtAsc);
+    g.mine.sort(byAddedAtDesc);
     g.prs.sort(byAddedAtDesc);
     g.archived.sort(byAddedAtDesc);
   }
