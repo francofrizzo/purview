@@ -401,6 +401,20 @@ export function PrView() {
     [qc, prKey],
   );
 
+  // Viewing a unit's last unviewed hunk (v or its checkbox) finishes the
+  // unit, and moves on the way "mark unit viewed" does.
+  const advanceIfUnitDone = useCallback(
+    (viewed: boolean) => {
+      if (!viewed || tab !== "units" || !selectedUnitId) return;
+      const latest = qc.getQueryData<PrDetail>(qk.pr(prKey));
+      const unit = latest?.state.units.find((u) => u.id === selectedUnitId);
+      if (!latest || !unit) return;
+      const p = unitProgress(latest, unit);
+      if (p.total > 0 && p.viewed === p.total) advanceAfterUnitViewed(unit.id);
+    },
+    [tab, selectedUnitId, qc, prKey, advanceAfterUnitViewed],
+  );
+
   // Whole-PR reading progress, shown quietly on the summary strip.
   const overall = useMemo(() => {
     let viewed = 0;
@@ -657,6 +671,16 @@ export function PrView() {
       } else if (e.key === "/") {
         e.preventDefault();
         openSearch();
+      } else if ((e.key === "J" || e.key === "K") && tab === "units") {
+        // Shift+j/k: the unit-sized step next to the hunk-sized j/k, in the
+        // sidebar's order.
+        const ordered = sortUnitsForDisplay(units);
+        const i = ordered.findIndex((u) => u.id === selectedUnitId);
+        const next = i === -1 ? ordered[0] : ordered[e.key === "J" ? i + 1 : i - 1];
+        if (next) {
+          e.preventDefault();
+          setSelectedUnitId(next.id);
+        }
       } else if (e.key === "b") {
         // `b` (as in VS Code's ⌘B), not `[`: on Spanish and other ISO layouts
         // the bracket is an Option chord, and the modifier guard above would
@@ -687,6 +711,9 @@ export function PrView() {
   }, [
     chat,
     openSearch,
+    tab,
+    units,
+    selectedUnitId,
     search.open,
     search.close,
     toggleSidebar,
@@ -967,8 +994,8 @@ export function PrView() {
         {showShortcuts ? (
           <div className="mt-1">
             <div>
-              <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>z</kbd> folds ·{" "}
-              <kbd>space</kbd> next unviewed
+              <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>J</kbd>/<kbd>K</kbd> unit · <kbd>v</kbd> viewed ·{" "}
+              <kbd>z</kbd> folds · <kbd>space</kbd> next unviewed
             </div>
             <div>
               <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
@@ -1474,8 +1501,15 @@ export function PrView() {
               drafts={drafts}
               focusedHunkId={focusedHunkId}
               onFocusHunk={setFocusedHunkId}
-              onToggleViewed={(hunkId, viewed) => setHunkViewed.mutate({ hunkId, viewed })}
-              onSetHunksViewed={(hunkIds, viewed) => setHunksViewed.mutate({ hunkIds, viewed })}
+              onToggleViewed={(hunkId, viewed) =>
+                setHunkViewed.mutate({ hunkId, viewed }, { onSuccess: () => advanceIfUnitDone(viewed) })
+              }
+              onSetHunksViewed={(hunkIds, viewed) =>
+                setHunksViewed.mutate(
+                  { hunkIds, viewed },
+                  { onSuccess: () => advanceIfUnitDone(viewed) },
+                )
+              }
               onComment={(t) => setCommentTarget(t)}
               commentActions={commentActions}
               viewMode={viewMode}
