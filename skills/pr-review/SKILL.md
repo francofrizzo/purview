@@ -367,9 +367,8 @@ reviewer-state set-analysis <key> --file <state-dir>/scratch/analysis.json
 ```
 
 **Never inline JSON into a shell command** — no heredocs, no `echo '{...}'`, no `--file -`
-with piped input. The permission layer may reject a shell command containing quoted braces
-(Claude Code calls it "expansion obfuscation"), and each rejected attempt wastes a full turn re-sending your
-whole context. A file written once is also cheap to retry: the save command is one short
+with piped input. The permission layer may reject a shell command containing quoted braces,
+and each rejected attempt wastes a full turn re-sending your whole context. A file written once is also cheap to retry: the save command is one short
 line.
 
 This **replaces** the whole analysis for the current revision. Units are replaced
