@@ -5,7 +5,7 @@ import { useSettings } from "../lib/settings";
 import { filterUnits, hiddenHint } from "../lib/unitFilter";
 import { unitDisplayNumbers } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { ChangedBadge, KindChip, Progress, RiskFlags } from "./Chips";
+import { ChangedBadge, HunkProgress, KindChip, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
 import { IconChevron } from "./icons";
@@ -337,7 +337,7 @@ function UnitRow({
   const p = unitProgress(detail, unit);
 
   return (
-    <li className="relative">
+    <li className="group relative">
       <button
         type="button"
         onClick={onSelect}
@@ -369,13 +369,14 @@ function UnitRow({
           </span>
         </div>
         <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 pl-5">
-          <KindChip kind={unit.kind} />
+          {/* Core logic is what most units are; only the exceptions get a chip. */}
+          {unit.kind !== "core-logic" ? <KindChip kind={unit.kind} /> : null}
           <RiskFlags flags={unit.riskFlags} compact />
           {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}
           <FindingsBadge unit={unit} />
           {matches ? <MatchBadge count={matches} /> : null}
           <span className="ml-auto">
-            <Progress viewed={p.viewed} total={p.total} />
+            <HunkProgress viewed={p.viewed} total={p.total} />
           </span>
         </div>
       </button>
@@ -387,7 +388,9 @@ function UnitRow({
           e.stopPropagation();
           setPopover((v) => !v);
         }}
-        className="absolute right-1 top-1.5 rounded px-1 text-xs leading-4 opacity-40 hover:opacity-100"
+        className={`absolute right-1 top-1.5 rounded px-1 text-xs leading-4 transition-opacity hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-60 ${
+          popover ? "opacity-100" : "opacity-0"
+        }`}
         style={{ color: "var(--fg-muted)" }}
       >
         ⋯

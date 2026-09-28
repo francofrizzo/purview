@@ -236,6 +236,7 @@ export function PrView() {
   }, []);
 
   const fullscreen = useFullscreen();
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [standalone] = useState(isStandalone);
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -952,15 +953,29 @@ export function PrView() {
         className="flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
         style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
       >
-        <div>
-          <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>z</kbd> folds ·{" "}
-          <kbd>space</kbd> next unviewed
-        </div>
-        <div>
-          <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
-          {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>s</kbd> summary · <kbd>/</kbd> search ·{" "}
-          <kbd>b</kbd> sidebar · <kbd>⌘</kbd>click definition
-        </div>
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded transition-colors hover:text-[var(--fg-muted)]"
+          aria-expanded={showShortcuts}
+          data-testid="shortcuts-toggle"
+          onClick={() => setShowShortcuts((v) => !v)}
+        >
+          <IconChevron open={showShortcuts} width={9} height={9} />
+          keyboard shortcuts
+        </button>
+        {showShortcuts ? (
+          <div className="mt-1">
+            <div>
+              <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>v</kbd> viewed · <kbd>z</kbd> folds ·{" "}
+              <kbd>space</kbd> next unviewed
+            </div>
+            <div>
+              <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
+              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>s</kbd> summary · <kbd>/</kbd>{" "}
+              search · <kbd>b</kbd> sidebar · <kbd>⌘</kbd>click definition
+            </div>
+          </div>
+        ) : null}
       </div>
     </>
   );
@@ -1148,7 +1163,6 @@ export function PrView() {
       {summary ? (
         <SummaryStrip
           summary={summary}
-          revision={detail.state.revision}
           viewed={overall.viewed}
           total={overall.total}
           open={summaryOpen}
@@ -1270,7 +1284,10 @@ export function PrView() {
                 </h2>
                 <div className="flex flex-none flex-wrap items-center gap-2">
                   <KindChip kind={selectedUnit.kind} />
-                  <AttentionChip attention={selectedUnit.attention} />
+                  {/* The expanded header's "why must-read:" line already names it. */}
+                  {headerCollapsed || !selectedUnit.attentionWhy ? (
+                    <AttentionChip attention={selectedUnit.attention} />
+                  ) : null}
                   <RiskFlags flags={selectedUnit.riskFlags} />
                   {progress && progress.changed > 0 ? <ChangedBadge count={progress.changed} /> : null}
                   {/* Collapsed, the findings list is gone — the badge is what

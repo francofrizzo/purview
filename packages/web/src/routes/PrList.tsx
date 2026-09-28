@@ -7,7 +7,7 @@ import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
 import {
   EffortChip,
-  Progress,
+  HunkProgress,
   PrStateChip,
   ReviewDecisionChip,
   ReviewRequestAge,
@@ -497,19 +497,7 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
       <ReviewDecisionChip decision={decision} />
       <AnalysisChip job={pr.analysisJob} />
       <EffortChip effort={pr.effort} />
-      {pr.totalHunks ? (
-        pr.viewedHunks ? (
-          <Progress viewed={pr.viewedHunks} total={pr.totalHunks} />
-        ) : (
-          <span
-            className="text-2xs tabular-nums"
-            style={{ color: "var(--fg-faint)" }}
-            title={`0 of ${pr.totalHunks} hunks viewed`}
-          >
-            {pr.totalHunks} hunks
-          </span>
-        )
-      ) : null}
+      {pr.totalHunks ? <HunkProgress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} /> : null}
     </div>
   );
 }

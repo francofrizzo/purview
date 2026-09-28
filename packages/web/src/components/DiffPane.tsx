@@ -1593,7 +1593,8 @@ export function DiffPane({
           }}
         >
           <span className="row-head-fixed flex min-w-0 items-center gap-2">
-            {shownIds.length > 0 ? (
+            {/* One hunk: its own checkbox right below says the same thing. */}
+            {shownIds.length > 1 ? (
               <button
                 type="button"
                 role="checkbox"

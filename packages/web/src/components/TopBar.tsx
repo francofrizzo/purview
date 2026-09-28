@@ -14,12 +14,9 @@ import { useModalBackground } from "./Modal";
 import {
   IconArchive,
   IconArrowLeft,
-  IconCollapse,
   IconComment,
-  IconExpand,
   IconMore,
   IconRefresh,
-  IconSettings,
   IconUpload,
 } from "./icons";
 
@@ -290,27 +287,13 @@ export function TopBar({
         <OverflowMenu
           items={[
             // Phone width: the row keeps chat, comments, refresh and finish;
-            // these move in here.
+            // sync moves in here.
             {
               label: syncing ? "syncing…" : "sync",
               narrowOnly: true,
               disabled: syncing,
               hint: "Push viewed files and comments to GitHub.",
               onClick: onSync,
-            },
-            ...(fullscreenVisible && onToggleFullscreen
-              ? [
-                  {
-                    label: fullscreenActive ? "exit full screen" : "full screen",
-                    narrowOnly: true,
-                    onClick: onToggleFullscreen,
-                  },
-                ]
-              : []),
-            {
-              label: "settings",
-              narrowOnly: true,
-              onClick: () => navigate("/settings", { state: { background } }),
             },
             live
               ? {
@@ -370,32 +353,21 @@ export function TopBar({
               hint: "Replaces the current analysis with the one shared as a comment on this PR.",
               onClick: onImportFromPr,
             },
+            // App-level, not about this PR: last.
+            ...(fullscreenVisible && onToggleFullscreen
+              ? [
+                  {
+                    label: fullscreenActive ? "exit full screen" : "full screen",
+                    onClick: onToggleFullscreen,
+                  },
+                ]
+              : []),
+            {
+              label: "settings",
+              onClick: () => navigate("/settings", { state: { background } }),
+            },
           ]}
         />
-        {fullscreenVisible ? (
-          <button
-            type="button"
-            className="btn hidden sm:inline-flex"
-            title={fullscreenActive ? "Exit full screen" : "Full screen"}
-            aria-label={fullscreenActive ? "Exit full screen" : "Full screen"}
-            onClick={onToggleFullscreen}
-          >
-            {fullscreenActive ? (
-              <IconCollapse width={12} height={12} />
-            ) : (
-              <IconExpand width={12} height={12} />
-            )}
-          </button>
-        ) : null}
-        <Link
-          to="/settings"
-          state={{ background }}
-          className="btn hidden sm:inline-flex"
-          title="Settings"
-          aria-label="Settings"
-        >
-          <IconSettings width={12} height={12} />
-        </Link>
         <button type="button" className="btn btn-primary" onClick={onFinishReview}>
           finish<span className="hidden sm:inline"> review</span>
           {pendingReview ? (

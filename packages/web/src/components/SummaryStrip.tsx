@@ -58,7 +58,6 @@ function hoverCapable(): boolean {
 
 export function SummaryStrip({
   summary,
-  revision,
   viewed,
   total,
   open,
@@ -66,7 +65,6 @@ export function SummaryStrip({
   onClose,
 }: {
   summary: string;
-  revision: number;
   viewed: number;
   total: number;
   open: boolean;
@@ -162,12 +160,6 @@ export function SummaryStrip({
         style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
       >
         <span
-          className="flex-none text-2xs uppercase leading-4 tracking-wider"
-          style={{ color: "var(--fg-faint)" }}
-        >
-          summary
-        </span>
-        <span
           className="min-w-0 flex-1 truncate text-xs leading-4"
           style={{ color: "var(--fg-muted)" }}
         >
@@ -177,8 +169,7 @@ export function SummaryStrip({
           className="flex-none text-2xs leading-4 tabular-nums"
           style={{ color: "var(--fg-faint)" }}
         >
-          rev {revision}
-          {total > 0 ? ` · ${viewed}/${total} viewed` : ""}
+          {total > 0 ? `${viewed}/${total} viewed` : ""}
         </span>
         <IconChevron
           width={11}

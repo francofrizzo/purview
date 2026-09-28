@@ -473,14 +473,21 @@ export function DraftsDrawer({
       <div className="flex-none border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold">Comments</span>
+          {/* Only the stages that hold something; nothing at all says nothing. */}
           <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-            {local.length} draft · {pushed.length} pushed · {submitted.length} submitted
+            {[
+              local.length ? `${local.length} draft` : "",
+              pushed.length ? `${pushed.length} pushed` : "",
+              submitted.length ? `${submitted.length} submitted` : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
           </span>
           <button type="button" className="ml-auto text-xs" onClick={onClose} style={{ color: "var(--fg-faint)" }}>
             <IconClose width={10} height={10} />
           </button>
         </div>
-        {bundle ? (
+        {bundle && drafts.length > 0 ? (
           <CopyBundleControls
             testId="copy-bundle-drawer"
             className="mt-1.5"

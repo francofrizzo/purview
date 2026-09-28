@@ -70,14 +70,12 @@ export function StalenessHint({
       className="flex flex-none items-center gap-2 border-b px-3 py-1.5 text-xs"
       style={{ background: "var(--accent-soft)", borderColor: "var(--border)" }}
     >
+      {/* One line: what moved (or, when the reason is unknown, that something did). */}
       <span style={{ color: "var(--accent)" }}>
-        This PR changed upstream — refresh to fetch the latest
+        {result.reasons.length > 0
+          ? capitalize(stalenessReasonText(result.reasons))
+          : "This PR changed upstream"}
       </span>
-      {result.reasons.length > 0 ? (
-        <span className="text-2xs" style={{ color: "var(--fg-muted)" }}>
-          {stalenessReasonText(result.reasons)}
-        </span>
-      ) : null}
       <button
         type="button"
         className="btn ml-auto"
@@ -100,6 +98,8 @@ export function StalenessHint({
     </div>
   );
 }
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const COUNT_ORDER: { key: keyof NonNullable<MigrationReport["counts"]>; label: string }[] = [
   { key: "carried", label: "carried" },

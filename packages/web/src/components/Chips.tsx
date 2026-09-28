@@ -260,6 +260,23 @@ export function ChangedBadge({ count, onClick }: { count?: number; onClick?: () 
   );
 }
 
+/**
+ * `Progress` once anything is viewed; before that, just the size ("12 hunks"),
+ * so an untouched list is not a column of empty bars.
+ */
+export function HunkProgress({ viewed, total }: { viewed: number; total: number }) {
+  if (viewed > 0) return <Progress viewed={viewed} total={total} />;
+  return (
+    <span
+      className="text-2xs tabular-nums"
+      style={{ color: "var(--fg-faint)" }}
+      title={`0 of ${total} hunks viewed`}
+    >
+      {total} {total === 1 ? "hunk" : "hunks"}
+    </span>
+  );
+}
+
 export function Progress({ viewed, total }: { viewed: number; total: number }) {
   const pct = total ? Math.round((viewed / total) * 100) : 0;
   const done = total > 0 && viewed === total;
