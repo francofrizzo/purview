@@ -7,7 +7,7 @@
  * is coloured by exactly the same theme as the diff next to it.
  */
 
-import { memo, useEffect, useRef, useState } from "react";
+import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
 import { parseInline, parseMarkdown, type MdInline } from "../lib/markdown";
 import { cachedTokens, tokenizeLines, type Tok } from "../lib/highlight";
 import { renderMermaid } from "../lib/mermaid";
@@ -45,10 +45,46 @@ const LANG_ALIASES: Record<string, string> = {
   txt: "",
 };
 
+/** What a code span links to, when its text names something the page can open. */
+export interface CodeLink {
+  /** hover text, e.g. "Unit 3: Extract shared rollout selector" */
+  title: string;
+  onOpen: () => void;
+}
+
+/**
+ * Lets a surface turn code spans into in-app links: the chat recognizes this
+ * PR's unit ids (the model writes them as `unit-id`) without the model having
+ * to learn a link syntax, and older transcripts light up too. No provider,
+ * no links.
+ */
+export const CodeLinkContext = createContext<((text: string) => CodeLink | null) | null>(null);
+
 function Inline({ nodes }: { nodes: MdInline[] }) {
+  const linkFor = useContext(CodeLinkContext);
   return (
     <>
       {nodes.map((node, i) => {
+        const link = node.type === "code" ? linkFor?.(node.text) : null;
+        if (link) {
+          return (
+            <button
+              key={i}
+              type="button"
+              className="inline rounded px-1 py-px text-left font-mono underline decoration-dotted underline-offset-2 transition-colors hover:bg-[var(--accent-soft)]"
+              style={{
+                color: "var(--accent)",
+                fontSize: "0.92em",
+                border: "1px solid var(--border)",
+                background: "var(--bg-inset)",
+              }}
+              title={`${link.title} (click to open)`}
+              onClick={link.onOpen}
+            >
+              {node.text}
+            </button>
+          );
+        }
         if (node.type === "code") {
           return (
             <code

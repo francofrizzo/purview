@@ -39,7 +39,8 @@ import {
   MIN_CHAT_PANEL_WIDTH,
   useSettings,
 } from "../lib/settings";
-import { CHAT_TEXT, Markdown } from "./Markdown";
+import { CHAT_TEXT, CodeLinkContext, Markdown, type CodeLink } from "./Markdown";
+import { unitDisplayNumbers } from "../lib/unitOrder";
 import { useModalBackground } from "./Modal";
 import {
   IconArrowDown,
@@ -271,12 +272,30 @@ export function ChatPanel({
   prKey,
   detail,
   comments,
+  onOpenUnit,
 }: {
   prKey: string;
   detail?: PrDetail;
   comments: DraftComment[];
+  /** open a unit in the diff; enables linking the unit ids replies mention */
+  onOpenUnit?: (unitId: string) => void;
 }) {
   const chat = useChat();
+  // Replies name units by id in code spans (`unit-id`); those become links.
+  const linkUnit = useMemo(() => {
+    if (!onOpenUnit || !detail) return null;
+    const units = new Map(detail.state.units.map((u) => [u.id, u]));
+    const numbers = unitDisplayNumbers(detail.state.units);
+    return (text: string): CodeLink | null => {
+      const unit = units.get(text.trim());
+      if (!unit) return null;
+      const n = numbers.get(unit.id);
+      return {
+        title: `${n !== undefined ? `Unit ${n}` : "Unit"}: ${unit.title}`,
+        onOpen: () => onOpenUnit(unit.id),
+      };
+    };
+  }, [detail, onOpenUnit]);
   const { data: agents } = useAgents();
   const agentName = useChatAgentName();
   // Handoff continues the session in its own harness; before there is one,
@@ -427,6 +446,7 @@ export function ChatPanel({
   const empty = !chat.messages.length && !chat.streaming && !chat.loading;
 
   return (
+    <CodeLinkContext.Provider value={linkUnit}>
     <aside
       className="relative flex flex-none flex-col border-l"
       data-testid="chat-panel"
@@ -725,6 +745,7 @@ export function ChatPanel({
         </div>
       </div>
     </aside>
+    </CodeLinkContext.Provider>
   );
 }
 

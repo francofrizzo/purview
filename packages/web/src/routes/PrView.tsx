@@ -1576,7 +1576,17 @@ export function PrView() {
           />
         ) : null}
 
-        {chat.open ? <ChatPanel prKey={prKey} detail={detail} comments={drafts} /> : null}
+        {chat.open ? (
+          <ChatPanel
+            prKey={prKey}
+            detail={detail}
+            comments={drafts}
+            onOpenUnit={(unitId) => {
+              setTab("units");
+              selectUnitFromSidebar(unitId);
+            }}
+          />
+        ) : null}
 
         {reviewOpen && !chat.open ? (
           <FinishReviewPanel
