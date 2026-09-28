@@ -50,6 +50,8 @@ export interface CodeLink {
   /** hover text, e.g. "Unit 3: Extract shared rollout selector" */
   title: string;
   onOpen: () => void;
+  /** shown instead of the span's own text (a unit's number and title, not its id) */
+  label?: { number?: number; text: string };
 }
 
 /**
@@ -66,6 +68,25 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
     <>
       {nodes.map((node, i) => {
         const link = node.type === "code" ? linkFor?.(node.text) : null;
+        if (link?.label) {
+          return (
+            <button
+              key={i}
+              type="button"
+              className="inline rounded px-1 py-px text-left font-medium transition-colors hover:bg-[var(--accent-soft)]"
+              style={{ color: "var(--accent)", boxShadow: "inset 0 -1px 0 var(--accent-soft)" }}
+              title={`${link.title} (click to open)`}
+              onClick={link.onOpen}
+            >
+              {link.label.number !== undefined ? (
+                <span className="mr-1 tabular-nums" style={{ opacity: 0.65 }}>
+                  {link.label.number}
+                </span>
+              ) : null}
+              {link.label.text}
+            </button>
+          );
+        }
         if (link) {
           return (
             <button

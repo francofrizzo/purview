@@ -41,6 +41,7 @@ import {
 } from "../lib/settings";
 import { CHAT_TEXT, CodeLinkContext, Markdown, type CodeLink } from "./Markdown";
 import { unitDisplayNumbers } from "../lib/unitOrder";
+import { resolveCodeTarget, unitIdSet } from "../lib/codeLinks";
 import { useModalBackground } from "./Modal";
 import {
   IconArrowDown,
@@ -273,29 +274,45 @@ export function ChatPanel({
   detail,
   comments,
   onOpenUnit,
+  onOpenFile,
 }: {
   prKey: string;
   detail?: PrDetail;
   comments: DraftComment[];
   /** open a unit in the diff; enables linking the unit ids replies mention */
   onOpenUnit?: (unitId: string) => void;
+  /** open a diff file, at a new-side line when given; enables linking paths */
+  onOpenFile?: (path: string, line?: number) => void;
 }) {
   const chat = useChat();
-  // Replies name units by id in code spans (`unit-id`); those become links.
+  // Replies name units (`unit-id`) and places (`path/file.go:23`) in code
+  // spans; the ones this PR can open become links (see lib/codeLinks.ts).
   const linkUnit = useMemo(() => {
-    if (!onOpenUnit || !detail) return null;
+    if (!detail || (!onOpenUnit && !onOpenFile)) return null;
     const units = new Map(detail.state.units.map((u) => [u.id, u]));
     const numbers = unitDisplayNumbers(detail.state.units);
+    const ctx = { unitIds: onOpenUnit ? unitIdSet(detail.state.units) : new Set<string>(), files: detail.files.files };
     return (text: string): CodeLink | null => {
-      const unit = units.get(text.trim());
-      if (!unit) return null;
-      const n = numbers.get(unit.id);
-      return {
-        title: `${n !== undefined ? `Unit ${n}` : "Unit"}: ${unit.title}`,
-        onOpen: () => onOpenUnit(unit.id),
-      };
+      const target = resolveCodeTarget(text, ctx);
+      if (target?.kind === "unit" && onOpenUnit) {
+        const unit = units.get(target.unitId)!;
+        const n = numbers.get(unit.id);
+        const title = unit.title.replace(/`/g, "");
+        return {
+          title: `${n !== undefined ? `Unit ${n}` : "Unit"}: ${title}`,
+          label: { number: n, text: title },
+          onOpen: () => onOpenUnit(unit.id),
+        };
+      }
+      if (target?.kind === "file" && onOpenFile) {
+        return {
+          title: target.line !== undefined ? `${target.path}, line ${target.line}` : target.path,
+          onOpen: () => onOpenFile(target.path, target.line),
+        };
+      }
+      return null;
     };
-  }, [detail, onOpenUnit]);
+  }, [detail, onOpenUnit, onOpenFile]);
   const { data: agents } = useAgents();
   const agentName = useChatAgentName();
   // Handoff continues the session in its own harness; before there is one,

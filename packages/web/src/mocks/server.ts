@@ -486,7 +486,7 @@ Three things I would push on:
   collide.
 - The retry wrapper's jitter is applied *after* the attempt counter check, so
   the final attempt has no backoff at all (see \`transient-retry-backoff\`).
-- \`charge_ledger\` has no index on \`key\`, and the replay lookup is on the hot
+- \`charge_ledger\` (created in \`idempotency.ts:3\`) has no index on \`key\`, and the replay lookup is on the hot
   path of every payment.
 
 The write-before-call shape looks like this:

@@ -99,6 +99,7 @@ import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
+import { hunkAtLine } from "../lib/codeLinks";
 import {
   buildHighlight,
   highlightSummaryText,
@@ -1584,6 +1585,14 @@ export function PrView() {
             onOpenUnit={(unitId) => {
               setTab("units");
               selectUnitFromSidebar(unitId);
+            }}
+            onOpenFile={(path, line) => {
+              // A line inside the diff lands on it (in whichever tab shows it);
+              // anything else opens the file.
+              const file = detail?.files.files.find((f) => f.path === path);
+              const hunkId = file && line !== undefined ? hunkAtLine(file.hunks, line) : null;
+              if (hunkId) jumpToDiffHunk(hunkId, path, { line });
+              else jumpToFile(path);
             }}
           />
         ) : null}
