@@ -13,7 +13,8 @@ import { cachedTokens, tokenizeLines, type Tok } from "../lib/highlight";
 import { renderMermaid } from "../lib/mermaid";
 import { useSettings } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
-import { IconCheck, IconCopy, IconWrap } from "./icons";
+import { IconCheck, IconCopy, IconExpand, IconWrap } from "./icons";
+import { Modal } from "./Modal";
 
 /** Stable, cheap cache key for a snippet (shiki's cache is keyed by string). */
 function hashCode(text: string): string {
@@ -213,6 +214,7 @@ function MermaidBlock({ code, open }: { code: string; open: boolean }) {
   const [result, setResult] = useState<{ status: "pending" | "ok" | "error"; svg?: string }>({
     status: "pending",
   });
+  const [enlarged, setEnlarged] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -226,14 +228,37 @@ function MermaidBlock({ code, open }: { code: string; open: boolean }) {
   }, [code, open, dark, fontFamily]);
 
   if (result.status !== "ok" || !result.svg) return <CodeBlock code={code} lang="mermaid" />;
+  // mermaid runs under securityLevel "strict": no script/foreignObject
+  // survives into this markup, so this is safe to inject as-is.
+  const svg = { __html: result.svg };
   return (
-    <div
-      className="my-1.5 overflow-x-auto rounded p-2"
-      style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
-      // mermaid runs under securityLevel "strict": no script/foreignObject
-      // survives into this markup, so this is safe to inject as-is.
-      dangerouslySetInnerHTML={{ __html: result.svg }}
-    />
+    <div className="group relative my-1.5">
+      <div
+        className="overflow-x-auto rounded p-2"
+        style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
+        dangerouslySetInnerHTML={svg}
+      />
+      <button
+        type="button"
+        className="btn absolute right-1.5 top-1.5 px-1.5 py-0.5 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+        title="Enlarge diagram"
+        aria-label="Enlarge diagram"
+        data-testid="mermaid-enlarge"
+        onClick={() => setEnlarged(true)}
+      >
+        <IconExpand width={11} height={11} />
+      </button>
+      {enlarged ? (
+        <Modal title="Diagram" maxWidth={1400} onClose={() => setEnlarged(false)} testId="mermaid-modal">
+          {/* mermaid pins a max-width on its svg; here it fills the dialog's
+              width, capped to its height so a tall chart scales to fit too */}
+          <div
+            className="p-4 [&_svg]:!h-auto [&_svg]:!max-h-[calc(85vh-6rem)] [&_svg]:!w-full [&_svg]:!max-w-none"
+            dangerouslySetInnerHTML={svg}
+          />
+        </Modal>
+      ) : null}
+    </div>
   );
 }
 

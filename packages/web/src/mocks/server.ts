@@ -503,6 +503,18 @@ const res = await this.gateway.charge(order.total, order.currency, {
 await this.ledger.record(key, res);
 \`\`\`
 
+The states a charge moves through:
+
+\`\`\`mermaid
+flowchart LR
+  A[new order] --> B{ledger row?}
+  B -- yes --> C[return stored result]
+  B -- no --> D[reserve key]
+  D --> E[gateway.charge]
+  E -- ok --> F[record result]
+  E -- crash --> G[stuck: reconcile]
+\`\`\`
+
 That turns a crash into a *stuck* charge (recoverable by reconciliation) rather
 than a *double* charge, which is the tradeoff you want on money paths. See the
 notes in [docs/billing.md](https://example.com/docs/billing) for the reconciliation
