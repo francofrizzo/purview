@@ -25,7 +25,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
-import { qk } from "../api/hooks";
+import { qk, useAgentName } from "../api/hooks";
 import { errorText } from "../api/errors";
 import type { ChatAgentSelection, ChatMessage, ChatRef, ChatStreamEvent, ResolvedAgent, ToolKind } from "../api/types";
 import {
@@ -269,7 +269,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     };
 
     // The chat can write draft comments (`reviewer-state comment ...`). A tool
-    // event arrives when Claude *starts* a call, so the comments are refetched
+    // event arrives when the agent *starts* a call, so the comments are refetched
     // on the next event after one (it has finished by then) and at turn end.
     const refreshComments = () =>
       void queryClient.invalidateQueries({ queryKey: qk.comments(key) });
@@ -556,6 +556,14 @@ export function useChat(): ChatContextValue {
   const ctx = useContext(ChatContext);
   if (!ctx) throw new Error("useChat must be used inside <ChatProvider>");
   return ctx;
+}
+
+/**
+ * What copy calls the chat's agent: the harness the next message goes to, or
+ * the default one outside a chat (or before it loads).
+ */
+export function useChatAgentName(): string {
+  return useAgentName(useContext(ChatContext)?.agent?.harness);
 }
 
 /** Bind the store to the PR currently on screen. */

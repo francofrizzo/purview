@@ -91,7 +91,7 @@ the review chat and nothing else.
 Then it asks for consent about cost, plainly: adding a PR starts a Claude analysis run
 automatically and every chat message starts another, both on **your own Claude account or
 subscription** through the `claude` CLI you are already signed into, both on Sonnet unless you
-change it (settings → Claude, or per repo). Answering the `[Y/n]` writes `autoAnalyze` to the
+change it (settings → Agents, or per repo). Answering the `[Y/n]` writes `autoAnalyze` to the
 config, and it finishes with a box telling you the state
 dir, the port and the URL to open.
 
@@ -105,8 +105,8 @@ and are dropped off a TTY.
 ```jsonc
 {
   "autoAnalyze": true,                       // start an analysis run when a PR is added
-  "analysisModel": null,                     // "sonnet" | "opus" | "haiku" | null (= sonnet)
-  "chatModel": null,                         // same, for review chat
+  "analysisAgent": null,                     // {harness, model?, effort?} | null (= the default harness's defaults)
+  "chatAgent": null,                         // {harness, model?} | null, for review chat
   "onboardedAt": "2026-08-26T12:51:24.500Z",
   "devOrigins": ["http://localhost:5179",    // origins allowed to send state-changing
                  "http://localhost:5173"]    // requests, for the Vite dev proxy
@@ -170,10 +170,14 @@ unit patches), `units` (compact unit listing), `view`, `report`, `list`, `sync`,
 deletes all of Purview's local state for a repo (through the running server; nothing on
 GitHub changes).
 
-## Claude integration
+## Agent integration
 
-The skill flow above also runs by itself. The server drives the `claude` CLI headlessly
-(reusing your existing Claude Code auth — there are no API keys anywhere) for two things:
+The skill flow above also runs by itself. The server drives an agent harness headlessly for
+two things. Today that harness is Claude Code: the server runs the `claude` CLI, reusing your
+existing Claude Code auth — there are no API keys anywhere. Everything outside the adapter
+(`packages/server/src/agent/claude-code/`) speaks the harness contract in
+`packages/server/src/agent/types.ts`, and the settings and chat UI are built from the
+harness's manifest (`GET /api/agents`).
 
 **Automatic analysis.** Tracking a new PR queues an analysis run immediately; refreshing one
 queues another only when the migration actually produced hunks nobody has classified yet.
@@ -192,13 +196,14 @@ comments — and the server resolves them against the current revision into a co
 prepended to your message; a reference it cannot resolve fails the whole send rather than
 quietly dropping it.
 
-**Which model.** Both kinds of run pass `--model` explicitly, so nothing inherits whatever
-your `claude` CLI happens to default to — a habit that quietly billed every analysis and every
-chat turn at an Opus rate. The default for both is **Sonnet**. Set them per repo (repo
-settings → Analysis), for the whole machine (settings → Claude), or for your team by
-committing them; the layering is the one described in
-[Per-repo configuration](#per-repo-configuration). Only the CLI aliases `sonnet`, `opus` and
-`haiku` are accepted — full model ids change with every release.
+**Which model.** Both kinds of run pass the model explicitly, so nothing inherits whatever
+the harness's CLI happens to default to — a habit that quietly billed every analysis and every
+chat turn at an Opus rate. An unset model is the harness's manifest default (**Sonnet** for
+Claude Code). Set them per repo (repo settings → Analysis), for the whole machine
+(settings → Agents), or for your team by committing them; the layering is the one described in
+[Per-repo configuration](#per-repo-configuration). Only the models a harness's manifest lists
+are accepted — for Claude Code, the CLI aliases `sonnet`, `opus` and `haiku`, since full model
+ids change with every release.
 
 A single conversation can also override the model from the chat panel's header, which applies
 from your next message on. The conversation is kept: the CLI resumes a session happily under a
@@ -238,7 +243,7 @@ with your clone). `reviewer-state base-file <key> <path>` prints a file as it wa
 merge base. Checkouts of merged, closed, archived or untracked PRs are removed at server
 startup and after archiving. If the managed checkout cannot be made (no matching remote,
 fetch fails) the run falls back to the behavior above. Set `"managedCheckouts": false` in
-`~/.purview/config.json` (or untick it under Settings → Claude) to turn it off.
+`~/.purview/config.json` (or untick it under Settings → Agents) to turn it off.
 
 ## Per-repo configuration
 
@@ -247,18 +252,30 @@ Settings live in four layers, most specific first:
 | Layer | Where | Sets |
 | --- | --- | --- |
 | PR | `meta.json` | `repoPath` only — the per-PR checkout override |
-| Repo (local) | `~/.purview/<host>/<owner>/<repo>/repo.json` | `autoAnalyze`, `repoPath`, `analysisModel`, `chatModel` |
-| Team (committed) | `.purview/config.json` in the reviewed repo | `autoAnalyze`, `analysisModel`, `chatModel` |
-| Global | `~/.purview/config.json` | `autoAnalyze`, `analysisModel`, `chatModel`, `devOrigins` |
+| Repo (local) | `~/.purview/<host>/<owner>/<repo>/repo.json` | `autoAnalyze`, `repoPath`, `analysisAgent`, `chatAgent` |
+| Team (committed) | `.purview/config.json` in the reviewed repo | `autoAnalyze`, `analysisAgent`, `chatAgent` |
+| Global | `~/.purview/config.json` | `autoAnalyze`, `analysisAgent`, `chatAgent`, `devOrigins` |
 
 Anything left `null` inherits from the layer below, down to the built-in defaults
-(`autoAnalyze: true`, no checkout, both models `sonnet`). `PURVIEW_AUTO_ANALYZE=0` still beats every layer, and an
+(`autoAnalyze: true`, no checkout, and the default harness — Claude Code — with its own
+default model and effort: `sonnet`, `medium`).
+
+**Agent selections.** `analysisAgent` and `chatAgent` name a harness and, optionally, that
+harness's model and (for analysis) effort: `{"harness": "claude-code", "model": "opus"}`. The
+harness is the first one any layer names; a model or effort only counts from a layer that
+names that same harness, since a Claude model means nothing to another harness. A selection
+this server cannot run (an unknown harness, a model its manifest does not list) is an error
+on the run, never a silent fallback. The old flat `analysisModel`/`chatModel`/`analysisEffort`
+fields are still read, as Claude Code selections.
+
+`PURVIEW_AUTO_ANALYZE=0` still beats every layer, and an
 archived PR never starts an analysis run on its own.
 
 The committed layer is the one your team shares. Put it in the repo you review:
 
 ```
-.purview/config.json    { "autoAnalyze": false, "chatModel": "haiku" }   # unknown keys ignored
+.purview/config.json    { "autoAnalyze": false,
+                          "chatAgent": { "harness": "claude-code", "model": "haiku" } }   # unknown keys ignored
 .purview/RUBRIC.md      # rubric refinements for this codebase
 .purview/CHAT.md        # chat-only instructions for this codebase
 ```
@@ -278,14 +295,21 @@ own `CHAT.local.md`, clearly delimited. No built-in base layer here, and the ana
 never sees it — with neither file present, the chat prompt is unchanged.
 
 ```
+GET  /api/agents                # the harnesses this server runs: {default, harnesses: [manifest]}
 GET  /api/repos                 # every tracked repo: PR counts, which layers are set
 GET  /api/repos/:rkey/config    # local + committed + effective, with the source of each
-PUT  /api/repos/:rkey/config    # {autoAnalyze?, repoPath?, analysisModel?, chatModel?,
+PUT  /api/repos/:rkey/config    # {autoAnalyze?, repoPath?, analysisAgent?, chatAgent?,
                                 # rubric?, chatInstructions?}; null re-inherits, rubric: ""
                                 # deletes RUBRIC.local.md, chatInstructions: "" deletes CHAT.local.md
-GET  /api/config                # the global layer: {analysisModel, chatModel, defaults}
-PUT  /api/config                # {analysisModel?, chatModel?}; null re-inherits
+GET  /api/config                # the global layer: {analysisAgent, chatAgent, managedCheckouts, effective}
+PUT  /api/config                # {analysisAgent?, chatAgent?, managedCheckouts?}; null re-inherits
 ```
+
+A selection is written whole and checked against its harness's manifest (a 400 names the
+choices). Each resolved agent comes back as `{harness, model, effort?, sources, problem?}`,
+where `sources` says which layer every field came from. A manifest lists the harness's
+`name` ("Claude Code"), `agentName` ("Claude", what the UI calls it), `models`, `efforts`,
+`defaults` and `capabilities` (`resume`, `handoff`); the settings pages are built from it.
 
 `:rkey` is `host/owner/repo`, URL-encoded. `POST /api/prs/:key/repo-path` is unchanged and
 still writes the **PR-level** checkout override; the repo-level default is written here.
@@ -327,7 +351,7 @@ Per repo, beside the numbered PR directories (PR dirs are always digits, so they
 collide with these):
 
 ```
-repo.json           # { autoAnalyze, repoPath, analysisModel, chatModel }   null = inherit
+repo.json           # { autoAnalyze, repoPath, analysisAgent, chatAgent }   null = inherit
 RUBRIC.local.md     # your own rubric overlay for this repo, optional
 CHAT.local.md       # your own chat-instructions overlay for this repo, optional
 ```
@@ -474,7 +498,7 @@ once).
 ## Settings
 
 The gear in the header (both on the PR list and inside a PR) opens `/settings`, where the
-appearance lives, plus a **Claude** section with the machine-wide analysis and chat model
+appearance lives, plus an **Agents** section with the machine-wide analysis and chat agent
 defaults (those two are stored on the server, not in the browser). Every control applies
 immediately — there is no save button — and the appearance half is stored in this browser
 under the single `reviewer.settings` localStorage key, so preferences survive

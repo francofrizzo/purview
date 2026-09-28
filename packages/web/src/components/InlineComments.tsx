@@ -14,7 +14,7 @@ import { formatComment, type DiffContext } from "../lib/agentExport";
 import { bubbleTitle, mostAdvancedStatus, statusColors } from "../lib/comments";
 import { QuoteButton } from "./ChatPanel";
 import { CopyForAgentButton } from "./CopyForAgent";
-import { ByClaudeChip, ClaudeEditNote, CommentBody, commentRef, type EditComment } from "./Drafts";
+import { AgentEditNote, ByAgentChip, CommentBody, commentRef, type EditComment } from "./Drafts";
 import { StatusChip } from "./FinishReview";
 import { IconClose, IconCommentFilled } from "./icons";
 
@@ -181,16 +181,16 @@ function InlineComment({
           {formatTimestamp(comment.createdAt)}
         </span>
         <StatusChip status={status} />
-        <ByClaudeChip comment={comment} />
+        <ByAgentChip comment={comment} />
       </div>
       {/* The edit flow — including the "this is already public" confirmation —
           is the drawer's, unchanged; only the rendering differs. */}
       <CommentBody comment={comment} edit={onEdit} markdown />
-      <ClaudeEditNote comment={comment} onUndo={onUndoEdit} busy={undoing} />
+      <AgentEditNote comment={comment} onUndo={onUndoEdit} busy={undoing} />
       <div className="mt-1 flex items-center gap-1.5">
         {onQuote ? (
           <QuoteButton
-            title="Ask Claude about this comment"
+            about="this comment"
             onClick={() => onQuote(commentRef(comment))}
           />
         ) : null}

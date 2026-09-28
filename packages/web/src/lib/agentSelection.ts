@@ -5,6 +5,11 @@
  */
 import type { AgentSelection, AgentsInfo, HarnessManifest } from "../api/types";
 
+/** "Claude", or "The agent" at the start of a sentence. */
+export function capitalized(name: string): string {
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 export function manifestOf(agents: AgentsInfo | undefined, harness: string): HarnessManifest | undefined {
   return agents?.harnesses.find((h) => h.id === harness);
 }

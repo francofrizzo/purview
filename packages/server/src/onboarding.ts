@@ -270,7 +270,7 @@ function padVisible(text: string, width: number): string {
 }
 
 export function renderSummary(
-  input: { root: string; port: number; claudeReady: boolean; autoAnalyze: boolean },
+  input: { root: string; port: number; agentReady: boolean; autoAnalyze: boolean },
   p: Palette,
 ): string {
   const url = `http://localhost:${input.port}`;
@@ -280,10 +280,10 @@ export function renderSummary(
     `${p.bold("open")}      ${p.accent(url)}`,
     `${p.bold("analysis")}  ${input.autoAnalyze ? "automatic on add" : "manual only"}`,
   ];
-  if (input.claudeReady) {
+  if (input.agentReady) {
     lines.push(p.dim("pr-review skill and review chat are ready"));
   } else {
-    lines.push(p.dim("no claude CLI: analysis and chat are unavailable"));
+    lines.push(p.dim(`no ${getHarness().manifest.name}: analysis and chat are unavailable`));
   }
   // Nothing else hints that this exists, and "read a PR on the iPad" is the
   // reason someone would want it.
@@ -375,9 +375,11 @@ export async function runOnboarding(deps: OnboardingDeps): Promise<OnboardingRes
     }
   }
 
+  const { name, agentName, defaults, models } = getHarness().manifest;
+  const defaultModel = models.find((m) => m.id === defaults.model)?.label ?? defaults.model;
   if (agent.status !== "pass") {
     io.write(
-      p.warn("  Without the claude CLI, automatic analysis and review chat are unavailable.\n") +
+      p.warn(`  Without ${name}, automatic analysis and review chat are unavailable.\n`) +
         p.dim("  Everything else — diff viewer, comments, sync, review submit — still works.\n\n"),
     );
   }
@@ -385,12 +387,12 @@ export async function runOnboarding(deps: OnboardingDeps): Promise<OnboardingRes
   // Cost consent. This has to be plain: the runs are on the user's own account.
   io.write(p.bold("  About cost\n"));
   io.write(
-    "  Adding a PR here starts a Claude analysis run automatically, and every\n" +
+    `  Adding a PR here starts a ${agentName} analysis run automatically, and every\n` +
       "  chat message starts another. Both run on " +
-      p.bold("your own Claude account or\n  subscription") +
-      " through the claude CLI you are already signed into —\n" +
+      p.bold(`your own ${agentName} account or\n  subscription`) +
+      ` through the ${name} you are already signed into —\n` +
       "  there are no API keys here, and usage counts against your plan.\n\n" +
-      p.dim("  Analysis and chat both run on Sonnet by default — change the model in\n  Settings → Claude, or per repo in the repo settings.\n") +
+      p.dim(`  Analysis and chat both run on ${defaultModel} by default — change the model in\n  Settings → Agents, or per repo in the repo settings.\n`) +
       p.dim("  You can change this later in ") +
       p.dim(configPath(root)) +
       p.dim(",\n  per repo in the repo settings, or for one run with PURVIEW_AUTO_ANALYZE=0.\n\n"),
@@ -410,7 +412,7 @@ export async function runOnboarding(deps: OnboardingDeps): Promise<OnboardingRes
   );
 
   io.write(
-    renderSummary({ root, port, claudeReady: agent.status === "pass", autoAnalyze }, p) + "\n\n",
+    renderSummary({ root, port, agentReady: agent.status === "pass", autoAnalyze }, p) + "\n\n",
   );
 
   return { config, checks, aborted: false };

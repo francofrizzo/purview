@@ -22,6 +22,7 @@ import type {
   EditCommentResult,
   AgentsInfo,
   GlobalConfig,
+  HarnessManifest,
   GlobalConfigPatch,
   ImportFromPrResult,
   ImportReviewsResult,
@@ -275,6 +276,21 @@ export function useImportReviews(
 /** The harnesses the server can run. Fixed for the server's lifetime. */
 export function useAgents() {
   return useQuery<AgentsInfo>({ queryKey: qk.agents, queryFn: api.getAgents, staleTime: Infinity, retry: false });
+}
+
+/** A harness's manifest (the default harness's when `harness` is absent), once loaded. */
+export function useHarness(harness?: string | null): HarnessManifest | undefined {
+  const { data } = useAgents();
+  const id = harness ?? data?.default;
+  return data?.harnesses.find((h) => h.id === id);
+}
+
+/**
+ * What copy calls an agent: its harness's `agentName` ("Claude"). Neutral
+ * until the manifests load, or for a harness this server does not have.
+ */
+export function useAgentName(harness?: string | null): string {
+  return useHarness(harness)?.agentName ?? "the agent";
 }
 
 export function useGlobalConfig() {

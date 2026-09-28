@@ -1,5 +1,5 @@
 /**
- * The Claude chat panel.
+ * The review chat panel.
  *
  * Deliberately not a chat app: no avatars, no rounded speech bubbles, no
  * timestamps competing with the text. It reads like the rest of the tool — a
@@ -29,10 +29,10 @@ import type {
   PrDetail,
   ResolvedAgent,
 } from "../api/types";
-import { editSelection, manifestOf, modelLabel, modelOptions } from "../lib/agentSelection";
+import { capitalized, editSelection, manifestOf, modelLabel, modelOptions } from "../lib/agentSelection";
 import { copyText, handoffDisabledReason, isLoopbackHostname } from "../lib/chatHandoff";
 import { refContext, refKey, refLabel, refTitle } from "../lib/chatRefs";
-import { useChat, type LocalMessage, type ToolActivity } from "../lib/chat";
+import { useChat, useChatAgentName, type LocalMessage, type ToolActivity } from "../lib/chat";
 import {
   clampChatPanelWidth,
   MAX_CHAT_PANEL_WIDTH,
@@ -278,6 +278,10 @@ export function ChatPanel({
 }) {
   const chat = useChat();
   const { data: agents } = useAgents();
+  const agentName = useChatAgentName();
+  // Handoff continues the session in its own harness; before there is one,
+  // in the harness the next message would start it on.
+  const handoffHarness = manifestOf(agents, chat.sessionHarness ?? chat.agent?.harness ?? agents?.default ?? "");
   const { settings, update } = useSettings();
   const [draft, setDraft] = useState("");
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -441,7 +445,7 @@ export function ChatPanel({
         style={{ borderColor: "var(--border)" }}
       >
         <IconChat width={12} height={12} />
-        <span className="text-xs font-semibold">Claude</span>
+        <span className="text-xs font-semibold">{capitalized(agentName)}</span>
         {chat.busy ? (
           <span className="flex items-center gap-1 text-2xs" style={{ color: "var(--accent)" }}>
             <IconSpinner width={10} height={10} />
@@ -464,11 +468,18 @@ export function ChatPanel({
         ) : (
           <span className="ml-auto" />
         )}
-        <HandoffButton prKey={prKey} messageCount={chat.messages.length} busy={chat.busy} />
+        {handoffHarness?.capabilities.handoff ? (
+          <HandoffButton
+            prKey={prKey}
+            product={handoffHarness.name}
+            messageCount={chat.messages.length}
+            busy={chat.busy}
+          />
+        ) : null}
         <button
           type="button"
-          title="Claude settings for this PR"
-          aria-label="Claude settings"
+          title="Chat settings for this PR"
+          aria-label="Chat settings"
           onClick={() => setSettingsOpen((v) => !v)}
           style={{ color: settingsOpen ? "var(--fg)" : "var(--fg-faint)" }}
         >
@@ -535,7 +546,7 @@ export function ChatPanel({
           <div className="p-3">
             <p className="text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
               Ask about this pull request. Quote a unit, a hunk, a file, a range of lines or one of
-              your comments to point Claude at exactly what you mean.
+              your comments to point {agentName} at exactly what you mean.
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {STARTERS.map((s) => (
@@ -685,7 +696,7 @@ export function ChatPanel({
           rows={2}
           placeholder={
             chat.busy
-              ? "Claude is replying…"
+              ? `${capitalized(agentName)} is replying…`
               : chat.editingIndex !== null
                 ? "Edit your message…  (↵ send · ⇧↵ newline)"
                 : "Ask about this PR…  (↵ send · ⇧↵ newline)"
@@ -802,20 +813,25 @@ type HandoffState =
   | { phase: "error"; message: string };
 
 /**
- * "Continue in Claude Code": fetches the one-liner that forks this chat's
- * session into the reader's own terminal, copies it, and shows it in a popover
- * in case the copy did not take (or they want to read it first). The server
+ * "Continue in Claude Code" (or whichever `product` holds the session):
+ * fetches the one-liner that forks this chat's session into the reader's own
+ * terminal, copies it, and shows it in a popover in case the copy did not
+ * take (or they want to read it first). The server
  * refuses it over the LAN, so the button says so up front instead.
  */
 function HandoffButton({
   prKey,
+  product,
   messageCount,
   busy,
 }: {
   prKey: string;
+  /** the harness's product name, e.g. "Claude Code" */
+  product: string;
   messageCount: number;
   busy: boolean;
 }) {
+  const label = `Continue in ${product}`;
   const [state, setState] = useState<HandoffState | null>(null);
   const [recopied, setRecopied] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
@@ -875,11 +891,11 @@ function HandoffButton({
   };
 
   return (
-    <span ref={wrapRef} className="relative inline-flex" title={reason ?? "Continue in Claude Code"}>
+    <span ref={wrapRef} className="relative inline-flex" title={reason ?? label}>
       <button
         type="button"
         data-testid="chat-handoff"
-        aria-label="Continue in Claude Code"
+        aria-label={label}
         aria-expanded={open}
         disabled={reason !== null}
         onClick={() => void start()}
@@ -891,7 +907,7 @@ function HandoffButton({
       {state ? (
         <div
           role="dialog"
-          aria-label="Continue in Claude Code"
+          aria-label={label}
           data-testid="chat-handoff-popover"
           className="surface absolute right-0 top-6 z-30 w-72 rounded-md p-2 elev-2"
           onClick={(e) => e.stopPropagation()}
@@ -909,8 +925,8 @@ function HandoffButton({
             <>
               <p className="text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
                 {state.copied
-                  ? "Copied. Paste into a terminal to continue this chat in Claude Code."
-                  : "Copy this and paste it into a terminal to continue this chat in Claude Code."}
+                  ? `Copied. Paste into a terminal to continue this chat in ${product}.`
+                  : `Copy this and paste it into a terminal to continue this chat in ${product}.`}
               </p>
               <code
                 data-testid="chat-handoff-command"
@@ -991,6 +1007,7 @@ export { MIN_CHAT_PANEL_WIDTH, MAX_CHAT_PANEL_WIDTH };
 
 /** The top-bar toggle. */
 export function ChatButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+  const agentName = useChatAgentName();
   return (
     <button
       type="button"
@@ -998,7 +1015,7 @@ export function ChatButton({ open, onClick }: { open: boolean; onClick: () => vo
       data-testid="chat-toggle"
       aria-label="Chat"
       onClick={onClick}
-      title="Ask Claude about this PR (c)"
+      title={`Ask ${agentName} about this PR (c)`}
       style={open ? { background: "var(--accent-soft)", color: "var(--accent)" } : undefined}
     >
       <IconChat width={11} height={11} />
@@ -1010,13 +1027,16 @@ export function ChatButton({ open, onClick }: { open: boolean; onClick: () => vo
 /** Small quote affordance reused by hunk headers, file rows and comments. */
 export function QuoteButton({
   onClick,
-  title,
+  about,
   className,
 }: {
   onClick: () => void;
-  title: string;
+  /** what the chat is asked about, e.g. "this hunk" */
+  about: string;
   className?: string;
 }) {
+  const agentName = useChatAgentName();
+  const title = `Ask ${agentName} about ${about}`;
   return (
     <button
       type="button"

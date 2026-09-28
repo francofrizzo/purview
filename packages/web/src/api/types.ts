@@ -784,7 +784,7 @@ export interface DiscardPendingResult {
 
 /**
  * A pointer to something in the review the reader is asking about. The server
- * resolves it into whatever context Claude needs (the unit's hunks, the file's
+ * resolves it into whatever context the agent needs (the unit's hunks, the file's
  * diff, the quoted lines…), so the UI only ever carries the pointer.
  */
 export type ChatRefKind = "unit" | "hunk" | "file" | "line-range" | "comment";
@@ -909,7 +909,7 @@ export interface RewindChatResult {
 
 /**
  * POST /api/prs/:key/chat/handoff — loopback-only. `command` forks the chat's
- * Claude session into the reader's terminal with the PR context file appended
+ * agent session into the reader's terminal with the PR context file appended
  * to its system prompt.
  */
 export interface ChatHandoff {
@@ -952,7 +952,7 @@ export interface ImportReviewsResult {
   days: number;
   /**
    * Which of `imported`'s PRs got a shared analysis imported off the PR's own
-   * conversation tab instead of a fresh (paid) Claude run — additive, so an
+   * conversation tab instead of a fresh (paid) agent run — additive, so an
    * older server (or a test fixture predating this) simply never populates it.
    */
   sharedImports?: { key: string; author?: string; postedAt: string }[];

@@ -206,7 +206,7 @@ describe("rendering", () => {
 
   it("aligns the summary box regardless of content width", () => {
     const box = stripAnsi(
-      renderSummary({ root: "/a/very/long/state/dir", port: 4779, claudeReady: true, autoAnalyze: true }, makePalette(true)),
+      renderSummary({ root: "/a/very/long/state/dir", port: 4779, agentReady: true, autoAnalyze: true }, makePalette(true)),
     );
     const lines = box.split("\n");
     expect(new Set(lines.map((l) => [...l].length)).size).toBe(1);
@@ -216,10 +216,10 @@ describe("rendering", () => {
 
   it("says so in the summary when claude is unavailable", () => {
     const box = renderSummary(
-      { root, port: 4779, claudeReady: false, autoAnalyze: false },
+      { root, port: 4779, agentReady: false, autoAnalyze: false },
       makePalette(false),
     );
-    expect(box).toContain("no claude CLI");
+    expect(box).toContain("no Claude Code");
     expect(box).toContain("manual only");
   });
 });
@@ -341,7 +341,7 @@ describe("runOnboarding", () => {
     expect(result.aborted).toBe(false);
     expect(io.asked).toHaveLength(1);
     expect(io.output).toContain("automatic analysis and review chat are unavailable");
-    expect(io.output).toContain("no claude CLI");
+    expect(io.output).toContain("no Claude Code");
   });
 });
 

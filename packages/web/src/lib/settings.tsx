@@ -46,7 +46,7 @@ export interface Settings {
   autoCollapseViewedHunks: boolean;
   /** Drop fully-viewed units out of the sidebar (except the selected one). */
   hideReviewedUnits: boolean;
-  /** Width of the Claude chat panel in px (clamped to the range below). */
+  /** Width of the review chat panel in px (clamped to the range below). */
   chatPanelWidth: number;
   /** Column-mode sidebar collapsed to nothing. Ignored in drawer mode, where
    *  the sidebar always starts closed regardless of this. */

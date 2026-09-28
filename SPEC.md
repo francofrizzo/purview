@@ -19,9 +19,9 @@ skills/pr-review  # Claude skill (SKILL.md + reference docs). Reads/writes state
 
 ```jsonc
 {
-  "autoAnalyze": true,        // consent: start a Claude analysis run when a PR is added/refreshed
-  "analysisModel": null,      // "sonnet" | "opus" | "haiku" | null (null = built-in default)
-  "chatModel": null,          // same, for review-chat turns
+  "autoAnalyze": true,        // consent: start an analysis run when a PR is added/refreshed
+  "analysisAgent": null,      // {harness, model?, effort?} | null (null = inherit the built-in default)
+  "chatAgent": null,          // {harness, model?} | null, for review-chat turns
   "onboardedAt": "<iso>",     // when onboarding produced this file
   "devOrigins": ["http://localhost:5179", "http://localhost:5173"]  // extra allowed request origins
 }
@@ -38,7 +38,7 @@ the legacy `config.json` with it. A configured root (env var) is never migrated 
 
 ```
 repo.json           # { autoAnalyze: boolean|null, repoPath: string|null,
-                    #   analysisModel: Model|null, chatModel: Model|null }  (null = inherit)
+                    #   analysisAgent: Selection|null, chatAgent: Selection|null }  (null = inherit)
 RUBRIC.local.md     # free-form markdown overlay, may be absent
 CHAT.local.md       # local chat-instructions overlay, may be absent
 <number>/           # one directory per PR (always digits, so it can never collide
@@ -72,15 +72,16 @@ Four places can configure a review, highest precedence first:
 1. **PR meta** — `meta.json.repoPath` only (the per-PR checkout override);
 2. **repo local** — `~/.purview/<host>/<owner>/<repo>/repo.json`;
 3. **committed team config** — `.purview/config.json` in the *target* repo
-   (`{autoAnalyze?, analysisModel?, chatModel?}`, unknown keys ignored);
+   (`{autoAnalyze?, analysisAgent?, chatAgent?}`, unknown keys ignored; the legacy flat
+   `analysisModel?`/`chatModel?`/`analysisEffort?` still read as Claude Code selections);
 4. **global** — `~/.purview/config.json`;
-5. **built-in defaults** — `autoAnalyze: true`, no repo path, `analysisModel`/`chatModel`
-   both `"sonnet"`.
+5. **built-in defaults** — `autoAnalyze: true`, no repo path, and the default harness
+   (`claude-code`) with its manifest's default model and effort (`sonnet`, `medium`).
 
 `null`/absent means "inherit", which is why `repo.json`'s fields are nullable rather than
 optional-with-a-default. One resolver (`packages/server/src/repo-config.ts`,
 `effectiveConfig`) implements this and is used by the auto-analysis triggers, the checkout
-resolution for Claude runs, and the config endpoints. It never makes a network call: the
+resolution for agent runs, and the config endpoints. It never makes a network call: the
 committed layer is read from the per-revision cache. `PURVIEW_AUTO_ANALYZE=0` still overrides
 every layer, and an **archived** PR never auto-analyzes at all.
 
@@ -102,12 +103,18 @@ highest precedence"), inlined. Read the same way as the rubric (checkout first, 
 contents API, cached alongside it in `team-config.json`), same 24KB caps, and empty when
 neither overlay exists.
 
-**Model layering.** `analysisModel` and `chatModel` resolve through the same chain (repo
-local > committed > global > built-in `"sonnet"`); they are independent of each other, and the
-global layer is nullable, so it too can say "inherit". Values are the CLI's own aliases —
-`sonnet` | `opus` | `haiku` — never full model ids, which change with every release. Anything
-else is rejected at every entry point. A chat session may additionally pin its own model
-(`chat.json.model`), which outranks all of the above for that conversation only.
+**Agent layering.** `analysisAgent` and `chatAgent` are selections — `{harness, model?,
+effort?}` (a chat has no effort) — resolved through the same chain (repo local > committed >
+global > built-in), independently of each other; the global layer is nullable, so it too can
+say "inherit". The harness is the first one any layer names; a model or effort only counts
+from a layer naming that same harness, and otherwise falls to the harness's manifest default.
+Model and effort values are the ones the harness's manifest lists (for Claude Code the CLI
+aliases `sonnet` | `opus` | `haiku`, never full model ids, which change with every release);
+anything else is rejected at every entry point with a 400 naming the choices. A selection
+that cannot run (a harness this server lacks, a value its manifest drops) is reported as the
+resolved agent's `problem` and fails the run — never a fallback to another harness or model.
+A chat may additionally pin its own agent (`chat.json.agent`), which outranks all of the
+above for that conversation only.
 
 ## Hunk identity
 
@@ -235,16 +242,23 @@ indistinguishable from a failed one, so it is treated as unknown, never as "clea
 ```
 GET  /api/repos                        # {repos: [{host, owner, repo, prCount, archivedCount,
                                        #  hasLocalConfig, hasCommittedConfig, repoPath}]}
-GET  /api/config                       # {analysisModel, chatModel, defaults:{...}}
-PUT  /api/config                       # {analysisModel?, chatModel?} -> same shape
+GET  /api/agents                       # {default, harnesses: [{id, name, agentName, models,
+                                       #  efforts, defaults, capabilities}]}
+GET  /api/config                       # {analysisAgent, chatAgent, managedCheckouts,
+                                       #  effective:{analysisAgent, chatAgent}}
+PUT  /api/config                       # {analysisAgent?, chatAgent?, managedCheckouts?}
+                                       #  -> same shape
 GET  /api/repos/:rkey/config           # {local:{autoAnalyze, repoPath,
-                                       #   analysisModel, chatModel, rubric, chatInstructions},
+                                       #   analysisAgent, chatAgent, rubric, chatInstructions},
                                        #  committed:{present, config, rubric, chat},
                                        #  effective:{autoAnalyze, repoPath,
-                                       #    analysisModel, chatModel}, sources}
-PUT  /api/repos/:rkey/config           # {autoAnalyze?, repoPath?, analysisModel?,
-                                       #  chatModel?, rubric?, chatInstructions?} -> same shape
+                                       #    analysisAgent, chatAgent}, sources}
+PUT  /api/repos/:rkey/config           # {autoAnalyze?, repoPath?, analysisAgent?,
+                                       #  chatAgent?, rubric?, chatInstructions?} -> same shape
 ```
+A resolved agent (`effective.*Agent`) is `{harness, model, effort?, sources:{harness, model,
+effort?}, problem?}`. A selection is written whole — `{"harness": "claude-code", "model":
+"opus"}` replaces what the layer had, and `null` re-inherits.
 `:rkey` = `host/owner/repo` URL-encoded. `local.rubric` is `RUBRIC.local.md` ("" when absent);
 PUT with `rubric: ""` deletes the file, and `null` on a config field restores inheritance.
 `local.chatInstructions` is `CHAT.local.md` the same way; `committed.chat` is the committed
@@ -296,7 +310,7 @@ claude -p --output-format stream-json --verbose --safe-mode --strict-mcp-config 
 **`--model` is always passed.** Inheriting the `claude` CLI's own default meant every analysis
 and every chat turn silently billed at whatever model the user had configured, which for an
 Opus default is an order of magnitude more than intended. Analysis uses the effective
-`analysisModel`; chat uses the session's pin, else the effective `chatModel`. Verified against
+`analysisAgent`'s model; chat uses the conversation's pin, else the effective `chatAgent`'s. Verified against
 the real CLI: the aliases resolve (`--model sonnet` -> `claude-sonnet-5`), and `--resume`
 accepts a **different** `--model` than the session was started with, so switching a
 conversation's model keeps its transcript.
@@ -339,9 +353,11 @@ a successful `POST /api/prs` always, after `POST /api/prs/:key/refresh` only whe
 migration left new/unassigned hunks, both skippable with `?analyze=false`.
 
 **Chat.** One resumable CLI session per PR (`--session-id` on the first turn, `--resume`
-after), with `chat.json` holding `{sessionId, model, messages: [{role, text, ts, refs?}]}`.
-`model` (`null` = follow the layered `chatModel`) is the conversation's own pin; it takes
-effect on the **next** message and does not restart the session. Requests
+after), with `chat.json` holding `{session: {harness, id, cwd, fingerprint?}, agent, messages:
+[{role, text, ts, refs?}]}`. `agent` (`null` = follow the layered `chatAgent`) is the
+conversation's own pin; it takes effect on the **next** message. A new model on the same
+harness keeps the session; a different harness cannot continue another's session, so the next
+turn starts a new one. Requests
 may carry typed refs — `unit`/`hunk`/`file`/`line-range`/`comment` — which the server resolves
 against the current revision into a compact delimited block prepended to the message. An
 unresolvable ref fails the send with `unresolvable_ref` and persists nothing. A turn outlives
@@ -364,21 +380,21 @@ current revision's `headSha`, else the stored checkout is used and flagged as
 deleted or de-gitted path degrades to "no local checkout" with a warning; runs never fail over
 it. When a checkout is used, chat runs take it as cwd with the state dir as an extra root.
 
-## Server REST — Claude endpoints
+## Server REST — agent endpoints
 
 ```
 GET    /api/prs/:key/analysis-job          -> {job: JobRecord | null}
 POST   /api/prs/:key/analyze               -> {job}   409 if queued/running
 DELETE /api/prs/:key/analyze               -> {job}   409 if nothing in progress
 POST   /api/prs/:key/repo-path {path}      -> {ok, path, warning?}   400 if dir missing
-GET    /api/prs/:key/chat                  -> {messages, sessionId, busy, model,
-                                              configuredModel, configuredModelSource,
-                                              sessionModel}
+GET    /api/prs/:key/chat                  -> {messages, sessionId, sessionHarness, busy,
+                                              agent, configuredAgent, sessionAgent}
 POST   /api/prs/:key/chat {text, refs?}    -> SSE stream
-POST   /api/prs/:key/chat/model {model}    -> {model, configuredModel, configuredModelSource,
-                                              sessionModel, restartedSession}
-                                              model: alias | null (null = inherit); 400 otherwise
-DELETE /api/prs/:key/chat                  -> {ok: true}   (drops the model pin too)
+POST   /api/prs/:key/chat/agent {agent}    -> {agent, configuredAgent, sessionAgent,
+                                              restartedSession}
+                                              agent: {harness, model?} | null (null = inherit);
+                                              400 when the manifest does not offer it
+DELETE /api/prs/:key/chat                  -> {ok: true}   (drops the agent pin too)
 GET    /api/prs/:key/events                -> SSE {type:"analysis-job", job} per transition,
                                               heartbeat comment every 15s
 ```

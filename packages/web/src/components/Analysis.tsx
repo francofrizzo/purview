@@ -8,7 +8,9 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useAgentName } from "../api/hooks";
 import type { AnalysisJob, AnalysisMetrics } from "../api/types";
+import { capitalized } from "../lib/agentSelection";
 import { IconClose, IconRefresh, IconSpinner, IconStopwatch } from "./icons";
 
 const STATUS_TEXT: Record<AnalysisJob["status"], string> = {
@@ -275,6 +277,8 @@ export function AnalysisBanner({
   const status = job?.status;
   const live = status === "queued" || status === "running";
   const failed = status === "failed";
+  // The harness of the last run on record; the default one before any.
+  const agentName = useAgentName(job?.metrics?.run?.harness);
   const tone = failed ? "var(--risk)" : live ? "var(--accent)" : "var(--fg-muted)";
   const bg = failed ? "var(--risk-soft)" : live ? "var(--accent-soft)" : "var(--bg-inset)";
 
@@ -327,12 +331,12 @@ export function AnalysisBanner({
         {live
           ? job?.progress
             ? <ProgressText text={job.progress} />
-            : "Claude is reading the diff and grouping it into review units. The units appear here as soon as it finishes."
+            : `${capitalized(agentName)} is reading the diff and grouping it into review units. The units appear here as soon as it finishes.`
           : failed
             ? (job?.error ?? "The analysis run did not complete.")
             : status === "cancelled"
               ? "The run was cancelled before it produced any units."
-              : "This pull request has no review units yet. Run the analysis to have Claude read the diff and group it."}
+              : `This pull request has no review units yet. Run the analysis to have ${agentName} read the diff and group it.`}
       </p>
 
       {error ? (

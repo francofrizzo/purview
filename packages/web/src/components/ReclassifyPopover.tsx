@@ -1,19 +1,21 @@
 import { useEffect, useRef } from "react";
 import { ATTENTIONS, KINDS, type Attention, type Kind, type ReviewUnit } from "../api/types";
+import { useChatAgentName } from "../lib/chat";
 import { IconChat } from "./icons";
 
 export function ReclassifyPopover({
   unit,
   onClose,
   onApply,
-  onAskClaude,
+  onAskAgent,
 }: {
   unit: ReviewUnit;
   onClose: () => void;
   onApply: (patch: Partial<ReviewUnit>) => void;
   /** Attaches this unit as a chat ref and opens the panel. */
-  onAskClaude?: () => void;
+  onAskAgent?: () => void;
 }) {
+  const agentName = useChatAgentName();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,18 +40,18 @@ export function ReclassifyPopover({
       className="surface absolute right-1 top-6 z-30 w-56 rounded-md p-2 elev-2"
       onClick={(e) => e.stopPropagation()}
     >
-      {onAskClaude ? (
+      {onAskAgent ? (
         <button
           type="button"
-          data-testid={`ask-claude-${unit.id}`}
+          data-testid={`ask-agent-${unit.id}`}
           className="btn mb-2 w-full justify-start"
           onClick={() => {
-            onAskClaude();
+            onAskAgent();
             onClose();
           }}
         >
           <IconChat width={11} height={11} />
-          ask Claude about this unit
+          ask {agentName} about this unit
         </button>
       ) : null}
       <div className="mb-1 text-2xs uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}>

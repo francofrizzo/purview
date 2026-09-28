@@ -395,7 +395,7 @@ function UnitRow({
       {popover ? (
         <ReclassifyPopover
           unit={unit}
-          onAskClaude={onQuote}
+          onAskAgent={onQuote}
           onClose={() => setPopover(false)}
           onApply={(patch) => {
             onReclassify(patch);

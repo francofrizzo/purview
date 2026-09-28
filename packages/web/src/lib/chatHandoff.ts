@@ -1,5 +1,5 @@
 /**
- * "Continue in Claude Code": the pure half. The panel owns the popover; this
+ * "Continue in <harness>": the pure half. The panel owns the popover; this
  * owns when the button is usable and how the command reaches the clipboard.
  */
 
@@ -22,7 +22,7 @@ export function handoffDisabledReason(input: {
   loopback: boolean;
 }): string | null {
   if (!input.loopback) return HANDOFF_LAN_REASON;
-  if (input.busy) return "Wait for Claude to finish replying";
+  if (input.busy) return "Wait for the reply to finish";
   if (input.messageCount === 0) return "Send a message first — there is no conversation to continue yet";
   return null;
 }

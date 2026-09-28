@@ -1665,7 +1665,7 @@ export function DiffPane({
             </button>
             {onQuote ? (
               <QuoteButton
-                title={`Ask Claude about ${row.path}`}
+                about={row.path}
                 onClick={() => onQuote({ kind: "file", path: row.path })}
               />
             ) : null}
@@ -1801,7 +1801,7 @@ export function DiffPane({
           </button>
           {onQuote ? (
             <QuoteButton
-              title="Ask Claude about this hunk"
+              about="this hunk"
               onClick={() => onQuote({ kind: "hunk", id: row.hunkId, path: row.entry.file.path })}
             />
           ) : null}

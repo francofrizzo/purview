@@ -60,9 +60,9 @@ export function lanQrSvg(url: string): Promise<string> {
 
 /**
  * The one line every surface repeats. The token is the only thing between the
- * network and a server that can spend Claude credits and write to GitHub, so
+ * network and a server that can run paid agent sessions and write to GitHub, so
  * it is never softened.
  */
 export const LAN_WARNING =
   "Anyone on this network who has that URL has full control of this Purview — " +
-  "it can spend Claude credits and post to GitHub on your behalf.";
+  "it can run agents on your account and post to GitHub on your behalf.";

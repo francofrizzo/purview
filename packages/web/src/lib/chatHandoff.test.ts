@@ -27,7 +27,7 @@ describe("handoffDisabledReason", () => {
   });
 
   it("explains a streaming turn", () => {
-    expect(handoffDisabledReason({ ...ok, busy: true })).toMatch(/finish replying/);
+    expect(handoffDisabledReason({ ...ok, busy: true })).toMatch(/reply to finish/);
   });
 
   it("names the LAN case first: nothing else would make it usable there", () => {

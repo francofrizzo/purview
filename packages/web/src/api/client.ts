@@ -931,8 +931,8 @@ export const api = {
   },
 
   /**
-   * The shell one-liner that continues this chat in the reader's own Claude
-   * Code. Loopback-only on the server; 409s `no_session` / `chat_busy`.
+   * The shell one-liner that continues this chat in the reader's own copy of
+   * the session's harness. Loopback-only on the server; 409s `no_session` / `chat_busy`.
    */
   async chatHandoff(key: string): Promise<ChatHandoff> {
     if (MOCK) return mockApi.chatHandoff(key);

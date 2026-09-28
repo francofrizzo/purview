@@ -516,8 +516,8 @@ function NetworkSection() {
           <span className="font-mono">pnpm start --lan</span> from a checkout, or{" "}
           <span className="font-mono">purview --lan</span> — and the QR code to scan appears both
           here and in the startup log. Only do it on a network you trust: the access token it
-          hands out is the only thing between that network and a Purview that can spend Claude
-          credits and post to GitHub as you.
+          hands out is the only thing between that network and a Purview that can run agents on
+          your account and post to GitHub as you.
         </p>
       ) : (
         <div className="flex flex-col gap-3">

@@ -166,7 +166,7 @@ export const IconSettings = (p: P) => (
   </svg>
 );
 
-/** Speech bubble with a spark — the Claude chat panel. */
+/** Speech bubble with a spark — the review chat panel. */
 export const IconChat = (p: P) => (
   <svg {...base} {...p}>
     <path d="M13.5 9.2A1.6 1.6 0 0 1 11.9 10.8H5.6L2.5 13.2V3.9A1.6 1.6 0 0 1 4.1 2.3h7.8a1.6 1.6 0 0 1 1.6 1.6z" />

@@ -327,7 +327,7 @@ function CheckoutSection({ config, save }: { config: RepoConfig; save: Save }) {
   return (
     <Section
       title="Local checkout"
-      hint="Claude reads the working tree here to answer questions about code the diff only touches partially, and analysis uses it for context."
+      hint="The agent reads the working tree here to answer questions about code the diff only touches partially, and analysis uses it for context."
     >
       <div className="flex items-center gap-2">
         <IconFile width={12} height={12} />

@@ -132,7 +132,7 @@ function lanPayload(): LanAccess {
     qrSvg: MOCK_QR_SVG,
     warning:
       "Anyone on this network who has that URL has full control of this Purview — " +
-      "it can spend Claude credits and post to GitHub on your behalf.",
+      "it can run agents on your account and post to GitHub on your behalf.",
   };
 }
 

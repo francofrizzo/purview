@@ -131,7 +131,7 @@ export function FileTree({
               style={{ background: selected ? "var(--bg-hover)" : "var(--bg-raised)" }}
             >
               <QuoteButton
-                title={`Ask Claude about ${kid.file!.path}`}
+                about={kid.file!.path}
                 onClick={() => onQuote({ kind: "file", path: kid.file!.path })}
               />
             </span>

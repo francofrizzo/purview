@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { errorText, isConfirmRequired } from "../api/errors";
+import { useAgentName } from "../api/hooks";
 import {
   isFileComment,
   type AddCommentInput,
@@ -10,10 +11,12 @@ import {
   type EditCommentResult,
 } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
+import { capitalized } from "../lib/agentSelection";
 import {
   canUndoAgentEdit,
   agentDeletedDrafts,
   compareCommentOrder,
+  isAgentActor,
   isByAgent,
 } from "../lib/comments";
 import { QuoteButton } from "./ChatPanel";
@@ -147,23 +150,24 @@ export function CommentComposer({
   );
 }
 
-/** "by Claude" — on a draft the review chat created. */
-export function ByClaudeChip({ comment }: { comment: Pick<DraftComment, "author"> }) {
+/** "by Claude" — on a draft the review chat created, named after the harness that wrote it. */
+export function ByAgentChip({ comment }: { comment: Pick<DraftComment, "author"> }) {
+  const name = useAgentName(isAgentActor(comment.author) ? comment.author.agent : null);
   if (!isByAgent(comment)) return null;
   return (
     <span
       className="chip flex-none"
-      data-testid="by-claude"
+      data-testid="by-agent"
       style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-      title="Drafted by Claude in the review chat"
+      title={`Drafted by ${name} in the review chat`}
     >
-      by Claude
+      by {name}
     </span>
   );
 }
 
 /** "edited by Claude · undo" — while the chat's latest edit to a draft is still in effect. */
-export function ClaudeEditNote({
+export function AgentEditNote({
   comment,
   onUndo,
   busy,
@@ -172,10 +176,11 @@ export function ClaudeEditNote({
   onUndo?: (id: string) => void;
   busy?: boolean;
 }) {
+  const name = useAgentName(isAgentActor(comment.lastEditedBy) ? comment.lastEditedBy.agent : null);
   if (!canUndoAgentEdit(comment)) return null;
   return (
     <p className="mt-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-      edited by Claude
+      edited by {name}
       {onUndo ? (
         <>
           {" · "}
@@ -186,7 +191,7 @@ export function ClaudeEditNote({
             style={{ color: "var(--fg-muted)" }}
             disabled={busy}
             onClick={() => onUndo(comment.id)}
-            title="Go back to the text this draft had before Claude's edit"
+            title={`Go back to the text this draft had before ${name}'s edit`}
           >
             undo
           </button>
@@ -194,6 +199,12 @@ export function ClaudeEditNote({
       ) : null}
     </p>
   );
+}
+
+/** An agent actor's name, e.g. in "Claude deleted a draft". */
+function AgentName({ actor }: { actor: DeletedComment["deletedBy"] }) {
+  const name = useAgentName(isAgentActor(actor) ? actor.agent : null);
+  return <>{capitalized(name)}</>;
 }
 
 export type EditComment = (input: {
@@ -483,12 +494,12 @@ export function DraftsDrawer({
           {chatDeleted.map((d) => (
             <li
               key={d.id}
-              data-testid={`claude-deleted-${d.id}`}
+              data-testid={`agent-deleted-${d.id}`}
               className="flex items-center gap-1.5 px-3 py-1.5 text-2xs"
               style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
             >
               <span className="min-w-0 flex-1 truncate" title={d.body}>
-                Claude deleted a draft on{" "}
+                <AgentName actor={d.deletedBy} /> deleted a draft on{" "}
                 <span className="font-mono">{commentAnchorLabel(d)}</span>
               </span>
               <button
@@ -535,14 +546,14 @@ export function DraftsDrawer({
                     {isFileComment(d) ? "(file)" : `:${d.line}`}
                   </span>
                   <StatusChip status={d.status ?? "draft"} />
-                  <ByClaudeChip comment={d} />
+                  <ByAgentChip comment={d} />
                 </button>
                 <CommentBody comment={d} edit={onEdit} />
-                <ClaudeEditNote comment={d} onUndo={onUndoEdit} busy={undoing} />
+                <AgentEditNote comment={d} onUndo={onUndoEdit} busy={undoing} />
                 <div className="mt-1 flex items-center gap-1.5">
                   {onQuote ? (
                     <QuoteButton
-                      title="Ask Claude about this comment"
+                      about="this comment"
                       onClick={() =>
                         onQuote(commentRef(d))
                       }
