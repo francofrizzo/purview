@@ -100,7 +100,8 @@ function columns(s: string, tabSize: number): number {
 
 type FlatRow =
   | { type: "file"; key: string; path: string; file: FileEntry }
-  | { type: "hunk"; key: string; hunkId: string; entry: HunkEntry }
+  /** `seam`: not its file's first hunk here, so it draws the divider above it */
+  | { type: "hunk"; key: string; hunkId: string; entry: HunkEntry; seam: boolean }
   | { type: "dod"; key: string; hunkId: string }
   | { type: "line"; key: string; hunkId: string; entry: HunkEntry; lineIdx: number }
   | { type: "split"; key: string; hunkId: string; entry: HunkEntry; rowIdx: number }
@@ -698,6 +699,7 @@ export function DiffPane({
     const w = `${wrap ? "w" : "n"}${codeFontSize}`;
     for (const entry of entries) {
       const { hunk, file } = entry;
+      const seam = file.path === lastFile;
       if (file.path !== lastFile) {
         if (showFileRows) {
           out.push({ type: "file", key: `f:${file.path}:${hunk.id}`, path: file.path, file });
@@ -707,7 +709,7 @@ export function DiffPane({
         }
         lastFile = file.path;
       }
-      out.push({ type: "hunk", key: `h:${hunk.id}`, hunkId: hunk.id, entry });
+      out.push({ type: "hunk", key: `h:${hunk.id}`, hunkId: hunk.id, entry, seam });
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
       }
@@ -1754,12 +1756,15 @@ export function DiffPane({
           data-collapsed={folded ? "true" : "false"}
           className="flex cursor-pointer items-center gap-2 px-3 py-1"
           style={{
-            // accent-soft is translucent; composite it over the inset ground
-            // so a pinned focused header stays opaque with code beneath it.
+            // A step lighter than the code, so a file's hunks read as
+            // separate blocks. accent-soft is translucent; composite it over
+            // that ground so a pinned focused header stays opaque.
             background: focused
-              ? "linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-inset)"
-              : "var(--bg-inset)",
+              ? "linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-hover)"
+              : "var(--bg-hover)",
             borderLeft: `2px solid ${focused ? "var(--accent)" : "transparent"}`,
+            // A drawn line, not a border: row heights stay what was measured.
+            boxShadow: row.seam ? "inset 0 1px 0 var(--border-strong)" : undefined,
             color: "var(--fg-muted)",
           }}
           title="Focus this hunk (j/k)"
