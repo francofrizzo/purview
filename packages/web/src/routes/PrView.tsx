@@ -1547,6 +1547,7 @@ export function PrView() {
             result={submitResult}
             submitError={submitReview.error as Error | null}
             onClose={() => setReviewOpen(false)}
+            onDeleteComments={(ids) => deleteComments.mutateAsync(ids)}
             onSaveBody={(body) => saveReviewBody.mutate(body)}
             onSubmit={(event: ReviewEvent, body: string) =>
               submitReview.mutate({ event, body }, { onSuccess: setSubmitResult })

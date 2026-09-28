@@ -57,6 +57,7 @@ export function FinishReviewPanel({
   onDiscardPending,
   onJumpToComment,
   onEditComment,
+  onDeleteComments,
   bundle,
   files,
   onProposeReanchor,
@@ -75,6 +76,8 @@ export function FinishReviewPanel({
   onDiscardPending: () => void;
   onJumpToComment: (file: string, line: number | null) => void;
   onEditComment?: EditComment;
+  /** bulk delete, for "copy & delete"; omit to offer only the plain copy */
+  onDeleteComments?: (ids: string[]) => Promise<unknown>;
   /** diff + PR identity for the agent-facing copy; omit to hide the action */
   bundle?: Omit<BundleSource, "comments" | "reviewBody">;
   /** the current diff, used to flag drafts that fell outside it — omit to skip the check */
@@ -166,6 +169,7 @@ export function FinishReviewPanel({
                 review={review}
                 onJump={onJumpToComment}
                 onEdit={onEditComment}
+                onDeleteCopied={onDeleteComments}
                 bundle={bundle}
                 reviewBody={body}
                 files={files}
@@ -201,8 +205,8 @@ export function FinishReviewPanel({
                     <button
                       key={e.event}
                       type="button"
-                      className="btn justify-center whitespace-nowrap px-2"
-                      style={{ color: e.tone }}
+                      className="btn justify-center whitespace-nowrap px-2 font-semibold hover:brightness-110"
+                      style={verdictFill(e.tone)}
                       disabled={submitting}
                       title={e.blurb}
                       onClick={() => setArming(e.event)}
@@ -219,6 +223,13 @@ export function FinishReviewPanel({
     </aside>
   );
 }
+
+/** A verdict button's solid fill: the verdict's own color, page-colored text. */
+const verdictFill = (tone: string): React.CSSProperties => ({
+  background: tone,
+  borderColor: tone,
+  color: "var(--bg)",
+});
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -340,7 +351,8 @@ function ConfirmStep({
         </button>
         <button
           type="button"
-          className="btn btn-primary ml-auto"
+          className="btn ml-auto font-semibold hover:brightness-110"
+          style={verdictFill(EVENTS.find((e) => e.event === event)?.tone ?? "var(--accent)")}
           onClick={onConfirm}
           disabled={submitting}
         >
@@ -407,6 +419,7 @@ function IncludedComments({
   review,
   onJump,
   onEdit,
+  onDeleteCopied,
   bundle,
   reviewBody,
   files,
@@ -416,6 +429,7 @@ function IncludedComments({
   review: ReviewStatus;
   onJump: (file: string, line: number | null) => void;
   onEdit?: EditComment;
+  onDeleteCopied?: (ids: string[]) => Promise<unknown>;
   bundle?: Omit<BundleSource, "comments" | "reviewBody">;
   /** the live textarea contents, so the copy matches what is on screen */
   reviewBody?: string;
@@ -438,6 +452,7 @@ function IncludedComments({
           testId="copy-bundle-review"
           className="mt-1.5"
           source={{ ...bundle, comments: review.included, reviewBody }}
+          onDeleteCopied={onDeleteCopied}
         />
       ) : null}
       {review.included.length === 0 ? (
