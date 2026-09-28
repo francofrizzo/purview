@@ -14,6 +14,7 @@ import {
   setGhRunner,
   writeLocalChatInstructions,
   writeLocalRubric,
+  readRepoConfig,
   writeRepoConfig,
   type AnalysisEffort,
   type ClaudeModel,
@@ -906,9 +907,8 @@ describe("/api/repos/:rkey/config", () => {
     expect(body.local).toEqual({
       autoAnalyze: null,
       repoPath: null,
-      analysisModel: null,
-      chatModel: null,
-      analysisEffort: null,
+      analysisAgent: null,
+      chatAgent: null,
       watchReviews: null,
       rubric: "",
       chatInstructions: "",
@@ -922,9 +922,17 @@ describe("/api/repos/:rkey/config", () => {
     expect(body.effective).toEqual({
       autoAnalyze: false,
       repoPath: null,
-      analysisModel: "sonnet",
-      chatModel: "sonnet",
-      analysisEffort: "medium",
+      analysisAgent: {
+        harness: "claude-code",
+        model: "sonnet",
+        effort: "medium",
+        sources: { harness: "default", model: "default", effort: "default" },
+      },
+      chatAgent: {
+        harness: "claude-code",
+        model: "sonnet",
+        sources: { harness: "default", model: "default" },
+      },
     });
   });
 
@@ -947,9 +955,8 @@ describe("/api/repos/:rkey/config", () => {
     expect(body.local).toEqual({
       autoAnalyze: true,
       repoPath: checkout.path,
-      analysisModel: null,
-      chatModel: null,
-      analysisEffort: null,
+      analysisAgent: null,
+      chatAgent: null,
       watchReviews: null,
       rubric: "# Local\n",
       chatInstructions: "# Local chat\n",
@@ -973,84 +980,73 @@ describe("/api/repos/:rkey/config", () => {
     expect(clearedBody.sources.autoAnalyze).toBe("committed");
   });
 
-  it("stores model choices per repo and reports their source", async () => {
+  it("stores agent selections per repo and reports their sources", async () => {
     ghFor({ contents: { ".purview/config.json": JSON.stringify({ chatModel: "haiku" }) } });
+    const put = (body: unknown) =>
+      app.request(`/api/repos/${encodedRepo}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
 
     const before = await (await app.request(`/api/repos/${encodedRepo}/config`)).json();
-    expect(before.effective.analysisModel).toBe("sonnet");
-    expect(before.sources.analysisModel).toBe("default");
-    expect(before.effective.chatModel).toBe("haiku");
-    expect(before.sources.chatModel).toBe("committed");
-
-    const put = await app.request(`/api/repos/${encodedRepo}/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisModel: "opus", chatModel: "opus" }),
+    expect(before.effective.analysisAgent).toMatchObject({ model: "sonnet", sources: { model: "default" } });
+    // The team's legacy `chatModel` reads as a Claude Code selection.
+    expect(before.effective.chatAgent).toMatchObject({
+      harness: "claude-code",
+      model: "haiku",
+      sources: { harness: "committed", model: "committed" },
     });
-    const body = await put.json();
-    expect(body.local.analysisModel).toBe("opus");
-    expect(body.effective).toMatchObject({ analysisModel: "opus", chatModel: "opus" });
-    expect(body.sources).toMatchObject({ analysisModel: "repo", chatModel: "repo" });
 
-    const cleared = await app.request(`/api/repos/${encodedRepo}/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chatModel: null }),
+    const body = await (
+      await put({
+        analysisAgent: { harness: "claude-code", model: "opus", effort: "high" },
+        chatAgent: { harness: "claude-code", model: "opus" },
+      })
+    ).json();
+    expect(body.local.analysisAgent).toEqual({ harness: "claude-code", model: "opus", effort: "high" });
+    expect(body.effective.analysisAgent).toMatchObject({
+      model: "opus",
+      effort: "high",
+      sources: { harness: "repo", model: "repo", effort: "repo" },
     });
-    const clearedBody = await cleared.json();
-    expect(clearedBody.local.chatModel).toBeNull();
-    expect(clearedBody.effective.chatModel).toBe("haiku");
-    expect(clearedBody.sources.chatModel).toBe("committed");
-    // analysisModel was not in the body, so it kept its value.
-    expect(clearedBody.local.analysisModel).toBe("opus");
+    expect(body.effective.chatAgent).toMatchObject({ model: "opus", sources: { model: "repo" } });
+
+    // A selection is written whole: naming only the harness drops the model.
+    const harnessOnly = await (await put({ analysisAgent: { harness: "claude-code", effort: "none" } })).json();
+    expect(harnessOnly.local.analysisAgent).toEqual({ harness: "claude-code", effort: "none" });
+    expect(harnessOnly.effective.analysisAgent).toMatchObject({ model: "sonnet", effort: "none" });
+
+    const cleared = await (await put({ chatAgent: null })).json();
+    expect(cleared.local.chatAgent).toBeNull();
+    expect(cleared.effective.chatAgent).toMatchObject({ model: "haiku", sources: { model: "committed" } });
+    // analysisAgent was not in the body, so it kept its value.
+    expect(cleared.local.analysisAgent).toEqual({ harness: "claude-code", effort: "none" });
   });
 
-  it("PUT accepts and persists analysisEffort, including the 'none' escape hatch", async () => {
-    const put = await app.request(`/api/repos/${encodedRepo}/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisEffort: "high" }),
-    });
-    const body = await put.json();
-    expect(body.local.analysisEffort).toBe("high");
-    expect(body.effective.analysisEffort).toBe("high");
-    expect(body.sources.analysisEffort).toBe("repo");
-
-    const none = await app.request(`/api/repos/${encodedRepo}/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisEffort: "none" }),
-    });
-    expect((await none.json()).local.analysisEffort).toBe("none");
-
-    const cleared = await app.request(`/api/repos/${encodedRepo}/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisEffort: null }),
-    });
-    const clearedBody = await cleared.json();
-    expect(clearedBody.local.analysisEffort).toBeNull();
-    expect(clearedBody.effective.analysisEffort).toBe("medium");
-    // A fresh global config pins nothing: medium is the harness's own default.
-    expect(clearedBody.sources.analysisEffort).toBe("default");
-  });
-
-  it("rejects an unknown model name", async () => {
-    const put = await app.request(`/api/repos/${encodedRepo}/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisModel: "claude-opus-4-6" }),
-    });
-    expect(put.status).toBe(400);
-  });
-
-  it("rejects an unknown effort value", async () => {
-    const put = await app.request(`/api/repos/${encodedRepo}/config`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisEffort: "extreme" }),
-    });
-    expect(put.status).toBe(400);
+  it("rejects a harness, model or effort the manifests do not offer, naming the choices", async () => {
+    const put = (body: unknown) =>
+      app.request(`/api/repos/${encodedRepo}/config`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    const model = await put({ analysisAgent: { harness: "claude-code", model: "claude-opus-4-6" } });
+    expect(model.status).toBe(400);
+    expect((await model.json()).detail).toBe(
+      'analysisAgent.model: "claude-opus-4-6" is not one of Claude Code\'s models: sonnet, opus, haiku',
+    );
+    const effort = await put({ analysisAgent: { harness: "claude-code", effort: "extreme" } });
+    expect((await effort.json()).detail).toBe(
+      'analysisAgent.effort: "extreme" is not one of Claude Code\'s effort levels: low, medium, high, none',
+    );
+    const harness = await put({ chatAgent: { harness: "elsewhere" } });
+    expect((await harness.json()).detail).toBe('chatAgent.harness: "elsewhere" is not available; available: claude-code');
+    // A chat has no effort, a selection always names its harness, and the old flat fields are gone.
+    expect((await put({ chatAgent: { harness: "claude-code", effort: "high" } })).status).toBe(400);
+    expect((await put({ analysisAgent: { model: "opus" } })).status).toBe(400);
+    expect((await put({ analysisModel: "opus" })).status).toBe(400);
+    expect(readRepoConfig(repo, root).analysisAgent).toBeNull();
   });
 
   it("rejects bad types, unknown keys and a missing directory", async () => {
@@ -1093,15 +1089,22 @@ describe("/api/repos/:rkey/config", () => {
 /* --------------------------------------------------------- global config */
 
 describe("/api/config", () => {
-  it("reports the machine-wide model settings and the built-in defaults", async () => {
+  it("reports the machine-wide agent selections and what they resolve to", async () => {
     const body = await (await app.request("/api/config")).json();
     expect(body).toEqual({
-      analysisModel: null,
-      chatModel: null,
-      // Medium is the harness's default now, not a value every config.json pins.
-      analysisEffort: null,
+      analysisAgent: null,
+      chatAgent: null,
       managedCheckouts: true,
-      defaults: { analysisModel: "sonnet", chatModel: "sonnet", analysisEffort: "medium" },
+      effective: {
+        // Medium is the harness's default now, not a value every config.json pins.
+        analysisAgent: {
+          harness: "claude-code",
+          model: "sonnet",
+          effort: "medium",
+          sources: { harness: "default", model: "default", effort: "default" },
+        },
+        chatAgent: { harness: "claude-code", model: "sonnet", sources: { harness: "default", model: "default" } },
+      },
     });
   });
 
@@ -1116,7 +1119,10 @@ describe("/api/config", () => {
       chatAgent: null,
     });
     const body = await (await app.request("/api/config")).json();
-    expect(body).toMatchObject({ analysisModel: "opus", analysisEffort: "medium", chatModel: null });
+    expect(body).toMatchObject({
+      analysisAgent: { harness: "claude-code", model: "opus", effort: "medium" },
+      chatAgent: null,
+    });
     // Existing installs keep resolving effort from the global layer, as before.
     expect(effectiveConfig(key, root).analysisAgent.effort).toEqual({ value: "medium", source: "global" });
   });
@@ -1125,16 +1131,16 @@ describe("/api/config", () => {
     const bad = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisModel: "gpt-9" }),
+      body: JSON.stringify({ analysisAgent: { harness: "claude-code", model: "gpt-9" } }),
     });
     expect(bad.status).toBe(400);
     expect((await bad.json()).detail).toBe(
-      "analysisModel: \"gpt-9\" is not one of Claude Code's models: sonnet, opus, haiku",
+      'analysisAgent.model: "gpt-9" is not one of Claude Code\'s models: sonnet, opus, haiku',
     );
     const effort = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisEffort: "max" }),
+      body: JSON.stringify({ analysisAgent: { harness: "claude-code", effort: "max" } }),
     });
     expect(effort.status).toBe(400);
   });
@@ -1161,14 +1167,19 @@ describe("/api/config", () => {
     const put = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisModel: "haiku" }),
+      body: JSON.stringify({ analysisAgent: { harness: "claude-code", model: "haiku", effort: "none" } }),
     });
     expect(put.status).toBe(200);
-    expect((await put.json()).analysisModel).toBe("haiku");
+    expect((await put.json()).effective.analysisAgent).toMatchObject({
+      model: "haiku",
+      effort: "none",
+      sources: { harness: "global", model: "global", effort: "global" },
+    });
 
     const resolved = effectiveConfig(key, root);
     expect(resolved.analysisAgent.model).toEqual({ value: "haiku", source: "global" });
-    expect(readConfig(root).analysisAgent).toEqual({ harness: "claude-code", model: "haiku" });
+    expect(resolved.analysisAgent.effort).toEqual({ value: "none", source: "global" });
+    expect(readConfig(root).analysisAgent).toEqual({ harness: "claude-code", model: "haiku", effort: "none" });
     // The other agent was not written, so it still inherits the built-in default.
     expect(resolved.chatAgent.model).toEqual({ value: "sonnet", source: "default" });
 
@@ -1176,9 +1187,12 @@ describe("/api/config", () => {
     const second = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chatModel: "opus" }),
+      body: JSON.stringify({ chatAgent: { harness: "claude-code", model: "opus" } }),
     });
-    expect(await second.json()).toMatchObject({ analysisModel: "haiku", chatModel: "opus" });
+    expect(await second.json()).toMatchObject({
+      analysisAgent: { model: "haiku" },
+      chatAgent: { harness: "claude-code", model: "opus" },
+    });
   });
 
   it("null re-inherits the built-in default", async () => {
@@ -1186,41 +1200,19 @@ describe("/api/config", () => {
     const put = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chatModel: null }),
+      body: JSON.stringify({ chatAgent: null }),
     });
-    expect((await put.json()).chatModel).toBeNull();
+    expect((await put.json()).chatAgent).toBeNull();
     expect(effectiveConfig(key, root).chatAgent.model.source).toBe("default");
   });
 
-  it("PUT accepts and persists analysisEffort at the global layer, including 'none'", async () => {
-    const put = await app.request("/api/config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisEffort: "low" }),
-    });
-    expect(put.status).toBe(200);
-    expect((await put.json()).analysisEffort).toBe("low");
-    expect(effectiveConfig(key, root).analysisAgent.effort).toEqual({ value: "low", source: "global" });
-
-    const none = await app.request("/api/config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisEffort: "none" }),
-    });
-    expect((await none.json()).analysisEffort).toBe("none");
-    expect(effectiveConfig(key, root).analysisAgent.effort).toEqual({ value: "none", source: "global" });
-
-    const cleared = await app.request("/api/config", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisEffort: null }),
-    });
-    expect((await cleared.json()).analysisEffort).toBeNull();
-    expect(effectiveConfig(key, root).analysisAgent.effort).toEqual({ value: "medium", source: "default" });
-  });
-
-  it("400s on an unknown model or an unknown key", async () => {
-    for (const bad of [{ chatModel: "gpt-5" }, { autoAnalyze: true }, { chatModel: 3 }]) {
+  it("400s on an unknown model, an unknown key or a flat field", async () => {
+    for (const bad of [
+      { chatAgent: { harness: "claude-code", model: "gpt-5" } },
+      { autoAnalyze: true },
+      { chatAgent: { harness: "claude-code", model: 3 } },
+      { chatModel: "opus" },
+    ]) {
       const res = await app.request("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1230,3 +1222,22 @@ describe("/api/config", () => {
     }
   });
 });
+
+describe("/api/agents", () => {
+  it("lists every harness's manifest, without its prompt vocabulary", async () => {
+    const body = await (await app.request("/api/agents")).json();
+    expect(body.default).toBe("claude-code");
+    expect(body.harnesses).toEqual([
+      {
+        id: "claude-code",
+        name: "Claude Code",
+        agentName: "Claude",
+        models: expect.arrayContaining([expect.objectContaining({ id: "sonnet" })]),
+        efforts: ["low", "medium", "high", "none"],
+        defaults: { model: "sonnet", effort: "medium" },
+        capabilities: { resume: true, handoff: true },
+      },
+    ]);
+  });
+});
+

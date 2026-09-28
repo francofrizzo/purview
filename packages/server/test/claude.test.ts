@@ -1703,12 +1703,15 @@ describe("model selection", () => {
 
   it("400s a chat pin the harness does not offer", async () => {
     buildFixture(root);
-    const res = await app.request(`/api/prs/${encodedKey}/chat/model`, {
+    const res = await app.request(`/api/prs/${encodedKey}/chat/agent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "gpt-9" }),
+      body: JSON.stringify({ agent: { harness: "claude-code", model: "gpt-9" } }),
     });
     expect(res.status).toBe(400);
+    expect((await res.json()).detail).toBe(
+      'agent.model: "gpt-9" is not one of Claude Code\'s models: sonnet, opus, haiku',
+    );
     expect(readChat(key, root).agent).toBeNull();
   });
 
@@ -1741,22 +1744,22 @@ describe("model selection", () => {
     expect(modelOf(claude.runs[1].argv)).toBe("haiku");
   });
 
-  it("POST /chat/model pins the session, and the next spawn uses it", async () => {
+  it("POST /chat/agent pins the session, and the next spawn uses it", async () => {
     buildFixture(root);
     await sendChat("first");
     expect(modelOf(claude.runs[0].argv)).toBe("sonnet");
 
-    const res = await app.request(`/api/prs/${encodedKey}/chat/model`, {
+    const res = await app.request(`/api/prs/${encodedKey}/chat/agent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "opus" }),
+      body: JSON.stringify({ agent: { harness: "claude-code", model: "opus" } }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({
-      model: "opus",
-      sessionModel: "opus",
-      configuredModel: "sonnet",
+      agent: { harness: "claude-code", model: "opus", sources: { harness: "chat", model: "chat" } },
+      sessionAgent: { harness: "claude-code", model: "opus" },
+      configuredAgent: { harness: "claude-code", model: "sonnet" },
       // `claude --resume` accepts a different --model, so the transcript stays.
       restartedSession: false,
     });
@@ -1768,8 +1771,9 @@ describe("model selection", () => {
     expect(second.argv).toContain("--resume");
 
     const state = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
-    expect(state.model).toBe("opus");
-    expect(state.sessionModel).toBe("opus");
+    expect(state.agent.model).toBe("opus");
+    expect(state.sessionAgent).toEqual({ harness: "claude-code", model: "opus" });
+    expect(state.sessionHarness).toBe("claude-code");
     expect(state.messages).toHaveLength(4);
   });
 
@@ -1782,62 +1786,69 @@ describe("model selection", () => {
     );
     const before = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
     expect(before).toMatchObject({
-      model: "haiku",
-      configuredModel: "haiku",
-      configuredModelSource: "repo",
-      sessionModel: null,
+      agent: { model: "haiku" },
+      configuredAgent: { harness: "claude-code", model: "haiku", sources: { harness: "repo", model: "repo" } },
+      sessionAgent: null,
     });
 
-    await app.request(`/api/prs/${encodedKey}/chat/model`, {
+    await app.request(`/api/prs/${encodedKey}/chat/agent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "opus" }),
+      body: JSON.stringify({ agent: { harness: "claude-code", model: "opus" } }),
     });
     const pinned = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
-    expect(pinned).toMatchObject({ model: "opus", configuredModel: "haiku", sessionModel: "opus" });
+    expect(pinned).toMatchObject({
+      agent: { model: "opus" },
+      configuredAgent: { model: "haiku" },
+      sessionAgent: { model: "opus" },
+    });
 
     // null un-pins and falls back to the repo setting again.
-    await app.request(`/api/prs/${encodedKey}/chat/model`, {
+    await app.request(`/api/prs/${encodedKey}/chat/agent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: null }),
+      body: JSON.stringify({ agent: null }),
     });
     const cleared = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
-    expect(cleared).toMatchObject({ model: "haiku", sessionModel: null });
+    expect(cleared).toMatchObject({ agent: { model: "haiku" }, sessionAgent: null });
   });
 
-  it("400s on an unknown model, a missing field or an extra key", async () => {
+  it("400s on an unknown harness or model, a missing field or an extra key", async () => {
     buildFixture(root);
     const post = (body: unknown) =>
-      app.request(`/api/prs/${encodedKey}/chat/model`, {
+      app.request(`/api/prs/${encodedKey}/chat/agent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
     for (const bad of [
-      { model: "gpt-5" },
-      { model: "claude-sonnet-5" },
+      { agent: { harness: "claude-code", model: "gpt-5" } },
+      { agent: { harness: "claude-code", model: "claude-sonnet-5" } },
+      { agent: { harness: "elsewhere", model: "sonnet" } },
+      { agent: { harness: "claude-code", effort: "high" } },
+      { agent: { model: "sonnet" } },
+      { model: "sonnet" },
       {},
-      { model: "sonnet", restart: true },
+      { agent: null, restart: true },
     ]) {
       expect((await post(bad)).status).toBe(400);
     }
     // ...and the session is untouched by a rejected write.
     const state = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
-    expect(state.sessionModel).toBeNull();
+    expect(state.sessionAgent).toBeNull();
   });
 
   it("clearing the conversation drops the pin along with the transcript", async () => {
     buildFixture(root);
-    await app.request(`/api/prs/${encodedKey}/chat/model`, {
+    await app.request(`/api/prs/${encodedKey}/chat/agent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "opus" }),
+      body: JSON.stringify({ agent: { harness: "claude-code", model: "opus" } }),
     });
     await app.request(`/api/prs/${encodedKey}/chat`, { method: "DELETE" });
     const after = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
-    expect(after.sessionModel).toBeNull();
-    expect(after.model).toBe("sonnet");
+    expect(after.sessionAgent).toBeNull();
+    expect(after.agent.model).toBe("sonnet");
   });
 });
 

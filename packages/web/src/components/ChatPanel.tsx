@@ -19,8 +19,17 @@ import {
 } from "react";
 import { Link } from "react-router-dom";
 import { api, errorText } from "../api/client";
-import { CLAUDE_MODELS } from "../api/types";
-import type { ChatHandoff, ChatRef, ClaudeModel, DraftComment, PrDetail } from "../api/types";
+import { useAgents } from "../api/hooks";
+import type {
+  AgentsInfo,
+  ChatHandoff,
+  ChatRef,
+  DraftComment,
+  HarnessManifest,
+  PrDetail,
+  ResolvedAgent,
+} from "../api/types";
+import { editSelection, manifestOf, modelLabel, modelOptions } from "../lib/agentSelection";
 import { copyText, handoffDisabledReason, isLoopbackHostname } from "../lib/chatHandoff";
 import { refContext, refKey, refLabel, refTitle } from "../lib/chatRefs";
 import { useChat, type LocalMessage, type ToolActivity } from "../lib/chat";
@@ -268,6 +277,7 @@ export function ChatPanel({
   comments: DraftComment[];
 }) {
   const chat = useChat();
+  const { data: agents } = useAgents();
   const { settings, update } = useSettings();
   const [draft, setDraft] = useState("");
   const [dragWidth, setDragWidth] = useState<number | null>(null);
@@ -438,13 +448,22 @@ export function ChatPanel({
             thinking…
           </span>
         ) : null}
-        <ModelSelect
-          className="ml-auto"
-          value={chat.model}
-          configured={chat.configuredModel}
-          pinned={chat.sessionModel !== null}
-          onChange={(m) => void chat.setModel(m)}
-        />
+        {chat.agent && chat.configuredAgent ? (
+          <ModelSelect
+            className="ml-auto"
+            manifest={manifestOf(agents, chat.agent.harness)}
+            value={chat.agent.model}
+            configured={modelLabel(manifestOf(agents, chat.configuredAgent.harness), chat.configuredAgent.model)}
+            pinned={chat.sessionAgent?.model !== undefined}
+            onChange={(m) =>
+              void chat.setAgent(
+                editSelection(chat.sessionAgent, "model", m, chat.agent!.harness, chat.configuredAgent!.harness),
+              )
+            }
+          />
+        ) : (
+          <span className="ml-auto" />
+        )}
         <HandoffButton prKey={prKey} messageCount={chat.messages.length} busy={chat.busy} />
         <button
           type="button"
@@ -680,18 +699,9 @@ export function ChatPanel({
           <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
             {chat.busy ? "streaming the reply…" : `${chat.effectiveRefs.length || "no"} refs attached`}
           </span>
-          <span
-            className="font-mono text-2xs"
-            data-testid="chat-active-model"
-            title={
-              chat.sessionModel
-                ? `Pinned for this conversation (the repo default is ${chat.configuredModel})`
-                : `From the ${chat.configuredModelSource} setting`
-            }
-            style={{ color: "var(--fg-faint)" }}
-          >
-            {chat.model}
-          </span>
+          {chat.agent ? (
+            <ActiveModel agent={chat.agent} configured={chat.configuredAgent} manifests={agents} />
+          ) : null}
           <button
             type="button"
             data-testid="chat-send"
@@ -707,8 +717,35 @@ export function ChatPanel({
   );
 }
 
+/** The model the next message will use, and where that choice came from. */
+function ActiveModel({
+  agent,
+  configured,
+  manifests,
+}: {
+  agent: ResolvedAgent;
+  configured: ResolvedAgent | null;
+  manifests: AgentsInfo | undefined;
+}) {
+  const label = (a: ResolvedAgent) => modelLabel(manifestOf(manifests, a.harness), a.model);
+  return (
+    <span
+      className="font-mono text-2xs"
+      data-testid="chat-active-model"
+      title={
+        agent.sources.model === "chat"
+          ? `Pinned for this conversation${configured ? ` (the repo default is ${label(configured)})` : ""}`
+          : `From the ${agent.sources.model} setting`
+      }
+      style={{ color: "var(--fg-faint)" }}
+    >
+      {label(agent)}
+    </span>
+  );
+}
+
 /**
- * The model the next message will use.
+ * The model the next message will use, from the harness's manifest.
  *
  * A native select rather than a segmented control: three options plus the
  * "inherit" row do not fit a 320px panel header side by side, and the current
@@ -718,16 +755,19 @@ export function ChatPanel({
  * the CLI resumes a session happily under a different model.
  */
 function ModelSelect({
+  manifest,
   value,
   configured,
   pinned,
   onChange,
   className,
 }: {
-  value: ClaudeModel;
-  configured: ClaudeModel;
+  manifest: HarnessManifest | undefined;
+  value: string;
+  /** what "inherit" resolves to, as shown */
+  configured: string;
   pinned: boolean;
-  onChange: (model: ClaudeModel | null) => void;
+  onChange: (model: string | null) => void;
   className?: string;
 }) {
   return (
@@ -738,7 +778,7 @@ function ModelSelect({
         className="cursor-pointer rounded px-1 py-px text-2xs font-medium outline-none"
         title={`Model for the next message${pinned ? " (pinned for this conversation)" : ""}`}
         value={pinned ? value : "inherit"}
-        onChange={(e) => onChange(e.target.value === "inherit" ? null : (e.target.value as ClaudeModel))}
+        onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
         style={{
           background: "var(--bg-inset)",
           border: "1px solid var(--border)",
@@ -746,9 +786,9 @@ function ModelSelect({
         }}
       >
         <option value="inherit">{configured} (default)</option>
-        {CLAUDE_MODELS.map((m) => (
-          <option key={m} value={m}>
-            {m}
+        {modelOptions(manifest).map((m) => (
+          <option key={m.value} value={m.value}>
+            {m.label}
           </option>
         ))}
       </select>

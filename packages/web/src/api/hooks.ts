@@ -20,6 +20,7 @@ import type {
   DeletedComment,
   DraftComment,
   EditCommentResult,
+  AgentsInfo,
   GlobalConfig,
   GlobalConfigPatch,
   ImportFromPrResult,
@@ -50,6 +51,7 @@ export const qk = {
   repoConfig: (rkey: string) => ["repo-config", rkey] as const,
   repoRemoval: (rkey: string) => ["repo-removal", rkey] as const,
   config: ["config"] as const,
+  agents: ["agents"] as const,
   lan: ["lan"] as const,
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
@@ -269,6 +271,11 @@ export function useImportReviews(
 }
 
 /* ----------------------------------------------------------- global config */
+
+/** The harnesses the server can run. Fixed for the server's lifetime. */
+export function useAgents() {
+  return useQuery<AgentsInfo>({ queryKey: qk.agents, queryFn: api.getAgents, staleTime: Infinity, retry: false });
+}
 
 export function useGlobalConfig() {
   return useQuery<GlobalConfig>({ queryKey: qk.config, queryFn: api.getConfig, retry: false });

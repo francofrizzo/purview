@@ -2,7 +2,11 @@ import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import { isFileComment } from "../api/types";
 import type {
-  AnalysisEffort,
+  AgentSelection,
+  AgentsInfo,
+  ChatAgentSelection,
+  ConfigSource,
+  ResolvedAgent,
   AnalysisImportReport,
   AnalysisJob,
   AnalysisPending,
@@ -21,8 +25,7 @@ import type {
   PrDetail,
   PrListEntry,
   ChatHandoff,
-  ChatModelResult,
-  ClaudeModel,
+  ChatAgentResult,
   GlobalConfig,
   GlobalConfigPatch,
   LanAccess,
@@ -78,22 +81,34 @@ const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 /** The built-in fallback the server applies when nothing overrides it. */
 const DEFAULT_AUTO_ANALYZE = false;
 
-/** The real server's built-in model default; `null` anywhere resolves to it. */
-const DEFAULT_MODEL: ClaudeModel = "sonnet";
-
-/** The real server's built-in effort default (config.ts); `null` resolves to it. */
-const DEFAULT_EFFORT: AnalysisEffort = "medium";
+/** `/api/agents`: the one harness the real server has today. */
+export const MOCK_AGENTS: AgentsInfo = {
+  default: "claude-code",
+  harnesses: [
+    {
+      id: "claude-code",
+      name: "Claude Code",
+      agentName: "Claude",
+      models: [
+        { id: "sonnet", label: "Sonnet" },
+        { id: "opus", label: "Opus" },
+        { id: "haiku", label: "Haiku" },
+      ],
+      efforts: ["low", "medium", "high", "none"],
+      defaults: { model: "sonnet", effort: "medium" },
+      capabilities: { resume: true, handoff: true },
+    },
+  ],
+};
 
 /** `~/.purview/config.json`, the outermost layer. */
 const globalConfig: {
-  analysisModel: ClaudeModel | null;
-  chatModel: ClaudeModel | null;
-  analysisEffort: AnalysisEffort | null;
+  analysisAgent: AgentSelection | null;
+  chatAgent: ChatAgentSelection | null;
   managedCheckouts: boolean;
 } = {
-  analysisModel: null,
-  chatModel: null,
-  analysisEffort: null,
+  analysisAgent: null,
+  chatAgent: null,
   managedCheckouts: true,
 };
 
@@ -121,37 +136,70 @@ function lanPayload(): LanAccess {
   };
 }
 
-/** Per-conversation model pins, keyed like the transcripts. */
-const chatModels: Record<string, ClaudeModel | null> = {};
+/** Per-conversation agent pins, keyed like the transcripts. */
+const chatAgents: Record<string, ChatAgentSelection | null> = {};
 
-type Source = NonNullable<RepoConfig["sources"]>["chatModel"];
-
-/** Mirrors repo-config.ts: repo local > committed > global > built-in. */
-function resolveModel(
-  rkey: string,
-  field: "analysisModel" | "chatModel",
-): { value: ClaudeModel; source: Source } {
-  const config = repoConfigs[rkey];
-  const local = config?.local[field] ?? null;
-  const committed = (config?.committed.config as Record<string, ClaudeModel> | null)?.[field];
-  const global = globalConfig[field];
-  if (local) return { value: local, source: "repo" };
-  if (committed) return { value: committed, source: "committed" };
-  if (global) return { value: global, source: "global" };
-  return { value: DEFAULT_MODEL, source: "default" };
+/**
+ * Mirrors repo-config.ts's `resolveAgent`: the harness is the first one any
+ * layer names, and a model or effort counts only from a layer naming it too.
+ */
+function resolveMockAgent(
+  candidates: [ConfigSource, AgentSelection | null | undefined][],
+  withEffort: boolean,
+): ResolvedAgent {
+  const named = candidates.find(([, sel]) => sel);
+  const harness = named ? named[1]!.harness : MOCK_AGENTS.default;
+  const manifest = MOCK_AGENTS.harnesses.find((h) => h.id === harness);
+  const same = candidates.filter(([, sel]) => sel?.harness === harness);
+  const pick = (field: "model" | "effort") => {
+    const hit = same.find(([, sel]) => sel?.[field] !== undefined);
+    return hit
+      ? { value: hit[1]![field]!, source: hit[0] }
+      : { value: manifest?.defaults[field] ?? "", source: "default" as const };
+  };
+  const model = pick("model");
+  const effort = withEffort ? pick("effort") : undefined;
+  return {
+    harness,
+    model: model.value,
+    ...(effort ? { effort: effort.value } : {}),
+    sources: {
+      harness: named ? named[0] : "default",
+      model: model.source,
+      ...(effort ? { effort: effort.source } : {}),
+    },
+    ...(manifest ? {} : { problem: `The agent "${harness}" is not available here.` }),
+  };
 }
 
-/** Same precedence as `resolveModel`, kept separate: "none" is a real pinned value here, not an absence. */
-function resolveEffort(rkey: string): { value: AnalysisEffort; source: Source } {
-  const config = repoConfigs[rkey];
-  const local = config?.local.analysisEffort ?? null;
-  const committed = (config?.committed.config as { analysisEffort?: AnalysisEffort } | null)
-    ?.analysisEffort;
-  const global = globalConfig.analysisEffort;
-  if (local) return { value: local, source: "repo" };
-  if (committed) return { value: committed, source: "committed" };
-  if (global) return { value: global, source: "global" };
-  return { value: DEFAULT_EFFORT, source: "default" };
+function committedAgents(rkey: string): { analysisAgent?: AgentSelection; chatAgent?: ChatAgentSelection } {
+  return (repoConfigs[rkey]?.committed.config ?? {}) as {
+    analysisAgent?: AgentSelection;
+    chatAgent?: ChatAgentSelection;
+  };
+}
+
+function resolveRepoAgent(rkey: string, kind: "analysis" | "chat", pin?: ChatAgentSelection | null): ResolvedAgent {
+  const field = kind === "analysis" ? "analysisAgent" : "chatAgent";
+  return resolveMockAgent(
+    [
+      ...(pin !== undefined ? [["chat", pin] as [ConfigSource, AgentSelection | null]] : []),
+      ["repo", repoConfigs[rkey]?.local[field]],
+      ["committed", committedAgents(rkey)[field]],
+      ["global", globalConfig[field]],
+    ],
+    kind === "analysis",
+  );
+}
+
+function globalPayload(): GlobalConfig {
+  return {
+    ...structuredClone(globalConfig),
+    effective: {
+      analysisAgent: resolveMockAgent([["global", globalConfig.analysisAgent]], true),
+      chatAgent: resolveMockAgent([["global", globalConfig.chatAgent]], false),
+    },
+  };
 }
 
 /**
@@ -163,15 +211,11 @@ function relayer(rkey: string): void {
   const config = repoConfigs[rkey];
   if (!config) return;
   const committed = config.committed.config as { autoAnalyze?: boolean } | null;
-  const analysisModel = resolveModel(rkey, "analysisModel");
-  const chatModel = resolveModel(rkey, "chatModel");
-  const analysisEffort = resolveEffort(rkey);
   config.effective = {
     autoAnalyze: config.local.autoAnalyze ?? committed?.autoAnalyze ?? DEFAULT_AUTO_ANALYZE,
     repoPath: config.local.repoPath,
-    analysisModel: analysisModel.value,
-    chatModel: chatModel.value,
-    analysisEffort: analysisEffort.value,
+    analysisAgent: resolveRepoAgent(rkey, "analysis"),
+    chatAgent: resolveRepoAgent(rkey, "chat"),
   };
   config.sources = {
     autoAnalyze:
@@ -181,9 +225,6 @@ function relayer(rkey: string): void {
           ? "committed"
           : "default",
     repoPath: config.local.repoPath ? "repo" : "default",
-    analysisModel: analysisModel.source,
-    chatModel: chatModel.source,
-    analysisEffort: analysisEffort.source,
   };
 }
 
@@ -218,9 +259,8 @@ function syncRepoCounts() {
         local: {
           autoAnalyze: null,
           repoPath: null,
-          analysisModel: null,
-          chatModel: null,
-          analysisEffort: null,
+          analysisAgent: null,
+          chatAgent: null,
           watchReviews: null,
           rubric: "",
           chatInstructions: "",
@@ -229,17 +269,10 @@ function syncRepoCounts() {
         effective: {
           autoAnalyze: DEFAULT_AUTO_ANALYZE,
           repoPath: null,
-          analysisModel: DEFAULT_MODEL,
-          chatModel: DEFAULT_MODEL,
-          analysisEffort: DEFAULT_EFFORT,
+          analysisAgent: resolveMockAgent([["global", globalConfig.analysisAgent]], true),
+          chatAgent: resolveMockAgent([["global", globalConfig.chatAgent]], false),
         },
-        sources: {
-          autoAnalyze: "default",
-          repoPath: "default",
-          analysisModel: "default",
-          chatModel: "default",
-          analysisEffort: "default",
-        },
+        sources: { autoAnalyze: "default", repoPath: "default" },
       };
     }
   }
@@ -605,25 +638,23 @@ export const mockApi = {
 
   /* ---------------------------------------------------------- global config */
 
+  async getAgents(): Promise<AgentsInfo> {
+    await delay(40);
+    return structuredClone(MOCK_AGENTS);
+  },
+
   async getConfig(): Promise<GlobalConfig> {
     await delay(80);
-    return {
-      ...globalConfig,
-      defaults: { analysisModel: DEFAULT_MODEL, chatModel: DEFAULT_MODEL, analysisEffort: DEFAULT_EFFORT },
-    };
+    return globalPayload();
   },
 
   async saveConfig(patch: GlobalConfigPatch): Promise<GlobalConfig> {
     await delay(180);
-    if (patch.analysisModel !== undefined) globalConfig.analysisModel = patch.analysisModel;
-    if (patch.chatModel !== undefined) globalConfig.chatModel = patch.chatModel;
-    if (patch.analysisEffort !== undefined) globalConfig.analysisEffort = patch.analysisEffort;
+    if (patch.analysisAgent !== undefined) globalConfig.analysisAgent = patch.analysisAgent;
+    if (patch.chatAgent !== undefined) globalConfig.chatAgent = patch.chatAgent;
     if (patch.managedCheckouts !== undefined) globalConfig.managedCheckouts = patch.managedCheckouts;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
-    return {
-      ...globalConfig,
-      defaults: { analysisModel: DEFAULT_MODEL, chatModel: DEFAULT_MODEL, analysisEffort: DEFAULT_EFFORT },
-    };
+    return globalPayload();
   },
 
   async getLan(): Promise<LanAccess> {
@@ -648,9 +679,8 @@ export const mockApi = {
     if (!config) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
     if (patch.autoAnalyze !== undefined) config.local.autoAnalyze = patch.autoAnalyze;
     if (patch.repoPath !== undefined) config.local.repoPath = patch.repoPath || null;
-    if (patch.analysisModel !== undefined) config.local.analysisModel = patch.analysisModel;
-    if (patch.chatModel !== undefined) config.local.chatModel = patch.chatModel;
-    if (patch.analysisEffort !== undefined) config.local.analysisEffort = patch.analysisEffort;
+    if (patch.analysisAgent !== undefined) config.local.analysisAgent = patch.analysisAgent;
+    if (patch.chatAgent !== undefined) config.local.chatAgent = patch.chatAgent;
     if (patch.watchReviews !== undefined) config.local.watchReviews = patch.watchReviews;
     if (patch.rubric !== undefined) config.local.rubric = patch.rubric;
     if (patch.chatInstructions !== undefined) config.local.chatInstructions = patch.chatInstructions;
@@ -662,9 +692,8 @@ export const mockApi = {
       summary.hasLocalConfig =
         config.local.autoAnalyze !== null ||
         Boolean(config.local.repoPath) ||
-        Boolean(config.local.analysisModel) ||
-        Boolean(config.local.chatModel) ||
-        Boolean(config.local.analysisEffort) ||
+        Boolean(config.local.analysisAgent) ||
+        Boolean(config.local.chatAgent) ||
         config.local.watchReviews !== null ||
         Boolean(config.local.rubric.trim()) ||
         Boolean(config.local.chatInstructions.trim());
@@ -1404,30 +1433,36 @@ export const mockApi = {
   async getChat(key: string): Promise<ChatState> {
     await delay(60);
     const messages = chats[key] ?? [];
-    const configured = resolveModel(repoKeyOfPr(key), "chatModel");
-    const sessionModel = chatModels[key] ?? null;
+    const rkey = repoKeyOfPr(key);
+    const pin = chatAgents[key] ?? null;
     return {
       messages: structuredClone(messages),
       sessionId: messages.length ? `mock-session-${key}` : null,
+      sessionHarness: messages.length ? MOCK_AGENTS.default : null,
       busy: false,
-      model: sessionModel ?? configured.value,
-      configuredModel: configured.value,
-      configuredModelSource: configured.source,
-      sessionModel,
+      agent: resolveRepoAgent(rkey, "chat", pin),
+      configuredAgent: resolveRepoAgent(rkey, "chat"),
+      sessionAgent: structuredClone(pin),
     };
   },
 
-  async setChatModel(key: string, model: ClaudeModel | null): Promise<ChatModelResult> {
+  async setChatAgent(key: string, agent: ChatAgentSelection | null): Promise<ChatAgentResult> {
     await delay(140);
-    chatModels[key] = model;
-    const configured = resolveModel(repoKeyOfPr(key), "chatModel");
+    if (agent) {
+      const manifest = MOCK_AGENTS.harnesses.find((h) => h.id === agent.harness);
+      if (!manifest || (agent.model && !manifest.models.some((m) => m.id === agent.model))) {
+        throw new ApiError("invalid_body", 400, `agent: ${JSON.stringify(agent)} is not available`);
+      }
+    }
+    chatAgents[key] = agent;
+    const rkey = repoKeyOfPr(key);
+    const resolved = resolveRepoAgent(rkey, "chat", agent);
     return {
-      model: model ?? configured.value,
-      configuredModel: configured.value,
-      configuredModelSource: configured.source,
-      sessionModel: model,
-      // The real CLI resumes a session under a different model, so the
-      // transcript survives; the mock says the same thing.
+      agent: resolved,
+      configuredAgent: resolveRepoAgent(rkey, "chat"),
+      sessionAgent: structuredClone(agent),
+      // One harness in the mock, and the CLI resumes a session under a
+      // different model, so the transcript always survives.
       restartedSession: false,
     };
   },
@@ -1435,7 +1470,7 @@ export const mockApi = {
   async clearChat(key: string): Promise<void> {
     await delay(90);
     chats[key] = [];
-    chatModels[key] = null;
+    chatAgents[key] = null;
   },
 
   /**

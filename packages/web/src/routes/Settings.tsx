@@ -1,13 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
 import { errorText } from "../api/errors";
 import {
+  useAgents,
   useGlobalConfig,
   useLanAccess,
   useRegenerateLanToken,
   useSaveGlobalConfig,
 } from "../api/hooks";
-import { ANALYSIS_EFFORTS, CLAUDE_MODELS } from "../api/types";
-import type { AnalysisEffort, ClaudeModel } from "../api/types";
+import type { AgentSelection, AgentsInfo, ResolvedAgent } from "../api/types";
+import {
+  editSelection,
+  effortOptions,
+  harnessOptions,
+  inheritedHarness,
+  manifestOf,
+  modelLabel,
+  modelOptions,
+  offersHarnessChoice,
+} from "../lib/agentSelection";
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
 import { Modal, useCloseModal } from "../components/Modal";
 import { IconSettings } from "../components/icons";
@@ -39,7 +49,7 @@ export function SettingsModal() {
       testId="settings-modal"
       icon={<IconSettings width={14} height={14} />}
       title="Settings"
-      subtitle="Appearance is stored in this browser; the Claude defaults are stored on the server. Every change applies immediately."
+      subtitle="Appearance is stored in this browser; the agent defaults are stored on the server. Every change applies immediately."
       onClose={close}
       actions={
         <button type="button" className="btn" onClick={reset}>
@@ -59,7 +69,7 @@ export function SettingsModal() {
         <ThemePreview />
       </Section>
 
-      <ClaudeSection />
+      <AgentsSection />
 
       <NetworkSection />
 
@@ -570,20 +580,21 @@ function NetworkSection() {
 // ---------------------------------------------------------------------------
 
 /**
- * The machine-wide half of the model layering: what every repo inherits when
+ * The machine-wide half of the agent layering: what every repo inherits when
  * it, and the team's committed config, say nothing. "inherit" here is the end
- * of the chain — it means the built-in default.
+ * of the chain — it means the harness's own defaults, from its manifest.
  */
-function ClaudeSection() {
+function AgentsSection() {
   const config = useGlobalConfig();
   const save = useSaveGlobalConfig();
+  const agents = useAgents();
 
   return (
     <Section
-      title="Claude"
-      hint="Which model analysis runs and review chats use, for every repo that does not override it. Runs go through your own claude CLI, so this is what they cost you."
+      title="Agents"
+      hint="Which agent and model analysis runs and review chats use, for every repo that does not override it. Runs go through the agent's own CLI on this machine, so this is what they cost you."
     >
-      {config.isLoading ? (
+      {config.isLoading || agents.isLoading ? (
         <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
           Loading…
         </p>
@@ -594,29 +605,21 @@ function ClaudeSection() {
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-end gap-6">
-            <GlobalModelField
-              label="Analysis model"
-              testId="global-analysis-model"
-              value={config.data.analysisModel}
-              fallback={config.data.defaults.analysisModel}
+            <GlobalAgentFields
+              kind="analysis"
+              agents={agents.data}
+              layer={config.data.analysisAgent}
+              resolved={config.data.effective.analysisAgent}
               disabled={save.isPending}
-              onChange={(m) => save.mutate({ analysisModel: m })}
+              onChange={(analysisAgent) => save.mutate({ analysisAgent })}
             />
-            <GlobalEffortField
-              label="Effort"
-              testId="global-analysis-effort"
-              value={config.data.analysisEffort}
-              fallback={config.data.defaults.analysisEffort}
+            <GlobalAgentFields
+              kind="chat"
+              agents={agents.data}
+              layer={config.data.chatAgent}
+              resolved={config.data.effective.chatAgent}
               disabled={save.isPending}
-              onChange={(e) => save.mutate({ analysisEffort: e })}
-            />
-            <GlobalModelField
-              label="Chat model"
-              testId="global-chat-model"
-              value={config.data.chatModel}
-              fallback={config.data.defaults.chatModel}
-              disabled={save.isPending}
-              onChange={(m) => save.mutate({ chatModel: m })}
+              onChange={(chatAgent) => save.mutate({ chatAgent })}
             />
             {save.error ? (
               <p className="pb-1 text-2xs" style={{ color: "var(--risk)" }}>
@@ -646,22 +649,26 @@ function ClaudeSection() {
  * pinned value" shape, but "inherit" here is the *end* of the chain, so the
  * hint shows the built-in default inline in the option rather than a source.
  */
-function GlobalSelectField<T extends string>({
+function GlobalSelectField({
   label,
   testId,
   value,
   fallback,
+  shown,
   disabled,
   options,
   onChange,
 }: {
   label: string;
   testId: string;
-  value: T | null;
-  fallback: T;
+  value: string | null;
+  /** what inheriting means here, as shown */
+  fallback: string;
+  /** the pinned value, as shown */
+  shown?: string;
   disabled?: boolean;
-  options: { value: T; label: string; title?: string }[];
-  onChange: (value: T | null) => void;
+  options: { value: string; label: string; title?: string }[];
+  onChange: (value: string | null) => void;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -671,7 +678,7 @@ function GlobalSelectField<T extends string>({
           className="rounded px-2 py-1 text-xs outline-none"
           value={value ?? "inherit"}
           disabled={disabled}
-          onChange={(e) => onChange(e.target.value === "inherit" ? null : (e.target.value as T))}
+          onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
           style={{
             background: "var(--bg-inset)",
             border: "1px solid var(--border)",
@@ -687,71 +694,79 @@ function GlobalSelectField<T extends string>({
         </select>
       </Field>
       <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        {value ? `Every repo without its own setting uses ${value}.` : `Built-in default: ${fallback}.`}
+        {value ? `Every repo without its own setting uses ${shown ?? value}.` : `Built-in default: ${fallback}.`}
       </p>
     </div>
   );
 }
 
-function GlobalModelField({
-  label,
-  testId,
-  value,
-  fallback,
+/**
+ * One kind of work's agent at the global layer. Inheriting falls through to
+ * the default harness and, for a model or effort, to the harness's manifest
+ * defaults.
+ */
+function GlobalAgentFields<T extends AgentSelection>({
+  kind,
+  agents,
+  layer,
+  resolved,
   disabled,
   onChange,
 }: {
-  label: string;
-  testId: string;
-  value: ClaudeModel | null;
-  fallback: ClaudeModel;
+  kind: "analysis" | "chat";
+  agents: AgentsInfo | undefined;
+  layer: T | null;
+  resolved: ResolvedAgent;
   disabled?: boolean;
-  onChange: (model: ClaudeModel | null) => void;
+  onChange: (selection: T | null) => void;
 }) {
+  const manifest = manifestOf(agents, resolved.harness);
+  const inherited = inheritedHarness(agents, layer, resolved.harness);
+  const edit = (field: "harness" | "model" | "effort", value: string | null) =>
+    onChange(editSelection(layer, field, value, resolved.harness, inherited));
+  const title = kind === "analysis" ? "Analysis" : "Chat";
+  const prefix = `global-${kind}`;
   return (
-    <GlobalSelectField
-      label={label}
-      testId={testId}
-      value={value}
-      fallback={fallback}
-      disabled={disabled}
-      options={CLAUDE_MODELS.map((m) => ({ value: m, label: m }))}
-      onChange={onChange}
-    />
-  );
-}
-
-const GLOBAL_EFFORT_OPTIONS = ANALYSIS_EFFORTS.map((e) => ({
-  value: e,
-  label: e,
-  title: e === "none" ? "Don't set --effort — for old claude CLIs" : undefined,
-}));
-
-function GlobalEffortField({
-  label,
-  testId,
-  value,
-  fallback,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  testId: string;
-  value: AnalysisEffort | null;
-  fallback: AnalysisEffort;
-  disabled?: boolean;
-  onChange: (effort: AnalysisEffort | null) => void;
-}) {
-  return (
-    <GlobalSelectField
-      label={label}
-      testId={testId}
-      value={value}
-      fallback={fallback}
-      disabled={disabled}
-      options={GLOBAL_EFFORT_OPTIONS}
-      onChange={onChange}
-    />
+    <>
+      {offersHarnessChoice(agents) ? (
+        <GlobalSelectField
+          label={`${title} agent`}
+          testId={`${prefix}-harness`}
+          value={layer?.harness ?? null}
+          fallback={manifestOf(agents, agents!.default)?.name ?? agents!.default}
+          shown={manifest?.name}
+          disabled={disabled}
+          options={harnessOptions(agents)}
+          onChange={(v) => edit("harness", v)}
+        />
+      ) : null}
+      <GlobalSelectField
+        label={`${title} model`}
+        testId={`${prefix}-model`}
+        value={layer?.model ?? null}
+        fallback={modelLabel(manifest, manifest?.defaults.model ?? resolved.model)}
+        shown={layer?.model ? modelLabel(manifest, layer.model) : undefined}
+        disabled={disabled}
+        options={modelOptions(manifest)}
+        onChange={(v) => edit("model", v)}
+      />
+      {kind === "analysis" ? (
+        <GlobalSelectField
+          label="Effort"
+          testId={`${prefix}-effort`}
+          value={layer?.effort ?? null}
+          fallback={manifest?.defaults.effort ?? resolved.effort ?? ""}
+          disabled={disabled}
+          options={effortOptions(manifest)}
+          onChange={(v) => edit("effort", v)}
+        />
+      ) : null}
+      {resolved.problem ? (
+        <p className="pb-1 max-w-xs text-2xs leading-4" style={{ color: "var(--risk)" }}>
+          {resolved.problem}
+        </p>
+      ) : null}
+    </>
   );
 }
 

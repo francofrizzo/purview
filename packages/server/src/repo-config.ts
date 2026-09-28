@@ -431,53 +431,65 @@ export function effectiveChatAgent(
   return runnable(resolveChatAgent(key, root, overrides, pin));
 }
 
-/* ------------------------------------------------ flat API compatibility */
+/* ------------------------------------------------------------- API views */
 
-/**
- * The settings API still speaks the flat `analysisModel`/`analysisEffort`/
- * `chatModel` fields its clients know; these translate between them and a
- * layer's selections. A flat edit applies to the layer's own harness, or the
- * effective one when the layer names none.
- */
-export function flatAgentFields(
-  analysis: AgentSelection | null | undefined,
-  chat: ChatAgentSelection | null | undefined,
-): { analysisModel: string | null; analysisEffort: string | null; chatModel: string | null } {
+/** A resolved agent as the API shows it: the values, where each came from, and why it cannot run. */
+export interface AgentView {
+  harness: HarnessId;
+  model: string;
+  effort?: string;
+  sources: { harness: ConfigSource; model: ConfigSource; effort?: ConfigSource };
+  problem?: string;
+}
+
+export function agentView(agent: ResolvedAgent): AgentView {
   return {
-    analysisModel: analysis?.model ?? null,
-    analysisEffort: analysis?.effort ?? null,
-    chatModel: chat?.model ?? null,
+    harness: agent.harness.value,
+    model: agent.model.value,
+    ...(agent.effort ? { effort: agent.effort.value } : {}),
+    sources: {
+      harness: agent.harness.source,
+      model: agent.model.source,
+      ...(agent.effort ? { effort: agent.effort.source } : {}),
+    },
+    ...(agent.problem ? { problem: agent.problem } : {}),
   };
 }
 
 /**
- * One flat field edit applied to a selection. `null` clears the field; a
- * selection left with neither model nor effort is `null` again (inherit).
- * Values are checked against the harness's manifest — a 400 names the
- * choices, rather than storing something no run could use.
+ * A selection from a request body, checked against its harness's manifest: a
+ * 400 names the choices, rather than storing something no run could use.
+ * `null` (inherit) always passes.
  */
-export function patchAgentSelection<T extends AgentSelection | ChatAgentSelection>(
-  current: T | null,
-  field: "model" | "effort",
-  value: string | null,
-  fallbackHarness: HarnessId,
+export function checkAgentSelection<T extends AgentSelection | ChatAgentSelection>(
+  selection: T | null,
   apiField: string,
 ): T | null {
-  const harnessId = current?.harness ?? fallbackHarness;
-  const harness = findHarness(harnessId);
-  if (value !== null) {
-    if (!harness) throw new HttpError(400, "invalid_body", `${apiField}: agent harness "${harnessId}" is not available`);
-    const allowed = field === "model" ? harness.manifest.models.map((m) => m.id) : harness.manifest.efforts;
-    if (!allowed.includes(value)) {
-      throw new HttpError(
-        400,
-        "invalid_body",
-        `${apiField}: "${value}" is not one of ${harness.manifest.name}'s ${field === "model" ? "models" : "effort levels"}: ${allowed.join(", ")}`,
-      );
-    }
+  if (!selection) return null;
+  const harness = findHarness(selection.harness);
+  if (!harness) {
+    throw new HttpError(
+      400,
+      "invalid_body",
+      `${apiField}.harness: "${selection.harness}" is not available; available: ${harnessIds().join(", ")}`,
+    );
   }
-  const next: Record<string, string> = { ...(current ?? {}), harness: harnessId };
-  if (value === null) delete next[field];
-  else next[field] = value;
-  return next.model === undefined && next.effort === undefined ? null : (next as unknown as T);
+  const { name, models, efforts } = harness.manifest;
+  const modelIds = models.map((m) => m.id);
+  if (selection.model !== undefined && !modelIds.includes(selection.model)) {
+    throw new HttpError(
+      400,
+      "invalid_body",
+      `${apiField}.model: "${selection.model}" is not one of ${name}'s models: ${modelIds.join(", ")}`,
+    );
+  }
+  const effort = (selection as AgentSelection).effort;
+  if (effort !== undefined && !efforts.includes(effort)) {
+    throw new HttpError(
+      400,
+      "invalid_body",
+      `${apiField}.effort: "${effort}" is not one of ${name}'s effort levels: ${efforts.join(", ")}`,
+    );
+  }
+  return selection;
 }

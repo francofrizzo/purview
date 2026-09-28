@@ -10,9 +10,10 @@ import type {
   ChatMessage,
   ChatRef,
   ChatHandoff,
-  ChatModelResult,
+  ChatAgentResult,
+  ChatAgentSelection,
+  AgentsInfo,
   ChatState,
-  ClaudeModel,
   GlobalConfig,
   GlobalConfigPatch,
   ChatStreamEvent,
@@ -498,6 +499,11 @@ export const api = {
     return unwrap<RepoSummary>(res, "repos");
   },
 
+  async getAgents(): Promise<AgentsInfo> {
+    if (MOCK) return mockApi.getAgents();
+    return request<AgentsInfo>("/agents");
+  },
+
   async getConfig(): Promise<GlobalConfig> {
     if (MOCK) return mockApi.getConfig();
     return request<GlobalConfig>("/config");
@@ -885,27 +891,17 @@ export const api = {
 
   async getChat(key: string): Promise<ChatState> {
     if (MOCK) return mockApi.getChat(key);
-    const res = await request<Partial<ChatState>>(`/prs/${encodeKey(key)}/chat`);
-    // A server too old to report a model still has one — the built-in default.
-    const configuredModel = res.configuredModel ?? "sonnet";
-    return {
-      messages: res.messages ?? [],
-      sessionId: res.sessionId ?? null,
-      busy: Boolean(res.busy),
-      model: res.model ?? configuredModel,
-      configuredModel,
-      configuredModelSource: res.configuredModelSource ?? "default",
-      sessionModel: res.sessionModel ?? null,
-    };
+    return request<ChatState>(`/prs/${encodeKey(key)}/chat`);
   },
 
   /**
-   * Pin the conversation's model. It applies to the next message; the server
-   * resumes the same session with the new model, so nothing is lost.
+   * Pin the conversation's agent. It applies to the next message; the server
+   * resumes the same session under a new model, so nothing is lost — a
+   * different harness starts a new session (`restartedSession`).
    */
-  async setChatModel(key: string, model: ClaudeModel | null): Promise<ChatModelResult> {
-    if (MOCK) return mockApi.setChatModel(key, model);
-    return post<ChatModelResult>(`/prs/${encodeKey(key)}/chat/model`, { model });
+  async setChatAgent(key: string, agent: ChatAgentSelection | null): Promise<ChatAgentResult> {
+    if (MOCK) return mockApi.setChatAgent(key, agent);
+    return post<ChatAgentResult>(`/prs/${encodeKey(key)}/chat/agent`, { agent });
   },
 
   async clearChat(key: string): Promise<void> {

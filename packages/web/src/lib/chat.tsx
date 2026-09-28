@@ -27,7 +27,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { qk } from "../api/hooks";
 import { errorText } from "../api/errors";
-import type { ChatMessage, ChatRef, ChatStreamEvent, ClaudeModel, ConfigSource, ToolKind } from "../api/types";
+import type { ChatAgentSelection, ChatMessage, ChatRef, ChatStreamEvent, ResolvedAgent, ToolKind } from "../api/types";
 import {
   autoRefReducer,
   effectiveRefs as deriveEffectiveRefs,
@@ -67,15 +67,16 @@ interface ChatContextValue {
   busy: boolean;
   failure: ChatFailure | null;
 
-  /** the model the next message will use */
-  model: ClaudeModel;
+  /** the agent the next message will use; null until the transcript loads */
+  agent: ResolvedAgent | null;
   /** what the repo/global layers say, i.e. what "inherit" means here */
-  configuredModel: ClaudeModel;
-  configuredModelSource: ConfigSource;
-  /** non-null only while this conversation overrides the configured model */
-  sessionModel: ClaudeModel | null;
-  /** pin (or unpin, with null) the model; applies from the next message on */
-  setModel: (model: ClaudeModel | null) => Promise<void>;
+  configuredAgent: ResolvedAgent | null;
+  /** non-null only while this conversation overrides the configured agent */
+  sessionAgent: ChatAgentSelection | null;
+  /** the harness the conversation's session belongs to, while there is one */
+  sessionHarness: string | null;
+  /** pin (or unpin, with null) the agent; applies from the next message on */
+  setAgent: (agent: ChatAgentSelection | null) => Promise<void>;
 
   refs: ChatRef[];
   attachRef: (ref: ChatRef, options?: { open?: boolean }) => void;
@@ -111,6 +112,24 @@ interface ChatContextValue {
 
 const ChatContext = createContext<ChatContextValue | null>(null);
 
+type AgentState = Pick<ChatContextValue, "agent" | "configuredAgent" | "sessionAgent" | "sessionHarness">;
+
+const NO_AGENT: AgentState = { agent: null, configuredAgent: null, sessionAgent: null, sessionHarness: null };
+
+/**
+ * What a pin will resolve to, for the instant before the server says so: the
+ * pin's model when it names one on the configured harness, else the
+ * configured agent. A different harness waits for the server's answer.
+ */
+function optimisticAgent(cur: AgentState, pin: ChatAgentSelection | null): ResolvedAgent | null {
+  const configured = cur.configuredAgent;
+  if (!configured || !pin) return configured;
+  if (pin.harness !== configured.harness) return cur.agent;
+  return pin.model
+    ? { ...configured, model: pin.model, sources: { ...configured.sources, model: "chat" } }
+    : configured;
+}
+
 export function ChatProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [prKey, setPrKeyState] = useState<string | null>(null);
@@ -125,25 +144,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [preEditRefs, setPreEditRefs] = useState<ChatRef[] | null>(null);
   const [sessionReset, setSessionReset] = useState(false);
   const [autoRefState, dispatchAutoRef] = useReducer(autoRefReducer, initialAutoRefState);
-  // Seeded with the built-in default so the header never renders blank; the
-  // real values arrive with the transcript.
-  const [modelState, setModelState] = useState<{
-    model: ClaudeModel;
-    configuredModel: ClaudeModel;
-    configuredModelSource: ConfigSource;
-    sessionModel: ClaudeModel | null;
-  }>({
-    model: "sonnet",
-    configuredModel: "sonnet",
-    configuredModelSource: "default",
-    sessionModel: null,
-  });
+  // Empty until the transcript arrives: the agent is the server's to resolve,
+  // so there is no default worth guessing at here.
+  const [agentState, setAgentState] = useState<AgentState>(NO_AGENT);
 
   const abortRef = useRef<AbortController | null>(null);
   const keyRef = useRef<string | null>(null);
   keyRef.current = prKey;
-  const modelStateRef = useRef(modelState);
-  modelStateRef.current = modelState;
+  const agentStateRef = useRef(agentState);
+  agentStateRef.current = agentState;
 
   // Switching PRs is a different conversation: drop everything, including any
   // stream still running for the PR we just left.
@@ -161,12 +170,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setPreEditRefs(null);
       setSessionReset(false);
       dispatchAutoRef({ type: "reset" });
-      setModelState({
-        model: "sonnet",
-        configuredModel: "sonnet",
-        configuredModelSource: "default",
-        sessionModel: null,
-      });
+      setAgentState(NO_AGENT);
       return key;
     });
   }, []);
@@ -192,11 +196,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (!alive) return;
         setMessages(state.messages);
         setBusy(state.busy);
-        setModelState({
-          model: state.model,
-          configuredModel: state.configuredModel,
-          configuredModelSource: state.configuredModelSource,
-          sessionModel: state.sessionModel,
+        setAgentState({
+          agent: state.agent,
+          configuredAgent: state.configuredAgent,
+          sessionAgent: state.sessionAgent,
+          sessionHarness: state.sessionHarness,
         });
       })
       .catch(() => {
@@ -438,27 +442,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
    * clicked. The server's answer is authoritative and replaces it, and a
    * failure puts the old value back rather than leaving a lie on screen.
    */
-  const setModel = useCallback(
-    async (model: ClaudeModel | null) => {
+  const setAgent = useCallback(
+    async (agent: ChatAgentSelection | null) => {
       const key = keyRef.current;
       if (!key) return;
-      const previous = modelStateRef.current;
-      setModelState((cur) => ({
+      const previous = agentStateRef.current;
+      setAgentState((cur) => ({
         ...cur,
-        sessionModel: model,
-        model: model ?? cur.configuredModel,
+        sessionAgent: agent,
+        agent: optimisticAgent(cur, agent),
       }));
       try {
-        const result = await api.setChatModel(key, model);
+        const result = await api.setChatAgent(key, agent);
         if (keyRef.current !== key) return;
-        setModelState({
-          model: result.model,
-          configuredModel: result.configuredModel,
-          configuredModelSource: result.configuredModelSource,
-          sessionModel: result.sessionModel,
-        });
+        setAgentState((cur) => ({
+          agent: result.agent,
+          configuredAgent: result.configuredAgent,
+          sessionAgent: result.sessionAgent,
+          sessionHarness: result.restartedSession ? null : cur.sessionHarness,
+        }));
       } catch {
-        if (keyRef.current === key) setModelState(previous);
+        if (keyRef.current === key) setAgentState(previous);
       }
     },
     [],
@@ -478,7 +482,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setPreEditRefs(null);
     setSessionReset(false);
     // The server drops the pin with the transcript; mirror it.
-    setModelState((cur) => ({ ...cur, sessionModel: null, model: cur.configuredModel }));
+    setAgentState((cur) => ({ ...cur, sessionAgent: null, sessionHarness: null, agent: cur.configuredAgent }));
   }, []);
 
   const value = useMemo<ChatContextValue>(
@@ -494,8 +498,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       streaming,
       busy,
       failure,
-      ...modelState,
-      setModel,
+      ...agentState,
+      setAgent,
       refs,
       attachRef,
       detachRef,
@@ -515,8 +519,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       sessionReset,
     }),
     [
-      modelState,
-      setModel,
+      agentState,
+      setAgent,
       prKey,
       open,
       setPrKey,

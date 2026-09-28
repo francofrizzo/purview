@@ -1,4 +1,6 @@
 import type {
+  ConfigSource,
+  ResolvedAgent,
   DraftComment,
   FilesJson,
   Hunk,
@@ -699,14 +701,28 @@ export const mockRepos: RepoSummary[] = [
   },
 ];
 
+/** A resolved Claude Code agent, as the fixture's layers add up to it. */
+function claudeCode(
+  model: string,
+  modelSource: ConfigSource,
+  effort?: [string, ConfigSource],
+): ResolvedAgent {
+  const harnessSource = modelSource === "default" && (!effort || effort[1] === "default") ? "default" : modelSource;
+  return {
+    harness: "claude-code",
+    model,
+    ...(effort ? { effort: effort[0] } : {}),
+    sources: { harness: harnessSource, model: modelSource, ...(effort ? { effort: effort[1] } : {}) },
+  };
+}
+
 export const mockRepoConfigs: Record<string, RepoConfig> = {
   "github.com/acme/billing": {
     local: {
       autoAnalyze: true,
       repoPath: "/Users/dana/code/billing",
-      analysisModel: "opus",
-      chatModel: null,
-      analysisEffort: null,
+      analysisAgent: { harness: "claude-code", model: "opus" },
+      chatAgent: null,
       watchReviews: true,
       rubric: LOCAL_BILLING_RUBRIC,
       chatInstructions: LOCAL_BILLING_CHAT_INSTRUCTIONS,
@@ -715,25 +731,17 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
     effective: {
       autoAnalyze: true,
       repoPath: "/Users/dana/code/billing",
-      analysisModel: "opus",
-      chatModel: "sonnet",
-      analysisEffort: "medium",
+      analysisAgent: claudeCode("opus", "repo", ["medium", "default"]),
+      chatAgent: claudeCode("sonnet", "default"),
     },
-    sources: {
-      autoAnalyze: "repo",
-      repoPath: "repo",
-      analysisModel: "repo",
-      chatModel: "default",
-      analysisEffort: "default",
-    },
+    sources: { autoAnalyze: "repo", repoPath: "repo" },
   },
   "github.com/acme/platform": {
     local: {
       autoAnalyze: null,
       repoPath: null,
-      analysisModel: null,
-      chatModel: null,
-      analysisEffort: null,
+      analysisAgent: null,
+      chatAgent: null,
       watchReviews: null,
       rubric: "",
       chatInstructions: "",
@@ -742,49 +750,38 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
     effective: {
       autoAnalyze: false,
       repoPath: null,
-      analysisModel: "sonnet",
-      chatModel: "sonnet",
-      analysisEffort: "medium",
+      analysisAgent: claudeCode("sonnet", "default", ["medium", "default"]),
+      chatAgent: claudeCode("sonnet", "default"),
     },
-    sources: {
-      autoAnalyze: "default",
-      repoPath: "default",
-      analysisModel: "default",
-      chatModel: "default",
-      analysisEffort: "default",
-    },
+    sources: { autoAnalyze: "default", repoPath: "default" },
   },
   "git.acme.dev/infra/terraform-modules": {
     local: {
       autoAnalyze: null,
       repoPath: null,
-      analysisModel: null,
-      chatModel: null,
-      analysisEffort: null,
+      analysisAgent: null,
+      chatAgent: null,
       watchReviews: null,
       rubric: "",
       chatInstructions: "",
     },
     committed: {
       present: true,
-      config: { autoAnalyze: true, analysisModel: "opus", chatModel: "haiku" },
+      config: {
+        autoAnalyze: true,
+        analysisAgent: { harness: "claude-code", model: "opus" },
+        chatAgent: { harness: "claude-code", model: "haiku" },
+      },
       rubric: MOCK_COMMITTED_RUBRIC,
       chat: MOCK_COMMITTED_CHAT_INSTRUCTIONS,
     },
     effective: {
       autoAnalyze: true,
       repoPath: null,
-      analysisModel: "opus",
-      chatModel: "haiku",
-      analysisEffort: "medium",
+      analysisAgent: claudeCode("opus", "committed", ["medium", "default"]),
+      chatAgent: claudeCode("haiku", "committed"),
     },
-    sources: {
-      autoAnalyze: "committed",
-      repoPath: "default",
-      analysisModel: "committed",
-      chatModel: "committed",
-      analysisEffort: "default",
-    },
+    sources: { autoAnalyze: "committed", repoPath: "default" },
   },
 };
 

@@ -491,10 +491,9 @@ export interface RepoConfig {
     /** null means "inherit the global default" */
     autoAnalyze: boolean | null;
     repoPath: string | null;
-    analysisModel: ClaudeModel | null;
-    chatModel: ClaudeModel | null;
-    /** null = inherit; "none" is a real pinned value (omit `--effort`) */
-    analysisEffort: AnalysisEffort | null;
+    /** null = inherit */
+    analysisAgent: AgentSelection | null;
+    chatAgent: ChatAgentSelection | null;
     /**
      * Poll GitHub for review requests every few minutes and import them. Not
      * layered like the other fields (it is a machine behavior, not team
@@ -513,26 +512,22 @@ export interface RepoConfig {
   effective: {
     autoAnalyze: boolean;
     repoPath: string | null;
-    analysisModel: ClaudeModel;
-    chatModel: ClaudeModel;
-    analysisEffort: AnalysisEffort;
+    analysisAgent: ResolvedAgent;
+    chatAgent: ResolvedAgent;
   };
-  /** which layer each effective value came from */
+  /** which layer each effective value came from (the agents carry their own) */
   sources?: {
     autoAnalyze: ConfigSource;
     repoPath: ConfigSource;
-    analysisModel: ConfigSource;
-    chatModel: ConfigSource;
-    analysisEffort: ConfigSource;
   };
 }
 
 export interface RepoConfigPatch {
   autoAnalyze?: boolean | null;
   repoPath?: string | null;
-  analysisModel?: ClaudeModel | null;
-  chatModel?: ClaudeModel | null;
-  analysisEffort?: AnalysisEffort | null;
+  /** written whole; null re-inherits */
+  analysisAgent?: AgentSelection | null;
+  chatAgent?: ChatAgentSelection | null;
   watchReviews?: boolean | null;
   rubric?: string;
   chatInstructions?: string;
@@ -540,19 +535,18 @@ export interface RepoConfigPatch {
 
 /** GET/PUT /api/config — the machine-wide layer. */
 export interface GlobalConfig {
-  /** null = inherit, which at this layer means `defaults` */
-  analysisModel: ClaudeModel | null;
-  chatModel: ClaudeModel | null;
-  analysisEffort: AnalysisEffort | null;
-  /** Purview's own exact checkout of each PR's head for Claude runs */
+  /** null = inherit, which at this layer means the harness's own defaults */
+  analysisAgent: AgentSelection | null;
+  chatAgent: ChatAgentSelection | null;
+  /** Purview's own exact checkout of each PR's head for agent runs */
   managedCheckouts: boolean;
-  defaults: { analysisModel: ClaudeModel; chatModel: ClaudeModel; analysisEffort: AnalysisEffort };
+  /** what this layer resolves to on its own — the end of the chain */
+  effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }
 
 export interface GlobalConfigPatch {
-  analysisModel?: ClaudeModel | null;
-  chatModel?: ClaudeModel | null;
-  analysisEffort?: AnalysisEffort | null;
+  analysisAgent?: AgentSelection | null;
+  chatAgent?: ChatAgentSelection | null;
   managedCheckouts?: boolean;
 }
 
@@ -815,47 +809,76 @@ export interface ChatMessage {
 }
 
 /**
- * The Claude model a run uses, named by the CLI's own aliases. Full model ids
- * are deliberately not offered: they change with every release.
+ * GET /api/agents: one agent harness as its manifest describes it. Settings
+ * build their choices from these, and copy names the agent by `agentName`.
  */
-export type ClaudeModel = "sonnet" | "opus" | "haiku";
+export interface HarnessManifest {
+  id: string;
+  /** the product, e.g. "Claude Code" */
+  name: string;
+  /** what the agent is called in copy, e.g. "Claude" */
+  agentName: string;
+  models: { id: string; label: string }[];
+  /** "none" is a real, pinnable value: set no effort at all */
+  efforts: string[];
+  defaults: { model: string; effort: string };
+  capabilities: { resume: boolean; handoff: boolean };
+}
 
-export const CLAUDE_MODELS: ClaudeModel[] = ["sonnet", "opus", "haiku"];
+export interface AgentsInfo {
+  /** the harness a configuration that names none runs on */
+  default: string;
+  harnesses: HarnessManifest[];
+}
 
 /**
- * Reasoning effort for an analysis run. `"none"` is not a level — it is a
- * real, pinnable value (distinct from `null`/"inherit" in the fields below)
- * that means "omit `--effort` entirely," for a `claude` CLI too old to know
- * the flag.
+ * Which agent runs one kind of work, as a layer stores it. Model and effort
+ * only mean something to the harness named next to them.
  */
-export type AnalysisEffort = "low" | "medium" | "high" | "none";
+export interface AgentSelection {
+  harness: string;
+  model?: string;
+  effort?: string;
+}
 
-export const ANALYSIS_EFFORTS: AnalysisEffort[] = ["low", "medium", "high", "none"];
+/** A chat has no effort setting. */
+export type ChatAgentSelection = Omit<AgentSelection, "effort">;
+
+/** An agent as the server resolved it through the layers. */
+export interface ResolvedAgent {
+  harness: string;
+  model: string;
+  /** analysis only */
+  effort?: string;
+  sources: { harness: ConfigSource; model: ConfigSource; effort?: ConfigSource };
+  /** why this configuration cannot run (an unknown harness, a model it lacks) */
+  problem?: string;
+}
 
 /** Which configuration layer an effective value came from. */
-export type ConfigSource = "pr" | "repo" | "committed" | "global" | "default";
+export type ConfigSource = "chat" | "pr" | "repo" | "committed" | "global" | "default";
 
 /** GET /api/prs/:key/chat */
 export interface ChatState {
   messages: ChatMessage[];
   sessionId: string | null;
+  /** the harness the session belongs to, while there is one */
+  sessionHarness: string | null;
   busy: boolean;
   /** what the next message will be sent with */
-  model: ClaudeModel;
-  /** the repo/global default, i.e. what "inherit" resolves to */
-  configuredModel: ClaudeModel;
-  configuredModelSource: ConfigSource;
-  /** non-null only when this conversation pins a model of its own */
-  sessionModel: ClaudeModel | null;
+  agent: ResolvedAgent;
+  /** the repo/global configuration, i.e. what "inherit" resolves to */
+  configuredAgent: ResolvedAgent;
+  /** non-null only when this conversation pins an agent of its own */
+  sessionAgent: ChatAgentSelection | null;
 }
 
-/** POST /api/prs/:key/chat/model */
-export interface ChatModelResult {
-  model: ClaudeModel;
-  configuredModel: ClaudeModel;
-  configuredModelSource: ConfigSource;
-  sessionModel: ClaudeModel | null;
-  /** true only if the switch had to abandon the transcript */
+/** POST /api/prs/:key/chat/agent */
+export interface ChatAgentResult {
+  agent: ResolvedAgent;
+  configuredAgent: ResolvedAgent;
+  sessionAgent: ChatAgentSelection | null;
+  /** true when the new harness cannot continue the old harness's session */
   restartedSession: boolean;
 }
 

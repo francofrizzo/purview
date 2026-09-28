@@ -44,6 +44,8 @@ import {
   writeLocalChatInstructions,
   writeLocalRubric,
   writeRepoConfig,
+  AgentSelectionSchema,
+  ChatAgentSelectionSchema,
   type Hunk,
   type Meta,
   type PrKey,
@@ -115,8 +117,8 @@ import {
   effectiveRepoPath,
   isRepoArchived,
 } from "./repo-config.js";
-import { flatAgentFields, patchAgentSelection, resolveChatAgent } from "./repo-config.js";
-import { DEFAULT_HARNESS, findHarness, getHarness } from "./agent/registry.js";
+import { agentView, checkAgentSelection, resolveAgent, resolveChatAgent } from "./repo-config.js";
+import { DEFAULT_HARNESS, getHarness, harnessIds } from "./agent/registry.js";
 import { generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
@@ -777,26 +779,20 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /* -------------------------------------------------------- Claude: chat */
 
-  /** `null` means "follow the repo/global default again", not "no model". */
-  const ChatModelPutSchema = z
-    .object({ model: z.string().min(1).nullable() })
+  /** `null` means "follow the repo/global default again", not "no agent". */
+  const ChatAgentPutSchema = z
+    .object({ agent: ChatAgentSelectionSchema.strict().nullable() })
     .strict();
 
-  /**
-   * The chat's model, pinned and layered. Flat model fields for now: the
-   * harness they belong to is the effective one (see resolveChatAgent).
-   */
-  function chatModelPayload(key: PrKey, meta: ReturnType<typeof readMeta>, pin: ReturnType<typeof readChat>["agent"]) {
-    const configured = resolveChatAgent(key, root, { meta });
-    const effective = resolveChatAgent(key, root, { meta }, pin);
+  /** The chat's agent: the conversation's own pin over the layered configuration. */
+  function chatAgentPayload(key: PrKey, meta: ReturnType<typeof readMeta>, pin: ReturnType<typeof readChat>["agent"]) {
     return {
       /** what the next message will actually be sent with */
-      model: effective.model.value,
-      /** the layered default, shown as the "inherit" option's meaning */
-      configuredModel: configured.model.value,
-      configuredModelSource: configured.model.source,
-      /** null when the session simply follows `configuredModel` */
-      sessionModel: pin?.model ?? null,
+      agent: agentView(resolveChatAgent(key, root, { meta }, pin)),
+      /** the layered configuration, i.e. what "inherit" means */
+      configuredAgent: agentView(resolveChatAgent(key, root, { meta })),
+      /** null when the conversation simply follows `configuredAgent` */
+      sessionAgent: pin ?? null,
     };
   }
 
@@ -807,36 +803,35 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json({
       messages: chat.messages,
       sessionId: chat.session?.id ?? null,
+      sessionHarness: chat.session?.harness ?? null,
       busy: chatBusy(key),
-      ...chatModelPayload(key, meta, chat.agent),
+      ...chatAgentPayload(key, meta, chat.agent),
     });
   });
 
   /**
-   * Pin the model for this conversation. It applies to the next message: the
-   * turn in flight (if any) keeps the model it was spawned with, and the
-   * session is *not* restarted — `claude --resume` accepts a different
-   * `--model`, so the transcript survives the switch.
+   * Pin the agent for this conversation. It applies to the next message: the
+   * turn in flight (if any) keeps what it was spawned with. A different model
+   * on the same harness continues the session (`claude --resume` accepts a
+   * different `--model`); a different harness cannot continue another's
+   * session, so the next turn starts a new one — `restartedSession` says so.
    */
-  app.post("/api/prs/:key/chat/model", async (c) => {
+  app.post("/api/prs/:key/chat/agent", async (c) => {
     const key = keyParam(c);
     const meta = readMeta(key, root);
-    const parsed = ChatModelPutSchema.safeParse(await readJsonBody(c));
+    const parsed = ChatAgentPutSchema.safeParse(await readJsonBody(c));
     if (!parsed.success) {
-      throw new HttpError(400, "invalid_body", "Body must be { model: string | null } (null to inherit)");
+      throw new HttpError(
+        400,
+        "invalid_body",
+        "Body must be { agent: { harness, model? } | null } (null to inherit)",
+      );
     }
-    // The pin belongs to the harness the conversation would otherwise use.
-    const configuredHarness = resolveChatAgent(key, root, { meta }).harness.value;
-    const pin = patchAgentSelection(readChat(key, root).agent, "model", parsed.data.model, configuredHarness, "model");
-    const chat = setChatAgent(key, pin, root);
+    const chat = setChatAgent(key, checkAgentSelection(parsed.data.agent, "agent"), root);
+    const payload = chatAgentPayload(key, meta, chat.agent);
     return c.json({
-      ...chatModelPayload(key, meta, chat.agent),
-      /**
-       * The session id is kept, so the conversation continues. Clients read
-       * this rather than assuming: if a future CLI stops allowing a resume
-       * across models, this flips to true and the UI can warn.
-       */
-      restartedSession: false,
+      ...payload,
+      restartedSession: chat.session != null && chat.session.harness !== payload.agent.harness,
     });
   });
 
@@ -1540,7 +1535,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       local: {
         autoAnalyze: local.autoAnalyze,
         repoPath: local.repoPath,
-        ...flatAgentFields(local.analysisAgent, local.chatAgent),
+        analysisAgent: local.analysisAgent,
+        chatAgent: local.chatAgent,
         watchReviews: local.watchReviews,
         rubric: readLocalRubric(repo, root),
         chatInstructions: readLocalChatInstructions(repo, root),
@@ -1554,16 +1550,12 @@ export function createApp(opts: AppOptions = {}): Hono {
       effective: {
         autoAnalyze: effective.autoAnalyze.value,
         repoPath: effective.repoPath.value,
-        analysisModel: effective.analysisAgent.model.value,
-        chatModel: effective.chatAgent.model.value,
-        analysisEffort: effective.analysisAgent.effort!.value,
+        analysisAgent: agentView(effective.analysisAgent),
+        chatAgent: agentView(effective.chatAgent),
       },
       sources: {
         autoAnalyze: effective.autoAnalyze.source,
         repoPath: effective.repoPath.source,
-        analysisModel: effective.analysisAgent.model.source,
-        chatModel: effective.chatAgent.model.source,
-        analysisEffort: effective.analysisAgent.effort!.source,
       },
     };
   }
@@ -1576,30 +1568,42 @@ export function createApp(opts: AppOptions = {}): Hono {
    */
   function globalConfigPayload() {
     const config = readConfig(root);
-    const analysisHarness = findHarness(config.analysisAgent?.harness ?? DEFAULT_HARNESS) ?? getHarness();
-    const chatHarness = findHarness(config.chatAgent?.harness ?? DEFAULT_HARNESS) ?? getHarness();
     return {
-      ...flatAgentFields(config.analysisAgent, config.chatAgent),
+      analysisAgent: config.analysisAgent,
+      chatAgent: config.chatAgent,
       managedCheckouts: config.managedCheckouts,
-      /** what `null` resolves to here — the end of the inheritance chain */
-      defaults: {
-        analysisModel: analysisHarness.manifest.defaults.model,
-        chatModel: chatHarness.manifest.defaults.model,
-        analysisEffort: analysisHarness.manifest.defaults.effort,
+      /** what this layer resolves to on its own — the end of the inheritance chain */
+      effective: {
+        analysisAgent: agentView(resolveAgent("analysis", [["global", config.analysisAgent]], true)),
+        chatAgent: agentView(resolveAgent("chat", [["global", config.chatAgent]], false)),
       },
     };
   }
 
   const GlobalConfigPutSchema = z
     .object({
-      analysisModel: z.string().min(1).nullable().optional(),
-      chatModel: z.string().min(1).nullable().optional(),
-      analysisEffort: z.string().min(1).nullable().optional(),
+      analysisAgent: AgentSelectionSchema.strict().nullable().optional(),
+      chatAgent: ChatAgentSelectionSchema.strict().nullable().optional(),
       managedCheckouts: z.boolean().optional(),
     })
     .strict();
 
   app.get("/api/config", (c) => c.json(globalConfigPayload()));
+
+  /**
+   * The harnesses this server can run, as their manifests describe them: the
+   * settings UI builds its choices from these, and copy names the agent by
+   * `agentName` instead of assuming one.
+   */
+  app.get("/api/agents", (c) =>
+    c.json({
+      default: DEFAULT_HARNESS,
+      harnesses: harnessIds().map((id) => {
+        const { toolNames: _toolNames, ...manifest } = getHarness(id).manifest;
+        return manifest;
+      }),
+    }),
+  )
 
   app.put("/api/config", async (c) => {
     const parsed = GlobalConfigPutSchema.safeParse(await readJsonBody(c));
@@ -1612,19 +1616,11 @@ export function createApp(opts: AppOptions = {}): Hono {
       );
     }
     const body = parsed.data;
-    const current = readConfig(root);
     const patch: Partial<ReviewerConfig> = {};
-    let analysisAgent = current.analysisAgent;
-    if ("analysisModel" in body) {
-      analysisAgent = patchAgentSelection(analysisAgent, "model", body.analysisModel ?? null, DEFAULT_HARNESS, "analysisModel");
+    if (body.analysisAgent !== undefined) {
+      patch.analysisAgent = checkAgentSelection(body.analysisAgent, "analysisAgent");
     }
-    if ("analysisEffort" in body) {
-      analysisAgent = patchAgentSelection(analysisAgent, "effort", body.analysisEffort ?? null, DEFAULT_HARNESS, "analysisEffort");
-    }
-    if ("analysisModel" in body || "analysisEffort" in body) patch.analysisAgent = analysisAgent;
-    if ("chatModel" in body) {
-      patch.chatAgent = patchAgentSelection(current.chatAgent, "model", body.chatModel ?? null, DEFAULT_HARNESS, "chatModel");
-    }
+    if (body.chatAgent !== undefined) patch.chatAgent = checkAgentSelection(body.chatAgent, "chatAgent");
     if (body.managedCheckouts !== undefined) patch.managedCheckouts = body.managedCheckouts;
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
@@ -1772,9 +1768,8 @@ export function createApp(opts: AppOptions = {}): Hono {
     .object({
       autoAnalyze: z.boolean().nullable().optional(),
       repoPath: z.string().nullable().optional(),
-      analysisModel: z.string().min(1).nullable().optional(),
-      chatModel: z.string().min(1).nullable().optional(),
-      analysisEffort: z.string().min(1).nullable().optional(),
+      analysisAgent: AgentSelectionSchema.strict().nullable().optional(),
+      chatAgent: ChatAgentSelectionSchema.strict().nullable().optional(),
       watchReviews: z.boolean().nullable().optional(),
       rubric: z.string().optional(),
       chatInstructions: z.string().optional(),
@@ -1794,29 +1789,12 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
     const body = parsed.data;
 
-    const local = readRepoConfig(repo, root);
-    // A flat edit belongs to the harness the repo already uses for that work.
-    const effective = effectiveConfig(repo, root, { local });
     const patch: Partial<RepoConfig> = {};
     if ("autoAnalyze" in body) patch.autoAnalyze = body.autoAnalyze ?? null;
-    let analysisAgent = local.analysisAgent;
-    const analysisHarness = effective.analysisAgent.harness.value;
-    if ("analysisModel" in body) {
-      analysisAgent = patchAgentSelection(analysisAgent, "model", body.analysisModel ?? null, analysisHarness, "analysisModel");
+    if (body.analysisAgent !== undefined) {
+      patch.analysisAgent = checkAgentSelection(body.analysisAgent, "analysisAgent");
     }
-    if ("analysisEffort" in body) {
-      analysisAgent = patchAgentSelection(analysisAgent, "effort", body.analysisEffort ?? null, analysisHarness, "analysisEffort");
-    }
-    if ("analysisModel" in body || "analysisEffort" in body) patch.analysisAgent = analysisAgent;
-    if ("chatModel" in body) {
-      patch.chatAgent = patchAgentSelection(
-        local.chatAgent,
-        "model",
-        body.chatModel ?? null,
-        effective.chatAgent.harness.value,
-        "chatModel",
-      );
-    }
+    if (body.chatAgent !== undefined) patch.chatAgent = checkAgentSelection(body.chatAgent, "chatAgent");
     if ("watchReviews" in body) patch.watchReviews = body.watchReviews ?? null;
     if ("repoPath" in body) {
       // Same validation as the per-PR endpoint: a path that isn't there is a

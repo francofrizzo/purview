@@ -1,5 +1,5 @@
 /**
- * The mock backend has to layer models the same way the server does, or mock
+ * The mock backend has to layer agents the same way the server does, or mock
  * mode quietly disagrees with the real thing about what a run will cost.
  */
 import { beforeEach, describe, expect, it } from "vitest";
@@ -8,112 +8,127 @@ import { mockApi } from "./server";
 const BILLING = "github.com/acme/billing";
 const PLATFORM = "github.com/acme/platform";
 const TERRAFORM = "git.acme.dev/infra/terraform-modules";
+const CC = "claude-code";
 
 beforeEach(async () => {
   // The store is module-level and mutable; reset what these tests touch.
-  await mockApi.saveConfig({ analysisModel: null, chatModel: null });
-  await mockApi.saveRepoConfig(BILLING, { analysisModel: "opus", chatModel: null });
-  await mockApi.saveRepoConfig(PLATFORM, { analysisModel: null, chatModel: null });
+  await mockApi.saveConfig({ analysisAgent: null, chatAgent: null });
+  await mockApi.saveRepoConfig(BILLING, { analysisAgent: { harness: CC, model: "opus" }, chatAgent: null });
+  await mockApi.saveRepoConfig(PLATFORM, { analysisAgent: null, chatAgent: null });
 });
 
-describe("repo model layering", () => {
-  it("falls back to the built-in sonnet when no layer says anything", async () => {
+describe("repo agent layering", () => {
+  it("falls back to the harness's defaults when no layer says anything", async () => {
     const config = await mockApi.getRepoConfig(PLATFORM);
-    expect(config.effective).toMatchObject({ analysisModel: "sonnet", chatModel: "sonnet" });
-    expect(config.sources).toMatchObject({ analysisModel: "default", chatModel: "default" });
+    expect(config.effective.analysisAgent).toEqual({
+      harness: CC,
+      model: "sonnet",
+      effort: "medium",
+      sources: { harness: "default", model: "default", effort: "default" },
+    });
+    expect(config.effective.chatAgent).toMatchObject({ model: "sonnet", sources: { model: "default" } });
   });
 
   it("prefers the repo's own setting over everything else", async () => {
     const config = await mockApi.getRepoConfig(BILLING);
-    expect(config.effective.analysisModel).toBe("opus");
-    expect(config.sources?.analysisModel).toBe("repo");
-    // ...and the key it does not set still inherits.
-    expect(config.sources?.chatModel).toBe("default");
+    expect(config.effective.analysisAgent).toMatchObject({ model: "opus", sources: { model: "repo" } });
+    // ...and what it does not set still inherits.
+    expect(config.effective.analysisAgent.sources.effort).toBe("default");
+    expect(config.effective.chatAgent.sources.model).toBe("default");
   });
 
   it("takes the committed team config when the repo is silent", async () => {
     const config = await mockApi.getRepoConfig(TERRAFORM);
-    expect(config.effective).toMatchObject({ analysisModel: "opus", chatModel: "haiku" });
-    expect(config.sources).toMatchObject({ analysisModel: "committed", chatModel: "committed" });
+    expect(config.effective.analysisAgent).toMatchObject({ model: "opus", sources: { model: "committed" } });
+    expect(config.effective.chatAgent).toMatchObject({ model: "haiku", sources: { model: "committed" } });
   });
 
   it("lets the global layer decide, but only under the committed one", async () => {
-    await mockApi.saveConfig({ analysisModel: "haiku", chatModel: "haiku" });
+    await mockApi.saveConfig({
+      analysisAgent: { harness: CC, model: "haiku" },
+      chatAgent: { harness: CC, model: "haiku" },
+    });
 
     const platform = await mockApi.getRepoConfig(PLATFORM);
-    expect(platform.effective).toMatchObject({ analysisModel: "haiku", chatModel: "haiku" });
-    expect(platform.sources).toMatchObject({ analysisModel: "global", chatModel: "global" });
+    expect(platform.effective.analysisAgent).toMatchObject({ model: "haiku", sources: { model: "global" } });
+    expect(platform.effective.chatAgent).toMatchObject({ model: "haiku", sources: { model: "global" } });
 
     // The committed config outranks it.
     const terraform = await mockApi.getRepoConfig(TERRAFORM);
-    expect(terraform.sources?.chatModel).toBe("committed");
-    expect(terraform.effective.chatModel).toBe("haiku");
+    expect(terraform.effective.chatAgent).toMatchObject({ model: "haiku", sources: { model: "committed" } });
 
     // The repo's own setting outranks both.
     const billing = await mockApi.getRepoConfig(BILLING);
-    expect(billing.effective.analysisModel).toBe("opus");
-    expect(billing.effective.chatModel).toBe("haiku");
-    expect(billing.sources).toMatchObject({ analysisModel: "repo", chatModel: "global" });
+    expect(billing.effective.analysisAgent).toMatchObject({ model: "opus", sources: { model: "repo" } });
+    expect(billing.effective.chatAgent).toMatchObject({ model: "haiku", sources: { model: "global" } });
   });
 
   it("a null write re-inherits rather than pinning", async () => {
-    await mockApi.saveRepoConfig(BILLING, { analysisModel: "haiku" });
-    expect((await mockApi.getRepoConfig(BILLING)).effective.analysisModel).toBe("haiku");
-    const cleared = await mockApi.saveRepoConfig(BILLING, { analysisModel: null });
-    expect(cleared.local.analysisModel).toBeNull();
-    expect(cleared.effective.analysisModel).toBe("sonnet");
-    expect(cleared.sources?.analysisModel).toBe("default");
+    await mockApi.saveRepoConfig(BILLING, { analysisAgent: { harness: CC, model: "haiku" } });
+    expect((await mockApi.getRepoConfig(BILLING)).effective.analysisAgent.model).toBe("haiku");
+    const cleared = await mockApi.saveRepoConfig(BILLING, { analysisAgent: null });
+    expect(cleared.local.analysisAgent).toBeNull();
+    expect(cleared.effective.analysisAgent).toMatchObject({ model: "sonnet", sources: { model: "default" } });
   });
 
-  it("reports the global defaults so 'inherit' can be labelled", async () => {
+  it("reports what the global layer resolves to, so 'inherit' can be labelled", async () => {
     const config = await mockApi.getConfig();
-    expect(config.defaults).toEqual({
-      analysisModel: "sonnet",
-      chatModel: "sonnet",
-      analysisEffort: "medium",
-    });
+    expect(config.effective.analysisAgent).toMatchObject({ harness: CC, model: "sonnet", effort: "medium" });
+    expect(config.effective.chatAgent).toMatchObject({ harness: CC, model: "sonnet" });
+  });
+
+  it("lists the harness manifests the settings are built from", async () => {
+    const agents = await mockApi.getAgents();
+    expect(agents.default).toBe(CC);
+    expect(agents.harnesses.map((h) => h.id)).toEqual([CC]);
   });
 });
 
-describe("per-chat model", () => {
+describe("per-chat agent", () => {
   const key = `${PLATFORM}/1`;
 
-  it("starts on the repo's effective chat model, unpinned", async () => {
-    await mockApi.setChatModel(key, null);
+  it("starts on the repo's effective chat agent, unpinned", async () => {
+    await mockApi.setChatAgent(key, null);
     const state = await mockApi.getChat(key);
     expect(state).toMatchObject({
-      model: "sonnet",
-      configuredModel: "sonnet",
-      configuredModelSource: "default",
-      sessionModel: null,
+      agent: { harness: CC, model: "sonnet" },
+      configuredAgent: { model: "sonnet", sources: { model: "default" } },
+      sessionAgent: null,
     });
   });
 
   it("pins a model for the conversation without restarting the session", async () => {
-    const result = await mockApi.setChatModel(key, "opus");
+    const result = await mockApi.setChatAgent(key, { harness: CC, model: "opus" });
     expect(result).toMatchObject({
-      model: "opus",
-      sessionModel: "opus",
-      configuredModel: "sonnet",
+      agent: { model: "opus", sources: { model: "chat" } },
+      sessionAgent: { harness: CC, model: "opus" },
+      configuredAgent: { model: "sonnet" },
       restartedSession: false,
     });
-    expect(await mockApi.getChat(key)).toMatchObject({ model: "opus", sessionModel: "opus" });
+    expect(await mockApi.getChat(key)).toMatchObject({
+      agent: { model: "opus" },
+      sessionAgent: { model: "opus" },
+    });
   });
 
-  it("follows the configured model again once unpinned", async () => {
-    await mockApi.setChatModel(key, "opus");
-    await mockApi.saveConfig({ chatModel: "haiku" });
-    await mockApi.setChatModel(key, null);
+  it("follows the configured agent again once unpinned", async () => {
+    await mockApi.setChatAgent(key, { harness: CC, model: "opus" });
+    await mockApi.saveConfig({ chatAgent: { harness: CC, model: "haiku" } });
+    await mockApi.setChatAgent(key, null);
     expect(await mockApi.getChat(key)).toMatchObject({
-      model: "haiku",
-      configuredModel: "haiku",
-      sessionModel: null,
+      agent: { model: "haiku" },
+      configuredAgent: { model: "haiku" },
+      sessionAgent: null,
     });
   });
 
   it("drops the pin when the conversation is cleared", async () => {
-    await mockApi.setChatModel(key, "opus");
+    await mockApi.setChatAgent(key, { harness: CC, model: "opus" });
     await mockApi.clearChat(key);
-    expect(await mockApi.getChat(key)).toMatchObject({ model: "sonnet", sessionModel: null });
+    expect(await mockApi.getChat(key)).toMatchObject({ agent: { model: "sonnet" }, sessionAgent: null });
+  });
+
+  it("rejects a model the harness does not offer", async () => {
+    await expect(mockApi.setChatAgent(key, { harness: CC, model: "gpt-9" })).rejects.toThrow();
   });
 });

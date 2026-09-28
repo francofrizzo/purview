@@ -9,9 +9,18 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { repoKey } from "../api/client";
 import { errorText } from "../api/errors";
-import { useRepoConfig, useSaveRepoConfig, useRepos } from "../api/hooks";
-import { ANALYSIS_EFFORTS, CLAUDE_MODELS } from "../api/types";
-import type { AnalysisEffort, ClaudeModel, ConfigSource, RepoConfig } from "../api/types";
+import { useAgents, useRepoConfig, useSaveRepoConfig, useRepos } from "../api/hooks";
+import type { AgentSelection, AgentsInfo, ConfigSource, RepoConfig, ResolvedAgent } from "../api/types";
+import {
+  editSelection,
+  effortOptions,
+  harnessOptions,
+  inheritedHarness,
+  manifestOf,
+  modelLabel,
+  modelOptions,
+  offersHarnessChoice,
+} from "../lib/agentSelection";
 import { Markdown } from "../components/Markdown";
 import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
 import { RepoDangerZone } from "../components/RepoActions";
@@ -191,6 +200,7 @@ const fromOption = (v: string): boolean | null => (v === "inherit" ? null : v ==
 
 function AnalysisSection({ config, save }: { config: RepoConfig; save: Save }) {
   const [flash, setFlash] = useFlash();
+  const { data: agents } = useAgents();
   const local = config.local.autoAnalyze;
   const committedAuto = (config.committed.config as { autoAnalyze?: boolean } | null)?.autoAnalyze;
 
@@ -228,36 +238,25 @@ function AnalysisSection({ config, save }: { config: RepoConfig; save: Save }) {
       </div>
 
       <div className="mt-4 flex flex-wrap items-end gap-4">
-        <ModelField
-          label="Analysis model"
-          testId="analysis-model"
-          value={config.local.analysisModel}
-          effective={config.effective.analysisModel}
-          source={config.sources?.analysisModel}
+        <AgentFields
+          kind="analysis"
+          agents={agents}
+          layer={config.local.analysisAgent}
+          resolved={config.effective.analysisAgent}
           disabled={save.isPending}
-          onChange={(m) => save.mutate({ analysisModel: m }, { onSuccess: () => setFlash() })}
+          onChange={(analysisAgent) => save.mutate({ analysisAgent }, { onSuccess: () => setFlash() })}
         />
-        <EffortField
-          label="Effort"
-          testId="analysis-effort"
-          value={config.local.analysisEffort}
-          effective={config.effective.analysisEffort}
-          source={config.sources?.analysisEffort}
+        <AgentFields
+          kind="chat"
+          agents={agents}
+          layer={config.local.chatAgent}
+          resolved={config.effective.chatAgent}
           disabled={save.isPending}
-          onChange={(e) => save.mutate({ analysisEffort: e }, { onSuccess: () => setFlash() })}
-        />
-        <ModelField
-          label="Chat model"
-          testId="chat-model"
-          value={config.local.chatModel}
-          effective={config.effective.chatModel}
-          source={config.sources?.chatModel}
-          disabled={save.isPending}
-          onChange={(m) => save.mutate({ chatModel: m }, { onSuccess: () => setFlash() })}
+          onChange={(chatAgent) => save.mutate({ chatAgent }, { onSuccess: () => setFlash() })}
         />
         <p className="pb-1 max-w-xs text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-          Every run passes the model explicitly, so nothing inherits whatever your{" "}
-          <span className="font-mono">claude</span> CLI happens to default to.
+          Every run passes the model explicitly, so nothing inherits whatever the agent&apos;s own
+          CLI happens to default to.
         </p>
       </div>
     </Section>
@@ -655,6 +654,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 }
 
 const SOURCE_LABEL: Record<ConfigSource, string> = {
+  chat: "this conversation",
   pr: "this PR's override",
   repo: "this repo",
   committed: "the committed team config",
@@ -663,14 +663,13 @@ const SOURCE_LABEL: Record<ConfigSource, string> = {
 };
 
 /**
- * One tri-state-plus choice — "inherit" plus a fixed set of pinnable values —
- * with what it resolves to underneath it. `inherit` is a real option, not an
+ * One tri-state-plus choice — "inherit" plus a set of pinnable values — with
+ * what it resolves to underneath it. `inherit` is a real option, not an
  * absence: it is what lets the repo sit between the team's committed config
- * and the machine-wide setting. `ModelField` and `EffortField` below are both
- * just this with their own option list, so the select markup and the
- * "Effective: ... — from ..." line are written once.
+ * and the machine-wide setting. Every agent field below is this with the
+ * options its harness's manifest lists.
  */
-export function SelectField<T extends string>({
+export function SelectField({
   label,
   testId,
   value,
@@ -682,12 +681,13 @@ export function SelectField<T extends string>({
 }: {
   label: string;
   testId: string;
-  value: T | null;
-  effective: T;
+  value: string | null;
+  /** what the field resolves to, as shown */
+  effective: string;
   source?: ConfigSource;
   disabled?: boolean;
-  options: { value: T; label: string; title?: string }[];
-  onChange: (value: T | null) => void;
+  options: { value: string; label: string; title?: string }[];
+  onChange: (value: string | null) => void;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -697,7 +697,7 @@ export function SelectField<T extends string>({
           className="rounded px-2 py-1 text-xs outline-none"
           value={value ?? "inherit"}
           disabled={disabled}
-          onChange={(e) => onChange(e.target.value === "inherit" ? null : (e.target.value as T))}
+          onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
           style={{
             background: "var(--bg-inset)",
             border: "1px solid var(--border)",
@@ -720,77 +720,74 @@ export function SelectField<T extends string>({
   );
 }
 
-export function ModelField({
-  label,
-  testId,
-  value,
-  effective,
-  source,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  testId: string;
-  value: ClaudeModel | null;
-  effective: ClaudeModel;
-  source?: ConfigSource;
-  disabled?: boolean;
-  onChange: (model: ClaudeModel | null) => void;
-}) {
-  return (
-    <SelectField
-      label={label}
-      testId={testId}
-      value={value}
-      effective={effective}
-      source={source}
-      disabled={disabled}
-      options={CLAUDE_MODELS.map((m) => ({ value: m, label: m }))}
-      onChange={onChange}
-    />
-  );
-}
-
 /**
- * `"none"` is not a level like the others — it drops `--effort` from the
- * spawned `claude` invocation entirely, which only matters for a CLI too old
- * to recognize the flag. The hint lives in the option's `title` (a hover
- * tooltip) so the visible label stays as short as the others.
+ * One kind of work's agent at the repo layer: which harness (only when there
+ * is more than one to choose from), its model and, for analysis, its effort.
+ * The choices come from the harness's manifest; a model or effort is pinned on
+ * the harness the repo runs that work on.
  */
-const EFFORT_OPTIONS = ANALYSIS_EFFORTS.map((e) => ({
-  value: e,
-  label: e,
-  title: e === "none" ? "Don't set --effort — for old claude CLIs" : undefined,
-}));
-
-export function EffortField({
-  label,
-  testId,
-  value,
-  effective,
-  source,
+export function AgentFields<T extends AgentSelection>({
+  kind,
+  agents,
+  layer,
+  resolved,
   disabled,
   onChange,
 }: {
-  label: string;
-  testId: string;
-  value: AnalysisEffort | null;
-  effective: AnalysisEffort;
-  source?: ConfigSource;
+  kind: "analysis" | "chat";
+  agents: AgentsInfo | undefined;
+  layer: T | null;
+  resolved: ResolvedAgent;
   disabled?: boolean;
-  onChange: (effort: AnalysisEffort | null) => void;
+  onChange: (selection: T | null) => void;
 }) {
+  const manifest = manifestOf(agents, resolved.harness);
+  const inherited = inheritedHarness(agents, layer, resolved.harness);
+  const edit = (field: "harness" | "model" | "effort", value: string | null) =>
+    onChange(editSelection(layer, field, value, resolved.harness, inherited));
+  const title = kind === "analysis" ? "Analysis" : "Chat";
   return (
-    <SelectField
-      label={label}
-      testId={testId}
-      value={value}
-      effective={effective}
-      source={source}
-      disabled={disabled}
-      options={EFFORT_OPTIONS}
-      onChange={onChange}
-    />
+    <>
+      {offersHarnessChoice(agents) ? (
+        <SelectField
+          label={`${title} agent`}
+          testId={`${kind}-harness`}
+          value={layer?.harness ?? null}
+          effective={manifest?.name ?? resolved.harness}
+          source={resolved.sources.harness}
+          disabled={disabled}
+          options={harnessOptions(agents)}
+          onChange={(v) => edit("harness", v)}
+        />
+      ) : null}
+      <SelectField
+        label={`${title} model`}
+        testId={`${kind}-model`}
+        value={layer?.model ?? null}
+        effective={modelLabel(manifest, resolved.model)}
+        source={resolved.sources.model}
+        disabled={disabled}
+        options={modelOptions(manifest)}
+        onChange={(v) => edit("model", v)}
+      />
+      {kind === "analysis" && resolved.effort !== undefined ? (
+        <SelectField
+          label="Effort"
+          testId={`${kind}-effort`}
+          value={layer?.effort ?? null}
+          effective={resolved.effort}
+          source={resolved.sources.effort}
+          disabled={disabled}
+          options={effortOptions(manifest)}
+          onChange={(v) => edit("effort", v)}
+        />
+      ) : null}
+      {resolved.problem ? (
+        <p className="pb-1 max-w-xs text-2xs leading-4" style={{ color: "var(--risk)" }}>
+          {resolved.problem}
+        </p>
+      ) : null}
+    </>
   );
 }
 
