@@ -22,7 +22,7 @@ import {
 import { QuoteButton } from "./ChatPanel";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
 import { StatusChip } from "./FinishReview";
-import { IconClose } from "./icons";
+import { IconChat, IconClose } from "./icons";
 import { Markdown } from "./Markdown";
 
 /**
@@ -32,6 +32,13 @@ import { Markdown } from "./Markdown";
 export type CommentTarget =
   | { subjectType: "line"; file: string; line: number; side: "LEFT" | "RIGHT" }
   | { subjectType: "file"; file: string };
+
+/** The chat ref for where a comment box points: its line, or its whole file. */
+export function targetRef(target: CommentTarget): ChatRef {
+  if (target.subjectType === "file") return { kind: "file", path: target.file };
+  const side = target.side === "LEFT" ? "old" : "new";
+  return { kind: "line-range", path: target.file, side, start: target.line, end: target.line };
+}
 
 /** The chat ref for a comment — file-level ones carry no line to point at. */
 export function commentRef(c: DraftComment): ChatRef {
@@ -69,6 +76,8 @@ export function CommentComposer({
   exportCtx,
   onCancel,
   onSubmit,
+  onSendToChat,
+  chatBusy = false,
 }: {
   target: CommentTarget;
   pending: boolean;
@@ -76,6 +85,10 @@ export function CommentComposer({
   exportCtx?: DiffContext;
   onCancel: () => void;
   onSubmit: (body: string) => void;
+  /** ask the review chat instead of drafting: the text goes out with this line attached */
+  onSendToChat?: (body: string) => void;
+  /** the chat is mid-reply and would drop a new message */
+  chatBusy?: boolean;
 }) {
   const [body, setBody] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -117,9 +130,23 @@ export function CommentComposer({
         onChange={(e) => setBody(e.target.value)}
       />
       <div className="mt-1.5 flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-2xs" style={{ color: "var(--fg-faint)" }}>
-          Saved locally; pushed as a pending review on sync.
-        </span>
+        {onSendToChat ? (
+          <button
+            type="button"
+            className="btn"
+            data-testid="composer-send-to-chat"
+            disabled={!body.trim() || chatBusy}
+            title={
+              chatBusy
+                ? "The chat is still replying"
+                : "Ask the review chat instead, with this line attached. Nothing is saved as a draft."
+            }
+            onClick={() => onSendToChat(body.trim())}
+          >
+            <IconChat width={11} height={11} />
+            send to chat
+          </button>
+        ) : null}
         {exportCtx ? (
           <CopyForAgentButton
             testId="copy-composer"
@@ -140,6 +167,7 @@ export function CommentComposer({
           type="button"
           className="btn btn-primary ml-auto"
           data-testid="composer-save"
+          title="Saved locally; pushed as a pending review on sync."
           disabled={!body.trim() || pending}
           onClick={() => onSubmit(body.trim())}
         >

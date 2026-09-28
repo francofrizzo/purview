@@ -92,7 +92,8 @@ interface ChatContextValue {
   /** dismiss the auto chip until the unit changes or the panel reopens */
   removeAutoRef: () => void;
 
-  send: (text: string) => void;
+  /** `extraRefs` ride along on this one message only (e.g. the line a comment box points at) */
+  send: (text: string, extraRefs?: ChatRef[]) => void;
   retry: () => void;
   clearConversation: () => Promise<void>;
 
@@ -340,7 +341,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [queryClient]);
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, extraRefs: ChatRef[] = []) => {
       const key = keyRef.current;
       const body = text.trim();
       if (!key || !body || busy) return;
@@ -348,7 +349,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       // unit ref — but it is never *consumed*: clearing explicit refs after
       // send leaves the auto chip to reappear (unless dismissed) for the
       // next turn, same unit.
-      const sent = effectiveRefs;
+      const sent = extraRefs.reduce(addRefTo, effectiveRefs);
       setMessages((cur) => [
         ...cur,
         { role: "user", text: body, ts: new Date().toISOString(), refs: sent.length ? sent : undefined },

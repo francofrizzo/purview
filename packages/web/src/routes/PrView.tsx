@@ -67,6 +67,7 @@ import {
 import {
   CommentComposer,
   DraftsDrawer,
+  targetRef,
   targetToInput,
   type CommentTarget,
 } from "../components/Drafts";
@@ -1513,6 +1514,12 @@ export function PrView() {
                   onSuccess: () => setCommentTarget(null),
                 })
               }
+              chatBusy={chat.busy}
+              onSendToChat={(body) => {
+                chat.send(body, [targetRef(commentTarget)]);
+                chat.openChat();
+                setCommentTarget(null);
+              }}
             />
           ) : null}
         </main>
