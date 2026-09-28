@@ -64,6 +64,8 @@ const manifest: HarnessManifest = {
   defaults: { model: "sonnet", effort: "medium" },
   capabilities: { resume: true, handoff: true },
   toolNames: { shell: "Bash", read: "Read", write: "Write", edit: "Edit" },
+  // Fixed in Claude Code; BASH_MAX_OUTPUT_LENGTH does not move it.
+  inlineOutputLimit: 25_000,
 };
 
 const LABELS = { analysis: "analysis", chat: "chat", reanchor: "comment-reanchor" } as const;

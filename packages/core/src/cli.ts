@@ -31,6 +31,7 @@ import { formatReport } from "./report.js";
 import { renderTriage } from "./triage.js";
 import { allSelectedHunks, renderShowHunk, selectHunks } from "./hunk-select.js";
 import { renderChanges } from "./changes.js";
+import { showInlineLimit } from "./inline-limit.js";
 import { formatRemaining, needsClassification, renderUnits, type UnitPatchRequest } from "./unit-patch.js";
 import {
   callServer,
@@ -69,16 +70,7 @@ function resolveRevision(state: { currentRevision: number }, rev?: string): numb
 }
 
 /**
- * Above this, Claude Code does not show a Bash result inline: it saves it to
- * a file and hands the model a pointer, which costs a turn to discover and
- * another to read. (Its threshold is fixed; BASH_MAX_OUTPUT_LENGTH does not
- * move it.) `show` writes big results to the PR's scratch dir itself and
- * prints the path, so the model goes straight to one Read.
- */
-export const SHOW_INLINE_LIMIT = 25_000;
-
-/**
- * Print `body`, or — above SHOW_INLINE_LIMIT, unless `inline` — write it to
+ * Print `body`, or — above `showInlineLimit()`, unless `inline` — write it to
  * the PR's scratch dir and print `summary` plus the path to Read instead.
  */
 function printOrSpill(
@@ -86,7 +78,7 @@ function printOrSpill(
   body: string,
   opts: { summary: string; name: string; inline?: boolean; toc?: string[] },
 ): void {
-  if (opts.inline || body.length <= SHOW_INLINE_LIMIT) {
+  if (opts.inline || body.length <= showInlineLimit()) {
     process.stdout.write(body);
     return;
   }
@@ -97,10 +89,10 @@ function printOrSpill(
   console.log(`${opts.summary}, ${Math.round(body.length / 1024)} KB: too large to print inline.`);
   console.log(`Written to ${file}`);
   if (opts.toc && opts.toc.length > 0) {
-    console.log("Contents (line ranges in that file; Read just the parts you need with offset=<first line> limit=<count>):");
+    console.log("Contents (line ranges in that file; read just the ranges you need):");
     for (const line of opts.toc) console.log(`  ${line}`);
   } else {
-    console.log("Read that file with the Read tool (page with offset/limit if it is very long).");
+    console.log("Read that file with your file-reading tool (by line range if it is very long).");
   }
   console.log("Cite source lines from its gutter (old new │), never the file's own line numbers.");
 }

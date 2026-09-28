@@ -237,6 +237,15 @@ describe("headless skill text", () => {
     );
   });
 
+  it("the skill files name no harness's tools, only the neutral words the prompt maps", () => {
+    const real = new URL("../../../skills/pr-review", import.meta.url).pathname;
+    for (const name of ["SKILL.md", "RUBRIC.md", "MIGRATION-NOTES.md"]) {
+      const text = fs.readFileSync(path.join(real, name), "utf8");
+      expect(text, name).not.toMatch(/\b(Bash|Write|Edit|Grep|Glob) (tool|call|command)/);
+      expect(text, name).not.toMatch(/\bRead tool|offset\/limit|offset=/);
+    }
+  });
+
   it("the real skill, headless: no setup/init/other-commands/report sections, no gh fallback, refresh rules once", () => {
     const real = new URL("../../../skills/pr-review", import.meta.url).pathname;
     const initial = analysisSystemPrompt({ incremental: false }, real);
@@ -256,6 +265,8 @@ describe("headless skill text", () => {
       expect(text).toContain("The run prompt lists this PR's `classification-corrected` events");
       expect(text).toContain("do NOT Read them");
       expect(text).toContain("untrusted");
+      // The skill's neutral tool words are mapped onto this harness's own names.
+      expect(text).toContain('"the shell tool", "the read tool", "the write tool" and "the edit tool": here those are your Bash, Read, Write and Edit tools');
     }
     expect(initial).not.toContain("===== MIGRATION-NOTES.md =====");
     expect(refresh).toContain("===== MIGRATION-NOTES.md =====");
@@ -453,6 +464,8 @@ describe("analysis job lifecycle", () => {
     expect(system.indexOf("RUBRIC BODY")).toBeLessThan(system.indexOf("MIGRATION BODY"));
     // identical for another PR of the same kind: nothing per-run leaks in
     expect(system).toBe(analysisSystemPrompt({ incremental: true }, skills));
+    // The CLI learns the harness's inline-output limit through the environment.
+    expect(claude.runs[0].env).toMatchObject({ PURVIEW_INLINE_LIMIT: "25000" });
     const prompt = claude.promptOf(0);
     expect(prompt).not.toContain("SKILL BODY");
     expect(prompt.startsWith(`Analyze PR ${keyToString(key)}`)).toBe(true);
@@ -1726,6 +1739,9 @@ describe("model selection", () => {
       expect(run.argv).toContain("--model");
       expect(modelOf(run.argv)).toBe("sonnet");
     }
+    // Both have a shell tool, so both tell the CLI the harness's inline limit.
+    for (const run of claude.runs) expect(run.env).toMatchObject({ PURVIEW_INLINE_LIMIT: "25000" });
+    expect(claude.runs[1].env).toMatchObject({ PURVIEW_ACTOR: "chat", PURVIEW_AGENT: "claude-code" });
   });
 
   it("uses the repo's configured models, analysis and chat independently", async () => {

@@ -96,7 +96,7 @@ first three as "carried".
 
    Units `changes` does not list and that take no new hunk are not patched at all.
 
-3. **Write every patch in one batch.** Put them all in one file (Write tool, scratch
+3. **Write every patch in one batch.** Put them all in one file (write tool, scratch
    directory — never stdin/heredoc) and run
    `reviewer-state set-units <key> --file <scratch>/patches.json`:
 
@@ -119,7 +119,7 @@ first three as "carried".
      remove it from its current unit and add it to the new one **in the same batch** (either
      order).
    - The batch is all-or-nothing: if any patch is invalid, the CLI names every problem and
-     writes nothing — fix the file with the Edit tool and re-run the same command.
+     writes nothing — fix the file with the edit tool and re-run the same command.
    - On success it prints each saved unit, then what remains: hunks still needing
      classification (or "All hunks assigned") and changed units not patched yet this
      revision. No follow-up `report` is needed.

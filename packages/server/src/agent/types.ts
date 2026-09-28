@@ -46,6 +46,12 @@ export interface HarnessManifest {
     write: string;
     edit: string;
   };
+  /**
+   * The most output (in characters) the shell tool shows the model inline.
+   * The CLI writes anything bigger to a scratch file and prints its path, so
+   * the model reads it in one step instead of discovering a truncation.
+   */
+  inlineOutputLimit: number;
 }
 
 /** Injectable, synchronous process runner for probes. Never throws. */

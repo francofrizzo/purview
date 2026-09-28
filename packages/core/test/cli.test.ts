@@ -148,11 +148,12 @@ function eventCount(): number {
 
 function run(
   args: string[],
+  env: Record<string, string> = {},
 ): { status: number; stdout: string; stderr: string } {
   try {
     const stdout = execFileSync("node", [cliPath, ...args], {
       encoding: "utf8",
-      env: { ...process.env, REVIEWER_STATE_DIR: tmp },
+      env: { ...process.env, REVIEWER_STATE_DIR: tmp, ...env },
     });
     return { status: 0, stdout, stderr: "" };
   } catch (err) {
@@ -272,6 +273,16 @@ describe("cli show", () => {
     // --inline opts out.
     const inline = run(["show", keyToString(key), hunk.id, "--inline"]);
     expect(inline.stdout).toContain("line799");
+  });
+
+  it("spills at the limit the harness running it gives in PURVIEW_INLINE_LIMIT", () => {
+    const { hunk } = seed(["  const small = 1;"]);
+    expect(run(["show", keyToString(key), hunk.id]).stdout).not.toContain("too large to print inline");
+    const tight = run(["show", keyToString(key), hunk.id], { PURVIEW_INLINE_LIMIT: "10" });
+    expect(tight.stdout).toContain("too large to print inline");
+    // Garbage is ignored rather than spilling everything.
+    const bad = run(["show", keyToString(key), hunk.id], { PURVIEW_INLINE_LIMIT: "lots" });
+    expect(bad.stdout).not.toContain("too large to print inline");
   });
 
   it("requires at least one selector without --all", () => {

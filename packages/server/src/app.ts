@@ -1599,7 +1599,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     c.json({
       default: DEFAULT_HARNESS,
       harnesses: harnessIds().map((id) => {
-        const { toolNames: _toolNames, ...manifest } = getHarness(id).manifest;
+        const { toolNames: _toolNames, inlineOutputLimit: _limit, ...manifest } = getHarness(id).manifest;
         return manifest;
       }),
     }),

@@ -1,3 +1,4 @@
+import { INLINE_LIMIT_ENV } from "@reviewer/core";
 import { claudeCodeHarness } from "./claude-code/index.js";
 import type { AgentHarness, HarnessId } from "./types.js";
 
@@ -27,4 +28,12 @@ export function findHarness(id: HarnessId): AgentHarness | undefined {
 
 export function harnessIds(): HarnessId[] {
   return [...HARNESSES.keys()];
+}
+
+/**
+ * What the reviewer-state CLI needs to know about the harness running it,
+ * added to the environment of every run that has a shell tool.
+ */
+export function cliEnvironment(manifest: AgentHarness["manifest"]): Record<string, string> {
+  return { [INLINE_LIMIT_ENV]: String(manifest.inlineOutputLimit) };
 }

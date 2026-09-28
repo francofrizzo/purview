@@ -12,7 +12,7 @@ import {
   type PrKey,
 } from "@reviewer/core";
 import { resolveRunCheckout } from "./pr-checkout.js";
-import { getHarness } from "./agent/registry.js";
+import { cliEnvironment, getHarness } from "./agent/registry.js";
 import type { AgentAction, AgentHarness, AgentSession, HarnessId } from "./agent/types.js";
 import { skillDir } from "./skill-paths.js";
 import { effectiveChatAgent, effectiveRepoPath } from "./repo-config.js";
@@ -194,7 +194,7 @@ export function startChatTurn(
         timeoutMs: opts.timeoutMs ?? CHAT_TIMEOUT_MS,
         // Marks the chat's `reviewer-state comment` calls as the agent's (the
         // server enforces draft-only on them) and points them at this server.
-        environment: chatChildEnv(opts.serverPort, harness.manifest.id),
+        environment: { ...chatChildEnv(opts.serverPort, harness.manifest.id), ...cliEnvironment(harness.manifest) },
       });
 
       for await (const event of run.events) {

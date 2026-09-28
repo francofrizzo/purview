@@ -26,7 +26,7 @@ import {
   liveUnits,
   needsClassification,
 } from "@reviewer/core";
-import { getHarness } from "./agent/registry.js";
+import { cliEnvironment, getHarness } from "./agent/registry.js";
 import type { AgentAction, AgentRun, HarnessManifest, ReviewerCommand } from "./agent/types.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 import { readConfig } from "./config.js";
@@ -371,6 +371,8 @@ function readSkillFile(skills: string, name: string): string {
  */
 function hardRules(tools: HarnessManifest["toolNames"]): string {
   return [
+    `The skill files below say "the shell tool", "the read tool", "the write tool" and "the edit tool": here those are your ${tools.shell}, ${tools.read}, ${tools.write} and ${tools.edit} tools.`,
+    "",
     "HARD RULES:",
     "- `reviewer-state` in the files below stands for the exact CLI path the run prompt gives. It is ONE executable path: type it in full at the start of every call. Never store it (or any command) in a shell variable — `$CLI report` is not permitted and does not run.",
     "- Only the reviewer-state CLI and read-only inspection (grep, rg, sed -n, cat, head, tail, ls, wc) run. Anything else — python3, node, jq, rm, git, gh, curl, loops around them, a redirect that writes a file — is denied without a prompt; don't retry it in another shape.",
@@ -465,7 +467,7 @@ export function analysisPrompt(
     `selector, or the shell expands or rejects it first: \`${cmd} show ${keyStr} 'internal/**/*_test.go'\`.`,
     "Each body line starts with a gutter of its real old/new line numbers in the source file",
     "(`88 90 │ context`, `89    │-removed`, `   91 │+added`). A result too big to print inline is",
-    "written to the scratch directory and `show` prints its path and a table of contents: Read just",
+    "written to the scratch directory and `show` prints its path and a table of contents: read just",
     "the line ranges you need. Never redirect `show` output to a file yourself, and never split one",
     "selection into several `show` calls just to keep each one small.",
     `NEVER parse ${path.join(dir, "revisions", String(state.currentRevision), "files.json")} or diff.patch`,
@@ -1002,6 +1004,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     // the instructions; everything specific to this PR/run is the prompt,
     // after it, so the prefix is identical across runs.
     instructions: analysisSystemPrompt({ incremental }, skillDir(), harness.manifest.toolNames),
+    environment: cliEnvironment(harness.manifest),
     prompt: analysisPrompt(key, root, {
       incremental,
       checkout,

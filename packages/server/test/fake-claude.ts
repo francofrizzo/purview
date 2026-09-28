@@ -19,7 +19,7 @@ export interface FakeClaudeOptions {
 
 export interface FakeClaude {
   /** one entry per spawn, in order */
-  runs: { argv: string[]; cwd: string; prompt: string }[];
+  runs: { argv: string[]; cwd: string; prompt: string; env?: Record<string, string> }[];
   install(): void;
   restore(): void;
   /** prompt of the nth run, readable even while that run is still going */
@@ -106,7 +106,7 @@ export function fakeClaude(opts: FakeClaudeOptions = {}): FakeClaude {
     setClaudeSpawner((argv, spawnOpts) => {
       const promptFile = path.join(dir, `prompt-${runs.length}.txt`);
       const index = runs.length;
-      runs.push({ argv, cwd: spawnOpts.cwd, prompt: "" });
+      runs.push({ argv, cwd: spawnOpts.cwd, prompt: "", env: spawnOpts.env });
       const child = spawn(process.execPath, [CHILD], {
         cwd: spawnOpts.cwd,
         stdio: ["pipe", "pipe", "pipe"],

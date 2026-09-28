@@ -72,7 +72,7 @@ number: it's printed by `init`/`refresh`, appears in the `report` header line
 
 ## 2. Read the diff
 
-Run `reviewer-state triage <key>` first, in one Bash call. It prints a compact plain-text
+Run `reviewer-state triage <key>` first, in one shell-tool call. It prints a compact plain-text
 overview built for exactly this: one line per file (path, status, hunk
 count, +/- size, mechanical hints), one line per hunk (id, +/- size, truncated `@@` header,
 moved-code marks), and a trailing `MOVED` section — readable whole even for a 450-hunk PR.
@@ -113,10 +113,10 @@ Every body line carries a gutter with its real line numbers in the source file, 
 
 Cite those numbers, not the position of a line in `show`'s output.
 
-A result too big to print inline (over ~25 KB) is written to the PR's `scratch/` directory,
+A result too big for the shell tool to show whole is written to the PR's `scratch/` directory,
 and `show` prints its path plus a table of contents: each file's line range in that file and
-where each of its hunks starts (`3f9c2a1b@L120`). Read just the ranges you need with the
-Read tool's offset/limit rather than paging through it; its lines carry the same gutter, and
+where each of its hunks starts (`3f9c2a1b@L120`). Read just the line ranges you need with the
+read tool rather than paging through it; its lines carry the same gutter, and
 a scratch file's own line numbers mean nothing.
 Don't redirect `show` into a file yourself, and don't split one selection into several
 small `show` calls to dodge the size: both just add turns.
@@ -143,12 +143,12 @@ model latency across 130 turns while the tools themselves took ~23 seconds total
 
 Rules:
 
-- **Plan the questions for a unit first, then answer as many as possible in ONE Bash
-  call.** Join them with `&&` or `;`, use `grep -n -e pat1 -e pat2`, pass several files to
+- **Plan the questions for a unit first, then answer as many as possible in ONE
+  shell-tool call.** Join them with `&&` or `;`, use `grep -n -e pat1 -e pat2`, pass several files to
   one `grep`, stack several `sed -n '<a>,<b>p' file` ranges. Read the combined output in a
   single turn. Prefer over-fetching a little to paying a second round-trip: a few hundred
   extra output lines are far cheaper than another turn.
-- **Never `cd`. Always use absolute paths.** Each Bash call is a fresh shell, so `cd` buys
+- **Never `cd`. Always use absolute paths.** Each shell-tool call is a fresh shell, so `cd` buys
   nothing and costs characters.
   - Bad (three turns, three `cd`s):
     ```
@@ -358,7 +358,7 @@ the corrected way, not the way your heuristics would naively suggest.
 
 ## 7. Write the analysis
 
-Write the JSON from step 4 with the **Write tool** into the run's scratch directory
+Write the JSON from step 4 with the **write tool** into the run's scratch directory
 (`<state-dir>/scratch/` — the only writable location; the run prompt gives the absolute
 path), then hand the CLI the file path:
 
@@ -366,9 +366,9 @@ path), then hand the CLI the file path:
 reviewer-state set-analysis <key> --file <state-dir>/scratch/analysis.json
 ```
 
-**Never inline JSON into a Bash command** — no heredocs, no `echo '{...}'`, no `--file -`
-with piped input. The permission layer rejects any Bash command containing quoted braces
-("expansion obfuscation"), and each rejected attempt wastes a full turn re-sending your
+**Never inline JSON into a shell command** — no heredocs, no `echo '{...}'`, no `--file -`
+with piped input. The permission layer may reject a shell command containing quoted braces
+(Claude Code calls it "expansion obfuscation"), and each rejected attempt wastes a full turn re-sending your
 whole context. A file written once is also cheap to retry: the save command is one short
 line.
 
@@ -379,7 +379,7 @@ refresh, see step 8) starts fresh unless the payload carries it.
 On success it prints `Analysis set for revision <n>: <u> units covering <h> hunks`, then
 what is left (hunks still needing classification, or "All hunks assigned") — no follow-up
 `report` is needed to check. If the
-CLI reports validation errors, fix the file with the **Edit tool** — a targeted edit, not
+CLI reports validation errors, fix the file with the **edit tool** — a targeted edit, not
 a rewrite — and re-run the same command. Do not hand-wave past a validation failure.
 Common causes: a hunk id of the current revision missing from every unit's
 `hunkIds` *and* from `"unassigned"` (the error lists the exact ids), a hunk id listed in
