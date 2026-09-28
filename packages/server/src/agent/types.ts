@@ -129,6 +129,11 @@ export interface AgentSession {
   id: string;
   /** the working directory the session was started in */
   cwd: string;
+  /**
+   * Whatever else the harness needs to decide `canResume` — opaque to
+   * Purview, which only stores it with the session and hands it back.
+   */
+  fingerprint?: string;
 }
 
 export interface AgentRunRequest {
@@ -214,7 +219,10 @@ export interface AgentHarness {
   readonly manifest: HarnessManifest;
   probe(exec: Exec): HarnessStatus;
   run(request: AgentRunRequest): AgentRun;
-  /** whether `session` can be continued by a run in `cwd` */
-  canResume(session: AgentSession, cwd: string): boolean;
+  /**
+   * Whether `session` can be continued by a run in `cwd` with `instructions`.
+   * No means: start a new session (and replay whatever context matters).
+   */
+  canResume(session: AgentSession, next: { cwd: string; instructions?: string }): boolean;
   createHandoff?(session: AgentSession, context: HandoffContext): AgentHandoff;
 }

@@ -166,10 +166,15 @@ export function startChatTurn(
         readRoots.push(stateDir);
       }
 
-      // A session the harness cannot continue from this cwd (or none at all)
-      // means a fresh session that replays the kept transcript, exactly like
-      // a rewind does.
-      const resume = stored && harness.canResume(stored, cwd) ? stored : undefined;
+      // Built every turn: they carry the current head, checkout, CLI path and
+      // team overlays, and the read-only contract.
+      const instructions = chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed });
+      // A session the harness cannot continue with these instructions from
+      // this cwd (or none at all) means a fresh session that replays the kept
+      // transcript, exactly like a rewind does. Claude Code, for one, freezes
+      // a session's instructions at its first turn, so any change to them
+      // (a new revision, another checkout) starts over.
+      const resume = stored && harness.canResume(stored, { cwd, instructions }) ? stored : undefined;
       const prompt = buildChatPrompt(
         key,
         text,
@@ -183,9 +188,7 @@ export function startChatTurn(
         prompt,
         cwd,
         readRoots,
-        // The instructions are re-sent on resume too: they are cheap, and they
-        // keep the read-only contract in force for every turn.
-        instructions: chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed }),
+        instructions,
         model: agent.model,
         session: resume ?? "new",
         timeoutMs: opts.timeoutMs ?? CHAT_TIMEOUT_MS,

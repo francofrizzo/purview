@@ -346,7 +346,7 @@ describe("chat sessions and harness ownership", () => {
     { role: "assistant", text: "old answer", ts: "t2" },
   ];
 
-  it("reads a pre-harness chat.json as a Claude Code session, resumes it, and rewrites the new shape", async () => {
+  it("reads a pre-harness chat.json as a Claude Code session, replays it once, and rewrites the new shape", async () => {
     fs.writeFileSync(
       chatPath(key, root),
       JSON.stringify({ sessionId: SESSION, sessionCwd: prDir(key, root), model: "opus", messages: history }),
@@ -359,9 +359,11 @@ describe("chat sessions and harness ownership", () => {
 
     await send("follow-up");
     const argv = claude.runs[0].argv;
-    expect(argv[argv.indexOf("--resume") + 1]).toBe(SESSION);
+    // Its instructions were never fingerprinted, so they may be stale: a
+    // fresh session with the kept transcript, not a resume.
+    expect(argv).not.toContain("--resume");
     expect(argv[argv.indexOf("--model") + 1]).toBe("opus");
-    expect(claude.promptOf(0)).not.toContain("old question");
+    expect(claude.promptOf(0)).toContain("You: old question");
 
     const onDisk = JSON.parse(fs.readFileSync(chatPath(key, root), "utf8"));
     expect(onDisk).not.toHaveProperty("sessionId");
@@ -370,6 +372,26 @@ describe("chat sessions and harness ownership", () => {
     expect(onDisk.agent).toEqual({ harness: "claude-code", model: "opus" });
     expect(onDisk.messages).toHaveLength(4);
     expect(onDisk.session.harness).toBe("claude-code");
+    expect(onDisk.session.fingerprint).toMatch(/^i1:/);
+
+    // From here on the session is fingerprinted, so the next turn resumes it.
+    await send("and then?");
+    expect(claude.runs[1].argv).toContain("--resume");
+  });
+
+  it("starts a fresh session when the chat's instructions change, instead of resuming a stale one", async () => {
+    await send("first");
+    const first = readChat(key, root).session!;
+    await send("second");
+    expect(claude.runs[1].argv[claude.runs[1].argv.indexOf("--resume") + 1]).toBe(first.id);
+
+    // A committed chat-instructions overlay changes what the chat is told.
+    fs.writeFileSync(path.join(root, "github.com", key.owner, key.repo, "CHAT.local.md"), "Be terse.\n");
+    await send("third");
+    const third = claude.runs[2].argv;
+    expect(third).not.toContain("--resume");
+    expect(claude.promptOf(2)).toContain("You: first");
+    expect(readChat(key, root).session!.fingerprint).not.toBe(first.fingerprint);
   });
 
   it("never hands a session to a harness that does not own it: starts fresh and replays", async () => {

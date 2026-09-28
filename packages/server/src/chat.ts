@@ -66,6 +66,8 @@ export const ChatSessionSchema = z.object({
   id: z.string().min(1),
   /** the working directory the session was started in */
   cwd: z.string().min(1),
+  /** the harness's own resumability check (see AgentSession) */
+  fingerprint: z.string().min(1).optional(),
 });
 export type ChatSession = z.infer<typeof ChatSessionSchema>;
 

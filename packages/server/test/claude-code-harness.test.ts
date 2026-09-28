@@ -145,18 +145,30 @@ describe("runs", () => {
     expect(events[0].type).toBe("session");
     if (events[0].type !== "session") throw new Error("unreachable");
     const { id } = events[0].session;
-    expect(events[0].session).toEqual({ harness: "claude-code", id, cwd });
+    expect(events[0].session).toEqual({ harness: "claude-code", id, cwd, fingerprint: expect.stringMatching(/^i1:/) });
     const argv = claude.runs[0].argv;
     expect(argv[argv.indexOf("--session-id") + 1]).toBe(id);
     // No init line arrived, yet the completion still names the session.
     expect(events.at(-1)).toMatchObject({ type: "completed", ok: true, session: { id } });
   });
 
-  it("resumes only its own sessions, and only from the cwd they were started in", async () => {
-    const own = { harness: "claude-code", id: "abc", cwd };
-    expect(claudeCodeHarness.canResume(own, cwd)).toBe(true);
-    expect(claudeCodeHarness.canResume(own, "/elsewhere")).toBe(false);
-    expect(claudeCodeHarness.canResume({ ...own, harness: "other" }, cwd)).toBe(false);
+  it("resumes only its own sessions, from the cwd and with the instructions they were started with", async () => {
+    // Learn the fingerprint the way callers do: from a new session.
+    claude = fakeClaude();
+    claude.install();
+    const started = await collect(claudeCodeHarness.run(reanchor({ session: "new", instructions: "rules v1" })).events);
+    const first = started[0];
+    if (first.type !== "session") throw new Error("expected a session event first");
+    const own = { ...first.session, id: "abc" };
+    expect(claudeCodeHarness.canResume(own, { cwd, instructions: "rules v1" })).toBe(true);
+    expect(claudeCodeHarness.canResume(own, { cwd: "/elsewhere", instructions: "rules v1" })).toBe(false);
+    // `--resume` would keep "rules v1": changed instructions need a new session.
+    expect(claudeCodeHarness.canResume(own, { cwd, instructions: "rules v2" })).toBe(false);
+    expect(claudeCodeHarness.canResume({ ...own, harness: "other" }, { cwd, instructions: "rules v1" })).toBe(false);
+    // A session saved without a fingerprint cannot show its instructions still hold.
+    const { fingerprint: _f, ...bare } = own;
+    expect(claudeCodeHarness.canResume(bare, { cwd, instructions: "rules v1" })).toBe(false);
+    claude.restore();
 
     claude = fakeClaude();
     claude.install();
@@ -164,7 +176,7 @@ describe("runs", () => {
     expect(refused).toEqual([{ type: "completed", ok: false, error: expect.stringMatching(/cannot resume other session abc/) }]);
     expect(claude.runs).toHaveLength(0);
 
-    await collect(claudeCodeHarness.run(reanchor({ session: own })).events);
+    await collect(claudeCodeHarness.run(reanchor({ session: own, instructions: "rules v1" })).events);
     const argv = claude.runs[0].argv;
     expect(argv[argv.indexOf("--resume") + 1]).toBe("abc");
   });
@@ -178,7 +190,12 @@ describe("runs", () => {
       type: "completed",
       ok: false,
       error: "claude exited with code 3 (error_during_execution): boom",
-      session: { harness: "claude-code", id: "11111111-2222-3333-4444-555555555555", cwd },
+      session: {
+        harness: "claude-code",
+        id: "11111111-2222-3333-4444-555555555555",
+        cwd,
+        fingerprint: expect.stringMatching(/^i1:/),
+      },
     });
   });
 

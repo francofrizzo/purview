@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { cliCommand } from "../../skill-paths.js";
 import { spawnProcess, superviseProcess, type ChildProcessLike, type ProcessExit } from "../process-runner.js";
 import type {
@@ -116,7 +116,7 @@ function exitError(exit: ProcessExit, resultError: string | undefined): string |
 
 function run(request: AgentRunRequest): AgentRun {
   const resume = typeof request.session === "object" ? request.session : undefined;
-  if (resume && !canResume(resume, request.cwd)) {
+  if (resume && !canResume(resume, request)) {
     return failedRun(`cannot resume ${resume.harness} session ${resume.id} from ${request.cwd}`);
   }
   // A new resumable session gets its id up front, so it is known even if the
@@ -152,7 +152,12 @@ function run(request: AgentRunRequest): AgentRun {
   });
 
   const events = (async function* (): AsyncGenerator<AgentEvent> {
-    const sessionFor = (id: string): AgentSession => ({ harness: HARNESS_ID, id, cwd: request.cwd });
+    const sessionFor = (id: string): AgentSession => ({
+      harness: HARNESS_ID,
+      id,
+      cwd: request.cwd,
+      fingerprint: instructionsFingerprint(request.instructions),
+    });
     let session = resume ?? (newSessionId ? sessionFor(newSessionId) : undefined);
     if (newSessionId) yield { type: "session", session: session! };
     let resultError: string | undefined;
@@ -196,11 +201,26 @@ function run(request: AgentRunRequest): AgentRun {
 }
 
 /**
- * The CLI files sessions per cwd: resuming from another cwd may not find the
- * session, so only a session started in this very cwd is resumable.
+ * `--resume` keeps the session's original `--append-system-prompt` and
+ * ignores the one passed with it (verified on 2.1.283), so the instructions a
+ * session runs under are fixed at its first turn. Stored with the session, a
+ * hash of them tells whether a later run would get what it asked for.
  */
-function canResume(session: AgentSession, cwd: string): boolean {
-  return session.harness === HARNESS_ID && session.cwd === cwd;
+function instructionsFingerprint(instructions: string | undefined): string {
+  return "i1:" + createHash("sha256").update(instructions ?? "").digest("hex").slice(0, 16);
+}
+
+/**
+ * Resumable only from the cwd it was started in (the CLI files sessions per
+ * cwd, so another cwd may not find it), and only while its instructions are
+ * still the ones wanted — a session with no fingerprint cannot show that.
+ */
+function canResume(session: AgentSession, next: { cwd: string; instructions?: string }): boolean {
+  return (
+    session.harness === HARNESS_ID &&
+    session.cwd === next.cwd &&
+    session.fingerprint === instructionsFingerprint(next.instructions)
+  );
 }
 
 /**
