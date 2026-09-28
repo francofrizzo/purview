@@ -208,6 +208,17 @@ export type MdInline =
 const INLINE =
   /(`+)([\s\S]*?)\1|\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|(\*\*|__)([\s\S]+?)\5|(\*|_)([^\s][\s\S]*?)\7|(https?:\/\/[^\s<>()]+)/;
 
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+/**
+ * Underscores only delimit emphasis at word boundaries (as in CommonMark), so
+ * `get_balance` and `snake_case_names` stay literal. `*` has no such rule.
+ */
+function intrawordUnderscore(src: string, start: number, end: number, delim: string): boolean {
+  if (delim[0] !== "_") return false;
+  return WORD_CHAR.test(src[start - 1] ?? "") || WORD_CHAR.test(src[end] ?? "");
+}
+
 export function parseInline(src: string): MdInline[] {
   const out: MdInline[] = [];
   let rest = src;
@@ -215,6 +226,14 @@ export function parseInline(src: string): MdInline[] {
   while (rest) {
     const m = INLINE.exec(rest);
     if (!m || m.index === undefined) break;
+    const at = src.length - rest.length + m.index;
+    const delim = m[5] ?? m[7];
+    if (delim && intrawordUnderscore(src, at, at + m[0].length, delim)) {
+      // Not emphasis: keep the delimiter as text and look again after it.
+      out.push({ type: "text", text: rest.slice(0, m.index + delim.length) });
+      rest = rest.slice(m.index + delim.length);
+      continue;
+    }
     if (m.index > 0) out.push({ type: "text", text: rest.slice(0, m.index) });
     if (m[1]) {
       // Exactly one space of padding is decoration, not content.
@@ -232,5 +251,12 @@ export function parseInline(src: string): MdInline[] {
   }
 
   if (rest) out.push({ type: "text", text: rest });
-  return out.filter((n) => n.type !== "text" || n.text.length > 0);
+  // Merge the text runs the underscore fallback splits apart.
+  const merged: MdInline[] = [];
+  for (const n of out) {
+    const last = merged[merged.length - 1];
+    if (n.type === "text" && last?.type === "text") last.text += n.text;
+    else if (n.type !== "text" || n.text.length > 0) merged.push({ ...n });
+  }
+  return merged;
 }

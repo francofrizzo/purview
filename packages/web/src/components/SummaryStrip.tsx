@@ -26,7 +26,9 @@ export function summaryLede(text: string): string {
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s{0,3}([-*+]|\d+\.)\s+/gm, "")
     .replace(/^\s{0,3}>\s?/gm, "")
-    .replace(/[`*_]/g, "")
+    .replace(/[`*]/g, "")
+    // Emphasis underscores only; `get_balance` keeps its own.
+    .replace(/(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, "")
     .replace(/\s+/g, " ")
     .trim();
   // A sentence ends at .!? followed by whitespace (or the end of the text);

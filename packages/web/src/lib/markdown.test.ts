@@ -119,6 +119,34 @@ describe("parseInline", () => {
     });
   });
 
+  it("keeps underscores inside words literal", () => {
+    expect(
+      parseInline("the ART get_balance tool now answers, honouring statement_required like prod"),
+    ).toEqual([
+      {
+        type: "text",
+        text: "the ART get_balance tool now answers, honouring statement_required like prod",
+      },
+    ]);
+    expect(parseInline("snake_case_name")).toEqual([{ type: "text", text: "snake_case_name" }]);
+    expect(parseInline("a __dunder__init b")).toEqual([
+      { type: "text", text: "a __dunder__init b" },
+    ]);
+  });
+
+  it("still reads underscore emphasis at word boundaries, next to intraword ones", () => {
+    expect(parseInline("call get_balance, _then_ stop")).toEqual([
+      { type: "text", text: "call get_balance, " },
+      { type: "em", text: "then" },
+      { type: "text", text: " stop" },
+    ]);
+    expect(parseInline("x*y*z")).toEqual([
+      { type: "text", text: "x" },
+      { type: "em", text: "y" },
+      { type: "text", text: "z" },
+    ]);
+  });
+
   it("leaves an unmatched marker as plain text", () => {
     expect(parseInline("2 * 3 = 6")).toEqual([{ type: "text", text: "2 * 3 = 6" }]);
   });
