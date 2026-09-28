@@ -512,8 +512,8 @@ export function chatSystemPrompt(
 
 /**
  * The document handed to a reader's own agent session when they take a
- * Purview chat into their terminal (the harness's handoff command appends it
- * to the continued session's instructions). Same PR context as the chat
+ * Purview chat into their terminal (the harness's handoff command sends it as
+ * the continued session's first message). Same PR context as the chat
  * prompt, from the same builders; what differs is the contract: the fork runs
  * with the reader's normal permissions, so the read-only HARD RULES give way
  * to the few rules that still matter outside the panel.
@@ -531,6 +531,7 @@ export function terminalContext(
 
   return [
     `# Purview review context: ${meta.title ?? keyToString(key)}`,
+    "This message comes from Purview, not typed by the reader: it hands this conversation over to their terminal. From here on, the instructions below replace the Purview chat panel's rules.",
     section([
       "You are a senior code-review copilot. This conversation started in Purview, the reader's local PR review tool, and has been forked into their own terminal.",
       `The human is reviewing a pull request and asking you about it. ${MANNER_LINE}`,
@@ -560,6 +561,7 @@ export function terminalContext(
     ]),
     "## Showing, not just telling",
     section(showingLines(false)),
+    "Reply with one short line saying you're ready to continue in the terminal, then wait for the reader.",
   ]
     .filter((s) => s !== "")
     .join("\n\n")

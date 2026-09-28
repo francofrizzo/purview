@@ -80,7 +80,7 @@ describe("handoffCommand", () => {
     });
     expect(cmd).toBe(
       `cd '/Users/me/My Repos/o'\\''brien' && claude --resume ${SESSION} --fork-session ` +
-        `--append-system-prompt "$(cat '/Users/me/.purview/it'\\''s here/terminal-context.md')"`,
+        `"$(cat '/Users/me/.purview/it'\\''s here/terminal-context.md')"`,
     );
   });
 
@@ -90,7 +90,7 @@ describe("handoffCommand", () => {
     const ctx = path.join(tricky, "ctx 'x'.md");
     fs.writeFileSync(ctx, "hello $(not run) `nor this`");
     const cmd = handoffCommand({ cwd: tricky, sessionId: SESSION, contextPath: ctx }).replace(
-      /claude --resume (\S+) --fork-session --append-system-prompt/,
+      /claude --resume (\S+) --fork-session/,
       "printf '%s|%s|%s' \"$PWD\" $1",
     );
     const out = execFileSync("/bin/sh", ["-c", cmd], { encoding: "utf8" });

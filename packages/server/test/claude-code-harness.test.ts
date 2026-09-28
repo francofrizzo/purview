@@ -228,7 +228,7 @@ describe("handoff", () => {
       { contextPath: "/state/ctx.md", readRoots: ["/work", "/state", "/skills"] },
     );
     expect(command).toBe(
-      `cd '/work' && claude --resume abc --fork-session --append-system-prompt "$(cat '/state/ctx.md')"` +
+      `cd '/work' && claude --resume abc --fork-session "$(cat '/state/ctx.md')"` +
         ` --add-dir '/state' --add-dir '/skills'`,
     );
   });

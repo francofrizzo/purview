@@ -12,7 +12,13 @@ function shellWord(s: string): string {
  * The one-liner that forks a Purview chat session into the reader's own
  * terminal: `--resume` only finds the session from the cwd it was filed
  * under, `--fork-session` leaves Purview's copy untouched, and the context
- * file becomes the fork's appended system prompt.
+ * file is sent as the fork's first message.
+ *
+ * Not `--append-system-prompt`: a resumed session — forked or not, headless
+ * or interactive — keeps the system prompt it was created with and silently
+ * ignores a new one (checked on 2.1.283), so the fork would carry on under
+ * the panel's read-only rules with none of the terminal context. The prompt
+ * goes before `--add-dir`, whose variadic value would swallow it.
  */
 export function handoffCommand(input: {
   cwd: string;
@@ -24,6 +30,6 @@ export function handoffCommand(input: {
   const dirs = (input.addDirs ?? []).map((d) => ` --add-dir ${shellQuote(d)}`).join("");
   return (
     `cd ${shellQuote(input.cwd)} && claude --resume ${shellWord(input.sessionId)} --fork-session ` +
-    `--append-system-prompt "$(cat ${shellQuote(input.contextPath)})"${dirs}`
+    `"$(cat ${shellQuote(input.contextPath)})"${dirs}`
   );
 }

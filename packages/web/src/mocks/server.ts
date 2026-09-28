@@ -1560,7 +1560,7 @@ export const mockApi = {
       cwd,
       sessionId,
       contextPath,
-      command: `cd ${q(cwd)} && claude --resume ${sessionId} --fork-session --append-system-prompt "$(cat ${q(contextPath)})"`,
+      command: `cd ${q(cwd)} && claude --resume ${sessionId} --fork-session "$(cat ${q(contextPath)})"`,
     };
   },
 
