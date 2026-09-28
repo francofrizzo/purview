@@ -235,6 +235,8 @@ export function applyAppearance(a: ResolvedAppearance) {
   root.setProperty("--tab-size", String(a.tabSize));
   root.setProperty("color-scheme", a.theme.mode);
   document.documentElement.dataset.theme = a.theme.id;
+  // For CSS that swaps whole assets by lightness (the logo), not just colors.
+  document.documentElement.dataset.mode = a.theme.mode;
 }
 
 const prefersLightQuery = "(prefers-color-scheme: light)";

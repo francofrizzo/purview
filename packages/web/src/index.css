@@ -618,3 +618,15 @@
     height: 2.25rem;
   }
 }
+
+/* The logo ships in two inks; show the one that reads on the active theme.
+   Dark is the default, before settings have applied a theme. */
+.logo-for-light {
+  display: none;
+}
+html[data-mode="light"] .logo-for-dark {
+  display: none;
+}
+html[data-mode="light"] .logo-for-light {
+  display: block;
+}

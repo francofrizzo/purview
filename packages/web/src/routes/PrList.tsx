@@ -25,6 +25,8 @@ import {
   type RepoGroup,
 } from "../lib/prList";
 import { RepoMenu } from "../components/RepoActions";
+import logoDark from "../assets/logo-dark.png";
+import logoLight from "../assets/logo-light.png";
 
 export function PrList() {
   const { data: prs = [], isLoading, error } = usePrs();
@@ -64,7 +66,11 @@ export function PrList() {
     <div className="mx-auto flex h-full max-w-3xl flex-col px-6 py-10">
       <header className="mb-6 flex items-start">
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold tracking-tight">Purview</h1>
+          <h1>
+            {/* Two inks, one shown per theme (see index.css); the h1's name is the alt. */}
+            <img src={logoLight} alt="Purview" className="logo-for-dark h-6 w-auto" />
+            <img src={logoDark} alt="Purview" className="logo-for-light h-6 w-auto" />
+          </h1>
           {MOCK ? (
             <p className="mt-0.5 text-xs" style={{ color: "var(--warn)" }}>
               mock mode — no server, fixture data
