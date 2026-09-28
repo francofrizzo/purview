@@ -199,6 +199,8 @@ export function submitReview(
   const draft = patchReviewDraft(
     key,
     {
+      // Posted with the review, like the comments: the next review starts empty.
+      body: "",
       pendingReviewId: undefined,
       pendingReviewDatabaseId: undefined,
       submittedAt: now,

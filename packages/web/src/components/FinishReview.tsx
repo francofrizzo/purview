@@ -100,6 +100,12 @@ export function FinishReviewPanel({
     }
   }, [review, seeded]);
 
+  // A submitted review took its summary with it (the server clears the
+  // saved copy too), so the box starts empty for the next one.
+  useEffect(() => {
+    if (result) setBody("");
+  }, [result]);
+
   const readiness = review?.readiness;
   const unviewed = readiness?.mustRead.unviewed ?? 0;
 

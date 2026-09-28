@@ -420,6 +420,18 @@ describe("POST /api/prs/:key/review/submit", () => {
     },
   );
 
+  it("clears the saved summary once the review is submitted", async () => {
+    await app.request(`/api/prs/${encodedKey}/review`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "overall: looks good" }),
+    });
+    expect(readReviewDraft(key, root).body).toBe("overall: looks good");
+    const res = await submit({ event: "COMMENT", confirm: true });
+    expect(res.status).toBe(200);
+    expect(readReviewDraft(key, root).body).toBe("");
+  });
+
   it("400s without confirm:true and posts nothing", async () => {
     await addDraft("nit");
     const res = await submit({ event: "APPROVE", body: "yes" });
