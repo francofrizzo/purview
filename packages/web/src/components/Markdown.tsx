@@ -245,10 +245,20 @@ export function InlineMarkdown({ text }: { text: string }) {
   return <Inline nodes={parseInline(text)} />;
 }
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+/** Body text size; the chat reads a step larger than the app's other prose. */
+export const PROSE_TEXT = "text-xs leading-[19px]";
+export const CHAT_TEXT = "text-[13px] leading-[21px]";
+
+export const Markdown = memo(function Markdown({
+  text,
+  textClass = PROSE_TEXT,
+}: {
+  text: string;
+  textClass?: string;
+}) {
   const blocks = parseMarkdown(text);
   return (
-    <div className="text-xs leading-[19px]" style={{ color: "var(--fg-muted)" }}>
+    <div className={textClass} style={{ color: "var(--fg-muted)" }}>
       {blocks.map((block, i) => {
         switch (block.type) {
           case "code":

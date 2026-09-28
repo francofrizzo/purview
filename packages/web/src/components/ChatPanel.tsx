@@ -39,7 +39,7 @@ import {
   MIN_CHAT_PANEL_WIDTH,
   useSettings,
 } from "../lib/settings";
-import { Markdown } from "./Markdown";
+import { CHAT_TEXT, Markdown } from "./Markdown";
 import { useModalBackground } from "./Modal";
 import {
   IconArrowDown,
@@ -235,7 +235,7 @@ function MessageBlock({
         </div>
       ) : null}
       {message.role === "user" ? (
-        <p className="whitespace-pre-wrap text-xs leading-[19px]" style={{ color: "var(--fg)" }}>
+        <p className={`whitespace-pre-wrap ${CHAT_TEXT}`} style={{ color: "var(--fg)" }}>
           {message.text}
         </p>
       ) : (
@@ -260,7 +260,7 @@ function MessageBlock({
               ) : null}
             </div>
           ) : null}
-          <Markdown text={message.text} />
+          <Markdown text={message.text} textClass={CHAT_TEXT} />
         </>
       )}
     </div>
@@ -599,7 +599,7 @@ export function ChatPanel({
               </div>
             ) : null}
             {chat.streaming.text ? (
-              <Markdown text={chat.streaming.text} />
+              <Markdown text={chat.streaming.text} textClass={CHAT_TEXT} />
             ) : (
               <span className="text-xs" style={{ color: "var(--fg-faint)" }}>
                 …
@@ -692,7 +692,7 @@ export function ChatPanel({
         <textarea
           ref={textareaRef}
           data-testid="chat-input"
-          className="input resize-none text-xs leading-[18px]"
+          className="input resize-none text-[13px] leading-[20px]"
           rows={2}
           placeholder={
             chat.busy
