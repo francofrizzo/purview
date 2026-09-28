@@ -145,6 +145,7 @@ interface WireListEntry {
   state?: PrGithubState;
   reviewDecision?: ReviewDecision | null;
   reviewRequest?: ReviewRequest | null;
+  authoredByYou?: boolean;
   addedAt?: string;
   archived?: boolean;
   repoArchived?: boolean;
@@ -450,6 +451,7 @@ export const api = {
       state: e.state ?? "open",
       reviewDecision: e.reviewDecision ?? null,
       reviewRequest: e.reviewRequest !== undefined ? e.reviewRequest : e.meta?.reviewRequest,
+      authoredByYou: Boolean(e.authoredByYou),
       addedAt: e.addedAt ?? e.meta?.createdAt ?? new Date(0).toISOString(),
       archived: Boolean(e.archived),
       repoArchived: Boolean(e.repoArchived),
