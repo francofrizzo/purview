@@ -827,14 +827,41 @@ export function DiffPane({
     return { file, hunk };
   }, [rows]);
   const stickyRef = useRef<StickyHeaders>({});
+  // Filled in right after the virtualizer exists; the extractor's first call
+  // can come before that, and then falls back to the plain start index.
+  const virtualizerRef = useRef<ReturnType<typeof useVirtualizer<HTMLDivElement, Element>> | null>(
+    null,
+  );
   const rangeExtractor = useCallback(
     (range: Range) => {
-      const sticky = stickyHeadersFor(headerIdxs.file, headerIdxs.hunk, range.startIndex);
+      // The hunk that governs the view is the one under the pinned file
+      // header, not the one at the very top edge (which the file header
+      // covers): probing at the top pinned the previous hunk's header right
+      // over a hunk that j/k had just scrolled to.
+      let at = range.startIndex;
+      const v = virtualizerRef.current;
+      const file = stickyHeadersFor(headerIdxs.file, headerIdxs.hunk, at).file;
+      if (v && file !== undefined) {
+        const scrollTop = v.scrollOffset ?? 0;
+        const fileItem = v.measurementsCache[file];
+        if (fileItem && fileItem.start < scrollTop) {
+          at = v.getVirtualItemForOffset(scrollTop + fileItem.size + 1)?.index ?? at;
+        }
+      }
+      const sticky = stickyHeadersFor(headerIdxs.file, headerIdxs.hunk, at);
       stickyRef.current = sticky;
       return mergeStickyIntoRange(sticky, defaultRangeExtractor(range));
     },
     [headerIdxs],
   );
+
+  // The pinned file header's height, from any measured file row (they are all
+  // one line tall); nothing is pinned above hunks when file rows are hidden.
+  const firstFileIdx = headerIdxs.file[0];
+  const fileHeaderHeight =
+    firstFileIdx === undefined
+      ? 0
+      : (virtualizerRef.current?.measurementsCache[firstFileIdx]?.size ?? 34);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -863,10 +890,11 @@ export function DiffPane({
     overscan: 30,
     getItemKey: (i) => rows[i].key,
     rangeExtractor,
-    // scrollToIndex targets land under the pinned header stack otherwise;
-    // one header height of padding keeps the row it navigated to visible.
-    scrollPaddingStart: 40,
+    // A hunk scrolled to with align "start" lands right under the pinned file
+    // header, which is where it pins itself (see rangeExtractor).
+    scrollPaddingStart: fileHeaderHeight,
   });
+  virtualizerRef.current = virtualizer;
 
   /* ------------------------------------------- keeping the reader in place */
   // Folding a hunk, or closing a comment block, deletes rows that may be
@@ -1325,7 +1353,7 @@ export function DiffPane({
     [searchMarks, activeMatch],
   );
 
-  // --- keyboard: j/k next/prev hunk, v toggle viewed, space next unviewed ---
+  // --- keyboard: j/k next/prev hunk, v toggle viewed (and advance), space next unviewed ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -1344,7 +1372,10 @@ export function DiffPane({
       } else if (e.key === "v") {
         if (!focusedHunkId) return;
         e.preventDefault();
-        onToggleViewed(focusedHunkId, !detail.state.hunks[focusedHunkId]?.viewed);
+        const marking = !detail.state.hunks[focusedHunkId]?.viewed;
+        onToggleViewed(focusedHunkId, marking);
+        // Marking one read moves on to the next, like j; unmarking stays put.
+        if (marking && cur < ids.length - 1) focusAndScroll(ids[cur + 1]);
       } else if (e.key === "z") {
         if (!focusedHunkId) return;
         e.preventDefault();
