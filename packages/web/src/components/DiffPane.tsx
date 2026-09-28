@@ -667,12 +667,30 @@ export function DiffPane({
   // itself) is what lets a manual unfold survive until the state next moves.
   const viewedNow = useMemo(() => viewedSnapshot(detail.state.hunks), [detail.state.hunks]);
   const prevViewed = useRef(viewedNow);
+  const collapsedRef = useRef(collapsed);
+  collapsedRef.current = collapsed;
+  // `v` moves on to the next hunk, but the hunk it just marked may be about
+  // to fold — and folding rows above the viewport throws off any scroll done
+  // before it. So `v` parks its target here and the scroll happens once the
+  // fold (if any) is laid out. `scrollToHunkRef` because scrollToHunk is
+  // declared further down.
+  const pendingScrollRef = useRef<string | null>(null);
+  const scrollToHunkRef = useRef<(id: string) => void>(() => {});
+  const flushPendingScroll = useCallback(() => {
+    const id = pendingScrollRef.current;
+    if (!id) return;
+    pendingScrollRef.current = null;
+    requestAnimationFrame(() => scrollToHunkRef.current(id));
+  }, []);
   useEffect(() => {
     const previous = prevViewed.current;
     prevViewed.current = viewedNow;
     if (previous === viewedNow) return;
-    setCollapsedState((prev) => reconcileViewed(prev, previous, viewedNow, autoCollapseViewedHunks));
-  }, [viewedNow, autoCollapseViewedHunks]);
+    const next = reconcileViewed(collapsedRef.current, previous, viewedNow, autoCollapseViewedHunks);
+    setCollapsedState(next);
+    // Nothing folds: no layout change to wait for.
+    if (next === collapsedRef.current) flushPendingScroll();
+  }, [viewedNow, autoCollapseViewedHunks, flushPendingScroll]);
 
   /** Hunk ids this pane shows, per file, for the per-file viewed checkbox. */
   const hunkIdsByFile = useMemo(() => {
@@ -954,6 +972,11 @@ export function DiffPane({
     },
     [hunkRowIndex, virtualizer],
   );
+  scrollToHunkRef.current = scrollToHunk;
+  // The fold `v` waited for has re-laid out the rows: now scroll.
+  useEffect(() => {
+    flushPendingScroll();
+  }, [rows, flushPendingScroll]);
 
   // Reset scroll when the shown set changes wholesale — unless the set changed
   // *because* a search match in it is being visited, in which case jumping to
@@ -1373,9 +1396,13 @@ export function DiffPane({
         if (!focusedHunkId) return;
         e.preventDefault();
         const marking = !detail.state.hunks[focusedHunkId]?.viewed;
-        onToggleViewed(focusedHunkId, marking);
         // Marking one read moves on to the next, like j; unmarking stays put.
-        if (marking && cur < ids.length - 1) focusAndScroll(ids[cur + 1]);
+        // Focus now, scroll after the marked hunk's fold (see pendingScrollRef).
+        if (marking && cur < ids.length - 1) {
+          onFocusHunk(ids[cur + 1]);
+          pendingScrollRef.current = ids[cur + 1];
+        }
+        onToggleViewed(focusedHunkId, marking);
       } else if (e.key === "z") {
         if (!focusedHunkId) return;
         e.preventDefault();
@@ -1402,6 +1429,7 @@ export function DiffPane({
     entries,
     focusedHunkId,
     focusAndScroll,
+    onFocusHunk,
     onToggleViewed,
     onToggleViewMode,
     onToggleWrap,
