@@ -8,9 +8,13 @@ import {
   buildRows,
   buildSplitRows,
   hunkLabel,
+  languageFor,
   type CharRange,
   type DiffRow,
 } from "../lib/diffModel";
+import { EXPAND_STEP, fileGaps, revealGap, type Gap, type GapReveal } from "../lib/contextGaps";
+import { tokenizeLines, type Tok } from "../lib/highlight";
+import { api } from "../api/client";
 import { lineKey, type SearchMatch } from "../lib/diffSearch";
 import {
   foldPlaceholder,
@@ -123,7 +127,22 @@ type FlatRow =
    * the row-space bounds (this mode's line/pair index) it stands in for;
    * `hidden` is how many rows that is, for the placeholder's own count.
    */
-  | ({ type: "fold"; hunkId: string } & FoldPlaceholder);
+  | ({ type: "fold"; hunkId: string } & FoldPlaceholder)
+  /**
+   * "Expand context": the buttons standing in for unchanged lines the diff
+   * leaves out (`hidden` null: past the last hunk, length not known yet),
+   * and one revealed unchanged line. `hunkId` is the adjacent hunk, so code
+   * that keys rows by hunk keeps working.
+   */
+  | { type: "gap"; key: string; hunkId: string; gap: Gap; hidden: number | null }
+  | { type: "ctx"; key: string; hunkId: string; path: string; newNo: number; oldNo: number };
+
+/** A file fetched for expanding context, by path. */
+type ContextFile =
+  | { status: "loading" }
+  | { status: "ok"; lines: string[] }
+  | { status: "missing" }
+  | { status: "error"; message: string };
 
 export interface DiffPaneProps {
   detail: PrDetail;
@@ -707,6 +726,58 @@ export function DiffPane({
     [detail.files.files],
   );
 
+  /* ------------------------------------------------------ expand context */
+
+  const [contextFiles, setContextFiles] = useState<Record<string, ContextFile>>({});
+  const [contextTokens, setContextTokens] = useState<Record<string, Tok[][] | null>>({});
+  const [contextReveal, setContextReveal] = useState<Record<string, GapReveal>>({});
+  const contextFilesRef = useRef(contextFiles);
+  contextFilesRef.current = contextFiles;
+  // A new revision is a different head: every fetched file and opened gap is stale.
+  const revision = detail.state.revision;
+  useEffect(() => {
+    setContextFiles({});
+    setContextTokens({});
+    setContextReveal({});
+  }, [revision]);
+
+  const loadContextFile = useCallback(
+    (path: string) => {
+      if (contextFilesRef.current[path]) return;
+      setContextFiles((p) => ({ ...p, [path]: { status: "loading" } }));
+      api.fileLines(detail.key, path).then(
+        ({ lines }) => {
+          setContextFiles((p) => ({ ...p, [path]: lines ? { status: "ok", lines } : { status: "missing" } }));
+          const lang = languageFor(path);
+          if (lines && lang) {
+            void tokenizeLines(`ctx:${detail.key}:${revision}:${path}`, lines.join("\n"), lang, theme).then((t) =>
+              setContextTokens((p) => ({ ...p, [path]: t })),
+            );
+          }
+        },
+        (err: Error) => setContextFiles((p) => ({ ...p, [path]: { status: "error", message: err.message } })),
+      );
+    },
+    [detail.key, revision, theme],
+  );
+
+  const expandGap = useCallback(
+    (gap: Gap, from: "top" | "bottom" | "all") => {
+      setContextReveal((prev) => {
+        const cur = prev[gap.key] ?? { top: 0, bottom: 0 };
+        const next =
+          from === "all"
+            ? { top: Number.MAX_SAFE_INTEGER, bottom: 0 }
+            : from === "top"
+              ? { ...cur, top: cur.top + EXPAND_STEP }
+              : { ...cur, bottom: cur.bottom + EXPAND_STEP };
+        return { ...prev, [gap.key]: next };
+      });
+      loadContextFile(gap.path);
+    },
+    [loadContextFile],
+  );
+
   const rows = useMemo<FlatRow[]>(() => {
     const out: FlatRow[] = [];
     let lastFile: string | null = null;
@@ -715,9 +786,55 @@ export function DiffPane({
     // measurement cache the same way the s:/l: prefixes do.
     // Font size changes row heights too, so it joins the key for the same reason.
     const w = `${wrap ? "w" : "n"}${codeFontSize}`;
-    for (const entry of entries) {
+
+    // Expand-context gaps: each drawn once, before the hunk it leads into, or
+    // after a hunk whose file-neighbor is not the next one shown (the units
+    // view skips hunks of other units). Added/removed/binary files have none.
+    const gapsByFile = new Map<string, Gap[]>();
+    const gapsOf = (file: FileEntry) => {
+      let g = gapsByFile.get(file.path);
+      if (!g) {
+        g = file.binary || file.status === "added" || file.status === "removed" ? [] : fileGaps(file.path, file.hunks);
+        gapsByFile.set(file.path, g);
+      }
+      return g;
+    };
+    const emittedGaps = new Set<string>();
+    const pushGap = (gap: Gap | undefined, hunkId: string) => {
+      if (!gap || emittedGaps.has(gap.key)) return;
+      emittedGaps.add(gap.key);
+      const loaded = contextFiles[gap.path];
+      const lines = loaded?.status === "ok" ? loaded.lines : null;
+      // Nothing is revealed until the file is here to draw it from.
+      const reveal = lines ? (contextReveal[gap.key] ?? { top: 0, bottom: 0 }) : { top: 0, bottom: 0 };
+      const shown = revealGap(gap, reveal, lines ? lines.length : null);
+      const pushCtx = (range: [number, number] | null) => {
+        if (!range) return;
+        for (let n = range[0]; n <= range[1]; n++) {
+          out.push({ type: "ctx", key: `${w}c:${gap.path}:${n}`, hunkId, path: gap.path, newNo: n, oldNo: n - gap.shift });
+        }
+      };
+      pushCtx(shown.top);
+      // A missing file (deleted at head) has nothing to offer.
+      if (shown.hidden !== 0 && loaded?.status !== "missing") {
+        out.push({ type: "gap", key: `g:${gap.key}`, hunkId, gap, hidden: shown.hidden });
+      }
+      pushCtx(shown.bottom);
+    };
+
+    for (let entryIdx = 0; entryIdx < entries.length; entryIdx++) {
+      const entry = entries[entryIdx];
       const { hunk, file } = entry;
       const seam = file.path === lastFile;
+      const fileGapList = gapsOf(file);
+      // After this hunk (folded or not): the gap below it, unless the next
+      // hunk shown is its neighbor and will draw that gap itself.
+      const pushGapAfter = () => {
+        const below = fileGapList.find((g) => g.prevHunkId === hunk.id);
+        const next = entries[entryIdx + 1];
+        if (below && next && next.file.path === file.path && next.hunk.id === below.nextHunkId) return;
+        pushGap(below, hunk.id);
+      };
       if (file.path !== lastFile) {
         if (showFileRows) {
           out.push({ type: "file", key: `f:${file.path}:${hunk.id}`, path: file.path, file });
@@ -727,6 +844,10 @@ export function DiffPane({
         }
         lastFile = file.path;
       }
+      pushGap(
+        fileGapList.find((g) => g.nextHunkId === hunk.id),
+        hunk.id,
+      );
       out.push({ type: "hunk", key: `h:${hunk.id}`, hunkId: hunk.id, entry, seam });
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
@@ -734,7 +855,10 @@ export function DiffPane({
       // A folded hunk contributes its header and nothing else. Dropping the
       // rows (rather than hiding them) is what makes folding actually cheap:
       // the virtualizer never mounts or measures them at all.
-      if (isCollapsed(collapsed, hunk.id)) continue;
+      if (isCollapsed(collapsed, hunk.id)) {
+        pushGapAfter();
+        continue;
+      }
 
       /** Push the comment block for one anchor, when it is open. */
       const pushComments = (path: string, line: number, side: "LEFT" | "RIGHT") => {
@@ -806,9 +930,12 @@ export function DiffPane({
           if (no !== undefined) pushComments(file.path, no, side);
         }
       }
+      pushGapAfter();
     }
     return out;
   }, [
+    contextFiles,
+    contextReveal,
     entries,
     detail.diff,
     expandedDod,
@@ -886,7 +1013,7 @@ export function DiffPane({
     getScrollElement: () => scrollRef.current,
     estimateSize: (i) => {
       const r = rows[i];
-      if (r.type === "line") return codeLineHeight;
+      if (r.type === "line" || r.type === "ctx") return codeLineHeight;
       // split cells wrap, so rows are often taller than one line; measurement
       // corrects this, the estimate only needs to be in the right ballpark.
       if (r.type === "split") return codeLineHeight;
@@ -1628,6 +1755,91 @@ export function DiffPane({
   }
 
   function renderRow(row: FlatRow) {
+    if (row.type === "gap") return renderGap(row);
+    if (row.type === "ctx") {
+      const f = contextFiles[row.path];
+      const ctxRow: DiffRow = {
+        type: "context",
+        content: f?.status === "ok" ? (f.lines[row.newNo - 1] ?? "") : "",
+        oldNumber: row.oldNo,
+        newNumber: row.newNo,
+      };
+      const toks = contextTokens[row.path]?.[row.newNo - 1];
+      // Unchanged lines the diff left out: readable, not commentable or
+      // "viewed" (GitHub does the same with expanded context).
+      return mode === "split" ? (
+        <SplitDiffLine
+          left={ctxRow}
+          right={ctxRow}
+          leftTokens={toks}
+          rightTokens={toks}
+          onDefinitionClick={onDefinitionClick}
+          isDefinedInDiff={isDefinedInDiff}
+        />
+      ) : (
+        <DiffLine row={ctxRow} tokens={toks} onDefinitionClick={onDefinitionClick} isDefinedInDiff={isDefinedInDiff} />
+      );
+    }
+    return renderDiffRow(row);
+  }
+
+  /** The expand-context control standing in for a run of unchanged lines. */
+  function renderGap(row: Extract<FlatRow, { type: "gap" }>) {
+    const { gap, hidden } = row;
+    const f = contextFiles[gap.path];
+    const loading = f?.status === "loading";
+    const failed = f?.status === "error" ? f.message : null;
+    // Short gaps open in one go; long ones step by EXPAND_STEP from either end.
+    const whole = hidden !== null && hidden <= EXPAND_STEP;
+    const button = (label: string, title: string, from: "top" | "bottom" | "all", testId: string) => (
+      <button
+        type="button"
+        className="rounded px-1.5 py-px transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
+        style={{ color: "var(--fg-muted)" }}
+        title={title}
+        aria-label={title}
+        data-testid={testId}
+        disabled={loading}
+        onClick={() => expandGap(gap, from)}
+      >
+        {label}
+      </button>
+    );
+    return (
+      <div
+        data-testid={`gap-${gap.key}`}
+        className="flex items-center gap-1 border-y px-2 py-0.5 font-mono text-2xs"
+        style={{ borderColor: "var(--border)", background: "var(--bg-inset)", color: "var(--fg-faint)" }}
+      >
+        {whole ? (
+          button("↕", `Show the ${hidden} hidden line${hidden === 1 ? "" : "s"}`, "all", "gap-all")
+        ) : (
+          <>
+            {gap.prevHunkId !== null
+              ? button("↓", `Show ${EXPAND_STEP} more lines below the hunk above`, "top", "gap-down")
+              : null}
+            {gap.nextHunkId !== null
+              ? button("↑", `Show ${EXPAND_STEP} more lines above the hunk below`, "bottom", "gap-up")
+              : null}
+          </>
+        )}
+        <span className="ml-1">
+          {loading
+            ? "loading…"
+            : failed
+              ? `couldn't load the file: ${failed}`
+              : hidden === null
+                ? "more of the file below"
+                : `${hidden} hidden line${hidden === 1 ? "" : "s"}`}
+        </span>
+        {!whole && hidden !== null ? (
+          <span className="ml-auto">{button("show all", `Show all ${hidden} hidden lines`, "all", "gap-show-all")}</span>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderDiffRow(row: Exclude<FlatRow, { type: "gap" } | { type: "ctx" }>) {
     if (row.type === "file") {
       const rollup = detail.state.files?.[row.path];
       const fileComments = grouped.byFile.get(row.path);

@@ -76,6 +76,26 @@ function hostArgs(host: string): string[] {
 }
 
 /**
+ * A file's raw contents at `sha`, from the contents API (no checkout needed).
+ * `null` when the file does not exist at that commit; other failures throw.
+ */
+export async function fetchFileAtSha(key: PrKey, sha: string, filePath: string): Promise<string | null> {
+  const encoded = filePath.split("/").map(encodeURIComponent).join("/");
+  try {
+    return await ghAsync([
+      "api",
+      ...hostArgs(key.host),
+      "-H",
+      "Accept: application/vnd.github.raw",
+      `repos/${key.owner}/${key.repo}/contents/${encoded}?ref=${sha}`,
+    ]);
+  } catch (err) {
+    if (/HTTP 404|Not Found/i.test((err as Error).message)) return null;
+    throw err;
+  }
+}
+
+/**
  * `gh pr list` takes the repo (and host, for GHE) as one `-R [HOST/]OWNER/REPO`
  * argument — unlike `gh api`, it has no separate `--hostname` flag.
  */

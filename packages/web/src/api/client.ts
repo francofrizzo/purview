@@ -607,6 +607,15 @@ export const api = {
     );
   },
 
+  /**
+   * A whole file at the PR head, as lines — for expanding context around
+   * hunks. `lines: null`: the file does not exist there.
+   */
+  async fileLines(key: string, path: string): Promise<{ sha: string; lines: string[] | null }> {
+    if (MOCK) return mockApi.fileLines(key, path);
+    return request(`/prs/${encodeKey(key)}/file?path=${encodeURIComponent(path)}`);
+  },
+
   /** The lines revision `n` changed, keyed by the current revision's hunk ids. */
   async revisionLineChanges(key: string, n: number): Promise<RevisionLineChanges> {
     if (MOCK) return mockApi.revisionLineChanges(key, n);

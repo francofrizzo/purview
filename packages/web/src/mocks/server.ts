@@ -931,6 +931,19 @@ export const mockApi = {
     return result;
   },
 
+  /**
+   * The fixture carries hunks, not files: fill a plausible file around them
+   * (numbered placeholder lines) so expanding context has something to show.
+   */
+  async fileLines(key: string, path: string): Promise<{ sha: string; lines: string[] | null }> {
+    await delay(150);
+    const file = details[key]?.files.files.find((f) => f.path === path);
+    if (!file || file.status === "removed") return { sha: "mock", lines: null };
+    const end = Math.max(0, ...file.hunks.map((h) => h.newStart + h.newLines - 1));
+    const lines = Array.from({ length: end + 30 }, (_, i) => `  // ${path.split("/").pop()} line ${i + 1}`);
+    return { sha: "mock", lines };
+  },
+
   async diffOfDiffs(_key: string, hunkId: string): Promise<DiffOfDiffs> {
     await delay(150);
     const before = MOCK_DOD_BEFORE[hunkId];

@@ -127,6 +127,7 @@ import { getWatchStatus } from "./review-watch.js";
 import { pruneCheckouts } from "./pr-checkout.js";
 import { removeRepo, repoRemovalSummary } from "./repo-removal.js";
 import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
+import { fileLinesAtHead } from "./file-content.js";
 
 export const DEFAULT_PORT = 4779;
 
@@ -1078,6 +1079,23 @@ export function createApp(opts: AppOptions = {}): Hono {
    * We walk the per-revision migration reports back to that baseline,
    * following the predecessor chain through renames and fuzzy matches.
    */
+  /**
+   * A whole file at the current revision's head, as lines — what "expand
+   * context" reveals around hunks. `lines: null` means the file does not exist
+   * there (deleted by the PR). Checkout first, contents API otherwise.
+   */
+  app.get("/api/prs/:key/file", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const filePath = c.req.query("path");
+    if (!filePath) throw new HttpError(400, "missing_path", "Query must include ?path=");
+    try {
+      return c.json(await fileLinesAtHead(key, filePath, root));
+    } catch (err) {
+      throw new HttpError(502, "file_unavailable", `Could not read ${filePath}: ${(err as Error).message}`);
+    }
+  });
+
   app.get("/api/prs/:key/hunks/:id/diff-of-diffs", (c) => {
     const key = keyParam(c);
     const hunkId = c.req.param("id");
