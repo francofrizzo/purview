@@ -44,6 +44,7 @@ import type {
   RewindChatResult,
   ReviewDecision,
   ReviewRequest,
+  SinceReview,
   AnalysisPending,
   ReviewEffort,
   ReviewEvent,
@@ -197,6 +198,7 @@ interface WirePrDetail {
   reviewRequest?: ReviewRequest | null;
   analysisPending?: AnalysisPending | null;
   repoArchived?: boolean;
+  sinceReview?: SinceReview | null;
 }
 
 interface WireMigrationEntry {
@@ -341,6 +343,7 @@ function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
     reviewRequest: raw.reviewRequest !== undefined ? raw.reviewRequest : raw.meta?.reviewRequest,
     analysisPending: raw.analysisPending ?? null,
     repoArchived: raw.repoArchived === true,
+    sinceReview: raw.sinceReview ?? null,
   };
 }
 

@@ -585,6 +585,19 @@ export interface PrDetail {
   analysisPending?: AnalysisPending | null;
   /** the PR's whole repo is archived, so the PR behaves as archived too */
   repoArchived?: boolean;
+  /** what changed since the reader's last submitted review; null/absent: nothing to compare */
+  sinceReview?: SinceReview | null;
+}
+
+/** The PR-level "since your last review" filter's data (server: since-review.ts). */
+export interface SinceReview {
+  /** the revision the review was submitted on */
+  revision: number;
+  ts: string;
+  event: string;
+  url?: string;
+  /** current hunks that were not in that revision: changed or new since */
+  changedHunkIds: string[];
 }
 
 export interface AnalysisPending {

@@ -31,6 +31,7 @@ export function UnitSidebar({
   onReclassify,
   onQuote,
   matchCounts,
+  onlyUnitIds,
 }: {
   detail: PrDetail;
   selectedUnitId: string | null;
@@ -39,6 +40,8 @@ export function UnitSidebar({
   onQuote?: (ref: ChatRef) => void;
   /** search hits per unit; units with none render exactly as they always do */
   matchCounts?: Map<string, number>;
+  /** list only these units (the "since your review" filter); numbers stay as without it */
+  onlyUnitIds?: ReadonlySet<string>;
 }) {
   const [open, setOpen] = useState<Record<Attention, boolean>>({
     "must-read": true,
@@ -107,7 +110,9 @@ export function UnitSidebar({
         ) : null}
       </div>
       {GROUPS.map((g) => {
-        const all = units.filter((u) => u.attention === g.attention);
+        const all = units.filter(
+          (u) => u.attention === g.attention && (!onlyUnitIds || onlyUnitIds.has(u.id)),
+        );
         if (!all.length) return null;
         const { shown: groupUnits, hidden } = filterUnits(all, {
           hide,
@@ -172,7 +177,7 @@ export function UnitSidebar({
           </section>
         );
       })}
-      {unplaced.length ? (
+      {unplaced.length && (!onlyUnitIds || onlyUnitIds.has(UNPLACED_ID)) ? (
         <UnplacedGroup
           detail={detail}
           hunkIds={unplaced}
@@ -181,7 +186,7 @@ export function UnitSidebar({
           matches={matchCounts?.get(UNPLACED_ID)}
         />
       ) : null}
-      {removed.length ? <RemovedGroup units={removed} /> : null}
+      {removed.length && !onlyUnitIds ? <RemovedGroup units={removed} /> : null}
     </div>
   );
 }

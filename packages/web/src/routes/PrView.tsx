@@ -366,6 +366,27 @@ export function PrView() {
   const unplaced = useMemo(() => (units.length ? unplacedAll : []), [units.length, unplacedAll]);
   const unplacedSet = useMemo(() => new Set(unplaced), [unplaced]);
 
+  // "Since your last review": the PR-level filter down to the hunks that
+  // changed after the revision the reader last submitted a review on.
+  const [sinceReviewOn, setSinceReviewOn] = useState(false);
+  const sinceChanged = useMemo(() => {
+    const since = detail?.sinceReview;
+    if (!sinceReviewOn || !since || since.changedHunkIds.length === 0) return null;
+    return new Set(since.changedHunkIds);
+  }, [sinceReviewOn, detail?.sinceReview]);
+  const sinceUnitIds = useMemo(() => {
+    if (!sinceChanged) return undefined;
+    const ids = new Set(units.filter((u) => u.hunkIds.some((h) => sinceChanged.has(h))).map((u) => u.id));
+    if (unplaced.some((h) => sinceChanged.has(h))) ids.add(UNPLACED_ID);
+    return ids;
+  }, [sinceChanged, units, unplaced]);
+  const sincePaths = useMemo(() => {
+    if (!sinceChanged || !detail) return undefined;
+    return new Set(detail.files.files.filter((f) => f.hunks.some((h) => sinceChanged.has(h.id))).map((f) => f.path));
+  }, [sinceChanged, detail]);
+  const sinceUnitIdsRef = useRef(sinceUnitIds);
+  sinceUnitIdsRef.current = sinceUnitIds;
+
   // Whether every unit in the PR is fully viewed — drives the quiet "all units
   // viewed" indicator next to the units-tab "mark unit viewed" button.
   const allUnitsViewed = useMemo(() => {
@@ -390,6 +411,7 @@ export function PrView() {
       if (idx === -1 || ordered.length === 0) return;
       for (let i = 1; i <= ordered.length; i++) {
         const candidate = ordered[(idx + i) % ordered.length];
+        if (sinceUnitIdsRef.current && !sinceUnitIdsRef.current.has(candidate.id)) continue;
         const p = unitProgress(latest, candidate);
         if (p.total > 0 && p.viewed < p.total) {
           setSelectedUnitId(candidate.id);
@@ -527,7 +549,7 @@ export function PrView() {
     setUnitContext(tab === "units" && selectedUnitId !== UNPLACED_ID ? selectedUnitId : null);
   }, [setUnitContext, tab, selectedUnitId]);
 
-  const entries = useMemo<HunkEntry[]>(() => {
+  const allEntries = useMemo<HunkEntry[]>(() => {
     if (!detail) return [];
     if (tab === "units") {
       const ids = unplacedSelected ? unplaced : selectedUnit?.hunkIds;
@@ -543,6 +565,25 @@ export function PrView() {
     const file = detail.files.files.find((f) => f.path === selectedPath);
     return file ? file.hunks.map((h) => ({ hunk: h, file })) : [];
   }, [detail, tab, selectedUnit, unplacedSelected, unplaced, selectedPath]);
+  const entries = useMemo(
+    () => (sinceChanged ? allEntries.filter((e) => sinceChanged.has(e.hunk.id)) : allEntries),
+    [allEntries, sinceChanged],
+  );
+  // Turning the filter on (or switching tabs under it) never leaves the
+  // reader on a unit or file it hides: land on the first one it keeps.
+  useEffect(() => {
+    if (!sinceUnitIds || !sincePaths || !detail) return;
+    if (tab === "units" && selectedUnitId && !sinceUnitIds.has(selectedUnitId)) {
+      const first = sortUnitsForDisplay(units).find((u) => sinceUnitIds.has(u.id));
+      if (first) setSelectedUnitId(first.id);
+      else if (sinceUnitIds.has(UNPLACED_ID)) setSelectedUnitId(UNPLACED_ID);
+    } else if (tab === "files" && !sincePaths.has(selectedPath ?? "")) {
+      const first = detail.files.files.find((f) => sincePaths.has(f.path));
+      if (first) setSelectedPath(first.path);
+    }
+    // Only when the filter or the tab changes; the reader's own picks stand.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sinceUnitIds, sincePaths, tab]);
 
   // What the pane is currently showing — the default (Cmd+F) search scope.
   const visibleHunkIds = useMemo(() => new Set(entries.map((e) => e.hunk.id)), [entries]);
@@ -675,7 +716,7 @@ export function PrView() {
       } else if ((e.key === "J" || e.key === "K") && tab === "units") {
         // Shift+j/k: the unit-sized step next to the hunk-sized j/k, in the
         // sidebar's order.
-        const ordered = sortUnitsForDisplay(units);
+        const ordered = sortUnitsForDisplay(units).filter((u) => !sinceUnitIds || sinceUnitIds.has(u.id));
         const i = ordered.findIndex((u) => u.id === selectedUnitId);
         const next = i === -1 ? ordered[0] : ordered[e.key === "J" ? i + 1 : i - 1];
         if (next) {
@@ -715,6 +756,7 @@ export function PrView() {
     tab,
     units,
     selectedUnitId,
+    sinceUnitIds,
     search.open,
     search.close,
     toggleSidebar,
@@ -967,6 +1009,7 @@ export function PrView() {
             onReclassify={(unitId, patch) => patchUnit.mutate({ unitId, patch })}
             onQuote={quote}
             matchCounts={unitMatchCounts}
+            onlyUnitIds={sinceUnitIds}
           />
         ) : (
           <FileTree
@@ -975,6 +1018,7 @@ export function PrView() {
             onSelect={selectFileFromSidebar}
             onQuote={quote}
             matchCounts={search.fileCounts}
+            onlyPaths={sincePaths}
           />
         )}
       </div>
@@ -1054,6 +1098,8 @@ export function PrView() {
           discardRevision.mutate(n, { onSuccess: () => setReport(null) })
         }
         onResetDiscardRevision={() => discardRevision.reset()}
+        sinceReviewActive={sinceChanged !== null}
+        onToggleSinceReview={() => setSinceReviewOn((v) => !v)}
         onFinishReview={() => {
           setSubmitResult(null);
           submitReview.reset();

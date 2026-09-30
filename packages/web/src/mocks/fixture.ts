@@ -481,6 +481,14 @@ export const mockDetail: PrDetail = {
   state,
   files,
   diff: buildDiffText(),
+  // You approved revision 2; revision 3 then changed one hunk and added one.
+  sinceReview: {
+    revision: 2,
+    ts: "2026-05-12T18:20:00.000Z",
+    event: "APPROVE",
+    url: "https://github.com/acme/billing/pull/482#pullrequestreview-1",
+    changedHunkIds: ["a1b2c3d4e5f60001", "a1b2c3d4e5f60004"],
+  },
 };
 
 /**

@@ -7,6 +7,7 @@ import { AnalysisChip, AnalysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { ReviewRequestAge, StackedOnChip } from "./Chips";
 import { RevisionMenu } from "./RevisionMenu";
+import { formatAddedAt } from "../lib/prList";
 import { stackedOnLink } from "../lib/stacked";
 import { ChatButton } from "./ChatPanel";
 import { CopyPathButton } from "./DiffPane";
@@ -54,6 +55,8 @@ export function TopBar({
   onImportFromPr,
   onDiscardRevision,
   onResetDiscardRevision,
+  sinceReviewActive = false,
+  onToggleSinceReview,
   archiving = false,
   onSetArchived,
   repoArchiving = false,
@@ -102,6 +105,10 @@ export function TopBar({
   onImportFromPr: () => void;
   onDiscardRevision: (revision: number) => void;
   onResetDiscardRevision: () => void;
+  /** the "since your last review" filter is on */
+  sinceReviewActive?: boolean;
+  /** toggles it; omit to hide the chip */
+  onToggleSinceReview?: () => void;
   archiving?: boolean;
   onSetArchived?: (archived: boolean) => void;
   repoArchiving?: boolean;
@@ -168,6 +175,13 @@ export function TopBar({
           onDiscard={onDiscardRevision}
           onResetError={onResetDiscardRevision}
         />
+        {detail.sinceReview && onToggleSinceReview ? (
+          <SinceReviewChip
+            since={detail.sinceReview}
+            active={sinceReviewActive}
+            onToggle={onToggleSinceReview}
+          />
+        ) : null}
         {meta.author ? (
           <span
             className="hidden flex-none items-center gap-1 self-center text-2xs sm:flex"
@@ -510,5 +524,64 @@ export function OverflowMenu({
       </button>
       {open ? (fixed ? createPortal(menu, document.body) : menu) : null}
     </div>
+  );
+}
+
+const VERDICT_WORD: Record<string, string> = {
+  APPROVE: "approved",
+  REQUEST_CHANGES: "changes requested",
+  COMMENT: "commented",
+};
+
+/**
+ * "since review r2 · 3": the PR-level filter down to the hunks that changed
+ * after the reader's last submitted review. Shown only once the PR has moved
+ * past that review's revision; with nothing changed it just says so.
+ */
+function SinceReviewChip({
+  since,
+  active,
+  onToggle,
+}: {
+  since: NonNullable<PrDetail["sinceReview"]>;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const n = since.changedHunkIds.length;
+  const when = `your review on r${since.revision} (${VERDICT_WORD[since.event] ?? since.event.toLowerCase()}, ${formatAddedAt(since.ts)})`;
+  if (n === 0) {
+    return (
+      <span
+        className="hidden flex-none self-center text-2xs md:inline"
+        style={{ color: "var(--fg-faint)" }}
+        title={`No hunk changed since ${when}: the new revision only moved the base or context.`}
+      >
+        no changes since your review
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="chip flex-none self-center transition-colors"
+      data-testid="since-review-toggle"
+      aria-pressed={active}
+      title={
+        active
+          ? `Showing only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}. Click to show everything.`
+          : `Show only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}.`
+      }
+      style={
+        active
+          ? { background: "var(--accent)", color: "var(--bg)" }
+          : { background: "var(--accent-soft)", color: "var(--accent)" }
+      }
+      onClick={onToggle}
+    >
+      since review r{since.revision}
+      <span className="tabular-nums" style={{ opacity: 0.75 }}>
+        · {n}
+      </span>
+    </button>
   );
 }

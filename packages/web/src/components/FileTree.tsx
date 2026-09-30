@@ -47,6 +47,7 @@ export function FileTree({
   onSelect,
   onQuote,
   matchCounts,
+  onlyPaths,
 }: {
   detail: PrDetail;
   selectedPath: string | null;
@@ -54,11 +55,17 @@ export function FileTree({
   onQuote?: (ref: ChatRef) => void;
   /** search hits per file path; files with none render unchanged */
   matchCounts?: Map<string, number>;
+  /** list only these files (the "since your review" filter) */
+  onlyPaths?: ReadonlySet<string>;
 }) {
   const tree = useMemo(
     () =>
-      buildTree(detail.files.files.map((f) => ({ path: f.path, hunkCount: f.hunks.length }))),
-    [detail.files],
+      buildTree(
+        detail.files.files
+          .filter((f) => !onlyPaths || onlyPaths.has(f.path))
+          .map((f) => ({ path: f.path, hunkCount: f.hunks.length })),
+      ),
+    [detail.files, onlyPaths],
   );
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 

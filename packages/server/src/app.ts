@@ -128,6 +128,7 @@ import { pruneCheckouts } from "./pr-checkout.js";
 import { removeRepo, repoRemovalSummary } from "./repo-removal.js";
 import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
 import { fileLinesAtHead } from "./file-content.js";
+import { sinceLastReview } from "./since-review.js";
 
 export const DEFAULT_PORT = 4779;
 
@@ -578,6 +579,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       // Whether the PR behaves as archived because its whole repo is; the
       // header offers "unarchive repo" then rather than a per-PR unarchive.
       repoArchived: isRepoArchived(repoKeyOf(key), root),
+      // The PR-level "since your last review" toggle (see since-review.ts).
+      sinceReview: sinceLastReview(key, state, filesJson.files, root),
     });
   });
 
