@@ -14,6 +14,7 @@ import { CopyPathButton } from "./DiffPane";
 import { useModalBackground } from "./Modal";
 import {
   IconArchive,
+  IconCheck,
   IconArrowLeft,
   IconComment,
   IconMore,
@@ -145,16 +146,31 @@ export function TopBar({
       {/* Phone width: back + actions share the first row, and the title
           takes a full-width row of its own under them. */}
       <div className="order-last flex min-w-0 flex-1 basis-full flex-col justify-center gap-0.5 sm:order-none sm:basis-auto">
-        <a
-          href={meta.url}
-          target="_blank"
-          rel="noreferrer"
-          className="truncate text-[13px] font-semibold leading-snug hover:underline"
-          style={{ color: "var(--fg)" }}
-          title={meta.title ? `${meta.title} (open on GitHub)` : "Open on GitHub"}
-        >
-          {meta.title ?? `${meta.owner}/${meta.repo}#${meta.number}`}
-        </a>
+        <div className="flex min-w-0 items-baseline gap-2.5">
+          <a
+            href={meta.url}
+            target="_blank"
+            rel="noreferrer"
+            className="min-w-0 truncate text-[13px] font-semibold leading-snug hover:underline"
+            style={{ color: "var(--fg)" }}
+            title={meta.title ? `${meta.title} (open on GitHub)` : "Open on GitHub"}
+          >
+            {meta.title ?? `${meta.owner}/${meta.repo}#${meta.number}`}
+          </a>
+          {/* Wide screens: the branch belongs to the PR's name, next to the
+              title. Narrower, it ends the facts line below instead. */}
+          {meta.headRef ? (
+            <span
+              className="hidden min-w-0 max-w-[22rem] shrink-[2] items-center gap-1 text-2xs xl:flex"
+              style={{ color: "var(--fg-faint)" }}
+              title={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
+              data-testid="topbar-branch"
+            >
+              <span className="truncate font-mono">{meta.headRef}</span>
+              <CopyPathButton path={meta.headRef} what="branch name" />
+            </span>
+          ) : null}
+        </div>
         <div
           className="flex min-w-0 items-center gap-x-3 overflow-hidden whitespace-nowrap text-2xs leading-4"
           style={{
@@ -228,9 +244,9 @@ export function TopBar({
           </span>
           {meta.headRef ? (
             <span
-              className="hidden min-w-0 items-center gap-1 lg:flex"
+              className="hidden min-w-0 items-center gap-1 lg:flex xl:hidden"
               title={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
-              data-testid="topbar-branch"
+              data-testid="topbar-branch-meta"
             >
               <span className="truncate font-mono">{meta.headRef}</span>
               <CopyPathButton path={meta.headRef} what="branch name" />
@@ -396,7 +412,11 @@ export function TopBar({
           style={{ background: "var(--accent)", borderColor: "var(--accent)", color: "var(--bg)" }}
           onClick={onFinishReview}
         >
-          finish<span className="hidden sm:inline"> review</span>
+          <IconCheck width={12} height={12} />
+          {/* One flex item, so the button's gap never lands between the words. */}
+          <span>
+            finish<span className="hidden sm:inline"> review</span>
+          </span>
           {pendingReview ? (
             <span
               className="rounded-full px-1 text-2xs"
