@@ -1056,8 +1056,7 @@ export function ChatButton({ open, onClick }: { open: boolean; onClick: () => vo
       title={`Ask ${agentName} about this PR (c)`}
       style={open ? { background: "var(--accent-soft)", color: "var(--accent)" } : undefined}
     >
-      <IconChat width={11} height={11} />
-      <span className="hidden xl:inline">chat</span>
+      <IconChat width={12} height={12} />
     </button>
   );
 }

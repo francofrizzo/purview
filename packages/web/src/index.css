@@ -226,6 +226,24 @@
     opacity: 0.5;
     cursor: not-allowed;
   }
+  /* Buttons that belong together, joined into one segmented control. */
+  .btn-group {
+    @apply inline-flex flex-none items-center;
+  }
+  .btn-group > .btn {
+    border-radius: 0;
+  }
+  .btn-group > .btn:first-child {
+    border-top-left-radius: 0.25rem;
+    border-bottom-left-radius: 0.25rem;
+  }
+  .btn-group > .btn:last-child {
+    border-top-right-radius: 0.25rem;
+    border-bottom-right-radius: 0.25rem;
+  }
+  .btn-group > .btn + .btn {
+    margin-left: -1px;
+  }
   .btn-primary {
     background: var(--accent-soft);
     border-color: transparent;

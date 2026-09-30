@@ -123,8 +123,13 @@ export function TopBar({
   const navigate = useNavigate();
   return (
     <header
-      className="flex flex-none items-center gap-2 border-b px-2 py-2 sm:gap-3 sm:px-3"
-      style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
+      className="flex flex-none flex-wrap items-center gap-x-2 gap-y-1.5 border-b px-2 py-2 sm:flex-nowrap sm:gap-3 sm:px-3"
+      style={{
+        borderColor: "var(--border)",
+        // A faint wash of the theme's accent: the PR's header reads as its
+        // own band above the summary strip and the diff, in every theme.
+        background: "color-mix(in srgb, var(--accent) 7%, var(--bg-raised))",
+      }}
     >
       <Link
         to="/"
@@ -134,107 +139,110 @@ export function TopBar({
       >
         <IconArrowLeft width={12} height={12} />
       </Link>
-      {/* Narrow screens keep the title (truncating) and the revision; the rest
-          of the meta steps aside by width, least useful first. */}
-      <div className="flex min-w-0 flex-1 items-baseline gap-2">
+      {/* Two lines: the title gets the whole width it needs, and the PR's
+          facts sit quietly under it — the actions keep to the right. On a
+          narrow screen the least useful facts step aside first. */}
+      {/* Phone width: back + actions share the first row, and the title
+          takes a full-width row of its own under them. */}
+      <div className="order-last flex min-w-0 flex-1 basis-full flex-col justify-center gap-0.5 sm:order-none sm:basis-auto">
         <a
           href={meta.url}
           target="_blank"
           rel="noreferrer"
-          className="min-w-[3rem] truncate text-sm sm:min-w-[7rem] font-semibold hover:underline"
+          className="truncate text-[13px] font-semibold leading-snug hover:underline"
           style={{ color: "var(--fg)" }}
+          title={meta.title ? `${meta.title} (open on GitHub)` : "Open on GitHub"}
         >
           {meta.title ?? `${meta.owner}/${meta.repo}#${meta.number}`}
         </a>
-        <span
-          className="hidden flex-none font-mono text-2xs lg:inline"
-          style={{ color: "var(--fg-faint)" }}
+        <div
+          className="flex min-w-0 items-center gap-x-3 overflow-hidden whitespace-nowrap text-2xs leading-4"
+          style={{
+            color: "var(--fg-faint)",
+            // Out of room, the last fact fades out rather than being cut mid-word.
+            maskImage: "linear-gradient(to right, black calc(100% - 2rem), transparent)",
+            WebkitMaskImage: "linear-gradient(to right, black calc(100% - 2rem), transparent)",
+          }}
+          data-testid="topbar-meta"
         >
-          {meta.owner}/{meta.repo}#{meta.number} ·
-        </span>
-        {meta.headRef ? (
-          <span
-            className="hidden min-w-0 max-w-[16rem] flex-shrink items-center gap-1 self-center 2xl:flex"
-            title={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
-            data-testid="topbar-branch"
-          >
-            <span className="truncate font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
-              {meta.headRef}
-            </span>
-            <CopyPathButton path={meta.headRef} what="branch name" />
-            <span className="font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
-              ·
-            </span>
+          <span className="flex-none font-mono">
+            {meta.owner}/{meta.repo}
+            <span style={{ color: "var(--fg-muted)" }}>#{meta.number}</span>
           </span>
-        ) : null}
-        <RevisionMenu
-          state={state}
-          analysisLive={live}
-          discarding={discardingRevision}
-          error={discardRevisionError}
-          onDiscard={onDiscardRevision}
-          onResetError={onResetDiscardRevision}
-        />
-        {detail.sinceReview && onToggleSinceReview ? (
-          <SinceReviewChip
-            since={detail.sinceReview}
-            active={sinceReviewActive}
-            onToggle={onToggleSinceReview}
+          <RevisionMenu
+            state={state}
+            analysisLive={live}
+            discarding={discardingRevision}
+            error={discardRevisionError}
+            onDiscard={onDiscardRevision}
+            onResetError={onResetDiscardRevision}
           />
-        ) : null}
-        {meta.author ? (
-          <span
-            className="hidden flex-none items-center gap-1 self-center text-2xs sm:flex"
-            style={{ color: "var(--fg-faint)" }}
-            title={`Opened by ${meta.author}`}
-          >
-            <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={16} />
-            <span className="hidden 2xl:inline">{meta.author}</span>
+          {detail.sinceReview && onToggleSinceReview ? (
+            <SinceReviewChip
+              since={detail.sinceReview}
+              active={sinceReviewActive}
+              onToggle={onToggleSinceReview}
+            />
+          ) : null}
+          <ReviewRequestAge request={detail.reviewRequest} state={meta.prState} className="flex-none" />
+          {meta.archived && onSetArchived ? (
+            <button
+              type="button"
+              className="chip flex-none hover:!text-[var(--fg)]"
+              data-testid="topbar-archived"
+              disabled={archiving}
+              title="Archived: hidden in the PR list and never analyzed automatically. Click to unarchive."
+              style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+              onClick={() => onSetArchived(false)}
+            >
+              <IconArchive out width={10} height={10} />
+              {archiving ? "unarchiving…" : "archived · unarchive"}
+            </button>
+          ) : detail.repoArchived && onSetRepoArchived ? (
+            // Archived through its repo, not on its own: the way out is the
+            // repo's unarchive, which restores every PR in it as it was.
+            <button
+              type="button"
+              className="chip flex-none hover:!text-[var(--fg)]"
+              data-testid="topbar-archived"
+              disabled={repoArchiving}
+              title={`The whole ${meta.owner}/${meta.repo} repo is archived, so this PR is never analyzed automatically. Click to unarchive the repo.`}
+              style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+              onClick={() => onSetRepoArchived(false)}
+            >
+              <IconArchive out width={10} height={10} />
+              {repoArchiving ? "unarchiving repo…" : "repo archived · unarchive repo"}
+            </button>
+          ) : null}
+          {/* Only interesting while the analysis is not a plain success. */}
+          <AnalysisChip job={analysisJob} />
+          <AnalysisStats job={analysisJob} />
+          {meta.author ? (
+            <span className="hidden flex-none items-center gap-1 sm:flex" title={`Opened by ${meta.author}`}>
+              <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
+              <span className="hidden lg:inline">{meta.author}</span>
+            </span>
+          ) : null}
+          <span className="hidden flex-none md:inline-flex">
+            <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
           </span>
-        ) : null}
-        <span className="hidden flex-none self-center lg:inline-flex">
-          <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
-        </span>
-        <ReviewRequestAge
-          request={detail.reviewRequest}
-          state={meta.prState}
-          className="hidden flex-none self-center text-2xs xl:inline"
-        />
-        {meta.archived && onSetArchived ? (
-          <button
-            type="button"
-            className="chip flex-none self-center hover:!text-[var(--fg)]"
-            data-testid="topbar-archived"
-            disabled={archiving}
-            title="Archived: hidden in the PR list and never analyzed automatically. Click to unarchive."
-            style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
-            onClick={() => onSetArchived(false)}
-          >
-            <IconArchive out width={10} height={10} />
-            {archiving ? "unarchiving…" : "archived · unarchive"}
-          </button>
-        ) : detail.repoArchived && onSetRepoArchived ? (
-          // Archived through its repo, not on its own: the way out is the
-          // repo's unarchive, which restores every PR in it as it was.
-          <button
-            type="button"
-            className="chip flex-none self-center hover:!text-[var(--fg)]"
-            data-testid="topbar-archived"
-            disabled={repoArchiving}
-            title={`The whole ${meta.owner}/${meta.repo} repo is archived, so this PR is never analyzed automatically. Click to unarchive the repo.`}
-            style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
-            onClick={() => onSetRepoArchived(false)}
-          >
-            <IconArchive out width={10} height={10} />
-            {repoArchiving ? "unarchiving repo…" : "repo archived · unarchive repo"}
-          </button>
-        ) : null}
-        {/* Only interesting while the analysis is not a plain success. */}
-        <AnalysisChip job={analysisJob} />
-        <AnalysisStats job={analysisJob} />
+          {meta.headRef ? (
+            <span
+              className="hidden min-w-0 items-center gap-1 lg:flex"
+              title={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
+              data-testid="topbar-branch"
+            >
+              <span className="truncate font-mono">{meta.headRef}</span>
+              <CopyPathButton path={meta.headRef} what="branch name" />
+            </span>
+          ) : null}
+        </div>
       </div>
 
-      <div className="ml-auto flex flex-none items-center gap-1 sm:gap-1.5">
+      <div className="ml-auto flex flex-none items-center gap-1.5 sm:gap-2">
+        {/* Two pairs, icon-only (each names itself on hover): the
+            conversation about this PR, and keeping it in step with GitHub. */}
+        <div className="btn-group">
         <ChatButton open={chatOpen} onClick={onToggleChat} />
         <button
           type="button"
@@ -243,8 +251,7 @@ export function TopBar({
           title="Comments"
           aria-label="Comments"
         >
-          <IconComment width={11} height={11} />
-          <span className="hidden xl:inline">comments</span>
+          <IconComment width={12} height={12} />
           {draftCount ? (
             <span
               className="rounded-full px-1 text-2xs"
@@ -254,18 +261,19 @@ export function TopBar({
             </span>
           ) : null}
         </button>
+        </div>
+        <div className="btn-group">
         <button
           type="button"
           className="btn relative"
           data-testid="topbar-refresh"
           data-stale={stale ? "1" : undefined}
-          title={staleTooltip ?? "Refresh"}
+          title={refreshing ? "Refreshing…" : (staleTooltip ?? "Refresh from GitHub")}
           aria-label="Refresh"
           onClick={onRefresh}
           disabled={refreshing}
         >
-          <IconRefresh width={11} height={11} />
-          <span className="hidden xl:inline">{refreshing ? "refreshing…" : "refresh"}</span>
+          <IconRefresh width={12} height={12} className={refreshing ? "animate-spin" : undefined} />
           {stale ? (
             <span
               data-testid="staleness-dot"
@@ -280,12 +288,12 @@ export function TopBar({
           className="btn hidden sm:inline-flex"
           onClick={onSync}
           disabled={syncing}
-          title="Sync viewed files and comments to GitHub"
+          title={syncing ? "Syncing…" : "Sync viewed files and comments to GitHub"}
           aria-label="Sync"
         >
-          <IconUpload width={11} height={11} />
-          <span className="hidden xl:inline">{syncing ? "syncing…" : "sync"}</span>
+          <IconUpload width={12} height={12} className={syncing ? "animate-pulse" : undefined} />
         </button>
+        </div>
         <input
           ref={importInputRef}
           type="file"
@@ -382,7 +390,12 @@ export function TopBar({
             },
           ]}
         />
-        <button type="button" className="btn btn-primary" onClick={onFinishReview}>
+        <button
+          type="button"
+          className="btn flex-none font-semibold hover:brightness-110"
+          style={{ background: "var(--accent)", borderColor: "var(--accent)", color: "var(--bg)" }}
+          onClick={onFinishReview}
+        >
           finish<span className="hidden sm:inline"> review</span>
           {pendingReview ? (
             <span
