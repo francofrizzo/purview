@@ -220,6 +220,8 @@ export interface PrMeta {
   title?: string;
   author?: string;
   authorAvatarUrl?: string;
+  /** The PR description as the author wrote it (markdown); absent until fetched. */
+  body?: string;
   createdAt?: string;
   /** The PR's own branch (GitHub's `head.ref`). */
   headRef?: string;

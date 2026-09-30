@@ -36,6 +36,7 @@ import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
 import { resolveRunCheckout } from "./pr-checkout.js";
 import { baseNote, isManagedCheckout } from "./base-note.js";
+import { descriptionBlock } from "./pr-description.js";
 import { HttpError } from "./http-error.js";
 
 /**
@@ -475,6 +476,10 @@ export function analysisPrompt(
     "(path, status, hunk ids, headers, +/- sizes, addedLines/removedLines, full text, moved-code).",
     opts.checkout ? "\n" + checkoutNote(opts.checkout, opts.headSha, key) : "",
     baseNote(key, root, opts.checkout),
+    (() => {
+      const block = descriptionBlock(readMeta(key, root), { cmd, keyStr });
+      return block ? "\n" + block : "";
+    })(),
     "\n" + findingsNote(opts.checkout),
     movedNote(movedCodeSummary(key, state.currentRevision, root)),
     rubric ? "\n" + rubric : "",
@@ -539,6 +544,7 @@ export const ANALYSIS_CLI_SUBCOMMANDS: readonly ReviewerCommand[] = [
   "show",
   "changes",
   "base-file",
+  "description",
   "set-analysis",
   "set-unit",
   "set-units",

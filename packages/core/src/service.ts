@@ -182,6 +182,7 @@ export function initPr(key: PrKey, root = stateRoot()): InitResult {
         title: pr.title,
         author: pr.author,
         authorAvatarUrl: pr.authorAvatarUrl,
+        body: pr.body,
         headRef: pr.headRef,
         baseRef: pr.baseRef,
         prState: pr.prState,
@@ -242,6 +243,10 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
     metaPatch.authorAvatarUrl = pr.authorAvatarUrl;
   }
   if (meta.prState !== pr.prState) metaPatch.prState = pr.prState;
+  // The author edits these as the PR evolves; the prompts and the PR view
+  // read them from meta.
+  if (pr.title && meta.title !== pr.title) metaPatch.title = pr.title;
+  if (meta.body !== pr.body) metaPatch.body = pr.body;
   if ((meta.reviewDecision ?? null) !== reviewDecision) {
     metaPatch.reviewDecision = reviewDecision;
   }

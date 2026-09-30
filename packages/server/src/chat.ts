@@ -20,6 +20,7 @@ import {
 import { readComments } from "./comments.js";
 import { checkoutNote } from "./analysis.js";
 import { baseNote } from "./base-note.js";
+import { descriptionBlock } from "./pr-description.js";
 import { cliCommand, skillDir } from "./skill-paths.js";
 import { rubricSection } from "./rubric.js";
 import { chatInstructionsSection } from "./chat-instructions.js";
@@ -434,6 +435,10 @@ function prOverviewLines(key: PrKey, root: string, checkout?: ChatCheckout): str
     meta.title ? `Title: ${meta.title}` : "",
     `Key: ${keyToString(key)} — current revision ${state.currentRevision}`,
     baseNote(key, root, checkout?.resolution),
+    (() => {
+      const block = descriptionBlock(meta, { cmd: cliCommand(), keyStr: keyToString(key) });
+      return block ? `\n${block}` : "";
+    })(),
     state.summary ? `\nAnalysis summary:\n${state.summary}` : "\nThis PR has not been analyzed yet.",
     units.length ? `\nReview units:\n${units.join("\n")}` : "",
   ];
@@ -581,6 +586,7 @@ export const CHAT_CLI_SUBCOMMANDS: readonly ReviewerCommand[] = [
   "units",
   "base-file",
   "history",
+  "description",
   "comment",
 ];
 

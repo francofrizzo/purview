@@ -271,6 +271,7 @@ describe("opportunistic meta update", () => {
         prState: "open",
         baseRef: "main",
         basePr: null,
+        body: "",
         reviewRequest: null,
         reviewRequestCheckedAt: new Date().toISOString(),
       },

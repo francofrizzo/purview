@@ -9,6 +9,7 @@ import {
   appendEvent,
   loadState,
   readFilesJson,
+  updateMeta,
   writeMeta,
   writeMigrationReport,
   writeRevision,
@@ -203,6 +204,23 @@ describe("cli view", () => {
     expect(res.status).toBe(1);
     expect(res.stderr).toMatch(/no-such-unit/);
     expect(eventCount()).toBe(before);
+  });
+});
+
+describe("cli description", () => {
+  it("prints the title, author and description", () => {
+    seed();
+    updateMeta(key, { title: "Retry charges", author: "dana", body: "Makes charges replay-safe." }, tmp);
+    const res = run(["description", keyToString(key)]);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("Retry charges — by dana\n\nMakes charges replay-safe.\n");
+  });
+
+  it("says when it is empty, or not fetched yet", () => {
+    seed();
+    expect(run(["description", keyToString(key)]).stdout).toContain("not fetched yet");
+    updateMeta(key, { body: "" }, tmp);
+    expect(run(["description", keyToString(key)]).stdout).toContain("(no description)");
   });
 });
 

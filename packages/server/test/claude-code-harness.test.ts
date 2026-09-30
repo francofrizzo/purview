@@ -56,7 +56,7 @@ describe("task -> Claude tool policy", () => {
         `Edit(/${scratch}/**)`,
         "Edit(scratch/**)",
         "Read(//home/u/.claude/projects/x/**)",
-        ...["report", "list", "units", "triage", "show", "changes", "base-file", "set-analysis", "set-unit", "set-units"].map(
+        ...["report", "list", "units", "triage", "show", "changes", "base-file", "description", "set-analysis", "set-unit", "set-units"].map(
           (s) => `Bash(${cmd} ${s}:*)`,
         ),
         ...["grep:*", "rg:*", "sed -n:*", "ls:*", "cat:*", "head:*", "tail:*", "wc:*"].map((r) => `Bash(${r})`),
@@ -90,7 +90,7 @@ describe("task -> Claude tool policy", () => {
         "Read",
         "Glob",
         "Grep",
-        ...["report", "list", "triage", "show", "changes", "units", "base-file", "history", "comment"].map((s) => `Bash(${cmd} ${s}:*)`),
+        ...["report", "list", "triage", "show", "changes", "units", "base-file", "history", "description", "comment"].map((s) => `Bash(${cmd} ${s}:*)`),
         ...["grep:*", "rg:*", "sed -n:*", "ls:*", "cat:*", "head:*", "tail:*", "wc:*"].map((r) => `Bash(${r})`),
       ]),
     );

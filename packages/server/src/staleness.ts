@@ -170,6 +170,10 @@ export function checkStaleness(
     const patch: Partial<Meta> = {};
     if (stateMoved) patch.prState = pr.prState;
     if (decisionMoved) patch.reviewDecision = upstreamReviewDecision;
+    // Title and description ride along for free on the same payload (and
+    // backfill state recorded before the description was).
+    if (pr.title && pr.title !== meta.title) patch.title = pr.title;
+    if (pr.body !== meta.body) patch.body = pr.body;
     // Backfill what the prompts need to know about the base (state written
     // before `baseRef` existed has none until this runs), and follow a
     // retarget. Skipped once resolved, so the steady state costs no extra

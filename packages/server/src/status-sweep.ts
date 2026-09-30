@@ -11,10 +11,10 @@ import {
 import { isRepoArchived } from "./repo-config.js";
 
 /**
- * Keeps every tracked PR's open/draft/merged/closed state, review decision and
- * title current, whether or not anyone has its page open. The staleness check
- * does the same for one PR while its page is up; this is the background twin
- * for the rest, run on the review watcher's tick.
+ * Keeps every tracked PR's open/draft/merged/closed state, review decision,
+ * title and description current, whether or not anyone has its page open. The
+ * staleness check does the same for one PR while its page is up; this is the
+ * background twin for the rest, run on the review watcher's tick.
  *
  * One GraphQL query per repo (see `fetchPrStatuses`), so the cost grows with
  * repos, not PRs. Skipped: archived PRs and repos (on the shelf, nobody is
@@ -65,8 +65,13 @@ function safeRepoArchived(key: PrKey, root: string): boolean {
  * since GitHub hosts that lack the field would otherwise wipe real ones.
  */
 export function statusPatch(
-  meta: Pick<Meta, "prState" | "reviewDecision" | "title">,
-  upstream: { prState: Meta["prState"]; reviewDecision: Meta["reviewDecision"]; title: string },
+  meta: Pick<Meta, "prState" | "reviewDecision" | "title" | "body">,
+  upstream: {
+    prState: Meta["prState"];
+    reviewDecision: Meta["reviewDecision"];
+    title: string;
+    body?: string;
+  },
 ): Partial<Meta> | null {
   const patch: Partial<Meta> = {};
   if (upstream.prState && upstream.prState !== meta.prState) patch.prState = upstream.prState;
@@ -74,6 +79,8 @@ export function statusPatch(
     patch.reviewDecision = upstream.reviewDecision;
   }
   if (upstream.title && upstream.title !== meta.title) patch.title = upstream.title;
+  // "" is a real value (the author cleared it); only an absent one is unknown.
+  if (upstream.body !== undefined && upstream.body !== meta.body) patch.body = upstream.body;
   return Object.keys(patch).length ? patch : null;
 }
 

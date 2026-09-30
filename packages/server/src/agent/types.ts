@@ -89,6 +89,7 @@ export const REVIEWER_COMMANDS = [
   "changes",
   "base-file",
   "history",
+  "description",
   "set-analysis",
   "set-unit",
   "set-units",

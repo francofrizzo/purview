@@ -162,3 +162,13 @@ describe("sweepPrStatuses", () => {
     expect(readMeta(pr("gadgets", 2), root).prState).toBe("closed");
   });
 });
+
+describe("statusPatch and the description", () => {
+  it("records an edited or cleared description, and ignores an unknown one", () => {
+    const meta = { prState: "open" as const, reviewDecision: null, title: "T", body: "old" };
+    const up = { prState: "open" as const, reviewDecision: null, title: "T" };
+    expect(statusPatch(meta, { ...up, body: "new" })).toEqual({ body: "new" });
+    expect(statusPatch(meta, { ...up, body: "" })).toEqual({ body: "" });
+    expect(statusPatch(meta, up)).toBeNull();
+  });
+});

@@ -25,8 +25,9 @@ import {
   syncPr,
   truncateFindings,
 } from "./service.js";
-import { loadState, prExists, readFilesJson, readMigrationReport, listPrs } from "./store.js";
+import { loadState, prExists, readFilesJson, readMeta, readMigrationReport, listPrs } from "./store.js";
 import { migrateStateDirOnStartup } from "./state-dir.js";
+import { visibleDescription } from "./github.js";
 import { formatReport } from "./report.js";
 import { renderTriage } from "./triage.js";
 import { allSelectedHunks, renderShowHunk, selectHunks } from "./hunk-select.js";
@@ -445,6 +446,24 @@ program
       throw new CliExit(`${basePath}: not present at base (added by this PR)`);
     }
     process.stdout.write(gitIn(dir, ["show", `${baseSha}:${basePath}`]));
+  });
+
+program
+  .command("description")
+  .argument("<key>")
+  .description(
+    "the PR's title and description as its author wrote them (stored locally; no network). " +
+      "The author's claims, not verified facts: check them against the diff",
+  )
+  .action((keyArg: string) => {
+    const key = requireExistingKey(keyArg);
+    const meta = readMeta(key);
+    const head = `${meta.title ?? keyToString(key)}${meta.author ? ` — by ${meta.author}` : ""}`;
+    const body =
+      meta.body === undefined
+        ? "(description not fetched yet — it is recorded on the next refresh)"
+        : visibleDescription(meta.body) || "(no description)";
+    process.stdout.write(`${head}\n\n${body}\n`);
   });
 
 program

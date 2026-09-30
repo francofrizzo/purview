@@ -90,7 +90,7 @@ import {
   StalenessHint,
   SyncResultPanel,
 } from "../components/Panels";
-import { SummaryStrip } from "../components/SummaryStrip";
+import { SummaryStrip, visibleDescription } from "../components/SummaryStrip";
 import { TopBar } from "../components/TopBar";
 import { UNPLACED_TITLE, UnitSidebar } from "../components/UnitSidebar";
 import { SidebarRail } from "../components/SidebarRail";
@@ -834,6 +834,7 @@ export function PrView() {
   }
 
   const summary = detail.state.summary?.trim() ?? "";
+  const description = visibleDescription(detail.meta.body);
   const fileComments = selectedPath ? groupComments(drafts).byFile.get(selectedPath) : undefined;
   const progress = selectedUnit ? unitProgress(detail, selectedUnit) : null;
   const unsubmittedDrafts = drafts.filter((d) => d.status !== "submitted");
@@ -1247,9 +1248,11 @@ export function PrView() {
           onCancel={() => cancelAnalysis.mutate()}
         />
       ) : null}
-      {summary ? (
+      {summary || description ? (
         <SummaryStrip
           summary={summary}
+          description={description}
+          author={detail.meta.author}
           viewed={overall.viewed}
           total={overall.total}
           open={summaryOpen}

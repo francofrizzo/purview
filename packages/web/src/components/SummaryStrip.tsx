@@ -1,5 +1,6 @@
 /**
- * The analysis summary, collapsed to one line.
+ * The analysis summary — and the author's PR description — collapsed to one
+ * line.
  *
  * A real summary is a multi-sentence paragraph; as a static block between the
  * top bar and the panes it cost 150–200px of the reader's vertical space for
@@ -43,6 +44,14 @@ export function withoutHeadings(text: string): string {
   return text.replace(/^(\s{0,3})#{1,6}\s+/gm, "$1");
 }
 
+/**
+ * The description as GitHub shows it: HTML comments (PR templates are full of
+ * them) never reach the reader there, so they don't here either.
+ */
+export function visibleDescription(body: string | undefined): string {
+  return (body ?? "").replace(/<!--[\s\S]*?(-->|$)/g, "").trim();
+}
+
 /** How long the pointer must rest on the strip before it opens. */
 export const HOVER_OPEN_MS = 250;
 /**
@@ -60,13 +69,19 @@ function hoverCapable(): boolean {
 
 export function SummaryStrip({
   summary,
+  description,
+  author,
   viewed,
   total,
   open,
   onToggle,
   onClose,
 }: {
+  /** the analysis summary; "" when the PR has not been analyzed */
   summary: string;
+  /** the PR description, already through `visibleDescription`; "" for none */
+  description: string;
+  author?: string;
   viewed: number;
   total: number;
   open: boolean;
@@ -81,6 +96,7 @@ export function SummaryStrip({
   // `peeking` is this component's own transient hover state. Pinned always
   // wins, so leaving the strip cannot close something the reader clicked open.
   const shown = open || peeking;
+  const what = summary && description ? "summary and description" : summary ? "analysis summary" : "PR description";
 
   const clearTimer = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -150,8 +166,8 @@ export function SummaryStrip({
         data-pinned={open ? "true" : "false"}
         title={
           open
-            ? "Hide the analysis summary"
-            : "Show the analysis summary (s) — hover to peek, click to pin"
+            ? `Hide the ${what}`
+            : `Show the ${what} (s) — hover to peek, click to pin`
         }
         onClick={() => {
           clearTimer();
@@ -165,8 +181,24 @@ export function SummaryStrip({
           className="min-w-0 flex-1 truncate text-xs leading-4"
           style={{ color: "var(--fg-muted)" }}
         >
-          {summaryLede(summary)}
+          {summary ? (
+            summaryLede(summary)
+          ) : (
+            <>
+              <span style={{ color: "var(--fg-faint)" }}>Description · </span>
+              {summaryLede(description)}
+            </>
+          )}
         </span>
+        {summary && description ? (
+          <span
+            className="hidden flex-none text-2xs leading-4 sm:inline"
+            style={{ color: "var(--fg-faint)" }}
+            data-testid="summary-strip-has-description"
+          >
+            + description
+          </span>
+        ) : null}
         <span
           className="flex-none text-2xs leading-4 tabular-nums"
           style={{ color: "var(--fg-faint)" }}
@@ -184,18 +216,45 @@ export function SummaryStrip({
         <div
           data-testid="summary-overlay"
           data-pinned={open ? "true" : "false"}
-          className="absolute inset-x-0 top-full z-40 max-h-[40vh] overflow-y-auto border-b"
+          className={`absolute inset-x-0 top-full z-40 overflow-y-auto border-b ${
+            description ? "max-h-[60vh]" : "max-h-[40vh]"
+          }`}
           style={{
             background: "var(--bg-raised)",
             borderColor: "var(--border-strong)",
             boxShadow: "0 12px 28px rgba(0, 0, 0, 0.35)",
           }}
         >
-          <div className="max-w-[70ch] px-4 py-3 [&>div]:text-[13px] [&>div]:leading-[21px]">
-            <Markdown text={withoutHeadings(summary.trim())} />
-          </div>
+          {summary ? (
+            <section className="max-w-[70ch] px-4 py-3 [&>div]:text-[13px] [&>div]:leading-[21px]">
+              {description ? <OverlayHeading>Analysis summary</OverlayHeading> : null}
+              <Markdown text={withoutHeadings(summary.trim())} />
+            </section>
+          ) : null}
+          {description ? (
+            <section
+              data-testid="pr-description"
+              className="max-w-[80ch] px-4 py-3 [&>div]:text-[13px] [&>div]:leading-[21px]"
+              style={summary ? { borderTop: "1px solid var(--border)" } : undefined}
+            >
+              <OverlayHeading>
+                Description{author ? <span style={{ color: "var(--fg-faint)" }}> · by {author}</span> : null}
+              </OverlayHeading>
+              {/* The author's own words, headings and all: unlike the
+                  summary, it is a document, and its structure is its own. */}
+              <Markdown text={description} />
+            </section>
+          ) : null}
         </div>
       ) : null}
     </div>
+  );
+}
+
+function OverlayHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-1.5 text-2xs font-semibold" style={{ color: "var(--fg-muted)" }}>
+      {children}
+    </h2>
   );
 }

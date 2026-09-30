@@ -123,6 +123,8 @@ export interface PullRequestInfo {
   /** GitHub login of the PR author, when the payload carries one. */
   author?: string;
   authorAvatarUrl?: string;
+  /** The PR description as the author wrote it (markdown); "" when empty. */
+  body: string;
   baseRef: string;
   headRef: string;
   baseSha: string;
@@ -139,6 +141,7 @@ interface RawPull {
   merged?: boolean;
   merged_at?: string | null;
   user?: { login?: string; avatar_url?: string } | null;
+  body?: string | null;
   base: { ref: string; sha: string };
   head: { ref: string; sha: string };
 }
@@ -159,6 +162,21 @@ export function collapsePrState(raw: {
   return raw.draft ? "draft" : "open";
 }
 
+/** GitHub sends `null` for an empty description and CRLF from the web editor. */
+export function normalizeBody(raw: string | null | undefined): string {
+  return (raw ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+/**
+ * A description as GitHub renders it to the reader: HTML comments (PR
+ * templates are full of them) are invisible there, so they are dropped
+ * wherever a person or an agent reads it — they are also the easiest place to
+ * hide text meant only for a model.
+ */
+export function visibleDescription(body: string): string {
+  return body.replace(/<!--[\s\S]*?(-->|$)/g, "").trim();
+}
+
 /** `gh api repos/{owner}/{repo}/pulls/{number}` */
 export function fetchPullRequest(key: PrKey): PullRequestInfo {
   const raw = ghJson<RawPull>(key.host, [
@@ -175,6 +193,7 @@ export function fetchPullRequest(key: PrKey): PullRequestInfo {
     prState: collapsePrState(raw),
     author: raw.user?.login ?? undefined,
     authorAvatarUrl: raw.user?.avatar_url ?? undefined,
+    body: normalizeBody(raw.body),
     baseRef: raw.base.ref,
     headRef: raw.head.ref,
     baseSha: raw.base.sha,
@@ -347,6 +366,7 @@ export interface PrStatus {
   /** `null` when GitHub has none, or the host does not know the field. */
   reviewDecision: ReviewDecision | null;
   title: string;
+  body: string;
   headSha: string;
 }
 
@@ -375,7 +395,7 @@ export async function fetchPrStatuses(
     const fields = chunk
       .map(
         (n) =>
-          `pr${n}: pullRequest(number: ${n}) { state isDraft reviewDecision title headRefOid }`,
+          `pr${n}: pullRequest(number: ${n}) { state isDraft reviewDecision title body headRefOid }`,
       )
       .join("\n");
     const query = `query($owner: String!, $repo: String!) {
@@ -408,6 +428,7 @@ ${fields}
         }),
         reviewDecision: normalizeDecision(raw.reviewDecision),
         title: raw.title ?? "",
+        body: normalizeBody(raw.body),
         headSha: raw.headRefOid ?? "",
       });
     }
@@ -420,6 +441,7 @@ interface RawPrStatus {
   isDraft?: boolean;
   reviewDecision?: string | null;
   title?: string;
+  body?: string | null;
   headRefOid?: string;
 }
 

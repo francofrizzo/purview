@@ -301,6 +301,12 @@ export const MetaSchema = z.object({
    *  older state) by every refresh. */
   author: z.string().optional(),
   authorAvatarUrl: z.string().optional(),
+  /**
+   * The PR description (markdown, as the author wrote it; "" when empty).
+   * Kept current by every refresh and the server's status sweep; absent on
+   * state written before it was recorded until one of those runs.
+   */
+  body: z.string().optional(),
   createdAt: z.string(),
   /**
    * The PR's head branch name, refreshed from GitHub on every refresh. Used to
