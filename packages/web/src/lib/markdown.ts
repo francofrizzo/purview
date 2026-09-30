@@ -16,7 +16,9 @@ export type MdBlock =
   | { type: "list"; ordered: boolean; items: string[] }
   | { type: "quote"; text: string }
   | { type: "hr" }
-  | { type: "table"; align: TableAlign[]; header: string[]; rows: string[][] };
+  | { type: "table"; align: TableAlign[]; header: string[]; rows: string[][] }
+  /** GitHub's `<details><summary>…</summary>…</details>`: a collapsible. */
+  | { type: "details"; summary: string; open: boolean; blocks: MdBlock[] };
 
 export type TableAlign = "left" | "center" | "right" | null;
 
@@ -59,6 +61,47 @@ function tableAlign(cell: string): TableAlign {
   return null;
 }
 
+const DETAILS_OPEN = /^\s*<details(\s[^>]*)?>/i;
+const DETAILS_TAG = /<(\/?)details(\s[^>]*)?>/gi;
+
+/**
+ * A `<details>` block starting at `lines[start]`: its summary, body source,
+ * `open` flag and the index of the line to resume at. Nested `<details>` are
+ * balanced; an unclosed one runs to the end of the text, as on GitHub. Text
+ * left on the closing line after `</details>` is put back and resumed there.
+ */
+function readDetails(lines: string[], start: number): { summary: string; body: string; open: boolean; next: number } {
+  const text = lines.slice(start).join("\n");
+  const first = DETAILS_OPEN.exec(text)!;
+  const open = /\bopen\b/i.test(first[1] ?? "");
+  let depth = 0;
+  let end = text.length;
+  let after = text.length;
+  DETAILS_TAG.lastIndex = 0;
+  for (let m; (m = DETAILS_TAG.exec(text)); ) {
+    depth += m[1] ? -1 : 1;
+    if (depth === 0) {
+      end = m.index;
+      after = m.index + m[0].length;
+      break;
+    }
+  }
+  let inner = text.slice(first.index + first[0].length, end);
+  let summary = "Details";
+  const sum = /^\s*<summary(?:\s[^>]*)?>([\s\S]*?)<\/summary>/i.exec(inner);
+  if (sum) {
+    summary = sum[1].replace(/\s+/g, " ").trim() || summary;
+    inner = inner.slice(sum.index + sum[0].length);
+  }
+  const lastLine = start + text.slice(0, after).split("\n").length - 1;
+  const tail = text.slice(after).split("\n")[0] ?? "";
+  if (tail.trim()) {
+    lines[lastLine] = tail;
+    return { summary, body: inner, open, next: lastLine };
+  }
+  return { summary, body: inner, open, next: lastLine + 1 };
+}
+
 export function parseMarkdown(src: string): MdBlock[] {
   const lines = src.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MdBlock[] = [];
@@ -69,6 +112,13 @@ export function parseMarkdown(src: string): MdBlock[] {
 
     if (!line.trim()) {
       i++;
+      continue;
+    }
+
+    if (DETAILS_OPEN.test(line)) {
+      const d = readDetails(lines, i);
+      blocks.push({ type: "details", summary: d.summary, open: d.open, blocks: parseMarkdown(d.body) });
+      i = d.next;
       continue;
     }
 
@@ -184,6 +234,7 @@ export function parseMarkdown(src: string): MdBlock[] {
         ORDERED.test(next) ||
         QUOTE.test(next) ||
         HR.test(next) ||
+        DETAILS_OPEN.test(next) ||
         isTableStart(lines, i)
       ) {
         break;
@@ -202,11 +253,60 @@ export type MdInline =
   | { type: "code"; text: string }
   | { type: "strong"; text: string }
   | { type: "em"; text: string }
-  | { type: "link"; text: string; href: string };
+  | { type: "link"; text: string; href: string }
+  /** GitHub extras: ~~strike~~ and the inline HTML its sanitizer lets through. */
+  | { type: "del" | "ins" | "kbd" | "sub" | "sup" | "mark"; text: string }
+  | { type: "br" }
+  | { type: "image"; alt: string; href: string };
 
 // Code first: backticks win over emphasis, as in real markdown.
 const INLINE =
   /(`+)([\s\S]*?)\1|\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|(\*\*|__)([\s\S]+?)\5|(\*|_)([^\s][\s\S]*?)\7|(https?:\/\/[^\s<>()]+)/;
+
+/**
+ * ~~strike~~ plus the inline HTML GitHub renders. Anything not listed here
+ * stays literal text: prose is full of `Promise<void>`-style angle brackets
+ * that are not tags at all.
+ */
+const HTML_INLINE =
+  /~~(?!~)([\s\S]+?)~~|<br\s*\/?>|<img\b([^>]*)>|<a\s[^>]*?href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a\s*>|<(kbd|sub|sup|b|strong|i|em|code|del|s|strike|ins|mark|u|tt|var|samp)(?:\s[^>]*)?>([\s\S]*?)<\/\5\s*>/i;
+
+const TAG_TYPE: Record<string, MdInline["type"]> = {
+  b: "strong",
+  strong: "strong",
+  i: "em",
+  em: "em",
+  code: "code",
+  tt: "code",
+  samp: "code",
+  var: "em",
+  del: "del",
+  s: "del",
+  strike: "del",
+  ins: "ins",
+  u: "ins",
+  mark: "mark",
+  kbd: "kbd",
+  sub: "sub",
+  sup: "sup",
+};
+
+const attr = (attrs: string, name: string) =>
+  new RegExp(`\\b${name}\\s*=\\s*["']([^"']*)["']`, "i").exec(attrs)?.[1];
+
+/** Inner text of an inline tag: nested tags dropped, whitespace collapsed. */
+const tagText = (inner: string) => inner.replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+
+function htmlNode(h: RegExpExecArray): MdInline {
+  if (h[1] !== undefined) return { type: "del", text: h[1] };
+  if (h[0].toLowerCase().startsWith("<br")) return { type: "br" };
+  if (h[2] !== undefined) {
+    return { type: "image", alt: attr(h[2], "alt") ?? "", href: attr(h[2], "src") ?? "" };
+  }
+  if (h[3] !== undefined) return { type: "link", text: tagText(h[4]) || h[3], href: h[3] };
+  const type = TAG_TYPE[h[5].toLowerCase()];
+  return { type, text: tagText(h[6]) } as MdInline;
+}
 
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 
@@ -225,6 +325,15 @@ export function parseInline(src: string): MdInline[] {
 
   while (rest) {
     const m = INLINE.exec(rest);
+    // A tag or ~~strike~~ that starts before the next markdown token wins;
+    // a code span that starts first keeps any tag inside it literal.
+    const h = HTML_INLINE.exec(rest);
+    if (h && (!m || h.index < m.index)) {
+      if (h.index > 0) out.push({ type: "text", text: rest.slice(0, h.index) });
+      out.push(htmlNode(h));
+      rest = rest.slice(h.index + h[0].length);
+      continue;
+    }
     if (!m || m.index === undefined) break;
     const at = src.length - rest.length + m.index;
     const delim = m[5] ?? m[7];

@@ -8,12 +8,12 @@
  */
 
 import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
-import { parseInline, parseMarkdown, type MdInline } from "../lib/markdown";
+import { parseInline, parseMarkdown, type MdBlock, type MdInline } from "../lib/markdown";
 import { cachedTokens, tokenizeLines, type Tok } from "../lib/highlight";
 import { renderMermaid } from "../lib/mermaid";
 import { useSettings } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
-import { IconCheck, IconCopy, IconExpand, IconWrap } from "./icons";
+import { IconCheck, IconChevron, IconCopy, IconExpand, IconWrap } from "./icons";
 import { Modal } from "./Modal";
 
 /** Stable, cheap cache key for a snippet (shiki's cache is keyed by string). */
@@ -68,6 +68,45 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
     <>
       {nodes.map((node, i) => {
         const link = node.type === "code" ? linkFor?.(node.text) : null;
+        if (node.type === "br") return <br key={i} />;
+        if (node.type === "image") {
+          // Images stay links: a PR description's screenshots open on GitHub
+          // rather than loading remote content into the review page.
+          return node.href ? (
+            <a
+              key={i}
+              href={node.href}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline underline-offset-2"
+              style={{ color: "var(--accent)" }}
+            >
+              🖼 {node.alt || "image"}
+            </a>
+          ) : null;
+        }
+        if (node.type === "kbd") {
+          return (
+            <kbd
+              key={i}
+              className="rounded border px-1 font-mono"
+              style={{ fontSize: "0.88em", borderColor: "var(--border-strong)", background: "var(--bg-raised)", color: "var(--fg)" }}
+            >
+              {node.text}
+            </kbd>
+          );
+        }
+        if (node.type === "del") return <del key={i} style={{ opacity: 0.75 }}>{node.text}</del>;
+        if (node.type === "ins") return <ins key={i}>{node.text}</ins>;
+        if (node.type === "sub") return <sub key={i}>{node.text}</sub>;
+        if (node.type === "sup") return <sup key={i}>{node.text}</sup>;
+        if (node.type === "mark") {
+          return (
+            <mark key={i} className="rounded-sm px-0.5" style={{ background: "var(--warn-soft)", color: "var(--fg)" }}>
+              {node.text}
+            </mark>
+          );
+        }
         if (link?.label) {
           return (
             <button
@@ -102,7 +141,7 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
               title={`${link.title} (click to open)`}
               onClick={link.onOpen}
             >
-              {node.text}
+              {node.type === "code" ? node.text : null}
             </button>
           );
         }
@@ -331,16 +370,49 @@ export function InlineMarkdown({ text }: { text: string }) {
 export const PROSE_TEXT = "text-xs leading-[19px]";
 export const CHAT_TEXT = "text-[13px] leading-[21px]";
 
-export const Markdown = memo(function Markdown({
-  text,
-  textClass = PROSE_TEXT,
-}: {
-  text: string;
-  textClass?: string;
-}) {
-  const blocks = parseMarkdown(text);
+/** GitHub alerts: `> [!NOTE]` and friends, as a colored callout. */
+const ALERT = /^\[!(note|tip|important|warning|caution)\]\s*/i;
+const ALERTS: Record<string, { label: string; color: string }> = {
+  NOTE: { label: "Note", color: "var(--accent)" },
+  TIP: { label: "Tip", color: "var(--ok)" },
+  IMPORTANT: { label: "Important", color: "var(--kind-core)" },
+  WARNING: { label: "Warning", color: "var(--warn)" },
+  CAUTION: { label: "Caution", color: "var(--risk)" },
+};
+
+/** A list item; `[ ]` / `[x]` at its start is a (read-only) task checkbox. */
+function ListItem({ item }: { item: string }) {
+  const task = /^\[([ xX])\]\s+/.exec(item);
+  if (!task) {
+    return (
+      <li>
+        <Inline nodes={parseInline(item)} />
+      </li>
+    );
+  }
+  const done = task[1] !== " ";
   return (
-    <div className={textClass} style={{ color: "var(--fg-muted)" }}>
+    <li className="-ml-4 flex list-none items-baseline gap-1.5">
+      <input
+        type="checkbox"
+        checked={done}
+        readOnly
+        tabIndex={-1}
+        aria-label={done ? "done" : "not done"}
+        className="pointer-events-none relative top-px flex-none"
+        style={{ accentColor: "var(--accent)" }}
+      />
+      <span>
+        <Inline nodes={parseInline(item.slice(task[0].length))} />
+      </span>
+    </li>
+  );
+}
+
+/** Rendered blocks; recursive, since a `<details>` holds blocks of its own. */
+function BlockList({ blocks }: { blocks: MdBlock[] }) {
+  return (
+    <>
       {blocks.map((block, i) => {
         switch (block.type) {
           case "code":
@@ -411,21 +483,34 @@ export const Markdown = memo(function Markdown({
             return block.ordered ? (
               <ol key={i} className="my-1 list-decimal space-y-0.5 pl-4">
                 {block.items.map((item, j) => (
-                  <li key={j}>
-                    <Inline nodes={parseInline(item)} />
-                  </li>
+                  <ListItem key={j} item={item} />
                 ))}
               </ol>
             ) : (
               <ul key={i} className="my-1 list-disc space-y-0.5 pl-4">
                 {block.items.map((item, j) => (
-                  <li key={j}>
-                    <Inline nodes={parseInline(item)} />
-                  </li>
+                  <ListItem key={j} item={item} />
                 ))}
               </ul>
             );
-          case "quote":
+          case "quote": {
+            const alert = ALERT.exec(block.text);
+            if (alert) {
+              const kind = ALERTS[alert[1].toUpperCase()];
+              return (
+                <div
+                  key={i}
+                  data-testid="md-alert"
+                  className="my-1.5 border-l-2 py-0.5 pl-2"
+                  style={{ borderColor: kind.color }}
+                >
+                  <div className="font-semibold" style={{ color: kind.color }}>
+                    {kind.label}
+                  </div>
+                  <Inline nodes={parseInline(block.text.slice(alert[0].length))} />
+                </div>
+              );
+            }
             return (
               <blockquote
                 key={i}
@@ -434,6 +519,36 @@ export const Markdown = memo(function Markdown({
               >
                 <Inline nodes={parseInline(block.text)} />
               </blockquote>
+            );
+          }
+          case "details":
+            return (
+              <details
+                key={i}
+                open={block.open}
+                data-testid="md-details"
+                className="group/details my-1.5 rounded border"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <summary
+                  className="flex cursor-pointer select-none list-none items-center gap-1.5 px-2 py-1 [&::-webkit-details-marker]:hidden"
+                  style={{ color: "var(--fg)" }}
+                >
+                  {/* The wrapper turns: IconChevron sets its own inline transform. */}
+                  <span
+                    className="inline-flex flex-none transition-transform group-open/details:rotate-90"
+                    style={{ color: "var(--fg-faint)" }}
+                  >
+                    <IconChevron width={10} height={10} />
+                  </span>
+                  <span className="min-w-0">
+                    <Inline nodes={parseInline(block.summary)} />
+                  </span>
+                </summary>
+                <div className="border-t px-2 pb-1.5 pt-1" style={{ borderColor: "var(--border)" }}>
+                  <BlockList blocks={block.blocks} />
+                </div>
+              </details>
             );
           case "hr":
             return (
@@ -447,6 +562,21 @@ export const Markdown = memo(function Markdown({
             );
         }
       })}
+    </>
+  );
+}
+
+export const Markdown = memo(function Markdown({
+  text,
+  textClass = PROSE_TEXT,
+}: {
+  text: string;
+  textClass?: string;
+}) {
+  const blocks = parseMarkdown(text);
+  return (
+    <div className={textClass} style={{ color: "var(--fg-muted)" }}>
+      <BlockList blocks={blocks} />
     </div>
   );
 });

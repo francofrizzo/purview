@@ -151,3 +151,89 @@ describe("parseInline", () => {
     expect(parseInline("2 * 3 = 6")).toEqual([{ type: "text", text: "2 * 3 = 6" }]);
   });
 });
+
+describe("parseMarkdown <details>", () => {
+  it("reads GitHub's collapsible, summary and all", () => {
+    const md = [
+      "Intro.",
+      "",
+      "<details>",
+      "<summary>🤖 Agente</summary>",
+      "",
+      "El namespace `test-` queda **fuera**.",
+      "",
+      "- uno",
+      "</details>",
+      "",
+      "After.",
+    ].join("\n");
+    expect(parseMarkdown(md)).toEqual([
+      { type: "paragraph", text: "Intro." },
+      {
+        type: "details",
+        summary: "🤖 Agente",
+        open: false,
+        blocks: [
+          { type: "paragraph", text: "El namespace `test-` queda **fuera**." },
+          { type: "list", ordered: false, items: ["uno"] },
+        ],
+      },
+      { type: "paragraph", text: "After." },
+    ]);
+  });
+
+  it("handles one-line tags, `open`, nesting and a missing summary", () => {
+    const [d] = parseMarkdown(
+      "<details open> <summary>Outer</summary>\nA\n<details>\nB\n</details>\n</details> tail",
+    ) as Extract<ReturnType<typeof parseMarkdown>[number], { type: "details" }>[];
+    expect(d.open).toBe(true);
+    expect(d.summary).toBe("Outer");
+    expect(d.blocks[0]).toEqual({ type: "paragraph", text: "A" });
+    expect(d.blocks[1]).toMatchObject({ type: "details", summary: "Details", blocks: [{ type: "paragraph", text: "B" }] });
+    expect(parseMarkdown("<details open> <summary>Outer</summary>\nA\n</details> tail")[1]).toEqual({
+      type: "paragraph",
+      text: "tail",
+    });
+  });
+
+  it("runs an unclosed one to the end", () => {
+    expect(parseMarkdown("<details><summary>S</summary>\nbody")).toEqual([
+      { type: "details", summary: "S", open: false, blocks: [{ type: "paragraph", text: "body" }] },
+    ]);
+  });
+
+  it("stops a paragraph at a <details> line", () => {
+    expect(parseMarkdown("text\n<details>\nx\n</details>").map((b) => b.type)).toEqual(["paragraph", "details"]);
+  });
+});
+
+describe("parseInline GitHub extras", () => {
+  it("renders strike, kbd, sub/sup, b/i, br, a and img", () => {
+    expect(parseInline("~~old~~ press <kbd>Ctrl</kbd> H<sub>2</sub>O x<sup>2</sup>")).toEqual([
+      { type: "del", text: "old" },
+      { type: "text", text: " press " },
+      { type: "kbd", text: "Ctrl" },
+      { type: "text", text: " H" },
+      { type: "sub", text: "2" },
+      { type: "text", text: "O x" },
+      { type: "sup", text: "2" },
+    ]);
+    expect(parseInline("<b>bold</b><br/><i>it</i>")).toEqual([
+      { type: "strong", text: "bold" },
+      { type: "br" },
+      { type: "em", text: "it" },
+    ]);
+    expect(parseInline('<a href="https://x.dev">site</a> <img src="https://i/p.png" alt="shot">')).toEqual([
+      { type: "link", text: "site", href: "https://x.dev" },
+      { type: "text", text: " " },
+      { type: "image", alt: "shot", href: "https://i/p.png" },
+    ]);
+  });
+
+  it("leaves unknown angle brackets and tags inside code alone", () => {
+    expect(parseInline("returns Promise<void> or Map<K, V>")).toEqual([
+      { type: "text", text: "returns Promise<void> or Map<K, V>" },
+    ]);
+    expect(parseInline("`<kbd>x</kbd>`")).toEqual([{ type: "code", text: "<kbd>x</kbd>" }]);
+  });
+});
