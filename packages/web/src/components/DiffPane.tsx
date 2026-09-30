@@ -1914,7 +1914,11 @@ export function DiffPane({
       };
       return (
         <div
-          className="flex items-center gap-2 border-y px-3 py-1.5 font-mono text-xs"
+          // One fixed height for every file row: `v`/j/k scroll a hunk to just
+          // under the pinned file header using a single measured height, and a
+          // file with a chip in its header used to be 2px taller than one
+          // without — enough to leave the previous (folded) hunk as current.
+          className="box-border flex h-8 items-center gap-2 border-y px-3 font-mono text-xs"
           style={{
             background: "var(--bg-raised)",
             borderColor: "var(--border)",
