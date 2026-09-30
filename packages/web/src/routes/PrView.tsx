@@ -1099,7 +1099,19 @@ export function PrView() {
         }
         onResetDiscardRevision={() => discardRevision.reset()}
         sinceReviewActive={sinceChanged !== null}
-        onToggleSinceReview={() => setSinceReviewOn((v) => !v)}
+        onToggleSinceReview={() => {
+          const turningOn = !sinceReviewOn;
+          setSinceReviewOn(turningOn);
+          // Within the hunks it keeps, mark the lines that changed since the
+          // review: the changelog highlight, for every revision after it.
+          const since = detail?.sinceReview;
+          const after = (detail?.state.revisions ?? [])
+            .map((r) => r.revision)
+            .filter((r) => since && r > since.revision)
+            .sort((a, b) => a - b);
+          if (turningOn && after.length) setHighlightFor({ revisions: after, atRevision: currentRevision });
+          else if (!turningOn) clearHighlight();
+        }}
         onFinishReview={() => {
           setSubmitResult(null);
           submitReview.reset();
