@@ -181,9 +181,18 @@ export function TopBar({
           }}
           data-testid="topbar-meta"
         >
-          <span className="flex-none font-mono">
-            {meta.owner}/{meta.repo}
-            <span style={{ color: "var(--fg-muted)" }}>#{meta.number}</span>
+          {/* Which PR and whose, together: the author rides on the PR number. */}
+          <span className="flex flex-none items-center gap-1.5">
+            <span className="font-mono">
+              {meta.owner}/{meta.repo}
+              <span style={{ color: "var(--fg-muted)" }}>#{meta.number}</span>
+            </span>
+            {meta.author ? (
+              <span className="flex items-center gap-1" title={`Opened by ${meta.author}`}>
+                <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
+                <span className="hidden sm:inline">{meta.author}</span>
+              </span>
+            ) : null}
           </span>
           <RevisionMenu
             state={state}
@@ -233,12 +242,6 @@ export function TopBar({
           {/* Only interesting while the analysis is not a plain success. */}
           <AnalysisChip job={analysisJob} />
           <AnalysisStats job={analysisJob} />
-          {meta.author ? (
-            <span className="hidden flex-none items-center gap-1 sm:flex" title={`Opened by ${meta.author}`}>
-              <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
-              <span className="hidden lg:inline">{meta.author}</span>
-            </span>
-          ) : null}
           <span className="hidden flex-none md:inline-flex">
             <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
           </span>
