@@ -135,7 +135,21 @@ type FlatRow =
    * that keys rows by hunk keeps working.
    */
   | { type: "gap"; key: string; hunkId: string; gap: Gap; hidden: number | null }
-  | { type: "ctx"; key: string; hunkId: string; path: string; newNo: number; oldNo: number };
+  | {
+      type: "ctx";
+      key: string;
+      hunkId: string;
+      path: string;
+      newNo: number;
+      oldNo: number;
+      /** the gap this line was revealed from, and from which end */
+      gapKey: string;
+      side: "top" | "bottom";
+      /** lines in this revealed run, for the hide button's label */
+      runLength: number;
+      /** the run hangs under a hunk (true) or sits over one (false) */
+      belowHunk: boolean;
+    };
 
 /** A file fetched for expanding context, by path. */
 type ContextFile =
@@ -778,6 +792,15 @@ export function DiffPane({
     [loadContextFile],
   );
 
+  /** Fold one revealed run back into its gap ("show all" reveals from the top). */
+  const hideContext = useCallback((gapKey: string, side: "top" | "bottom") => {
+    setContextReveal((prev) => {
+      const cur = prev[gapKey];
+      if (!cur) return prev;
+      return { ...prev, [gapKey]: { ...cur, [side]: 0 } };
+    });
+  }, []);
+
   const rows = useMemo<FlatRow[]>(() => {
     const out: FlatRow[] = [];
     let lastFile: string | null = null;
@@ -808,18 +831,31 @@ export function DiffPane({
       // Nothing is revealed until the file is here to draw it from.
       const reveal = lines ? (contextReveal[gap.key] ?? { top: 0, bottom: 0 }) : { top: 0, bottom: 0 };
       const shown = revealGap(gap, reveal, lines ? lines.length : null);
-      const pushCtx = (range: [number, number] | null) => {
+      const pushCtx = (range: [number, number] | null, side: "top" | "bottom") => {
         if (!range) return;
+        const runLength = range[1] - range[0] + 1;
         for (let n = range[0]; n <= range[1]; n++) {
-          out.push({ type: "ctx", key: `${w}c:${gap.path}:${n}`, hunkId, path: gap.path, newNo: n, oldNo: n - gap.shift });
+          out.push({
+            type: "ctx",
+            key: `${w}c:${gap.path}:${n}`,
+            hunkId,
+            path: gap.path,
+            newNo: n,
+            oldNo: n - gap.shift,
+            gapKey: gap.key,
+            side,
+            runLength,
+            // "show all" reveals from the top, even before a file's first hunk
+            belowHunk: side === "top" && gap.prevHunkId !== null,
+          });
         }
       };
-      pushCtx(shown.top);
+      pushCtx(shown.top, "top");
       // A missing file (deleted at head) has nothing to offer.
       if (shown.hidden !== 0 && loaded?.status !== "missing") {
         out.push({ type: "gap", key: `g:${gap.key}`, hunkId, gap, hidden: shown.hidden });
       }
-      pushCtx(shown.bottom);
+      pushCtx(shown.bottom, "bottom");
     };
 
     for (let entryIdx = 0; entryIdx < entries.length; entryIdx++) {
@@ -1766,8 +1802,9 @@ export function DiffPane({
       };
       const toks = contextTokens[row.path]?.[row.newNo - 1];
       // Unchanged lines the diff left out: readable, not commentable or
-      // "viewed" (GitHub does the same with expanded context).
-      return mode === "split" ? (
+      // "viewed" (GitHub does the same with expanded context). Hovering any of
+      // them floats a small "hide" that folds its whole run back up.
+      const line = mode === "split" ? (
         <SplitDiffLine
           left={ctxRow}
           right={ctxRow}
@@ -1778,6 +1815,25 @@ export function DiffPane({
         />
       ) : (
         <DiffLine row={ctxRow} tokens={toks} onDefinitionClick={onDefinitionClick} isDefinedInDiff={isDefinedInDiff} />
+      );
+      const label = `Hide these ${row.runLength} line${row.runLength === 1 ? "" : "s"}`;
+      return (
+        <div className="group/ctx relative">
+          {line}
+          <button
+            type="button"
+            className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-full border px-1.5 font-sans text-2xs leading-4 opacity-0 shadow-sm transition-opacity hover:text-[var(--accent)] focus-visible:opacity-100 group-hover/ctx:opacity-100"
+            style={{ background: "var(--bg-raised)", borderColor: "var(--border-strong)", color: "var(--fg-muted)" }}
+            title={label}
+            aria-label={label}
+            data-testid="ctx-hide"
+            onClick={() => hideContext(row.gapKey, row.side)}
+          >
+            {/* toward the hunk the run grew out of */}
+            <span aria-hidden>{row.belowHunk ? "↑" : "↓"}</span>
+            hide {row.runLength}
+          </button>
+        </div>
       );
     }
     return renderDiffRow(row);
