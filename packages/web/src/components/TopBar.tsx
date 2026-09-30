@@ -16,7 +16,9 @@ import {
   IconArchive,
   IconCheck,
   IconArrowLeft,
+  IconCollapse,
   IconComment,
+  IconExpand,
   IconMore,
   IconRefresh,
   IconUpload,
@@ -313,6 +315,23 @@ export function TopBar({
           <IconUpload width={12} height={12} className={syncing ? "animate-pulse" : undefined} />
         </button>
         </div>
+        {fullscreenVisible && onToggleFullscreen ? (
+          <button
+            type="button"
+            className="btn"
+            data-testid="topbar-fullscreen"
+            onClick={onToggleFullscreen}
+            title={fullscreenActive ? "Exit full screen" : "Full screen"}
+            aria-label={fullscreenActive ? "Exit full screen" : "Full screen"}
+            aria-pressed={fullscreenActive}
+          >
+            {fullscreenActive ? (
+              <IconCollapse width={12} height={12} />
+            ) : (
+              <IconExpand width={12} height={12} />
+            )}
+          </button>
+        ) : null}
         <input
           ref={importInputRef}
           type="file"
@@ -395,16 +414,18 @@ export function TopBar({
               onClick: onImportFromPr,
             },
             // App-level, not about this PR: last.
-            ...(fullscreenVisible && onToggleFullscreen
-              ? [
-                  {
-                    label: fullscreenActive ? "exit full screen" : "full screen",
-                    onClick: onToggleFullscreen,
-                  },
-                ]
-              : []),
             {
-              label: "settings",
+              label: "repo settings",
+              testId: "menu-repo-settings",
+              hint: `Shared by every PR in ${meta.owner}/${meta.repo}.`,
+              onClick: () =>
+                navigate(`/repo/${meta.host}/${meta.owner}/${meta.repo}/settings`, {
+                  state: { background },
+                }),
+            },
+            {
+              label: "app settings",
+              hint: "Theme, fonts, diff defaults; for every repo.",
               onClick: () => navigate("/settings", { state: { background } }),
             },
           ]}
