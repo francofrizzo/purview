@@ -1,8 +1,13 @@
 import {
   appendEvent,
+  fetchReviewDecision,
   lastReviewSubmission,
   loadState,
   readiness,
+  readMeta,
+  reviewRequestPatch,
+  updateMeta,
+  type Meta,
   type PrKey,
   type ReadinessSummary,
 } from "@reviewer/core";
@@ -216,7 +221,30 @@ export function submitReview(
     root,
   );
 
+  refreshAfterReview(key, root);
+
   return { ok: true, event: input.event, url, commentCount: ids.length, push, draft };
+}
+
+/**
+ * A review just landed, so GitHub's review decision may have moved (an
+ * approval, changes requested) and the reader's own review request is
+ * fulfilled. Re-read both now rather than leaving the PR list and header to
+ * catch up on the next background poll. Best-effort: the review is already
+ * posted, and nothing here may turn that into an error.
+ */
+export function refreshAfterReview(key: PrKey, root?: string): void {
+  try {
+    const meta = readMeta(key, root);
+    const patch: Partial<Meta> = reviewRequestPatch(key, meta.prState, root);
+    // `null` from the decision query means "unknown" (see staleness.ts): it
+    // never clears a decision already recorded.
+    const decision = fetchReviewDecision(key);
+    if (decision !== null && decision !== meta.reviewDecision) patch.reviewDecision = decision;
+    updateMeta(key, patch, root);
+  } catch (err) {
+    console.warn(`[review] could not refresh status after submitting: ${(err as Error).message}`);
+  }
 }
 
 export interface DiscardResult {

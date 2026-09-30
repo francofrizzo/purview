@@ -1454,6 +1454,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       { event: body.event as SubmitEvent, body: body.body },
       root,
     );
+    // Its cached answer predates the review's effect on the decision.
+    clearStalenessCache(key, root);
     return c.json({ ...result, state: loadState(key, root) });
   });
 

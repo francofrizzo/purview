@@ -116,6 +116,13 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
       };
       const query = field("query") ?? "";
 
+      // GraphQL: the aggregate review decision, from the last submitted verdict.
+      if (query.includes("reviewDecision") && query.includes("pullRequest(number:$number)")) {
+        const last = [...state.reviews].reverse().find((r) => r.state === "APPROVED" || r.state === "REQUEST_CHANGES");
+        const decision = last ? (last.state === "APPROVED" ? "APPROVED" : "CHANGES_REQUESTED") : null;
+        return JSON.stringify({ data: { repository: { pullRequest: { reviewDecision: decision } } } });
+      }
+
       // GraphQL: updatePullRequestReviewComment — commentId must be the
       // node id (`PRRC_...`); a bare databaseId will not match anything
       // here, same as real GitHub would reject it.

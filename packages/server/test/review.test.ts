@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readEvents, setGhRunner } from "@reviewer/core";
+import { readEvents, readMeta, setGhRunner } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { readComments } from "../src/comments.js";
 import { readReviewDraft } from "../src/review-store.js";
@@ -430,6 +430,13 @@ describe("POST /api/prs/:key/review/submit", () => {
     const res = await submit({ event: "COMMENT", confirm: true });
     expect(res.status).toBe(200);
     expect(readReviewDraft(key, root).body).toBe("");
+  });
+
+  it("re-reads the review decision right after submitting", async () => {
+    expect(readMeta(key, root).reviewDecision ?? null).toBeNull();
+    const res = await submit({ event: "APPROVE", body: "ship it", confirm: true });
+    expect(res.status).toBe(200);
+    expect(readMeta(key, root).reviewDecision).toBe("approved");
   });
 
   it("400s without confirm:true and posts nothing", async () => {

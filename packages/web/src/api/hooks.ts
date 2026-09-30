@@ -778,6 +778,10 @@ export function useSubmitReview(
       void qc.invalidateQueries({ queryKey: qk.review(key) });
       void qc.invalidateQueries({ queryKey: qk.comments(key) });
       void qc.invalidateQueries({ queryKey: qk.pr(key) });
+      // The server re-read the decision and the review request: the list's
+      // "waiting on your review" and approval chips move with it.
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: qk.staleness(key) });
     },
   });
 }
