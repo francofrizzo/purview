@@ -135,6 +135,13 @@ type FlatRow =
    * that keys rows by hunk keeps working.
    */
   | { type: "gap"; key: string; hunkId: string; gap: Gap; hidden: number | null }
+  /**
+   * Between two hunks shown one after the other that are not neighbors in
+   * the file: the changed lines in between belong to hunks shown somewhere
+   * else (earlier in this unit, or in another one), so they are not "hidden"
+   * and no gap may pretend otherwise.
+   */
+  | { type: "elsewhere"; key: string; hunkId: string; from: number; to: number; where: "above" | "below" | "hidden" }
   | {
       type: "ctx";
       key: string;
@@ -822,10 +829,15 @@ export function DiffPane({
       }
       return g;
     };
+    // A unit keeps the analysis's reading order, so one file can come up in
+    // several runs ("sections") with other files in between. Each section
+    // draws its own gaps; only within one is a gap drawn at most once.
+    let section = 0;
     const emittedGaps = new Set<string>();
+    const shownAt = new Map(entries.map((e, i) => [e.hunk.id, i]));
     const pushGap = (gap: Gap | undefined, hunkId: string) => {
-      if (!gap || emittedGaps.has(gap.key)) return;
-      emittedGaps.add(gap.key);
+      if (!gap || emittedGaps.has(`${section}|${gap.key}`)) return;
+      emittedGaps.add(`${section}|${gap.key}`);
       const loaded = contextFiles[gap.path];
       const lines = loaded?.status === "ok" ? loaded.lines : null;
       // Nothing is revealed until the file is here to draw it from.
@@ -837,7 +849,7 @@ export function DiffPane({
         for (let n = range[0]; n <= range[1]; n++) {
           out.push({
             type: "ctx",
-            key: `${w}c:${gap.path}:${n}`,
+            key: `${w}c:${section}:${gap.path}:${n}`,
             hunkId,
             path: gap.path,
             newNo: n,
@@ -853,7 +865,7 @@ export function DiffPane({
       pushCtx(shown.top, "top");
       // A missing file (deleted at head) has nothing to offer.
       if (shown.hidden !== 0 && loaded?.status !== "missing") {
-        out.push({ type: "gap", key: `g:${gap.key}`, hunkId, gap, hidden: shown.hidden });
+        out.push({ type: "gap", key: `g:${section}:${gap.key}`, hunkId, gap, hidden: shown.hidden });
       }
       pushCtx(shown.bottom, "bottom");
     };
@@ -868,10 +880,29 @@ export function DiffPane({
       const pushGapAfter = () => {
         const below = fileGapList.find((g) => g.prevHunkId === hunk.id);
         const next = entries[entryIdx + 1];
-        if (below && next && next.file.path === file.path && next.hunk.id === below.nextHunkId) return;
+        const sameSection = next !== undefined && next.file.path === file.path;
+        if (below && sameSection && next.hunk.id === below.nextHunkId) return;
         pushGap(below, hunk.id);
+        // The next hunk shown is further down this file, past hunks shown
+        // elsewhere: mark their lines between this gap and the next one's.
+        if (!below || !sameSection || below.to === null) return;
+        const above = fileGapList.find((g) => g.nextHunkId === next.hunk.id);
+        const from = below.to + 1;
+        const to = above ? above.from - 1 : next.hunk.newStart - 1;
+        if (to < from) return;
+        const at = file.hunks
+          .filter((h) => h.newStart >= from && h.newStart <= to)
+          .map((h) => shownAt.get(h.id));
+        const where =
+          at.length === 0 || at.some((i) => i === undefined)
+            ? "hidden"
+            : at.every((i) => i! < entryIdx)
+              ? "above"
+              : "below";
+        out.push({ type: "elsewhere", key: `e:${section}:${file.path}:${hunk.id}`, hunkId: hunk.id, from, to, where });
       };
       if (file.path !== lastFile) {
+        section++;
         if (showFileRows) {
           out.push({ type: "file", key: `f:${file.path}:${hunk.id}`, path: file.path, file });
           if (expandedFiles.has(file.path) && grouped.byFile.has(file.path)) {
@@ -1792,6 +1823,25 @@ export function DiffPane({
 
   function renderRow(row: FlatRow) {
     if (row.type === "gap") return renderGap(row);
+    if (row.type === "elsewhere") {
+      return (
+        <div
+          data-testid="gap-elsewhere"
+          className="flex items-center gap-2 border-y px-3 py-0.5 font-mono text-2xs"
+          style={{ borderColor: "var(--border)", background: "var(--bg-inset)", color: "var(--fg-faint)" }}
+          title={
+            row.where === "hidden"
+              ? "These lines changed too, in a hunk this view does not show (another unit, or filtered out)"
+              : `These lines changed too; their hunk is shown ${row.where} in this view`
+          }
+        >
+          <span aria-hidden>⋯</span>
+          <span>
+            lines {row.from}–{row.to} changed · {row.where === "hidden" ? "not shown here" : `shown ${row.where}`}
+          </span>
+        </div>
+      );
+    }
     if (row.type === "ctx") {
       const f = contextFiles[row.path];
       const ctxRow: DiffRow = {
@@ -1895,7 +1945,7 @@ export function DiffPane({
     );
   }
 
-  function renderDiffRow(row: Exclude<FlatRow, { type: "gap" } | { type: "ctx" }>) {
+  function renderDiffRow(row: Exclude<FlatRow, { type: "gap" } | { type: "ctx" } | { type: "elsewhere" }>) {
     if (row.type === "file") {
       const rollup = detail.state.files?.[row.path];
       const fileComments = grouped.byFile.get(row.path);
