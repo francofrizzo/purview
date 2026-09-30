@@ -104,6 +104,12 @@ export const IconUpload = (p: P) => (
   </svg>
 );
 
+export const IconPlus = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M8 3v10M3 8h10" />
+  </svg>
+);
+
 export const IconFile = (p: P) => (
   <svg {...base} {...p}>
     <path d="M9 1.5H4.5A1.5 1.5 0 0 0 3 3v10A1.5 1.5 0 0 0 4.5 14.5h7A1.5 1.5 0 0 0 13 13V5.5z" />

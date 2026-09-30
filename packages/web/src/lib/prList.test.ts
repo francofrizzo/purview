@@ -10,6 +10,7 @@ import {
   groupKeyOf,
   groupPrsByRepo,
   partitionRepoGroups,
+  prUrlForNumber,
 } from "./prList";
 
 const NOW = new Date("2026-08-12T12:00:00Z");
@@ -251,5 +252,17 @@ describe("archived repos", () => {
     ]);
     // Rows of other repos are the very same objects.
     expect(restored[2]).toBe(prs[2]);
+  });
+});
+
+describe("prUrlForNumber", () => {
+  const repo = { host: "github.com", owner: "acme", repo: "billing" };
+  it("builds the PR URL from 123 or #123", () => {
+    expect(prUrlForNumber(repo, "123")).toBe("https://github.com/acme/billing/pull/123");
+    expect(prUrlForNumber(repo, " #42 ")).toBe("https://github.com/acme/billing/pull/42");
+    expect(prUrlForNumber({ ...repo, host: "ghe.corp" }, "7")).toBe("https://ghe.corp/acme/billing/pull/7");
+  });
+  it("rejects anything else", () => {
+    for (const bad of ["", "abc", "12a", "#", "0", "-3", "1.5"]) expect(prUrlForNumber(repo, bad)).toBeNull();
   });
 });

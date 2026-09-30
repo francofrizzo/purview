@@ -13,7 +13,7 @@ import {
   ReviewRequestAge,
 } from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
-import { IconArchive, IconChevron, IconSettings } from "../components/icons";
+import { IconArchive, IconChevron, IconPlus, IconSettings } from "../components/icons";
 import { errorText } from "../api/errors";
 import { formatImportResult } from "../lib/reviewImport";
 import { visibleReviewRequest } from "../lib/reviewRequest";
@@ -22,6 +22,7 @@ import {
   formatFullTimestamp,
   groupPrsByRepo,
   partitionRepoGroups,
+  prUrlForNumber,
   type RepoGroup,
 } from "../lib/prList";
 import { RepoMenu } from "../components/RepoActions";
@@ -172,6 +173,7 @@ export function PrList() {
 function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) {
   const [showArchived, setShowArchived] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
   const repoArchived = group.repoArchived;
@@ -225,6 +227,20 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
         <span className="ml-auto flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
           {openCount} {openCount === 1 ? "PR" : "PRs"}
         </span>
+        {repoArchived ? null : (
+          <button
+            type="button"
+            className="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
+            title={`Add a PR from ${group.owner}/${group.repo} by number`}
+            aria-label={`Add a PR from ${group.owner}/${group.repo} by number`}
+            aria-expanded={addOpen}
+            data-testid={`repo-add-pr-${group.key}`}
+            onClick={() => setAddOpen((v) => !v)}
+            style={{ color: addOpen ? "var(--accent)" : "var(--fg-faint)" }}
+          >
+            <IconPlus width={12} height={12} />
+          </button>
+        )}
         <Link
           to={settingsHref}
           state={{ background }}
@@ -242,6 +258,8 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
           onImport={repoArchived ? undefined : () => setImportOpen(true)}
         />
       </header>
+
+      {addOpen && !repoArchived ? <AddByNumberForm repo={group} onClose={() => setAddOpen(false)} /> : null}
 
       {importOpen && !repoArchived ? (
         <ImportReviewsForm rkey={group.key} onClose={() => setImportOpen(false)} />
@@ -361,6 +379,71 @@ function GroupLabel({
  * button, and a transient result line. Collapses back into the header's
  * toggle button when the reader cancels or closes it.
  */
+/** "#[123] add" under a repo's header: the PR URL is built from the repo. */
+function AddByNumberForm({
+  repo,
+  onClose,
+}: {
+  repo: { host: string; owner: string; repo: string; key: string };
+  onClose: () => void;
+}) {
+  const [value, setValue] = useState("");
+  const addPr = useAddPr();
+  const navigate = useNavigate();
+  const url = prUrlForNumber(repo, value);
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!url || addPr.isPending) return;
+    addPr.mutate(url, {
+      onSuccess: (entry) => {
+        onClose();
+        if (entry?.key)
+          navigate(`/pr/${entry.key}`, {
+            state: entry.sharedAnalysis ? { sharedAnalysis: entry.sharedAnalysis } : undefined,
+          });
+      },
+    });
+  };
+
+  return (
+    <form
+      onSubmit={submit}
+      className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-2xs"
+      style={{ borderColor: "var(--border)" }}
+      data-testid={`add-by-number-${repo.key}`}
+    >
+      <label className="flex items-center gap-1" style={{ color: "var(--fg-faint)" }}>
+        #
+        <input
+          autoFocus
+          inputMode="numeric"
+          className="input w-24 px-1.5 py-0.5 text-2xs tabular-nums"
+          placeholder="PR number"
+          aria-label={`PR number in ${repo.owner}/${repo.repo}`}
+          value={value}
+          disabled={addPr.isPending}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") onClose();
+          }}
+        />
+      </label>
+      <button type="submit" className="btn" disabled={!url || addPr.isPending}>
+        {addPr.isPending ? "fetching…" : "add"}
+      </button>
+      <button type="button" className="btn" disabled={addPr.isPending} onClick={onClose}>
+        cancel
+      </button>
+      {addPr.error ? (
+        <span style={{ color: "var(--risk)" }}>{errorText(addPr.error)}</span>
+      ) : value.trim() && !url ? (
+        <span style={{ color: "var(--fg-faint)" }}>a number, like 123</span>
+      ) : null}
+    </form>
+  );
+}
+
 function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => void }) {
   const [days, setDays] = useState(7);
   const importReviews = useImportReviews(rkey);

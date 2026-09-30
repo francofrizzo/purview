@@ -211,3 +211,16 @@ export function applyRepoArchive(
 ): PrListEntry[] {
   return prs.map((p) => (groupKeyOf(p) === rkey ? { ...p, repoArchived: archived } : p));
 }
+
+/**
+ * A PR URL from what someone typed into a repo's "add by number" box:
+ * `123` or `#123` (surrounding space ignored). Null for anything else.
+ */
+export function prUrlForNumber(
+  repo: { host: string; owner: string; repo: string },
+  input: string,
+): string | null {
+  const m = /^#?(\d+)$/.exec(input.trim());
+  if (!m || Number(m[1]) < 1) return null;
+  return `https://${repo.host}/${repo.owner}/${repo.repo}/pull/${Number(m[1])}`;
+}
