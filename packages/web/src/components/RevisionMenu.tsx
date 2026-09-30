@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FloatingPanel } from "./FloatingPanel";
 import type { PrState } from "../api/types";
 import { formatAddedAt, formatFullTimestamp } from "../lib/prList";
 import { discardAvailability, discardConfirmText } from "../lib/revisionDiscard";
@@ -32,24 +33,6 @@ export function RevisionMenu({
   const info = state.revisions?.find((r) => r.revision === state.revision);
   const { previous, blockedWhy } = discardAvailability(state, analysisLive);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.stopPropagation();
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey, true);
-    };
-  }, [open]);
-
   // Opening (or closing) starts over; so does landing on another revision,
   // which is also how a successful discard closes the popover.
   useEffect(() => {
@@ -59,6 +42,7 @@ export function RevisionMenu({
     setOpen(false);
   }, [state.revision]);
 
+  const close = useCallback(() => setOpen(false), []);
   const toggle = () => {
     if (!open) onResetError();
     setOpen((v) => !v);
@@ -72,17 +56,18 @@ export function RevisionMenu({
         aria-expanded={open}
         title="Revision details"
         onClick={toggle}
-        className="rounded px-0.5 font-mono text-2xs transition-colors hover:bg-[var(--bg-hover)]"
+        className="-mx-1 rounded px-1 text-2xs transition-colors hover:bg-[var(--bg-hover)]"
         style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
       >
         rev {state.revision}
         {state.baseOnly ? " (base only)" : ""}
       </button>
       {open ? (
-        <div
-          role="dialog"
-          aria-label={`Revision ${state.revision}`}
-          className="surface absolute left-0 top-6 z-30 w-72 rounded-md p-2.5 text-xs elev-2"
+        <FloatingPanel
+          anchorRef={wrapRef}
+          onClose={close}
+          label={`Revision ${state.revision}`}
+          className="w-72 p-2.5 text-xs"
         >
           <div style={{ color: "var(--fg)" }}>
             Revision {state.revision}
@@ -153,7 +138,7 @@ export function RevisionMenu({
               ) : null}
             </div>
           )}
-        </div>
+        </FloatingPanel>
       ) : null}
     </span>
   );

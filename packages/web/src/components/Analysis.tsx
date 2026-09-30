@@ -7,7 +7,8 @@
  * units simply appear when it finishes.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { FloatingPanel } from "./FloatingPanel";
 import { useAgentName } from "../api/hooks";
 import type { AnalysisJob, AnalysisMetrics } from "../api/types";
 import { capitalized } from "../lib/agentSelection";
@@ -62,23 +63,7 @@ export function AnalysisStats({ job }: { job?: AnalysisJob | null }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.stopPropagation();
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey, true);
-    };
-  }, [open]);
+  const close = useCallback(() => setOpen(false), []);
 
   if (job?.status !== "done" || !job.metrics) return null;
   const rows = analysisStatsRows(job.metrics);
@@ -99,11 +84,7 @@ export function AnalysisStats({ job }: { job?: AnalysisJob | null }) {
         <IconStopwatch width={12} height={12} />
       </button>
       {open ? (
-        <div
-          role="dialog"
-          aria-label="Analysis run stats"
-          className="surface absolute left-0 top-6 z-30 w-60 rounded-md p-2 elev-2"
-        >
+        <FloatingPanel anchorRef={wrapRef} onClose={close} label="Analysis run stats" className="w-60 p-2">
           <table className="w-full text-2xs tabular-nums">
             <tbody>
               {rows.map(([label, value]) => (
@@ -118,7 +99,7 @@ export function AnalysisStats({ job }: { job?: AnalysisJob | null }) {
               ))}
             </tbody>
           </table>
-        </div>
+        </FloatingPanel>
       ) : null}
     </span>
   );
