@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  REVIEW_REQUEST_OVERDUE_MS,
   formatCompactAge,
   formatRequestedAgo,
-  isReviewRequestOverdue,
+  requestAgeLevel,
   reviewRequestTooltip,
   reviewRequestVia,
   visibleReviewRequest,
@@ -54,14 +53,24 @@ describe("formatRequestedAgo", () => {
   });
 });
 
-describe("isReviewRequestOverdue", () => {
-  it("flips at exactly three days", () => {
-    expect(REVIEW_REQUEST_OVERDUE_MS).toBe(3 * DAY);
-    expect(isReviewRequestOverdue(ago(3 * DAY - 1), NOW)).toBe(false);
-    expect(isReviewRequestOverdue(ago(3 * DAY), NOW)).toBe(true);
-    expect(isReviewRequestOverdue(ago(10 * DAY), NOW)).toBe(true);
-    expect(isReviewRequestOverdue(ago(-HOUR), NOW)).toBe(false);
-    expect(isReviewRequestOverdue("nope", NOW)).toBe(false);
+describe("requestAgeLevel", () => {
+  const T = [1, 3, 7];
+  it("climbs one level per threshold reached", () => {
+    expect(requestAgeLevel(ago(DAY - 1), NOW, T)).toBe(0);
+    expect(requestAgeLevel(ago(DAY), NOW, T)).toBe(1);
+    expect(requestAgeLevel(ago(3 * DAY - 1), NOW, T)).toBe(1);
+    expect(requestAgeLevel(ago(3 * DAY), NOW, T)).toBe(2);
+    expect(requestAgeLevel(ago(7 * DAY), NOW, T)).toBe(3);
+    expect(requestAgeLevel(ago(30 * DAY), NOW, T)).toBe(3);
+  });
+
+  it("is 0 for a future or unparseable stamp", () => {
+    expect(requestAgeLevel(ago(-HOUR), NOW, T)).toBe(0);
+    expect(requestAgeLevel("nope", NOW, T)).toBe(0);
+  });
+
+  it("takes the highest level reached even when thresholds are out of order", () => {
+    expect(requestAgeLevel(ago(4 * DAY), NOW, [5, 3, 7])).toBe(2);
   });
 });
 

@@ -13,8 +13,6 @@ const DAY = 24 * HOUR;
 const WEEK = 7 * DAY;
 /** Past this, whole weeks read better than a large day count. */
 const WEEKS_AFTER_MS = 14 * DAY;
-/** A request at least this old is shown in the warning color. */
-export const REVIEW_REQUEST_OVERDUE_MS = 3 * DAY;
 
 /**
  * Compact age: "just now" under a minute, then "Nm", "Nh", "Nd", and "Nw"
@@ -47,11 +45,34 @@ export function formatRequestedAgo(
   return compact === "just now" ? `asked ${who} just now` : `asked ${who} ${compact} ago`;
 }
 
-/** True once the request has waited `REVIEW_REQUEST_OVERDUE_MS` or longer. */
-export function isReviewRequestOverdue(iso: string, now: Date = new Date()): boolean {
+export type RequestAgeLevel = 0 | 1 | 2 | 3;
+
+/**
+ * How urgent a request's age reads: the highest level whose threshold (in
+ * days) it has reached, so with [1, 3, 7] a 3-day-old request is level 2.
+ * 0 below every threshold, for an unparseable stamp, or a future one.
+ */
+export function requestAgeLevel(
+  iso: string,
+  now: Date,
+  thresholdDays: readonly number[],
+): RequestAgeLevel {
   const age = ageOf(iso, now);
-  return !Number.isNaN(age) && age >= REVIEW_REQUEST_OVERDUE_MS;
+  if (Number.isNaN(age) || age < 0) return 0;
+  let level: RequestAgeLevel = 0;
+  thresholdDays.forEach((days, i) => {
+    if (age >= days * DAY) level = (i + 1) as RequestAgeLevel;
+  });
+  return level;
 }
+
+/** The color for each level: faint, then yellow, orange, red. */
+export const REQUEST_AGE_COLORS = [
+  "var(--fg-faint)",
+  "var(--age-1)",
+  "var(--age-2)",
+  "var(--age-3)",
+] as const;
 
 /** "directly" or "via team <slug>". */
 export function reviewRequestVia(via: string): string {

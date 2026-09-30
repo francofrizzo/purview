@@ -62,6 +62,9 @@ export const TOKEN_NAMES = [
   "risk-soft",
   "warn",
   "warn-soft",
+  "age-1",
+  "age-2",
+  "age-3",
   "ok",
   "ok-soft",
   "kind-core",
@@ -219,6 +222,14 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "risk-soft": rgba(risk, softAlpha),
     warn,
     "warn-soft": rgba(warn, softAlpha),
+    // Review-request age, warming as it waits. Always the literal yellow →
+    // orange → red ramp (unlike `warn`, which swaps to orange on light
+    // themes), darkened only as far as legibility needs. The middle step is
+    // the yellow/red midpoint rather than the palette's orange: some themes'
+    // orange is a muted tan that reads as neither.
+    "age-1": text(palette.yellow, 3.4),
+    "age-2": text(mix(palette.yellow, palette.red, 0.5), 3.4),
+    "age-3": risk,
     ok,
     "ok-soft": rgba(ok, softAlpha),
 

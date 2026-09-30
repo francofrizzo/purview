@@ -175,3 +175,19 @@ describe("sidebarCollapsed", () => {
     expect(parseSettings({ sidebarCollapsed: "yes" }).sidebarCollapsed).toBe(false);
   });
 });
+
+describe("requestAgeDays", () => {
+  it("defaults to 1 / 3 / 7 days", () => {
+    expect(DEFAULT_SETTINGS.requestAgeDays).toEqual([1, 3, 7]);
+  });
+
+  it("keeps three numbers, rounded and clamped to 0–90", () => {
+    expect(parseSettings({ requestAgeDays: [2, 4.6, 200] }).requestAgeDays).toEqual([2, 5, 90]);
+    expect(parseSettings({ requestAgeDays: [-1, 0, 1] }).requestAgeDays).toEqual([0, 0, 1]);
+  });
+
+  it("falls back to the default for anything else", () => {
+    expect(parseSettings({ requestAgeDays: [1, 2] }).requestAgeDays).toEqual([1, 3, 7]);
+    expect(parseSettings({ requestAgeDays: [1, "3", 7] }).requestAgeDays).toEqual([1, 3, 7]);
+  });
+});

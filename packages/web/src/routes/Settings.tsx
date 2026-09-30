@@ -32,9 +32,11 @@ import {
 } from "../lib/localFonts";
 import {
   MAX_CODE_FONT_SIZE,
+  MAX_REQUEST_AGE_DAYS,
   MIN_CODE_FONT_SIZE,
   TAB_SIZES,
   useSettings,
+  type RequestAgeDays,
   type Settings as SettingsShape,
 } from "../lib/settings";
 import { MONOKAI_PRO_NOTE, THEMES, previewColors, shikiThemeFor } from "../lib/themes";
@@ -111,6 +113,13 @@ export function SettingsModal() {
           fold or unfold a hunk by hand from its <span className="font-mono">@@</span> header, and
           that choice sticks until its viewed state next changes.
         </p>
+      </Section>
+
+      <Section
+        title="PR list"
+        hint={`How long a review request may wait before "asked you 3d ago" changes color.`}
+      >
+        <RequestAgeFields days={settings.requestAgeDays} update={update} />
       </Section>
 
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
@@ -767,6 +776,57 @@ function GlobalAgentFields<T extends AgentSelection>({
         </p>
       ) : null}
     </>
+  );
+}
+
+const REQUEST_AGE_LEVELS = [
+  { name: "yellow", color: "var(--age-1)" },
+  { name: "orange", color: "var(--age-2)" },
+  { name: "red", color: "var(--age-3)" },
+] as const;
+
+function RequestAgeFields({
+  days,
+  update,
+}: {
+  days: RequestAgeDays;
+  update: (patch: Partial<SettingsShape>) => void;
+}) {
+  const set = (i: number, value: number) => {
+    const next = [...days] as RequestAgeDays;
+    next[i] = value;
+    update({ requestAgeDays: next });
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs">
+      {REQUEST_AGE_LEVELS.map((level, i) => (
+        <label
+          key={level.name}
+          className="flex items-center gap-2"
+          data-testid={`request-age-${level.name}`}
+        >
+          <span
+            aria-hidden
+            className="h-2 w-2 flex-none rounded-full"
+            style={{ background: level.color }}
+          />
+          <span style={{ color: level.color }}>{level.name}</span>
+          <span style={{ color: "var(--fg-faint)" }}>after</span>
+          <input
+            type="number"
+            min={0}
+            max={MAX_REQUEST_AGE_DAYS}
+            className="input w-14 px-1.5 py-0.5 text-2xs tabular-nums"
+            value={days[i]}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (Number.isFinite(n)) set(i, n);
+            }}
+          />
+          <span style={{ color: "var(--fg-faint)" }}>{days[i] === 1 ? "day" : "days"}</span>
+        </label>
+      ))}
+    </div>
   );
 }
 

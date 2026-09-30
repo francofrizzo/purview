@@ -51,7 +51,12 @@ export interface Settings {
   /** Column-mode sidebar collapsed to nothing. Ignored in drawer mode, where
    *  the sidebar always starts closed regardless of this. */
   sidebarCollapsed: boolean;
+  /** Days after which "asked you Nd ago" turns yellow, orange and red. */
+  requestAgeDays: RequestAgeDays;
 }
+
+export type RequestAgeDays = [number, number, number];
+export const MAX_REQUEST_AGE_DAYS = 90;
 
 export const SETTINGS_KEY = "reviewer.settings";
 export const LEGACY_VIEW_MODE_KEY = "reviewer.diffViewMode";
@@ -84,6 +89,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideReviewedUnits: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
   sidebarCollapsed: false,
+  requestAgeDays: [1, 3, 7],
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -124,6 +130,15 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
     out.chatPanelWidth = clampChatPanelWidth(r.chatPanelWidth);
   }
   if (typeof r.sidebarCollapsed === "boolean") out.sidebarCollapsed = r.sidebarCollapsed;
+  if (
+    Array.isArray(r.requestAgeDays) &&
+    r.requestAgeDays.length === 3 &&
+    r.requestAgeDays.every((d) => typeof d === "number" && Number.isFinite(d))
+  ) {
+    out.requestAgeDays = r.requestAgeDays.map((d: number) =>
+      Math.min(MAX_REQUEST_AGE_DAYS, Math.max(0, Math.round(d))),
+    ) as RequestAgeDays;
+  }
   return out;
 }
 

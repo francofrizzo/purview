@@ -12,10 +12,12 @@ import { Link } from "react-router-dom";
 import { formatMustReadLines } from "../lib/prList";
 import {
   formatRequestedAgo,
-  isReviewRequestOverdue,
+  REQUEST_AGE_COLORS,
+  requestAgeLevel,
   reviewRequestTooltip,
   visibleReviewRequest,
 } from "../lib/reviewRequest";
+import { useSettings } from "../lib/settings";
 import { useNow } from "../lib/useNow";
 import type { StackedOnLink } from "../lib/stacked";
 import { IconBolt, IconCheck, IconWeight, RISK_META } from "./icons";
@@ -99,9 +101,9 @@ export function ReviewDecisionChip({ decision }: { decision: ReviewDecision | nu
 
 /**
  * "asked you 3d ago" — how long the user's review has been waited on. Plain
- * faint text, not a chip: it is context. It turns the warning color once the
- * request is three days old, and re-renders every minute so the age stays
- * right on a page left open. Renders nothing when no request is pending.
+ * faint text, not a chip: it is context. It warms from yellow to orange to red
+ * as it crosses the thresholds in Settings, and re-renders every minute so the
+ * age stays right on a page left open. Renders nothing when no request is pending.
  */
 export function ReviewRequestAge({
   request,
@@ -113,13 +115,14 @@ export function ReviewRequestAge({
   className?: string;
 }) {
   const now = useNow();
+  const { settings } = useSettings();
   const shown = visibleReviewRequest(request, state);
   if (!shown) return null;
   const at = new Date(now);
   return (
     <span
       className={className}
-      style={{ color: isReviewRequestOverdue(shown.at, at) ? "var(--warn)" : "var(--fg-faint)" }}
+      style={{ color: REQUEST_AGE_COLORS[requestAgeLevel(shown.at, at, settings.requestAgeDays)] }}
       title={reviewRequestTooltip(shown)}
       data-testid="review-request-age"
     >
