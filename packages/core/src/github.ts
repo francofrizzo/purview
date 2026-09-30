@@ -340,6 +340,89 @@ export function fetchReviewDecision(key: PrKey): ReviewDecision | null {
   }
 }
 
+/* ------------------------------------------------------- batched statuses */
+
+export interface PrStatus {
+  prState: PrState;
+  /** `null` when GitHub has none, or the host does not know the field. */
+  reviewDecision: ReviewDecision | null;
+  title: string;
+  headSha: string;
+}
+
+/** PRs per GraphQL query: aliases are cheap, but one huge query is not. */
+const STATUS_BATCH = 50;
+
+function normalizeDecision(raw: unknown): ReviewDecision | null {
+  if (typeof raw !== "string") return null;
+  const d = raw.toLowerCase();
+  return d === "approved" || d === "changes_requested" || d === "review_required" ? d : null;
+}
+
+/**
+ * State, review decision, title and head of many PRs in one repo, one GraphQL
+ * round trip per 50 PRs instead of two calls per PR. Non-blocking (`ghAsync`)
+ * since it runs in the background. A PR GitHub no longer returns (deleted,
+ * access lost) is simply absent from the map; a failed query throws.
+ */
+export async function fetchPrStatuses(
+  repo: RepoKey,
+  numbers: number[],
+): Promise<Map<number, PrStatus>> {
+  const out = new Map<number, PrStatus>();
+  for (let i = 0; i < numbers.length; i += STATUS_BATCH) {
+    const chunk = numbers.slice(i, i + STATUS_BATCH);
+    const fields = chunk
+      .map(
+        (n) =>
+          `pr${n}: pullRequest(number: ${n}) { state isDraft reviewDecision title headRefOid }`,
+      )
+      .join("\n");
+    const query = `query($owner: String!, $repo: String!) {
+  repository(owner: $owner, name: $repo) {
+${fields}
+  }
+}`;
+    const res = JSON.parse(
+      await ghAsync([
+        "api",
+        "graphql",
+        ...hostArgs(repo.host),
+        "-f",
+        `query=${query}`,
+        "-F",
+        `owner=${repo.owner}`,
+        "-F",
+        `repo=${repo.repo}`,
+      ]),
+    ) as { data?: { repository?: Record<string, RawPrStatus | null> | null } };
+    const found = res.data?.repository ?? {};
+    for (const n of chunk) {
+      const raw = found[`pr${n}`];
+      if (!raw || typeof raw.state !== "string") continue;
+      out.set(n, {
+        prState: collapsePrState({
+          state: raw.state,
+          draft: raw.isDraft === true,
+          merged: raw.state.toUpperCase() === "MERGED",
+        }),
+        reviewDecision: normalizeDecision(raw.reviewDecision),
+        title: raw.title ?? "",
+        headSha: raw.headRefOid ?? "",
+      });
+    }
+  }
+  return out;
+}
+
+interface RawPrStatus {
+  state?: string;
+  isDraft?: boolean;
+  reviewDecision?: string | null;
+  title?: string;
+  headRefOid?: string;
+}
+
 /* ---------------------------------------------------- review-requested PRs */
 
 export interface ReviewRequestedPr {

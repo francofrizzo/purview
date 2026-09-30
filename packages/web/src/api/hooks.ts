@@ -113,14 +113,18 @@ export function usePrs() {
   return useQuery<PrListEntry[]>({
     queryKey: qk.prs,
     queryFn: api.listPrs,
-    // The list has no event stream of its own; a slow poll keeps the analysis
-    // chips honest, and only while something is actually running.
+    // The list has no event stream of its own: poll fast while an analysis
+    // runs (its chips move by the second), and otherwise once a minute so the
+    // server's background status sweep (review-watch) reaches an open page.
+    // React Query pauses the interval while the tab is hidden; coming back to
+    // it refetches at once.
     refetchInterval: (query) =>
       (query.state.data ?? []).some(
         (p) => p.analysisJob?.status === "queued" || p.analysisJob?.status === "running",
       )
         ? 3000
-        : false,
+        : 60_000,
+    refetchOnWindowFocus: true,
   });
 }
 

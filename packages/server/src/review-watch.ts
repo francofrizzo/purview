@@ -1,5 +1,6 @@
 import { listRepos, readRepoConfig, repoKeyToString, stateRoot } from "@reviewer/core";
 import { importReviewRequestsSince } from "./review-import.js";
+import { sweepPrStatuses } from "./status-sweep.js";
 
 /**
  * Per-repo polling for review requests. Opt-in (`repo.json`'s `watchReviews`,
@@ -7,6 +8,10 @@ import { importReviewRequestsSince } from "./review-import.js";
  * tick re-lists every tracked repo and re-reads its config fresh off disk, so
  * flipping the checkbox in the UI takes effect on the next tick with no
  * server restart and no in-memory registry to keep in sync.
+ *
+ * Each tick also sweeps the status of every PR already tracked (state, review
+ * decision, title — see status-sweep.ts), for every repo, watched or not: it
+ * only touches PRs you added, so it needs no opt-in beyond this poller's.
  */
 
 export interface WatchDeps {
@@ -19,6 +24,8 @@ export interface WatchDeps {
 
 const DEFAULT_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_WINDOW_MS = 24 * 60 * 60_000;
+/** Delay before the first pass after startup. */
+const STARTUP_TICK_MS = 15_000;
 
 export interface WatchRepoStatus {
   checkedAt: string;
@@ -101,6 +108,14 @@ async function tick(root: string, deps: Required<Pick<WatchDeps, "windowMs" | "n
     }
   }
 
+  // After the imports, so PRs a tick just brought in are not asked about
+  // twice. Per-repo failures are logged inside; this catch is for the rest.
+  try {
+    await sweepPrStatuses(root);
+  } catch (err) {
+    console.warn(`[watch] status sweep: ${(err as Error).message}`);
+  }
+
   status = { lastTickAt: now.toISOString(), repos: nextRepos };
 }
 
@@ -135,12 +150,19 @@ export function startReviewWatch(
   }
 
   const timer = setInterval(run, intervalMs);
+  // One early pass, so statuses that went stale while the server was down
+  // are caught up within seconds of starting rather than a full interval.
+  const first = setTimeout(run, Math.min(STARTUP_TICK_MS, intervalMs));
   // Never hold the process open on its own — tests and one-shot CLI runs
   // must be able to exit without explicitly stopping the watcher.
   timer.unref?.();
+  first.unref?.();
 
   return {
-    stop: () => clearInterval(timer),
+    stop: () => {
+      clearInterval(timer);
+      clearTimeout(first);
+    },
     tick: run,
   };
 }
