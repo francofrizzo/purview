@@ -46,6 +46,14 @@ export interface ToolActivity {
 /** A transcript entry; `tools` is local colour the wire format does not carry. */
 export type LocalMessage = ChatMessage & { tools?: ToolActivity[] };
 
+/** A message typed while a reply was streaming, waiting for its turn. */
+export interface QueuedMessage {
+  id: number;
+  text: string;
+  /** captured when it was queued, so later chip changes don't leak into it */
+  refs: ChatRef[];
+}
+
 export interface ChatFailure {
   message: string;
   /** exactly what was sent, so "retry" is a re-send and not a re-compose */
@@ -92,8 +100,18 @@ interface ChatContextValue {
   /** dismiss the auto chip until the unit changes or the panel reopens */
   removeAutoRef: () => void;
 
-  /** `extraRefs` ride along on this one message only (e.g. the line a comment box points at) */
+  /**
+   * `extraRefs` ride along on this one message only (e.g. the line a comment
+   * box points at). While a reply is streaming (or a failure is unresolved)
+   * the message is queued instead, and sent when the turn before it ends.
+   */
   send: (text: string, extraRefs?: ChatRef[]) => void;
+  /** messages waiting to be sent, oldest first */
+  queue: QueuedMessage[];
+  /** drop a queued message; returns it, so "edit" can load it back into the composer */
+  unqueue: (id: number) => QueuedMessage | undefined;
+  /** give up on the failed turn (no retry), letting the queue move on */
+  dismissFailure: () => void;
   retry: () => void;
   clearConversation: () => Promise<void>;
 
@@ -144,6 +162,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [preEditRefs, setPreEditRefs] = useState<ChatRef[] | null>(null);
   const [sessionReset, setSessionReset] = useState(false);
+  const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+  const nextQueueId = useRef(1);
   const [autoRefState, dispatchAutoRef] = useReducer(autoRefReducer, initialAutoRefState);
   // Empty until the transcript arrives: the agent is the server's to resolve,
   // so there is no default worth guessing at here.
@@ -170,6 +192,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setEditingIndex(null);
       setPreEditRefs(null);
       setSessionReset(false);
+      setQueue([]);
       dispatchAutoRef({ type: "reset" });
       setAgentState(NO_AGENT);
       return key;
@@ -340,25 +363,58 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     })();
   }, [queryClient]);
 
+  const sendNow = useCallback(
+    (key: string, body: string, sent: ChatRef[]) => {
+      setMessages((cur) => [
+        ...cur,
+        { role: "user", text: body, ts: new Date().toISOString(), refs: sent.length ? sent : undefined },
+      ]);
+      run(key, body, sent);
+    },
+    [run],
+  );
+
   const send = useCallback(
     (text: string, extraRefs: ChatRef[] = []) => {
       const key = keyRef.current;
       const body = text.trim();
-      if (!key || !body || busy) return;
+      if (!key || !body) return;
       // The auto ref rides along like any other — the server just sees a
       // unit ref — but it is never *consumed*: clearing explicit refs after
       // send leaves the auto chip to reappear (unless dismissed) for the
       // next turn, same unit.
       const sent = extraRefs.reduce(addRefTo, effectiveRefs);
-      setMessages((cur) => [
-        ...cur,
-        { role: "user", text: body, ts: new Date().toISOString(), refs: sent.length ? sent : undefined },
-      ]);
       setRefs([]);
-      run(key, body, sent);
+      // Behind a running turn, or behind messages already waiting (which a
+      // failure holds): join the line rather than jump it.
+      if (busy || queueRef.current.length) {
+        setQueue((cur) => [...cur, { id: nextQueueId.current++, text: body, refs: sent }]);
+        return;
+      }
+      sendNow(key, body, sent);
     },
-    [busy, effectiveRefs, run],
+    [busy, failure, effectiveRefs, sendNow],
   );
+
+  const dismissFailure = useCallback(() => setFailure(null), []);
+
+  const unqueue = useCallback((id: number) => {
+    const found = queueRef.current.find((q) => q.id === id);
+    setQueue((cur) => cur.filter((q) => q.id !== id));
+    return found;
+  }, []);
+
+  // Drain: once a turn ends cleanly, the oldest queued message goes next. A
+  // failure holds the line (the reader decides: retry, or drop what's
+  // queued); so does an edit in progress, which would resend over it.
+  useEffect(() => {
+    const key = keyRef.current;
+    if (!key || busy || failure || loading || editingIndex !== null) return;
+    const next = queue[0];
+    if (!next) return;
+    setQueue((cur) => cur.slice(1));
+    sendNow(key, next.text, next.refs);
+  }, [busy, failure, loading, editingIndex, queue, sendNow]);
 
   /** Re-send the message that failed, dropping the transcript entry it left. */
   const retry = useCallback(() => {
@@ -482,6 +538,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setEditingIndex(null);
     setPreEditRefs(null);
     setSessionReset(false);
+    setQueue([]);
     // The server drops the pin with the transcript; mirror it.
     setAgentState((cur) => ({ ...cur, sessionAgent: null, sessionHarness: null, agent: cur.configuredAgent }));
   }, []);
@@ -510,6 +567,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setUnitContext,
       removeAutoRef,
       send,
+      queue,
+      unqueue,
+      dismissFailure,
       retry,
       clearConversation,
       editingIndex,
@@ -539,6 +599,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setUnitContext,
       removeAutoRef,
       send,
+      queue,
+      unqueue,
+      dismissFailure,
       retry,
       clearConversation,
       editingIndex,

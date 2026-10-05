@@ -109,7 +109,7 @@ export function CommentComposer({
         e.preventDefault();
         // ⌘⇧↵ asks the chat; ⌘↵ saves the draft.
         if (e.shiftKey) {
-          if (onSendToChat && !chatBusy) onSendToChat(body.trim());
+          if (onSendToChat) onSendToChat(body.trim());
         } else onSubmit(body.trim());
       }}
     >
@@ -138,16 +138,16 @@ export function CommentComposer({
             type="button"
             className="btn"
             data-testid="composer-send-to-chat"
-            disabled={!body.trim() || chatBusy}
+            disabled={!body.trim()}
             title={
               chatBusy
-                ? "The chat is still replying"
+                ? "The chat is still replying: this is queued and sent when it finishes, with this line attached. (⌘⇧↵)"
                 : "Ask the review chat instead, with this line attached. Nothing is saved as a draft. (⌘⇧↵)"
             }
             onClick={() => onSendToChat(body.trim())}
           >
             <IconChat width={11} height={11} />
-            send to chat
+            {chatBusy ? "queue for chat" : "send to chat"}
           </button>
         ) : null}
         {exportCtx ? (

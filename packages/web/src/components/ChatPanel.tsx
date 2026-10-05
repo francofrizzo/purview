@@ -405,8 +405,9 @@ export function ChatPanel({
 
   const submit = (text?: string) => {
     const body = (text ?? draft).trim();
-    if (!body || chat.busy) return;
+    if (!body) return;
     if (chat.editingIndex !== null) {
+      if (chat.busy) return;
       chat.sendEdit(body);
     } else {
       chat.send(body);
@@ -652,10 +653,21 @@ export function ChatPanel({
             style={{ background: "var(--risk-soft)", color: "var(--risk)" }}
           >
             {chat.failure.message}
-            <div className="mt-1.5 flex">
+            <div className="mt-1.5 flex gap-1.5">
               <button type="button" className="btn" onClick={chat.retry} disabled={chat.busy}>
                 retry
               </button>
+              {chat.queue.length ? (
+                <button
+                  type="button"
+                  className="btn"
+                  data-testid="chat-skip-failure"
+                  onClick={chat.dismissFailure}
+                  title="Leave this one unanswered and send the queued messages"
+                >
+                  skip, send queued ({chat.queue.length})
+                </button>
+              ) : null}
             </div>
           </div>
         ) : null}
@@ -699,6 +711,56 @@ export function ChatPanel({
             starting a fresh session next — the conversation so far will be replayed
           </div>
         ) : null}
+        {chat.queue.length ? (
+          <ol className="mb-1.5 space-y-1" data-testid="chat-queue">
+            {chat.queue.map((q, i) => (
+              <li
+                key={q.id}
+                className="group flex items-start gap-2 rounded border px-2 py-1 text-xs leading-[18px]"
+                style={{ borderColor: "var(--border)", background: "var(--bg-inset)", borderStyle: "dashed" }}
+              >
+                <span className="flex-none pt-px text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+                  {i === 0 ? (chat.failure ? "held" : "next") : `${i + 1}.`}
+                </span>
+                <span className="line-clamp-2 min-w-0 flex-1 whitespace-pre-wrap" style={{ color: "var(--fg-muted)" }}>
+                  {q.text}
+                  {q.refs.length ? (
+                    <span style={{ color: "var(--fg-faint)" }}>
+                      {" "}
+                      · {q.refs.length} ref{q.refs.length === 1 ? "" : "s"}
+                    </span>
+                  ) : null}
+                </span>
+                <button
+                  type="button"
+                  className="flex-none text-2xs opacity-70 hover:opacity-100"
+                  style={{ color: "var(--fg-muted)" }}
+                  title="Take it back into the composer to edit"
+                  onClick={() => {
+                    const taken = chat.unqueue(q.id);
+                    if (!taken) return;
+                    setDraft((cur) => (cur.trim() ? `${cur}\n${taken.text}` : taken.text));
+                    for (const r of taken.refs) chat.attachRef(r, { open: false });
+                    requestAnimationFrame(() => textareaRef.current?.focus());
+                  }}
+                >
+                  edit
+                </button>
+                <button
+                  type="button"
+                  className="mt-[5px] flex-none opacity-70 hover:opacity-100"
+                  style={{ color: "var(--fg-faint)" }}
+                  title="Remove from the queue"
+                  aria-label="Remove from the queue"
+                  data-testid="chat-queue-remove"
+                  onClick={() => chat.unqueue(q.id)}
+                >
+                  <IconClose width={9} height={9} />
+                </button>
+              </li>
+            ))}
+          </ol>
+        ) : null}
         {chat.effectiveRefs.length ? (
           <div className="mb-1.5 flex flex-wrap items-center gap-1" data-testid="chat-refs">
             {chat.effectiveRefs.map((r) => {
@@ -733,13 +795,12 @@ export function ChatPanel({
           rows={2}
           placeholder={
             chat.busy
-              ? `${capitalized(agentName)} is replying…`
+              ? `${capitalized(agentName)} is replying — queue a message…  (↵ queue · ⇧↵ newline)`
               : chat.editingIndex !== null
                 ? "Edit your message…  (↵ send · ⇧↵ newline)"
                 : "Ask about this PR…  (↵ send · ⇧↵ newline)"
           }
           value={draft}
-          disabled={chat.busy}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
         />
@@ -754,10 +815,10 @@ export function ChatPanel({
             type="button"
             data-testid="chat-send"
             className="btn btn-primary ml-auto"
-            disabled={chat.busy || !draft.trim()}
+            disabled={!draft.trim() || (chat.busy && chat.editingIndex !== null)}
             onClick={() => submit()}
           >
-            {chat.busy ? "…" : chat.editingIndex !== null ? "resend" : "send"}
+            {chat.editingIndex !== null ? "resend" : chat.busy || chat.queue.length ? "queue" : "send"}
           </button>
         </div>
       </div>
