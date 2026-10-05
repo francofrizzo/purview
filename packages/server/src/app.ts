@@ -447,7 +447,10 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw classifyError(err);
     }
     if (deleting.has(keyToString(key))) throw new HttpError(409, "pr_deleting", "This PR is being deleted.");
+    if (isBusy(key)) throw new HttpError(409, "analysis_in_progress", "Wait for analysis to finish before adding this PR again.");
     const result = initPr(key, root);
+    if (readMeta(key, root).archived) updateMeta(key, { archived: false }, root);
+    clearStalenessCache(key, root);
     // A freshly tracked PR has no analysis at all, so init would normally kick
     // one off (unless the caller opted out with ?analyze=false) — but first
     // check whether a teammate already shared one for this exact revision on

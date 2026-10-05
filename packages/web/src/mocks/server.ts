@@ -566,7 +566,15 @@ export const mockApi = {
     const [, host, owner, repo, number] = m;
     const key = `${host}/${owner}/${repo}/${number}`;
     const existing = list.find((p) => p.key === key);
-    if (existing) return existing;
+    if (existing) {
+      if (isLive(jobs[key])) throw new ApiError("analysis_in_progress", 409, "Wait for analysis to finish before adding this PR again.");
+      if (existing.archived) {
+        await mockApi.refresh(key);
+        existing.archived = false;
+        syncRepoCounts();
+      }
+      return existing;
+    }
     const entry: PrListEntry = {
       key,
       meta: { host, owner, repo, number: Number(number), url, title: `${repo}#${number}` },
@@ -593,7 +601,8 @@ export const mockApi = {
     clearJobTimers(key);
     delete jobTimers[key];
     delete jobSubscribers[key];
-    delete chatModels[key];
+    delete chatAgents[key];
+    delete analysisPending[key];
     delete repoPaths[key];
     delete acknowledgedSha[key];
     list.splice(index, 1);

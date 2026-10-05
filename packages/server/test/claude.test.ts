@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   analysisJobPath,
+  loadState,
   chatPath,
   keyToString,
   parseDiff,
@@ -385,6 +386,20 @@ describe("analysis job lifecycle", () => {
     await analysisIdle();
     expect(readJob(key, root)?.status).toBe("cancelled");
     expect(readMeta(key, root).archived).toBe(true);
+  });
+
+  it("restores an archived PR added explicitly by URL without discarding its history", async () => {
+    buildFixture(root);
+    updateMeta(key, { archived: true }, root);
+    setGhRunner(ghFor([REV1_PATCH], "2"));
+    const response = await app.request("/api/prs?analyze=false", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: `https://github.com/${key.owner}/${key.repo}/pull/${key.number}` }),
+    });
+    expect(response.status).toBe(200);
+    expect(readMeta(key, root).archived).toBe(false);
+    expect(loadState(key, root).revisions.length).toBeGreaterThan(1);
+    expect(readJob(key, root)).toBeNull();
   });
 
   it("409s on cancel when nothing is in progress", async () => {

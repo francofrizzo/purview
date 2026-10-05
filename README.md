@@ -55,6 +55,8 @@ Purview server on the port, and starts the new one. Use it both for first runs a
 after `git pull` — it is always safe to re-run.
 
 Open <http://localhost:4779> and paste a PR URL to start tracking it.
+Re-adding an archived PR by URL restores it and refreshes its diff, preserving
+comments and review progress.
 
 You can also click **Import from GitHub** on the home page to add your open PRs in
 bulk using your existing `gh` login for github.com. **Review requested** is the default.
