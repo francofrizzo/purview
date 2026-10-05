@@ -11,7 +11,6 @@ import { applyArchive, applyRepoArchive } from "../lib/prList";
 import { stalenessPollInterval } from "../lib/staleness";
 import type {
   AnalysisImportReport,
-  ImportScope,
   AnalysisJob,
   DiffOfDiffs,
   RevisionLineChanges,
@@ -129,17 +128,6 @@ export function usePrs() {
   });
 }
 
-export function useImportPrs() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (scope: ImportScope) => api.importPrs(scope),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: qk.prs });
-      void qc.invalidateQueries({ queryKey: qk.repos });
-    },
-  });
-}
-
 export function useAddPr() {
   const qc = useQueryClient();
   return useMutation({
@@ -148,11 +136,6 @@ export function useAddPr() {
   });
 }
 
-/**
- * Archiving is local-only and instantaneous in the UI: the row jumps into (or
- * out of) the repo group's disclosure before the request lands, and rolls back
- * if the server refuses.
- */
 export function useDeletePr() {
   const qc = useQueryClient();
   return useMutation({
@@ -168,6 +151,11 @@ export function useDeletePr() {
   });
 }
 
+/**
+ * Archiving is local-only and instantaneous in the UI: the row jumps into (or
+ * out of) the repo group's disclosure before the request lands, and rolls back
+ * if the server refuses.
+ */
 export function useSetArchived() {
   const qc = useQueryClient();
   return useMutation({
