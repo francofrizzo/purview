@@ -81,3 +81,27 @@ export function pruneCollapsed(state: CollapsedMap, liveIds: Iterable<string>): 
   for (const k of keys) if (live.has(k)) out[k] = state[k];
   return out;
 }
+
+/**
+ * Hunks arriving in the pane (a unit or file just opened) with no fold state
+ * yet start the way auto-collapse would leave them: folded when already
+ * viewed. Without this, a viewed hunk only folded when it was marked during
+ * the current sitting, so reopening a half-read unit showed everything open.
+ * Hunks that already have state (a manual fold or unfold this sitting) keep
+ * it. Same object back when nothing changes.
+ */
+export function seedCollapsed(
+  state: CollapsedMap,
+  shownIds: Iterable<string>,
+  viewed: ViewedMap,
+  autoCollapse: boolean,
+): CollapsedMap {
+  if (!autoCollapse) return state;
+  let out: Record<string, boolean> | null = null;
+  for (const id of shownIds) {
+    if (id in state || viewed[id] !== true) continue;
+    if (!out) out = { ...state };
+    out[id] = true;
+  }
+  return out ?? state;
+}

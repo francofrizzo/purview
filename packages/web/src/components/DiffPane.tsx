@@ -48,6 +48,7 @@ import {
   EMPTY_COLLAPSED,
   isCollapsed,
   pruneCollapsed,
+  seedCollapsed,
   reconcileViewed,
   setCollapsed,
   toggleCollapsed,
@@ -1187,7 +1188,12 @@ export function DiffPane({
     // Collapse is per hunk and per sitting; hunks that left the pane have no
     // state worth keeping. Comment expansion is keyed by file anchor, not by
     // hunk, so it deliberately survives — the reader comes back to it open.
-    setCollapsedState((prev) => pruneCollapsed(prev, entries.map((e) => e.hunk.id)));
+    // Hunks new to the pane start folded if already viewed (and auto-collapse
+    // is on): opening a half-read unit shows what is left to read.
+    const shownIds = entries.map((e) => e.hunk.id);
+    setCollapsedState((prev) =>
+      seedCollapsed(pruneCollapsed(prev, shownIds), shownIds, viewedNow, autoCollapseViewedHunks),
+    );
     setOpenedFoldRegions((prev) => pruneOpenedFoldRegions(prev, entries.map((e) => e.hunk.id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSignature]);

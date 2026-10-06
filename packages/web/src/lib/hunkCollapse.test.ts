@@ -3,6 +3,7 @@ import {
   EMPTY_COLLAPSED,
   isCollapsed,
   pruneCollapsed,
+  seedCollapsed,
   reconcileViewed,
   setCollapsed,
   toggleCollapsed,
@@ -102,5 +103,20 @@ describe("snapshots and pruning", () => {
   it("keeps the same object when everything is still live", () => {
     const state = { h1: true, h2: false };
     expect(pruneCollapsed(state, ["h1", "h2", "h3"])).toBe(state);
+  });
+});
+
+describe("seedCollapsed", () => {
+  const viewed = { a: true, b: false, c: true };
+  it("folds already-viewed hunks arriving with no state", () => {
+    expect(seedCollapsed({}, ["a", "b", "c"], viewed, true)).toEqual({ a: true, c: true });
+  });
+  it("keeps a manual choice made this sitting", () => {
+    expect(seedCollapsed({ a: false }, ["a", "c"], viewed, true)).toEqual({ a: false, c: true });
+  });
+  it("does nothing with auto-collapse off, or nothing to fold", () => {
+    const state = {};
+    expect(seedCollapsed(state, ["a"], viewed, false)).toBe(state);
+    expect(seedCollapsed(state, ["b"], viewed, true)).toBe(state);
   });
 });
