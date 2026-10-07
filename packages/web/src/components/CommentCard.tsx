@@ -268,8 +268,10 @@ export function CommentPill({
         onToggle();
       }}
       className={`comment-marker relative inline-flex h-[18px] w-[18px] flex-none select-none items-center justify-center rounded-[4px] transition-colors ${
-        compact ? "group-hover:bg-[var(--bg-hover)] group-hover/half:bg-[var(--bg-hover)]" : ""
-      } hover:!bg-[var(--bg-hover)]`}
+        compact
+          ? "group-hover:bg-[var(--bg-raised)] group-hover:shadow-[inset_0_0_0_1px_var(--border-strong)] group-hover/half:bg-[var(--bg-raised)] group-hover/half:shadow-[inset_0_0_0_1px_var(--border-strong)]"
+          : ""
+      } hover:!bg-[var(--bg-raised)] hover:shadow-[inset_0_0_0_1px_var(--border-strong)]`}
       style={{ color: meta.ink, background: expanded ? meta.tint : undefined }}
     >
       <Icon width={13} height={13} />

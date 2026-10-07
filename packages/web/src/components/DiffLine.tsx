@@ -189,7 +189,7 @@ function markerColor(type: DiffRow["type"]) {
  * hover-only. Two slots, one fixed width, so every line in the pane keeps the
  * same code column no matter what hangs off it.
  */
-export const COMMENT_COL_WIDTH = 30;
+export const COMMENT_COL_WIDTH = 44;
 
 export interface LineCommentProps {
   /** comments anchored to this line; undefined/empty renders no bubble */
@@ -227,13 +227,15 @@ function CommentColumn({
           }}
           title={has ? "Add another comment on this line" : "Comment on this line"}
           aria-label={has ? "Add another comment on this line" : "Comment on this line"}
-          // Hover-only, and the same 18px rounded square as the marker. With a
-          // marker it floats just right of it (over the +/- column, taking no
-          // room); without one it takes the marker's place.
-          className={`diff-comment-affordance z-10 inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:!bg-[var(--accent)] hover:!text-[var(--bg)] group-hover:opacity-100 group-hover/half:opacity-100 ${
-            has ? "absolute left-[calc(100%-1px)] top-px" : ""
-          }`}
-          style={{ background: "var(--bg-hover)", color: "var(--fg-muted)" }}
+          // Hover-only, the same 18px rounded square as the marker: in the
+          // marker's slot on a line without comments, just left of it on one
+          // with. Accent and outlined, so it never reads as the diff's green +.
+          className={`diff-comment-affordance absolute ${has ? "right-[23px]" : "right-[3px]"} top-px z-10 inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:!bg-[var(--accent)] hover:!text-[var(--bg)] group-hover:opacity-100 group-hover/half:opacity-100`}
+          style={{
+            background: "var(--bg-raised)",
+            boxShadow: "inset 0 0 0 1px var(--border-strong)",
+            color: "var(--accent)",
+          }}
         >
           <IconPlus width={11} height={11} />
         </button>

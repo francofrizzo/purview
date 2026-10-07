@@ -1617,6 +1617,8 @@ export function PrView() {
               composeTarget={commentTarget}
               renderComposer={() => renderComposer("inline")}
               onComposerPlaced={setComposerPlaced}
+              onCloseComposer={() => setCommentTarget(null)}
+              composerDirty={composerBody.trim() !== ""}
               commentActions={commentActions}
               viewMode={viewMode}
               onToggleViewMode={toggleViewMode}

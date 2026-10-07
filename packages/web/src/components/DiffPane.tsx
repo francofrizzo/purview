@@ -184,6 +184,9 @@ export interface DiffPaneProps {
   renderComposer?: () => ReactNode;
   /** whether the composer found its line in this pane (else the host floats it) */
   onComposerPlaced?: (placed: boolean) => void;
+  /** close the composer (hiding its thread closes it too, unless it holds text) */
+  onCloseComposer?: () => void;
+  composerDirty?: boolean;
   /**
    * Edit / delete / quote / copy for comments read inline. Omitted, the
    * bubbles still expand — they just become read-only.
@@ -288,6 +291,8 @@ export function DiffPane({
   composeTarget,
   renderComposer,
   onComposerPlaced,
+  onCloseComposer,
+  composerDirty = false,
   commentActions,
   viewMode = "unified",
   onToggleViewMode,
@@ -1729,6 +1734,12 @@ export function DiffPane({
     collapsed,
   ]);
 
+  const composingLine = (path: string, line: number, side: "LEFT" | "RIGHT") =>
+    composeTarget?.subjectType === "line" &&
+    composeTarget.file === path &&
+    composeTarget.line === line &&
+    composeTarget.side === side;
+
   /** Split view marks by side: a '-' row on the left, '+' and context rows on
    *  the right — so a context row (on both halves) marks once. */
   const splitChanged = useCallback(
@@ -2325,7 +2336,11 @@ export function DiffPane({
         <InlineCommentList
           comments={list}
           label={`${row.path}:${row.line}${row.side === "LEFT" ? " (old)" : ""}`}
-          onCollapse={() => toggleAnchor(row.anchor)}
+          composing={composingLine(row.path, row.line, row.side)}
+          onCollapse={() => {
+            toggleAnchor(row.anchor);
+            if (composingLine(row.path, row.line, row.side) && !composerDirty) onCloseComposer?.();
+          }}
           // Start where the code starts: two line-number columns, the comment
           // column and the +/- marker (see .diff-gutter / .diff-marker).
           indent={
@@ -2353,7 +2368,13 @@ export function DiffPane({
         <InlineCommentList
           comments={list}
           label={`${row.path} (whole file)`}
-          onCollapse={() => toggleFileComments(row.path)}
+          composing={composeTarget?.subjectType === "file" && composeTarget.file === row.path}
+          onCollapse={() => {
+            toggleFileComments(row.path);
+            if (composeTarget?.subjectType === "file" && composeTarget.file === row.path && !composerDirty) {
+              onCloseComposer?.();
+            }
+          }}
           indent={12}
           onAdd={() => onComment({ subjectType: "file", file: row.path })}
           actions={commentActions ?? {}}

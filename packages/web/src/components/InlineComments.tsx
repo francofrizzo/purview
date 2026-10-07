@@ -49,6 +49,7 @@ export function InlineCommentList({
   onAdd,
   actions,
   indent = 0,
+  composing = false,
 }: {
   comments: DraftComment[];
   /** what these comments hang off, for the add/collapse controls */
@@ -58,6 +59,8 @@ export function InlineCommentList({
   actions: InlineCommentActions;
   /** css length from the row's left edge to where the code starts */
   indent?: number | string;
+  /** a new comment is already being written here, right below */
+  composing?: boolean;
 }) {
   return (
     <div
@@ -76,8 +79,8 @@ export function InlineCommentList({
           </li>
         ))}
       </ul>
-      <div className="mt-1.5 flex max-w-[46rem] items-center gap-2">
-        {onAdd ? (
+      <div className={`mt-1.5 flex max-w-[46rem] items-center gap-2${composing ? " justify-end" : ""}`}>
+        {onAdd && !composing ? (
           <button
             type="button"
             data-testid="inline-add-comment"
