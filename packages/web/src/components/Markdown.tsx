@@ -569,13 +569,16 @@ function BlockList({ blocks }: { blocks: MdBlock[] }) {
 export const Markdown = memo(function Markdown({
   text,
   textClass = PROSE_TEXT,
+  ink = "var(--fg-muted)",
 }: {
   text: string;
   textClass?: string;
+  /** body text color; prose is muted, a comment reads at full strength */
+  ink?: string;
 }) {
   const blocks = parseMarkdown(text);
   return (
-    <div className={textClass} style={{ color: "var(--fg-muted)" }}>
+    <div className={textClass} style={{ color: ink }}>
       <BlockList blocks={blocks} />
     </div>
   );

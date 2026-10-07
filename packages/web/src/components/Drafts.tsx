@@ -19,11 +19,10 @@ import {
   isAgentActor,
   isByAgent,
 } from "../lib/comments";
-import { QuoteButton } from "./ChatPanel";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
-import { StatusChip } from "./FinishReview";
 import { IconChat, IconClose } from "./icons";
 import { Markdown } from "./Markdown";
+import { CommentCard } from "./CommentCard";
 
 /**
  * What the composer is pointed at. A file-level target carries no line and no
@@ -78,6 +77,9 @@ export function CommentComposer({
   onSubmit,
   onSendToChat,
   chatBusy = false,
+  variant = "floating",
+  value,
+  onChange,
 }: {
   target: CommentTarget;
   pending: boolean;
@@ -87,24 +89,60 @@ export function CommentComposer({
   onSubmit: (body: string) => void;
   /** ask the review chat instead of drafting: the text goes out with this line attached */
   onSendToChat?: (body: string) => void;
-  /** the chat is mid-reply and would drop a new message */
+  /** the chat is mid-reply: a message is queued instead of sent */
   chatBusy?: boolean;
+  /**
+   * "inline" sits under its line in the diff, like the thread it will join;
+   * "floating" is the fallback when that line is not on screen.
+   */
+  variant?: "inline" | "floating";
+  /** controlled text: the inline composer is a virtualized row, so it can unmount */
+  value?: string;
+  onChange?: (body: string) => void;
 }) {
-  const [body, setBody] = useState("");
+  const [own, setOwn] = useState("");
+  const body = value ?? own;
+  const setBody = onChange ?? setOwn;
   const ref = useRef<HTMLTextAreaElement>(null);
 
   const fileLevel = target.subjectType === "file";
   const anchorKey = fileLevel ? target.file : `${target.file}:${target.line}:${target.side}`;
+  const where = fileLevel
+    ? "this file"
+    : `line ${target.line}${target.side === "LEFT" ? " (old)" : ""}`;
 
   useEffect(() => {
-    ref.current?.focus();
-  }, [anchorKey]);
+    const el = ref.current;
+    if (!el) return;
+    el.focus({ preventScroll: variant === "inline" });
+    el.setSelectionRange(el.value.length, el.value.length);
+  }, [anchorKey, variant]);
 
+  // Grow with the text, up to a cap, instead of a fixed box.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
+  }, [body]);
+
+  const floating = variant === "floating";
   return (
     <div
-      className="surface absolute bottom-3 right-4 z-40 w-[26rem] rounded-md p-2.5 elev-3"
+      data-testid="comment-composer"
+      data-variant={variant}
+      className={
+        floating
+          ? "absolute bottom-3 right-4 z-40 w-[28rem] rounded-md elev-3"
+          : "w-full max-w-[46rem] rounded-md"
+      }
+      style={{ background: "var(--bg-raised)", border: "1px dashed var(--accent)" }}
+      onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
-        if (e.key === "Escape") onCancel();
+        if (e.key === "Escape") {
+          e.stopPropagation();
+          onCancel();
+        }
         if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey) || !body.trim()) return;
         e.preventDefault();
         // ⌘⇧↵ asks the chat; ⌘↵ saves the draft.
@@ -113,69 +151,90 @@ export function CommentComposer({
         } else onSubmit(body.trim());
       }}
     >
-      <div className="mb-1.5 flex items-center gap-2 font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
-        <span className="truncate">{target.file}</span>
-        <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
-          {fileLevel ? "whole file" : `:${target.line} ${target.side === "LEFT" ? "(old)" : "(new)"}`}
+      <div className="flex items-center gap-2 px-3 pt-2 text-2xs">
+        <span className="font-medium" style={{ color: "var(--accent)" }}>
+          New comment
         </span>
-        <button type="button" className="ml-auto" onClick={onCancel} style={{ color: "var(--fg-faint)" }}>
+        <span className="min-w-0 truncate" style={{ color: "var(--fg-faint)" }}>
+          {floating ? (
+            <span className="font-mono">
+              {target.file}
+              {fileLevel ? "" : `:${target.line}${target.side === "LEFT" ? " (old)" : ""}`}
+            </span>
+          ) : (
+            `on ${where}`
+          )}
+        </span>
+        <button
+          type="button"
+          className="ml-auto flex-none rounded p-1 hover:bg-[var(--bg-hover)]"
+          onClick={onCancel}
+          title="Discard (esc)"
+          aria-label="Discard"
+          style={{ color: "var(--fg-faint)" }}
+        >
           <IconClose width={10} height={10} />
         </button>
       </div>
       <textarea
         ref={ref}
-        className="input h-24 resize-none text-xs leading-[18px]"
+        rows={3}
+        className="block w-full resize-none bg-transparent px-3 py-1.5 text-[13px] leading-[20px] outline-none"
+        style={{ color: "var(--fg)" }}
         data-testid="composer-textarea"
-        placeholder={`${fileLevel ? "Draft a comment about this whole file…" : "Draft a comment…"} (⌘↵ to save${
-          onSendToChat ? ", ⌘⇧↵ to ask the chat" : ""
-        })`}
+        placeholder={fileLevel ? "What should change in this file?" : "What should change here?"}
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
-      <div className="mt-1.5 flex items-center gap-2">
-        {onSendToChat ? (
+      <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
+        <span className="hidden text-2xs sm:inline" style={{ color: "var(--fg-faint)" }}>
+          markdown · ⌘↵ save{onSendToChat ? " · ⌘⇧↵ ask chat" : ""}
+        </span>
+        <span className="ml-auto flex items-center gap-1.5">
+          {exportCtx ? (
+            <CopyForAgentButton
+              iconOnly
+              testId="copy-composer"
+              title="Copy this comment, with the code it points at, as markdown"
+              disabled={!body.trim()}
+              text={() =>
+                formatComment(
+                  fileLevel
+                    ? { file: target.file, line: null, side: null, subjectType: "file", body: body.trim() }
+                    : { file: target.file, line: target.line, side: target.side, body: body.trim() },
+                  exportCtx,
+                )
+              }
+            />
+          ) : null}
+          {onSendToChat ? (
+            <button
+              type="button"
+              className="btn"
+              data-testid="composer-send-to-chat"
+              disabled={!body.trim()}
+              title={
+                chatBusy
+                  ? "The chat is still replying: this is queued and sent when it finishes, with this line attached. (⌘⇧↵)"
+                  : "Ask the review chat instead, with this line attached. Nothing is saved as a draft. (⌘⇧↵)"
+              }
+              onClick={() => onSendToChat(body.trim())}
+            >
+              <IconChat width={11} height={11} />
+              {chatBusy ? "queue for chat" : "ask chat"}
+            </button>
+          ) : null}
           <button
             type="button"
-            className="btn"
-            data-testid="composer-send-to-chat"
-            disabled={!body.trim()}
-            title={
-              chatBusy
-                ? "The chat is still replying: this is queued and sent when it finishes, with this line attached. (⌘⇧↵)"
-                : "Ask the review chat instead, with this line attached. Nothing is saved as a draft. (⌘⇧↵)"
-            }
-            onClick={() => onSendToChat(body.trim())}
+            className="btn btn-primary"
+            data-testid="composer-save"
+            title="Saved on this machine; it reaches GitHub when you sync or finish the review. (⌘↵)"
+            disabled={!body.trim() || pending}
+            onClick={() => onSubmit(body.trim())}
           >
-            <IconChat width={11} height={11} />
-            {chatBusy ? "queue for chat" : "send to chat"}
+            {pending ? "saving…" : "save draft"}
           </button>
-        ) : null}
-        {exportCtx ? (
-          <CopyForAgentButton
-            testId="copy-composer"
-            label="copy for agent"
-            title="Copy this comment, with the code it points at, as markdown"
-            disabled={!body.trim()}
-            text={() =>
-              formatComment(
-                fileLevel
-                  ? { file: target.file, line: null, side: null, subjectType: "file", body: body.trim() }
-                  : { file: target.file, line: target.line, side: target.side, body: body.trim() },
-                exportCtx,
-              )
-            }
-          />
-        ) : null}
-        <button
-          type="button"
-          className="btn btn-primary ml-auto"
-          data-testid="composer-save"
-          title="Saved locally; pushed as a pending review on sync. (⌘↵)"
-          disabled={!body.trim() || pending}
-          onClick={() => onSubmit(body.trim())}
-        >
-          {pending ? "saving…" : "save draft"}
-        </button>
+        </span>
       </div>
     </div>
   );
@@ -261,6 +320,9 @@ export function CommentBody({
   clamp,
   markdown,
   editLabel,
+  bodyClass = "text-xs leading-5",
+  editing,
+  onEditingChange,
 }: {
   comment: { id: string; body: string; status?: CommentStatus };
   edit?: EditComment;
@@ -270,9 +332,29 @@ export function CommentBody({
   markdown?: boolean;
   /** the edit trigger, when the caller wants it in its own action row */
   editLabel?: string;
+  /** size of the read-only body text */
+  bodyClass?: string;
+  /**
+   * Controlled editing: the caller owns the trigger (an icon in its header),
+   * this owns the editor. Omitted, the body shows its own "edit" button.
+   */
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
 }) {
   const status = comment.status ?? "draft";
-  const [mode, setMode] = useState<"view" | "edit" | "confirm">("view");
+  const [mode, setModeState] = useState<"view" | "edit" | "confirm">("view");
+  const controlled = onEditingChange !== undefined;
+  const setMode = (next: "view" | "edit" | "confirm") => {
+    setModeState(next);
+    if (next === "view") onEditingChange?.(false);
+  };
+  useEffect(() => {
+    if (controlled && editing && mode === "view") {
+      setValue(comment.body);
+      setModeState("edit");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
   const [value, setValue] = useState(comment.body);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -331,15 +413,12 @@ export function CommentBody({
     return (
       <div>
         {markdown ? (
-          <div
-            className={`mt-0.5 text-xs leading-5${clamp ? " line-clamp-3" : ""}`}
-            style={{ color: "var(--fg)" }}
-          >
-            <Markdown text={comment.body} />
+          <div className={`mt-0.5 max-w-[72ch]${clamp ? " line-clamp-3" : ""}`} style={{ color: "var(--fg)" }}>
+            <Markdown text={comment.body} textClass={bodyClass} ink="var(--fg)" />
           </div>
         ) : (
           <p
-            className={`mt-0.5 whitespace-pre-wrap text-xs leading-5${clamp ? " line-clamp-3" : ""}`}
+            className={`mt-0.5 max-w-[72ch] whitespace-pre-wrap ${bodyClass}${clamp ? " line-clamp-3" : ""}`}
             style={{ color: "var(--fg)" }}
           >
             {comment.body}
@@ -353,7 +432,7 @@ export function CommentBody({
             Saved locally, but GitHub was not updated: {warning}
           </p>
         ) : null}
-        {edit ? (
+        {edit && !controlled ? (
           <button
             type="button"
             data-testid={`edit-${comment.id}`}
@@ -490,7 +569,6 @@ export function DraftsDrawer({
   const local = drafts.filter((d) => (d.status ?? "draft") === "draft").sort(compareCommentOrder);
   const pushed = drafts.filter((d) => d.status === "pushed").sort(compareCommentOrder);
   const submitted = drafts.filter((d) => d.status === "submitted").sort(compareCommentOrder);
-  const ordered = [...local, ...pushed, ...submitted];
   // Dismissing a notice only hides it here; the draft stays restorable until
   // the server's trash lets it go.
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
@@ -498,7 +576,7 @@ export function DraftsDrawer({
 
   return (
     <aside
-      className="flex w-80 flex-none flex-col border-l"
+      className="flex w-[22rem] flex-none flex-col border-l"
       style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
     >
       <div className="flex-none border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
@@ -569,61 +647,50 @@ export function DraftsDrawer({
             file header to comment on a whole file.
           </p>
         ) : (
-          <ul>
-            {ordered.map((d) => (
-              <li key={d.id} className="border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-1.5 text-left font-mono text-2xs"
-                  style={{ color: "var(--fg-muted)" }}
-                  onClick={() => onJump(d)}
-                  title="Jump to this file"
-                >
-                  <span className="truncate">{d.file}</span>
-                  <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
-                    {isFileComment(d) ? "(file)" : `:${d.line}`}
-                  </span>
-                  <StatusChip status={d.status ?? "draft"} />
-                  <ByAgentChip comment={d} />
-                </button>
-                <CommentBody comment={d} edit={onEdit} />
-                <AgentEditNote comment={d} onUndo={onUndoEdit} busy={undoing} />
-                <div className="mt-1 flex items-center gap-1.5">
-                  {onQuote ? (
-                    <QuoteButton
-                      about="this comment"
-                      onClick={() =>
-                        onQuote(commentRef(d))
-                      }
-                    />
-                  ) : null}
-                  {bundle ? (
-                    <CopyForAgentButton
-                      iconOnly
-                      testId={`copy-comment-${d.id}`}
-                      title="Copy this comment, with its code, for an agent"
-                      text={() => formatComment(d, bundle.ctx)}
-                    />
-                  ) : null}
-                {onDelete && d.status !== "submitted" ? (
-                    <button
-                      type="button"
-                      className="btn ml-auto"
-                      disabled={deleting}
-                      onClick={() => onDelete(d)}
-                      title={
-                        d.status === "pushed"
-                          ? "Also removes it from your pending review on GitHub"
-                          : "Delete this local draft"
-                      }
-                    >
-                      delete
-                    </button>
-                ) : null}
-                </div>
-              </li>
-            ))}
-          </ul>
+          <div className="flex flex-col gap-3 p-2.5">
+            {(
+              [
+                ["Drafts", "Only on this machine", local],
+                ["Pushed", "In your pending review on GitHub", pushed],
+                ["Submitted", "Public on GitHub", submitted],
+              ] as const
+            )
+              .filter(([, , list]) => list.length)
+              .map(([title, hint, list]) => (
+                <section key={title} data-testid={`drawer-group-${title.toLowerCase()}`}>
+                  <h3 className="mb-1.5 flex items-baseline gap-1.5 px-0.5 text-2xs">
+                    <span className="font-semibold" style={{ color: "var(--fg-muted)" }}>
+                      {title}
+                    </span>
+                    <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
+                      {list.length}
+                    </span>
+                    <span className="truncate" style={{ color: "var(--fg-faint)" }}>
+                      · {hint}
+                    </span>
+                  </h3>
+                  <ul className="flex flex-col gap-1.5">
+                    {list.map((d) => (
+                      <li key={d.id}>
+                        <CommentCard
+                          comment={d}
+                          anchor={{ label: commentAnchorLabel(d), onJump: () => onJump(d) }}
+                          actions={{
+                            onEdit,
+                            onDelete,
+                            deleting,
+                            onQuote,
+                            exportCtx: bundle?.ctx,
+                            onUndoEdit,
+                            undoing,
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
+          </div>
         )}
       </div>
     </aside>

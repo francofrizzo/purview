@@ -291,6 +291,12 @@ export const IconWeight = (p: P) => (
 );
 
 /** A pencil — edit a sent message. */
+export const IconTrash = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M2.5 4.5h11M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M4 4.5l.7 8.6a1 1 0 0 0 1 .9h4.6a1 1 0 0 0 1-.9l.7-8.6" />
+  </svg>
+);
+
 export const IconEdit = (p: P) => (
   <svg {...base} {...p}>
     <path d="M10.5 2.5 13.5 5.5 5 14H2v-3z" />

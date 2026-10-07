@@ -10,7 +10,8 @@ import { errorText } from "../api/errors";
 import { isCommentAnchored } from "../lib/comments";
 import type { BundleSource } from "./CopyForAgent";
 import { CopyBundleControls } from "./CopyForAgent";
-import { CommentBody, type EditComment } from "./Drafts";
+import { commentAnchorLabel, type EditComment } from "./Drafts";
+import { CommentCard } from "./CommentCard";
 import { IconCheck, IconClose, IconExternal, IconWarning } from "./icons";
 
 const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }[] = [
@@ -466,33 +467,30 @@ function IncludedComments({
           No inline comments; only the summary goes out.
         </p>
       ) : (
-        <ul className="-mx-4 mt-1">
+        <ul className="mt-1.5 flex flex-col gap-1.5">
           {review.included.map((c) => {
             const outside =
               !!files && c.status === "draft" && c.subjectType !== "file" && !isCommentAnchored(files, c);
             return (
-              <li key={c.id} className="px-4 py-1.5">
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-1.5 text-left font-mono text-2xs"
-                  style={{ color: "var(--fg-muted)" }}
-                  onClick={() => onJump(c.file, c.line)}
-                  title="Jump to this file"
-                >
-                  <span className="truncate">{c.file}</span>
-                  <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
-                    {c.line === null || c.subjectType === "file" ? "(file)" : `:${c.line}`}
-                  </span>
-                  <StatusChip status={c.status} />
-                </button>
-                {outside ? (
-                  <OutsideDiffNotice
-                    id={c.id}
-                    onProposeReanchor={onProposeReanchor}
-                    onApplyReanchor={onApplyReanchor}
-                  />
-                ) : null}
-                <CommentBody comment={c} edit={onEdit} clamp />
+              <li key={c.id}>
+                <CommentCard
+                  comment={c}
+                  clamp
+                  anchor={{ label: commentAnchorLabel(c), onJump: () => onJump(c.file, c.line) }}
+                  actions={{
+                    onEdit,
+                    onDelete: onDeleteCopied ? (comment) => void onDeleteCopied([comment.id]) : undefined,
+                  }}
+                  notice={
+                    outside ? (
+                      <OutsideDiffNotice
+                        id={c.id}
+                        onProposeReanchor={onProposeReanchor}
+                        onApplyReanchor={onApplyReanchor}
+                      />
+                    ) : null
+                  }
+                />
               </li>
             );
           })}

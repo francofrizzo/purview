@@ -97,6 +97,21 @@ export function mostAdvancedStatus(comments: { status?: CommentStatus }[]): Comm
   return best;
 }
 
+/**
+ * The status a line's marker shows: the one that still needs the reader. Any
+ * draft makes it a draft (unsent work), else any pushed comment (pending on
+ * GitHub), else submitted. Painting the most advanced one hid a line's unsent
+ * drafts behind an older, already-public comment.
+ */
+export function attentionStatus(comments: { status?: CommentStatus }[]): CommentStatus {
+  let worst: CommentStatus = "submitted";
+  for (const c of comments) {
+    const status = c.status ?? "draft";
+    if (RANK[status] < RANK[worst]) worst = status;
+  }
+  return comments.length ? worst : "draft";
+}
+
 /** Token pair for the bubble, matching the chips used everywhere else. */
 export function statusColors(status: CommentStatus): { fg: string; bg: string } {
   if (status === "pushed") return { fg: "var(--accent)", bg: "var(--accent-soft)" };
@@ -129,7 +144,11 @@ export function isCommentAnchored(files: FilesJson, comment: DraftComment): bool
 export function bubbleTitle(comments: DraftComment[]): string {
   const n = comments.length;
   const noun = n === 1 ? "comment" : "comments";
-  return `${n} ${noun} · ${mostAdvancedStatus(comments)} — click to ${n === 1 ? "read it" : "read them"}`;
+  const counts = (["draft", "pushed", "submitted"] as const)
+    .map((st) => [st, comments.filter((c) => (c.status ?? "draft") === st).length] as const)
+    .filter(([, k]) => k > 0);
+  const mix = counts.length === 1 && n > 1 ? `all ${counts[0][0]}` : counts.map(([st, k]) => (n === 1 ? st : `${k} ${st}`)).join(", ");
+  return `${n} ${noun} · ${mix} — click to ${n === 1 ? "read it" : "read them"}`;
 }
 
 /* ------------------------------------------------ comments the chat wrote */

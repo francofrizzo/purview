@@ -188,7 +188,7 @@ function markerColor(type: DiffRow["type"]) {
  * hover-only. Two slots, one fixed width, so every line in the pane keeps the
  * same code column no matter what hangs off it.
  */
-export const COMMENT_COL_WIDTH = 30;
+export const COMMENT_COL_WIDTH = 36;
 
 export interface LineCommentProps {
   /** comments anchored to this line; undefined/empty renders no bubble */
@@ -206,7 +206,7 @@ function CommentColumn({
   const has = Boolean(comments && comments.length);
   return (
     <span
-      className="flex flex-none items-start justify-end gap-[1px]"
+      className="flex flex-none items-start justify-end gap-[2px] pr-[2px]"
       style={{ width: COMMENT_COL_WIDTH }}
     >
       {has && onToggleComments ? (
@@ -225,8 +225,9 @@ function CommentColumn({
             onComment();
           }}
           title={has ? "Add another comment on this line" : "Draft a comment on this line"}
-          className="diff-comment-affordance my-[2px] h-[13px] w-[13px] flex-none rounded text-[10px] leading-[12px] opacity-0 transition-opacity group-hover:opacity-100 group-hover/half:opacity-100"
-          style={{ background: "var(--bg-hover)", color: "var(--fg-muted)" }}
+          // Same pill as the marker, dashed like a draft: what clicking it starts.
+          className="diff-comment-affordance my-[3px] inline-flex h-[14px] w-[16px] flex-none items-center justify-center rounded-full text-[11px] font-semibold leading-none opacity-0 transition-opacity hover:!bg-[var(--accent)] hover:!text-[var(--bg)] group-hover:opacity-100 group-hover/half:opacity-100"
+          style={{ border: "1px dashed var(--accent)", background: "var(--accent-soft)", color: "var(--accent)" }}
         >
           +
         </button>

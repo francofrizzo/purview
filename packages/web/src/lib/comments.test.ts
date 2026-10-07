@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { CommentActor, CommentStatus, DeletedComment, DraftComment, FilesJson } from "../api/types";
 import {
+  attentionStatus,
   bubbleTitle,
   canUndoAgentEdit,
   agentDeletedDrafts,
@@ -248,5 +249,14 @@ describe("comments the chat wrote", () => {
     // The kind decides, not the harness's tool name.
     expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment add github.com/a/b/1 --body x` })).toBe(false);
     expect(isCommentWriteTool({ name: "shell", kind: "command", detail: `${cli} comment add github.com/a/b/1 --body x` })).toBe(true);
+  });
+});
+
+describe("attentionStatus", () => {
+  it("is the least advanced status: unsent work first", () => {
+    expect(attentionStatus([{ status: "submitted" }, { status: "draft" }, { status: "pushed" }])).toBe("draft");
+    expect(attentionStatus([{ status: "submitted" }, { status: "pushed" }])).toBe("pushed");
+    expect(attentionStatus([{ status: "submitted" }])).toBe("submitted");
+    expect(attentionStatus([{}])).toBe("draft");
   });
 });

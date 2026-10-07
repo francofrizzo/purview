@@ -245,6 +245,23 @@ export function PrView() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(null);
+  // The text lives here, not in the composer: drawn inline, the composer is a
+  // virtualized row and unmounts when scrolled away.
+  const [composerBody, setComposerBody] = useState("");
+  const [composerPlaced, setComposerPlaced] = useState(false);
+  const commentTargetKey = commentTarget
+    ? commentTarget.subjectType === "file"
+      ? `f:${commentTarget.file}`
+      : `${commentTarget.file}:${commentTarget.line}:${commentTarget.side}`
+    : null;
+  useEffect(() => {
+    setComposerBody("");
+  }, [commentTargetKey]);
+  /** Open the composer, assuming it goes inline; the diff says otherwise before paint. */
+  const openComposer = useCallback((target: CommentTarget | null) => {
+    setComposerPlaced(true);
+    setCommentTarget(target);
+  }, []);
   // The files tab names the file in its own header rather than in the pane, so
   // that header is where its file-level comments live too.
   const [fileCommentsOpen, setFileCommentsOpen] = useState(false);
@@ -1054,6 +1071,30 @@ export function PrView() {
     </>
   );
 
+
+  const renderComposer = (variant: "inline" | "floating") =>
+    commentTarget ? (
+      <CommentComposer
+        target={commentTarget}
+        variant={variant}
+        value={composerBody}
+        onChange={setComposerBody}
+        pending={addComment.isPending}
+        exportCtx={exportCtx}
+        onCancel={() => setCommentTarget(null)}
+        onSubmit={(body) =>
+          addComment.mutate(targetToInput(commentTarget, body), {
+            onSuccess: () => setCommentTarget(null),
+          })
+        }
+        chatBusy={chat.busy}
+        onSendToChat={(body) => {
+          chat.send(body, [targetRef(commentTarget)]);
+          chat.openChat();
+          setCommentTarget(null);
+        }}
+      />
+    ) : null;
   return (
     <div className="flex h-full flex-col">
       <TopBar
@@ -1522,7 +1563,7 @@ export function PrView() {
                   className="btn"
                   title={`Comment on ${selectedPath} as a whole`}
                   onClick={() =>
-                    setCommentTarget({ subjectType: "file", file: selectedPath })
+                    openComposer({ subjectType: "file", file: selectedPath })
                   }
                 >
                   + file
@@ -1542,7 +1583,7 @@ export function PrView() {
                 comments={fileComments}
                 label={`${selectedPath} (whole file)`}
                 onCollapse={() => setFileCommentsOpen(false)}
-                onAdd={() => setCommentTarget({ subjectType: "file", file: selectedPath })}
+                onAdd={() => openComposer({ subjectType: "file", file: selectedPath })}
                 actions={commentActions}
               />
             </div>
@@ -1572,7 +1613,10 @@ export function PrView() {
                   { onSuccess: () => advanceIfUnitDone(viewed) },
                 )
               }
-              onComment={(t) => setCommentTarget(t)}
+              onComment={openComposer}
+              composeTarget={commentTarget}
+              renderComposer={() => renderComposer("inline")}
+              onComposerPlaced={setComposerPlaced}
               commentActions={commentActions}
               viewMode={viewMode}
               onToggleViewMode={toggleViewMode}
@@ -1599,26 +1643,11 @@ export function PrView() {
             />
           </div>
 
-          {commentTarget ? (
-            <CommentComposer
-              target={commentTarget}
-              pending={addComment.isPending}
-              exportCtx={exportCtx}
-              onCancel={() => setCommentTarget(null)}
-              onSubmit={(body) =>
-                addComment.mutate(targetToInput(commentTarget, body), {
-                  onSuccess: () => setCommentTarget(null),
-                })
-              }
-              chatBusy={chat.busy}
-              onSendToChat={(body) => {
-                chat.send(body, [targetRef(commentTarget)]);
-                chat.openChat();
-                setCommentTarget(null);
-              }}
-            />
+          {commentTarget && !composerPlaced ? (
+            renderComposer("floating")
           ) : null}
         </main>
+
 
         {draftsOpen ? (
           <DraftsDrawer

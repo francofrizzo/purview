@@ -1,5 +1,5 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Attention, ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { baseName, lineRangeRef } from "../lib/chatRefs";
 import { groupComments, lineAnchor } from "../lib/comments";
@@ -143,6 +143,8 @@ type FlatRow =
    * and no gap may pretend otherwise.
    */
   | { type: "elsewhere"; key: string; hunkId: string; from: number; to: number; where: "above" | "below" | "hidden" }
+  /** the comment being written, under the line (or file header) it is about */
+  | { type: "compose"; key: string; hunkId: string; indent: string | number }
   | {
       type: "ctx";
       key: string;
@@ -177,6 +179,11 @@ export interface DiffPaneProps {
    *  onToggleViewed per hunk when omitted. */
   onSetHunksViewed?: (hunkIds: string[], viewed: boolean) => void;
   onComment: (target: CommentTarget) => void;
+  /** the comment being written: drawn inline under its line when that line is shown */
+  composeTarget?: CommentTarget | null;
+  renderComposer?: () => ReactNode;
+  /** whether the composer found its line in this pane (else the host floats it) */
+  onComposerPlaced?: (placed: boolean) => void;
   /**
    * Edit / delete / quote / copy for comments read inline. Omitted, the
    * bubbles still expand — they just become read-only.
@@ -278,6 +285,9 @@ export function DiffPane({
   onToggleViewed,
   onSetHunksViewed,
   onComment,
+  composeTarget,
+  renderComposer,
+  onComposerPlaced,
   commentActions,
   viewMode = "unified",
   onToggleViewMode,
@@ -855,6 +865,28 @@ export function DiffPane({
     // A unit keeps the analysis's reading order, so one file can come up in
     // several runs ("sections") with other files in between. Each section
     // draws its own gaps; only within one is a gap drawn at most once.
+    // The composer goes under its line (after the line's open thread), once.
+    let composePlaced = false;
+    const compose = composeTarget ?? null;
+    const pushCompose = (hunkId: string, indent: string | number) => {
+      if (composePlaced) return;
+      composePlaced = true;
+      out.push({ type: "compose", key: "compose", hunkId, indent });
+    };
+    const lineIndent = (side: "LEFT" | "RIGHT") =>
+      mode === "split"
+        ? `calc(${side === "LEFT" ? "0px" : "50%"} + 2.75rem + ${COMMENT_COL_WIDTH}px + 0.75rem)`
+        : `calc(7.25rem + ${COMMENT_COL_WIDTH}px)`;
+    const composeAt = (path: string, line: number, side: "LEFT" | "RIGHT", hunkId: string) => {
+      if (
+        compose?.subjectType === "line" &&
+        compose.file === path &&
+        compose.line === line &&
+        compose.side === side
+      ) {
+        pushCompose(hunkId, lineIndent(side));
+      }
+    };
     let section = 0;
     const emittedGaps = new Set<string>();
     const shownAt = new Map(entries.map((e, i) => [e.hunk.id, i]));
@@ -931,6 +963,7 @@ export function DiffPane({
           if (expandedFiles.has(file.path) && grouped.byFile.has(file.path)) {
             out.push({ type: "filecomments", key: `xf:${file.path}`, path: file.path });
           }
+          if (compose?.subjectType === "file" && compose.file === file.path) pushCompose(hunk.id, 12);
         }
         lastFile = file.path;
       }
@@ -997,6 +1030,8 @@ export function DiffPane({
           const rightNo = pair.right ? pair.right.row.newNumber : undefined;
           if (leftNo !== undefined) pushComments(file.path, leftNo, "LEFT");
           if (rightNo !== undefined) pushComments(file.path, rightNo, "RIGHT");
+          if (leftNo !== undefined) composeAt(file.path, leftNo, "LEFT", hunk.id);
+          if (rightNo !== undefined) composeAt(file.path, rightNo, "RIGHT", hunk.id);
         }
       } else {
         const lines = buildRows(hunk, detail.diff);
@@ -1017,13 +1052,17 @@ export function DiffPane({
           const line = lines[i];
           const side = line.type === "del" ? "LEFT" : "RIGHT";
           const no = line.type === "del" ? line.oldNumber : line.newNumber;
-          if (no !== undefined) pushComments(file.path, no, side);
+          if (no !== undefined) {
+            pushComments(file.path, no, side);
+            composeAt(file.path, no, side, hunk.id);
+          }
         }
       }
       pushGapAfter();
     }
     return out;
   }, [
+    composeTarget,
     contextFiles,
     contextReveal,
     entries,
@@ -1136,6 +1175,7 @@ export function DiffPane({
       // A fold placeholder is one row, always — no wrapping content inside it.
       if (r.type === "fold") return codeLineHeight;
       if (r.type === "dod") return 170;
+      if (r.type === "compose") return 150;
       // Comment blocks are the one genuinely variable row. The estimate only
       // has to be in the right order of magnitude — measureElement's
       // ResizeObserver corrects it on mount and again on every edit, expand or
@@ -1318,6 +1358,61 @@ export function DiffPane({
   useEffect(() => {
     flushPendingScroll();
   }, [rows, flushPendingScroll]);
+
+  const composerRowIdx = rows.findIndex((r) => r.type === "compose");
+  // A composer opened from the thread's "Add a comment…" can land below the
+  // fold; bring it into view once (not on every keystroke's re-render).
+  const composeKey = composeTarget
+    ? composeTarget.subjectType === "file"
+      ? `f:${composeTarget.file}`
+      : `${composeTarget.file}:${composeTarget.line}:${composeTarget.side}`
+    : null;
+  // A comment just saved shows up open under its line, not as a bare pill:
+  // remember how many the anchor had when the composer opened, and open the
+  // thread once that count grows.
+  const composeOrigin = useRef<{ file?: string; anchor?: string; count: number } | null>(null);
+  useEffect(() => {
+    if (!composeTarget) return;
+    if (composeTarget.subjectType === "file") {
+      composeOrigin.current = { file: composeTarget.file, count: grouped.byFile.get(composeTarget.file)?.length ?? 0 };
+    } else {
+      const anchor = lineAnchor(composeTarget.file, composeTarget.line, composeTarget.side);
+      composeOrigin.current = { anchor, count: grouped.byLine.get(anchor)?.length ?? 0 };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeKey]);
+  useEffect(() => {
+    const origin = composeOrigin.current;
+    if (!origin) return;
+    if (origin.anchor) {
+      const anchor = origin.anchor;
+      if ((grouped.byLine.get(anchor)?.length ?? 0) > origin.count) {
+        composeOrigin.current = null;
+        setExpandedAnchors((cur) => (cur.has(anchor) ? cur : new Set(cur).add(anchor)));
+      }
+    } else if (origin.file) {
+      const path = origin.file;
+      if ((grouped.byFile.get(path)?.length ?? 0) > origin.count) {
+        composeOrigin.current = null;
+        setExpandedFiles((cur) => (cur.has(path) ? cur : new Set(cur).add(path)));
+      }
+    }
+  }, [grouped]);
+
+  // Before paint, so a composer that can't go inline floats without a frame
+  // of both (two composers fighting over focus).
+  useLayoutEffect(() => {
+    if (composeKey) onComposerPlaced?.(composerRowIdx !== -1);
+  }, [composerRowIdx, composeKey, onComposerPlaced]);
+  useEffect(() => {
+    if (!composeKey || composerRowIdx === -1) return;
+    const raf = requestAnimationFrame(() => {
+      const el = scrollRef.current?.querySelector<HTMLElement>(`[data-index="${composerRowIdx}"]`);
+      el?.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    });
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composeKey]);
 
   // Reset scroll when the shown set changes wholesale — unless the set changed
   // *because* a search match in it is being visited, in which case jumping to
@@ -1974,6 +2069,13 @@ export function DiffPane({
   }
 
   function renderRow(row: FlatRow) {
+    if (row.type === "compose") {
+      return (
+        <div className="py-2 pr-4" style={{ paddingLeft: row.indent, background: "var(--bg)" }}>
+          {renderComposer?.()}
+        </div>
+      );
+    }
     if (row.type === "gap") return renderGap(row);
     if (row.type === "elsewhere") {
       return (
@@ -2097,7 +2199,9 @@ export function DiffPane({
     );
   }
 
-  function renderDiffRow(row: Exclude<FlatRow, { type: "gap" } | { type: "ctx" } | { type: "elsewhere" }>) {
+  function renderDiffRow(
+    row: Exclude<FlatRow, { type: "gap" } | { type: "ctx" } | { type: "elsewhere" } | { type: "compose" }>,
+  ) {
     if (row.type === "file") {
       const rollup = detail.state.files?.[row.path];
       const fileComments = grouped.byFile.get(row.path);
@@ -2222,6 +2326,13 @@ export function DiffPane({
           comments={list}
           label={`${row.path}:${row.line}${row.side === "LEFT" ? " (old)" : ""}`}
           onCollapse={() => toggleAnchor(row.anchor)}
+          // Start where the code starts: two line-number columns, the comment
+          // column and the +/- marker (see .diff-gutter / .diff-marker).
+          indent={
+            mode === "split"
+              ? `calc(${row.side === "LEFT" ? "0px" : "50%"} + 2.75rem + ${COMMENT_COL_WIDTH}px + 0.75rem)`
+              : `calc(7.25rem + ${COMMENT_COL_WIDTH}px)`
+          }
           onAdd={() =>
             onComment({
               subjectType: "line",
@@ -2243,6 +2354,7 @@ export function DiffPane({
           comments={list}
           label={`${row.path} (whole file)`}
           onCollapse={() => toggleFileComments(row.path)}
+          indent={12}
           onAdd={() => onComment({ subjectType: "file", file: row.path })}
           actions={commentActions ?? {}}
         />
