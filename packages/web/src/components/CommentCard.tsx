@@ -18,7 +18,7 @@ import { attentionStatus } from "../lib/comments";
 import { QuoteButton } from "./ChatPanel";
 import { CopyForAgentButton } from "./CopyForAgent";
 import { AgentEditNote, ByAgentChip, CommentBody, commentRef, type EditComment } from "./Drafts";
-import { IconEdit, IconTrash } from "./icons";
+import { IconComment, IconCommentFilled, IconEdit, IconTrash } from "./icons";
 
 export const COMMENT_STATUS: Record<
   CommentStatus,
@@ -229,9 +229,12 @@ function IconAction({
 }
 
 /**
- * The marker for a line (or file, or folded hunk) that has comments: a small
- * pill with the count, edged like its most advanced comment. Filled when its
- * thread is open, so the open/closed state reads at a glance.
+ * The marker for a line (or file, or folded hunk) that has comments: a speech
+ * bubble in the color of the comment that still needs the reader — outlined
+ * while a draft (it has gone nowhere), filled once pushed, filled and quiet
+ * once submitted — with a small floating count when there is more than one.
+ * It sits on a rounded square that shows on hover (it is a button: it opens
+ * the thread) and stays tinted while the thread is open.
  */
 export function CommentPill({
   comments,
@@ -243,13 +246,14 @@ export function CommentPill({
   comments: DraftComment[];
   expanded: boolean;
   onToggle: () => void;
-  /** the diff gutter variant */
+  /** the diff gutter variant (hover follows the line, not the icon) */
   compact?: boolean;
   title: string;
 }) {
   const status = attentionStatus(comments);
   const meta = COMMENT_STATUS[status];
   const count = comments.length;
+  const Icon = status === "draft" ? IconComment : IconCommentFilled;
   return (
     <button
       type="button"
@@ -263,17 +267,20 @@ export function CommentPill({
         e.stopPropagation();
         onToggle();
       }}
-      className={`inline-flex flex-none select-none items-center justify-center rounded-full font-semibold tabular-nums transition-colors ${
-        compact ? "my-[3px] h-[14px] min-w-[16px] px-[4px] text-[9px]" : "h-[16px] min-w-[18px] px-[5px] text-[10px]"
-      }`}
-      style={{
-        lineHeight: 1,
-        border: expanded ? `1px solid ${meta.ink}` : meta.edge,
-        background: expanded ? meta.ink : meta.tint,
-        color: expanded ? "var(--bg)" : meta.ink,
-      }}
+      className={`comment-marker relative inline-flex h-[18px] w-[18px] flex-none select-none items-center justify-center rounded-[4px] transition-colors ${
+        compact ? "group-hover:bg-[var(--bg-hover)] group-hover/half:bg-[var(--bg-hover)]" : ""
+      } hover:!bg-[var(--bg-hover)]`}
+      style={{ color: meta.ink, background: expanded ? meta.tint : undefined }}
     >
-      {count}
+      <Icon width={13} height={13} />
+      {count > 1 ? (
+        <span
+          className="absolute -right-[5px] -top-[4px] flex h-[11px] min-w-[11px] items-center justify-center rounded-full px-[2px] text-[8px] font-bold tabular-nums leading-none"
+          style={{ background: meta.ink, color: "var(--bg)", boxShadow: "0 0 0 1.5px var(--bg)" }}
+        >
+          {count}
+        </span>
+      ) : null}
     </button>
   );
 }

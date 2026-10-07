@@ -182,7 +182,7 @@ export function CommentComposer({
         className="block w-full resize-none bg-transparent px-3 py-1.5 text-[13px] leading-[20px] outline-none"
         style={{ color: "var(--fg)" }}
         data-testid="composer-textarea"
-        placeholder={fileLevel ? "What should change in this file?" : "What should change here?"}
+        placeholder={fileLevel ? "Comment on this file…" : "Comment on this line…"}
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />

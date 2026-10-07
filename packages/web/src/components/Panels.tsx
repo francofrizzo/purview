@@ -67,11 +67,15 @@ export function StalenessHint({
   return (
     <div
       data-testid="staleness-hint"
-      className="flex flex-none items-center gap-2 border-b px-3 py-1.5 text-xs"
-      style={{ background: "var(--accent-soft)", borderColor: "var(--border)" }}
+      // Recessed and neutral, not another accent wash: the top bar above is
+      // already accent-tinted, and two tints in a row read as one band.
+      className="flex flex-none items-center gap-2 border-y px-3 py-1.5 text-xs"
+      style={{ background: "var(--bg-inset)", borderColor: "var(--border-strong)" }}
     >
+      {/* The refresh button's dot, so the two read as one signal. */}
+      <span aria-hidden className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: "var(--accent)" }} />
       {/* One line: what moved (or, when the reason is unknown, that something did). */}
-      <span style={{ color: "var(--accent)" }}>
+      <span style={{ color: "var(--fg)" }}>
         {result.reasons.length > 0
           ? capitalize(stalenessReasonText(result.reasons))
           : "This PR changed upstream"}
