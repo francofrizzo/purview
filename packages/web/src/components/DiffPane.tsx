@@ -1067,27 +1067,41 @@ export function DiffPane({
   const virtualizerRef = useRef<ReturnType<typeof useVirtualizer<HTMLDivElement, Element>> | null>(
     null,
   );
+  /**
+   * The headers to pin at the current scroll offset. The hunk that governs
+   * the view is the one under the pinned file header, not the one at the very
+   * top edge (which the file header covers): probing at the top pinned the
+   * previous hunk's header right over a hunk that j/k had just scrolled to.
+   */
+  const stickyAt = (startIndex: number) => {
+    let at = startIndex;
+    const v = virtualizerRef.current;
+    const file = stickyHeadersFor(headerIdxs.file, headerIdxs.hunk, at).file;
+    if (v && file !== undefined) {
+      const scrollTop = v.scrollOffset ?? 0;
+      const fileItem = v.measurementsCache[file];
+      if (fileItem && fileItem.start < scrollTop) {
+        at = v.getVirtualItemForOffset(scrollTop + fileItem.size + 1)?.index ?? at;
+      }
+    }
+    return stickyHeadersFor(headerIdxs.file, headerIdxs.hunk, at);
+  };
+  // The virtualizer only re-runs the range extractor when the rendered range
+  // moves, and the last few pixels of a scroll (the end of a j/k glide) often
+  // don't move it: the previous hunk's header stayed pinned over the new one.
+  // Recomputed every render (scrolling re-renders), a change of pinned
+  // headers gives the extractor a new identity, which makes it re-run.
+  const topIdx = virtualizerRef.current?.getVirtualItemForOffset(virtualizerRef.current.scrollOffset ?? 0)?.index ?? 0;
+  const pinnedNow = stickyAt(topIdx);
+  const pinnedKey = `${pinnedNow.file ?? ""}:${pinnedNow.hunk ?? ""}`;
   const rangeExtractor = useCallback(
     (range: Range) => {
-      // The hunk that governs the view is the one under the pinned file
-      // header, not the one at the very top edge (which the file header
-      // covers): probing at the top pinned the previous hunk's header right
-      // over a hunk that j/k had just scrolled to.
-      let at = range.startIndex;
-      const v = virtualizerRef.current;
-      const file = stickyHeadersFor(headerIdxs.file, headerIdxs.hunk, at).file;
-      if (v && file !== undefined) {
-        const scrollTop = v.scrollOffset ?? 0;
-        const fileItem = v.measurementsCache[file];
-        if (fileItem && fileItem.start < scrollTop) {
-          at = v.getVirtualItemForOffset(scrollTop + fileItem.size + 1)?.index ?? at;
-        }
-      }
-      const sticky = stickyHeadersFor(headerIdxs.file, headerIdxs.hunk, at);
+      const sticky = stickyAt(range.startIndex);
       stickyRef.current = sticky;
       return mergeStickyIntoRange(sticky, defaultRangeExtractor(range));
     },
-    [headerIdxs],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [headerIdxs, pinnedKey],
   );
 
   // The pinned file header's height, from any measured file row (they are all
