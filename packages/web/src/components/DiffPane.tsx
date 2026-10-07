@@ -265,6 +265,10 @@ const inSelection = (
       line <= Math.max(selection.anchor, selection.focus),
   );
 
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
+
 export function DiffPane({
   detail,
   entries,
@@ -698,7 +702,9 @@ export function DiffPane({
   const [collapsed, setCollapsedState] = useState<CollapsedMap>(EMPTY_COLLAPSED);
 
   const toggleHunkCollapsed = useCallback((hunkId: string) => {
-    captureAnchorPosition();
+    // Keep the toggled hunk's own header where it is on screen (pinned or
+    // not); the generic focused-hunk anchor lost a pinned header off the top.
+    pendingScrollRef.current = { anchor: foldAnchorRef.current(hunkId), at: performance.now() };
     setCollapsedState((prev) => toggleCollapsed(prev, hunkId));
   }, []);
 
@@ -715,13 +721,29 @@ export function DiffPane({
   // before it. So `v` parks its target here and the scroll happens once the
   // fold (if any) is laid out. `scrollToHunkRef` because scrollToHunk is
   // declared further down.
-  const pendingScrollRef = useRef<string | null>(null);
+  //
+  // `anchor` keeps the folding hunk's header where the reader saw it (folding
+  // drops rows that may sit above the viewport, which would otherwise yank
+  // everything below); `target` then glides to the next hunk — keyboard only,
+  // a click on the checkbox never scrolls the page away.
+  const pendingScrollRef = useRef<{ anchor?: { id: string; top: number }; target?: string; at: number } | null>(
+    null,
+  );
   const scrollToHunkRef = useRef<(id: string) => void>(() => {});
+  const foldAnchorRef = useRef<(id: string) => { id: string; top: number } | undefined>(() => undefined);
+  const glideToHunkRef = useRef<(id: string) => void>(() => {});
+  const restoreAnchorRef = useRef<(anchor: { id: string; top: number }) => void>(() => {});
   const flushPendingScroll = useCallback(() => {
-    const id = pendingScrollRef.current;
-    if (!id) return;
+    const p = pendingScrollRef.current;
+    if (!p) return;
     pendingScrollRef.current = null;
-    requestAnimationFrame(() => scrollToHunkRef.current(id));
+    // A toggle whose fold never came (a failed request) must not move the
+    // page much later, when something unrelated changes the rows.
+    if (performance.now() - p.at > 2000) return;
+    requestAnimationFrame(() => {
+      if (p.anchor) restoreAnchorRef.current(p.anchor);
+      if (p.target) glideToHunkRef.current(p.target);
+    });
   }, []);
   useEffect(() => {
     const previous = prevViewed.current;
@@ -1076,6 +1098,18 @@ export function DiffPane({
       ? 0
       : (virtualizerRef.current?.measurementsCache[firstFileIdx]?.size ?? 34);
 
+  // The pane's height sizes the room left past the last hunk (paddingEnd).
+  const [viewportHeight, setViewportHeight] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => setViewportHeight(el.clientHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -1106,8 +1140,106 @@ export function DiffPane({
     // A hunk scrolled to with align "start" lands right under the pinned file
     // header, which is where it pins itself (see rangeExtractor).
     scrollPaddingStart: fileHeaderHeight,
+    // Room past the last hunk, as editors leave past the last line: without
+    // it the last hunks of a unit can never reach the top, so `v`/`j` would
+    // leave them wherever the page ran out.
+    paddingEnd: Math.max(0, viewportHeight - fileHeaderHeight - 120),
   });
   virtualizerRef.current = virtualizer;
+  const fileHeaderHeightRef = useRef(fileHeaderHeight);
+  fileHeaderHeightRef.current = fileHeaderHeight;
+
+  /** Scroll offset that puts a hunk's header right under the pinned file header. */
+  const hunkTargetOffset = useCallback((id: string): number | null => {
+    const el = scrollRef.current;
+    const idx = hunkRowIndexRef.current.get(id);
+    const m = idx === undefined ? undefined : virtualizerRef.current?.measurementsCache[idx];
+    if (!el || !m) return null;
+    const max = el.scrollHeight - el.clientHeight;
+    return Math.max(0, Math.min(max, m.start - fileHeaderHeightRef.current));
+  }, []);
+
+  // Keyboard moves glide instead of jumping, so the reader sees where they
+  // went. The target is re-read every frame: rows measured on the way in can
+  // still move it. Reduced motion jumps; a wheel or touch cancels the glide.
+  const glideFrame = useRef<number | null>(null);
+  const glideToHunk = useCallback(
+    (id: string) => {
+      const el = scrollRef.current;
+      if (!el) return;
+      if (glideFrame.current !== null) cancelAnimationFrame(glideFrame.current);
+      glideFrame.current = null;
+      const first = hunkTargetOffset(id);
+      if (first === null) {
+        scrollToHunkRef.current(id);
+        return;
+      }
+      if (prefersReducedMotion()) {
+        el.scrollTop = first;
+        return;
+      }
+      const from = el.scrollTop;
+      const t0 = performance.now();
+      const duration = Math.min(320, 170 + Math.abs(first - from) / 12);
+      const step = (now: number) => {
+        const t = Math.min(1, (now - t0) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        const to = hunkTargetOffset(id) ?? first;
+        el.scrollTop = from + (to - from) * eased;
+        if (t < 1) {
+          glideFrame.current = requestAnimationFrame(step);
+        } else {
+          // One settling frame: the last rows measured on arrival.
+          glideFrame.current = requestAnimationFrame(() => {
+            glideFrame.current = null;
+            const settled = hunkTargetOffset(id);
+            if (settled !== null && Math.abs(settled - el.scrollTop) > 1) el.scrollTop = settled;
+          });
+        }
+      };
+      glideFrame.current = requestAnimationFrame(step);
+    },
+    [hunkTargetOffset],
+  );
+  glideToHunkRef.current = glideToHunk;
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const cancel = () => {
+      if (glideFrame.current !== null) cancelAnimationFrame(glideFrame.current);
+      glideFrame.current = null;
+    };
+    el.addEventListener("wheel", cancel, { passive: true });
+    el.addEventListener("touchstart", cancel, { passive: true });
+    return () => {
+      el.removeEventListener("wheel", cancel);
+      el.removeEventListener("touchstart", cancel);
+    };
+  }, []);
+
+  /**
+   * Where a hunk's header sits on screen now, for keeping it there across a
+   * fold. A header scrolled past is drawn pinned under the file header, so
+   * that is where the reader sees it. Undefined when it is off screen below.
+   */
+  const foldAnchor = useCallback((id: string): { id: string; top: number } | undefined => {
+    const el = scrollRef.current;
+    const idx = hunkRowIndexRef.current.get(id);
+    const m = idx === undefined ? undefined : virtualizerRef.current?.measurementsCache[idx];
+    if (!el || !m) return undefined;
+    const natural = m.start - el.scrollTop;
+    if (natural > el.clientHeight) return undefined;
+    return { id, top: Math.max(natural, fileHeaderHeightRef.current) };
+  }, []);
+  foldAnchorRef.current = foldAnchor;
+  restoreAnchorRef.current = (anchor) => {
+    const el = scrollRef.current;
+    const idx = hunkRowIndexRef.current.get(anchor.id);
+    const m = idx === undefined ? undefined : virtualizerRef.current?.measurementsCache[idx];
+    if (!el || !m) return;
+    const want = m.start - anchor.top;
+    if (Math.abs(el.scrollTop - want) > 1) el.scrollTop = want;
+  };
 
   /* ------------------------------------------- keeping the reader in place */
   // Folding a hunk, or closing a comment block, deletes rows that may be
@@ -1329,9 +1461,9 @@ export function DiffPane({
   const focusAndScroll = useCallback(
     (id: string) => {
       onFocusHunk(id);
-      scrollToHunk(id);
+      glideToHunk(id);
     },
-    [onFocusHunk, scrollToHunk],
+    [onFocusHunk, glideToHunk],
   );
 
   /* ------------------------------------------------------ search navigation */
@@ -1598,10 +1730,10 @@ export function DiffPane({
         const marking = !detail.state.hunks[focusedHunkId]?.viewed;
         // Marking one read moves on to the next, like j; unmarking stays put.
         // Focus now, scroll after the marked hunk's fold (see pendingScrollRef).
-        if (marking && cur < ids.length - 1) {
-          onFocusHunk(ids[cur + 1]);
-          pendingScrollRef.current = ids[cur + 1];
-        }
+        const anchor = foldAnchor(focusedHunkId);
+        const target = marking && cur < ids.length - 1 ? ids[cur + 1] : undefined;
+        if (target) onFocusHunk(target);
+        pendingScrollRef.current = { anchor, target, at: performance.now() };
         onToggleViewed(focusedHunkId, marking);
       } else if (e.key === "z") {
         if (!focusedHunkId) return;
@@ -2180,6 +2312,8 @@ export function DiffPane({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
+              // Fold (or unfold) in place: no scrolling away on a click.
+              pendingScrollRef.current = { anchor: foldAnchor(row.hunkId), at: performance.now() };
               onToggleViewed(row.hunkId, !st.viewed);
             }}
             title={st.viewed ? "Mark as not viewed (v)" : "Mark as viewed (v)"}

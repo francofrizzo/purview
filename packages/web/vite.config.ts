@@ -51,7 +51,8 @@ export default defineConfig({
     port: 5179,
     proxy: {
       "/api": {
-        target: "http://localhost:4779",
+        // PURVIEW_PORT points the dev server at another backend (e.g. a scratch one).
+        target: `http://localhost:${process.env.PURVIEW_PORT ?? 4779}`,
         changeOrigin: true,
       },
     },
