@@ -11,6 +11,7 @@
 import type { DraftComment } from "../api/types";
 import { bubbleTitle } from "../lib/comments";
 import { CommentCard, CommentPill, type CommentActions } from "./CommentCard";
+import { IconClose } from "./icons";
 
 export type InlineCommentActions = CommentActions;
 
@@ -72,6 +73,18 @@ export function InlineCommentList({
       // hunk underneath or, worse, start a line selection.
       onClick={(e) => e.stopPropagation()}
     >
+      <div className="mb-1 flex max-w-[46rem] justify-end">
+        <button
+          type="button"
+          data-testid="inline-comments-close"
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
+          style={{ color: "var(--fg-faint)" }}
+          title="Hide these comments (the marker in the gutter brings them back)"
+          onClick={onCollapse}
+        >
+          hide <IconClose width={9} height={9} />
+        </button>
+      </div>
       <ul className="flex max-w-[46rem] flex-col gap-1.5">
         {comments.map((c) => (
           <li key={c.id} data-testid={`inline-comment-${c.id}`}>
@@ -79,30 +92,18 @@ export function InlineCommentList({
           </li>
         ))}
       </ul>
-      <div className={`mt-1.5 flex max-w-[46rem] items-center gap-2${composing ? " justify-end" : ""}`}>
-        {onAdd && !composing ? (
-          <button
-            type="button"
-            data-testid="inline-add-comment"
-            className="flex-1 rounded-md px-3 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)]"
-            style={{ border: "1px dashed var(--border-strong)", color: "var(--fg-faint)" }}
-            title={`Add a comment on ${label}`}
-            onClick={onAdd}
-          >
-            Add a comment…
-          </button>
-        ) : null}
+      {onAdd && !composing ? (
         <button
           type="button"
-          data-testid="inline-comments-close"
-          className="flex-none rounded px-2 py-1.5 text-2xs transition-colors hover:bg-[var(--bg-hover)]"
-          style={{ color: "var(--fg-faint)" }}
-          title="Hide these comments (the marker in the gutter brings them back)"
-          onClick={onCollapse}
+          data-testid="inline-add-comment"
+          className="mt-1.5 block w-full max-w-[46rem] rounded-md px-3 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)]"
+          style={{ border: "1px dashed var(--border-strong)", color: "var(--fg-faint)" }}
+          title={`Add a comment on ${label}`}
+          onClick={onAdd}
         >
-          hide
+          Add a comment…
         </button>
-      </div>
+      ) : null}
     </div>
   );
 }
