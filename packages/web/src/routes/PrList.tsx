@@ -21,6 +21,7 @@ import {
   formatAddedAt,
   formatFullTimestamp,
   groupPrsByRepo,
+  finishedPrKeys,
   partitionRepoGroups,
   prUrlForNumber,
   type RepoGroup,
@@ -256,6 +257,7 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
           repo={group}
           archived={repoArchived}
           onImport={repoArchived ? undefined : () => setImportOpen(true)}
+          finishedKeys={finishedPrKeys(group)}
         />
       </header>
 

@@ -9,6 +9,7 @@ import {
   formatMustReadLines,
   groupKeyOf,
   groupPrsByRepo,
+  finishedPrKeys,
   partitionRepoGroups,
   prUrlForNumber,
 } from "./prList";
@@ -264,5 +265,18 @@ describe("prUrlForNumber", () => {
   });
   it("rejects anything else", () => {
     for (const bad of ["", "abc", "12a", "#", "0", "-3", "1.5"]) expect(prUrlForNumber(repo, bad)).toBeNull();
+  });
+});
+
+describe("finishedPrKeys", () => {
+  it("picks the merged and closed PRs, from every block", () => {
+    const pr = (key: string, state: string) => ({ key, state }) as PrListEntry;
+    expect(
+      finishedPrKeys({
+        needsReview: [pr("a", "open"), pr("b", "closed")],
+        mine: [pr("c", "merged"), pr("d", "draft")],
+        prs: [pr("e", "merged")],
+      }),
+    ).toEqual(["b", "c", "e"]);
   });
 });

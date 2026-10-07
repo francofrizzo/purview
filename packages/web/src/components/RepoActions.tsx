@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { errorText } from "../api/errors";
-import { useRemoveRepo, useRepoRemoval, useSetRepoArchived } from "../api/hooks";
+import { useArchiveMany, useRemoveRepo, useRepoRemoval, useSetRepoArchived } from "../api/hooks";
 import {
   removalBlockedWhy,
   removalConfirmMatches,
@@ -42,12 +42,16 @@ export function RepoMenu({
   repo,
   archived,
   onImport,
+  finishedKeys = [],
 }: {
   repo: RepoRef;
   archived: boolean;
   onImport?: () => void;
+  /** this repo's merged or closed PRs not archived yet: what auto-archive sweeps */
+  finishedKeys?: string[];
 }) {
   const setRepoArchived = useSetRepoArchived();
+  const archiveMany = useArchiveMany();
   const navigate = useNavigate();
   const background = useModalBackground();
   const rkey = rkeyOf(repo);
@@ -70,6 +74,21 @@ export function RepoMenu({
               },
             ]
           : []),
+        ...(archived
+          ? []
+          : [
+              {
+                label: finishedKeys.length
+                  ? `auto-archive merged & closed (${finishedKeys.length})`
+                  : "auto-archive merged & closed",
+                testId: `repo-auto-archive-${rkey}`,
+                disabled: finishedKeys.length === 0 || archiveMany.isPending,
+                hint: finishedKeys.length
+                  ? `Move the ${finishedKeys.length} merged or closed PR${finishedKeys.length === 1 ? "" : "s"} into this repo's archived list. Local only; unarchive any of them any time.`
+                  : "No merged or closed PRs left to archive here.",
+                onClick: () => archiveMany.mutate(finishedKeys),
+              },
+            ]),
         {
           label: archived ? "unarchive repo" : "archive repo",
           testId: `repo-archive-${rkey}`,

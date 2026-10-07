@@ -224,3 +224,10 @@ export function prUrlForNumber(
   if (!m || Number(m[1]) < 1) return null;
   return `https://${repo.host}/${repo.owner}/${repo.repo}/pull/${Number(m[1])}`;
 }
+
+/** A repo's merged or closed PRs that are not archived yet: what auto-archive sweeps. */
+export function finishedPrKeys(group: Pick<RepoGroup, "needsReview" | "mine" | "prs">): string[] {
+  return [...group.needsReview, ...group.mine, ...group.prs]
+    .filter((pr) => pr.state === "merged" || pr.state === "closed")
+    .map((pr) => pr.key);
+}

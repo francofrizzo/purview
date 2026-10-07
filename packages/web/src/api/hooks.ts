@@ -163,6 +163,39 @@ export function useSetArchived() {
   });
 }
 
+/**
+ * Archive many PRs at once (a repo's merged and closed ones). Optimistic like
+ * the single archive: every row moves at once, and all of them roll back if
+ * any request fails.
+ */
+export function useArchiveMany() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (keys: string[]) => {
+      await Promise.all(keys.map((key) => api.setArchived(key, true)));
+    },
+    onMutate: async (keys) => {
+      await qc.cancelQueries({ queryKey: qk.prs });
+      const previous = qc.getQueryData<PrListEntry[]>(qk.prs);
+      if (previous) {
+        qc.setQueryData(
+          qk.prs,
+          keys.reduce((list, key) => applyArchive(list, key, true), previous),
+        );
+      }
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) qc.setQueryData(qk.prs, ctx.previous);
+    },
+    onSettled: (_d, _e, keys) => {
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: qk.repos });
+      for (const key of keys) void qc.invalidateQueries({ queryKey: qk.pr(key) });
+    },
+  });
+}
+
 /* ------------------------------------------------------------------ repos */
 
 export function useRepos() {
