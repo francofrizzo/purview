@@ -1098,12 +1098,52 @@ export interface RemoteThread {
 }
 
 /**
- * GET /api/prs/:key/threads — the PR's review threads as GitHub has them.
- * Served from a per-PR cache when GitHub is unreachable: `error` is then set
- * and `fetchedAt` says how old the copy is (absent = never fetched).
+ * A submitted review on the PR: its verdict and its top-level body (the
+ * inline comments it carried live in `threads`). Pending reviews never appear.
+ */
+export interface RemoteReview {
+  /** GraphQL node id */
+  id: string;
+  databaseId: number;
+  author: RemoteAuthor;
+  state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED";
+  /** "" when the reviewer wrote nothing at the top level */
+  body: string;
+  submittedAt: string;
+  /** link on github.com */
+  url: string;
+  /** inline comments submitted with this review */
+  commentCount: number;
+  /** the viewer wrote it */
+  isMine: boolean;
+}
+
+/** A comment on the PR's conversation tab (an issue comment, not on a line). */
+export interface RemoteConversationComment {
+  /** GraphQL node id */
+  id: string;
+  databaseId: number;
+  author: RemoteAuthor;
+  body: string;
+  createdAt: string;
+  /** set when edited after creation */
+  updatedAt?: string;
+  /** link on github.com */
+  url: string;
+  /** the viewer wrote it */
+  isMine: boolean;
+}
+
+/**
+ * GET /api/prs/:key/threads — the PR's review threads as GitHub has them,
+ * plus its reviews and conversation comments (first 100 of each, oldest
+ * first). Served from a per-PR cache when GitHub is unreachable: `error` is
+ * then set and `fetchedAt` says how old the copy is (absent = never fetched).
  */
 export interface ThreadsResponse {
   threads: RemoteThread[];
+  reviews: RemoteReview[];
+  conversation: RemoteConversationComment[];
   fetchedAt?: string;
   error?: string;
 }

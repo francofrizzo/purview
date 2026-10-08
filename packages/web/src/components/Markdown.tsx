@@ -502,6 +502,15 @@ function BlockList({ blocks }: { blocks: MdBlock[] }) {
             const alert = ALERT.exec(block.text);
             if (alert) {
               const kind = ALERTS[alert[1].toUpperCase()];
+              const first = block.blocks[0];
+              // The `[!NOTE]` marker leads the first block; the rest of that
+              // block (if any) is the callout's first line of content.
+              const body =
+                first && "text" in first && typeof first.text === "string"
+                  ? [{ ...first, text: first.text.replace(ALERT, "") } as MdBlock, ...block.blocks.slice(1)].filter(
+                      (b) => !("text" in b) || b.text.trim() !== "",
+                    )
+                  : block.blocks;
               return (
                 <div
                   key={i}
@@ -512,7 +521,7 @@ function BlockList({ blocks }: { blocks: MdBlock[] }) {
                   <div className="font-semibold" style={{ color: kind.color }}>
                     {kind.label}
                   </div>
-                  <Inline nodes={parseInline(block.text.slice(alert[0].length))} />
+                  <BlockList blocks={body} />
                 </div>
               );
             }
@@ -522,7 +531,7 @@ function BlockList({ blocks }: { blocks: MdBlock[] }) {
                 className="my-1 border-l-2 pl-2"
                 style={{ borderColor: "var(--border-strong)", color: "var(--fg-faint)" }}
               >
-                <Inline nodes={parseInline(block.text)} />
+                <BlockList blocks={block.blocks} />
               </blockquote>
             );
           }

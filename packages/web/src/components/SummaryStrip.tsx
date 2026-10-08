@@ -1,6 +1,6 @@
 /**
- * The analysis summary — and the author's PR description — collapsed to one
- * line.
+ * The analysis summary — and the author's PR description, and the reviews it
+ * has had on GitHub — collapsed to one line.
  *
  * A real summary is a multi-sentence paragraph; as a static block between the
  * top bar and the panes it cost 150–200px of the reader's vertical space for
@@ -10,8 +10,12 @@
  * never reflow when it opens.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { RemoteConversationComment, RemoteReview } from "../api/types";
+import { buildTimeline, latestVerdicts } from "../lib/reviews";
+import type { ThreadFilters } from "../lib/threads";
 import { Markdown } from "./Markdown";
+import { ReviewTimeline, ReviewerVerdicts } from "./Reviews";
 import { IconChevron } from "./icons";
 
 /**
@@ -71,6 +75,9 @@ export function SummaryStrip({
   summary,
   description,
   author,
+  reviews,
+  conversation,
+  filters,
   viewed,
   total,
   open,
@@ -82,6 +89,12 @@ export function SummaryStrip({
   /** the PR description, already through `visibleDescription`; "" for none */
   description: string;
   author?: string;
+  /** the PR's reviews on GitHub, oldest first */
+  reviews?: RemoteReview[];
+  /** the PR's conversation-tab comments, oldest first */
+  conversation?: RemoteConversationComment[];
+  /** the review-thread filters, which hide AI reviewers here too */
+  filters?: ThreadFilters;
   viewed: number;
   total: number;
   open: boolean;
@@ -96,7 +109,14 @@ export function SummaryStrip({
   // `peeking` is this component's own transient hover state. Pinned always
   // wins, so leaving the strip cannot close something the reader clicked open.
   const shown = open || peeking;
-  const what = summary && description ? "summary and description" : summary ? "analysis summary" : "PR description";
+  const timeline = useMemo(() => buildTimeline(reviews, conversation, filters), [reviews, conversation, filters]);
+  const verdicts = useMemo(() => latestVerdicts(reviews, { prAuthor: author, filters }), [reviews, author, filters]);
+  const hasReviews = timeline.entries.length > 0 || timeline.hidden > 0;
+  const what =
+    [summary ? "analysis summary" : "", description ? "PR description" : "", hasReviews ? "reviews" : ""]
+      .filter(Boolean)
+      .join(", ")
+      .replace(/, ([^,]*)$/, " and $1") || "PR description";
 
   const clearTimer = () => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -183,10 +203,15 @@ export function SummaryStrip({
         >
           {summary ? (
             summaryLede(summary)
-          ) : (
+          ) : description ? (
             <>
               <span style={{ color: "var(--fg-faint)" }}>Description · </span>
               {summaryLede(description)}
+            </>
+          ) : (
+            <>
+              <span style={{ color: "var(--fg-faint)" }}>Reviews · </span>
+              {timeline.entries.length} on GitHub
             </>
           )}
         </span>
@@ -199,6 +224,7 @@ export function SummaryStrip({
             + description
           </span>
         ) : null}
+        <ReviewerVerdicts verdicts={verdicts} />
         <span
           className="flex-none text-2xs leading-4 tabular-nums"
           style={{ color: "var(--fg-faint)" }}
@@ -217,7 +243,7 @@ export function SummaryStrip({
           data-testid="summary-overlay"
           data-pinned={open ? "true" : "false"}
           className={`absolute inset-x-0 top-full z-40 overflow-y-auto border-b ${
-            description ? "max-h-[60vh]" : "max-h-[40vh]"
+            description || hasReviews ? "max-h-[60vh]" : "max-h-[40vh]"
           }`}
           style={{
             background: "var(--bg-raised)",
@@ -243,6 +269,19 @@ export function SummaryStrip({
               {/* The author's own words, headings and all: unlike the
                   summary, it is a document, and its structure is its own. */}
               <Markdown text={description} />
+            </section>
+          ) : null}
+          {hasReviews ? (
+            <section
+              data-testid="pr-reviews"
+              className="max-w-[80ch] px-4 py-3"
+              style={summary || description ? { borderTop: "1px solid var(--border)" } : undefined}
+            >
+              <OverlayHeading>
+                Reviews
+                <span style={{ color: "var(--fg-faint)" }}> · on GitHub</span>
+              </OverlayHeading>
+              <ReviewTimeline entries={timeline.entries} hidden={timeline.hidden} />
             </section>
           ) : null}
         </div>

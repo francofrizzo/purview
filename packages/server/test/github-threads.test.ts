@@ -7,6 +7,8 @@ import { createApp } from "../src/app.js";
 import { readComments, writeComments } from "../src/comments.js";
 import {
   classifyAuthor,
+  normalizeConversation,
+  normalizeReviews,
   normalizeThreads,
   threadsPath,
   type RawThread,
@@ -71,6 +73,41 @@ function rawThread(id: string, comments: ReturnType<typeof rawComment>[], over: 
     viewerCanReply: true,
     comments: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: comments },
     ...over,
+  };
+}
+
+function rawReview(
+  login: string,
+  state: string,
+  over: Partial<{ typename: string; body: string; at: string; inline: number; dbId: number }> = {},
+) {
+  const dbId = over.dbId ?? nextDbId++;
+  return {
+    id: `PRR_${dbId}`,
+    databaseId: dbId,
+    state,
+    body: over.body ?? "",
+    submittedAt: state === "PENDING" ? null : over.at ?? "2026-01-01T00:00:00Z",
+    createdAt: over.at ?? "2026-01-01T00:00:00Z",
+    url: `https://github.com/acme/widgets/pull/7#pullrequestreview-${dbId}`,
+    author: { __typename: over.typename ?? "User", login, avatarUrl: `https://a/${login}` },
+    comments: { totalCount: over.inline ?? 0 },
+  };
+}
+
+function rawIssueComment(
+  login: string,
+  over: Partial<{ typename: string; body: string; at: string; edited: string; dbId: number }> = {},
+) {
+  const dbId = over.dbId ?? nextDbId++;
+  return {
+    id: `IC_${dbId}`,
+    databaseId: dbId,
+    body: over.body ?? `said ${dbId}`,
+    createdAt: over.at ?? "2026-01-01T00:00:00Z",
+    lastEditedAt: over.edited ?? null,
+    url: `https://github.com/acme/widgets/pull/7#issuecomment-${dbId}`,
+    author: { __typename: over.typename ?? "User", login, avatarUrl: `https://a/${login}` },
   };
 }
 
@@ -221,6 +258,56 @@ describe("normalizeThreads", () => {
   });
 });
 
+describe("normalizeReviews", () => {
+  it("maps reviews oldest first, drops PENDING, counts inline comments and marks the viewer's", () => {
+    const out = normalizeReviews(
+      [
+        rawReview("bob", "CHANGES_REQUESTED", { at: "2026-01-03T00:00:00Z", body: "fix it", inline: 2, dbId: 31 }),
+        rawReview("me", "PENDING", { dbId: 32 }),
+        rawReview("coderabbitai", "COMMENTED", { typename: "Bot", at: "2026-01-02T00:00:00Z", dbId: 33 }),
+        rawReview("alice", "APPROVED", { at: "2026-01-01T00:00:00Z", dbId: 34 }),
+        rawReview("Me", "DISMISSED", { at: "2026-01-04T00:00:00Z", dbId: 35 }),
+      ],
+      { viewerLogin: "me" },
+    );
+    expect(out.map((r) => [r.author.login, r.state])).toEqual([
+      ["alice", "APPROVED"],
+      ["coderabbitai", "COMMENTED"],
+      ["bob", "CHANGES_REQUESTED"],
+      ["Me", "DISMISSED"],
+    ]);
+    expect(out[2]).toEqual({
+      id: "PRR_31",
+      databaseId: 31,
+      author: { login: "bob", bot: false, avatarUrl: "https://a/bob" },
+      state: "CHANGES_REQUESTED",
+      body: "fix it",
+      submittedAt: "2026-01-03T00:00:00Z",
+      url: "https://github.com/acme/widgets/pull/7#pullrequestreview-31",
+      commentCount: 2,
+      isMine: false,
+    });
+    expect(out[1].author).toMatchObject({ bot: true, botName: "CodeRabbit" });
+    expect(out[3].isMine).toBe(true);
+  });
+});
+
+describe("normalizeConversation", () => {
+  it("maps issue comments oldest first, with updatedAt only when edited", () => {
+    const out = normalizeConversation(
+      [
+        rawIssueComment("bob", { at: "2026-01-02T00:00:00Z", dbId: 41 }),
+        rawIssueComment("me", { at: "2026-01-01T00:00:00Z", edited: "2026-01-05T00:00:00Z", dbId: 42 }),
+      ],
+      { viewerLogin: "ME", aiReviewers: ["bob"] },
+    );
+    expect(out.map((c) => c.id)).toEqual(["IC_42", "IC_41"]);
+    expect(out[0]).toMatchObject({ isMine: true, updatedAt: "2026-01-05T00:00:00Z" });
+    expect(out[1]).not.toHaveProperty("updatedAt");
+    expect(out[1].author.bot).toBe(true);
+  });
+});
+
 /* ------------------------------------------------------------------ routes */
 
 describe("GET /api/prs/:key/threads", () => {
@@ -241,6 +328,32 @@ describe("GET /api/prs/:key/threads", () => {
     expect(body.threads[0].comments[0].author).toMatchObject({ bot: true, botName: "CodeRabbit" });
     expect(body.threads[1].comments[0].author).toMatchObject({ login: "house-ai", bot: true });
     expect(fs.existsSync(threadsPath(key, root))).toBe(true);
+  });
+
+  it("carries reviews and conversation comments from the same single call, and caches them", async () => {
+    gh.threads = [rawThread("T1", [rawComment("bob")])];
+    gh.prReviews = [rawReview("bob", "APPROVED", { inline: 1 }), rawReview("reviewer-bot", "PENDING")];
+    gh.conversation = [rawIssueComment("coderabbitai", { typename: "Bot", body: "<!-- walkthrough -->hi" })];
+    const body = await getThreads();
+    expect(gh.calls.filter((c) => c[1] === "graphql")).toHaveLength(1);
+    expect(body.reviews).toHaveLength(1);
+    expect(body.reviews[0]).toMatchObject({ state: "APPROVED", commentCount: 1, author: { login: "bob" } });
+    expect(body.conversation[0]).toMatchObject({ body: "<!-- walkthrough -->hi", author: { botName: "CodeRabbit" } });
+
+    gh.fail("reviewThreads", "HTTP 502 Bad Gateway");
+    const cached = await getThreads();
+    expect(cached.error).toBeTruthy();
+    expect(cached.reviews).toEqual(body.reviews);
+    expect(cached.conversation).toEqual(body.conversation);
+  });
+
+  it("reads a cache written before reviews were fetched, defaulting them to empty", async () => {
+    const file = threadsPath(key, root);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ threads: [], fetchedAt: "2026-01-01T00:00:00Z" }));
+    gh.fail("reviewThreads", "HTTP 502 Bad Gateway");
+    const body = await getThreads();
+    expect(body).toMatchObject({ threads: [], reviews: [], conversation: [], fetchedAt: "2026-01-01T00:00:00Z" });
   });
 
   it("serves the cached copy with an error when gh fails, relinking local comments", async () => {
@@ -276,6 +389,8 @@ describe("GET /api/prs/:key/threads", () => {
     gh.fail("reviewThreads", "HTTP 502 Bad Gateway");
     const body = await getThreads();
     expect(body.threads).toEqual([]);
+    expect(body.reviews).toEqual([]);
+    expect(body.conversation).toEqual([]);
     expect(body.fetchedAt).toBeUndefined();
     expect(body.error).toBeTruthy();
   });

@@ -117,6 +117,7 @@ import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
 import { useDiffViewPrefs, useSettings, useThreadFilters } from "../lib/settings";
+import { latestVerdicts } from "../lib/reviews";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
 import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
@@ -1329,11 +1330,14 @@ export function PrView() {
           onCancel={() => cancelAnalysis.mutate()}
         />
       ) : null}
-      {summary || description ? (
+      {summary || description || threadsQuery.data?.reviews?.length || threadsQuery.data?.conversation?.length ? (
         <SummaryStrip
           summary={summary}
           description={description}
           author={detail.meta.author}
+          reviews={threadsQuery.data?.reviews}
+          conversation={threadsQuery.data?.conversation}
+          filters={threadFilters.filters}
           viewed={overall.viewed}
           total={overall.total}
           open={summaryOpen}
@@ -1755,6 +1759,8 @@ export function PrView() {
         {reviewOpen && !chat.open ? (
           <FinishReviewPanel
             review={review.data}
+            verdicts={latestVerdicts(threadsQuery.data?.reviews, { prAuthor: detail?.meta.author })}
+            unresolvedThreads={threadsQuery.data?.threads.filter((t) => !t.isResolved).length ?? 0}
             loading={review.isLoading}
             error={review.error as Error | null}
             submitting={submitReview.isPending}

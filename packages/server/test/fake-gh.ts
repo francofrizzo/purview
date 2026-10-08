@@ -37,6 +37,13 @@ export interface FakeGh {
    * query (see github-threads.ts), mutated by resolve/unresolve and replies.
    */
   threads: Record<string, any>[];
+  /**
+   * Raw GraphQL `PullRequestReview` nodes served alongside reviewThreads
+   * (distinct from `reviews`, the REST-shaped review lifecycle state).
+   */
+  prReviews: Record<string, any>[];
+  /** Raw GraphQL `IssueComment` nodes: the PR's conversation tab. */
+  conversation: Record<string, any>[];
   /** page size the fake uses for reviewThreads, to exercise pagination */
   threadPageSize: number;
   login: string;
@@ -66,6 +73,8 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
     calls: [],
     reviews: [],
     threads: [],
+    prReviews: [],
+    conversation: [],
     threadPageSize: 100,
     login: opts.login ?? "reviewer-bot",
     deletedCommentIds: [],
@@ -175,6 +184,8 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
                   pageInfo: { hasNextPage: end < state.threads.length, endCursor: String(end) },
                   nodes: page,
                 },
+                reviews: { nodes: state.prReviews.slice(0, 100) },
+                comments: { nodes: state.conversation.slice(0, 100) },
               },
             },
           },

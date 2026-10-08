@@ -39,8 +39,17 @@ describe("parseMarkdown", () => {
   });
 
   it("parses blockquotes and thematic breaks", () => {
-    expect(parseMarkdown("> quoted")).toEqual([{ type: "quote", text: "quoted" }]);
+    expect(parseMarkdown("> quoted")).toEqual([
+      { type: "quote", text: "quoted", blocks: [{ type: "paragraph", text: "quoted" }] },
+    ]);
     expect(parseMarkdown("---")).toEqual([{ type: "hr" }]);
+  });
+
+  it("parses a quote's lines as markdown, so alerts can hold headings and details", () => {
+    const [q] = parseMarkdown("> [!WARNING]\n> ## Limit reached\n> <details><summary>Why</summary>\n> body\n> </details>");
+    expect(q.type).toBe("quote");
+    if (q.type !== "quote") return;
+    expect(q.blocks.map((b) => b.type)).toEqual(["paragraph", "heading", "details"]);
   });
 });
 
@@ -208,6 +217,21 @@ describe("parseMarkdown <details>", () => {
 });
 
 describe("parseInline GitHub extras", () => {
+  it("drops layout-only HTML and themed banner twins", () => {
+    expect(parseInline("<p>Review in <b>Linear</b></p>")).toEqual([
+      { type: "text", text: "Review in " },
+      { type: "strong", text: "Linear" },
+    ]);
+    expect(parseInline("![a](https://x/b.png#gh-light-mode-only)ok")).toEqual([{ type: "text", text: "ok" }]);
+    expect(
+      parseInline(
+        '<a href="https://x/s#gh-light-mode-only"><img src="l.svg" alt="Stack"></a><a href="https://x/s#gh-dark-mode-only"><img src="d.svg" alt="Stack"></a>',
+      ),
+    ).toEqual([{ type: "link", text: "Stack", href: "https://x/s" }]);
+    // generics are not tags
+    expect(parseInline("List<Promise<void>>")).toEqual([{ type: "text", text: "List<Promise<void>>" }]);
+  });
+
   it("renders strike, kbd, sub/sup, b/i, br, a and img", () => {
     expect(parseInline("~~old~~ press <kbd>Ctrl</kbd> H<sub>2</sub>O x<sup>2</sup>")).toEqual([
       { type: "del", text: "old" },

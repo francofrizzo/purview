@@ -50,7 +50,16 @@ import type {
   SubmitReviewResult,
   SyncResult,
 } from "../api/types";
-import { mockDetail, mockDrafts, mockList, mockRepoConfigs, mockRepos, mockThreads } from "./fixture";
+import {
+  mockConversation,
+  mockDetail,
+  mockDrafts,
+  mockList,
+  mockRepoConfigs,
+  mockRepos,
+  mockReviews,
+  mockThreads,
+} from "./fixture";
 
 /** Stand-in for the previous revision's body of the one hunk that changed. */
 const MOCK_DOD_BEFORE: Record<string, string[]> = {
@@ -1045,7 +1054,16 @@ export const mockApi = {
           })),
       }))
       .filter((t) => t.comments.length);
-    return { threads: out, fetchedAt: new Date().toISOString() };
+    const asServer = <T extends { author: { login: string; bot: boolean } }>(x: T): T => ({
+      ...structuredClone(x),
+      author: { ...x.author, bot: x.author.bot || aiReviewer(x.author.login) },
+    });
+    return {
+      threads: out,
+      reviews: mockReviews.map(asServer),
+      conversation: mockConversation.map(asServer),
+      fetchedAt: new Date().toISOString(),
+    };
   },
 
   async setThreadResolved(_key: string, id: string, resolved: boolean): Promise<ResolveThreadResult> {

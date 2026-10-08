@@ -44,7 +44,8 @@ export interface ThreadActions {
 
 export type ThreadListActions = CommentActions & ThreadActions;
 
-function age(iso: string | undefined): string | null {
+/** "3d ago", "just now"; null for a missing or unparseable stamp. */
+export function age(iso: string | undefined): string | null {
   if (!iso) return null;
   const ms = Date.now() - new Date(iso).getTime();
   if (!Number.isFinite(ms)) return null;

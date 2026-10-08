@@ -14,6 +14,9 @@ import { ReviewError, classifyGhReviewError } from "./github-review.js";
  * threads and carries resolution state (`isResolved`, `viewerCanResolve`…);
  * the REST comment listing has neither.
  *
+ * The same call carries the PR's reviews (verdicts and their bodies) and its
+ * conversation-tab comments — first 100 of each — for the summary strip.
+ *
  * The last good fetch is cached as `threads.json` beside `comments.json`, so
  * an offline reader (or a gh hiccup) still sees the threads, flagged stale.
  */
@@ -60,9 +63,36 @@ export interface RemoteThread {
   comments: RemoteComment[];
 }
 
+/** Mirrors `RemoteReview` in packages/web/src/api/types.ts. */
+export interface RemoteReview {
+  id: string;
+  databaseId: number;
+  author: RemoteAuthor;
+  state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED";
+  body: string;
+  submittedAt: string;
+  url: string;
+  commentCount: number;
+  isMine: boolean;
+}
+
+/** Mirrors `RemoteConversationComment` in packages/web/src/api/types.ts. */
+export interface RemoteConversationComment {
+  id: string;
+  databaseId: number;
+  author: RemoteAuthor;
+  body: string;
+  createdAt: string;
+  updatedAt?: string;
+  url: string;
+  isMine: boolean;
+}
+
 /** GET /api/prs/:key/threads */
 export interface ThreadsResponse {
   threads: RemoteThread[];
+  reviews: RemoteReview[];
+  conversation: RemoteConversationComment[];
   fetchedAt?: string;
   error?: string;
 }
@@ -162,6 +192,28 @@ export interface RawThread {
   comments?: RawConnection<RawComment>;
 }
 
+export interface RawReview {
+  id: string;
+  databaseId: number;
+  state?: string | null;
+  body?: string | null;
+  submittedAt?: string | null;
+  createdAt?: string | null;
+  url: string;
+  author?: { __typename?: string; login?: string; avatarUrl?: string } | null;
+  comments?: { totalCount?: number } | null;
+}
+
+export interface RawIssueComment {
+  id: string;
+  databaseId: number;
+  body?: string | null;
+  createdAt: string;
+  lastEditedAt?: string | null;
+  url: string;
+  author?: { __typename?: string; login?: string; avatarUrl?: string } | null;
+}
+
 const COMMENT_FIELDS = `id databaseId body createdAt lastEditedAt url
   author{ __typename login avatarUrl }
   pullRequestReview{ state }`;
@@ -180,6 +232,19 @@ const THREADS_QUERY = `query($owner:String!,$repo:String!,$number:Int!,$after:St
             pageInfo{ hasNextPage endCursor }
             nodes{ ${COMMENT_FIELDS} }
           }
+        }
+      }
+      reviews(first:100){
+        nodes{
+          id databaseId state body submittedAt createdAt url
+          author{ __typename login avatarUrl }
+          comments{ totalCount }
+        }
+      }
+      comments(first:100){
+        nodes{
+          id databaseId body createdAt lastEditedAt url
+          author{ __typename login avatarUrl }
         }
       }
     }
@@ -244,18 +309,32 @@ function remainingComments(key: PrKey, threadId: string, after: string): RawComm
 export interface RawThreadsPage {
   viewerLogin: string;
   threads: RawThread[];
+  /** the first 100 only — rides along with the first threads page */
+  reviews: RawReview[];
+  /** the conversation tab's comments, the first 100 only */
+  conversation: RawIssueComment[];
 }
 
-/** Every review thread on the PR, every comment in each — paginated by 100. */
+/**
+ * Every review thread on the PR, every comment in each — paginated by 100 —
+ * plus the first page of reviews and conversation comments from the same call.
+ */
 export function fetchRawThreads(key: PrKey): RawThreadsPage {
   const threads: RawThread[] = [];
+  let reviews: RawReview[] = [];
+  let conversation: RawIssueComment[] = [];
   let viewerLogin = "";
   let after: string | undefined;
   do {
+    const firstPage = after === undefined;
     const data = graphql<{
       viewer?: { login?: string };
       repository?: {
-        pullRequest?: { reviewThreads?: RawConnection<RawThread> } | null;
+        pullRequest?: {
+          reviewThreads?: RawConnection<RawThread>;
+          reviews?: RawConnection<RawReview> | null;
+          comments?: RawConnection<RawIssueComment> | null;
+        } | null;
       } | null;
     }>(
       key,
@@ -264,8 +343,13 @@ export function fetchRawThreads(key: PrKey): RawThreadsPage {
       { number: key.number },
     );
     viewerLogin = data.viewer?.login ?? viewerLogin;
-    const conn = data.repository?.pullRequest?.reviewThreads;
+    const pr = data.repository?.pullRequest;
+    const conn = pr?.reviewThreads;
     if (!conn) throw new Error(`No pull request ${key.owner}/${key.repo}#${key.number} on GitHub`);
+    if (firstPage) {
+      reviews = (pr.reviews?.nodes ?? []).filter(Boolean) as RawReview[];
+      conversation = (pr.comments?.nodes ?? []).filter(Boolean) as RawIssueComment[];
+    }
     for (const t of conn.nodes ?? []) {
       if (!t) continue;
       const cpage = t.comments?.pageInfo;
@@ -278,7 +362,7 @@ export function fetchRawThreads(key: PrKey): RawThreadsPage {
     }
     after = conn.pageInfo?.hasNextPage ? conn.pageInfo.endCursor ?? undefined : undefined;
   } while (after);
-  return { viewerLogin, threads };
+  return { viewerLogin, threads, reviews, conversation };
 }
 
 /* ------------------------------------------------------------ normalizing */
@@ -341,6 +425,61 @@ export function normalizeThreads(raw: readonly RawThread[], opts: NormalizeOptio
   return linkLocal(out, opts.localComments ?? []);
 }
 
+const REVIEW_STATES = new Set<RemoteReview["state"]>(["APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED"]);
+
+/**
+ * Raw GraphQL reviews -> the wire shape, oldest first. PENDING reviews (only
+ * ever the viewer's own, unsubmitted) are left out: Purview shows its own
+ * pending work as drafts.
+ */
+export function normalizeReviews(
+  raw: readonly RawReview[],
+  opts: Pick<NormalizeOptions, "viewerLogin" | "aiReviewers">,
+): RemoteReview[] {
+  const viewer = opts.viewerLogin.toLowerCase();
+  const out: RemoteReview[] = [];
+  for (const r of raw) {
+    const state = r.state as RemoteReview["state"];
+    if (!REVIEW_STATES.has(state)) continue;
+    const author = classifyAuthor(r.author, opts.aiReviewers);
+    out.push({
+      id: r.id,
+      databaseId: r.databaseId,
+      author,
+      state,
+      body: r.body ?? "",
+      submittedAt: r.submittedAt ?? r.createdAt ?? "",
+      url: r.url,
+      commentCount: r.comments?.totalCount ?? 0,
+      isMine: viewer !== "" && author.login.toLowerCase() === viewer,
+    });
+  }
+  return out.sort((a, b) => a.submittedAt.localeCompare(b.submittedAt));
+}
+
+/** Raw GraphQL issue comments (the conversation tab) -> the wire shape, oldest first. */
+export function normalizeConversation(
+  raw: readonly RawIssueComment[],
+  opts: Pick<NormalizeOptions, "viewerLogin" | "aiReviewers">,
+): RemoteConversationComment[] {
+  const viewer = opts.viewerLogin.toLowerCase();
+  return raw
+    .map((c) => {
+      const author = classifyAuthor(c.author, opts.aiReviewers);
+      return {
+        id: c.id,
+        databaseId: c.databaseId,
+        author,
+        body: c.body ?? "",
+        createdAt: c.createdAt,
+        ...(c.lastEditedAt ? { updatedAt: c.lastEditedAt } : {}),
+        url: c.url,
+        isMine: viewer !== "" && author.login.toLowerCase() === viewer,
+      };
+    })
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
 /** What `linkLocal` needs of a Purview comment. */
 export type LocalForLink = Pick<Comment, "id" | "githubCommentId"> &
   Partial<Pick<Comment, "file" | "line" | "body" | "status" | "subjectType">>;
@@ -397,6 +536,8 @@ export function threadsPath(key: PrKey, root = stateRoot()): string {
 
 interface ThreadsCache {
   threads: RemoteThread[];
+  reviews: RemoteReview[];
+  conversation: RemoteConversationComment[];
   fetchedAt: string;
 }
 
@@ -404,7 +545,13 @@ export function readThreadsCache(key: PrKey, root = stateRoot()): ThreadsCache |
   try {
     const raw = JSON.parse(fs.readFileSync(threadsPath(key, root), "utf8")) as Partial<ThreadsCache>;
     if (!Array.isArray(raw.threads) || typeof raw.fetchedAt !== "string") return undefined;
-    return { threads: raw.threads, fetchedAt: raw.fetchedAt };
+    // Caches written before reviews/conversation were fetched lack both.
+    return {
+      threads: raw.threads,
+      reviews: Array.isArray(raw.reviews) ? raw.reviews : [],
+      conversation: Array.isArray(raw.conversation) ? raw.conversation : [],
+      fetchedAt: raw.fetchedAt,
+    };
   } catch {
     // Absent or corrupt: a cache, never load-bearing.
     return undefined;
@@ -442,16 +589,25 @@ export function loadThreads(
       aiReviewers: opts.aiReviewers,
       localComments: local,
     });
+    const who = { viewerLogin: raw.viewerLogin, aiReviewers: opts.aiReviewers };
+    const reviews = normalizeReviews(raw.reviews, who);
+    const conversation = normalizeConversation(raw.conversation, who);
     const fetchedAt = new Date().toISOString();
-    writeThreadsCache(key, { threads, fetchedAt }, root);
-    return { threads, fetchedAt };
+    writeThreadsCache(key, { threads, reviews, conversation, fetchedAt }, root);
+    return { threads, reviews, conversation, fetchedAt };
   } catch (err) {
     const e = classifyGhReviewError(err);
     const error =
       e.code === "gh_failed" ? `Could not load review threads from GitHub: ${errorText(err)}` : e.message;
     const cached = readThreadsCache(key, root);
-    if (!cached) return { threads: [], error };
-    return { threads: linkLocal(cached.threads, local), fetchedAt: cached.fetchedAt, error };
+    if (!cached) return { threads: [], reviews: [], conversation: [], error };
+    return {
+      threads: linkLocal(cached.threads, local),
+      reviews: cached.reviews,
+      conversation: cached.conversation,
+      fetchedAt: cached.fetchedAt,
+      error,
+    };
   }
 }
 

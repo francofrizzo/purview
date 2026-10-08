@@ -14,7 +14,8 @@ export type MdBlock =
   | { type: "heading"; level: number; text: string }
   | { type: "code"; lang: string | null; code: string; open: boolean }
   | { type: "list"; ordered: boolean; items: string[] }
-  | { type: "quote"; text: string }
+  /** `text` is the quote's source, flattened; `blocks` is it parsed as markdown. */
+  | { type: "quote"; text: string; blocks: MdBlock[] }
   | { type: "hr" }
   | { type: "table"; align: TableAlign[]; header: string[]; rows: string[][] }
   /** GitHub's `<details><summary>…</summary>…</details>`: a collapsible. */
@@ -163,6 +164,8 @@ export function parseMarkdown(src: string): MdBlock[] {
 
     const quote = QUOTE.exec(line);
     if (quote) {
+      // Quoted lines keep their own line structure, so a quote (or a GitHub
+      // alert) can hold headings, lists and `<details>` like any other text.
       const parts = [quote[1]];
       i++;
       while (i < lines.length && lines[i].trim() && !FENCE.test(lines[i])) {
@@ -170,7 +173,11 @@ export function parseMarkdown(src: string): MdBlock[] {
         parts.push(cont ? cont[1] : lines[i].trim());
         i++;
       }
-      blocks.push({ type: "quote", text: parts.join(" ").trim() });
+      blocks.push({
+        type: "quote",
+        text: parts.join(" ").trim(),
+        blocks: parseMarkdown(parts.join("\n")),
+      });
       continue;
     }
 
@@ -303,7 +310,11 @@ function htmlNode(h: RegExpExecArray): MdInline {
   if (h[2] !== undefined) {
     return { type: "image", alt: attr(h[2], "alt") ?? "", href: attr(h[2], "src") ?? "" };
   }
-  if (h[3] !== undefined) return { type: "link", text: tagText(h[4]) || h[3], href: h[3] };
+  if (h[3] !== undefined) {
+    // A linked badge or banner: its image's alt text is the link's name.
+    const alt = /<img\b[^>]*\balt\s*=\s*["']([^"']+)["']/i.exec(h[4])?.[1];
+    return { type: "link", text: tagText(h[4]).trim() || alt || h[3], href: h[3] };
+  }
   const type = TAG_TYPE[h[5].toLowerCase()];
   return { type, text: tagText(h[6]) } as MdInline;
 }
@@ -319,9 +330,18 @@ function intrawordUnderscore(src: string, start: number, end: number, delim: str
   return WORD_CHAR.test(src[start - 1] ?? "") || WORD_CHAR.test(src[end] ?? "");
 }
 
+/**
+ * HTML that only carries layout on GitHub: wrapper tags whose content is
+ * already plain text, and the light-theme twin of a themed banner (GitHub
+ * shows `#gh-light-mode-only` or `#gh-dark-mode-only` by theme; side by side
+ * they read as the same link twice). The dark twin stays, as one link.
+ */
+const LAYOUT_HTML =
+  /<\/?(?:p|div|span|picture|center)(?:\s[^>]*)?>|<source\b[^>]*>|<a\s[^>]*#gh-light-mode-only[^>]*>[\s\S]*?<\/a\s*>|!\[[^\]]*\]\([^)\s]*#gh-light-mode-only\)|<img\b[^>]*#gh-light-mode-only[^>]*>|#gh-dark-mode-only/gi;
+
 export function parseInline(src: string): MdInline[] {
   const out: MdInline[] = [];
-  let rest = src;
+  let rest = src.replace(LAYOUT_HTML, "");
 
   while (rest) {
     const m = INLINE.exec(rest);

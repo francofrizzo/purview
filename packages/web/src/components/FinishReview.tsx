@@ -12,6 +12,8 @@ import type { BundleSource } from "./CopyForAgent";
 import { CopyBundleControls } from "./CopyForAgent";
 import { commentAnchorLabel, type EditComment } from "./Drafts";
 import { CommentCard } from "./CommentCard";
+import { ReviewerVerdictList } from "./Reviews";
+import type { ReviewerVerdict } from "../lib/reviews";
 import { IconCheck, IconClose, IconExternal, IconWarning } from "./icons";
 
 const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }[] = [
@@ -63,8 +65,14 @@ export function FinishReviewPanel({
   files,
   onProposeReanchor,
   onApplyReanchor,
+  verdicts = [],
+  unresolvedThreads = 0,
 }: {
   review?: ReviewStatus;
+  /** each reviewer's standing verdict on GitHub, yours included */
+  verdicts?: ReviewerVerdict[];
+  /** review threads on GitHub nobody has resolved yet */
+  unresolvedThreads?: number;
   loading: boolean;
   error?: Error | null;
   submitting: boolean;
@@ -157,6 +165,17 @@ export function FinishReviewPanel({
 
             <div className="flex flex-col gap-5 px-4 py-4">
               {readiness ? <Readiness readiness={readiness} /> : null}
+              {verdicts.length || unresolvedThreads ? (
+                <section data-testid="previous-reviews">
+                  <SectionTitle>On GitHub so far</SectionTitle>
+                  {verdicts.length ? <ReviewerVerdictList verdicts={verdicts} /> : null}
+                  {unresolvedThreads ? (
+                    <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                      {unresolvedThreads} unresolved {unresolvedThreads === 1 ? "thread" : "threads"}
+                    </p>
+                  ) : null}
+                </section>
+              ) : null}
 
               <section>
                 <SectionTitle>Summary</SectionTitle>

@@ -9,6 +9,8 @@ import type {
   PrState,
   RepoConfig,
   RemoteComment,
+  RemoteConversationComment,
+  RemoteReview,
   RemoteThread,
   RepoSummary,
   ReviewUnit,
@@ -1175,4 +1177,148 @@ export const mockThreads: RemoteThread[] = [
       ),
     ],
   }),
+];
+
+/* ------------------------------------------- reviews and conversation */
+
+let reviewSeq = 0;
+function review(
+  login: string,
+  state: RemoteReview["state"],
+  submittedAt: string,
+  over: Partial<RemoteReview> & { bot?: boolean; botName?: string } = {},
+): RemoteReview {
+  const { bot = false, botName, ...rest } = over;
+  const databaseId = 3100000 + ++reviewSeq;
+  return {
+    id: `PRR_${databaseId}`,
+    databaseId,
+    author: { login, bot, botName, avatarUrl: bot ? undefined : avatar(login) },
+    state,
+    body: "",
+    submittedAt,
+    url: `https://github.com/acme/billing/pull/482#pullrequestreview-${databaseId}`,
+    commentCount: 0,
+    isMine: login === VIEWER,
+    ...rest,
+  };
+}
+
+let issueSeq = 0;
+function said(
+  login: string,
+  body: string,
+  createdAt: string,
+  over: Partial<RemoteConversationComment> & { bot?: boolean; botName?: string } = {},
+): RemoteConversationComment {
+  const { bot = false, botName, ...rest } = over;
+  const databaseId = 2400000 + ++issueSeq;
+  return {
+    id: `IC_${databaseId}`,
+    databaseId,
+    author: { login, bot, botName, avatarUrl: bot ? undefined : avatar(login) },
+    body,
+    createdAt,
+    url: `https://github.com/acme/billing/pull/482#issuecomment-${databaseId}`,
+    isMine: login === VIEWER,
+    ...rest,
+  };
+}
+
+const CODERABBIT_REVIEW = `**Actionable comments posted: 2**
+
+<details>
+<summary>🧹 Nitpick comments (1)</summary>
+
+<details>
+<summary>src/billing/retry.ts (1)</summary>
+
+\`22-24\`: **Jitter is computed but never applied.**
+
+\`withJitter(delay)\` returns a new value; the result is discarded, so every retry waits exactly \`base * 2^n\`.
+
+</details>
+
+</details>
+
+<details>
+<summary>📜 Review details</summary>
+
+**Configuration used**: CodeRabbit UI
+**Review profile**: CHILL
+
+</details>
+<!-- This is an auto-generated comment by CodeRabbit for review status -->`;
+
+const CODERABBIT_WALKTHROUGH = `<!-- This is an auto-generated comment: summarize by coderabbit.ai -->
+<!-- walkthrough_start -->
+
+## Walkthrough
+
+\`charge()\` now derives an idempotency key per order and records every attempt in a new \`charge_ledger\` table before calling the gateway. Retries go through \`withRetry\`, which backs off exponentially and replays the ledger row instead of charging twice.
+
+## Changes
+
+| Cohort / File(s) | Summary |
+|---|---|
+| **Idempotency** <br> \`src/billing/idempotency.ts\` | New \`idempotencyKey(orderId, amount, currency)\` (sha256). |
+| **Ledger** <br> \`src/billing/ledger.ts\`, \`migrations/0042_charge_ledger.sql\` | \`ChargeLedger\` with \`find\` / \`record\`; unique index on the key. |
+| **Retry** <br> \`src/billing/retry.ts\` | \`withRetry\` with exponential backoff. |
+
+<details>
+<summary>📜 Sequence diagram</summary>
+
+\`\`\`mermaid
+sequenceDiagram
+  participant API
+  participant Ledger
+  participant Gateway
+  API->>Ledger: find(key)
+  Ledger-->>API: none
+  API->>Gateway: charge
+  API->>Ledger: record(key, result)
+\`\`\`
+
+</details>
+
+## Estimated code review effort
+
+🎯 3 (Moderate) | ⏱️ ~25 minutes
+
+<!-- walkthrough_end -->
+<!-- tips_start -->
+
+---
+
+Thanks for using CodeRabbit! It's free for OSS, and your support helps us grow.
+
+<!-- tips_end -->`;
+
+export const mockReviews: RemoteReview[] = [
+  review("coderabbitai", "COMMENTED", "2026-08-09T10:32:00Z", {
+    ...RABBIT,
+    body: CODERABBIT_REVIEW,
+    commentCount: 2,
+  }),
+  review("maria", "CHANGES_REQUESTED", "2026-08-09T15:40:00Z", {
+    body: "The retry wrapper swallows the gateway's 4xx and retries them too — a declined card shouldn't be retried at all. Also see the inline note on the ledger write order.",
+    commentCount: 1,
+  }),
+  // The author answering threads: GitHub files each batch of replies as a review.
+  review("dana", "COMMENTED", "2026-08-10T11:13:00Z", { commentCount: 2 }),
+  review(VIEWER, "COMMENTED", "2026-08-10T12:16:00Z", {
+    body: "Mostly reads well. Left a note on the 409 — happy to approve once the replay path returns the original result.",
+    commentCount: 1,
+  }),
+  review("oliver", "APPROVED", "2026-08-11T09:02:00Z", { commentCount: 1 }),
+  review("maria", "COMMENTED", "2026-08-11T16:05:00Z", { commentCount: 1 }),
+];
+
+export const mockConversation: RemoteConversationComment[] = [
+  said("coderabbitai", CODERABBIT_WALKTHROUGH, "2026-08-09T10:20:00Z", { ...RABBIT, updatedAt: "2026-08-10T08:10:00Z" }),
+  said(
+    "dana",
+    "Pushed the ledger-first ordering and the 4xx short-circuit. @maria the declined-card case now fails fast — see `isRetryable` in retry.ts.",
+    "2026-08-10T08:05:00Z",
+  ),
 ];
