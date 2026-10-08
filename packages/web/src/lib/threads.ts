@@ -21,6 +21,7 @@ import {
   isFileComment,
   type CommentStatus,
   type DraftComment,
+  type RemoteAuthor,
   type RemoteComment,
   type RemoteThread,
 } from "../api/types";
@@ -430,11 +431,26 @@ export function drawerThreads(threads: RemoteThread[]): RemoteThread[] {
   return threads.filter((t) => !(t.comments[0]?.localId && t.comments.every((c) => c.isMine)));
 }
 
-/** The AI reviewers present on the PR, for the per-bot filter. */
-export function knownBots(threads: RemoteThread[]): { key: string; name: string; count: number }[] {
-  return groupThreadsByAuthor(threads)
+/**
+ * The AI reviewers present on the PR, for the per-bot filter: those with
+ * threads, plus those that only posted reviews or conversation comments
+ * (`posts`, one author per post). `count` is threads + posts.
+ */
+export function knownBots(
+  threads: RemoteThread[],
+  posts: readonly RemoteAuthor[] = [],
+): { key: string; name: string; count: number }[] {
+  const out = groupThreadsByAuthor(threads)
     .filter((g) => g.bot)
     .map((g) => ({ key: g.key, name: g.label, count: g.threads.length }));
+  for (const a of posts) {
+    if (!a.bot) continue;
+    const key = botKey(a.login);
+    const known = out.find((b) => b.key === key);
+    if (known) known.count++;
+    else out.push({ key, name: a.botName ?? a.login.replace(/\[bot\]$/i, ""), count: 1 });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /** "coderabbitai, @my-review-bot" → ["coderabbitai", "my-review-bot"] (the settings field). */

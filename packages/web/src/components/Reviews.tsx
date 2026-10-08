@@ -11,7 +11,17 @@
 
 import { useLayoutEffect, useRef, useState } from "react";
 import { formatFullTimestamp } from "../lib/prList";
-import { entryBody, verdictVerb, verdictsTitle, type ReviewerVerdict, type TimelineEntry, type Verdict } from "../lib/reviews";
+import {
+  entryBody,
+  reviewRevision,
+  revisionNote,
+  verdictVerb,
+  verdictsTitle,
+  type ReviewerVerdict,
+  type RevisionContext,
+  type TimelineEntry,
+  type Verdict,
+} from "../lib/reviews";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { Markdown } from "./Markdown";
 import { withoutHeadings } from "./SummaryStrip";
@@ -120,7 +130,7 @@ function GithubLink({ url, what }: { url: string; what: string }) {
   );
 }
 
-function TimelineItem({ entry }: { entry: TimelineEntry }) {
+function TimelineItem({ entry, revisions }: { entry: TimelineEntry; revisions?: RevisionContext }) {
   const who = authorLabel(entry);
   const body = entryBody(entry);
   const when = age(entry.at);
@@ -128,6 +138,9 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
   const inline = review?.commentCount ?? 0;
   const edited = entry.kind === "comment" && entry.comment.updatedAt && entry.comment.updatedAt !== entry.comment.createdAt;
   const url = review ? review.url : entry.kind === "comment" ? entry.comment.url : "";
+  // A verdict on code that has since moved says so: still true, but not
+  // about what is on screen.
+  const stale = review && review.state !== "COMMENTED" ? revisionNote(reviewRevision(review, revisions)) : null;
   const meta = (
     <>
       {when ? (
@@ -144,6 +157,11 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
       {inline > 0 ? (
         <span className="flex-none tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="review-inline-count">
           · {inline} inline {inline === 1 ? "comment" : "comments"}
+        </span>
+      ) : null}
+      {stale ? (
+        <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-testid="review-revision">
+          · {stale}
         </span>
       ) : null}
       <GithubLink url={url} what={review ? "review" : "comment"} />
@@ -186,7 +204,16 @@ function TimelineItem({ entry }: { entry: TimelineEntry }) {
 }
 
 /** The timeline: avatars on a rail, oldest first. */
-export function ReviewTimeline({ entries, hidden }: { entries: TimelineEntry[]; hidden: number }) {
+export function ReviewTimeline({
+  entries,
+  hidden,
+  revisions,
+}: {
+  entries: TimelineEntry[];
+  hidden: number;
+  /** to say which revision a verdict was given on */
+  revisions?: RevisionContext;
+}) {
   return (
     <div data-testid="review-timeline">
       {entries.length ? (
@@ -198,7 +225,7 @@ export function ReviewTimeline({ entries, hidden }: { entries: TimelineEntry[]; 
             style={{ background: "var(--border)" }}
           />
           {entries.map((e) => (
-            <TimelineItem key={`${e.kind}:${e.id}`} entry={e} />
+            <TimelineItem key={`${e.kind}:${e.id}`} entry={e} revisions={revisions} />
           ))}
         </ol>
       ) : null}
@@ -236,7 +263,9 @@ export function ReviewerVerdicts({ verdicts }: { verdicts: ReviewerVerdict[] }) 
             className="relative inline-flex flex-none"
             data-testid={`verdict-${v.author.login}`}
             data-verdict={v.verdict}
-            style={mark ? undefined : { opacity: 0.6 }}
+            data-stale={revisionNote(v.revision) ? "true" : undefined}
+            // Comment-only reviewers, and verdicts given on older code, recede.
+            style={mark && !revisionNote(v.revision) ? undefined : { opacity: 0.6 }}
           >
             <AuthorAvatar author={name} url={v.author.avatarUrl} size={16} />
             {mark ? (
@@ -288,6 +317,11 @@ export function ReviewerVerdictList({ verdicts }: { verdicts: ReviewerVerdict[] 
             <span className="text-2xs" style={{ color: "var(--fg-faint)" }} title={formatFullTimestamp(v.at)}>
               {age(v.at)}
             </span>
+            {revisionNote(v.revision) ? (
+              <span className="text-2xs" style={{ color: "var(--warn)" }} data-testid={`verdict-stale-${v.author.login}`}>
+                · {revisionNote(v.revision)}
+              </span>
+            ) : null}
           </li>
         );
       })}

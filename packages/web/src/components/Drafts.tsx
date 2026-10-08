@@ -9,7 +9,8 @@ import {
   type DeletedComment,
   type DraftComment,
   type EditCommentResult,
-  type RemoteThread,
+  type RemoteAuthor,
+  RemoteThread,
 } from "../api/types";
 import {
   authorOf,
@@ -632,6 +633,7 @@ export function DraftsDrawer({
                 compact
                 filters={github.filters}
                 threads={github.threads}
+                posts={github.posts}
                 hidden={github.hidden}
                 onShowResolved={github.onShowResolved}
                 onShowAiReviewers={github.onShowAiReviewers}
@@ -748,6 +750,8 @@ export function DraftsDrawer({
 /** What the drawer's "On GitHub" group needs: the threads, the filters, a jump. */
 export interface DrawerThreads {
   threads: RemoteThread[];
+  /** authors of the PR's reviews and conversation comments (post-only bots) */
+  posts?: readonly RemoteAuthor[];
   filters: ThreadFilters;
   /** how many threads the filters hide in the diff */
   hidden: number;

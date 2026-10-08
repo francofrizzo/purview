@@ -79,10 +79,11 @@ function rawThread(id: string, comments: ReturnType<typeof rawComment>[], over: 
 function rawReview(
   login: string,
   state: string,
-  over: Partial<{ typename: string; body: string; at: string; inline: number; dbId: number }> = {},
+  over: Partial<{ typename: string; body: string; at: string; inline: number; dbId: number; oid: string }> = {},
 ) {
   const dbId = over.dbId ?? nextDbId++;
   return {
+    ...(over.oid ? { commit: { oid: over.oid } } : {}),
     id: `PRR_${dbId}`,
     databaseId: dbId,
     state,
@@ -262,7 +263,7 @@ describe("normalizeReviews", () => {
   it("maps reviews oldest first, drops PENDING, counts inline comments and marks the viewer's", () => {
     const out = normalizeReviews(
       [
-        rawReview("bob", "CHANGES_REQUESTED", { at: "2026-01-03T00:00:00Z", body: "fix it", inline: 2, dbId: 31 }),
+        rawReview("bob", "CHANGES_REQUESTED", { at: "2026-01-03T00:00:00Z", body: "fix it", inline: 2, dbId: 31, oid: "abc123" }),
         rawReview("me", "PENDING", { dbId: 32 }),
         rawReview("coderabbitai", "COMMENTED", { typename: "Bot", at: "2026-01-02T00:00:00Z", dbId: 33 }),
         rawReview("alice", "APPROVED", { at: "2026-01-01T00:00:00Z", dbId: 34 }),
@@ -285,8 +286,11 @@ describe("normalizeReviews", () => {
       submittedAt: "2026-01-03T00:00:00Z",
       url: "https://github.com/acme/widgets/pull/7#pullrequestreview-31",
       commentCount: 2,
+      commitOid: "abc123",
       isMine: false,
     });
+    // a review GitHub gave no commit for simply has none
+    expect(out[0].commitOid).toBeUndefined();
     expect(out[1].author).toMatchObject({ bot: true, botName: "CodeRabbit" });
     expect(out[3].isMine).toBe(true);
   });

@@ -143,6 +143,12 @@ export function PrView() {
   const threadsQuery = useThreads(prKey);
   const resolveThread = useResolveThread(prKey);
   const threadFilters = useThreadFilters();
+  // Who posted each review and conversation comment: a bot that only ever
+  // posts there still gets its own switch in the thread filters.
+  const postAuthors = useMemo(
+    () => [...(threadsQuery.data?.reviews ?? []), ...(threadsQuery.data?.conversation ?? [])].map((p) => p.author),
+    [threadsQuery.data],
+  );
   const qc = useQueryClient();
 
   const setHunkViewed = useSetHunkViewed(prKey);
@@ -458,6 +464,18 @@ export function PrView() {
       if (p.total > 0 && p.viewed === p.total) advanceAfterUnitViewed(unit.id);
     },
     [tab, selectedUnitId, qc, prKey, advanceAfterUnitViewed],
+  );
+
+  // Which revision each GitHub verdict covers is told against these.
+  const revisionContext = useMemo(
+    () =>
+      detail
+        ? {
+            revisions: detail.state.revisions ?? [],
+            current: detail.state.currentRevision ?? detail.state.revision,
+          }
+        : undefined,
+    [detail],
   );
 
   // Whole-PR reading progress, shown quietly on the summary strip.
@@ -882,6 +900,7 @@ export function PrView() {
       compact
       filters={threadFilters.filters}
       threads={remoteThreads ?? []}
+      posts={postAuthors}
       hidden={threadGroups.hidden}
       onShowResolved={threadFilters.setShowResolved}
       onShowAiReviewers={threadFilters.setShowAiReviewers}
@@ -1338,6 +1357,7 @@ export function PrView() {
           reviews={threadsQuery.data?.reviews}
           conversation={threadsQuery.data?.conversation}
           filters={threadFilters.filters}
+          revisions={revisionContext}
           viewed={overall.viewed}
           total={overall.total}
           open={summaryOpen}
@@ -1724,6 +1744,7 @@ export function PrView() {
               remoteThreads?.length
                 ? {
                     threads: remoteThreads,
+                    posts: postAuthors,
                     filters: threadFilters.filters,
                     hidden: threadGroups.hidden,
                     onShowResolved: threadFilters.setShowResolved,
@@ -1759,7 +1780,10 @@ export function PrView() {
         {reviewOpen && !chat.open ? (
           <FinishReviewPanel
             review={review.data}
-            verdicts={latestVerdicts(threadsQuery.data?.reviews, { prAuthor: detail?.meta.author })}
+            verdicts={latestVerdicts(threadsQuery.data?.reviews, {
+              prAuthor: detail?.meta.author,
+              revisions: revisionContext,
+            })}
             unresolvedThreads={threadsQuery.data?.threads.filter((t) => !t.isResolved).length ?? 0}
             loading={review.isLoading}
             error={review.error as Error | null}

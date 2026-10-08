@@ -275,7 +275,10 @@ export interface DiscardRevisionResult {
 }
 
 export interface PrState {
+  /** the mock's spelling of the revision in force; the server sends `currentRevision` */
   revision: number;
+  /** the revision in force, as the server names it */
+  currentRevision?: number;
   /** Every revision on record, oldest first. Absent on a mock that predates it. */
   revisions?: RevisionInfo[];
   summary?: string;
@@ -1114,6 +1117,8 @@ export interface RemoteReview {
   url: string;
   /** inline comments submitted with this review */
   commentCount: number;
+  /** the head commit it was written against (absent on older caches) */
+  commitOid?: string;
   /** the viewer wrote it */
   isMine: boolean;
 }

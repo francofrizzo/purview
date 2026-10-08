@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RemoteConversationComment, RemoteReview } from "../api/types";
-import { buildTimeline, entryBody, latestVerdicts, verdictsTitle } from "./reviews";
+import { buildTimeline, entryBody, latestVerdicts, reviewRevision, revisionNote, verdictsTitle } from "./reviews";
 import { DEFAULT_THREAD_FILTERS } from "./threads";
 
 let seq = 0;
@@ -133,5 +133,52 @@ describe("latestVerdicts", () => {
     ]);
     expect(v).toHaveLength(1);
     expect(v[0].verdict).toBe("APPROVED");
+  });
+});
+
+describe("reviewRevision", () => {
+  const ctx = {
+    current: 4,
+    revisions: [
+      { revision: 1, headSha: "a", addedAt: "2026-01-01T00:00:00Z" },
+      { revision: 2, headSha: "b", addedAt: "2026-01-02T00:00:00Z" },
+      // a rebase that only moved the base: same head as rev 2
+      { revision: 3, headSha: "b", addedAt: "2026-01-03T00:00:00Z", baseOnly: true },
+      { revision: 4, headSha: "c", addedAt: "2026-01-04T00:00:00Z" },
+    ],
+  };
+  const at = (oid: string | undefined, when = "2026-01-02T12:00:00Z") => ({ commitOid: oid, submittedAt: when });
+
+  it("is current when the review read the head being shown", () => {
+    expect(reviewRevision(at("c"), ctx)).toEqual({ kind: "current" });
+    // base-only refreshes after the reviewed head don't make it stale
+    expect(reviewRevision(at("b"), { ...ctx, current: 3 })).toEqual({ kind: "current" });
+  });
+
+  it("counts the revisions since an older one, base-only ones included", () => {
+    expect(reviewRevision(at("b"), ctx)).toEqual({ kind: "older", revision: 3, behind: 1 });
+    expect(reviewRevision(at("a"), ctx)).toEqual({ kind: "older", revision: 1, behind: 3 });
+  });
+
+  it("tells a commit Purview never saw apart by when it was reviewed", () => {
+    expect(reviewRevision(at("zz"), ctx)).toEqual({ kind: "unknown", newer: false });
+    expect(reviewRevision(at("zz", "2026-02-01T00:00:00Z"), ctx)).toEqual({ kind: "unknown", newer: true });
+  });
+
+  it("says nothing without a commit or revisions", () => {
+    expect(reviewRevision(at(undefined), ctx)).toBeUndefined();
+    expect(reviewRevision(at("c"), undefined)).toBeUndefined();
+  });
+
+  it("notes only verdicts that don't cover the shown code", () => {
+    expect(revisionNote({ kind: "current" })).toBeNull();
+    expect(revisionNote({ kind: "older", revision: 2, behind: 1 })).toBe("on rev 2 · 1 revision ago");
+    expect(revisionNote({ kind: "unknown", newer: false })).toBe("on an earlier commit");
+  });
+
+  it("carries the revision on a standing verdict", () => {
+    const [v] = latestVerdicts([review("bob", "APPROVED", "2026-01-02T12:00:00Z", { commitOid: "a" })], { revisions: ctx });
+    expect(v.revision).toEqual({ kind: "older", revision: 1, behind: 3 });
+    expect(verdictsTitle([v])).toBe("bob approved (on rev 1 · 3 revisions ago)");
   });
 });

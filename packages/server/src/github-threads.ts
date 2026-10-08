@@ -73,6 +73,8 @@ export interface RemoteReview {
   submittedAt: string;
   url: string;
   commentCount: number;
+  /** the head commit it was written against (absent on older caches) */
+  commitOid?: string;
   isMine: boolean;
 }
 
@@ -202,6 +204,8 @@ export interface RawReview {
   url: string;
   author?: { __typename?: string; login?: string; avatarUrl?: string } | null;
   comments?: { totalCount?: number } | null;
+  /** the head commit the review was written against */
+  commit?: { oid?: string } | null;
 }
 
 export interface RawIssueComment {
@@ -239,6 +243,7 @@ const THREADS_QUERY = `query($owner:String!,$repo:String!,$number:Int!,$after:St
           id databaseId state body submittedAt createdAt url
           author{ __typename login avatarUrl }
           comments{ totalCount }
+          commit{ oid }
         }
       }
       comments(first:100){
@@ -451,6 +456,7 @@ export function normalizeReviews(
       submittedAt: r.submittedAt ?? r.createdAt ?? "",
       url: r.url,
       commentCount: r.comments?.totalCount ?? 0,
+      ...(r.commit?.oid ? { commitOid: r.commit.oid } : {}),
       isMine: viewer !== "" && author.login.toLowerCase() === viewer,
     });
   }

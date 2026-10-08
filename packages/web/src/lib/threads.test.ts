@@ -368,6 +368,19 @@ describe("groupThreadsByAuthor", () => {
       { key: "copilot", name: "Copilot", count: 1 },
     ]);
   });
+
+  it("lists bots that only posted reviews or conversation comments, counting their posts", () => {
+    const r1 = thread({ comments: [rc({ login: "coderabbitai[bot]", bot: true, botName: "CodeRabbit" })] });
+    const posts = [
+      { login: "coderabbitai", bot: true, botName: "CodeRabbit" },
+      { login: "blacksmith-sh[bot]", bot: true },
+      { login: "maria", bot: false },
+    ];
+    expect(knownBots([r1], posts)).toEqual([
+      { key: "blacksmith-sh", name: "blacksmith-sh", count: 1 },
+      { key: "coderabbitai", name: "CodeRabbit", count: 2 },
+    ]);
+  });
 });
 
 describe("parseLoginList", () => {

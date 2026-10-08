@@ -6,7 +6,7 @@
  * Pure functions only.
  */
 
-import type { RemoteAuthor, RemoteConversationComment, RemoteReview } from "../api/types";
+import type { RemoteAuthor, RemoteConversationComment, RemoteReview, RevisionInfo } from "../api/types";
 import { botKey, cleanRemoteBody, type ThreadFilters } from "./threads";
 
 export type TimelineEntry =
@@ -76,6 +76,54 @@ export interface ReviewerVerdict {
   verdict: Verdict;
   /** when the review that set the verdict was submitted */
   at: string;
+  /** which of Purview's revisions it covers, when that could be told */
+  revision?: ReviewRevision;
+}
+
+/** The PR's revisions as Purview recorded them, and the one in force. */
+export interface RevisionContext {
+  revisions: readonly RevisionInfo[];
+  current: number;
+}
+
+/**
+ * What code a review was written against, in Purview's terms:
+ *   current — the revision being read now (or one with the same head);
+ *   older   — an earlier revision on record, `behind` revisions ago;
+ *   unknown — a commit Purview never recorded (force-pushed away, or a head
+ *             newer than the last refresh: `newer`).
+ */
+export type ReviewRevision =
+  | { kind: "current" }
+  | { kind: "older"; revision: number; behind: number }
+  | { kind: "unknown"; newer: boolean };
+
+export function reviewRevision(
+  review: Pick<RemoteReview, "commitOid" | "submittedAt">,
+  ctx: RevisionContext | undefined,
+): ReviewRevision | undefined {
+  if (!review.commitOid || !ctx || ctx.revisions.length === 0) return undefined;
+  // A base-only revision keeps its head: the latest revision with that head
+  // is the one the review's code still stands for.
+  const matches = ctx.revisions.filter((r) => r.headSha === review.commitOid && r.revision <= ctx.current);
+  const match = matches[matches.length - 1];
+  if (match) {
+    const after = ctx.revisions.filter((r) => r.revision > match.revision && r.revision <= ctx.current);
+    // Base-only refreshes after it changed nothing the review read.
+    if (after.every((r) => r.headSha === review.commitOid)) return { kind: "current" };
+    return { kind: "older", revision: match.revision, behind: after.length };
+  }
+  const latest = ctx.revisions.find((r) => r.revision === ctx.current) ?? ctx.revisions[ctx.revisions.length - 1];
+  return { kind: "unknown", newer: !!latest.addedAt && review.submittedAt > latest.addedAt };
+}
+
+/** "rev 2 · 1 revision ago" — said only when the verdict doesn't cover what is shown. */
+export function revisionNote(rev: ReviewRevision | undefined): string | null {
+  if (!rev || rev.kind === "current") return null;
+  if (rev.kind === "older") {
+    return `on rev ${rev.revision} · ${rev.behind} ${rev.behind === 1 ? "revision" : "revisions"} ago`;
+  }
+  return rev.newer ? "on a newer commit — refresh" : "on an earlier commit";
 }
 
 /**
@@ -90,7 +138,7 @@ export interface ReviewerVerdict {
  */
 export function latestVerdicts(
   reviews: readonly RemoteReview[] = [],
-  opts: { prAuthor?: string; filters?: ThreadFilters } = {},
+  opts: { prAuthor?: string; filters?: ThreadFilters; revisions?: RevisionContext } = {},
 ): ReviewerVerdict[] {
   const prAuthor = opts.prAuthor?.toLowerCase();
   const sorted = [...reviews].sort((a, b) => (a.submittedAt < b.submittedAt ? -1 : a.submittedAt > b.submittedAt ? 1 : 0));
@@ -104,7 +152,13 @@ export function latestVerdicts(
       if (!cur) by.set(key, { author: r.author, isMine: r.isMine, verdict: "COMMENTED", at: r.submittedAt });
       continue;
     }
-    by.set(key, { author: r.author, isMine: r.isMine, verdict: r.state, at: r.submittedAt });
+    by.set(key, {
+      author: r.author,
+      isMine: r.isMine,
+      verdict: r.state,
+      at: r.submittedAt,
+      revision: reviewRevision(r, opts.revisions),
+    });
   }
   return [...by.values()]
     .filter((v) => !(v.author.bot && v.verdict === "COMMENTED"))
@@ -128,6 +182,10 @@ export function verdictVerb(state: Verdict): string {
 /** "maria approved · bob requested changes" — the cluster's tooltip. */
 export function verdictsTitle(verdicts: readonly ReviewerVerdict[]): string {
   return verdicts
-    .map((v) => `${v.isMine ? "you" : v.author.bot ? (v.author.botName ?? v.author.login) : v.author.login} ${verdictVerb(v.verdict)}`)
+    .map((v) => {
+      const who = v.isMine ? "you" : v.author.bot ? (v.author.botName ?? v.author.login) : v.author.login;
+      const note = revisionNote(v.revision);
+      return `${who} ${verdictVerb(v.verdict)}${note ? ` (${note})` : ""}`;
+    })
     .join(" · ");
 }

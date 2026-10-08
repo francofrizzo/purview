@@ -10,7 +10,7 @@
  */
 
 import { useRef, useState, type ReactNode } from "react";
-import type { RemoteComment, RemoteThread } from "../api/types";
+import type { RemoteAuthor, RemoteComment, RemoteThread } from "../api/types";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
 import {
@@ -321,10 +321,13 @@ export function ThreadFilterMenu({
   onShowAiReviewers,
   onBotHidden,
   compact,
+  posts = [],
 }: {
   filters: ThreadFilters;
   /** the PR's threads, for the per-bot list */
   threads: RemoteThread[];
+  /** who wrote each review and conversation comment, so post-only bots are listed too */
+  posts?: readonly RemoteAuthor[];
   /** how many threads the filters hide right now */
   hidden: number;
   onShowResolved: (v: boolean) => void;
@@ -335,9 +338,9 @@ export function ThreadFilterMenu({
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
-  const bots = knownBots(threads);
+  const bots = knownBots(threads, posts);
   const resolvedCount = threads.filter((t) => t.isResolved).length;
-  if (threads.length === 0) return null;
+  if (threads.length === 0 && bots.length === 0) return null;
   const active = !filters.showResolved || !filters.showAiReviewers || filters.hiddenBots.length > 0;
   return (
     <span ref={wrapRef} className="relative inline-flex flex-none">

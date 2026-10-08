@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RemoteConversationComment, RemoteReview } from "../api/types";
-import { buildTimeline, latestVerdicts } from "../lib/reviews";
+import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/reviews";
 import type { ThreadFilters } from "../lib/threads";
 import { Markdown } from "./Markdown";
 import { ReviewTimeline, ReviewerVerdicts } from "./Reviews";
@@ -78,6 +78,7 @@ export function SummaryStrip({
   reviews,
   conversation,
   filters,
+  revisions,
   viewed,
   total,
   open,
@@ -95,6 +96,8 @@ export function SummaryStrip({
   conversation?: RemoteConversationComment[];
   /** the review-thread filters, which hide AI reviewers here too */
   filters?: ThreadFilters;
+  /** the PR's revisions, to say which one each verdict was given on */
+  revisions?: RevisionContext;
   viewed: number;
   total: number;
   open: boolean;
@@ -110,7 +113,10 @@ export function SummaryStrip({
   // wins, so leaving the strip cannot close something the reader clicked open.
   const shown = open || peeking;
   const timeline = useMemo(() => buildTimeline(reviews, conversation, filters), [reviews, conversation, filters]);
-  const verdicts = useMemo(() => latestVerdicts(reviews, { prAuthor: author, filters }), [reviews, author, filters]);
+  const verdicts = useMemo(
+    () => latestVerdicts(reviews, { prAuthor: author, filters, revisions }),
+    [reviews, author, filters, revisions],
+  );
   const hasReviews = timeline.entries.length > 0 || timeline.hidden > 0;
   const what =
     [summary ? "analysis summary" : "", description ? "PR description" : "", hasReviews ? "reviews" : ""]
@@ -281,7 +287,7 @@ export function SummaryStrip({
                 Reviews
                 <span style={{ color: "var(--fg-faint)" }}> · on GitHub</span>
               </OverlayHeading>
-              <ReviewTimeline entries={timeline.entries} hidden={timeline.hidden} />
+              <ReviewTimeline entries={timeline.entries} hidden={timeline.hidden} revisions={revisions} />
             </section>
           ) : null}
         </div>
