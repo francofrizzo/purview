@@ -444,6 +444,7 @@ export function analysisPrompt(
     "State directory (already initialized; this is your working directory):",
     `  ${dir}`,
     `Current revision: ${state.currentRevision}`,
+    "Generated files are deterministically grouped by core into purview:generated. Leave hunks in that unit out of your analysis; core preserves their coverage. Focus on authored changes.",
     `  diff:    ${path.join(dir, "revisions", String(state.currentRevision), "diff.patch")}`,
     `  files:   ${path.join(dir, "revisions", String(state.currentRevision), "files.json")}`,
     "",
@@ -984,7 +985,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   const { model, effort } = agent;
   // Husks alone are not an analysis to build on: with no live unit left
   // the run must produce a full analysis (which drops the husks).
-  const incremental = liveUnits(state).length > 0;
+  const incremental = state.analysisRevision !== undefined || liveUnits(state).some((u) => !u.generated);
 
   const metrics = emptyMetrics();
   // Recorded before the spawn so a run that dies early still says what it was.

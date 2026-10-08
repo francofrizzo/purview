@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   analysisJobPath,
+  loadState,
   chatPath,
   keyToString,
   parseDiff,
@@ -349,6 +350,56 @@ describe("analysis job lifecycle", () => {
     expect(readJob(key, root)!.status).toBe("cancelled");
     const finished = readEvents(key, root).filter((e) => e.type === "analysis-finished");
     expect(finished.at(-1)).toMatchObject({ status: "cancelled" });
+  });
+
+  it("deletes a PR only after its running analysis stops writing", async () => {
+    buildFixture(root);
+    claude.restore();
+    claude = fakeClaude({ hang: true, lines: scriptedRun() });
+    claude.install();
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    for (let i = 0; i < 200 && readJob(key, root)?.status !== "running"; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(readJob(key, root)?.status).toBe("running");
+    updateMeta(key, { archived: true }, root);
+    const response = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(response.status).toBe(200);
+    await analysisIdle();
+    expect(fs.existsSync(path.dirname(analysisJobPath(key, root)))).toBe(false);
+  });
+
+  it("archiving cancels running analysis and preserves the PR", async () => {
+    buildFixture(root);
+    claude.restore();
+    claude = fakeClaude({ hang: true, lines: scriptedRun() });
+    claude.install();
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    for (let i = 0; i < 200 && readJob(key, root)?.status !== "running"; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    expect(readJob(key, root)?.status).toBe("running");
+    const response = await app.request(`/api/prs/${encodedKey}/archive`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }),
+    });
+    expect(response.status).toBe(200);
+    await analysisIdle();
+    expect(readJob(key, root)?.status).toBe("cancelled");
+    expect(readMeta(key, root).archived).toBe(true);
+  });
+
+  it("restores an archived PR added explicitly by URL without discarding its history", async () => {
+    buildFixture(root);
+    updateMeta(key, { archived: true }, root);
+    setGhRunner(ghFor([REV1_PATCH], "2"));
+    const response = await app.request("/api/prs?analyze=false", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: `https://github.com/${key.owner}/${key.repo}/pull/${key.number}` }),
+    });
+    expect(response.status).toBe(200);
+    expect(readMeta(key, root).archived).toBe(false);
+    expect(loadState(key, root).revisions.length).toBeGreaterThan(1);
+    expect(readJob(key, root)).toBeNull();
   });
 
   it("409s on cancel when nothing is in progress", async () => {

@@ -13,7 +13,7 @@ import { ReclassifyPopover } from "./ReclassifyPopover";
 import { InlineMarkdown } from "./Markdown";
 
 const HIDE_REVIEWED_TITLE =
-  "Drop fully-viewed units out of the list. The unit you are reading stays put, so the diff pane never changes under you.";
+  "Drop fully-viewed units out of the list. Changed units and the unit you are reading stay visible, so the diff pane never changes under you.";
 
 export const UNPLACED_TITLE =
   "Hunks the analysis hasn't placed in a unit yet — usually new commits since the last analysis.";
@@ -60,7 +60,7 @@ export function UnitSidebar({
   // "reviewed", it is empty — hiding those would make them unreachable.
   const isFullyViewed = (u: ReviewUnit) => {
     const p = unitProgress(detail, u);
-    return p.total > 0 && p.viewed === p.total;
+    return p.total > 0 && p.viewed === p.total && p.changed === 0;
   };
 
   // The skill's `order` is global and gappy once units are bucketed by
@@ -374,8 +374,7 @@ function UnitRow({
           </span>
         </div>
         <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 pl-5">
-          {/* Core logic is what most units are; only the exceptions get a chip. */}
-          {unit.kind !== "core-logic" ? <KindChip kind={unit.kind} /> : null}
+          {unit.generated ? <span className="text-2xs">{unit.hunkIds.every((id) => detail.state.hunks[id]?.autoViewed) ? "Auto-viewed" : "Generated"}</span> : unit.kind !== "core-logic" ? <KindChip kind={unit.kind} /> : null}
           <RiskFlags flags={unit.riskFlags} compact />
           {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}
           <FindingsBadge unit={unit} />
@@ -385,7 +384,7 @@ function UnitRow({
           </span>
         </div>
       </button>
-      <button
+      {!unit.generated ? <button
         type="button"
         title="Unit actions"
         data-testid={`unit-menu-${unit.id}`}
@@ -399,7 +398,7 @@ function UnitRow({
         style={{ color: "var(--fg-muted)" }}
       >
         ⋯
-      </button>
+      </button> : null}
       {popover ? (
         <ReclassifyPopover
           unit={unit}

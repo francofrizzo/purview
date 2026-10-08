@@ -56,6 +56,7 @@ export const FileStatusSchema = z.enum([
 export type FileStatus = z.infer<typeof FileStatusSchema>;
 
 export const FileDiffSchema = z.object({
+  generatedReason: z.string().optional(),
   /** Normalized path: new path, or old path when the file was deleted. */
   path: z.string(),
   oldPath: z.string().optional(),
@@ -138,6 +139,7 @@ export const UnitChangelogEntrySchema = z.object({
 export type UnitChangelogEntry = z.infer<typeof UnitChangelogEntrySchema>;
 
 export const ReviewUnitSchema = z.object({
+  generated: z.boolean().optional(),
   id: z.string().min(1),
   title: z.string(),
   summary: z.string(),
@@ -244,6 +246,7 @@ export const MigrationKindSchema = z.enum([
 export type MigrationKind = z.infer<typeof MigrationKindSchema>;
 
 export const HunkStateSchema = z.object({
+  autoViewed: z.boolean().optional(),
   viewed: z.boolean().default(false),
   viewedAtRevision: z.number().int().optional(),
   changedSinceViewed: z.boolean().default(false),
@@ -458,6 +461,7 @@ export function migrateAgentFields(raw: unknown): unknown {
  * `{}` is a complete, valid, fully-inheriting config.
  */
 export const RepoConfigSchema = z.object({
+  generatedPaths: z.array(z.string()).optional(),
   autoAnalyze: z.boolean().nullable().default(null),
   repoPath: z.string().nullable().default(null),
   /** Who runs analyses for this repo; `null` inherits. */
@@ -743,6 +747,7 @@ export type MigrationReport = z.infer<typeof MigrationReportSchema>;
 const base = { ts: z.string() };
 
 export const RevisionFilesSchema = z.object({
+  generatedReason: z.string().optional(),
   path: z.string(),
   oldPath: z.string().optional(),
   hunkIds: z.array(z.string()),
@@ -888,7 +893,15 @@ export const RevisionDiscardedEventSchema = z.object({
   revision: z.number().int(),
 });
 
+export const GeneratedFilesClassifiedEventSchema = z.object({
+  ...base,
+  type: z.literal("generated-files-classified"),
+  revision: z.number().int(),
+  files: z.array(z.object({ path: z.string(), generatedReason: z.string().optional() })),
+});
+
 export const EventSchema = z.discriminatedUnion("type", [
+  GeneratedFilesClassifiedEventSchema,
   PrInitializedEventSchema,
   RevisionAddedEventSchema,
   AnalysisSetEventSchema,
@@ -928,6 +941,7 @@ export const RevisionInfoSchema = z.object({
 export type RevisionInfo = z.infer<typeof RevisionInfoSchema>;
 
 export const FileRollupSchema = z.object({
+  generatedReason: z.string().optional(),
   path: z.string(),
   hunkIds: z.array(z.string()),
   viewedCount: z.number().int(),
@@ -970,6 +984,7 @@ export const STATE_SHAPE_VERSION = 3;
 export const StateSchema = z.object({
   /** see STATE_SHAPE_VERSION; absent on every state.json written before it existed */
   shapeVersion: z.number().int().optional(),
+  generatedManualPaths: z.array(z.string()).optional(),
   pr: z
     .object({
       host: z.string(),

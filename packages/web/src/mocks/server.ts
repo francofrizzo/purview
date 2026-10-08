@@ -627,7 +627,15 @@ export const mockApi = {
     const [, host, owner, repo, number] = m;
     const key = `${host}/${owner}/${repo}/${number}`;
     const existing = list.find((p) => p.key === key);
-    if (existing) return existing;
+    if (existing) {
+      if (isLive(jobs[key])) throw new ApiError("analysis_in_progress", 409, "Wait for analysis to finish before adding this PR again.");
+      if (existing.archived) {
+        await mockApi.refresh(key);
+        existing.archived = false;
+        syncRepoCounts();
+      }
+      return existing;
+    }
     const entry: PrListEntry = {
       key,
       meta: { host, owner, repo, number: Number(number), url, title: `${repo}#${number}` },
@@ -647,11 +655,30 @@ export const mockApi = {
   },
 
   /** Local-only, exactly as the tooltip in the UI claims. */
+  async deletePr(key: string): Promise<void> {
+    const index = list.findIndex((p) => p.key === key);
+    if (index === -1) throw new ApiError("not_found", 404, `No PR "${key}"`);
+    if (!list[index].archived) throw new ApiError("Archive this PR before deleting it.", 409, null);
+    clearJobTimers(key);
+    delete jobTimers[key];
+    delete jobSubscribers[key];
+    delete chatAgents[key];
+    delete analysisPending[key];
+    delete repoPaths[key];
+    delete acknowledgedSha[key];
+    list.splice(index, 1);
+    delete details[key];
+    delete chats[key];
+    delete jobs[key];
+    syncRepoCounts();
+  },
+
   async setArchived(key: string, archived: boolean): Promise<void> {
     await delay(120);
     const entry = list.find((p) => p.key === key);
     if (!entry) throw new ApiError("not_found", 404, `No PR "${key}"`);
     entry.archived = archived;
+    if (archived && isLive(jobs[key])) await mockApi.cancelAnalysis(key);
     syncRepoCounts();
   },
 
@@ -843,13 +870,13 @@ export const mockApi = {
     recomputeFileRollups();
   },
 
-  async setUnitViewed(_key: string, unitId: string): Promise<void> {
+  async setUnitViewed(_key: string, unitId: string, viewed = true): Promise<void> {
     await delay(90);
     const unit = detail.state.units.find((u) => u.id === unitId);
     if (!unit) return;
     for (const id of unit.hunkIds) {
       const prev = detail.state.hunks[id] ?? { viewed: false, changedSinceViewed: false };
-      detail.state.hunks[id] = { ...prev, viewed: true, viewedAtRevision: detail.state.revision };
+      detail.state.hunks[id] = { ...prev, viewed, autoViewed: false, changedSinceViewed: false, viewedAtRevision: viewed ? detail.state.revision : undefined };
     }
     recomputeFileRollups();
   },

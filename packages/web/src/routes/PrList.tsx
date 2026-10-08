@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK } from "../api/client";
-import { useAddPr, useImportReviews, usePrs, useRepos, useSetArchived } from "../api/hooks";
+import { useAddPr, useDeletePr, useImportReviews, usePrs, useRepos, useSetArchived } from "../api/hooks";
 import type { PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
@@ -496,7 +496,7 @@ function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => voi
 }
 
 const ARCHIVE_HINT =
-  "Archiving is local only — it hides the PR here and changes nothing on GitHub.";
+  "Archiving cancels analysis and hides the PR here. It changes nothing on GitHub.";
 
 /**
  * One PR. The title line carries only what is out of the ordinary: "open" and
@@ -507,6 +507,7 @@ const ARCHIVE_HINT =
  */
 function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) {
   const setArchived = useSetArchived();
+  const deletePr = useDeletePr();
   const archived = pr.archived;
   const meta = pr.meta;
 
@@ -557,7 +558,7 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
         type="button"
         className="absolute right-2 top-1/2 flex-none -translate-y-1/2 rounded p-1.5 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
         data-testid={`archive-${pr.key}`}
-        disabled={setArchived.isPending}
+        disabled={setArchived.isPending || deletePr.isPending}
         title={`${archived ? "Unarchive" : "Archive"} — ${ARCHIVE_HINT}`}
         aria-label={archived ? "Unarchive" : "Archive"}
         onClick={() => setArchived.mutate({ key: pr.key, archived: !archived })}
@@ -565,6 +566,22 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
       >
         <IconArchive out={archived} width={12} height={12} />
       </button>
+      {archived ? <button
+        type="button"
+        className="btn flex-none text-2xs"
+        data-testid={`delete-${pr.key}`}
+        disabled={deletePr.isPending || setArchived.isPending}
+        aria-label={`Delete PR #${meta?.number}`}
+        onClick={() => {
+          if (window.confirm(`Delete PR #${meta?.number} from Purview? This cancels analysis and permanently removes local diffs, review progress, draft comments, and chat. The GitHub PR is unchanged.`)) {
+            deletePr.mutate(pr.key);
+          }
+        }}
+        style={{ color: "var(--risk)" }}
+      >
+        {deletePr.isPending ? "Deleting…" : "Delete"}
+      </button> : null}
+      {deletePr.error ? <span role="alert" className="text-2xs" style={{ color: "var(--risk)" }}>{errorText(deletePr.error)}</span> : null}
     </li>
   );
 }

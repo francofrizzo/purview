@@ -94,6 +94,11 @@ afterEach(async () => {
 });
 
 describe("importReviewRequestsSince", () => {
+  it("imports oldest PRs first regardless of the search result order", () => {
+    ghFor({ candidates: [9, 2, 6].map((number) => ({ number, title: `PR ${number}`, updatedAt: "2024-01-01T00:00:00Z" })) });
+    const result = importReviewRequestsSince(repo, new Date("2023-01-01"), root, { analyze: false });
+    expect(result.imported).toEqual([2, 6, 9].map((number) => keyToString({ ...repo, number })));
+  });
   it("imports every untracked review-requested PR and skips already-tracked ones", () => {
     ghFor({ candidates: [{ number: 1, title: "One", updatedAt: "2024-01-01T00:00:00Z" }, { number: 2, title: "Two", updatedAt: "2024-01-02T00:00:00Z" }] });
     // PR 1 is already tracked before the import runs.
