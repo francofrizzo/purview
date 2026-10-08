@@ -75,6 +75,8 @@
     --kind-tests-soft: rgba(100, 190, 130, 0.13);
     --kind-docs: #a0a8bb;
     --kind-docs-soft: rgba(140, 150, 175, 0.12);
+    --bot: #b9a8e6;
+    --bot-soft: rgba(160, 120, 255, 0.14);
 
     --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.22);
     --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.35);

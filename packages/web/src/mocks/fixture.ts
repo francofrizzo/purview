@@ -8,6 +8,8 @@ import type {
   PrListEntry,
   PrState,
   RepoConfig,
+  RemoteComment,
+  RemoteThread,
   RepoSummary,
   ReviewUnit,
 } from "../api/types";
@@ -850,6 +852,7 @@ export const mockDrafts: DraftComment[] = [
     createdAt: "2026-08-12T08:44:00Z",
     status: "pushed",
     githubCommentId: 90210,
+    githubThreadId: "PRRT_idem9_pending",
   },
   {
     id: "draft-5",
@@ -871,6 +874,7 @@ export const mockDrafts: DraftComment[] = [
     createdAt: "2026-08-11T11:20:00Z",
     status: "submitted",
     githubCommentId: 90150,
+    githubThreadId: "PRRT_idem9_public",
   },
   {
     id: "draft-3",
@@ -893,6 +897,20 @@ export const mockDrafts: DraftComment[] = [
     createdAt: "2026-08-10T12:15:00Z",
     status: "submitted",
     githubCommentId: 90180,
+    githubThreadId: "PRRT_orders46",
+  },
+  // A reply to @maria's thread on the retry wrapper, not sent yet: it shows at
+  // the end of that thread, not as a comment of its own.
+  {
+    id: "draft-9",
+    file: "src/billing/charge.ts",
+    line: 25,
+    side: "RIGHT",
+    subjectType: "line",
+    body: "Agreed on the adapter in the long run — but the ledger key has to be computed here anyway, so the retry stays next to it for now.",
+    createdAt: "2026-08-12T09:20:00Z",
+    status: "draft",
+    inReplyTo: "PRRT_charge25",
   },
   // Anchored to the OLD side: in split view its bubble belongs on the left half.
   {
@@ -916,4 +934,245 @@ export const mockDrafts: DraftComment[] = [
     createdAt: "2026-08-12T09:10:00Z",
     status: "draft",
   },
+];
+
+/* ------------------------------------------------- GitHub review threads */
+
+const VIEWER = "franco";
+const avatar = (login: string) => `https://avatars.githubusercontent.com/${login}?s=40`;
+let commentSeq = 0;
+function remote(
+  login: string,
+  body: string,
+  createdAt: string,
+  over: Partial<RemoteComment> & { bot?: boolean; botName?: string } = {},
+): RemoteComment {
+  const { bot = false, botName, ...rest } = over;
+  const databaseId = rest.databaseId ?? 91000 + ++commentSeq;
+  return {
+    id: `PRRC_${databaseId}`,
+    databaseId,
+    author: { login, bot, botName, avatarUrl: bot ? undefined : avatar(login) },
+    body,
+    createdAt,
+    url: `https://github.com/acme/billing/pull/482#discussion_r${databaseId}`,
+    reviewState: "SUBMITTED",
+    isMine: login === VIEWER,
+    ...rest,
+  };
+}
+
+function thread(over: Partial<RemoteThread> & Pick<RemoteThread, "id" | "path" | "comments">): RemoteThread {
+  return {
+    subjectType: "line",
+    line: null,
+    originalLine: null,
+    startLine: null,
+    side: "RIGHT",
+    isResolved: false,
+    isOutdated: false,
+    viewerCanResolve: true,
+    viewerCanUnresolve: false,
+    viewerCanReply: true,
+    ...over,
+  };
+}
+
+const RABBIT = { bot: true, botName: "CodeRabbit" };
+
+const CODERABBIT_MAJOR = `_🔐 Correctness_ | _🟠 Major_ | _⚡ Quick win_
+
+**Separator collision in the idempotency key.**
+
+\`orderId\` is caller-supplied and may contain \`:\`, so \`("a:1", 2, "EUR")\` and \`("a", 1, "2:EUR")\` hash to the same key. Two distinct charges would then share a ledger row, and the second one would silently return the first one's result.
+
+Length-prefix the fields (or hash a JSON array) so the encoding is unambiguous:
+
+\`\`\`suggestion
+    .update(JSON.stringify([orderId, amount, currency]))
+\`\`\`
+
+<details>
+<summary>🤖 Prompt for AI Agents</summary>
+
+\`\`\`
+In src/billing/idempotency.ts around line 10, the key is built from a
+template string joined with ":", which collides when orderId contains ":".
+Replace the template with an unambiguous encoding such as
+JSON.stringify([orderId, amount, currency]) and add a unit test with two
+inputs that collide under the old encoding.
+\`\`\`
+
+</details>
+
+<!-- fingerprinting:phantom:poseidon:mock-a1 -->
+
+<!-- This is an auto-generated comment by CodeRabbit -->`;
+
+const CODERABBIT_NITPICK = `_🧹 Maintainability_ | _🔵 Trivial_ | _⚡ Quick win_
+
+<details>
+<summary>Record the ledger row and the charge in one transaction</summary>
+
+If the process dies between \`gateway.charge\` resolving and \`ledger.record\`, the retry path has no row to find and charges again. Consider an outbox row written before the gateway call.
+
+</details>
+
+<!-- This is an auto-generated comment by CodeRabbit -->`;
+
+export const mockThreads: RemoteThread[] = [
+  // People talking it through, with the reader's own reply still a draft (draft-9).
+  thread({
+    id: "PRRT_charge25",
+    path: "src/billing/charge.ts",
+    line: 25,
+    originalLine: 25,
+    comments: [
+      remote(
+        "maria",
+        "Why retry here rather than inside the gateway adapter? Every other caller of `gateway.charge` would want the same backoff.",
+        "2026-08-11T14:02:00Z",
+      ),
+      remote(
+        "dana",
+        "The adapter doesn't know the idempotency key, and retrying without it is exactly the double-charge bug. Happy to move it once the key is part of the adapter API.",
+        "2026-08-11T15:40:00Z",
+        { updatedAt: "2026-08-11T15:52:00Z" },
+      ),
+      remote("maria", "Fair. Can you leave a `TODO(BILL-1190)` so we don't forget?", "2026-08-11T16:05:00Z"),
+    ],
+  }),
+  // Resolved: collapses to one line.
+  thread({
+    id: "PRRT_ledger17",
+    path: "src/billing/ledger.ts",
+    line: 17,
+    originalLine: 17,
+    isResolved: true,
+    resolvedBy: "dana",
+    viewerCanResolve: false,
+    viewerCanUnresolve: true,
+    comments: [
+      remote(
+        "oliver",
+        "`ON CONFLICT DO NOTHING` swallows a second write for the same key — is that intended, or should it at least log?",
+        "2026-08-10T09:30:00Z",
+      ),
+      remote("dana", "Intended: the first outcome wins. Added a comment above the query.", "2026-08-10T11:12:00Z"),
+    ],
+  }),
+  // Outdated: the line it was written on is gone.
+  thread({
+    id: "PRRT_charge_old",
+    path: "src/billing/charge.ts",
+    line: null,
+    originalLine: 20,
+    isOutdated: true,
+    comments: [
+      remote(
+        "oliver",
+        "This throws `ChargeFailed` before anything is recorded — a retry after a timeout can't tell a decline from a lost response.",
+        "2026-08-09T16:45:00Z",
+      ),
+      remote("dana", "Reworked in the next push: failures go to the ledger first.", "2026-08-10T08:03:00Z"),
+    ],
+  }),
+  // CodeRabbit, in its real format.
+  thread({
+    id: "PRRT_idem10_rabbit",
+    path: "src/billing/idempotency.ts",
+    line: 10,
+    originalLine: 10,
+    comments: [remote("coderabbitai[bot]", CODERABBIT_MAJOR, "2026-08-09T10:30:00Z", RABBIT)],
+  }),
+  // Copilot.
+  thread({
+    id: "PRRT_charge29_copilot",
+    path: "src/billing/charge.ts",
+    line: 29,
+    originalLine: 29,
+    comments: [
+      remote(
+        "Copilot",
+        "If `recordFailure` itself throws, the original `ChargeFailed` is lost and the caller sees a database error instead. Consider recording the failure in a `try/finally` or logging and rethrowing the original error.",
+        "2026-08-09T10:41:00Z",
+        { bot: true, botName: "Copilot" },
+      ),
+    ],
+  }),
+  // Two separate threads on the same line, both remote.
+  thread({
+    id: "PRRT_charge33_a",
+    path: "src/billing/charge.ts",
+    line: 33,
+    originalLine: 33,
+    comments: [
+      remote(
+        "maria",
+        "Nit: `record` after the gateway call means a crash in between charges twice on retry. Probably fine for now given the gateway's own idempotency header?",
+        "2026-08-11T14:10:00Z",
+      ),
+    ],
+  }),
+  thread({
+    id: "PRRT_charge33_rabbit",
+    path: "src/billing/charge.ts",
+    line: 33,
+    originalLine: 33,
+    comments: [remote("coderabbitai[bot]", CODERABBIT_NITPICK, "2026-08-09T10:31:00Z", RABBIT)],
+  }),
+  // Started by a comment pushed from Purview (draft-4), with an answer.
+  thread({
+    id: "PRRT_orders46",
+    path: "src/api/routes/orders.ts",
+    line: 46,
+    originalLine: 46,
+    comments: [
+      remote(VIEWER, "Already public: the 409 here should probably be a 200 with the original result.", "2026-08-10T12:16:00Z", {
+        databaseId: 90180,
+      }),
+      remote(
+        "dana",
+        "Good call — a replayed pay request should look exactly like the first one to the client. Changing it.",
+        "2026-08-10T13:02:00Z",
+      ),
+    ],
+  }),
+  // Purview's own on idempotency.ts:9: one in the pending review, one public.
+  thread({
+    id: "PRRT_idem9_pending",
+    path: "src/billing/idempotency.ts",
+    line: 9,
+    originalLine: 9,
+    comments: [
+      remote(VIEWER, "sha256 over a template string will collide if any field can contain the separator.", "2026-08-12T08:45:00Z", {
+        databaseId: 90210,
+        reviewState: "PENDING",
+      }),
+    ],
+  }),
+  thread({
+    id: "PRRT_idem9_public",
+    path: "src/billing/idempotency.ts",
+    line: 9,
+    originalLine: 9,
+    comments: [
+      remote(VIEWER, "Already raised this one publicly last round — see the thread above.", "2026-08-11T11:21:00Z", {
+        databaseId: 90150,
+      }),
+    ],
+  }),
+  // A whole-file thread.
+  thread({
+    id: "PRRT_docs_file",
+    path: "docs/billing.md",
+    subjectType: "file",
+    comments: [
+      remote(
+        "oliver",
+        "Could this page say what happens to a charge that is still *pending* at the gateway when the retry kicks in?",
+        "2026-08-11T09:00:00Z",
+      ),
+    ],
+  }),
 ];

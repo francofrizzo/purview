@@ -1,5 +1,5 @@
 import { memo, type MouseEvent, type ReactNode } from "react";
-import type { DraftComment } from "../api/types";
+import type { DisplayThread } from "../lib/threads";
 import type { Tok } from "../lib/highlight";
 import type { CharRange, DiffRow } from "../lib/diffModel";
 import { identifierAtPoint } from "../lib/identifierAt";
@@ -192,8 +192,8 @@ function markerColor(type: DiffRow["type"]) {
 export const COMMENT_COL_WIDTH = 44;
 
 export interface LineCommentProps {
-  /** comments anchored to this line; undefined/empty renders no bubble */
-  comments?: DraftComment[];
+  /** comment threads anchored to this line; undefined/empty renders no bubble */
+  comments?: DisplayThread[];
   expanded?: boolean;
   onToggleComments?: () => void;
 }
@@ -213,7 +213,7 @@ function CommentColumn({
       {has && onToggleComments ? (
         <CommentBubble
           compact
-          comments={comments!}
+          threads={comments!}
           expanded={Boolean(expanded)}
           onToggle={onToggleComments}
         />
@@ -545,8 +545,8 @@ export interface SplitDiffLineProps {
   rightTokens?: Tok[];
   onCommentLeft?: () => void;
   onCommentRight?: () => void;
-  commentsLeft?: DraftComment[];
-  commentsRight?: DraftComment[];
+  commentsLeft?: DisplayThread[];
+  commentsRight?: DisplayThread[];
   expandedLeft?: boolean;
   expandedRight?: boolean;
   onToggleCommentsLeft?: () => void;

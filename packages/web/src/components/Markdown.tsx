@@ -43,6 +43,9 @@ const LANG_ALIASES: Record<string, string> = {
   text: "",
   plain: "",
   txt: "",
+  // GitHub's ```suggestion: replacement lines for the commented code, in
+  // whatever language that is — shown plain, under its own label.
+  suggestion: "",
 };
 
 /** What a code span links to, when its text names something the page can open. */
@@ -244,7 +247,9 @@ function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
         className="flex items-center gap-1.5 border-b px-2 py-0.5 text-2xs"
         style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
       >
-        <span className="font-mono">{lang ?? ""}</span>
+        <span className={lang === "suggestion" ? "font-medium" : "font-mono"}>
+          {lang === "suggestion" ? "suggested change" : (lang ?? "")}
+        </span>
         <button
           type="button"
           data-testid="code-wrap"

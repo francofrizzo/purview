@@ -87,6 +87,7 @@ import {
   type SubmitEvent,
 } from "./github-review.js";
 import { HttpError, classifyError } from "./http-error.js";
+import { loadThreads, setThreadResolved } from "./github-threads.js";
 import { streamSSE } from "hono/streaming";
 import {
   cancelAnalysis,
@@ -1185,10 +1186,12 @@ export function createApp(opts: AppOptions = {}): Hono {
     // CLI-created comments (the chat's included) must land inside the current
     // diff: nobody is looking at the line they chose, and a comment outside
     // the diff would only fail later, at push time. The web picks lines from
-    // the rendered diff, so it is not re-checked.
+    // the rendered diff, so it is not re-checked. Replies are exempt.
     if (c.req.header(ACTOR_HEADER) !== undefined) {
       const parsed = NewCommentSchema.safeParse(body);
-      if (parsed.success) {
+      // A reply is anchored by its thread, which may well be outdated (its
+      // line gone from the diff) — GitHub accepts it regardless.
+      if (parsed.success && !parsed.data.inReplyTo) {
         const state = loadState(key, root);
         const files = readFilesJson(key, state.currentRevision, root).files;
         const { file, line, side, subjectType } = parsed.data;
@@ -1269,11 +1272,11 @@ export function createApp(opts: AppOptions = {}): Hono {
     const id = c.req.param("id");
     const target = readComments(key, root).find((cc) => cc.id === id);
     if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
-    if (target.status !== "draft" || target.subjectType !== "line") {
+    if (target.status !== "draft" || target.subjectType !== "line" || target.inReplyTo) {
       throw new HttpError(
         400,
         "not_reanchorable",
-        "Only draft line comments can be re-anchored",
+        "Only draft line comments can be re-anchored (not replies, which follow their thread)",
       );
     }
     const result = await proposeCommentReanchor(key, target, root);
@@ -1325,6 +1328,9 @@ export function createApp(opts: AppOptions = {}): Hono {
       }
       if (target.subjectType !== "line") {
         throw new HttpError(400, "not_line_comment", "Only line comments can be repositioned");
+      }
+      if (target.inReplyTo) {
+        throw new HttpError(400, "reply_not_movable", "A reply sits on its thread and cannot be repositioned");
       }
       const nextLine = body.line !== undefined ? body.line : target.line;
       const nextFile = body.file !== undefined ? body.file : target.file;
@@ -1405,6 +1411,36 @@ export function createApp(opts: AppOptions = {}): Hono {
       return c.json({ comment: result.comment, remote: { ok: false, reason: e.message } });
     }
   });
+
+  /* ------------------------------------------------------ review threads */
+
+  /**
+   * The PR's GitHub review threads (everyone's), live, cached in threads.json.
+   * Always 200: when GitHub is unreachable the cached copy (or none) comes
+   * back with `error` set — see github-threads.ts.
+   */
+  function trackedKey(c: Context): PrKey {
+    const key = keyParam(c);
+    if (!prExists(key, root)) throw new HttpError(404, "not_found", `${keyToString(key)} is not tracked`);
+    return key;
+  }
+
+  app.get("/api/prs/:key/threads", (c) => {
+    const key = trackedKey(c);
+    return c.json(loadThreads(key, { root, aiReviewers: readConfig(root).aiReviewers }));
+  });
+
+  for (const action of ["resolve", "unresolve"] as const) {
+    app.post(`/api/prs/:key/threads/:id/${action}`, (c) => {
+      const key = trackedKey(c);
+      const id = c.req.param("id");
+      try {
+        return c.json(setThreadResolved(key, id, action === "resolve", root));
+      } catch (err) {
+        throw classifyError(err);
+      }
+    });
+  }
 
   /* -------------------------------------------------------------- review */
 
@@ -1608,6 +1644,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisAgent: config.analysisAgent,
       chatAgent: config.chatAgent,
       managedCheckouts: config.managedCheckouts,
+      aiReviewers: config.aiReviewers,
       /** what this layer resolves to on its own — the end of the inheritance chain */
       effective: {
         analysisAgent: agentView(resolveAgent("analysis", [["global", config.analysisAgent]], true)),
@@ -1621,6 +1658,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisAgent: AgentSelectionSchema.strict().nullable().optional(),
       chatAgent: ChatAgentSelectionSchema.strict().nullable().optional(),
       managedCheckouts: z.boolean().optional(),
+      /** logins treated as AI reviewers; the whole list, replacing the stored one */
+      aiReviewers: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
     })
     .strict();
 
@@ -1658,6 +1697,14 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
     if (body.chatAgent !== undefined) patch.chatAgent = checkAgentSelection(body.chatAgent, "chatAgent");
     if (body.managedCheckouts !== undefined) patch.managedCheckouts = body.managedCheckouts;
+    if (body.aiReviewers !== undefined) {
+      // Stored as typed, minus case-insensitive duplicates.
+      const seen = new Set<string>();
+      patch.aiReviewers = body.aiReviewers.filter((l) => {
+        const k = l.toLowerCase();
+        return seen.has(k) ? false : (seen.add(k), true);
+      });
+    }
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
   });

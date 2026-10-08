@@ -10,6 +10,7 @@ import {
 import {
   ReviewError,
   appendCommentToPendingReview,
+  appendReplyToPendingReview,
   classifyGhReviewError,
   createPendingReview,
   findPendingReview,
@@ -68,8 +69,10 @@ const toInput = (c: Comment): ReviewCommentInput =>
  * Append drafts to an existing pending review one thread at a time, recording
  * each success as it lands so a failure halfway through does not lose track of
  * what already exists remotely. Shared by both branches of the push: the
- * "created" branch also comes through here for its file-level drafts, which
- * the REST create payload cannot express (see github-review.ts).
+ * "created" branch also comes through here for its file-level drafts and
+ * replies, which the REST create payload cannot express (see
+ * github-review.ts). A reply (`inReplyTo`) joins its existing thread rather
+ * than opening a new one; its `githubThreadId` is that thread.
  */
 function appendDrafts(
   key: PrKey,
@@ -80,7 +83,9 @@ function appendDrafts(
   let pushed = 0;
   for (const draft of drafts) {
     try {
-      const res = appendCommentToPendingReview(key, reviewNodeId, toInput(draft));
+      const res = draft.inReplyTo
+        ? appendReplyToPendingReview(key, reviewNodeId, draft.inReplyTo, draft.body)
+        : appendCommentToPendingReview(key, reviewNodeId, toInput(draft));
       markPushed(
         key,
         [
@@ -199,9 +204,10 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       // The REST create payload has no `subject_type`, so file-level drafts
       // cannot ride along in it; they are appended to the review it creates,
       // via the GraphQL mutation that can express them. Line drafts still go
-      // out in the single create call.
-      const lineDrafts = drafts.filter((c) => c.subjectType === "line");
-      const fileDrafts = drafts.filter((c) => c.subjectType === "file");
+      // out in the single create call. Replies can't either (the payload
+      // only opens new threads), so they are appended alongside.
+      const lineDrafts = drafts.filter((c) => c.subjectType === "line" && !c.inReplyTo);
+      const appendLater = drafts.filter((c) => c.subjectType === "file" || c.inReplyTo);
       const created = createPendingReview(key, commitId, lineDrafts.map(toLineInput));
       // The create response carries no per-comment ids; this read backfills
       // both the REST databaseId (githubCommentId) and the GraphQL node id
@@ -238,7 +244,7 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
         },
         root,
       );
-      const appended = appendDrafts(key, created.nodeId, fileDrafts, root);
+      const appended = appendDrafts(key, created.nodeId, appendLater, root);
       return {
         ok: !appended.failure,
         pushed: lineDrafts.length + appended.pushed,

@@ -51,6 +51,8 @@ import {
   useStaleness,
   useSubmitReview,
   useSync,
+  useThreads,
+  useResolveThread,
 } from "../api/hooks";
 import { errorText } from "../api/errors";
 import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
@@ -70,9 +72,12 @@ import {
   targetRef,
   targetToInput,
   type CommentTarget,
+  targetKey,
 } from "../components/Drafts";
 import { CommentBubble, InlineCommentList } from "../components/InlineComments";
-import { groupComments } from "../lib/comments";
+import { isLineInDiff } from "../lib/comments";
+import { buildThreadGroups, replyTarget, type DisplayThread } from "../lib/threads";
+import { ThreadFilterMenu } from "../components/Threads";
 import { UnitChangelog } from "../components/UnitChangelog";
 import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
@@ -111,7 +116,7 @@ import { prPageTitle, unitFromSearch, withUnitParam } from "../lib/prUrl";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
-import { useDiffViewPrefs, useSettings } from "../lib/settings";
+import { useDiffViewPrefs, useSettings, useThreadFilters } from "../lib/settings";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
 import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
@@ -134,6 +139,9 @@ export function PrView() {
 
   const { data: detail, isLoading, error } = usePr(prKey);
   const { data: drafts = [] } = useComments(prKey);
+  const threadsQuery = useThreads(prKey);
+  const resolveThread = useResolveThread(prKey);
+  const threadFilters = useThreadFilters();
   const qc = useQueryClient();
 
   const setHunkViewed = useSetHunkViewed(prKey);
@@ -249,11 +257,7 @@ export function PrView() {
   // virtualized row and unmounts when scrolled away.
   const [composerBody, setComposerBody] = useState("");
   const [composerPlaced, setComposerPlaced] = useState(false);
-  const commentTargetKey = commentTarget
-    ? commentTarget.subjectType === "file"
-      ? `f:${commentTarget.file}`
-      : `${commentTarget.file}:${commentTarget.line}:${commentTarget.side}`
-    : null;
+  const commentTargetKey = commentTarget ? targetKey(commentTarget) : null;
   useEffect(() => {
     setComposerBody("");
   }, [commentTargetKey]);
@@ -582,6 +586,20 @@ export function PrView() {
     const file = detail.files.files.find((f) => f.path === selectedPath);
     return file ? file.hunks.map((h) => ({ hunk: h, file })) : [];
   }, [detail, tab, selectedUnit, unplacedSelected, unplaced, selectedPath]);
+  // Purview's comments and the PR's GitHub threads, merged once per change:
+  // every surface that draws comments (gutter, file header, drawer) reads this.
+  const remoteThreads = threadsQuery.data?.threads;
+  const threadGroups = useMemo(
+    () =>
+      buildThreadGroups({
+        comments: drafts,
+        threads: remoteThreads,
+        filters: threadFilters.filters,
+        inDiff: detail ? (file, line, side) => isLineInDiff(detail.files, file, line, side) : undefined,
+      }),
+    [drafts, remoteThreads, threadFilters.filters, detail],
+  );
+
   const entries = useMemo(
     () => (sinceChanged ? allEntries.filter((e) => sinceChanged.has(e.hunk.id)) : allEntries),
     [allEntries, sinceChanged],
@@ -852,7 +870,23 @@ export function PrView() {
 
   const summary = detail.state.summary?.trim() ?? "";
   const description = visibleDescription(detail.meta.body);
-  const fileComments = selectedPath ? groupComments(drafts).byFile.get(selectedPath) : undefined;
+  const fileComments = selectedPath ? threadGroups.byFile.get(selectedPath) : undefined;
+  // In the files tab a reply to a thread of the file's own block is written in
+  // the header's block (the pane below has no file row to put it under).
+  const replyAt = commentTarget?.inReplyTo ? threadGroups.located.get(commentTarget.inReplyTo) : undefined;
+  const replyInHeader =
+    tab === "files" && fileCommentsOpen && !!replyAt && "file" in replyAt && replyAt.file === selectedPath;
+  const threadFilterMenu = (
+    <ThreadFilterMenu
+      compact
+      filters={threadFilters.filters}
+      threads={remoteThreads ?? []}
+      hidden={threadGroups.hidden}
+      onShowResolved={threadFilters.setShowResolved}
+      onShowAiReviewers={threadFilters.setShowAiReviewers}
+      onBotHidden={threadFilters.setBotHidden}
+    />
+  );
   const progress = selectedUnit ? unitProgress(detail, selectedUnit) : null;
   const unsubmittedDrafts = drafts.filter((d) => d.status !== "submitted");
 
@@ -897,6 +931,12 @@ export function PrView() {
     exportCtx,
     onUndoEdit: (id: string) => undoCommentEdit.mutate(id),
     undoing: undoCommentEdit.isPending,
+    onReply: (thread: DisplayThread) => {
+      const target = replyTarget(thread);
+      if (target) openComposer(target);
+    },
+    onResolve: (thread: { id: string }, resolved: boolean) => resolveThread.mutate({ id: thread.id, resolved }),
+    resolving: resolveThread.isPending ? (resolveThread.variables?.id ?? null) : null,
   };
 
   const jumpToFile = (file: string) => {
@@ -1438,6 +1478,7 @@ export function PrView() {
                 </div>
                 <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
                   {showNarrowNote ? <NarrowPaneNote /> : null}
+                  {threadFilterMenu}
                   <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                   <WrapToggle wrap={wrap} onChange={setWrap} />
                   {progress ? <Progress viewed={progress.viewed} total={progress.total} /> : null}
@@ -1521,6 +1562,7 @@ export function PrView() {
               controls={
                 <>
                   {showNarrowNote ? <NarrowPaneNote /> : null}
+                  {threadFilterMenu}
                   <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                   <WrapToggle wrap={wrap} onChange={setWrap} />
                 </>
@@ -1552,7 +1594,7 @@ export function PrView() {
               <div className="ml-auto flex flex-none items-center gap-2">
                 {fileComments?.length ? (
                   <CommentBubble
-                    comments={fileComments}
+                    threads={fileComments}
                     expanded={fileCommentsOpen}
                     onToggle={() => setFileCommentsOpen((v) => !v)}
                   />
@@ -1569,7 +1611,8 @@ export function PrView() {
                   + file
                 </button>
                 {showNarrowNote ? <NarrowPaneNote /> : null}
-                <DiffViewToggle mode={viewMode} onChange={setViewMode} />
+                {threadFilterMenu}
+                  <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                 <WrapToggle wrap={wrap} onChange={setWrap} />
               </div>
             </div>
@@ -1580,11 +1623,17 @@ export function PrView() {
           {tab === "files" && selectedPath && fileCommentsOpen && fileComments?.length ? (
             <div className="max-h-[38vh] flex-none overflow-y-auto">
               <InlineCommentList
-                comments={fileComments}
+                threads={fileComments}
+                showPlacement
+                indent={16}
                 label={`${selectedPath} (whole file)`}
                 onCollapse={() => setFileCommentsOpen(false)}
                 onAdd={() => openComposer({ subjectType: "file", file: selectedPath })}
-                actions={commentActions}
+                actions={{
+                  ...commentActions,
+                  replyingTo: replyInHeader ? (commentTarget?.inReplyTo ?? null) : null,
+                  renderReplyComposer: () => renderComposer("inline"),
+                }}
               />
             </div>
           ) : null}
@@ -1602,6 +1651,7 @@ export function PrView() {
               detail={detail}
               entries={entries}
               drafts={drafts}
+              threadGroups={threadGroups}
               focusedHunkId={focusedHunkId}
               onFocusHunk={setFocusedHunkId}
               onToggleViewed={(hunkId, viewed) =>
@@ -1645,7 +1695,7 @@ export function PrView() {
             />
           </div>
 
-          {commentTarget && !composerPlaced ? (
+          {commentTarget && !composerPlaced && !replyInHeader ? (
             renderComposer("floating")
           ) : null}
         </main>
@@ -1666,6 +1716,19 @@ export function PrView() {
             onRestore={(id) => restoreComment.mutate(id)}
             onUndoEdit={(id) => undoCommentEdit.mutate(id)}
             undoing={restoreComment.isPending || undoCommentEdit.isPending}
+            github={
+              remoteThreads?.length
+                ? {
+                    threads: remoteThreads,
+                    filters: threadFilters.filters,
+                    hidden: threadGroups.hidden,
+                    onShowResolved: threadFilters.setShowResolved,
+                    onShowAiReviewers: threadFilters.setShowAiReviewers,
+                    onBotHidden: threadFilters.setBotHidden,
+                    onJump: (t) => jumpToFile(t.path),
+                  }
+                : undefined
+            }
           />
         ) : null}
 

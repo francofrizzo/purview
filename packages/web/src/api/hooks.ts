@@ -31,6 +31,8 @@ import type {
   PrDetail,
   PrListEntry,
   ReanchorResult,
+  ResolveThreadResult,
+  ThreadsResponse,
   RepoConfig,
   RepoConfigPatch,
   PrGithubState,
@@ -58,6 +60,11 @@ export const qk = {
   comments: (key: string) => ["comments", key] as const,
   /** under qk.comments, so every comments invalidation refreshes the trash too */
   deletedComments: (key: string) => ["comments", key, "deleted"] as const,
+  /**
+   * Under qk.comments too: whatever changes Purview's comments (push, submit,
+   * discard, a reply, an edit mirrored to GitHub) changes the threads.
+   */
+  threads: (key: string) => ["comments", key, "threads"] as const,
   review: (key: string) => ["review", key] as const,
   analysisJob: (key: string) => ["analysis-job", key] as const,
   staleness: (key: string) => ["staleness", key] as const,
@@ -626,6 +633,42 @@ export function useComments(key: string) {
     queryKey: qk.comments(key),
     queryFn: () => api.listComments(key),
     enabled: Boolean(key),
+  });
+}
+
+/**
+ * The PR's GitHub review threads. Polled once a minute while the page is
+ * visible (react-query pauses the interval while hidden) and re-read on focus:
+ * other people reply on GitHub, not here.
+ */
+export function useThreads(key: string) {
+  return useQuery<ThreadsResponse>({
+    queryKey: qk.threads(key),
+    queryFn: () => api.listThreads(key),
+    enabled: Boolean(key),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    staleTime: 10_000,
+    retry: false,
+  });
+}
+
+/**
+ * Resolve / unresolve, applied to the cached threads as soon as GitHub says
+ * so (no optimistic flip: the toggle is quick, and a refusal should not blink).
+ */
+export function useResolveThread(
+  key: string,
+): UseMutationResult<ResolveThreadResult, Error, { id: string; resolved: boolean }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, resolved }: { id: string; resolved: boolean }) => api.setThreadResolved(key, id, resolved),
+    onSuccess: ({ thread }) => {
+      qc.setQueryData<ThreadsResponse>(qk.threads(key), (cur) =>
+        cur ? { ...cur, threads: cur.threads.map((t) => (t.id === thread.id ? { ...t, ...thread } : t)) } : cur,
+      );
+    },
+    onSettled: () => void qc.invalidateQueries({ queryKey: qk.threads(key) }),
   });
 }
 

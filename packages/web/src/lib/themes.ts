@@ -79,6 +79,8 @@ export const TOKEN_NAMES = [
   "kind-tests-soft",
   "kind-docs",
   "kind-docs-soft",
+  "bot",
+  "bot-soft",
   "shadow-1",
   "shadow-2",
   "shadow-3",
@@ -245,6 +247,12 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "kind-tests-soft": rgba(palette.green, softAlpha),
     "kind-docs": fade(0.3, 3.0),
     "kind-docs-soft": rgba(fade(0.3, 3.0), dark ? 0.12 : 0.1),
+
+    // AI reviewers on GitHub threads (CodeRabbit, Copilot…): a violet leaning
+    // toward the neutrals, so a bot's marker and chip read as "machine" without
+    // competing with the accent the reader's own comments use.
+    bot: text(mix(palette.purple, fg, 0.2), 3.6),
+    "bot-soft": rgba(palette.purple, softAlpha),
 
     // Elevation. One scale for the whole app: 1 = resting card, 2 = popover /
     // floating pill, 3 = modal / drawer. Dark surfaces need much stronger

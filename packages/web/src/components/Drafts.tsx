@@ -9,7 +9,16 @@ import {
   type DeletedComment,
   type DraftComment,
   type EditCommentResult,
+  type RemoteThread,
 } from "../api/types";
+import {
+  authorOf,
+  drawerThreads,
+  excerpt,
+  groupThreadsByAuthor,
+  isBotHidden,
+  type ThreadFilters,
+} from "../lib/threads";
 import { formatComment, type DiffContext } from "../lib/agentExport";
 import { capitalized } from "../lib/agentSelection";
 import {
@@ -20,7 +29,8 @@ import {
   isByAgent,
 } from "../lib/comments";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
-import { IconChat, IconClose } from "./icons";
+import { IconChat, IconCheck, IconClose } from "./icons";
+import { BotChip, ThreadFilterMenu } from "./Threads";
 import { Markdown } from "./Markdown";
 import { CommentCard } from "./CommentCard";
 
@@ -28,9 +38,21 @@ import { CommentCard } from "./CommentCard";
  * What the composer is pointed at. A file-level target carries no line and no
  * side, which is exactly what the POST body will look like.
  */
-export type CommentTarget =
+export type CommentTarget = (
   | { subjectType: "line"; file: string; line: number; side: "LEFT" | "RIGHT" }
-  | { subjectType: "file"; file: string };
+  | { subjectType: "file"; file: string }
+) & {
+  /** a reply to this GitHub thread (node id), drawn at the end of the thread */
+  inReplyTo?: string;
+  /** whose thread it is, for the composer's header ("@maria", "CodeRabbit") */
+  replyTo?: string;
+};
+
+/** One string per target, so switching targets (or threads) resets the composer. */
+export function targetKey(target: CommentTarget): string {
+  const where = target.subjectType === "file" ? `f:${target.file}` : `${target.file}:${target.line}:${target.side}`;
+  return target.inReplyTo ? `${where}>${target.inReplyTo}` : where;
+}
 
 /** The chat ref for where a comment box points: its line, or its whole file. */
 export function targetRef(target: CommentTarget): ChatRef {
@@ -53,9 +75,10 @@ export function commentRef(c: DraftComment): ChatRef {
 
 /** The comment a target would create, once a body is typed. */
 export function targetToInput(target: CommentTarget, body: string): AddCommentInput {
+  const reply = target.inReplyTo ? { inReplyTo: target.inReplyTo } : {};
   return target.subjectType === "file"
-    ? { subjectType: "file", file: target.file, body }
-    : { subjectType: "line", file: target.file, line: target.line, side: target.side, body };
+    ? { subjectType: "file", file: target.file, body, ...reply }
+    : { subjectType: "line", file: target.file, line: target.line, side: target.side, body, ...reply };
 }
 
 /** "src/a.ts:24 (new)" or "src/a.ts (whole file)" — used wherever a comment is labelled. */
@@ -106,10 +129,13 @@ export function CommentComposer({
   const ref = useRef<HTMLTextAreaElement>(null);
 
   const fileLevel = target.subjectType === "file";
-  const anchorKey = fileLevel ? target.file : `${target.file}:${target.line}:${target.side}`;
-  const where = fileLevel
-    ? "this file"
-    : `line ${target.line}${target.side === "LEFT" ? " (old)" : ""}`;
+  const anchorKey = targetKey(target);
+  const reply = Boolean(target.inReplyTo);
+  const where = reply
+    ? `to ${target.replyTo ?? "the thread"}`
+    : fileLevel
+      ? "on this file"
+      : `on line ${target.line}${target.side === "LEFT" ? " (old)" : ""}`;
 
   useEffect(() => {
     const el = ref.current;
@@ -153,16 +179,19 @@ export function CommentComposer({
     >
       <div className="flex items-center gap-2 px-3 pt-2 text-2xs">
         <span className="font-medium" style={{ color: "var(--accent)" }}>
-          New comment
+          {reply ? "Reply" : "New comment"}
         </span>
         <span className="min-w-0 truncate" style={{ color: "var(--fg-faint)" }}>
           {floating ? (
-            <span className="font-mono">
-              {target.file}
-              {fileLevel ? "" : `:${target.line}${target.side === "LEFT" ? " (old)" : ""}`}
-            </span>
+            <>
+              {reply ? `${where} · ` : null}
+              <span className="font-mono">
+                {target.file}
+                {fileLevel ? "" : `:${target.line}${target.side === "LEFT" ? " (old)" : ""}`}
+              </span>
+            </>
           ) : (
-            `on ${where}`
+            where
           )}
         </span>
         <button
@@ -182,7 +211,7 @@ export function CommentComposer({
         className="block w-full resize-none bg-transparent px-3 py-1.5 text-[13px] leading-[20px] outline-none"
         style={{ color: "var(--fg)" }}
         data-testid="composer-textarea"
-        placeholder={fileLevel ? "Comment on this file…" : "Comment on this line…"}
+        placeholder={reply ? "Reply…" : fileLevel ? "Comment on this file…" : "Comment on this line…"}
         value={body}
         onChange={(e) => setBody(e.target.value)}
       />
@@ -544,8 +573,11 @@ export function DraftsDrawer({
   onRestore,
   onUndoEdit,
   undoing,
+  github,
 }: {
   drafts: DraftComment[];
+  /** the PR's GitHub review threads, with the reader's filters */
+  github?: DrawerThreads;
   /** the server's trash; drafts the chat deleted get a restore notice */
   deleted?: DeletedComment[];
   onRestore?: (id: string) => void;
@@ -573,6 +605,7 @@ export function DraftsDrawer({
   // the server's trash lets it go.
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
   const chatDeleted = onRestore ? agentDeletedDrafts(deleted, dismissed) : [];
+  const threadCount = github ? drawerThreads(github.threads).length : 0;
 
   return (
     <aside
@@ -588,13 +621,27 @@ export function DraftsDrawer({
               local.length ? `${local.length} draft` : "",
               pushed.length ? `${pushed.length} pushed` : "",
               submitted.length ? `${submitted.length} submitted` : "",
+              threadCount ? `${threadCount} on GitHub` : "",
             ]
               .filter(Boolean)
               .join(" · ")}
           </span>
-          <button type="button" className="ml-auto text-xs" onClick={onClose} style={{ color: "var(--fg-faint)" }}>
-            <IconClose width={10} height={10} />
-          </button>
+          <span className="ml-auto flex items-center gap-2">
+            {github ? (
+              <ThreadFilterMenu
+                compact
+                filters={github.filters}
+                threads={github.threads}
+                hidden={github.hidden}
+                onShowResolved={github.onShowResolved}
+                onShowAiReviewers={github.onShowAiReviewers}
+                onBotHidden={github.onBotHidden}
+              />
+            ) : null}
+            <button type="button" className="text-xs" onClick={onClose} style={{ color: "var(--fg-faint)" }}>
+              <IconClose width={10} height={10} />
+            </button>
+          </span>
         </div>
         {bundle && drafts.length > 0 ? (
           <CopyBundleControls
@@ -641,7 +688,7 @@ export function DraftsDrawer({
         </ul>
       ) : null}
       <div className="flex-1 overflow-auto">
-        {drafts.length === 0 ? (
+        {drafts.length === 0 && threadCount === 0 ? (
           <p className="p-3 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
             No comments yet. Hover a diff line and press the + button to write one, or use the
             file header to comment on a whole file.
@@ -690,9 +737,148 @@ export function DraftsDrawer({
                   </ul>
                 </section>
               ))}
+            {github && threadCount ? <GithubThreadsSection github={github} /> : null}
           </div>
         )}
       </div>
     </aside>
+  );
+}
+
+/** What the drawer's "On GitHub" group needs: the threads, the filters, a jump. */
+export interface DrawerThreads {
+  threads: RemoteThread[];
+  filters: ThreadFilters;
+  /** how many threads the filters hide in the diff */
+  hidden: number;
+  onShowResolved: (v: boolean) => void;
+  onShowAiReviewers: (v: boolean) => void;
+  onBotHidden: (key: string, hidden: boolean) => void;
+  onJump: (thread: RemoteThread) => void;
+}
+
+/**
+ * Everyone's threads on the PR, by who started them: people first, then each
+ * AI reviewer with its own count (and a one-click "hide"). Unresolved first
+ * within a group; resolved ones leave when the reader hides resolved threads.
+ */
+function GithubThreadsSection({ github }: { github: DrawerThreads }) {
+  const { filters } = github;
+  const groups = groupThreadsByAuthor(drawerThreads(github.threads));
+  return (
+    <section data-testid="drawer-group-github">
+      <h3 className="mb-1.5 flex items-baseline gap-1.5 px-0.5 text-2xs">
+        <span className="font-semibold" style={{ color: "var(--fg-muted)" }}>
+          On GitHub
+        </span>
+        <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
+          {drawerThreads(github.threads).length}
+        </span>
+        <span className="truncate" style={{ color: "var(--fg-faint)" }}>
+          · Everyone's review threads
+        </span>
+      </h3>
+      <div className="flex flex-col gap-2.5">
+        {groups.map((g) => {
+          const hidden = g.bot && isBotHidden(g.key, filters);
+          const shown = filters.showResolved ? g.threads : g.threads.filter((t) => !t.isResolved);
+          const open = g.threads.filter((t) => !t.isResolved).length;
+          return (
+            <div key={g.key} data-testid={`drawer-threads-${g.key}`}>
+              <div className="mb-1 flex items-center gap-1.5 px-0.5 text-2xs">
+                <span className="font-medium" style={{ color: g.bot ? "var(--bot)" : "var(--fg-muted)" }}>
+                  {g.label}
+                </span>
+                {g.bot ? <BotChip /> : null}
+                <span className="tabular-nums" style={{ color: "var(--fg-faint)" }} title={`${open} unresolved of ${g.threads.length}`}>
+                  {open}/{g.threads.length} open
+                </span>
+                {g.bot ? (
+                  <button
+                    type="button"
+                    data-testid={`drawer-bot-toggle-${g.key}`}
+                    className="ml-auto underline"
+                    style={{ color: "var(--fg-faint)" }}
+                    disabled={hidden && !filters.showAiReviewers}
+                    title={
+                      hidden
+                        ? filters.showAiReviewers
+                          ? `Show ${g.label}'s threads again`
+                          : "AI reviewers are hidden — turn them back on in the filters"
+                        : `Hide every thread ${g.label} started, in the diff and here`
+                    }
+                    onClick={() => github.onBotHidden(g.key, !hidden)}
+                  >
+                    {hidden ? (filters.showAiReviewers ? "show" : "hidden") : "hide this bot"}
+                  </button>
+                ) : null}
+              </div>
+              {hidden ? null : shown.length === 0 ? (
+                <p className="px-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  All resolved.
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {shown.map((t) => (
+                    <li key={t.id}>
+                      <GithubThreadRow thread={t} onJump={() => github.onJump(t)} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function GithubThreadRow({ thread, onJump }: { thread: RemoteThread; onJump: () => void }) {
+  const root = thread.comments[0];
+  const author = authorOf({ kind: "remote", comment: root });
+  const line = thread.line ?? thread.originalLine;
+  const where = `${thread.path.slice(thread.path.lastIndexOf("/") + 1)}${
+    thread.subjectType === "file" || line === null ? "" : `:${line}`
+  }`;
+  const replies = thread.comments.length - 1;
+  return (
+    <button
+      type="button"
+      data-testid={`drawer-thread-${thread.id}`}
+      className="block w-full rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
+      style={{
+        border: "1px solid var(--border)",
+        background: "var(--bg)",
+        opacity: thread.isResolved ? 0.7 : undefined,
+      }}
+      title={`${thread.path}${line !== null && thread.subjectType !== "file" ? `:${line}` : ""} — show it in the diff`}
+      onClick={onJump}
+    >
+      <span className="flex items-center gap-1.5 text-2xs">
+        {thread.isResolved ? (
+          <IconCheck width={10} height={10} style={{ color: "var(--ok)", flex: "none" }} aria-label="resolved" />
+        ) : null}
+        <span className="min-w-0 truncate font-mono" style={{ color: "var(--fg-muted)" }}>
+          {where}
+        </span>
+        {thread.isOutdated ? (
+          <span className="flex-none" style={{ color: "var(--warn)" }}>
+            outdated
+          </span>
+        ) : null}
+        <span className="ml-auto flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
+          {replies ? `${replies} ${replies === 1 ? "reply" : "replies"}` : ""}
+        </span>
+      </span>
+      <span className="mt-0.5 block truncate text-xs" style={{ color: "var(--fg)" }}>
+        {author.kind === "bot" ? null : (
+          <span className="font-medium" style={{ color: "var(--fg-muted)" }}>
+            {author.kind === "you" ? "you" : root.author.login}:{" "}
+          </span>
+        )}
+        {excerpt(root.body, 120)}
+      </span>
+    </button>
   );
 }

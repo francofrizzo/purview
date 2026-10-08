@@ -39,6 +39,8 @@ import type {
   PrState,
   RepoConfig,
   RepoConfigPatch,
+  ResolveThreadResult,
+  ThreadsResponse,
   RepoRemovalSummary,
   RepoSummary,
   RewindChatResult,
@@ -250,6 +252,8 @@ interface WireComment {
   author?: CommentActor;
   lastEditedBy?: CommentActor;
   history?: { body: string; replacedAt: string; replacedBy: CommentActor }[];
+  githubThreadId?: string;
+  inReplyTo?: string;
 }
 
 interface WireReviewStatus {
@@ -664,8 +668,25 @@ export const api = {
       input.subjectType === "file"
         ? { file: input.file, body: input.body, subjectType: "file" as const }
         : { file: input.file, line: input.line, side: input.side, body: input.body };
-    const res = await post<{ comment: WireComment }>(`/prs/${encodeKey(key)}/comments`, body);
+    const res = await post<{ comment: WireComment }>(
+      `/prs/${encodeKey(key)}/comments`,
+      input.inReplyTo ? { ...body, inReplyTo: input.inReplyTo } : body,
+    );
     return adaptComment(res.comment);
+  },
+
+  /** The PR's GitHub review threads (everyone's), live or from the server's cache. */
+  async listThreads(key: string): Promise<ThreadsResponse> {
+    if (MOCK) return mockApi.listThreads(key);
+    const res = await request<ThreadsResponse>(`/prs/${encodeKey(key)}/threads`);
+    return { ...res, threads: res.threads ?? [] };
+  },
+
+  async setThreadResolved(key: string, id: string, resolved: boolean): Promise<ResolveThreadResult> {
+    if (MOCK) return mockApi.setThreadResolved(key, id, resolved);
+    return post<ResolveThreadResult>(
+      `/prs/${encodeKey(key)}/threads/${encodeURIComponent(id)}/${resolved ? "resolve" : "unresolve"}`,
+    );
   },
 
   /**

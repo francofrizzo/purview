@@ -39,6 +39,7 @@ import {
   type RequestAgeDays,
   type Settings as SettingsShape,
 } from "../lib/settings";
+import { parseLoginList } from "../lib/threads";
 import { MONOKAI_PRO_NOTE, THEMES, previewColors, shikiThemeFor } from "../lib/themes";
 
 /** App-wide appearance settings, floating over whatever route is underneath. */
@@ -72,6 +73,8 @@ export function SettingsModal() {
       </Section>
 
       <AgentsSection />
+
+      <ReviewThreadsSection settings={settings} update={update} />
 
       <NetworkSection />
 
@@ -649,6 +652,115 @@ function AgentsSection() {
           </label>
         </div>
       )}
+    </Section>
+  );
+}
+
+/**
+ * GitHub review threads: which logins count as AI reviewers (server-side, so
+ * the threads come back already labelled) and what this browser shows.
+ */
+function ReviewThreadsSection({
+  settings,
+  update,
+}: {
+  settings: SettingsShape;
+  update: (patch: Partial<SettingsShape>) => void;
+}) {
+  const config = useGlobalConfig();
+  const save = useSaveGlobalConfig();
+  const saved = (config.data?.aiReviewers ?? []).join(", ");
+  const [text, setText] = useState<string | null>(null);
+  const value = text ?? saved;
+  const commit = () => {
+    if (text === null) return;
+    const next = parseLoginList(text);
+    setText(null);
+    if (next.join(", ") !== saved) save.mutate({ aiReviewers: next });
+  };
+  return (
+    <Section
+      title="GitHub review threads"
+      hint="Everyone's review comments on the PR show inline next to yours. GitHub's own bots are recognized as AI reviewers; list any other logins that should count too."
+    >
+      <div className="flex flex-col gap-3">
+        {/* A form, so Enter saves: the modal stops keydown before React sees it,
+            but the implicit submit that Enter triggers still arrives. */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            commit();
+          }}
+        >
+          <Field label="Extra AI reviewers">
+            <input
+              className="input max-w-md px-2 py-1 font-mono text-xs"
+              data-testid="ai-reviewers"
+              placeholder="e.g. acme-review-bot, sweep-ai"
+              value={value}
+              disabled={!config.data || save.isPending}
+              onChange={(e) => setText(e.target.value)}
+              onBlur={commit}
+            />
+          </Field>
+        </form>
+        {config.error ? (
+          <p className="text-2xs" style={{ color: "var(--risk)" }}>
+            {errorText(config.error) || "Could not read the server's settings."}
+          </p>
+        ) : save.error ? (
+          <p className="text-2xs" style={{ color: "var(--risk)" }}>
+            {errorText(save.error)}
+          </p>
+        ) : (
+          <p className="-mt-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
+            Comma or space separated · stored on the server · applies on the next refresh of a PR's threads
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-6">
+          <Field label="Resolved threads">
+            <Segmented
+              value={settings.showResolvedThreads ? "show" : "hide"}
+              options={[
+                { value: "show", label: "collapsed" },
+                { value: "hide", label: "hidden" },
+              ]}
+              onChange={(v) => update({ showResolvedThreads: v === "show" })}
+            />
+          </Field>
+          <Field label="AI reviewers">
+            <Segmented
+              value={settings.showAiReviewers ? "show" : "hide"}
+              options={[
+                { value: "show", label: "show" },
+                { value: "hide", label: "hide" },
+              ]}
+              onChange={(v) => update({ showAiReviewers: v === "show" })}
+            />
+          </Field>
+          {settings.hiddenBots.length ? (
+            <div className="flex flex-col gap-1">
+              <span className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
+                Hidden one by one
+              </span>
+              <span className="flex flex-wrap items-center gap-1">
+                {settings.hiddenBots.map((b) => (
+                  <button
+                    key={b}
+                    type="button"
+                    className="chip"
+                    style={{ background: "var(--bot-soft)", color: "var(--bot)" }}
+                    title={`Show ${b}'s threads again`}
+                    onClick={() => update({ hiddenBots: settings.hiddenBots.filter((x) => x !== b) })}
+                  >
+                    {b} ×
+                  </button>
+                ))}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </Section>
   );
 }

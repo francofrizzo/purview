@@ -544,6 +544,11 @@ export interface GlobalConfig {
   chatAgent: ChatAgentSelection | null;
   /** Purview's own exact checkout of each PR's head for agent runs */
   managedCheckouts: boolean;
+  /**
+   * Extra GitHub logins to treat as AI reviewers in review threads, on top of
+   * GitHub's own bots. Absent on a server that predates review threads.
+   */
+  aiReviewers?: string[];
   /** what this layer resolves to on its own — the end of the chain */
   effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }
@@ -552,6 +557,7 @@ export interface GlobalConfigPatch {
   analysisAgent?: AgentSelection | null;
   chatAgent?: ChatAgentSelection | null;
   managedCheckouts?: boolean;
+  aiReviewers?: string[];
 }
 
 /**
@@ -674,6 +680,14 @@ export interface DraftComment {
   lastEditedBy?: CommentActor;
   /** earlier bodies, oldest first — what "undo" goes back to */
   history?: { body: string; replacedAt: string; replacedBy: CommentActor }[];
+  /** GraphQL node id of the GitHub thread this comment started, once pushed */
+  githubThreadId?: string;
+  /**
+   * A reply to an existing GitHub review thread (GraphQL node id). Anchored
+   * to the thread's file/line for display; pushed into the pending review
+   * with `addPullRequestReviewThreadReply` instead of starting a new thread.
+   */
+  inReplyTo?: string;
 }
 
 /** The reader, or the review chat writing through `reviewer-state comment`. */
@@ -698,9 +712,13 @@ export function isFileComment(c: {
  * POST /api/prs/:key/comments — one shape for both kinds, so callers can pass
  * a target around without branching until the wire.
  */
-export type AddCommentInput =
+export type AddCommentInput = (
   | { subjectType?: "line"; file: string; line: number; side: "LEFT" | "RIGHT"; body: string }
-  | { subjectType: "file"; file: string; body: string };
+  | { subjectType: "file"; file: string; body: string }
+) & {
+  /** reply to this GitHub thread (node id) rather than start a new one */
+  inReplyTo?: string;
+};
 
 /**
  * PATCH /api/prs/:key/comments/:id
@@ -1012,4 +1030,85 @@ export interface SharedAnalysisProbe {
   headSha?: string;
   sameCommit?: boolean;
   error?: string;
+}
+
+/* ------------------------------------------------------- GitHub review threads */
+
+/**
+ * Who wrote a comment on GitHub. `bot` is GitHub's own verdict (a Bot actor,
+ * or a `[bot]` login) OR a login the reader listed as an AI reviewer in
+ * settings; `botName` is a display name for known reviewers ("CodeRabbit").
+ */
+export interface RemoteAuthor {
+  login: string;
+  bot: boolean;
+  botName?: string;
+  avatarUrl?: string;
+}
+
+/** One comment inside a GitHub review thread. */
+export interface RemoteComment {
+  /** GraphQL node id */
+  id: string;
+  databaseId: number;
+  author: RemoteAuthor;
+  body: string;
+  createdAt: string;
+  /** set when edited after creation */
+  updatedAt?: string;
+  /** link on github.com */
+  url: string;
+  /** PENDING = sits in someone's (only ever the viewer's) unsubmitted review */
+  reviewState: "PENDING" | "SUBMITTED";
+  /** the viewer wrote it */
+  isMine: boolean;
+  /**
+   * The id of the Purview comment this mirrors (matched on githubCommentId),
+   * when there is one. The UI shows the local card instead of this copy, so a
+   * comment pushed from Purview never appears twice.
+   */
+  localId?: string;
+}
+
+/**
+ * A GitHub review thread: a root comment and its replies, anchored to a line
+ * (or to a whole file). Several threads can sit on the same line.
+ */
+export interface RemoteThread {
+  /** GraphQL node id — what reply/resolve take */
+  id: string;
+  path: string;
+  subjectType: "line" | "file";
+  /** current line on `side`; null when outdated or file-level */
+  line: number | null;
+  /** the line it was written on, at the commit it was written against */
+  originalLine: number | null;
+  /** first line of a multi-line comment, when it spans several */
+  startLine: number | null;
+  side: "LEFT" | "RIGHT";
+  isResolved: boolean;
+  /** the code it was written on changed since; `line` is then null */
+  isOutdated: boolean;
+  resolvedBy?: string;
+  viewerCanResolve: boolean;
+  viewerCanUnresolve: boolean;
+  viewerCanReply: boolean;
+  /** oldest first; [0] is the root */
+  comments: RemoteComment[];
+}
+
+/**
+ * GET /api/prs/:key/threads — the PR's review threads as GitHub has them.
+ * Served from a per-PR cache when GitHub is unreachable: `error` is then set
+ * and `fetchedAt` says how old the copy is (absent = never fetched).
+ */
+export interface ThreadsResponse {
+  threads: RemoteThread[];
+  fetchedAt?: string;
+  error?: string;
+}
+
+/** POST /api/prs/:key/threads/:id/resolve | /unresolve */
+export interface ResolveThreadResult {
+  thread: Pick<RemoteThread, "id" | "isResolved" | "resolvedBy" | "viewerCanResolve" | "viewerCanUnresolve">;
 }

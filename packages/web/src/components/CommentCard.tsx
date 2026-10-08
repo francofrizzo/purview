@@ -14,7 +14,7 @@ import type { ChatRef, CommentStatus, DraftComment } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
-import { attentionStatus } from "../lib/comments";
+import type { MarkerLook, MarkerSummary } from "../lib/threads";
 import { QuoteButton } from "./ChatPanel";
 import { CopyForAgentButton } from "./CopyForAgent";
 import { AgentEditNote, ByAgentChip, CommentBody, commentRef, type EditComment } from "./Drafts";
@@ -229,37 +229,54 @@ function IconAction({
 }
 
 /**
+ * How a marker looks when the reader has nothing of their own there: other
+ * people's GitHub threads read as a quiet, filled neutral; a line only AI
+ * reviewers commented on gets the bot tint, so it's easy to tell apart (and
+ * to skip) at a glance.
+ */
+export const REMOTE_LOOK: Record<"remote" | "bot", { ink: string; tint: string; hint: string }> = {
+  remote: { ink: "var(--fg-muted)", tint: "var(--bg-inset)", hint: "On GitHub" },
+  bot: { ink: "var(--bot)", tint: "var(--bot-soft)", hint: "From an AI reviewer on GitHub" },
+};
+
+function markerLook(look: MarkerLook): { ink: string; tint: string } {
+  return look === "remote" || look === "bot" ? REMOTE_LOOK[look] : COMMENT_STATUS[look];
+}
+
+/**
  * The marker for a line (or file, or folded hunk) that has comments: a speech
  * bubble in the color of the comment that still needs the reader — outlined
  * while a draft (it has gone nowhere), filled once pushed, filled and quiet
  * once submitted — with a small floating count when there is more than one.
- * It sits on a rounded square that shows on hover (it is a button: it opens
- * the thread) and stays tinted while the thread is open.
+ * Lines with only other people's GitHub threads get a neutral (or, for AI
+ * reviewers only, bot-tinted) filled bubble; a line whose threads are all
+ * resolved steps back. It sits on a rounded square that shows on hover (it is
+ * a button: it opens the thread) and stays tinted while the thread is open.
  */
 export function CommentPill({
-  comments,
+  marker,
   expanded,
   onToggle,
   compact,
   title,
 }: {
-  comments: DraftComment[];
+  marker: MarkerSummary;
   expanded: boolean;
   onToggle: () => void;
   /** the diff gutter variant (hover follows the line, not the icon) */
   compact?: boolean;
   title: string;
 }) {
-  const status = attentionStatus(comments);
-  const meta = COMMENT_STATUS[status];
-  const count = comments.length;
-  const Icon = status === "draft" ? IconComment : IconCommentFilled;
+  const { look, count, resolved } = marker;
+  const meta = markerLook(look);
+  const Icon = look === "draft" ? IconComment : IconCommentFilled;
   return (
     <button
       type="button"
       data-testid="comment-bubble"
-      data-status={status}
+      data-status={look}
       data-count={count}
+      data-resolved={resolved ? "true" : undefined}
       data-expanded={expanded ? "true" : "false"}
       aria-expanded={expanded}
       title={title}
@@ -274,11 +291,16 @@ export function CommentPill({
       } hover:!bg-[var(--bg-raised)] hover:shadow-[inset_0_0_0_1px_var(--border-strong)]`}
       style={{ color: meta.ink, background: expanded ? meta.tint : undefined }}
     >
-      <Icon width={13} height={13} />
+      <Icon width={13} height={13} style={{ opacity: resolved && !expanded ? 0.45 : undefined }} />
       {count > 1 ? (
         <span
           className="absolute -right-[5px] -top-[4px] flex h-[11px] min-w-[11px] items-center justify-center rounded-full px-[2px] text-[8px] font-bold tabular-nums leading-none"
-          style={{ background: meta.ink, color: "var(--bg)", boxShadow: "0 0 0 1.5px var(--bg)" }}
+          style={{
+            background: meta.ink,
+            color: "var(--bg)",
+            boxShadow: "0 0 0 1.5px var(--bg)",
+            opacity: resolved && !expanded ? 0.6 : undefined,
+          }}
         >
           {count}
         </span>

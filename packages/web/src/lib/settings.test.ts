@@ -191,3 +191,22 @@ describe("requestAgeDays", () => {
     expect(parseSettings({ requestAgeDays: [1, "3", 7] }).requestAgeDays).toEqual([1, 3, 7]);
   });
 });
+
+describe("review-thread filters", () => {
+  it("default to showing everything", () => {
+    const out = parseSettings({});
+    expect(out.showResolvedThreads).toBe(true);
+    expect(out.showAiReviewers).toBe(true);
+    expect(out.hiddenBots).toEqual([]);
+  });
+
+  it("keep only string bot keys, lowercased and deduped", () => {
+    const out = parseSettings({ hiddenBots: ["CodeRabbitAI", "coderabbitai", 3, "", "copilot"] });
+    expect(out.hiddenBots).toEqual(["coderabbitai", "copilot"]);
+  });
+
+  it("ignore non-boolean toggles", () => {
+    expect(parseSettings({ showResolvedThreads: "no" }).showResolvedThreads).toBe(true);
+    expect(parseSettings({ showAiReviewers: false }).showAiReviewers).toBe(false);
+  });
+});

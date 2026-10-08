@@ -8,21 +8,22 @@
  * hanging off that line.
  */
 
-import type { DraftComment } from "../api/types";
-import { bubbleTitle } from "../lib/comments";
-import { CommentCard, CommentPill, type CommentActions } from "./CommentCard";
+import { threadMarker, threadsTitle, type DisplayThread } from "../lib/threads";
+import { CommentPill } from "./CommentCard";
 import { IconClose } from "./icons";
+import { ThreadView, type ThreadListActions } from "./Threads";
 
-export type InlineCommentActions = CommentActions;
+export type InlineCommentActions = ThreadListActions;
 
 /** The gutter / header marker. Kept under its old name for its callers. */
 export function CommentBubble({
-  comments,
+  threads,
   expanded,
   onToggle,
   compact,
 }: {
-  comments: DraftComment[];
+  /** what hangs off this line / file / folded hunk */
+  threads: DisplayThread[];
   expanded: boolean;
   onToggle: () => void;
   /** the diff gutter variant */
@@ -30,11 +31,11 @@ export function CommentBubble({
 }) {
   return (
     <CommentPill
-      comments={comments}
+      marker={threadMarker(threads)}
       expanded={expanded}
       onToggle={onToggle}
       compact={compact}
-      title={bubbleTitle(comments)}
+      title={threadsTitle(threads)}
     />
   );
 }
@@ -44,15 +45,16 @@ export function CommentBubble({
  * its (very variable) height is measured like any other row.
  */
 export function InlineCommentList({
-  comments,
+  threads,
   label,
   onCollapse,
   onAdd,
   actions,
   indent = 0,
   composing = false,
+  showPlacement = false,
 }: {
-  comments: DraftComment[];
+  threads: DisplayThread[];
   /** what these comments hang off, for the add/collapse controls */
   label: string;
   onCollapse: () => void;
@@ -62,11 +64,13 @@ export function InlineCommentList({
   indent?: number | string;
   /** a new comment is already being written here, right below */
   composing?: boolean;
+  /** label threads with where they came from (the file block) */
+  showPlacement?: boolean;
 }) {
   return (
     <div
       data-testid="inline-comments"
-      data-count={comments.length}
+      data-count={threads.length}
       className="py-2 pr-4"
       style={{ paddingLeft: indent, background: "var(--bg)" }}
       // The thread owns clicks inside it: a stray one must not re-focus the
@@ -85,10 +89,16 @@ export function InlineCommentList({
           hide <IconClose width={9} height={9} />
         </button>
       </div>
+      {/* Standalone comments sit close together, as before; a GitHub thread
+          gets air around it so two threads on one line read as two. */}
       <ul className="flex max-w-[46rem] flex-col gap-1.5">
-        {comments.map((c) => (
-          <li key={c.id} data-testid={`inline-comment-${c.id}`}>
-            <CommentCard comment={c} actions={actions} />
+        {threads.map((t, i) => (
+          <li
+            key={t.key}
+            data-testid={t.remote ? `inline-thread-${t.key}` : `inline-comment-${t.key.slice("local:".length)}`}
+            className={t.remote && i > 0 ? "mt-1.5" : undefined}
+          >
+            <ThreadView thread={t} actions={actions} showPlacement={showPlacement} />
           </li>
         ))}
       </ul>

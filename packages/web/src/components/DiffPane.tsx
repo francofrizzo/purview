@@ -2,7 +2,8 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/rea
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Attention, ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { baseName, lineRangeRef } from "../lib/chatRefs";
-import { groupComments, lineAnchor } from "../lib/comments";
+import { lineAnchor } from "../lib/comments";
+import { buildThreadGroups, itemCount, type DisplayThread, type ThreadGroups } from "../lib/threads";
 import {
   buildMoveIndex,
   buildRows,
@@ -70,7 +71,7 @@ import {
   type OnDefinitionClick,
 } from "./DiffLine";
 import { DiffOfDiffs } from "./DiffOfDiffs";
-import type { CommentTarget } from "./Drafts";
+import { targetKey, type CommentTarget } from "./Drafts";
 import { CommentBubble, InlineCommentList, type InlineCommentActions } from "./InlineComments";
 import { MiddleTruncate } from "./Truncate";
 import {
@@ -119,9 +120,11 @@ type FlatRow =
       path: string;
       line: number;
       side: "LEFT" | "RIGHT";
+      /** a reply to one of these threads is being written: the composer is in here */
+      replying: boolean;
     }
   /** expanded comments hanging off a whole file */
-  | { type: "filecomments"; key: string; path: string }
+  | { type: "filecomments"; key: string; path: string; replying: boolean }
   /**
    * A folded run of rows, collapsed behind one placeholder — the moved-block
    * fold, so far the only fold kind (see lib/foldRegions.ts). `from`/`to` are
@@ -172,6 +175,11 @@ export interface DiffPaneProps {
   detail: PrDetail;
   entries: HunkEntry[];
   drafts: DraftComment[];
+  /**
+   * Purview's comments merged with the PR's GitHub threads (lib/threads.ts).
+   * Omitted, the pane groups `drafts` alone.
+   */
+  threadGroups?: ThreadGroups;
   focusedHunkId: string | null;
   onFocusHunk: (id: string | null) => void;
   onToggleViewed: (hunkId: string, viewed: boolean) => void;
@@ -283,6 +291,7 @@ export function DiffPane({
   detail,
   entries,
   drafts,
+  threadGroups,
   focusedHunkId,
   onFocusHunk,
   onToggleViewed,
@@ -523,7 +532,10 @@ export function DiffPane({
     [moves, detail.diff],
   );
 
-  const grouped = useMemo(() => groupComments(drafts), [drafts]);
+  const grouped = useMemo(
+    () => threadGroups ?? buildThreadGroups({ comments: drafts }),
+    [threadGroups, drafts],
+  );
 
   // Changelog highlight: which unified rows of each shown hunk the revision
   // introduced. Matched once per (entries, highlight), never per row render.
@@ -882,7 +894,19 @@ export function DiffPane({
       mode === "split"
         ? `calc(${side === "LEFT" ? "0px" : "50%"} + 2.75rem + ${COMMENT_COL_WIDTH}px + 0.75rem)`
         : `calc(7.25rem + ${COMMENT_COL_WIDTH}px)`;
+    // A reply is written at the end of its thread, inside that thread's
+    // block; it only gets a row of its own if that block isn't showing.
+    const replyAt = compose?.inReplyTo ? grouped.located.get(compose.inReplyTo) : undefined;
+    const replyingIn = (where: { anchor: string } | { file: string }) => {
+      if (!replyAt) return false;
+      const hit = "anchor" in where ? "anchor" in replyAt && replyAt.anchor === where.anchor : "file" in replyAt && replyAt.file === where.file;
+      if (hit) composePlaced = true;
+      return hit;
+    };
     const composeAt = (path: string, line: number, side: "LEFT" | "RIGHT", hunkId: string) => {
+      // A reply to a thread kept in a file's block (outdated, off the diff)
+      // belongs there, not under the line the thread once pointed at.
+      if (replyAt && "file" in replyAt) return;
       if (
         compose?.subjectType === "line" &&
         compose.file === path &&
@@ -966,7 +990,12 @@ export function DiffPane({
         if (showFileRows) {
           out.push({ type: "file", key: `f:${file.path}:${hunk.id}`, path: file.path, file });
           if (expandedFiles.has(file.path) && grouped.byFile.has(file.path)) {
-            out.push({ type: "filecomments", key: `xf:${file.path}`, path: file.path });
+            out.push({
+              type: "filecomments",
+              key: `xf:${file.path}`,
+              path: file.path,
+              replying: replyingIn({ file: file.path }),
+            });
           }
           if (compose?.subjectType === "file" && compose.file === file.path) pushCompose(hunk.id, 12);
         }
@@ -1001,6 +1030,7 @@ export function DiffPane({
           path,
           line,
           side,
+          replying: replyingIn({ anchor }),
         });
       };
 
@@ -1186,10 +1216,10 @@ export function DiffPane({
       // ResizeObserver corrects it on mount and again on every edit, expand or
       // markdown reflow inside it.
       if (r.type === "comments") {
-        return 56 + 78 * (grouped.byLine.get(r.anchor)?.length ?? 1);
+        return 56 + 78 * itemCount(grouped.byLine.get(r.anchor) ?? []) + (r.replying ? 150 : 0);
       }
       if (r.type === "filecomments") {
-        return 56 + 78 * (grouped.byFile.get(r.path)?.length ?? 1);
+        return 56 + 78 * itemCount(grouped.byFile.get(r.path) ?? []) + (r.replying ? 150 : 0);
       }
       return 34;
     },
@@ -1364,14 +1394,12 @@ export function DiffPane({
     flushPendingScroll();
   }, [rows, flushPendingScroll]);
 
-  const composerRowIdx = rows.findIndex((r) => r.type === "compose");
+  const composerRowIdx = rows.findIndex(
+    (r) => r.type === "compose" || ((r.type === "comments" || r.type === "filecomments") && r.replying),
+  );
   // A composer opened from the thread's "Add a comment…" can land below the
   // fold; bring it into view once (not on every keystroke's re-render).
-  const composeKey = composeTarget
-    ? composeTarget.subjectType === "file"
-      ? `f:${composeTarget.file}`
-      : `${composeTarget.file}:${composeTarget.line}:${composeTarget.side}`
-    : null;
+  const composeKey = composeTarget ? targetKey(composeTarget) : null;
   // A comment just saved shows up open under its line, not as a bare pill:
   // remember how many the anchor had when the composer opened, and open the
   // thread once that count grows.
@@ -1379,10 +1407,10 @@ export function DiffPane({
   useEffect(() => {
     if (!composeTarget) return;
     if (composeTarget.subjectType === "file") {
-      composeOrigin.current = { file: composeTarget.file, count: grouped.byFile.get(composeTarget.file)?.length ?? 0 };
+      composeOrigin.current = { file: composeTarget.file, count: itemCount(grouped.byFile.get(composeTarget.file) ?? []) };
     } else {
       const anchor = lineAnchor(composeTarget.file, composeTarget.line, composeTarget.side);
-      composeOrigin.current = { anchor, count: grouped.byLine.get(anchor)?.length ?? 0 };
+      composeOrigin.current = { anchor, count: itemCount(grouped.byLine.get(anchor) ?? []) };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composeKey]);
@@ -1391,13 +1419,13 @@ export function DiffPane({
     if (!origin) return;
     if (origin.anchor) {
       const anchor = origin.anchor;
-      if ((grouped.byLine.get(anchor)?.length ?? 0) > origin.count) {
+      if (itemCount(grouped.byLine.get(anchor) ?? []) > origin.count) {
         composeOrigin.current = null;
         setExpandedAnchors((cur) => (cur.has(anchor) ? cur : new Set(cur).add(anchor)));
       }
     } else if (origin.file) {
       const path = origin.file;
-      if ((grouped.byFile.get(path)?.length ?? 0) > origin.count) {
+      if (itemCount(grouped.byFile.get(path) ?? []) > origin.count) {
         composeOrigin.current = null;
         setExpandedFiles((cur) => (cur.has(path) ? cur : new Set(cur).add(path)));
       }
@@ -1734,7 +1762,15 @@ export function DiffPane({
     collapsed,
   ]);
 
+  /** The row's comment actions, plus the reply composer when it is written in there. */
+  const threadActions = (replying: boolean): InlineCommentActions => ({
+    ...commentActions,
+    replyingTo: replying ? (composeTarget?.inReplyTo ?? null) : null,
+    renderReplyComposer: renderComposer,
+  });
+
   const composingLine = (path: string, line: number, side: "LEFT" | "RIGHT") =>
+    !composeTarget?.inReplyTo &&
     composeTarget?.subjectType === "line" &&
     composeTarget.file === path &&
     composeTarget.line === line &&
@@ -2043,14 +2079,27 @@ export function DiffPane({
   );
 
   /** Every comment anchored to a line this hunk contains, in row order. */
-  function commentsInHunk(entry: HunkEntry): DraftComment[] {
-    const out: DraftComment[] = [];
+  function commentsInHunk(entry: HunkEntry): DisplayThread[] {
+    const out: DisplayThread[] = [];
     for (const r of buildRows(entry.hunk, detail.diff)) {
       const side = r.type === "del" ? "LEFT" : "RIGHT";
       const no = r.type === "del" ? r.oldNumber : r.newNumber;
       if (no === undefined) continue;
       const list = grouped.byLine.get(lineAnchor(entry.file.path, no, side));
       if (list) out.push(...list);
+    }
+    return out;
+  }
+
+  /** The line anchors in this hunk that have comments hanging off them. */
+  function anchorsInHunk(entry: HunkEntry): string[] {
+    const out: string[] = [];
+    for (const r of buildRows(entry.hunk, detail.diff)) {
+      const side = r.type === "del" ? "LEFT" : "RIGHT";
+      const no = r.type === "del" ? r.oldNumber : r.newNumber;
+      if (no === undefined) continue;
+      const anchor = lineAnchor(entry.file.path, no, side);
+      if (grouped.byLine.has(anchor)) out.push(anchor);
     }
     return out;
   }
@@ -2295,7 +2344,7 @@ export function DiffPane({
           <span className="ml-auto flex flex-none items-center gap-2">
             {fileComments ? (
               <CommentBubble
-                comments={fileComments}
+                threads={fileComments}
                 expanded={expandedFiles.has(row.path)}
                 onToggle={() => toggleFileComments(row.path)}
               />
@@ -2334,7 +2383,7 @@ export function DiffPane({
       if (!list?.length) return null;
       return (
         <InlineCommentList
-          comments={list}
+          threads={list}
           label={`${row.path}:${row.line}${row.side === "LEFT" ? " (old)" : ""}`}
           composing={composingLine(row.path, row.line, row.side)}
           onCollapse={() => {
@@ -2356,7 +2405,7 @@ export function DiffPane({
               side: row.side,
             })
           }
-          actions={commentActions ?? {}}
+          actions={threadActions(row.replying)}
         />
       );
     }
@@ -2366,7 +2415,8 @@ export function DiffPane({
       if (!list?.length) return null;
       return (
         <InlineCommentList
-          comments={list}
+          threads={list}
+          showPlacement
           label={`${row.path} (whole file)`}
           composing={composeTarget?.subjectType === "file" && composeTarget.file === row.path}
           onCollapse={() => {
@@ -2377,7 +2427,7 @@ export function DiffPane({
           }}
           indent={12}
           onAdd={() => onComment({ subjectType: "file", file: row.path })}
-          actions={commentActions ?? {}}
+          actions={threadActions(row.replying)}
         />
       );
     }
@@ -2491,9 +2541,18 @@ export function DiffPane({
           ) : null}
           {inside?.length ? (
             <CommentBubble
-              comments={inside}
+              threads={inside}
               expanded={false}
-              onToggle={() => toggleHunkCollapsed(row.hunkId)}
+              // Unfold *and* open what the marker counted: the reader clicked
+              // it to read those comments, not just to see the lines.
+              onToggle={() => {
+                setExpandedAnchors((prev) => {
+                  const next = new Set(prev);
+                  for (const a of anchorsInHunk(row.entry)) next.add(a);
+                  return next;
+                });
+                toggleHunkCollapsed(row.hunkId);
+              }}
             />
           ) : null}
           {st.changedSinceViewed ? (

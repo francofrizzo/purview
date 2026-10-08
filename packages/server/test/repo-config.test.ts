@@ -1095,6 +1095,7 @@ describe("/api/config", () => {
       analysisAgent: null,
       chatAgent: null,
       managedCheckouts: true,
+      aiReviewers: [],
       effective: {
         // Medium is the harness's default now, not a value every config.json pins.
         analysisAgent: {

@@ -129,9 +129,12 @@ export function statusColors(status: CommentStatus): { fg: string; bg: string } 
  */
 export function isCommentAnchored(files: FilesJson, comment: DraftComment): boolean {
   if (isFileComment(comment)) return true;
-  const line = comment.line as number;
-  const side = comment.side ?? "RIGHT";
-  const file = files.files.find((f) => f.path === comment.file);
+  return isLineInDiff(files, comment.file, comment.line as number, comment.side ?? "RIGHT");
+}
+
+/** Is this line, on this side, inside one of the file's hunks? */
+export function isLineInDiff(files: FilesJson, path: string, line: number, side: "LEFT" | "RIGHT"): boolean {
+  const file = files.files.find((f) => f.path === path);
   if (!file) return false;
   return file.hunks.some((h) =>
     side === "RIGHT"

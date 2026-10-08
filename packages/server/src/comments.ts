@@ -110,6 +110,14 @@ const CommentObjectSchema = z.object({
   githubCommentNodeId: z.string().optional(),
   /** GraphQL node id of the thread, when the comment was appended via GraphQL. */
   githubThreadId: z.string().optional(),
+  /**
+   * A reply to an existing GitHub review thread (its GraphQL node id). The
+   * file/line/side are copied from the thread so the reply renders in place,
+   * but they are display-only: GitHub anchors a reply by its thread, so the
+   * diff checks and re-anchoring below leave replies alone (an outdated
+   * thread's line is not in the diff at all).
+   */
+  inReplyTo: z.string().min(1).optional(),
   pushedAt: z.string().optional(),
   submittedAt: z.string().optional(),
   /** Set whenever the body is edited after creation. Absent on untouched comments. */
@@ -201,6 +209,8 @@ export const NewCommentSchema = z
     line: z.number().int().optional(),
     side: CommentSideSchema.optional(),
     body: z.string().min(1),
+    /** reply to this GitHub thread (node id) rather than start a new one */
+    inReplyTo: z.string().min(1).optional(),
   })
   .transform((v) => ({
     ...v,
@@ -701,7 +711,10 @@ export interface DraftCommentMove {
  */
 export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftCommentMove[] {
   const comments = readComments(key, root);
-  const drafts = comments.filter((c) => c.status === "draft" && c.subjectType === "line");
+  // Replies are anchored by their thread, not by a line (see `inReplyTo`).
+  const drafts = comments.filter(
+    (c) => c.status === "draft" && c.subjectType === "line" && !c.inReplyTo,
+  );
   if (drafts.length === 0) return [];
 
   const state = loadState(key, root);
@@ -762,7 +775,10 @@ export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftComm
  */
 export function unanchoredDraftLineComments(key: PrKey, root = stateRoot()): Comment[] {
   const comments = readComments(key, root);
-  const drafts = comments.filter((c) => c.status === "draft" && c.subjectType === "line");
+  // Replies are anchored by their thread, not by a line (see `inReplyTo`).
+  const drafts = comments.filter(
+    (c) => c.status === "draft" && c.subjectType === "line" && !c.inReplyTo,
+  );
   if (drafts.length === 0) return [];
   let currentFiles: FileDiff[];
   try {

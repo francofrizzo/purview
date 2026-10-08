@@ -32,6 +32,13 @@ export interface FakeGh {
   /** every `gh` invocation, as flat argv strings */
   calls: string[][];
   reviews: FakeReview[];
+  /**
+   * Raw GraphQL `PullRequestReviewThread` nodes served by the reviewThreads
+   * query (see github-threads.ts), mutated by resolve/unresolve and replies.
+   */
+  threads: Record<string, any>[];
+  /** page size the fake uses for reviewThreads, to exercise pagination */
+  threadPageSize: number;
   login: string;
   /**
    * Register a failure for any call whose argv contains `match`. `after` runs
@@ -44,6 +51,8 @@ export interface FakeGh {
   /** parsed request bodies of the `POST .../pulls/{n}/reviews` calls, in order */
   createReviewPayloads: () => Record<string, unknown>[];
   deletedCommentIds: number[];
+  /** every addPullRequestReviewThreadReply, in order */
+  replies: { threadId: string; reviewId: string; body: string; id: number }[];
   install: () => void;
 }
 
@@ -56,8 +65,11 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
   const state: FakeGh = {
     calls: [],
     reviews: [],
+    threads: [],
+    threadPageSize: 100,
     login: opts.login ?? "reviewer-bot",
     deletedCommentIds: [],
+    replies: [],
     fail: (match, message, once = false, after) => {
       failures.push({ match, message, once, after });
     },
@@ -146,6 +158,77 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
               },
             },
           },
+        });
+      }
+
+      // GraphQL: reviewThreads, one page at a time (cursor = start index).
+      if (query.includes("reviewThreads")) {
+        const start = Number(field("after") ?? 0);
+        const page = state.threads.slice(start, start + state.threadPageSize);
+        const end = start + page.length;
+        return JSON.stringify({
+          data: {
+            viewer: { login: state.login },
+            repository: {
+              pullRequest: {
+                reviewThreads: {
+                  pageInfo: { hasNextPage: end < state.threads.length, endCursor: String(end) },
+                  nodes: page,
+                },
+              },
+            },
+          },
+        });
+      }
+
+      // GraphQL: resolveReviewThread / unresolveReviewThread
+      const resolveOp = query.match(/\b(resolveReviewThread|unresolveReviewThread)\(/)?.[1];
+      if (resolveOp) {
+        const t = state.threads.find((x) => x.id === field("threadId"));
+        if (!t) {
+          return JSON.stringify({
+            data: { [resolveOp]: null },
+            errors: [{ type: "NOT_FOUND", message: `Could not resolve to a node with the global id of '${field("threadId")}'` }],
+          });
+        }
+        const resolved = resolveOp === "resolveReviewThread";
+        t.isResolved = resolved;
+        t.resolvedBy = resolved ? { login: state.login } : null;
+        t.viewerCanResolve = !resolved;
+        t.viewerCanUnresolve = resolved;
+        return JSON.stringify({
+          data: {
+            [resolveOp]: {
+              thread: {
+                id: t.id,
+                isResolved: t.isResolved,
+                resolvedBy: t.resolvedBy,
+                viewerCanResolve: t.viewerCanResolve,
+                viewerCanUnresolve: t.viewerCanUnresolve,
+              },
+            },
+          },
+        });
+      }
+
+      // GraphQL: addPullRequestReviewThreadReply — into the pending review.
+      if (query.includes("addPullRequestReviewThreadReply")) {
+        const review = state.reviews.find((r) => r.node_id === field("reviewId"));
+        if (!review) throw new Error(`gh ${joined} failed: HTTP 404 review not found`);
+        const threadId = field("threadId")!;
+        const id = nextCommentId++;
+        const t = state.threads.find((x) => x.id === threadId);
+        review.comments.push({
+          id,
+          node_id: `PRRC_${id}`,
+          path: t?.path ?? "",
+          subject_type: "line",
+          ...(t?.line ? { line: t.line, side: t.diffSide } : {}),
+          body: field("body")!,
+        });
+        state.replies.push({ threadId, reviewId: review.node_id, body: field("body")!, id });
+        return JSON.stringify({
+          data: { addPullRequestReviewThreadReply: { comment: { id: `PRRC_${id}`, databaseId: id } } },
         });
       }
 

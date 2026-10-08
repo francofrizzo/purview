@@ -325,6 +325,28 @@ export const IconCollapse = (p: P) => (
   </svg>
 );
 
+/** A hooked arrow — reply to a thread. */
+export const IconReply = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M6.5 4 2.5 8l4 4M2.5 8h7a4 4 0 0 1 4 4v1" />
+  </svg>
+);
+
+/** A funnel — what a list shows. */
+export const IconFilter = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M2 3h12l-4.5 5.5V13l-3 1V8.5z" />
+  </svg>
+);
+
+/** A small robot head — an AI reviewer. */
+export const IconBot = (p: P) => (
+  <svg {...base} {...p}>
+    <rect x="3" y="5" width="10" height="8" rx="2" />
+    <path d="M8 5V2.5M6 9h.01M10 9h.01" />
+  </svg>
+);
+
 export const RISK_META: Record<
   RiskFlag,
   { icon: (p: P) => JSX.Element; label: string }

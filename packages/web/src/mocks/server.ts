@@ -32,6 +32,9 @@ import type {
   ReanchorResult,
   RepoConfig,
   RepoConfigPatch,
+  RemoteThread,
+  ResolveThreadResult,
+  ThreadsResponse,
   RepoPathResult,
   RepoRemovalSummary,
   RepoSummary,
@@ -47,7 +50,7 @@ import type {
   SubmitReviewResult,
   SyncResult,
 } from "../api/types";
-import { mockDetail, mockDrafts, mockList, mockRepoConfigs, mockRepos } from "./fixture";
+import { mockDetail, mockDrafts, mockList, mockRepoConfigs, mockRepos, mockThreads } from "./fixture";
 
 /** Stand-in for the previous revision's body of the one hunk that changed. */
 const MOCK_DOD_BEFORE: Record<string, string[]> = {
@@ -73,6 +76,53 @@ const detail: PrDetail = structuredClone(mockDetail);
 const list: PrListEntry[] = structuredClone(mockList);
 const drafts: DraftComment[] = structuredClone(mockDrafts);
 const deletedDrafts: DeletedComment[] = [];
+const threads: RemoteThread[] = structuredClone(mockThreads);
+let nextGithubId = 95000;
+const aiReviewer = (login: string) =>
+  globalConfig.aiReviewers.some((r) => r.toLowerCase() === login.replace(/\[bot\]$/i, "").toLowerCase());
+
+/**
+ * Mock GitHub's side of a push: each draft going out gets a comment id, and
+ * lands either at the end of the thread it replies to or as a new thread.
+ */
+function mirrorPushed(d: DraftComment) {
+  const githubCommentId = nextGithubId++;
+  d.githubCommentId = githubCommentId;
+  const comment = {
+    id: `PRRC_${githubCommentId}`,
+    databaseId: githubCommentId,
+    author: { login: "franco", bot: false },
+    body: d.body,
+    createdAt: new Date().toISOString(),
+    url: `${detail.meta.url}#discussion_r${githubCommentId}`,
+    reviewState: "PENDING" as const,
+    isMine: true,
+  };
+  const target = d.inReplyTo ? threads.find((t) => t.id === d.inReplyTo) : undefined;
+  if (target) {
+    target.comments.push(comment);
+    d.githubThreadId = target.id;
+    return;
+  }
+  const id = `PRRT_mock_${githubCommentId}`;
+  d.githubThreadId = id;
+  const fileLevel = isFileComment(d);
+  threads.push({
+    id,
+    path: d.file,
+    subjectType: fileLevel ? "file" : "line",
+    line: fileLevel ? null : d.line,
+    originalLine: fileLevel ? null : d.line,
+    startLine: null,
+    side: d.side ?? "RIGHT",
+    isResolved: false,
+    isOutdated: false,
+    viewerCanResolve: true,
+    viewerCanUnresolve: false,
+    viewerCanReply: true,
+    comments: [comment],
+  });
+}
 const repos: RepoSummary[] = structuredClone(mockRepos);
 const repoConfigs: Record<string, RepoConfig> = structuredClone(mockRepoConfigs);
 
@@ -106,10 +156,12 @@ const globalConfig: {
   analysisAgent: AgentSelection | null;
   chatAgent: ChatAgentSelection | null;
   managedCheckouts: boolean;
+  aiReviewers: string[];
 } = {
   analysisAgent: null,
   chatAgent: null,
   managedCheckouts: true,
+  aiReviewers: [],
 };
 
 /**
@@ -665,6 +717,7 @@ export const mockApi = {
     if (patch.analysisAgent !== undefined) globalConfig.analysisAgent = patch.analysisAgent;
     if (patch.chatAgent !== undefined) globalConfig.chatAgent = patch.chatAgent;
     if (patch.managedCheckouts !== undefined) globalConfig.managedCheckouts = patch.managedCheckouts;
+    if (patch.aiReviewers !== undefined) globalConfig.aiReviewers = patch.aiReviewers;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return globalPayload();
   },
@@ -858,7 +911,11 @@ export const mockApi = {
   async sync(_key: string): Promise<SyncResult> {
     await delay(600);
     const pushed = drafts.filter((d) => d.status === "draft").length;
-    for (const d of drafts) if (d.status === "draft") d.status = "pushed";
+    for (const d of drafts) {
+      if (d.status !== "draft") continue;
+      d.status = "pushed";
+      mirrorPushed(d);
+    }
     review.pending = true;
     return {
       filesSynced: Object.values(detail.state.files ?? {}).filter((f) => f.viewed).length,
@@ -967,6 +1024,42 @@ export const mockApi = {
     return { lines, changed: lines.some((l) => l.type !== "unchanged") };
   },
 
+  /**
+   * The fixture's threads, with what GitHub would say about Purview's own
+   * comments: a mirror points back at its draft (localId), and a pending
+   * mirror whose draft was deleted is gone from the review.
+   */
+  async listThreads(_key: string): Promise<ThreadsResponse> {
+    await delay(150);
+    const byGithubId = new Map(drafts.filter((d) => d.githubCommentId).map((d) => [d.githubCommentId!, d]));
+    const out = threads
+      .map((t) => ({
+        ...structuredClone(t),
+        comments: t.comments
+          .filter((c) => !(c.isMine && c.reviewState === "PENDING" && !byGithubId.has(c.databaseId)))
+          .map((c) => ({
+            ...structuredClone(c),
+            // the server's verdict: GitHub's bots, plus the logins in aiReviewers
+            author: { ...c.author, bot: c.author.bot || aiReviewer(c.author.login) },
+            localId: byGithubId.get(c.databaseId)?.id,
+          })),
+      }))
+      .filter((t) => t.comments.length);
+    return { threads: out, fetchedAt: new Date().toISOString() };
+  },
+
+  async setThreadResolved(_key: string, id: string, resolved: boolean): Promise<ResolveThreadResult> {
+    await delay(250);
+    const t = threads.find((x) => x.id === id);
+    if (!t) throw new ApiError("not_found", 404, `No thread "${id}"`);
+    t.isResolved = resolved;
+    t.resolvedBy = resolved ? "franco" : undefined;
+    t.viewerCanResolve = !resolved;
+    t.viewerCanUnresolve = resolved;
+    const { isResolved, resolvedBy, viewerCanResolve, viewerCanUnresolve } = t;
+    return { thread: { id, isResolved, resolvedBy, viewerCanResolve, viewerCanUnresolve } };
+  },
+
   async listComments(_key: string): Promise<DraftComment[]> {
     await delay(60);
     return structuredClone(drafts);
@@ -990,6 +1083,7 @@ export const mockApi = {
       subjectType: fileLevel ? "file" : "line",
       createdAt: new Date().toISOString(),
       status: "draft",
+      ...(input.inReplyTo ? { inReplyTo: input.inReplyTo } : {}),
     };
     drafts.push(draft);
     return draft;
@@ -1165,6 +1259,7 @@ export const mockApi = {
     await delay(500);
     const included = drafts.filter((d) => d.status !== "submitted");
     for (const d of included) d.status = "submitted";
+    for (const t of threads) for (const c of t.comments) if (c.reviewState === "PENDING") c.reviewState = "SUBMITTED";
     review.pending = false;
     review.lastSubmission = {
       event: input.event,
@@ -1183,7 +1278,13 @@ export const mockApi = {
   async discardPendingReview(_key: string): Promise<DiscardPendingResult> {
     await delay(200);
     const reset = drafts.filter((d) => d.status === "pushed");
-    for (const d of reset) d.status = "draft";
+    for (const d of reset) {
+      d.status = "draft";
+      d.githubCommentId = undefined;
+      d.githubThreadId = undefined;
+    }
+    for (const t of threads) t.comments = t.comments.filter((c) => c.reviewState !== "PENDING");
+    threads.splice(0, threads.length, ...threads.filter((t) => t.comments.length));
     const discarded = review.pending;
     review.pending = false;
     return { discarded, resetToDraft: reset.length };

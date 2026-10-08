@@ -45,6 +45,8 @@ export type ReviewErrorCode =
   | "comment_line_not_in_diff"
   | "comment_outside_diff"
   | "not_authenticated"
+  | "thread_not_found"
+  | "thread_not_permitted"
   | "gh_failed";
 
 export class ReviewError extends Error {
@@ -67,6 +69,8 @@ const STATUS_BY_CODE: Record<ReviewErrorCode, number> = {
   comment_line_not_in_diff: 422,
   comment_outside_diff: 422,
   not_authenticated: 502,
+  thread_not_found: 404,
+  thread_not_permitted: 403,
   gh_failed: 502,
 };
 
@@ -357,6 +361,60 @@ export function appendCommentToPendingReview(
     commentId: node?.databaseId,
     commentNodeId: node?.id,
   };
+}
+
+const ADD_REPLY = `mutation($reviewId:ID!,$threadId:ID!,$body:String!){
+  addPullRequestReviewThreadReply(input:{
+    pullRequestReviewId:$reviewId, pullRequestReviewThreadId:$threadId, body:$body
+  }){
+    comment{ id databaseId }
+  }
+}`;
+
+/**
+ * GraphQL `addPullRequestReviewThreadReply` — a reply to an existing thread
+ * (anyone's), placed inside the viewer's pending review so it goes public
+ * with the rest of it on submit. The thread keeps its own anchor; a reply
+ * carries no path/line of its own.
+ */
+export function appendReplyToPendingReview(
+  key: PrKey,
+  reviewNodeId: string,
+  threadNodeId: string,
+  body: string,
+): AppendedComment {
+  let res: {
+    data?: {
+      addPullRequestReviewThreadReply?: {
+        comment?: { id?: string; databaseId?: number } | null;
+      } | null;
+    };
+    errors?: { message?: string }[];
+  };
+  try {
+    res = JSON.parse(
+      gh([
+        "api",
+        "graphql",
+        ...hostArgs(key.host),
+        "-f",
+        `query=${ADD_REPLY}`,
+        "-f",
+        `reviewId=${reviewNodeId}`,
+        "-f",
+        `threadId=${threadNodeId}`,
+        "-f",
+        `body=${body}`,
+      ]),
+    );
+  } catch (err) {
+    throw classifyGhReviewError(err);
+  }
+  if (res.errors?.length) {
+    throw classifyGhReviewError(new Error(res.errors.map((e) => e.message).join("; ")));
+  }
+  const c = res.data?.addPullRequestReviewThreadReply?.comment;
+  return { threadId: threadNodeId, commentId: c?.databaseId, commentNodeId: c?.id };
 }
 
 export interface RemoteReviewComment {

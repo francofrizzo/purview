@@ -76,6 +76,13 @@ export const ConfigSchema = z.object({
    * the first time `--lan` is used, and replaced only when the user asks.
    */
   lan: z.object({ token: z.string().nullable().default(null) }).default({}),
+  /**
+   * GitHub logins treated as AI reviewers in review threads, on top of what
+   * GitHub itself marks as a bot (a Bot actor or a `[bot]` login) — for AI
+   * reviewers that post through ordinary user accounts. Compared
+   * case-insensitively, `[bot]` suffix ignored (see github-threads.ts).
+   */
+  aiReviewers: z.array(z.string()).default([]),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;

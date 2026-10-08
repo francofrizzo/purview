@@ -53,6 +53,12 @@ export interface Settings {
   sidebarCollapsed: boolean;
   /** Days after which "asked you Nd ago" turns yellow, orange and red. */
   requestAgeDays: RequestAgeDays;
+  /** GitHub review threads: resolved ones show collapsed (on) or not at all (off). */
+  showResolvedThreads: boolean;
+  /** GitHub review threads AI reviewers started (CodeRabbit, Copilot…). */
+  showAiReviewers: boolean;
+  /** AI reviewers hidden one by one, by bot key (lib/threads.ts `botKey`). */
+  hiddenBots: string[];
 }
 
 export type RequestAgeDays = [number, number, number];
@@ -90,6 +96,9 @@ export const DEFAULT_SETTINGS: Settings = {
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
   sidebarCollapsed: false,
   requestAgeDays: [1, 3, 7],
+  showResolvedThreads: true,
+  showAiReviewers: true,
+  hiddenBots: [],
 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -138,6 +147,15 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
     out.requestAgeDays = r.requestAgeDays.map((d: number) =>
       Math.min(MAX_REQUEST_AGE_DAYS, Math.max(0, Math.round(d))),
     ) as RequestAgeDays;
+  }
+  if (typeof r.showResolvedThreads === "boolean") out.showResolvedThreads = r.showResolvedThreads;
+  if (typeof r.showAiReviewers === "boolean") out.showAiReviewers = r.showAiReviewers;
+  if (Array.isArray(r.hiddenBots)) {
+    out.hiddenBots = [
+      ...new Set(
+        r.hiddenBots.filter((b): b is string => typeof b === "string" && b.trim() !== "").map((b) => b.trim().toLowerCase()),
+      ),
+    ];
   }
   return out;
 }
@@ -333,6 +351,30 @@ export function useSettings(): SettingsContextValue {
   const ctx = useContext(SettingsContext);
   if (!ctx) throw new Error("useSettings must be used inside <SettingsProvider>");
   return ctx;
+}
+
+/** The review-thread filters, in the shape lib/threads.ts takes, plus setters. */
+export function useThreadFilters() {
+  const { settings, update } = useSettings();
+  const filters = useMemo(
+    () => ({
+      showResolved: settings.showResolvedThreads,
+      showAiReviewers: settings.showAiReviewers,
+      hiddenBots: settings.hiddenBots,
+    }),
+    [settings.showResolvedThreads, settings.showAiReviewers, settings.hiddenBots],
+  );
+  return {
+    filters,
+    setShowResolved: (v: boolean) => update({ showResolvedThreads: v }),
+    setShowAiReviewers: (v: boolean) => update({ showAiReviewers: v }),
+    setBotHidden: (key: string, hidden: boolean) =>
+      update({
+        hiddenBots: hidden
+          ? [...new Set([...settings.hiddenBots, key])]
+          : settings.hiddenBots.filter((b) => b !== key),
+      }),
+  };
 }
 
 /** Convenience for the diff surface, which only cares about these two. */
