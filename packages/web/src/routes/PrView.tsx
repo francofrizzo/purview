@@ -1403,6 +1403,7 @@ export function PrView() {
           summary={summary}
           description={description}
           author={detail.meta.author}
+          authorAvatarUrl={detail.meta.authorAvatarUrl}
           reviews={threadsQuery.data?.reviews}
           conversation={threadsQuery.data?.conversation}
           filters={threadFilters.filters}

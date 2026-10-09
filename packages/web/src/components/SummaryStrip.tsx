@@ -5,18 +5,31 @@
  * A real summary is a multi-sentence paragraph; as a static block between the
  * top bar and the panes it cost 150–200px of the reader's vertical space for
  * something they read once. So the default state is a single-line strip (its
- * first sentence, ellipsized) and the full text arrives as an overlay that
- * drops *over* the panes — absolutely positioned, so the sidebar and the diff
- * never reflow when it opens.
+ * first sentence, ellipsized) and the full text arrives in a floating panel
+ * that drops *over* the panes — absolutely positioned, so the sidebar and the
+ * diff never reflow when it opens. The panel shows one thing at a time:
+ * Purview's summary, the author's description or the GitHub reviews, picked
+ * by tabs, so the two prose blocks never read as one.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RemoteConversationComment, RemoteReview } from "../api/types";
 import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/reviews";
 import type { ThreadFilters } from "../lib/threads";
+import { AuthorAvatar } from "./AuthorAvatar";
 import { Markdown } from "./Markdown";
 import { ReviewTimeline, ReviewerVerdicts } from "./Reviews";
 import { IconChevron } from "./icons";
+
+export type SummaryTab = "summary" | "description" | "reviews";
+
+/** Which tab opens first: the last one the reader picked this session, if it still exists. */
+let lastTab: SummaryTab | null = null;
+
+export function initialTab(available: SummaryTab[]): SummaryTab {
+  if (lastTab && available.includes(lastTab)) return lastTab;
+  return available[0] ?? "summary";
+}
 
 /**
  * Flatten a markdown summary down to its opening sentence.
@@ -75,6 +88,7 @@ export function SummaryStrip({
   summary,
   description,
   author,
+  authorAvatarUrl,
   reviews,
   conversation,
   filters,
@@ -90,6 +104,7 @@ export function SummaryStrip({
   /** the PR description, already through `visibleDescription`; "" for none */
   description: string;
   author?: string;
+  authorAvatarUrl?: string;
   /** the PR's reviews on GitHub, oldest first */
   reviews?: RemoteReview[];
   /** the PR's conversation-tab comments, oldest first */
@@ -118,6 +133,19 @@ export function SummaryStrip({
     [reviews, author, filters, revisions],
   );
   const hasReviews = timeline.entries.length > 0 || timeline.hidden > 0;
+  const available = useMemo(
+    () =>
+      [summary ? "summary" : null, description ? "description" : null, hasReviews ? "reviews" : null].filter(
+        Boolean,
+      ) as SummaryTab[],
+    [summary, description, hasReviews],
+  );
+  const [tab, setTab] = useState<SummaryTab>(() => initialTab(available));
+  const current: SummaryTab = available.includes(tab) ? tab : initialTab(available);
+  const pickTab = (t: SummaryTab) => {
+    lastTab = t;
+    setTab(t);
+  };
   const what =
     [summary ? "analysis summary" : "", description ? "PR description" : "", hasReviews ? "reviews" : ""]
       .filter(Boolean)
@@ -248,58 +276,95 @@ export function SummaryStrip({
         <div
           data-testid="summary-overlay"
           data-pinned={open ? "true" : "false"}
-          className={`absolute inset-x-0 top-full z-40 overflow-y-auto border-b ${
-            description || hasReviews ? "max-h-[60vh]" : "max-h-[40vh]"
-          }`}
-          style={{
-            background: "var(--bg-raised)",
-            borderColor: "var(--border-strong)",
-            boxShadow: "0 12px 28px rgba(0, 0, 0, 0.35)",
-          }}
+          data-tab={current}
+          role="dialog"
+          aria-label={what}
+          className="surface absolute left-2 top-full z-40 mt-1 flex max-h-[70vh] w-[min(44rem,calc(100%-1rem))] flex-col overflow-hidden rounded-lg elev-3"
+          style={{ borderColor: "var(--border-strong)" }}
         >
-          {summary ? (
-            <section className="max-w-[70ch] px-4 py-3 [&>div]:text-[13px] [&>div]:leading-[21px]">
-              {description ? <OverlayHeading>Analysis summary</OverlayHeading> : null}
-              <Markdown text={withoutHeadings(summary.trim())} />
-            </section>
-          ) : null}
-          {description ? (
-            <section
-              data-testid="pr-description"
-              className="max-w-[80ch] px-4 py-3 [&>div]:text-[13px] [&>div]:leading-[21px]"
-              style={summary ? { borderTop: "1px solid var(--border)" } : undefined}
+          {available.length > 1 ? (
+            <div
+              role="tablist"
+              className="flex flex-none items-center gap-1 border-b px-2 pt-1.5"
+              style={{ borderColor: "var(--border)" }}
             >
-              <OverlayHeading>
-                Description{author ? <span style={{ color: "var(--fg-faint)" }}> · by {author}</span> : null}
-              </OverlayHeading>
-              {/* The author's own words, headings and all: unlike the
-                  summary, it is a document, and its structure is its own. */}
-              <Markdown text={description} />
-            </section>
+              {available.map((t) => (
+                <SummaryTabButton key={t} id={t} active={t === current} onPick={pickTab}>
+                  {t === "summary" ? (
+                    "Summary"
+                  ) : t === "description" ? (
+                    <>
+                      {author ? <AuthorAvatar author={author} url={authorAvatarUrl} size={14} /> : null}
+                      Description
+                      {author ? <span style={{ color: "var(--fg-faint)" }}>{author}</span> : null}
+                    </>
+                  ) : (
+                    <>
+                      Reviews
+                      <span style={{ color: "var(--fg-faint)" }}>{timeline.entries.length}</span>
+                    </>
+                  )}
+                </SummaryTabButton>
+              ))}
+            </div>
           ) : null}
-          {hasReviews ? (
-            <section
-              data-testid="pr-reviews"
-              className="max-w-[80ch] px-4 py-3"
-              style={summary || description ? { borderTop: "1px solid var(--border)" } : undefined}
-            >
-              <OverlayHeading>
-                Reviews
-                <span style={{ color: "var(--fg-faint)" }}> · on GitHub</span>
-              </OverlayHeading>
-              <ReviewTimeline entries={timeline.entries} hidden={timeline.hidden} revisions={revisions} />
-            </section>
-          ) : null}
+          <div className="min-h-0 overflow-y-auto" role="tabpanel">
+            {current === "summary" ? (
+              // Purview's own read of the PR: one short paragraph, set as a
+              // lede so it reads at a glance rather than as more fine print.
+              <section
+                data-testid="pr-summary"
+                className="px-5 py-4 [&>div]:text-[14px] [&>div]:leading-[23px]"
+                style={{ color: "var(--fg)" }}
+              >
+                <Markdown text={withoutHeadings(summary.trim())} />
+              </section>
+            ) : current === "description" ? (
+              // The author's own words, headings and all: unlike the summary,
+              // it is a document, and its structure is its own.
+              <section
+                data-testid="pr-description"
+                className="px-5 py-4 [&>div]:text-[13px] [&>div]:leading-[21px]"
+              >
+                <Markdown text={description} />
+              </section>
+            ) : (
+              <section data-testid="pr-reviews" className="px-5 py-4">
+                <ReviewTimeline entries={timeline.entries} hidden={timeline.hidden} revisions={revisions} />
+              </section>
+            )}
+          </div>
         </div>
       ) : null}
     </div>
   );
 }
 
-function OverlayHeading({ children }: { children: React.ReactNode }) {
+function SummaryTabButton({
+  id,
+  active,
+  onPick,
+  children,
+}: {
+  id: SummaryTab;
+  active: boolean;
+  onPick: (t: SummaryTab) => void;
+  children: React.ReactNode;
+}) {
   return (
-    <h2 className="mb-1.5 text-2xs font-semibold" style={{ color: "var(--fg-muted)" }}>
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      data-testid={`summary-tab-${id}`}
+      onClick={() => onPick(id)}
+      className="-mb-px inline-flex items-center gap-1.5 border-b-2 px-2 pb-1.5 pt-1 text-xs font-medium transition-colors"
+      style={{
+        borderColor: active ? "var(--accent)" : "transparent",
+        color: active ? "var(--fg)" : "var(--fg-muted)",
+      }}
+    >
       {children}
-    </h2>
+    </button>
   );
 }

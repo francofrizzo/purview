@@ -60,6 +60,8 @@ test("s toggles the summary strip", async ({ page }) => {
   await page.keyboard.press("s");
   await expect(strip).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByTestId("summary-overlay")).toBeVisible();
+  await expect(page.getByTestId("pr-summary")).toBeVisible();
+  await page.getByTestId("summary-tab-description").click();
   await expect(page.getByTestId("pr-description")).toContainText("Retried charges could double-bill");
 
   await page.keyboard.press("s");
