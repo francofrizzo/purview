@@ -11,6 +11,7 @@
     "test": "pnpm -r test",
     "dev": "pnpm --filter @reviewer/server dev",
     "start": "node scripts/start.mjs",
-    "smoke:pack": "node scripts/smoke-pack.mjs"
+    "smoke:pack": "node scripts/smoke-pack.mjs",
+    "test:e2e": "pnpm --filter @reviewer/web test:e2e"
   }
 }

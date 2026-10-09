@@ -1227,7 +1227,10 @@ export function DiffPane({
       : (virtualizerRef.current?.measurementsCache[firstFileIdx]?.size ?? 34);
 
   // The pane's height sizes the room left past the last hunk (paddingEnd).
+  // Keyed on the scroller existing: with nothing to show the pane renders
+  // its empty state instead, and a measure taken then would stick at 0.
   const [viewportHeight, setViewportHeight] = useState(0);
+  const hasEntries = entries.length > 0;
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -1236,7 +1239,7 @@ export function DiffPane({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [hasEntries]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -2382,6 +2385,7 @@ export function DiffPane({
           // under the pinned file header using a single measured height, and a
           // file with a chip in its header used to be 2px taller than one
           // without — enough to leave the previous (folded) hunk as current.
+          data-testid={`file-header-${row.path}`}
           className="box-border flex h-8 items-center gap-2 border-y px-3 font-mono text-xs"
           style={{
             background: "var(--bg-raised)",
@@ -2570,6 +2574,7 @@ export function DiffPane({
         <div
           data-testid={`hunk-header-${row.hunkId}`}
           data-collapsed={folded ? "true" : "false"}
+          data-focused={focused ? "true" : undefined}
           className="flex cursor-pointer items-center gap-2 px-3 py-1"
           style={{
             // A step lighter than the code, so a file's hunks read as

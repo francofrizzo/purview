@@ -155,6 +155,7 @@ export function TopBar({
             rel="noreferrer"
             className="min-w-0 truncate text-[13px] font-semibold leading-snug hover:underline"
             style={{ color: "var(--fg)" }}
+            data-testid="topbar-title"
             title={meta.title ? `${meta.title} (open on GitHub)` : "Open on GitHub"}
           >
             {meta.title ?? `${meta.owner}/${meta.repo}#${meta.number}`}
@@ -271,6 +272,7 @@ export function TopBar({
           onClick={onToggleDrafts}
           title="Comments"
           aria-label="Comments"
+          data-testid="topbar-comments"
         >
           <IconComment width={12} height={12} />
           {draftCount ? (
@@ -434,6 +436,7 @@ export function TopBar({
           type="button"
           className="btn flex-none font-semibold hover:brightness-110"
           style={{ background: "var(--accent)", borderColor: "var(--accent)", color: "var(--bg)" }}
+          data-testid="topbar-finish-review"
           onClick={onFinishReview}
         >
           <IconCheck width={12} height={12} />

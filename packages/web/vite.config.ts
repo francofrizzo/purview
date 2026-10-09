@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
@@ -56,6 +57,10 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    // The Playwright suite under e2e/ is not vitest's to run.
+    exclude: [...configDefaults.exclude, "e2e/**"],
   },
   build: {
     outDir: "dist",
