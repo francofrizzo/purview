@@ -471,6 +471,19 @@ export function knownBots(
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Whether `login` is one of `list`, the way the server compares the login lists
+ * in its settings (`aiReviewers`, `extraAuthors`): case-insensitively, with a
+ * `[bot]` suffix ignored on either side.
+ */
+export function loginListed(login: string | undefined, list: readonly string[]): boolean {
+  if (!login) return false;
+  const norm = normalizeLogin(login);
+  return list.some((l) => normalizeLogin(l) === norm);
+}
+
+const normalizeLogin = (login: string) => login.trim().replace(/^@/, "").replace(/\[bot\]$/i, "").toLowerCase();
+
 /** "coderabbitai, @my-review-bot" → ["coderabbitai", "my-review-bot"] (the settings field). */
 export function parseLoginList(text: string): string[] {
   const out: string[] = [];

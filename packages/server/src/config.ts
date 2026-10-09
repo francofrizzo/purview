@@ -83,6 +83,14 @@ export const ConfigSchema = z.object({
    * case-insensitively, `[bot]` suffix ignored (see github-threads.ts).
    */
   aiReviewers: z.array(z.string()).default([]),
+  /**
+   * GitHub logins whose PRs the list files under "Your PRs" alongside the
+   * viewer's own — an agent that opens PRs from a bot account (`primitos[bot]`)
+   * on your behalf, say. Compared like `aiReviewers`: case-insensitively,
+   * `[bot]` suffix ignored. Review threads and verdicts still take only the
+   * viewer login as "mine".
+   */
+  extraAuthors: z.array(z.string()).default([]),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;

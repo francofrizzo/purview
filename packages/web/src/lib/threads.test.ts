@@ -11,6 +11,7 @@ import {
   groupThreadsByAuthor,
   isThreadHidden,
   knownBots,
+  loginListed,
   parseLoginList,
   placementLabel,
   replyTarget,
@@ -380,6 +381,18 @@ describe("groupThreadsByAuthor", () => {
       { key: "blacksmith-sh", name: "blacksmith-sh", count: 1 },
       { key: "coderabbitai", name: "CodeRabbit", count: 2 },
     ]);
+  });
+});
+
+describe("loginListed", () => {
+  it("matches case-insensitively and ignores a [bot] suffix on either side", () => {
+    const list = ["Primitos[bot]", "my-agent"];
+    expect(loginListed("primitos", list)).toBe(true);
+    expect(loginListed("primitos[bot]", list)).toBe(true);
+    expect(loginListed("MY-AGENT[bot]", list)).toBe(true);
+    expect(loginListed("primitos-2", list)).toBe(false);
+    expect(loginListed(undefined, list)).toBe(false);
+    expect(loginListed("primitos", [])).toBe(false);
   });
 });
 

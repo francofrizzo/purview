@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   ensureRepoConfig,
+  githubUserCachePath,
   initPr,
   keyToString,
   readMeta,
@@ -15,6 +16,7 @@ import {
   writeLocalChatInstructions,
   writeLocalRubric,
   readRepoConfig,
+  writeMeta,
   writeRepoConfig,
   type AnalysisEffort,
   type ClaudeModel,
@@ -1099,6 +1101,7 @@ describe("/api/config", () => {
       chatAgent: null,
       managedCheckouts: true,
       aiReviewers: [],
+      extraAuthors: [],
       effective: {
         // Medium is the harness's default now, not a value every config.json pins.
         analysisAgent: {
@@ -1199,6 +1202,26 @@ describe("/api/config", () => {
     });
   });
 
+  it("stores extraAuthors as typed, minus case-insensitive duplicates", async () => {
+    const put = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ extraAuthors: ["primitos[bot]", "Primitos[bot]", "my-agent"] }),
+    });
+    expect(put.status).toBe(200);
+    expect((await put.json()).extraAuthors).toEqual(["primitos[bot]", "my-agent"]);
+    expect(readConfig(root).extraAuthors).toEqual(["primitos[bot]", "my-agent"]);
+    // The sibling list is untouched by a PUT that does not name it.
+    expect(readConfig(root).aiReviewers).toEqual([]);
+
+    const bad = await app.request("/api/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ extraAuthors: [""] }),
+    });
+    expect(bad.status).toBe(400);
+  });
+
   it("null re-inherits the built-in default", async () => {
     writeConfig({ chatAgent: { harness: "claude-code", model: "opus" } }, root);
     const put = await app.request("/api/config", {
@@ -1245,3 +1268,42 @@ describe("/api/agents", () => {
   });
 });
 
+
+/* ------------------------------------------------- "yours" on the PR list */
+
+describe("GET /api/prs authoredByYou", () => {
+  const listEntry = async () => {
+    const body = (await (await app.request("/api/prs")).json()) as { prs: { authoredByYou: boolean }[] };
+    expect(body.prs).toHaveLength(1);
+    return body.prs[0];
+  };
+  const setAuthor = (author: string) => writeMeta(key, { ...readMeta(key, root), author }, root);
+  const cacheViewer = (login: string) =>
+    fs.writeFileSync(githubUserCachePath(root), JSON.stringify({ [key.host]: { login, fetchedAt: new Date().toISOString() } }));
+
+  it("is the viewer's own PR, case-insensitively, once the login is cached", async () => {
+    setAuthor("Alice");
+    expect((await listEntry()).authoredByYou).toBe(false);
+    cacheViewer("alice");
+    expect((await listEntry()).authoredByYou).toBe(true);
+  });
+
+  it("also counts a PR opened by a login in extraAuthors, [bot] suffix and case ignored", async () => {
+    cacheViewer("alice");
+    setAuthor("primitos[bot]");
+    expect((await listEntry()).authoredByYou).toBe(false);
+
+    writeConfig({ extraAuthors: ["Primitos"] }, root);
+    expect((await listEntry()).authoredByYou).toBe(true);
+
+    // Someone else's PR stays someone else's.
+    setAuthor("bob");
+    expect((await listEntry()).authoredByYou).toBe(false);
+  });
+
+  it("works for an extra author before the viewer login is known", async () => {
+    setAuthor("primitos[bot]");
+    writeConfig({ extraAuthors: ["primitos[bot]"] }, root);
+    expect((await listEntry()).authoredByYou).toBe(true);
+  });
+});
