@@ -55,6 +55,20 @@ export const FileStatusSchema = z.enum([
 ]);
 export type FileStatus = z.infer<typeof FileStatusSchema>;
 
+/**
+ * Why Purview treats a file as generated (or a lockfile), in the order the
+ * signals are tried — see generated.ts. `detail` is the matching pattern, the
+ * lockfile name or the marker line.
+ */
+export const GeneratedSourceSchema = z.enum(["repo", "gitattributes", "lockfile", "path", "marker"]);
+export type GeneratedSource = z.infer<typeof GeneratedSourceSchema>;
+
+export const GeneratedInfoSchema = z.object({
+  source: GeneratedSourceSchema,
+  detail: z.string().optional(),
+});
+export type GeneratedInfo = z.infer<typeof GeneratedInfoSchema>;
+
 export const FileDiffSchema = z.object({
   /** Normalized path: new path, or old path when the file was deleted. */
   path: z.string(),
@@ -65,6 +79,13 @@ export const FileDiffSchema = z.object({
   newMode: z.string().optional(),
   similarity: z.number().optional(),
   hunks: z.array(HunkSchema),
+  /**
+   * Set by Purview when it records the revision (and rewritten when the
+   * classification is redone): the file is generated or a lockfile, so its
+   * hunks go to the fixed `generated` unit and the analysis never reads them.
+   * Absent = not generated (or classified before this existed).
+   */
+  generated: GeneratedInfoSchema.optional(),
 });
 export type FileDiff = z.infer<typeof FileDiffSchema>;
 
@@ -172,6 +193,13 @@ export const ReviewUnitSchema = z.object({
   removedAtRevision: z.number().int().optional(),
   /** On a husk: every hunk it had was viewed when they left the PR. */
   readBeforeRemoval: z.boolean().optional(),
+  /**
+   * Set only by Purview (the reducer), never by analysis: `"generated"` marks
+   * the one fixed unit holding every hunk of the revision's generated files
+   * and lockfiles (id GENERATED_UNIT_ID). It is rebuilt from the
+   * classification on every event that could disturb it.
+   */
+  origin: z.literal("generated").optional(),
 });
 export type ReviewUnit = z.infer<typeof ReviewUnitSchema>;
 
@@ -457,6 +485,12 @@ export function migrateAgentFields(raw: unknown): unknown {
  * pinning a value. Every field is nullable-with-a-null-default, so an empty
  * `{}` is a complete, valid, fully-inheriting config.
  */
+export const GeneratedPatternsSchema = z.object({
+  include: z.array(z.string()).default([]),
+  exclude: z.array(z.string()).default([]),
+});
+export type GeneratedPatterns = z.infer<typeof GeneratedPatternsSchema>;
+
 export const RepoConfigSchema = z.object({
   autoAnalyze: z.boolean().nullable().default(null),
   repoPath: z.string().nullable().default(null),
@@ -481,6 +515,14 @@ export const RepoConfigSchema = z.object({
    * (server `isRepoArchived`). `null` (the default) is not archived.
    */
   archived: z.boolean().nullable().default(null),
+  /**
+   * Per-repo overrides of generated-file detection (see generated.ts), one
+   * glob per entry: `include` marks matching files generated, `exclude`
+   * un-marks them and beats every other signal. A pattern without a `/`
+   * matches a file name anywhere; one with a `/` matches from the repo root.
+   * Machine-local, never layered.
+   */
+  generated: GeneratedPatternsSchema.default({ include: [], exclude: [] }),
 });
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 
@@ -742,6 +784,20 @@ export type MigrationReport = z.infer<typeof MigrationReportSchema>;
 
 const base = { ts: z.string() };
 
+/**
+ * One generated file of a revision as the event log records it: enough to
+ * rebuild the `generated` unit (its hunks come from the revision's `files`)
+ * and its summary without reading files.json.
+ */
+export const GeneratedFileSchema = z.object({
+  path: z.string(),
+  source: GeneratedSourceSchema,
+  detail: z.string().optional(),
+  added: z.number().int().default(0),
+  removed: z.number().int().default(0),
+});
+export type GeneratedFile = z.infer<typeof GeneratedFileSchema>;
+
 export const RevisionFilesSchema = z.object({
   path: z.string(),
   oldPath: z.string().optional(),
@@ -772,6 +828,12 @@ export const RevisionAddedEventSchema = z.object({
   files: z.array(RevisionFilesSchema).default([]),
   /** how the previous revision's hunks map onto this one */
   migration: MigrationReportSchema.optional(),
+  /**
+   * The revision's generated files (see generated.ts). Absent on events
+   * written before the classification existed: such a revision simply has no
+   * generated unit until a `generated-classified` event supplies one.
+   */
+  generated: z.array(GeneratedFileSchema).optional(),
 });
 
 export const AnalysisSetEventSchema = z.object({
@@ -888,6 +950,20 @@ export const RevisionDiscardedEventSchema = z.object({
   revision: z.number().int(),
 });
 
+/**
+ * The current revision's generated files were classified again: a repo
+ * setting changed (the UI's "Not generated" / "Treat as generated", the
+ * settings page), or a revision recorded before classification existed was
+ * backfilled. Replaces the revision's classification wholesale; a no-op when
+ * `revision` is not the current one.
+ */
+export const GeneratedClassifiedEventSchema = z.object({
+  ...base,
+  type: z.literal("generated-classified"),
+  revision: z.number().int(),
+  files: z.array(GeneratedFileSchema),
+});
+
 export const EventSchema = z.discriminatedUnion("type", [
   PrInitializedEventSchema,
   RevisionAddedEventSchema,
@@ -902,6 +978,7 @@ export const EventSchema = z.discriminatedUnion("type", [
   AnalysisStartedEventSchema,
   AnalysisFinishedEventSchema,
   RevisionDiscardedEventSchema,
+  GeneratedClassifiedEventSchema,
 ]);
 export type ReviewerEvent = z.infer<typeof EventSchema>;
 export type EventType = ReviewerEvent["type"];
@@ -965,7 +1042,7 @@ export type ArchivedHunk = z.infer<typeof ArchivedHunkSchema>;
  * written under an older version, so stored PRs pick the change up on their
  * next read instead of only on their next appended event.
  */
-export const STATE_SHAPE_VERSION = 3;
+export const STATE_SHAPE_VERSION = 4;
 
 export const StateSchema = z.object({
   /** see STATE_SHAPE_VERSION; absent on every state.json written before it existed */
@@ -990,6 +1067,14 @@ export const StateSchema = z.object({
   hunks: z.record(z.string(), HunkStateSchema).default({}),
   files: z.array(FileRollupSchema).default([]),
   unassignedHunkIds: z.array(z.string()).default([]),
+  /** the current revision's generated files (empty when none, or never classified) */
+  generated: z.array(GeneratedFileSchema).default([]),
+  /**
+   * The revision `generated` was classified for. Absent, or behind
+   * `currentRevision`, on a revision recorded before classification existed
+   * (it gets backfilled on the next refresh).
+   */
+  generatedRevision: z.number().int().optional(),
   archived: z.array(ArchivedHunkSchema).default([]),
   /** every review submitted from the app, oldest first (empty on old logs) */
   reviewSubmissions: z.array(ReviewSubmissionSchema).default([]),

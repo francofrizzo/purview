@@ -199,6 +199,14 @@ hunk into a *likely* kind and a *likely* attention. This pass should not require
 full hunk bodies for hunks that are obviously wiring/docs/tests/generated/lockfile — a
 hint on the triage line is often enough on its own.
 
+**Generated files and lockfiles are not yours.** Purview detects them itself (lockfile
+names, generated-output paths, `.gitattributes` `linguist-generated`, "Code generated"
+markers, the reader's repo settings) and puts every hunk of them in its own fixed unit,
+id `generated`. `triage` lists them on one `GENERATED` line instead of per hunk; `show`
+globs and `--all` skip them. Don't read them, don't cover them in `set-analysis`, don't
+patch or reuse the `generated` id (the CLI refuses). You may still *mention* them in a
+unit's summary ("protobufs regenerated to match the .proto change").
+
 **Pass 2 — deep read.** Collect every selector Pass 1 flagged (see below) and fetch them
 all with **one** `reviewer-state show <key> <selector...>` call. Deep-read (full hunk
 body, plus surrounding function/file context from the patch) for:
@@ -250,8 +258,9 @@ pass (step 5). Leave it off entirely here.
 
 Rules — the first three are **enforced by the CLI**, which rejects the whole payload:
 
-- **Coverage: every hunk id of the current revision must appear either in some unit's
-  `hunkIds` or in the top-level `"unassigned"` array.** `set-analysis` throws and writes
+- **Coverage: every hunk id of the current revision — except generated files', which
+  are Purview's — must appear either in some unit's `hunkIds` or in the top-level
+  `"unassigned"` array.** `set-analysis` throws and writes
   nothing if any hunk is unaccounted for, listing the missing ids. Use `"unassigned"` for
   hunks you deliberately refuse to put in a unit; do not invent a junk-drawer unit.
 - **No unknown ids**: every id you reference must belong to the current revision.

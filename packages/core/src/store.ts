@@ -7,6 +7,7 @@ import {
   EMPTY_REPO_CONFIG,
   EventSchema,
   FilesJsonSchema,
+  GeneratedPatternsSchema,
   MetaSchema,
   MigrationReportSchema,
   RepoConfigSchema,
@@ -31,6 +32,7 @@ import {
   diffPath,
   eventsPath,
   filesJsonPath,
+  generatedFactsPath,
   isPrDirName,
   metaPath,
   migrationReportPath,
@@ -48,6 +50,7 @@ import {
   type RepoKey,
 } from "./paths.js";
 import { renderTriage } from "./triage.js";
+import { GeneratedFactsSchema, type GeneratedFacts } from "./generated.js";
 
 function writeJson(file: string, value: unknown): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -169,6 +172,45 @@ export function writeRevision(
   return filesJson;
 }
 
+/**
+ * Rewrite an existing revision's files.json (and the triage derived from it)
+ * with new per-file annotations — the generated classification is the only
+ * thing that changes after a revision is recorded. The diff is untouched.
+ */
+export function rewriteFilesJson(
+  key: PrKey,
+  filesJson: FilesJson,
+  root = stateRoot(),
+): FilesJson {
+  const parsed = FilesJsonSchema.parse(filesJson);
+  writeJson(filesJsonPath(key, parsed.revision, root), parsed);
+  fs.writeFileSync(triagePath(key, parsed.revision, root), renderTriage(parsed), "utf8");
+  return parsed;
+}
+
+export function readGeneratedFacts(
+  key: PrKey,
+  revision: number,
+  root = stateRoot(),
+): GeneratedFacts | null {
+  try {
+    return GeneratedFactsSchema.parse(
+      JSON.parse(fs.readFileSync(generatedFactsPath(key, revision, root), "utf8")),
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function writeGeneratedFacts(
+  key: PrKey,
+  revision: number,
+  facts: GeneratedFacts,
+  root = stateRoot(),
+): void {
+  writeJson(generatedFactsPath(key, revision, root), GeneratedFactsSchema.parse(facts));
+}
+
 export function readFilesJson(
   key: PrKey,
   revision: number,
@@ -268,6 +310,7 @@ export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
     chatAgent: ChatAgentSelectionSchema.safeParse(obj.chatAgent).data ?? null,
     watchReviews: typeof obj.watchReviews === "boolean" ? obj.watchReviews : null,
     archived: typeof obj.archived === "boolean" ? obj.archived : null,
+    generated: GeneratedPatternsSchema.safeParse(obj.generated).data ?? { include: [], exclude: [] },
   };
 }
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import type { ChatRef, PrDetail } from "../api/types";
+import type { ChatRef, FileGenerated, PrDetail } from "../api/types";
 import { QuoteButton } from "./ChatPanel";
+import { GeneratedTag } from "./Generated";
 import { IconChevron, IconFile } from "./icons";
 import { MiddleTruncate } from "./Truncate";
 import { MatchBadge } from "./UnitSidebar";
@@ -9,10 +10,16 @@ interface TreeNode {
   name: string;
   path: string;
   children: Map<string, TreeNode>;
-  file?: { path: string; hunkCount: number };
+  file?: TreeFile;
 }
 
-function buildTree(paths: { path: string; hunkCount: number }[]): TreeNode {
+interface TreeFile {
+  path: string;
+  hunkCount: number;
+  generated?: FileGenerated;
+}
+
+function buildTree(paths: TreeFile[]): TreeNode {
   const root: TreeNode = { name: "", path: "", children: new Map() };
   for (const f of paths) {
     const parts = f.path.split("/");
@@ -63,7 +70,7 @@ export function FileTree({
       buildTree(
         detail.files.files
           .filter((f) => !onlyPaths || onlyPaths.has(f.path))
-          .map((f) => ({ path: f.path, hunkCount: f.hunks.length })),
+          .map((f) => ({ path: f.path, hunkCount: f.hunks.length, generated: f.generated })),
       ),
     [detail.files, onlyPaths],
   );
@@ -103,6 +110,9 @@ export function FileTree({
         const rollup = detail.state.files?.[kid.file.path];
         const selected = selectedPath === kid.file.path;
         const viewed = rollup?.viewed;
+        // Generated files and lockfiles recede like viewed ones: they are in
+        // the tree to be found, not to be read.
+        const generated = kid.file.generated;
         out.push(
           <div key={`f:${kid.path}`} className="group relative flex items-center">
           <button
@@ -113,11 +123,12 @@ export function FileTree({
               paddingLeft: 6 + depth * 10,
               borderColor: selected ? "var(--accent)" : "transparent",
               background: selected ? "var(--accent-soft)" : "transparent",
-              color: viewed ? "var(--fg-faint)" : "var(--fg)",
+              color: viewed || generated ? "var(--fg-faint)" : "var(--fg)",
             }}
           >
-            <IconFile width={10} height={10} style={{ opacity: 0.6, flex: "none" }} />
+            <IconFile width={10} height={10} style={{ opacity: generated ? 0.4 : 0.6, flex: "none" }} />
             <MiddleTruncate text={kid.name} tail={13} title={kid.file.path} />
+            {generated ? <GeneratedTag generated={generated} /> : null}
             {matchCounts?.get(kid.file.path) ? (
               <MatchBadge count={matchCounts.get(kid.file.path)!} />
             ) : null}

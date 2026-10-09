@@ -91,12 +91,13 @@ export function selectHunks(filesJson: FilesJson, selectors: string[]): SelectRe
         for (const hunk of file.hunks) matched.add(byId.get(hunk.id)!);
         hits++;
       } else if (sel.includes("*")) {
+        // A glob is a sweep, and generated files are never worth sweeping
+        // in; naming one by path or hunk id still reads it.
         const re = globToRegExp(sel);
         for (const file of filesJson.files) {
-          if (re.test(file.path)) {
-            for (const hunk of file.hunks) matched.add(byId.get(hunk.id)!);
-            hits++;
-          }
+          if (!re.test(file.path)) continue;
+          hits++;
+          if (!file.generated) for (const hunk of file.hunks) matched.add(byId.get(hunk.id)!);
         }
       }
     }
@@ -108,9 +109,9 @@ export function selectHunks(filesJson: FilesJson, selectors: string[]): SelectRe
   return { hunks: ordered, unknown };
 }
 
-/** Every hunk of the revision, in files.json order (for `--all`). */
+/** Every hunk of the revision, in files.json order (for `--all`), generated files left out. */
 export function allSelectedHunks(filesJson: FilesJson): SelectedHunk[] {
-  return flatten(filesJson);
+  return flatten(filesJson).filter((sh) => !sh.file.generated);
 }
 
 /**

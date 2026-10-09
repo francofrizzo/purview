@@ -1,14 +1,15 @@
 import { useState } from "react";
-import type { Attention, ChatRef, PrDetail, ReviewUnit } from "../api/types";
+import { isGeneratedUnit, type Attention, type ChatRef, type PrDetail, type ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
 import { useSettings } from "../lib/settings";
 import { filterUnits, hiddenHint } from "../lib/unitFilter";
-import { unitDisplayNumbers } from "../lib/unitOrder";
+import { workUnits } from "../lib/generated";
+import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { ChangedBadge, HunkProgress, KindChip, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconChevron } from "./icons";
+import { IconChevron, IconGenerated } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
 import { InlineMarkdown } from "./Markdown";
 
@@ -51,7 +52,11 @@ export function UnitSidebar({
   const { settings, update } = useSettings();
   const hide = settings.hideReviewedUnits;
 
-  const units = [...detail.state.units].sort((a, b) => a.order - b.order);
+  // Reading order: by attention bucket, `order` within it, the generated unit last.
+  const units = unitDisplayOrder(detail.state.units);
+  // The generated unit is built before any analysis runs, so it alone does not
+  // mean the PR has review units.
+  const analyzed = workUnits(units).length > 0;
   // Husks live apart from `units` (the client adapter splits them off), so
   // nothing above counts, numbers or hides them.
   const removed = [...(detail.state.removedUnits ?? [])].sort((a, b) => a.order - b.order);
@@ -73,7 +78,7 @@ export function UnitSidebar({
   // Hunks in no live unit. With no units at all that is every hunk, and the
   // analysis banner already tells that story — so the group only appears
   // alongside real units.
-  const unplaced = units.length ? unplacedHunkIds(detail) : [];
+  const unplaced = analyzed ? unplacedHunkIds(detail) : [];
 
   const totalHidden = hide
     ? filterUnits(units, { hide, isFullyViewed, selectedId: selectedUnitId }).hidden
@@ -90,6 +95,11 @@ export function UnitSidebar({
 
   return (
     <div className="py-1">
+      {!analyzed ? (
+        <p className="px-4 pb-2 pt-3 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
+          No review units yet — the banner above tracks the analysis of this revision.
+        </p>
+      ) : null}
       <div
         className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-2xs"
         style={{ color: "var(--fg-faint)" }}
@@ -340,6 +350,9 @@ function UnitRow({
 }) {
   const [popover, setPopover] = useState(false);
   const p = unitProgress(detail, unit);
+  // Purview's own unit: re-kinding or re-prioritizing it means nothing (it is
+  // rebuilt every revision) and the analysis never read it to be asked about.
+  const generated = isGeneratedUnit(unit);
 
   return (
     <li className="group relative">
@@ -359,12 +372,23 @@ function UnitRow({
         }}
       >
         <div className="flex items-start gap-1.5">
-          <span
-            className="mt-[3px] flex-none text-xs tabular-nums"
-            style={{ color: "var(--fg-faint)" }}
-          >
-            {number}
-          </span>
+          {generated ? (
+            <span
+              className="mt-[3px] flex flex-none text-xs"
+              style={{ color: "var(--fg-faint)" }}
+              title="Detected by Purview, not by the analysis"
+              data-testid="generated-unit-icon"
+            >
+              <IconGenerated width={12} height={12} />
+            </span>
+          ) : (
+            <span
+              className="mt-[3px] flex-none text-xs tabular-nums"
+              style={{ color: "var(--fg-faint)" }}
+            >
+              {number}
+            </span>
+          )}
           <span
             className="min-w-0 flex-1 break-words pr-3 text-[13px] font-medium leading-[18px]"
             title={unit.title}
@@ -375,7 +399,8 @@ function UnitRow({
         </div>
         <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 pl-5">
           {/* Core logic is what most units are; only the exceptions get a chip. */}
-          {unit.kind !== "core-logic" ? <KindChip kind={unit.kind} /> : null}
+          {/* The generated unit's kind is a placeholder, not a judgment. */}
+          {unit.kind !== "core-logic" && !generated ? <KindChip kind={unit.kind} /> : null}
           <RiskFlags flags={unit.riskFlags} compact />
           {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}
           <FindingsBadge unit={unit} />
@@ -385,6 +410,7 @@ function UnitRow({
           </span>
         </div>
       </button>
+      {generated ? null : (
       <button
         type="button"
         title="Unit actions"
@@ -400,7 +426,8 @@ function UnitRow({
       >
         ⋯
       </button>
-      {popover ? (
+      )}
+      {popover && !generated ? (
         <ReclassifyPopover
           unit={unit}
           onAskAgent={onQuote}

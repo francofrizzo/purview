@@ -203,6 +203,15 @@ export function triagePath(
  * revision. Cached per revision because it is keyed by the head sha: a new
  * revision means a possibly different committed config.
  */
+/** `revisions/<n>/generated-facts.json` — see generated.ts `GeneratedFacts`. */
+export function generatedFactsPath(
+  key: PrKey,
+  revision: number,
+  root = stateRoot(),
+): string {
+  return path.join(revisionDir(key, revision, root), "generated-facts.json");
+}
+
 export function teamConfigPath(
   key: PrKey,
   revision: number,

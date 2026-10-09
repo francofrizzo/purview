@@ -1,7 +1,7 @@
 import { diffOfDiffs, type DiffOfDiffsLine } from "./diff-of-diffs.js";
 import { renderShowHunk } from "./hunk-select.js";
 import { containment } from "./migration.js";
-import { liveUnits } from "./reducer.js";
+import { analysisUnits, liveUnits } from "./reducer.js";
 import { hunkIdsByFile, shortIds } from "./unit-patch.js";
 import type {
   FileDiff,
@@ -93,7 +93,8 @@ export function changedUnits(
   };
 
   const out: ChangedUnit[] = [];
-  for (const unit of liveUnits(state).sort((a, b) => a.order - b.order)) {
+  // The generated unit has no description to go stale: it is rebuilt.
+  for (const unit of analysisUnits(state).sort((a, b) => a.order - b.order)) {
     const reworked: MigrationEntry[] = [];
     const gained: MigrationEntry[] = [];
     for (const id of unit.hunkIds) {

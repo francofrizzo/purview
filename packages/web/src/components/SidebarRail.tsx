@@ -1,9 +1,10 @@
-import type { PrDetail, ReviewUnit } from "../api/types";
+import { isGeneratedUnit, type PrDetail, type ReviewUnit } from "../api/types";
 import { attentionColor, attentionSoftBg } from "./Chips";
 import { unitProgress } from "../lib/diffModel";
+import { workUnits } from "../lib/generated";
 import { unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { IconChevron } from "./icons";
+import { IconChevron, IconGenerated } from "./icons";
 
 /**
  * The sidebar collapsed to a narrow strip: one square per review unit, same
@@ -31,7 +32,8 @@ export function SidebarRail({
 }) {
   const ordered = unitDisplayOrder(units);
   // Same rule as the full sidebar's group: only alongside real units.
-  const unplaced = ordered.length ? unplacedHunkIds(detail) : [];
+  // The generated unit alone (built before any analysis) does not count.
+  const unplaced = workUnits(ordered).length ? unplacedHunkIds(detail) : [];
   return (
     <div className="sidebar-rail-scroll flex h-full flex-col items-center overflow-y-auto overflow-x-hidden py-1.5">
       <button
@@ -81,7 +83,8 @@ export function SidebarRail({
                   boxShadow: selected ? "0 0 0 2px var(--accent)" : "none",
                 }}
               >
-                {number}
+                {/* Same cog as the full sidebar: Purview's unit, not the analysis's. */}
+                {isGeneratedUnit(u) ? <IconGenerated width={11} height={11} /> : number}
                 {matchCounts?.get(u.id) ? (
                   <span
                     className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"

@@ -1,7 +1,8 @@
 import { keyToString, type PrKey } from "./paths.js";
 import { loadState, readFilesJson, readMeta } from "./store.js";
 import { setAnalysis } from "./service.js";
-import { liveUnits } from "./reducer.js";
+import { analysisUnits } from "./reducer.js";
+import { isGeneratedUnit } from "./generated.js";
 import { AnalysisExportSchema, type AnalysisExport, type State } from "./schemas.js";
 
 /**
@@ -111,8 +112,9 @@ export function extractAnalysisFromComment(body: string): AnalysisExport | null 
 export function buildAnalysisExport(key: PrKey, root: string): AnalysisExport {
   const meta = readMeta(key, root);
   const state = loadState(key, root);
-  // Husks carry no hunks: an importer would only count them as dropped.
-  const units = liveUnits(state);
+  // Husks carry no hunks: an importer would only count them as dropped. The
+  // generated unit is Purview's: the importer builds its own.
+  const units = analysisUnits(state);
   if (units.length === 0) {
     throw new Error(
       `No analysis to export for ${keyToString(key)} — run an analysis first.`,
@@ -166,12 +168,19 @@ export function applyAnalysisImport(
   }
 
   const state = loadState(key, root);
-  const currentIds = new Set(readFilesJson(key, state.currentRevision, root).files.flatMap((f) => f.hunks.map((h) => h.id)));
+  // Generated files' hunks are never the analysis's: they stay in the
+  // importer's own generated unit, neither matched nor unassigned.
+  const currentIds = new Set(
+    readFilesJson(key, state.currentRevision, root)
+      .files.filter((f) => !f.generated)
+      .flatMap((f) => f.hunks.map((h) => h.id)),
+  );
 
   let unitsDropped = 0;
   const matched = new Set<string>();
   const units = [];
   for (const unit of envelope.units) {
+    if (isGeneratedUnit(unit)) continue;
     const hunkIds = unit.hunkIds.filter((id) => currentIds.has(id));
     if (hunkIds.length === 0) {
       unitsDropped++;

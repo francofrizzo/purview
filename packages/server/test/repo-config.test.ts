@@ -668,6 +668,7 @@ describe("init and refresh capture", () => {
       chatAgent: null,
       watchReviews: null,
       archived: null,
+      generated: { include: [], exclude: [] },
     });
   });
 
@@ -910,6 +911,7 @@ describe("/api/repos/:rkey/config", () => {
       analysisAgent: null,
       chatAgent: null,
       watchReviews: null,
+      generated: { include: [], exclude: [] },
       rubric: "",
       chatInstructions: "",
     });
@@ -958,6 +960,7 @@ describe("/api/repos/:rkey/config", () => {
       analysisAgent: null,
       chatAgent: null,
       watchReviews: null,
+      generated: { include: [], exclude: [] },
       rubric: "# Local\n",
       chatInstructions: "# Local chat\n",
     });

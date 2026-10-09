@@ -9,7 +9,7 @@
  * before it, so a bad value can't jump a unit to the front of the list.
  */
 
-import { ATTENTIONS, isRemovedUnit, type Attention, type ReviewUnit } from "../api/types";
+import { ATTENTIONS, isGeneratedUnit, isRemovedUnit, type Attention, type ReviewUnit } from "../api/types";
 
 function attentionRank(attention: Attention): number {
   const idx = ATTENTIONS.indexOf(attention);
@@ -20,12 +20,19 @@ function attentionRank(attention: Attention): number {
  * Husks (units whose hunks all left the PR) are never part of the reading
  * order. The client adapter already keeps them out of `state.units`; this is
  * the backstop so numbering can't gap if one ever slips through.
+ *
+ * The generated-files unit closes its bucket whatever its `order`: Purview
+ * builds it outside the analysis, so its `order` means nothing next to the
+ * analysis's, and machine output is the last thing anyone wants to read.
  */
 export function unitDisplayOrder(units: ReviewUnit[]): ReviewUnit[] {
   return units.filter((u) => !isRemovedUnit(u)).sort((a, b) => {
     const ra = attentionRank(a.attention);
     const rb = attentionRank(b.attention);
-    return ra !== rb ? ra - rb : a.order - b.order;
+    if (ra !== rb) return ra - rb;
+    const ga = isGeneratedUnit(a) ? 1 : 0;
+    const gb = isGeneratedUnit(b) ? 1 : 0;
+    return ga !== gb ? ga - gb : a.order - b.order;
   });
 }
 

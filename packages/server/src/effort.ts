@@ -4,7 +4,7 @@ import {
   readFilesJson,
   stateRoot,
   type PrKey,
-  liveUnits,
+  analysisUnits,
 } from "@reviewer/core";
 
 /**
@@ -101,8 +101,9 @@ export function clearEffortCache(): void {
 export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | null {
   const state = loadState(key, root);
   // Husks (units whose hunks all left the PR) have no lines to read and no
-  // bearing on the remaining effort.
-  const units = liveUnits(state);
+  // bearing on the remaining effort; generated files and lockfiles are not
+  // read at all.
+  const units = analysisUnits(state);
   if (units.length === 0) return null;
 
   const revision = state.analysisRevision ?? state.currentRevision;

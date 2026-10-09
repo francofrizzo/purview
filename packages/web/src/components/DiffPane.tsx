@@ -71,6 +71,7 @@ import {
   type OnDefinitionClick,
 } from "./DiffLine";
 import { DiffOfDiffs } from "./DiffOfDiffs";
+import { GeneratedTag } from "./Generated";
 import { targetKey, type CommentTarget } from "./Drafts";
 import { CommentBubble, InlineCommentList, type InlineCommentActions } from "./InlineComments";
 import { MiddleTruncate } from "./Truncate";
@@ -258,6 +259,11 @@ export interface DiffPaneProps {
    * folds holding one open, and the pane scrolls to the first.
    */
   highlight?: RevisionHighlight | null;
+  /**
+   * A file row's ⋯ (the host owns what is in it — today the generated-file
+   * override). Rendered at the end of the row's actions; absent, no ⋯.
+   */
+  renderFileMenu?: (file: FileEntry) => ReactNode;
 }
 
 /** A range being selected in one file, on one side of the diff. */
@@ -321,6 +327,7 @@ export function DiffPane({
   unitForHunkId,
   onUnitClick,
   highlight = null,
+  renderFileMenu,
 }: DiffPaneProps) {
   const { appearance, settings } = useSettings();
   const theme = shikiThemeFor(appearance.theme);
@@ -2332,6 +2339,7 @@ export function DiffPane({
                 {row.file.status}
               </span>
             ) : null}
+            {row.file.generated ? <GeneratedTag generated={row.file.generated} /> : null}
             {rollup ? (
               <span
                 className="flex-none text-2xs"
@@ -2373,6 +2381,7 @@ export function DiffPane({
               {row.file.additions !== undefined ? `+${row.file.additions}` : ""}{" "}
               {row.file.deletions !== undefined ? `−${row.file.deletions}` : ""}
             </span>
+            {renderFileMenu?.(row.file)}
           </span>
         </div>
       );

@@ -21,7 +21,10 @@ import {
   readFilesJson,
   changedUnits,
   changesWorthRefreshing,
-  liveUnits,
+  analysisUnits,
+  isGeneratedUnit,
+  reclassifyRepo,
+  setGeneratedOverride,
   readMeta,
   readLocalChatInstructions,
   readLocalRubric,
@@ -40,6 +43,7 @@ import {
   stateRoot,
   syncPr,
   unitProgress,
+  generatedHunkIds,
   updateMeta,
   writeLocalChatInstructions,
   writeLocalRubric,
@@ -221,9 +225,15 @@ async function readJsonBody(c: { req: { json(): Promise<unknown> } }): Promise<u
 }
 
 function progressOf(state: State) {
+  // The generated unit and its hunks are left out: they are not reading
+  // work, and a PR whose only unit is that one is still "not analyzed".
   const units = unitProgress(state);
-  const hunkTotal = Object.keys(state.hunks).length;
-  const hunkViewed = Object.values(state.hunks).filter((h) => h.viewed).length;
+  const generated = generatedHunkIds(state);
+  const hunks = Object.entries(state.hunks).filter(([id]) => !generated.has(id));
+  const hunkTotal = hunks.length;
+  const hunkViewed = hunks.filter(([, h]) => h.viewed).length;
+  const genPaths = new Set(state.generated.map((g) => g.path));
+  const files = state.files.filter((f) => !genPaths.has(f.path));
   return {
     hunks: { viewed: hunkViewed, total: hunkTotal },
     units: {
@@ -231,8 +241,8 @@ function progressOf(state: State) {
       total: units.length,
     },
     files: {
-      viewed: state.files.filter((f) => f.viewed).length,
-      total: state.files.length,
+      viewed: files.filter((f) => f.viewed).length,
+      total: files.length,
     },
   };
 }
@@ -253,8 +263,12 @@ export function refreshLeavesWork(
   root: string,
 ): boolean {
   const state = loadState(key, root);
-  if (report.counts.new > 0 || state.unassignedHunkIds.length > 0) return true;
-  if (liveUnits(state).length === 0) return false;
+  // New hunks — not the ones Purview already put in its generated unit: a
+  // lockfile-only push costs nothing.
+  const generated = new Set(state.units.filter(isGeneratedUnit).flatMap((u) => u.hunkIds));
+  const newWork = report.entries.some((e) => e.status === "new" && !generated.has(e.hunkId));
+  if (newWork || state.unassignedHunkIds.length > 0) return true;
+  if (analysisUnits(state).length === 0) return false;
   const filesOf = (rev: number | undefined) => {
     if (rev === undefined) return undefined;
     try {
@@ -583,6 +597,30 @@ export function createApp(opts: AppOptions = {}): Hono {
       // The PR-level "since your last review" toggle (see since-review.ts).
       sinceReview: sinceLastReview(key, state, filesJson.files, root),
     });
+  });
+
+  /**
+   * The reader's "Not generated" / "Treat as generated" on one file: written
+   * to the repo's `generated.exclude` / `generated.include` (so it holds for
+   * every PR of the repo), then the current revision is re-classified and the
+   * generated unit rebuilt. A file leaving the unit lands in no unit, for the
+   * next (incremental) analysis to place; nothing is started here.
+   */
+  const GeneratedOverrideSchema = z.object({ path: z.string().min(1), generated: z.boolean() }).strict();
+  app.post("/api/prs/:key/generated", async (c) => {
+    const key = keyParam(c);
+    const parsed = GeneratedOverrideSchema.safeParse(await readJsonBody(c));
+    if (!parsed.success) {
+      throw new HttpError(400, "invalid_body", "Body must be { path: string, generated: boolean }");
+    }
+    readMeta(key, root); // 404s an untracked PR
+    let res;
+    try {
+      res = setGeneratedOverride(key, parsed.data.path, parsed.data.generated, root);
+    } catch (err) {
+      throw new HttpError(400, "invalid_path", (err as Error).message);
+    }
+    return c.json({ ok: true, generated: res.generated });
   });
 
   /* ------------------------------------------------- Claude: analysis job */
@@ -1610,6 +1648,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         analysisAgent: local.analysisAgent,
         chatAgent: local.chatAgent,
         watchReviews: local.watchReviews,
+        generated: local.generated,
         rubric: readLocalRubric(repo, root),
         chatInstructions: readLocalChatInstructions(repo, root),
       },
@@ -1854,6 +1893,14 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisAgent: AgentSelectionSchema.strict().nullable().optional(),
       chatAgent: ChatAgentSelectionSchema.strict().nullable().optional(),
       watchReviews: z.boolean().nullable().optional(),
+      /** either list replaces the stored one; blank lines are dropped */
+      generated: z
+        .object({
+          include: z.array(z.string().max(500)).max(500).optional(),
+          exclude: z.array(z.string().max(500)).max(500).optional(),
+        })
+        .strict()
+        .optional(),
       rubric: z.string().optional(),
       chatInstructions: z.string().optional(),
     })
@@ -1879,6 +1926,17 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
     if (body.chatAgent !== undefined) patch.chatAgent = checkAgentSelection(body.chatAgent, "chatAgent");
     if ("watchReviews" in body) patch.watchReviews = body.watchReviews ?? null;
+    let generatedChanged = false;
+    if (body.generated) {
+      const current = readRepoConfig(repo, root).generated;
+      const clean = (list: string[] | undefined, fallback: string[]) =>
+        list === undefined ? fallback : [...new Set(list.map((g) => g.trim()).filter((g) => g !== ""))];
+      patch.generated = {
+        include: clean(body.generated.include, current.include),
+        exclude: clean(body.generated.exclude, current.exclude),
+      };
+      generatedChanged = JSON.stringify(patch.generated) !== JSON.stringify(current);
+    }
     if ("repoPath" in body) {
       // Same validation as the per-PR endpoint: a path that isn't there is a
       // typo, and storing it would only fail later, silently.
@@ -1889,6 +1947,8 @@ export function createApp(opts: AppOptions = {}): Hono {
           : resolveRepoPathInput(raw);
     }
     if (Object.keys(patch).length > 0) writeRepoConfig(repo, patch, root);
+    // Cached facts only: re-classifying a repo's PRs must not hit the network.
+    if (generatedChanged) reclassifyRepo(repo, root);
     if (body.rubric !== undefined) writeLocalRubric(repo, body.rubric, root);
     if (body.chatInstructions !== undefined) {
       writeLocalChatInstructions(repo, body.chatInstructions, root);

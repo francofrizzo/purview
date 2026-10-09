@@ -2,7 +2,7 @@ import { mockApi } from "../mocks/server";
 import { hunkBodyLines } from "../lib/diffModel";
 import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
-import { isRemovedUnit, TOOL_KINDS } from "./types";
+import { isGeneratedUnit, isRemovedUnit, TOOL_KINDS } from "./types";
 import type {
   AddCommentInput,
   AnalysisImportReport,
@@ -39,6 +39,7 @@ import type {
   PrState,
   RepoConfig,
   RepoConfigPatch,
+  SetGeneratedResult,
   ResolveThreadResult,
   ThreadsResponse,
   RepoRemovalSummary,
@@ -186,6 +187,7 @@ interface WireFile {
   oldPath?: string;
   status: FileEntry["status"];
   binary?: boolean;
+  generated?: FileEntry["generated"];
   hunks: WireHunk[];
 }
 
@@ -297,6 +299,8 @@ function adaptFile(f: WireFile): FileEntry {
     oldPath: f.oldPath,
     status: f.status,
     binary: f.binary,
+    // Only ever present when set: an absent key keeps old fixtures/snapshots equal.
+    ...(f.generated ? { generated: f.generated } : {}),
     additions,
     deletions,
     hunks,
@@ -481,7 +485,8 @@ export const api = {
       meta: (res.state.pr ?? {}) as PrListEntry["meta"],
       currentRevision: res.revision,
       summary: state.summary,
-      unitCount: state.units.length,
+      // The fixed generated-files unit exists before any analysis; it is not one.
+      unitCount: state.units.filter((u) => !isGeneratedUnit(u)).length,
       totalHunks: Object.keys(state.hunks).length,
       viewedHunks: Object.values(state.hunks).filter((h) => h.viewed).length,
       // POST /prs answers with the freshly created state, not a list row; the
@@ -627,6 +632,16 @@ export const api = {
   async revisionLineChanges(key: string, n: number): Promise<RevisionLineChanges> {
     if (MOCK) return mockApi.revisionLineChanges(key, n);
     return request<RevisionLineChanges>(`/prs/${encodeKey(key)}/revisions/${n}/line-changes`);
+  },
+
+  /**
+   * Override the generated-file detection for one path: remembered for the
+   * whole repo (it lands in the repo config's `generated.include`/`exclude`),
+   * then the current revision is re-classified and the generated unit rebuilt.
+   */
+  async setGenerated(key: string, path: string, generated: boolean): Promise<SetGeneratedResult> {
+    if (MOCK) return mockApi.setGenerated(key, path, generated);
+    return post<SetGeneratedResult>(`/prs/${encodeKey(key)}/generated`, { path, generated });
   },
 
   async setHunkViewed(key: string, hunkId: string, viewed: boolean): Promise<void> {

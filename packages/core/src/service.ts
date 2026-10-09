@@ -11,6 +11,8 @@ import {
   setFileViewedOnGithub,
 } from "./github.js";
 import { migrate, toRevisionFiles } from "./migration.js";
+import { GENERATED_UNIT_ID, generatedFilesOf, isGeneratedUnit } from "./generated.js";
+import { classifyFiles, gatherGeneratedFacts, reclassifyGenerated } from "./generated-io.js";
 import { parseDiff } from "./parse-diff.js";
 import { analysisJobPath, commentsPath, repoKeyOf, stateRoot, type PrKey } from "./paths.js";
 import { nextRevisionNumber, priorRevisions } from "./reducer.js";
@@ -26,6 +28,7 @@ import {
   readFilesJson,
   readMeta,
   updateMeta,
+  writeGeneratedFacts,
   writeMeta,
   writeMigrationReport,
   writeRevision,
@@ -265,8 +268,12 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
     current.mergeBase === mergeBase &&
     current.baseSha === pr.baseSha
   ) {
+    // Same revision: re-apply the generated-file classification, which
+    // backfills a revision recorded before it existed (or whose facts read
+    // failed) and picks up repo-setting changes. Appends only on a change.
+    const re = reclassifyGenerated(key, root, { fetch: true });
     return {
-      state,
+      state: re.state,
       revision: current.revision,
       added: false,
       baseOnly: current.baseOnly,
@@ -274,11 +281,16 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   }
 
   const patch = fetchPullDiff(key);
-  const files = parseDiff(patch);
+  const parsed = parseDiff(patch);
   // Not current + 1: a discarded revision's number is never handed out again.
   // The migration below still diffs against `current`, the revision in force.
   const revision = nextRevisionNumber(readEvents(key, root));
   const baseOnly = !!current && current.headSha === pr.headSha;
+
+  // Generated files and lockfiles are decided here, before anything reads the
+  // revision: files.json, the triage and the event all carry the verdict.
+  const facts = gatherGeneratedFacts(key, parsed, pr.headSha, root);
+  const files = classifyFiles(key, parsed, facts, root);
 
   writeRevision(
     key,
@@ -301,6 +313,7 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
     });
     writeMigrationReport(key, report, root);
   }
+  writeGeneratedFacts(key, revision, facts, root);
 
   const next = appendEvent(
     key,
@@ -313,6 +326,7 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
       baseOnly,
       files: toRevisionFiles(files),
       migration: report,
+      generated: generatedFilesOf(files),
     },
     root,
   );
@@ -420,7 +434,15 @@ export function discardRevision(
     );
   }
 
-  const next = appendEvent(key, { type: "revision-discarded", revision }, root);
+  let next = appendEvent(key, { type: "revision-discarded", revision }, root);
+  // The revision now in force was classified under the repo settings of its
+  // day; a "Not generated" made on the discarded one must still hold. Cached
+  // facts only, no network: a discard has to be instant.
+  try {
+    next = reclassifyGenerated(key, root, { fetch: false }).state;
+  } catch {
+    /* the classification catches up on the next refresh */
+  }
 
   // What was recorded about the discarded revision outside the log goes too:
   // the "archived, so not analyzed" note, and the last run's record (the log
@@ -445,7 +467,10 @@ export function analysisCoverage(
   state: State,
   analysis: Analysis,
 ): AnalysisCoverage {
-  const all = new Set(state.files.flatMap((f) => f.hunkIds));
+  // Generated files' hunks are Purview's (the `generated` unit), never the
+  // analysis's to cover; one listed anyway is moved there by the reducer.
+  const generated = new Set(state.units.filter(isGeneratedUnit).flatMap((u) => u.hunkIds));
+  const all = new Set(state.files.flatMap((f) => f.hunkIds).filter((id) => !generated.has(id)));
   const claimed = new Set([
     ...analysis.units.flatMap((u) => u.hunkIds),
     ...(analysis.unassigned ?? []),
@@ -453,7 +478,7 @@ export function analysisCoverage(
   return {
     covered: [...all].filter((id) => claimed.has(id)),
     missing: [...all].filter((id) => !claimed.has(id)),
-    unknown: [...claimed].filter((id) => !all.has(id)),
+    unknown: [...claimed].filter((id) => !all.has(id) && !generated.has(id)),
   };
 }
 
@@ -591,6 +616,12 @@ export function setAnalysis(
     throw new Error(
       `Analysis references ${coverage.unknown.length} hunk id(s) that are not in ` +
         `revision ${state.currentRevision}:\n  ${coverage.unknown.join("\n  ")}`,
+    );
+  }
+  if (opts.origin !== "import" && analysis.units.some((u) => u.id === GENERATED_UNIT_ID)) {
+    throw new Error(
+      `Unit id "${GENERATED_UNIT_ID}" is reserved: Purview keeps generated files and lockfiles in ` +
+        `its own unit. Leave those hunks out and give your unit another id.`,
     );
   }
   // An imported analysis comes from another reader's (possibly older) CLI and

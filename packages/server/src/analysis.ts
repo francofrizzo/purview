@@ -23,8 +23,9 @@ import {
   type MovePairSummary,
   type PrKey,
   type State,
-  liveUnits,
+  analysisUnits,
   needsClassification,
+  GENERATED_UNIT_ID,
 } from "@reviewer/core";
 import { cliEnvironment, getHarness } from "./agent/registry.js";
 import type { AgentAction, AgentRun, HarnessManifest, ReviewerCommand } from "./agent/types.js";
@@ -232,7 +233,8 @@ export function movedNote(pairs: MovePairSummary[]): string {
 /** Move summary for the prompt; unreadable files degrade to "no moves". */
 function movedCodeSummary(key: PrKey, revision: number, root: string): MovePairSummary[] {
   try {
-    return summarizeMoves(readFilesJson(key, revision, root).files);
+    // Generated files are not the analysis's to read, moved code included.
+    return summarizeMoves(readFilesJson(key, revision, root).files.filter((f) => !f.generated));
   } catch {
     return [];
   }
@@ -504,7 +506,9 @@ export function analysisPrompt(
       : [
           "This PR has no analysis yet. Produce the full analysis and write it with",
           `\`${cmd} set-analysis ${keyStr} --file <analysis.json>\`.`,
-          "Every hunk id of the current revision must be covered by a unit or listed in \"unassigned\".",
+          "Every hunk id the triage lists must be covered by a unit or listed in \"unassigned\".",
+          "Generated files and lockfiles (triage's GENERATED line) are already in Purview's own",
+          `\`${GENERATED_UNIT_ID}\` unit: leave their hunks out, don't read them, and don't use that unit id.`,
         ].join(" "),
     "",
     // Above ~200 hunks the failure mode changes: the session fills its
@@ -983,8 +987,9 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   // omits it, and every other value passes straight through.
   const { model, effort } = agent;
   // Husks alone are not an analysis to build on: with no live unit left
-  // the run must produce a full analysis (which drops the husks).
-  const incremental = liveUnits(state).length > 0;
+  // the run must produce a full analysis (which drops the husks). Nor is the
+  // generated unit, which Purview builds before any analysis runs.
+  const incremental = analysisUnits(state).length > 0;
 
   const metrics = emptyMetrics();
   // Recorded before the spawn so a run that dies early still says what it was.

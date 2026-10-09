@@ -92,3 +92,21 @@ describe("husks", () => {
     expect(numbers.has("gone")).toBe(false);
   });
 });
+
+describe("the generated-files unit", () => {
+  const generated = (order: number) =>
+    ({ ...unit("generated", "skip", order), origin: "generated" }) as ReviewUnit;
+
+  it("closes the skip bucket whatever its order", () => {
+    const units = [generated(0), unit("skip2", "skip", 7), unit("must1", "must-read", 1), unit("skip1", "skip", 3)];
+    expect(unitDisplayOrder(units).map((u) => u.id)).toEqual(["must1", "skip1", "skip2", "generated"]);
+  });
+
+  it("is numbered last, so the analysis's units keep their numbers", () => {
+    const numbers = unitDisplayNumbers([generated(0), unit("must1", "must-read", 1)]);
+    expect([...numbers]).toEqual([
+      ["must1", 1],
+      ["generated", 2],
+    ]);
+  });
+});

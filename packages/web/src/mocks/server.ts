@@ -1,6 +1,6 @@
 import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
-import { isFileComment } from "../api/types";
+import { isFileComment, isGeneratedUnit } from "../api/types";
 import type {
   AgentSelection,
   AgentsInfo,
@@ -32,6 +32,7 @@ import type {
   ReanchorResult,
   RepoConfig,
   RepoConfigPatch,
+  SetGeneratedResult,
   RemoteThread,
   ResolveThreadResult,
   ThreadsResponse,
@@ -60,6 +61,7 @@ import {
   mockReviews,
   mockThreads,
 } from "./fixture";
+import { buildGeneratedUnit } from "./generated";
 
 /** Stand-in for the previous revision's body of the one hunk that changed. */
 const MOCK_DOD_BEFORE: Record<string, string[]> = {
@@ -356,11 +358,21 @@ function syncRepoCounts() {
 
 const UNANALYZED_KEY = "github.com/acme/platform/1190";
 
+// Not analyzed, but its generated files are already classified: the server
+// builds the generated unit when the revision is recorded, before any
+// analysis, so this PR shows that unit alone under the analysis banner.
+const unanalyzedFiles = structuredClone(mockDetail.files.files.filter((f) => f.generated));
 const unanalyzed: PrDetail = {
   key: UNANALYZED_KEY,
   meta: list.find((p) => p.key === UNANALYZED_KEY)!.meta,
-  state: { revision: 1, summary: "", units: [], hunks: {}, files: {} },
-  files: { files: [] },
+  state: {
+    revision: 1,
+    summary: "",
+    units: [buildGeneratedUnit(unanalyzedFiles)!],
+    hunks: {},
+    files: {},
+  },
+  files: { files: unanalyzedFiles },
   diff: "",
   analysisJob: null,
 };
@@ -440,7 +452,7 @@ function schedule(key: string, ms: number, fn: () => void) {
 /** Copy the analyzed fixture's units/hunks onto a PR whose job just finished. */
 function applyAnalysisResult(key: string) {
   const target = details[key];
-  if (!target || target.state.units.length) return;
+  if (!target || target.state.units.some((u) => !isGeneratedUnit(u))) return;
   const source = structuredClone(mockDetail);
   target.state = { ...source.state, revision: target.state.revision };
   target.files = source.files;
@@ -758,6 +770,7 @@ export const mockApi = {
     if (patch.watchReviews !== undefined) config.local.watchReviews = patch.watchReviews;
     if (patch.rubric !== undefined) config.local.rubric = patch.rubric;
     if (patch.chatInstructions !== undefined) config.local.chatInstructions = patch.chatInstructions;
+    if (patch.generated !== undefined) config.local.generated = structuredClone(patch.generated);
     relayer(rkey);
     const summary = repos.find((r) => `${r.host}/${r.owner}/${r.repo}` === rkey);
     if (summary) {
@@ -770,7 +783,8 @@ export const mockApi = {
         Boolean(config.local.chatAgent) ||
         config.local.watchReviews !== null ||
         Boolean(config.local.rubric.trim()) ||
-        Boolean(config.local.chatInstructions.trim());
+        Boolean(config.local.chatInstructions.trim()) ||
+        Boolean(config.local.generated?.include.length || config.local.generated?.exclude.length);
     }
     return structuredClone(config);
   },
@@ -815,6 +829,44 @@ export const mockApi = {
     target.repoArchived = archivedRepos.has(`${host}/${owner}/${repo}`);
     target.analysisPending = analysisPending[key] ?? null;
     return structuredClone(target);
+  },
+
+  /**
+   * The server's override, minus glob matching: the exact path goes into the
+   * repo's include/exclude (and out of the other), the file is re-classified,
+   * and the generated unit is rebuilt. An un-marked file's hunks land in no
+   * unit (the "not in any unit" group); a marked file's hunks are pulled out
+   * of whichever unit held them.
+   */
+  async setGenerated(key: string, path: string, generated: boolean): Promise<SetGeneratedResult> {
+    await delay(260);
+    const target = details[key];
+    const file = target?.files.files.find((f) => f.path === path);
+    if (!target || !file) throw new ApiError("not_found", 404, `No file "${path}" in this revision.`);
+    const config = repoConfigs[repoKeyOfPr(key)];
+    if (config) {
+      const lists = config.local.generated ?? { include: [], exclude: [] };
+      const add = generated ? lists.include : lists.exclude;
+      const drop = generated ? lists.exclude : lists.include;
+      config.local.generated = {
+        include: generated ? [...new Set([...add, path])] : drop.filter((p) => p !== path),
+        exclude: generated ? drop.filter((p) => p !== path) : [...new Set([...add, path])],
+      };
+    }
+    if (generated) file.generated = { source: "repo", detail: path };
+    else delete file.generated;
+
+    const ids = new Set(file.hunks.map((h) => h.id));
+    const previous = target.state.units.find(isGeneratedUnit);
+    const rest = target.state.units
+      .filter((u) => !isGeneratedUnit(u))
+      .map((u) => (generated ? { ...u, hunkIds: u.hunkIds.filter((id) => !ids.has(id)) } : u))
+      // A unit the move emptied would be a confusing shell; the mock drops it.
+      .filter((u) => u.hunkIds.length > 0);
+    const unit = buildGeneratedUnit(target.files.files, previous?.order);
+    target.state.units = unit ? [...rest, unit] : rest;
+    if (target === detail) recomputeFileRollups();
+    return { ok: true, generated: target.files.files.filter((f) => f.generated).map((f) => f.path) };
   },
 
   async setHunkViewed(_key: string, hunkId: string, viewed: boolean): Promise<void> {

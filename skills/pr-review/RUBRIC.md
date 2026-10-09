@@ -89,6 +89,10 @@ Docs, comments-only changes, README, CHANGELOG.
   doc-comment hunk as docs even though it sits next to a core-logic hunk in the same file;
   they're still separate units unless trivially small (see below).
 
+Most generated files and lockfiles never reach you: Purview keeps them in its own
+`generated` unit (see SKILL.md). The two boundaries below are for the ones it did not
+recognize.
+
 **Boundary — generated files are ripple/skip, not docs, even if human-readable.** A
 regenerated OpenAPI spec, a compiled `.d.ts`, a `CHANGELOG.md` entry appended by a release
 tool — these are mechanical fallout of another change. Classify as `ripple` (or fold into

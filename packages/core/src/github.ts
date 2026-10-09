@@ -1137,3 +1137,93 @@ export function fetchRepoFile(
     return null;
   }
 }
+
+/* ------------------------------------------------ generated-file facts */
+
+/**
+ * The repo's root `.gitattributes` at `sha` (contents API). `ok: false` when
+ * the read failed for any reason other than "there is none", so the caller
+ * can tell "no signal" from "no answer" and try again later.
+ */
+export function fetchGitattributes(key: PrKey, sha: string): { text: string | null; ok: boolean } {
+  try {
+    const raw = JSON.parse(
+      gh(["api", ...hostArgs(key.host), `repos/${key.owner}/${key.repo}/contents/.gitattributes?ref=${encodeURIComponent(sha)}`]),
+    ) as RawContents;
+    if (!raw || raw.type === "dir" || typeof raw.content !== "string") return { text: null, ok: true };
+    const text = raw.encoding && raw.encoding !== "base64" ? raw.content : Buffer.from(raw.content, "base64").toString("utf8");
+    return { text, ok: true };
+  } catch (err) {
+    return { text: null, ok: /HTTP 404|Not Found/i.test((err as Error).message) };
+  }
+}
+
+/** Blobs larger than this are never downloaded just to read their first lines. */
+export const HEAD_BLOB_MAX_BYTES = 200 * 1024;
+const BLOB_SIZE_BATCH = 100;
+const BLOB_TEXT_BATCH = 25;
+
+/**
+ * The first `lines` lines of each path at `sha`, through batched GraphQL
+ * `object(expression: "<sha>:<path>")` lookups — one query for sizes, then
+ * text only for small, non-binary blobs. Never one call per file. A path
+ * missing from the result was absent, binary or too big; `ok: false` when a
+ * query failed.
+ */
+export function fetchFileHeads(
+  key: PrKey,
+  sha: string,
+  paths: string[],
+  lines: number,
+): { heads: Map<string, string[]>; ok: boolean } {
+  const heads = new Map<string, string[]>();
+  let ok = true;
+  const query = (batch: string[], fields: string) =>
+    "query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){" +
+    batch
+      .map((p, i) => `f${i}:object(expression:${JSON.stringify(`${sha}:${p}`)}){... on Blob{${fields}}}`)
+      .join(" ") +
+    "}}";
+  const run = (batch: string[], fields: string): Record<string, { byteSize?: number; isBinary?: boolean; text?: string | null } | null> => {
+    const res = JSON.parse(
+      gh([
+        "api",
+        "graphql",
+        ...hostArgs(key.host),
+        "-f",
+        `query=${query(batch, fields)}`,
+        "-F",
+        `owner=${key.owner}`,
+        "-F",
+        `repo=${key.repo}`,
+      ]),
+    ) as { data?: { repository?: Record<string, never> } };
+    return res.data?.repository ?? {};
+  };
+  const small: string[] = [];
+  for (let i = 0; i < paths.length; i += BLOB_SIZE_BATCH) {
+    const batch = paths.slice(i, i + BLOB_SIZE_BATCH);
+    try {
+      const repo = run(batch, "byteSize isBinary");
+      batch.forEach((p, j) => {
+        const blob = repo[`f${j}`];
+        if (blob && !blob.isBinary && (blob.byteSize ?? Infinity) <= HEAD_BLOB_MAX_BYTES) small.push(p);
+      });
+    } catch {
+      ok = false;
+    }
+  }
+  for (let i = 0; i < small.length; i += BLOB_TEXT_BATCH) {
+    const batch = small.slice(i, i + BLOB_TEXT_BATCH);
+    try {
+      const repo = run(batch, "text");
+      batch.forEach((p, j) => {
+        const text = repo[`f${j}`]?.text;
+        if (typeof text === "string") heads.set(p, text.split("\n").slice(0, lines));
+      });
+    } catch {
+      ok = false;
+    }
+  }
+  return { heads, ok };
+}

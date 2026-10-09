@@ -42,6 +42,7 @@ import type {
   ReviewStatus,
   ReviewUnit,
   ShareAnalysisResult,
+  SetGeneratedResult,
   SharedAnalysisProbe,
   Staleness,
   SubmitReviewResult,
@@ -525,6 +526,27 @@ export function usePatchUnit(key: string) {
       if (ctx?.previous) qc.setQueryData(qk.pr(key), ctx.previous);
     },
     onSettled: () => void qc.invalidateQueries({ queryKey: qk.pr(key) }),
+  });
+}
+
+/**
+ * "Not generated" / "Treat as generated" on one file. The server rewrites the
+ * repo's patterns and rebuilds the generated unit, so everything derived from
+ * the PR's units goes stale: the PR itself, its list row (progress), the
+ * review readiness and the repo config the patterns live in.
+ */
+export function useSetGenerated(
+  key: string,
+): UseMutationResult<SetGeneratedResult, Error, { path: string; generated: boolean }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ path, generated }) => api.setGenerated(key, path, generated),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.pr(key) });
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+      void qc.invalidateQueries({ queryKey: ["repo-config"] });
+    },
   });
 }
 

@@ -21,6 +21,7 @@ import {
   modelOptions,
   offersHarnessChoice,
 } from "../lib/agentSelection";
+import { parsePatternLines } from "../lib/generated";
 import { Markdown } from "../components/Markdown";
 import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
 import { RepoDangerZone } from "../components/RepoActions";
@@ -169,6 +170,7 @@ function RepoSettingsBody({
       <WatchSection config={config} save={save} />
       <CheckoutSection config={config} save={save} />
       <RubricSection config={config} save={save} />
+      <GeneratedSection config={config} save={save} />
       <ChatInstructionsSection config={config} save={save} />
       <RepoDangerZone
         repo={{ host, owner, repo }}
@@ -537,17 +539,92 @@ function ChatInstructionsSection({ config, save }: { config: RepoConfig; save: S
   );
 }
 
+/* -------------------------------------------------------------- generated */
+
+/**
+ * The repo's overrides of the generated-file detection. Both lists are saved
+ * together (the PUT writes `generated` whole); the file header's "Not
+ * generated" / "Treat as generated" land here too, as exact paths. Changes
+ * apply as each PR's next revision is classified — or right away for a PR
+ * whose file header was used.
+ */
+function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) {
+  const [flash, setFlash] = useFlash();
+  const saved = config.local.generated ?? { include: [], exclude: [] };
+  const savedInclude = saved.include.join("\n");
+  const savedExclude = saved.exclude.join("\n");
+  const [include, setInclude] = useState(savedInclude);
+  const [exclude, setExclude] = useState(savedExclude);
+
+  useEffect(() => setInclude(savedInclude), [savedInclude]);
+  useEffect(() => setExclude(savedExclude), [savedExclude]);
+
+  const next = { include: parsePatternLines(include), exclude: parsePatternLines(exclude) };
+  const dirty =
+    next.include.join("\n") !== saved.include.join("\n") ||
+    next.exclude.join("\n") !== saved.exclude.join("\n");
+
+  return (
+    <Section
+      title="Generated files"
+      hint="Generated files and lockfiles go to one skip unit the analysis never reads. Lockfiles, generated-code paths and “Code generated … DO NOT EDIT” markers are detected on their own; these lists adjust that for this repo. One glob per line."
+    >
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div>
+          <PaneLabel>always treat as generated</PaneLabel>
+          <Autosize
+            value={include}
+            rows={4}
+            testId="generated-include"
+            onChange={setInclude}
+            placeholder={"src/api/__generated__/**\n*.snap"}
+          />
+        </div>
+        <div>
+          <PaneLabel>never treat as generated</PaneLabel>
+          <Autosize
+            value={exclude}
+            rows={4}
+            testId="generated-exclude"
+            onChange={setExclude}
+            placeholder={"gen/handwritten/**"}
+          />
+        </div>
+      </div>
+      <p className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        The PR head&apos;s <span className="font-mono">.gitattributes</span> is read too (
+        <span className="font-mono">linguist-generated</span>,{" "}
+        <span className="font-mono">linguist-vendored</span>); “never” wins over everything.
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          className="btn"
+          data-testid="generated-save"
+          disabled={!dirty || save.isPending}
+          onClick={() => save.mutate({ generated: next }, { onSuccess: () => setFlash() })}
+        >
+          {save.isPending ? "saving…" : "save patterns"}
+        </button>
+        <SavedFlash shown={flash} error={save.error} />
+      </div>
+    </Section>
+  );
+}
+
 /** Grows with its content, from `rows` lines up to a scrolling ceiling. */
 function Autosize({
   value,
   rows,
   onChange,
   placeholder,
+  testId = "rubric-textarea",
 }: {
   value: string;
   rows: number;
   onChange: (v: string) => void;
   placeholder?: string;
+  testId?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
@@ -563,7 +640,7 @@ function Autosize({
     <textarea
       ref={ref}
       className="input mt-1 resize-none text-xs leading-[18px]"
-      data-testid="rubric-textarea"
+      data-testid={testId}
       spellCheck={false}
       placeholder={placeholder}
       value={value}

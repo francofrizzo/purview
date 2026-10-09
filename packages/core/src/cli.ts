@@ -267,7 +267,7 @@ program
     "hunk id (exact or unique prefix >=6 chars), file path, glob, or unit:<unitId> (that unit's hunks)",
   )
   .option("--rev <n>", "revision to read from (defaults to the current one)")
-  .option("--all", "print every hunk of the revision, ignoring selectors")
+  .option("--all", "print every hunk of the revision except generated files', ignoring selectors")
   .option("--needs", "add every hunk that still needs classification (in no unit, not explicitly unassigned)")
   .option("--inline", "always print to stdout, even when the result is large")
   .description("print full hunk bodies for the given selectors (large results go to a scratch file)")

@@ -1,5 +1,6 @@
 import { changedUnits } from "./changes.js";
 import { MIN_PREFIX_LEN } from "./hunk-select.js";
+import { GENERATED_UNIT_ID, isGeneratedUnit } from "./generated.js";
 import { isRemovedUnit } from "./schemas.js";
 import type { FileDiff, NewEvent, ReviewUnit, ReviewUnitPatch, ReviewerEvent, State } from "./schemas.js";
 import { NewReviewUnitSchema, ReviewUnitPatchSchema } from "./schemas.js";
@@ -58,6 +59,7 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
   const errors: string[] = [];
   const warnings: string[] = [];
   const revisionIds = new Set(Object.keys(state.hunks));
+  const generatedIds = new Set(state.units.filter(isGeneratedUnit).flatMap((u) => u.hunkIds));
   const seen = new Set<string>();
   // unitId -> the hunk list it will hold after the batch (patched units only)
   const finalHunks = new Map<string, string[]>();
@@ -70,6 +72,13 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
       continue;
     }
     seen.add(unitId);
+    if (unitId === GENERATED_UNIT_ID) {
+      errors.push(
+        `unit "${unitId}" is Purview's own unit for generated files and lockfiles; it is rebuilt ` +
+          `automatically and cannot be patched`,
+      );
+      continue;
+    }
     if (!req.payload || typeof req.payload !== "object" || Array.isArray(req.payload)) {
       errors.push(`unit "${unitId}": the patch must be a JSON object`);
       continue;
@@ -130,6 +139,13 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
 
     // A hunk the unit did not hold before must belong to this revision.
     if (hunkIds) {
+      const gen = hunkIds.filter((id) => generatedIds.has(id));
+      if (gen.length > 0) {
+        errors.push(
+          `unit "${unitId}": ${gen.length} hunk id(s) belong to generated files, which Purview keeps in ` +
+            `its "${GENERATED_UNIT_ID}" unit (leave them out): ${gen.join(", ")}`,
+        );
+      }
       const unknown = hunkIds.filter((id) => !base.includes(id) && !revisionIds.has(id));
       if (unknown.length > 0) {
         errors.push(
@@ -277,6 +293,15 @@ export function renderUnits(
   if (units.length === 0) return { text: unitIds.length ? "" : "No units yet.\n", unknown };
   const out: string[] = [];
   for (const u of units) {
+    if (isGeneratedUnit(u)) {
+      // Purview's own: listed so the hunks read as owned, never to be patched.
+      const files = hunkIdsByFile(u.hunkIds, state.files, short).map((g) => g.path);
+      out.push(
+        `${u.id}  [${u.attention}]  ${u.title}  (${u.hunkIds.length} hunks; Purview's, not patchable)`,
+        `    ${files.join(", ")}`,
+      );
+      continue;
+    }
     const husk = isRemovedUnit(u) && u.hunkIds.length === 0;
     const findings = u.findings?.length ?? 0;
     out.push(

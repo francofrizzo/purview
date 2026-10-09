@@ -19,3 +19,5 @@ export * from "./line-changes.js";
 export * from "./comment-client.js";
 export * from "./unit-patch.js";
 export * from "./inline-limit.js";
+export * from "./generated.js";
+export * from "./generated-io.js";

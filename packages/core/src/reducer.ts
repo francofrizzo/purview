@@ -1,4 +1,5 @@
 import { STATE_SHAPE_VERSION, isRemovedUnit } from "./schemas.js";
+import { GENERATED_UNIT_ID, buildGeneratedUnit, isGeneratedUnit } from "./generated.js";
 import type {
   ReviewUnit,
   ReviewUnitPatch,
@@ -19,6 +20,7 @@ export function initialState(): State {
     hunks: {},
     files: [],
     unassignedHunkIds: [],
+    generated: [],
     archived: [],
     reviewSubmissions: [],
     corrections: [],
@@ -74,6 +76,52 @@ function recomputeRollups(state: State): void {
       changedSinceViewed: states.some((s) => s.changedSinceViewed),
     };
   });
+}
+
+/**
+ * Re-establish the generated-unit invariant on `state` (in place): every hunk
+ * of the current revision's generated files (`state.generated`) sits in the
+ * one fixed `generated` unit, placed last, and nowhere else — not in another
+ * unit, not in `unassignedHunkIds`. The unit is rebuilt from scratch each
+ * time, so it can never drift, become a husk, or carry analysis fields; with
+ * no generated hunks it does not exist.
+ *
+ * A unit that only ever held generated hunks (an analysis written before this
+ * existed grouped the lockfiles itself) is dropped rather than left empty. A
+ * hunk that stops being generated simply leaves the unit: it is then in no
+ * unit, exactly like a new hunk, so the incremental analysis classifies it.
+ */
+function applyGenerated(state: State): void {
+  const paths = new Set(state.generated.map((g) => g.path));
+  const genIds: string[] = [];
+  for (const f of state.files) if (paths.has(f.path)) genIds.push(...f.hunkIds);
+  const gen = new Set(genIds);
+
+  const others: ReviewUnit[] = [];
+  for (const u of state.units) {
+    if (isGeneratedUnit(u)) continue;
+    if (isRemovedUnit(u) || !u.hunkIds.some((id) => gen.has(id))) {
+      others.push(u);
+      continue;
+    }
+    const hunkIds = u.hunkIds.filter((id) => !gen.has(id));
+    if (hunkIds.length > 0) others.push({ ...u, hunkIds });
+  }
+  if (genIds.length > 0) {
+    const order = others.reduce((m, u) => Math.max(m, u.order + 1), 0);
+    others.push(buildGeneratedUnit(state.generated, genIds, order));
+  }
+  state.units = others;
+  if (state.unassignedHunkIds.some((id) => gen.has(id))) {
+    state.unassignedHunkIds = state.unassignedHunkIds.filter((id) => !gen.has(id));
+  }
+}
+
+/** A unit as analysis sends it: Purview's own `origin` never comes from there. */
+function fromAnalysis<T extends { origin?: unknown }>(unit: T): Omit<T, "origin"> {
+  const { origin: _origin, ...rest } = unit;
+  void _origin;
+  return rest;
 }
 
 /** Apply one event to a state, returning a new state (input is not mutated). */
@@ -267,6 +315,10 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
         syncedToGithub: previousRollups.get(f.path)?.syncedToGithub,
       }));
       state.lastMigration = event.migration;
+      state.generated = event.generated ?? [];
+      if (event.generated) state.generatedRevision = event.revision;
+      else delete state.generatedRevision;
+      applyGenerated(state);
       break;
     }
 
@@ -274,14 +326,23 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       state.summary = event.summary;
       // A full analysis replaces every unit, so husks drop out unless re-sent;
       // one re-sent with hunks is a live unit again.
-      state.units = event.units.map((u) => reviveIfPopulated({ ...u }));
+      // The generated unit is Purview's, not the analysis's: one in the
+      // payload (an import, a model echoing it) is dropped and rebuilt.
+      state.units = event.units
+        .filter((u) => !isGeneratedUnit(u))
+        .map((u) => reviveIfPopulated(fromAnalysis(u) as ReviewUnit));
       state.unassignedHunkIds = [...(event.unassigned ?? [])];
       state.analysisRevision = event.revision;
       state.analysisOrigin = event.origin;
+      applyGenerated(state);
       break;
     }
 
     case "unit-updated": {
+      // Never patched: it is rebuilt from the classification (and the CLI
+      // refuses such a patch before it gets here).
+      if (event.unitId === GENERATED_UNIT_ID) break;
+      const patch = fromAnalysis(event.patch);
       const idx = state.units.findIndex((u) => u.id === event.unitId);
       if (idx === -1) {
         const blank: ReviewUnit = {
@@ -295,12 +356,13 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           hunkIds: [],
           order: state.units.length,
         };
-        state.units.push(reviveIfPopulated(applyUnitPatch(blank, event.patch, state.currentRevision)));
+        state.units.push(reviveIfPopulated(applyUnitPatch(blank, patch, state.currentRevision)));
       } else {
-        state.units[idx] = reviveIfPopulated(
-          applyUnitPatch(state.units[idx], event.patch, state.currentRevision),
-        );
+        state.units[idx] = reviveIfPopulated(applyUnitPatch(state.units[idx], patch, state.currentRevision));
       }
+      // A patch may have claimed a generated hunk, or appended a unit after
+      // the generated one; both are put right.
+      if (state.generated.length > 0) applyGenerated(state);
       break;
     }
 
@@ -401,6 +463,14 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
     case "revision-discarded":
       // Consumed by `withoutDiscarded` before the fold reaches the reducer.
       break;
+
+    case "generated-classified": {
+      if (event.revision !== state.currentRevision) break;
+      state.generated = event.files;
+      state.generatedRevision = event.revision;
+      applyGenerated(state);
+      break;
+    }
   }
 
   recomputeRollups(state);
@@ -496,14 +566,32 @@ export function liveUnits(state: Pick<State, "units">): ReviewUnit[] {
   return state.units.filter((u) => !isRemovedUnit(u));
 }
 
+/**
+ * Live units the analysis wrote: everything but husks and Purview's own
+ * `generated` unit. "Has this PR been analyzed?" is whether this is empty —
+ * the generated unit exists before any analysis runs.
+ */
+export function analysisUnits(state: Pick<State, "units">): ReviewUnit[] {
+  return state.units.filter((u) => !isRemovedUnit(u) && !isGeneratedUnit(u));
+}
+
 /** Husks: units every hunk of which left the PR in the current revision. */
 export function removedUnits(state: Pick<State, "units">): ReviewUnit[] {
   return state.units.filter(isRemovedUnit);
 }
 
-/** Per-unit progress over live units; husks count toward nothing. */
+/** Hunk ids in Purview's generated unit (generated files and lockfiles). */
+export function generatedHunkIds(state: Pick<State, "units">): Set<string> {
+  return new Set(state.units.filter((u) => !isRemovedUnit(u) && isGeneratedUnit(u)).flatMap((u) => u.hunkIds));
+}
+
+/**
+ * Per-unit progress over the analysis's units; husks count toward nothing,
+ * and neither does the generated unit (it is not reading work, and a PR
+ * whose only unit it is has not been analyzed).
+ */
 export function unitProgress(state: State): UnitProgress[] {
-  return liveUnits(state)
+  return analysisUnits(state)
     .sort((a, b) => a.order - b.order)
     .map((u) => {
       const states = u.hunkIds.map((id) => state.hunks[id]).filter(Boolean);
@@ -542,7 +630,11 @@ export interface ReadinessSummary {
 export function readiness(state: State): ReadinessSummary {
   const progress = unitProgress(state);
   const mustRead = progress.filter((u) => u.attention === "must-read");
-  const hunkStates = Object.values(state.hunks);
+  // Generated files and lockfiles are not part of the read.
+  const generated = generatedHunkIds(state);
+  const hunkStates = Object.entries(state.hunks)
+    .filter(([id]) => !generated.has(id))
+    .map(([, h]) => h);
   const mustReadUnviewed = mustRead.filter((u) => !u.complete).length;
   return {
     hunks: {

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type {
   AnalysisImportReport,
   ChatRef,
+  FileEntry,
   MigrationReport,
   PrDetail,
   ReviewEvent,
@@ -11,7 +12,7 @@ import type {
   SubmitReviewResult,
   SyncResult,
 } from "../api/types";
-import { isJobLive } from "../api/types";
+import { isGeneratedUnit, isJobLive } from "../api/types";
 import {
   qk,
   useAddComment,
@@ -46,6 +47,7 @@ import {
   useReview,
   useSaveReviewBody,
   useSetHunkViewed,
+  useSetGenerated,
   useSetHunksViewed,
   useSetUnitViewed,
   useStaleness,
@@ -83,6 +85,8 @@ import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
 import { IconChevron } from "../components/icons";
+import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
+import { generatedUnitFiles, reviewProgress, workUnits } from "../lib/generated";
 import {
   AnalysisImportConfirmPanel,
   AnalysisImportResultPanel,
@@ -155,6 +159,7 @@ export function PrView() {
   const setHunksViewed = useSetHunksViewed(prKey);
   const setUnitViewed = useSetUnitViewed(prKey);
   const patchUnit = usePatchUnit(prKey);
+  const setGenerated = useSetGenerated(prKey);
   const refresh = useRefresh(prKey);
   const sync = useSync(prKey);
   const addComment = useAddComment(prKey);
@@ -383,6 +388,10 @@ export function PrView() {
     () => (detail ? [...detail.state.units].sort((a, b) => a.order - b.order) : []),
     [detail],
   );
+  // The units that are review work: all but the generated-files unit, which
+  // Purview builds before any analysis runs. "Has this PR been analyzed?",
+  // "all units viewed" and the next-unit hop all ask about these.
+  const analyzedUnits = useMemo(() => workUnits(units), [units]);
 
   // Hunks no live unit claims: the "Not in any unit" pseudo-unit, selected
   // through the reserved UNPLACED_ID in `selectedUnitId`. `unplacedAll` is the
@@ -391,7 +400,10 @@ export function PrView() {
   // before the first analysis every hunk is "unplaced" and the analysis
   // banner already says so.
   const unplacedAll = useMemo(() => (detail ? unplacedHunkIds(detail) : []), [detail]);
-  const unplaced = useMemo(() => (units.length ? unplacedAll : []), [units.length, unplacedAll]);
+  const unplaced = useMemo(
+    () => (analyzedUnits.length ? unplacedAll : []),
+    [analyzedUnits.length, unplacedAll],
+  );
   const unplacedSet = useMemo(() => new Set(unplaced), [unplaced]);
 
   // "Since your last review": the PR-level filter down to the hunks that
@@ -418,12 +430,12 @@ export function PrView() {
   // Whether every unit in the PR is fully viewed — drives the quiet "all units
   // viewed" indicator next to the units-tab "mark unit viewed" button.
   const allUnitsViewed = useMemo(() => {
-    if (!detail || units.length === 0) return false;
-    return units.every((u) => {
+    if (!detail || analyzedUnits.length === 0) return false;
+    return analyzedUnits.every((u) => {
       const p = unitProgress(detail, u);
       return p.total === 0 || p.viewed === p.total;
     });
-  }, [detail, units]);
+  }, [detail, analyzedUnits]);
 
   // After marking a unit viewed (units tab only), advance to the next unit
   // that still has unviewed hunks, in the sidebar's reading order
@@ -440,6 +452,8 @@ export function PrView() {
       for (let i = 1; i <= ordered.length; i++) {
         const candidate = ordered[(idx + i) % ordered.length];
         if (sinceUnitIdsRef.current && !sinceUnitIdsRef.current.has(candidate.id)) continue;
+        // Never hop into the generated files: they are there to be waved through.
+        if (isGeneratedUnit(candidate)) continue;
         const p = unitProgress(latest, candidate);
         if (p.total > 0 && p.viewed < p.total) {
           setSelectedUnitId(candidate.id);
@@ -479,17 +493,11 @@ export function PrView() {
   );
 
   // Whole-PR reading progress, shown quietly on the summary strip.
-  const overall = useMemo(() => {
-    let viewed = 0;
-    let total = 0;
-    for (const file of detail?.files.files ?? []) {
-      for (const hunk of file.hunks) {
-        total++;
-        if (detail?.state.hunks[hunk.id]?.viewed) viewed++;
-      }
-    }
-    return { viewed, total };
-  }, [detail]);
+  // Generated files and lockfiles are left out: they are not review work.
+  const overall = useMemo(
+    () => reviewProgress(detail?.files.files ?? [], detail?.state.hunks ?? {}),
+    [detail],
+  );
 
 
   useEffect(() => {
@@ -870,11 +878,11 @@ export function PrView() {
   const probeJob = analysisJob.data ?? detail?.analysisJob ?? null;
   useEffect(() => {
     if (!detail) return;
-    if (units.length === 0 && !isJobLive(probeJob) && probedForRef.current !== prKey) {
+    if (analyzedUnits.length === 0 && !isJobLive(probeJob) && probedForRef.current !== prKey) {
       probedForRef.current = prKey;
       sharedProbe.mutate();
     }
-  }, [detail, units.length, probeJob, prKey, sharedProbe]);
+  }, [detail, analyzedUnits.length, probeJob, prKey, sharedProbe]);
 
   if (isLoading) {
     return <Centered>Loading {prKey}…</Centered>;
@@ -914,7 +922,7 @@ export function PrView() {
   const analysisPending = isJobLive(job);
   // The banner is for the "nothing to read yet" case: once units exist, the
   // job's state lives in the top bar chip and the overflow menu instead.
-  const showAnalysisBanner = units.length === 0 || analysisPending;
+  const showAnalysisBanner = analyzedUnits.length === 0 || analysisPending;
   // A refresh of this archived PR landed work and auto-analysis skipped it.
   // Hidden while a run is live: the explicit analyze clears the note server-
   // side, and the detail catches up when the run finishes.
@@ -927,7 +935,7 @@ export function PrView() {
     !!skipNote && skipNote.reason === "archived" && archiveScope !== null && !analysisPending;
   const quote = (ref: ChatRef) => chat.attachRef(ref);
 
-  const noLocalAnalysis = units.length === 0;
+  const noLocalAnalysis = analyzedUnits.length === 0;
   const showSharedAnalysisBanner =
     noLocalAnalysis && !analysisPending && !sharedBannerDismissed && sharedProbe.data?.found === true;
 
@@ -958,6 +966,22 @@ export function PrView() {
     onResolve: (thread: { id: string }, resolved: boolean) => resolveThread.mutate({ id: thread.id, resolved }),
     resolving: resolveThread.isPending ? (resolveThread.variables?.id ?? null) : null,
   };
+
+  // The file header's "Not generated" / "Treat as generated". `done` closes
+  // its panel once the server has re-classified; the PR refetch then moves
+  // the file in or out of the generated unit.
+  const generatedMenuFor = (file: Pick<FileEntry, "path" | "generated">) => (
+    <GeneratedFileMenu
+      file={file}
+      repoName={`${detail.meta.owner}/${detail.meta.repo}`}
+      pending={setGenerated.isPending}
+      error={setGenerated.error ? errorText(setGenerated.error) : null}
+      onSet={(path, generated, done) => setGenerated.mutate({ path, generated }, { onSuccess: done })}
+    />
+  );
+  const selectedFile = selectedPath
+    ? detail.files.files.find((f) => f.path === selectedPath) ?? null
+    : null;
 
   const jumpToFile = (file: string) => {
     setTab("files");
@@ -1178,7 +1202,7 @@ export function PrView() {
         analysisJob={job}
         analysisStarting={startAnalysis.isPending}
         analysisCancelling={cancelAnalysis.isPending}
-        hasAnalysis={detail.state.units.length > 0}
+        hasAnalysis={analyzedUnits.length > 0}
         exporting={exportAnalysis.isPending}
         sharing={shareToPr.isPending}
         importingFromPr={importFromPr.isPending}
@@ -1478,7 +1502,7 @@ export function PrView() {
                   <InlineMarkdown text={selectedUnit.title} />
                 </h2>
                 <div className="flex flex-none flex-wrap items-center gap-2">
-                  <KindChip kind={selectedUnit.kind} />
+                  {isGeneratedUnit(selectedUnit) ? null : <KindChip kind={selectedUnit.kind} />}
                   {/* The expanded header's "why must-read:" line already names it. */}
                   {headerCollapsed || !selectedUnit.attentionWhy ? (
                     <AttentionChip attention={selectedUnit.attention} />
@@ -1516,7 +1540,8 @@ export function PrView() {
                       })
                     }
                   >
-                    mark unit viewed
+                    {/* Same action; for the generated unit it is the one-click way through. */}
+                    {isGeneratedUnit(selectedUnit) ? "mark all viewed" : "mark unit viewed"}
                   </button>
                   {allUnitsViewed ? (
                     <span
@@ -1548,6 +1573,17 @@ export function PrView() {
                   <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
                     <InlineMarkdown text={selectedUnit.summary} />
                   </p>
+                  {isGeneratedUnit(selectedUnit) ? (
+                    <GeneratedUnitFileList
+                      files={generatedUnitFiles(detail.files.files, selectedUnit)}
+                      onOpen={(path) => {
+                        const first = detail.files.files
+                          .find((f) => f.path === path)
+                          ?.hunks.find((h) => selectedUnit.hunkIds.includes(h.id));
+                        if (first) setJumpToHunk({ hunkId: first.id, nonce: Date.now() });
+                      }}
+                    />
+                  ) : null}
                   <UnitChangelog
                     changelog={selectedUnit.changelog}
                     currentRevision={detail.state.revision}
@@ -1606,6 +1642,7 @@ export function PrView() {
             >
               <MiddleTruncate text={selectedPath} tail={20} />
               <CopyPathButton path={selectedPath} />
+              {selectedFile?.generated ? <GeneratedTag generated={selectedFile.generated} /> : null}
               {detail.state.files?.[selectedPath] ? (
                 <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
                   {detail.state.files[selectedPath].viewedHunks}/
@@ -1634,6 +1671,7 @@ export function PrView() {
                 >
                   + file
                 </button>
+                {selectedFile ? generatedMenuFor(selectedFile) : null}
                 {showNarrowNote ? <NarrowPaneNote /> : null}
                 {threadFilterMenu}
                   <DiffViewToggle mode={viewMode} onChange={setViewMode} />
@@ -1710,6 +1748,7 @@ export function PrView() {
               highlight={tab === "units" ? highlight : null}
               unitForHunkId={unitForHunkId}
               onUnitClick={onHunkUnitClick}
+              renderFileMenu={generatedMenuFor}
               showFileRows={tab === "units"}
               emptyMessage={
                 tab === "units"

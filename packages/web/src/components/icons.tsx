@@ -265,6 +265,15 @@ export const IconBolt = (p: P) => (
   </svg>
 );
 
+/** A cog — machine output: the generated-files & lockfiles unit. */
+export const IconGenerated = (p: P) => (
+  <svg {...base} {...p}>
+    <circle cx="8" cy="8" r="4.2" />
+    <circle cx="8" cy="8" r="1.6" />
+    <path d="M8 1.6v2.2M8 12.2v2.2M1.6 8h2.2M12.2 8h2.2M3.5 3.5l1.5 1.5M11 11l1.5 1.5M3.5 12.5 5 11M11 5l1.5-1.5" />
+  </svg>
+);
+
 /** A clock with a counter-clockwise arrow — a unit's changelog (history). */
 export const IconHistory = (p: P) => (
   <svg {...base} {...p}>
