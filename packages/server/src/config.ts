@@ -85,7 +85,7 @@ export const ConfigSchema = z.object({
   aiReviewers: z.array(z.string()).default([]),
   /**
    * GitHub logins whose PRs the list files under "Your PRs" alongside the
-   * viewer's own — an agent that opens PRs from a bot account (`primitos[bot]`)
+   * viewer's own — an agent that opens PRs from a bot account (`acme-agent[bot]`)
    * on your behalf, say. Compared like `aiReviewers`: case-insensitively,
    * `[bot]` suffix ignored. Review threads and verdicts still take only the
    * viewer login as "mine".

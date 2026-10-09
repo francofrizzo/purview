@@ -386,13 +386,13 @@ describe("groupThreadsByAuthor", () => {
 
 describe("loginListed", () => {
   it("matches case-insensitively and ignores a [bot] suffix on either side", () => {
-    const list = ["Primitos[bot]", "my-agent"];
-    expect(loginListed("primitos", list)).toBe(true);
-    expect(loginListed("primitos[bot]", list)).toBe(true);
+    const list = ["Acme-Agent[bot]", "my-agent"];
+    expect(loginListed("acme-agent", list)).toBe(true);
+    expect(loginListed("acme-agent[bot]", list)).toBe(true);
     expect(loginListed("MY-AGENT[bot]", list)).toBe(true);
-    expect(loginListed("primitos-2", list)).toBe(false);
+    expect(loginListed("acme-agent-2", list)).toBe(false);
     expect(loginListed(undefined, list)).toBe(false);
-    expect(loginListed("primitos", [])).toBe(false);
+    expect(loginListed("acme-agent", [])).toBe(false);
   });
 });
 

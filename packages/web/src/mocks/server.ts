@@ -199,7 +199,7 @@ const globalConfig: {
   managedCheckouts: true,
   aiReviewers: [],
   // The fixture's bot-opened PR (billing #502) lands under "Your PRs" through this.
-  extraAuthors: ["primitos[bot]"],
+  extraAuthors: ["acme-agent[bot]"],
 };
 
 /**

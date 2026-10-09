@@ -951,7 +951,7 @@ export const mockList: PrListEntry[] = [
       // Opened by an agent from its bot account. The mock's global config lists
       // the login in `extraAuthors`, so the list files it under "Your PRs"
       // while the row keeps naming the bot.
-      author: "primitos[bot]",
+      author: "acme-agent[bot]",
     },
     title: "Retry webhook delivery with jittered backoff",
     unitCount: 2,

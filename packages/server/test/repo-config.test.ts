@@ -1206,11 +1206,11 @@ describe("/api/config", () => {
     const put = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ extraAuthors: ["primitos[bot]", "Primitos[bot]", "my-agent"] }),
+      body: JSON.stringify({ extraAuthors: ["acme-agent[bot]", "Acme-Agent[bot]", "my-agent"] }),
     });
     expect(put.status).toBe(200);
-    expect((await put.json()).extraAuthors).toEqual(["primitos[bot]", "my-agent"]);
-    expect(readConfig(root).extraAuthors).toEqual(["primitos[bot]", "my-agent"]);
+    expect((await put.json()).extraAuthors).toEqual(["acme-agent[bot]", "my-agent"]);
+    expect(readConfig(root).extraAuthors).toEqual(["acme-agent[bot]", "my-agent"]);
     // The sibling list is untouched by a PUT that does not name it.
     expect(readConfig(root).aiReviewers).toEqual([]);
 
@@ -1290,10 +1290,10 @@ describe("GET /api/prs authoredByYou", () => {
 
   it("also counts a PR opened by a login in extraAuthors, [bot] suffix and case ignored", async () => {
     cacheViewer("alice");
-    setAuthor("primitos[bot]");
+    setAuthor("acme-agent[bot]");
     expect((await listEntry()).authoredByYou).toBe(false);
 
-    writeConfig({ extraAuthors: ["Primitos"] }, root);
+    writeConfig({ extraAuthors: ["Acme-Agent"] }, root);
     expect((await listEntry()).authoredByYou).toBe(true);
 
     // Someone else's PR stays someone else's.
@@ -1302,8 +1302,8 @@ describe("GET /api/prs authoredByYou", () => {
   });
 
   it("works for an extra author before the viewer login is known", async () => {
-    setAuthor("primitos[bot]");
-    writeConfig({ extraAuthors: ["primitos[bot]"] }, root);
+    setAuthor("acme-agent[bot]");
+    writeConfig({ extraAuthors: ["acme-agent[bot]"] }, root);
     expect((await listEntry()).authoredByYou).toBe(true);
   });
 });

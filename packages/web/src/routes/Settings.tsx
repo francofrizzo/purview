@@ -922,7 +922,7 @@ function YourPrsSection() {
           field="extraAuthors"
           label="Also treat as yours"
           testId="extra-authors"
-          placeholder="e.g. primitos[bot], my-agent"
+          placeholder="e.g. acme-agent[bot], my-agent"
           note="[bot] suffix optional · applies on the next load of the list"
         />
       </div>
