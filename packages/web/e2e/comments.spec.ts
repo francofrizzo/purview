@@ -74,3 +74,27 @@ test("pasting a picture attaches it and shows a thumbnail", async ({ page }) => 
   await expect(page.locator('[data-testid^="attachment-thumb-"]')).toHaveCount(1);
   await expect(textarea).toHaveValue(/purview-attachment:/);
 });
+
+test("`n` opens the composer: on the gutter range, else on the focused hunk's first changed line", async ({ page }) => {
+  const from = newGutter(lineRow(page, 11));
+  const to = newGutter(lineRow(page, 13));
+  const a = (await from.boundingBox())!;
+  const b = (await to.boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 4 });
+  await page.mouse.up();
+  await expect(page.getByTestId("quote-selection")).toContainText("reconcile.ts:11–13");
+  await page.keyboard.press("n");
+  const composer = page.getByTestId("comment-composer");
+  await expect(composer).toContainText("on lines 11–13");
+  await expect(page.getByTestId("quote-selection")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(composer).toHaveCount(0);
+
+  await page.mouse.move(5, 5);
+  await page.keyboard.press("j");
+  await page.keyboard.press("n");
+  await expect(composer).toBeVisible();
+  await expect(composer).toContainText(/on line \d+/);
+});

@@ -1146,7 +1146,7 @@ export function PrView() {
           <div className="mt-1">
             <div>
               <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>J</kbd>/<kbd>K</kbd> unit · <kbd>v</kbd> viewed ·{" "}
-              <kbd>z</kbd> folds · <kbd>space</kbd> next unviewed
+              <kbd>z</kbd> folds · <kbd>space</kbd> next unviewed · <kbd>n</kbd> comment
             </div>
             <div>
               <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}

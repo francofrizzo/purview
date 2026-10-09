@@ -1985,6 +1985,29 @@ export function DiffPane({
         if (!onToggleWrap) return;
         e.preventDefault();
         onToggleWrap();
+      } else if (e.key === "n") {
+        // New comment: on the gutter selection when there is one (the same
+        // target its "comment" button opens), else on the focused hunk's
+        // first changed line — the line a reader stepping with j/k is
+        // most likely looking at.
+        if (selectionTarget) {
+          e.preventDefault();
+          onComment(selectionTarget);
+          setSelection(null);
+          return;
+        }
+        if (!focusedHunkId) return;
+        const entry = entries.find((en) => en.hunk.id === focusedHunkId);
+        if (!entry) return;
+        const rows = buildRows(entry.hunk, detail.diff);
+        const first = rows.find((r) => r.type === "add") ?? rows.find((r) => r.type === "del");
+        if (!first) return;
+        e.preventDefault();
+        onComment(
+          first.type === "add"
+            ? { subjectType: "line", file: entry.hunk.file, line: first.newNumber!, side: "RIGHT" }
+            : { subjectType: "line", file: entry.hunk.file, line: first.oldNumber!, side: "LEFT" },
+        );
       } else if (e.key === " ") {
         e.preventDefault();
         const start = cur + 1;
@@ -2003,6 +2026,9 @@ export function DiffPane({
     onToggleViewed,
     onToggleViewMode,
     onToggleWrap,
+    selectionTarget,
+    onComment,
+    detail.diff,
     detail.state.hunks,
     toggleHunkFoldRegions,
   ]);
