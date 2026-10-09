@@ -680,6 +680,30 @@ export const mockList: PrListEntry[] = [
     archived: false,
   },
   {
+    key: "github.com/acme/billing/502",
+    meta: {
+      host: "github.com",
+      owner: "acme",
+      repo: "billing",
+      number: 502,
+      url: "https://github.com/acme/billing/pull/502",
+      title: "Retry webhook delivery with jittered backoff",
+      // Opened by an agent from its bot account. The mock's global config lists
+      // the login in `extraAuthors`, so the list files it under "Your PRs"
+      // while the row keeps naming the bot.
+      author: "primitos[bot]",
+    },
+    title: "Retry webhook delivery with jittered backoff",
+    unitCount: 2,
+    viewedHunks: 1,
+    totalHunks: 4,
+    effort: { mustReadLines: 160, weightedMustReadLines: 120, mustReadUnits: 1, riskCount: 0, badge: null },
+    state: "open",
+    reviewDecision: null,
+    addedAt: ago(3 * HOUR + 12 * MINUTE),
+    archived: false,
+  },
+  {
     key: "github.com/acme/billing/474",
     meta: {
       host: "github.com",

@@ -75,6 +75,7 @@ export function SettingsModal() {
       <AgentsSection />
 
       <ReviewThreadsSection settings={settings} update={update} />
+      <YourPrsSection />
 
       <NetworkSection />
 
@@ -667,56 +668,19 @@ function ReviewThreadsSection({
   settings: SettingsShape;
   update: (patch: Partial<SettingsShape>) => void;
 }) {
-  const config = useGlobalConfig();
-  const save = useSaveGlobalConfig();
-  const saved = (config.data?.aiReviewers ?? []).join(", ");
-  const [text, setText] = useState<string | null>(null);
-  const value = text ?? saved;
-  const commit = () => {
-    if (text === null) return;
-    const next = parseLoginList(text);
-    setText(null);
-    if (next.join(", ") !== saved) save.mutate({ aiReviewers: next });
-  };
   return (
     <Section
       title="GitHub review threads"
       hint="Everyone's review comments on the PR show inline next to yours. GitHub's own bots are recognized as AI reviewers; list any other logins that should count too."
     >
       <div className="flex flex-col gap-3">
-        {/* A form, so Enter saves: the modal stops keydown before React sees it,
-            but the implicit submit that Enter triggers still arrives. */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            commit();
-          }}
-        >
-          <Field label="Extra AI reviewers">
-            <input
-              className="input max-w-md px-2 py-1 font-mono text-xs"
-              data-testid="ai-reviewers"
-              placeholder="e.g. acme-review-bot, sweep-ai"
-              value={value}
-              disabled={!config.data || save.isPending}
-              onChange={(e) => setText(e.target.value)}
-              onBlur={commit}
-            />
-          </Field>
-        </form>
-        {config.error ? (
-          <p className="text-2xs" style={{ color: "var(--risk)" }}>
-            {errorText(config.error) || "Could not read the server's settings."}
-          </p>
-        ) : save.error ? (
-          <p className="text-2xs" style={{ color: "var(--risk)" }}>
-            {errorText(save.error)}
-          </p>
-        ) : (
-          <p className="-mt-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
-            Comma or space separated · stored on the server · applies on the next refresh of a PR's threads
-          </p>
-        )}
+        <LoginListField
+          field="aiReviewers"
+          label="Extra AI reviewers"
+          testId="ai-reviewers"
+          placeholder="e.g. acme-review-bot, sweep-ai"
+          note="applies on the next refresh of a PR's threads"
+        />
         <div className="flex flex-wrap items-center gap-6">
           <Field label="Resolved threads">
             <Segmented
@@ -939,6 +903,98 @@ function RequestAgeFields({
         </label>
       ))}
     </div>
+  );
+}
+
+/**
+ * Which PRs the home screen files under "Your PRs" besides the ones you
+ * opened: an agent working on your behalf opens its PRs from its own bot
+ * account, and without this they would sit under "Other PRs".
+ */
+function YourPrsSection() {
+  return (
+    <Section
+      title="Your pull requests"
+      hint="The PR list groups what you opened under “Your PRs”. An agent that opens PRs for you from a bot account lands under “Other PRs” unless its login is listed here; the row keeps showing who opened it. Review threads still count only your own comments as yours."
+    >
+      <div className="flex flex-col gap-3">
+        <LoginListField
+          field="extraAuthors"
+          label="Also treat as yours"
+          testId="extra-authors"
+          placeholder="e.g. primitos[bot], my-agent"
+          note="[bot] suffix optional · applies on the next load of the list"
+        />
+      </div>
+    </Section>
+  );
+}
+
+/**
+ * One of the global config's login lists (`aiReviewers`, `extraAuthors`) as a
+ * text field: edited as free text, parsed into logins on commit (blur or
+ * Enter), saved to the server only when the parsed list actually changed.
+ */
+function LoginListField({
+  field,
+  label,
+  testId,
+  placeholder,
+  note,
+}: {
+  field: "aiReviewers" | "extraAuthors";
+  label: string;
+  testId: string;
+  placeholder: string;
+  note: string;
+}) {
+  const config = useGlobalConfig();
+  const save = useSaveGlobalConfig();
+  const saved = (config.data?.[field] ?? []).join(", ");
+  const [text, setText] = useState<string | null>(null);
+  const value = text ?? saved;
+  const commit = () => {
+    if (text === null) return;
+    const next = parseLoginList(text);
+    setText(null);
+    if (next.join(", ") !== saved) save.mutate({ [field]: next });
+  };
+  return (
+    <>
+      {/* A form, so Enter saves: the modal stops keydown before React sees it,
+          but the implicit submit that Enter triggers still arrives. */}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          commit();
+        }}
+      >
+        <Field label={label}>
+          <input
+            className="input max-w-md px-2 py-1 font-mono text-xs"
+            data-testid={testId}
+            placeholder={placeholder}
+            value={value}
+            disabled={!config.data || save.isPending}
+            onChange={(e) => setText(e.target.value)}
+            onBlur={commit}
+          />
+        </Field>
+      </form>
+      {config.error ? (
+        <p className="text-2xs" style={{ color: "var(--risk)" }}>
+          {errorText(config.error) || "Could not read the server's settings."}
+        </p>
+      ) : save.error ? (
+        <p className="text-2xs" style={{ color: "var(--risk)" }}>
+          {errorText(save.error)}
+        </p>
+      ) : (
+        <p className="-mt-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
+          Comma or space separated · stored on the server · {note}
+        </p>
+      )}
+    </>
   );
 }
 

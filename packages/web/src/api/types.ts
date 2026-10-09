@@ -610,6 +610,11 @@ export interface GlobalConfig {
    * GitHub's own bots. Absent on a server that predates review threads.
    */
   aiReviewers?: string[];
+  /**
+   * GitHub logins whose PRs the list files under "Your PRs" alongside your
+   * own (an agent's bot account). Absent on a server that predates it.
+   */
+  extraAuthors?: string[];
   /** what this layer resolves to on its own — the end of the chain */
   effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }
@@ -619,6 +624,7 @@ export interface GlobalConfigPatch {
   chatAgent?: ChatAgentSelection | null;
   managedCheckouts?: boolean;
   aiReviewers?: string[];
+  extraAuthors?: string[];
 }
 
 /**

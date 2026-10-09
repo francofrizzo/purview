@@ -63,6 +63,7 @@ import {
   mockThreads,
 } from "./fixture";
 import { buildGeneratedUnit } from "./generated";
+import { loginListed } from "../lib/threads";
 
 /** Stand-in for the previous revision's body of the one hunk that changed. */
 const MOCK_DOD_BEFORE: Record<string, string[]> = {
@@ -90,8 +91,7 @@ const drafts: DraftComment[] = structuredClone(mockDrafts);
 const deletedDrafts: DeletedComment[] = [];
 const threads: RemoteThread[] = structuredClone(mockThreads);
 let nextGithubId = 95000;
-const aiReviewer = (login: string) =>
-  globalConfig.aiReviewers.some((r) => r.toLowerCase() === login.replace(/\[bot\]$/i, "").toLowerCase());
+const aiReviewer = (login: string) => loginListed(login, globalConfig.aiReviewers);
 
 /**
  * Mock GitHub's side of a push: each draft going out gets a comment id, and
@@ -191,11 +191,14 @@ const globalConfig: {
   chatAgent: ChatAgentSelection | null;
   managedCheckouts: boolean;
   aiReviewers: string[];
+  extraAuthors: string[];
 } = {
   analysisAgent: null,
   chatAgent: null,
   managedCheckouts: true,
   aiReviewers: [],
+  // The fixture's bot-opened PR (billing #502) lands under "Your PRs" through this.
+  extraAuthors: ["primitos[bot]"],
 };
 
 /**
@@ -652,7 +655,14 @@ const archivedRepos = new Set<string>();
 export const mockApi = {
   async listPrs(): Promise<PrListEntry[]> {
     await delay(80);
-    return structuredClone(list.map((p) => ({ ...p, repoArchived: archivedRepos.has(repoKeyOfPr(p.key)) })));
+    return structuredClone(
+      list.map((p) => ({
+        ...p,
+        // as the server: yours when you opened it, or a login in extraAuthors did
+        authoredByYou: p.authoredByYou || loginListed(p.meta?.author, globalConfig.extraAuthors),
+        repoArchived: archivedRepos.has(repoKeyOfPr(p.key)),
+      })),
+    );
   },
 
   async addPr(url: string): Promise<PrListEntry> {
@@ -769,6 +779,7 @@ export const mockApi = {
     if (patch.chatAgent !== undefined) globalConfig.chatAgent = patch.chatAgent;
     if (patch.managedCheckouts !== undefined) globalConfig.managedCheckouts = patch.managedCheckouts;
     if (patch.aiReviewers !== undefined) globalConfig.aiReviewers = patch.aiReviewers;
+    if (patch.extraAuthors !== undefined) globalConfig.extraAuthors = patch.extraAuthors;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return globalPayload();
   },

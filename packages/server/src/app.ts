@@ -103,7 +103,7 @@ import {
   type SubmitEvent,
 } from "./github-review.js";
 import { HttpError, classifyError } from "./http-error.js";
-import { loadThreads, setThreadResolved } from "./github-threads.js";
+import { loadThreads, normalizeLogin, setThreadResolved } from "./github-threads.js";
 import { streamSSE } from "hono/streaming";
 import {
   cancelAnalysis,
@@ -178,6 +178,22 @@ export interface AppOptions {
 
 const isYou = (author: string | undefined, login: string | null | undefined): boolean =>
   !!author && !!login && author.toLowerCase() === login.toLowerCase();
+
+/**
+ * Whether a PR counts as one of yours on the list: opened by the viewer, or by
+ * a login the reader listed in `extraAuthors` (an agent's bot account). List-
+ * only — `isMine` on threads and verdicts keeps meaning the viewer login.
+ */
+export const authoredByYou = (
+  author: string | undefined,
+  login: string | null | undefined,
+  extraAuthors: readonly string[],
+): boolean => {
+  if (isYou(author, login)) return true;
+  if (!author) return false;
+  const norm = normalizeLogin(author);
+  return extraAuthors.some((a) => normalizeLogin(a) === norm);
+};
 
 /**
  * Who is making a request, as far as comments are concerned. The reviewer-
@@ -406,6 +422,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       if (!logins.has(host)) logins.set(host, cachedViewerLogin(host, root));
       return logins.get(host) ?? null;
     };
+    const { extraAuthors } = readConfig(root);
     const metas: { key: PrKey; meta: Meta }[] = [];
     // One repo.json read per repo, not per PR.
     const repoArchived = new Map<string, boolean>();
@@ -428,7 +445,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         reviewDecision: meta.reviewDecision ?? null,
         // Absent (not `null`) until first looked up: `null` means "nothing pending".
         reviewRequest: meta.reviewRequest,
-        authoredByYou: isYou(meta.author, loginOf(key.host)),
+        authoredByYou: authoredByYou(meta.author, loginOf(key.host), extraAuthors),
         addedAt: meta.createdAt,
         // The PR's own flag. `repoArchived` is its repo's, kept apart so that
         // unarchiving the repo restores each PR exactly as it was.
@@ -1789,6 +1806,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       chatAgent: config.chatAgent,
       managedCheckouts: config.managedCheckouts,
       aiReviewers: config.aiReviewers,
+      extraAuthors: config.extraAuthors,
       /** what this layer resolves to on its own — the end of the inheritance chain */
       effective: {
         analysisAgent: agentView(resolveAgent("analysis", [["global", config.analysisAgent]], true)),
@@ -1797,6 +1815,14 @@ export function createApp(opts: AppOptions = {}): Hono {
     };
   }
 
+  const dedupeLogins = (logins: string[]): string[] => {
+    const seen = new Set<string>();
+    return logins.filter((l) => {
+      const k = l.toLowerCase();
+      return seen.has(k) ? false : (seen.add(k), true);
+    });
+  };
+
   const GlobalConfigPutSchema = z
     .object({
       analysisAgent: AgentSelectionSchema.strict().nullable().optional(),
@@ -1804,6 +1830,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       managedCheckouts: z.boolean().optional(),
       /** logins treated as AI reviewers; the whole list, replacing the stored one */
       aiReviewers: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
+      /** logins whose PRs count as yours on the list; the whole list, replacing the stored one */
+      extraAuthors: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
     })
     .strict();
 
@@ -1841,14 +1869,9 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
     if (body.chatAgent !== undefined) patch.chatAgent = checkAgentSelection(body.chatAgent, "chatAgent");
     if (body.managedCheckouts !== undefined) patch.managedCheckouts = body.managedCheckouts;
-    if (body.aiReviewers !== undefined) {
-      // Stored as typed, minus case-insensitive duplicates.
-      const seen = new Set<string>();
-      patch.aiReviewers = body.aiReviewers.filter((l) => {
-        const k = l.toLowerCase();
-        return seen.has(k) ? false : (seen.add(k), true);
-      });
-    }
+    // Both login lists are stored as typed, minus case-insensitive duplicates.
+    if (body.aiReviewers !== undefined) patch.aiReviewers = dedupeLogins(body.aiReviewers);
+    if (body.extraAuthors !== undefined) patch.extraAuthors = dedupeLogins(body.extraAuthors);
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
   });
