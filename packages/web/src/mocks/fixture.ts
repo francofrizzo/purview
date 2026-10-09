@@ -1031,6 +1031,17 @@ export const mockDrafts: DraftComment[] = [
     createdAt: "2026-08-12T09:25:00Z",
     status: "draft",
   },
+  // A suggestion: GitHub renders the fenced block as a one-click change over line 33.
+  {
+    id: "draft-11",
+    file: "src/billing/charge.ts",
+    line: 33,
+    side: "RIGHT",
+    subjectType: "line",
+    body: "Stamp the row, so a replay can tell a fresh result from one that has aged out:\n\n```suggestion\n    await this.ledger.record(key, result, { at: this.clock.now() });\n```",
+    createdAt: "2026-08-12T09:32:00Z",
+    status: "draft",
+  },
   // Anchored to the OLD side: in split view its bubble belongs on the left half.
   {
     id: "draft-8",
@@ -1178,7 +1189,11 @@ export const mockThreads: RemoteThread[] = [
         "With `delay + random() * delay` the wait can reach `2 * delay` *and then* doubles — the third attempt may sit ~1.6s. Cap the backoff, or jitter inside a fixed window?",
         "2026-08-11T14:20:00Z",
       ),
-      remote("dana", "Good catch — will cap at 2s and use full jitter.", "2026-08-11T15:45:00Z"),
+      remote(
+        "dana",
+        "Good catch — cap it and use full jitter:\n\n```suggestion\n        if (!isTransient(err) || attempt === MAX_ATTEMPTS - 1) throw err;\n        await sleep(Math.min(MAX_BACKOFF_MS, Math.random() * delay));\n        delay *= 2;\n```",
+        "2026-08-11T15:45:00Z",
+      ),
     ],
   }),
   // Resolved: collapses to one line.

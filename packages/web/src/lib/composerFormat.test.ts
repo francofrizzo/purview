@@ -143,6 +143,8 @@ describe("formatActionFor", () => {
     expect(formatActionFor(key({ metaKey: true, shiftKey: true, key: "&", code: "Digit7" }))).toBe("ordered");
     expect(formatActionFor(key({ metaKey: true, shiftKey: true, key: "8" }))).toBe("bullet");
     expect(formatActionFor(key({ metaKey: true, shiftKey: true, key: ">", code: "Period" }))).toBe("quote");
+    expect(formatActionFor(key({ metaKey: true, shiftKey: true, key: "S", code: "KeyS" }))).toBe("suggestion");
+    expect(formatActionFor(key({ ctrlKey: true, shiftKey: true, key: "s" }))).toBe("suggestion");
   });
 
   it("leaves the other editor chords, plain typing and Alt alone", () => {
@@ -150,6 +152,7 @@ describe("formatActionFor", () => {
     expect(formatActionFor(key({ metaKey: true, shiftKey: true, key: "b" }))).toBeNull();
     expect(formatActionFor(key({ metaKey: true, altKey: true, key: "b" }))).toBeNull();
     expect(formatActionFor(key({ metaKey: true, key: "Enter" }))).toBeNull();
+    expect(formatActionFor(key({ metaKey: true, key: "s" }))).toBeNull();
     expect(formatActionFor(key({ metaKey: true, shiftKey: true, key: "P" }))).toBeNull();
     expect(formatActionFor(key({ metaKey: true, key: "f" }))).toBeNull();
     expect(formatActionFor(key({ metaKey: true, shiftKey: true, key: "F" }))).toBeNull();

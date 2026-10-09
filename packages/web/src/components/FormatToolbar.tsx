@@ -2,6 +2,7 @@ import {
   IconBlockquote,
   IconBold,
   IconCode,
+  IconFileDiff,
   IconItalic,
   IconLink,
   IconList,
@@ -15,6 +16,7 @@ import {
   type ClipboardEvent,
   type ComponentType,
   type KeyboardEvent,
+  type ReactNode,
   type RefObject,
 } from "react";
 import {
@@ -23,9 +25,11 @@ import {
   FORMAT_LABELS,
   formatActionFor,
   pasteUrlOverSelection,
+  type EditAction,
   type FormatAction,
   type TextEdit,
 } from "../lib/composerFormat";
+import { insertSuggestion, type SuggestionSource } from "../lib/suggestion";
 
 /**
  * Markdown formatting for a comment textarea: the toolbar's buttons and the
@@ -35,6 +39,8 @@ import {
  */
 export interface ComposerFormat {
   apply: (action: FormatAction) => void;
+  /** "suggest a change": the lines it starts from, or why it is off; absent when the editor has no anchor */
+  suggestion?: SuggestionSource;
   /** the textarea's keydown: true when the key was a formatting chord or a list Enter (and handled) */
   onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => boolean;
   /** the textarea's paste: true when a URL was pasted over a selection (and handled) */
@@ -45,10 +51,13 @@ export function useComposerFormat({
   textareaRef,
   body,
   setBody,
+  suggestion,
 }: {
   textareaRef: RefObject<HTMLTextAreaElement>;
   body: string;
   setBody: (next: string) => void;
+  /** what a ```suggestion block here would be over (lib/suggestion.ts) */
+  suggestion?: SuggestionSource;
 }): ComposerFormat {
   // Where the selection goes after the pending edit lands in the textarea.
   const restore = useRef<TextEdit | null>(null);
@@ -71,8 +80,19 @@ export function useComposerFormat({
     return el ? { start: el.selectionStart, end: el.selectionEnd } : { start: body.length, end: body.length };
   };
 
+  // A suggestion is an insertion of the anchored lines, not an edit of the
+  // selection; without lines (old side, whole file) the action is a no-op.
+  const run = (text: string, action: FormatAction) => {
+    if (action === "suggestion") {
+      if (suggestion?.lines) commit(insertSuggestion(text, selection(), suggestion.lines));
+      return;
+    }
+    commit(applyFormat(text, selection(), action as EditAction));
+  };
+
   return {
-    apply: (action) => commit(applyFormat(body, selection(), action)),
+    apply: (action) => run(body, action),
+    suggestion,
     onKeyDown: (e) => {
       // Enter continues a list; ⇧↵ and the ⌘↵ family (save, ask chat) are not ours.
       if (e.key === "Enter") {
@@ -87,8 +107,9 @@ export function useComposerFormat({
       }
       const action = formatActionFor(e);
       if (!action) return false;
+      // Claimed even when it does nothing: ⌘⇧S must never reach the browser's save dialog.
       e.preventDefault();
-      commit(applyFormat(e.currentTarget.value, selection(), action));
+      run(e.currentTarget.value, action);
       return true;
     },
     onPaste: (e) => {
@@ -102,7 +123,7 @@ export function useComposerFormat({
   };
 }
 
-const TOOLS: { action: FormatAction; Icon: ComponentType<IconProps> }[] = [
+const TOOLS: { action: EditAction; Icon: ComponentType<IconProps> }[] = [
   { action: "bold", Icon: IconBold },
   { action: "italic", Icon: IconItalic },
   { action: "code", Icon: IconCode },
@@ -116,7 +137,9 @@ const TOOLS: { action: FormatAction; Icon: ComponentType<IconProps> }[] = [
 /**
  * The formatting buttons, the height of the Write | Preview control they sit
  * beside. Quiet at rest; each names its chord in the tooltip. Disabled while
- * previewing, since there is no selection to format.
+ * previewing, since there is no selection to format. "Suggest a change" sits
+ * apart at the end: it is about the code, not the prose, and it is off (with
+ * the reason) wherever GitHub would refuse the suggestion.
  */
 export function FormatToolbar({
   fmt,
@@ -127,28 +150,72 @@ export function FormatToolbar({
   disabled?: boolean;
   testId?: string;
 }) {
+  const suggest = fmt.suggestion;
+  const suggestLabel = FORMAT_LABELS.suggestion;
   return (
     <div role="toolbar" aria-label="Formatting" className="flex flex-none items-center gap-px">
       {TOOLS.map(({ action, Icon }) => {
         const { label, chord } = FORMAT_LABELS[action];
         return (
-          <button
+          <ToolButton
             key={action}
-            type="button"
-            data-testid={`${testId}-${action}`}
-            className="flex h-5 w-5 items-center justify-center rounded transition-colors enabled:hover:bg-[var(--bg-hover)] enabled:hover:text-[var(--fg)] disabled:opacity-40"
-            style={{ color: "var(--fg-faint)" }}
+            testId={`${testId}-${action}`}
             title={chord ? `${label} (${chord})` : label}
-            aria-label={label}
+            label={label}
             disabled={disabled}
-            // Keep the textarea's selection: a mousedown on the button would move focus.
-            onMouseDown={(e) => e.preventDefault()}
             onClick={() => fmt.apply(action)}
           >
             <Icon size={13} stroke={2} />
-          </button>
+          </ToolButton>
         );
       })}
+      {suggest ? (
+        <>
+          <span aria-hidden className="mx-1 h-3 w-px flex-none" style={{ background: "var(--border)" }} />
+          <ToolButton
+            testId={`${testId}-suggestion`}
+            title={suggest.reason ?? `${suggestLabel.label} (${suggestLabel.chord})`}
+            label={suggestLabel.label}
+            disabled={disabled || !suggest.lines}
+            onClick={() => fmt.apply("suggestion")}
+          >
+            <IconFileDiff size={13} stroke={2} />
+          </ToolButton>
+        </>
+      ) : null}
     </div>
+  );
+}
+
+function ToolButton({
+  testId,
+  title,
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  testId: string;
+  title: string;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      className="flex h-5 w-5 items-center justify-center rounded transition-colors enabled:hover:bg-[var(--bg-hover)] enabled:hover:text-[var(--fg)] disabled:opacity-40"
+      style={{ color: "var(--fg-faint)" }}
+      title={title}
+      aria-label={label}
+      disabled={disabled}
+      // Keep the textarea's selection: a mousedown on the button would move focus.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+    >
+      {children}
+    </button>
   );
 }

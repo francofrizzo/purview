@@ -9,18 +9,20 @@
  * marker and its thread read as one thing.
  */
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { ChatRef, CommentStatus, DraftComment } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
 import { isRange, lineLabel } from "../lib/comments";
 import { pendingAttachmentCount } from "../lib/attachments";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
+import { suggestionSource } from "../lib/suggestion";
 import type { MarkerLook, MarkerSummary } from "../lib/threads";
 import { QuoteButton } from "./ChatPanel";
 import { CopyForAgentButton } from "./CopyForAgent";
 import { AgentEditNote, ByAgentChip, CommentBody, commentRef, type EditComment } from "./Drafts";
 import { IconComment, IconCommentFilled, IconEdit, IconTrash } from "./icons";
+import { SuggestionContext } from "./Markdown";
 
 export const COMMENT_STATUS: Record<
   CommentStatus,
@@ -85,8 +87,16 @@ export function CommentCard({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const canDelete = Boolean(onDelete) && status !== "submitted";
   const age = comment.createdAt ? Date.now() - new Date(comment.createdAt).getTime() : NaN;
+  // The lines this comment covers, for its ```suggestion blocks (drawn
+  // against them) and for writing one while editing. Without the diff
+  // (no exportCtx) a block shows only what it suggests.
+  const suggestion = useMemo(
+    () => suggestionSource(exportCtx?.files, comment, exportCtx?.diff),
+    [exportCtx, comment],
+  );
 
   return (
+    <SuggestionContext.Provider value={suggestion.lines}>
     <article
       data-testid={`comment-card-${comment.id}`}
       data-status={status}
@@ -168,6 +178,7 @@ export function CommentCard({
         bodyClass="text-[13px] leading-[20px]"
         editing={editing}
         onEditingChange={setEditing}
+        suggestion={suggestion}
       />
       <AgentEditNote comment={comment} onUndo={onUndoEdit} busy={undoing} />
       {confirmDelete ? (
@@ -200,6 +211,7 @@ export function CommentCard({
         </div>
       ) : null}
     </article>
+    </SuggestionContext.Provider>
   );
 }
 

@@ -1158,7 +1158,8 @@ export function PrView() {
               <span title={PREVIEW_LIMITS}>
                 <kbd>⌘⇧P</kbd> preview
               </span>{" "}
-              · <kbd>⌘B/I/E/K</kbd> format · <kbd>⌘⇧7/8</kbd> lists · <kbd>⌘⇧.</kbd> quote
+              · <kbd>⌘B/I/E/K</kbd> format · <kbd>⌘⇧7/8</kbd> lists · <kbd>⌘⇧.</kbd> quote ·{" "}
+              <kbd>⌘⇧S</kbd> suggest
             </div>
           </div>
         ) : null}

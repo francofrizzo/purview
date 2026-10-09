@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { errorText, isConfirmRequired } from "../api/errors";
 import { useAgentName } from "../api/hooks";
 import {
@@ -34,7 +34,8 @@ import {
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
 import { IconChat, IconCheck, IconClose } from "./icons";
 import { BotChip, ThreadFilterMenu } from "./Threads";
-import { AttachmentContext, Markdown } from "./Markdown";
+import { AttachmentContext, Markdown, SuggestionContext } from "./Markdown";
+import { suggestionSource, type SuggestionSource } from "../lib/suggestion";
 import { AttachButton, AttachmentStrip, DropHint, useAttachmentEditor } from "./Attachments";
 import { ComposerPreview, useWritePreview, WritePreviewToggle } from "./WritePreview";
 import { FormatToolbar, useComposerFormat } from "./FormatToolbar";
@@ -155,8 +156,14 @@ export function CommentComposer({
   const attach = useAttachmentEditor({ prKey, textareaRef: ref, body, setBody });
   // Write / Preview: the preview stands in for the textarea (lib/composerMode.ts).
   const wp = useWritePreview(ref);
+  // "Suggest a change" starts from the covered lines, read off the diff
+  // (lib/suggestion.ts); the preview draws a block against those same lines.
+  const suggestion = useMemo(
+    () => suggestionSource(exportCtx?.files, target, exportCtx?.diff),
+    [exportCtx, target],
+  );
   // Bold, lists, links…: the toolbar and the ⌘B family (lib/composerFormat.ts).
-  const fmt = useComposerFormat({ textareaRef: ref, body, setBody });
+  const fmt = useComposerFormat({ textareaRef: ref, body, setBody, suggestion });
   const cancel = () => {
     attach.discard();
     onCancel();
@@ -274,7 +281,9 @@ export function CommentComposer({
         }}
       />
       {wp.writing ? null : (
-        <ComposerPreview body={body} wp={wp} textClass="text-[13px] leading-[20px]" className="px-3 py-1.5" />
+        <SuggestionContext.Provider value={suggestion.lines}>
+          <ComposerPreview body={body} wp={wp} textClass="text-[13px] leading-[20px]" className="px-3 py-1.5" />
+        </SuggestionContext.Provider>
       )}
       {prKey ? (
         <>
@@ -427,9 +436,12 @@ export function CommentBody({
   bodyClass = "text-xs leading-5",
   editing,
   onEditingChange,
+  suggestion,
 }: {
   comment: { id: string; body: string; status?: CommentStatus };
   edit?: EditComment;
+  /** what "suggest a change" in the editor starts from (lib/suggestion.ts) */
+  suggestion?: SuggestionSource;
   /** truncate the read-only body (the finish-review list is space-starved) */
   clamp?: boolean;
   /** render the body as markdown instead of preformatted text */
@@ -468,7 +480,7 @@ export function CommentBody({
   const prKey = useContext(AttachmentContext)?.prKey ?? "";
   const attach = useAttachmentEditor({ prKey, textareaRef: ref, body: value, setBody: setValue });
   const wp = useWritePreview(ref);
-  const fmt = useComposerFormat({ textareaRef: ref, body: value, setBody: setValue });
+  const fmt = useComposerFormat({ textareaRef: ref, body: value, setBody: setValue, suggestion });
 
   useEffect(() => {
     if (mode === "edit") wp.focus();

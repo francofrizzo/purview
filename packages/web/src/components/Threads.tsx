@@ -9,7 +9,7 @@
  * delete (they aren't the reader's to change).
  */
 
-import { useRef, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import type { RemoteAuthor, RemoteComment, RemoteThread } from "../api/types";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
@@ -29,7 +29,8 @@ import { CommentCard, type CommentActions } from "./CommentCard";
 import { CopyForAgentButton } from "./CopyForAgent";
 import { FloatingPanel } from "./FloatingPanel";
 import { IconBot, IconCheck, IconChevron, IconFilter, IconReply } from "./icons";
-import { Markdown } from "./Markdown";
+import { Markdown, SuggestionContext } from "./Markdown";
+import { anchoredLines } from "../lib/suggestion";
 
 /** What a thread can do, on top of what each of its comments can. */
 export interface ThreadActions {
@@ -191,6 +192,17 @@ export function ThreadView({
   const [open, setOpen] = useState(false);
   const t = thread.remote;
   const replying = Boolean(t && actions.replyingTo === t.id);
+  // What the thread's ```suggestion blocks would replace: its lines on the
+  // new side, as the diff shows them now. An outdated thread's lines are
+  // gone, so its blocks show only the suggested text.
+  const ctx = actions.exportCtx;
+  const suggestedOver = useMemo(
+    () =>
+      t && ctx && !t.isOutdated && t.side === "RIGHT"
+        ? anchoredLines(ctx.files, { file: t.path, line: t.line, side: t.side, startLine: t.startLine, subjectType: t.subjectType }, ctx.diff)
+        : null,
+    [t, ctx],
+  );
   if (!t) {
     const only = thread.items[0];
     return only.kind === "local" ? <CommentCard comment={only.comment} actions={actions} /> : null;
@@ -244,6 +256,7 @@ export function ThreadView({
   const canResolve = t.isResolved ? t.viewerCanUnresolve : t.viewerCanResolve;
 
   return (
+    <SuggestionContext.Provider value={suggestedOver}>
     <div data-testid={`thread-${t.id}`} data-resolved={t.isResolved ? "true" : "false"} data-outdated={t.isOutdated ? "true" : undefined}>
       {label ? (
         <div
@@ -310,6 +323,7 @@ export function ThreadView({
         </div>
       </div>
     </div>
+    </SuggestionContext.Provider>
   );
 }
 

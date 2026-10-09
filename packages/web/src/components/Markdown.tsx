@@ -43,9 +43,6 @@ const LANG_ALIASES: Record<string, string> = {
   text: "",
   plain: "",
   txt: "",
-  // GitHub's ```suggestion: replacement lines for the commented code, in
-  // whatever language that is — shown plain, under its own label.
-  suggestion: "",
 };
 
 /** What a code span links to, when its text names something the page can open. */
@@ -84,6 +81,15 @@ export interface AttachmentScope {
   resolve: (href: string) => LocalMedia | null;
 }
 export const AttachmentContext = createContext<AttachmentScope | null>(null);
+
+/**
+ * The lines a comment's ```suggestion blocks would replace: its anchor's
+ * text, looked up by whoever draws the comment next to the diff (the card,
+ * the thread, the composer's preview). Null where the anchor is unknown or
+ * off the diff (the drawer, an outdated thread) — then a block shows only
+ * what it suggests.
+ */
+export const SuggestionContext = createContext<string[] | null>(null);
 
 function Inline({ nodes }: { nodes: MdInline[] }) {
   const linkFor = useContext(CodeLinkContext);
@@ -293,9 +299,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
         className="flex items-center gap-1.5 border-b px-2 py-0.5 text-2xs"
         style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
       >
-        <span className={lang === "suggestion" ? "font-medium" : "font-mono"}>
-          {lang === "suggestion" ? "suggested change" : (lang ?? "")}
-        </span>
+        <span className="font-mono">{lang ?? ""}</span>
         <button
           type="button"
           data-testid="code-wrap"
@@ -340,6 +344,53 @@ function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
           </div>
         ))}
       </pre>
+    </div>
+  );
+}
+
+/**
+ * A ```suggestion fence, as GitHub draws it: the commented lines as removed,
+ * the block's lines as added. One panel per block; several blocks in one
+ * comment all stand against the same lines, as on GitHub.
+ */
+function SuggestionBlock({ code }: { code: string }) {
+  const original = useContext(SuggestionContext);
+  const added = code.split("\n");
+  const codeStyle = {
+    fontSize: "var(--code-font-size)",
+    lineHeight: "var(--code-line-height)",
+    tabSize: "var(--tab-size)" as unknown as number,
+  };
+  const side = (lines: string[], kind: "del" | "add") => (
+    <pre
+      data-testid={`suggestion-${kind}`}
+      className="overflow-x-auto px-2 py-1 font-mono"
+      style={{ ...codeStyle, background: `var(--${kind}-bg)`, color: "var(--fg)" }}
+    >
+      {lines.map((line, i) => (
+        <div key={i} className="flex">
+          <span className="w-3 flex-none select-none" style={{ color: "var(--fg-faint)" }} aria-hidden>
+            {kind === "del" ? "-" : "+"}
+          </span>
+          <span className="whitespace-pre">{line || " "}</span>
+        </div>
+      ))}
+    </pre>
+  );
+  return (
+    <div
+      data-testid="suggestion-block"
+      className="my-1.5 overflow-hidden rounded"
+      style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
+    >
+      <div
+        className="border-b px-2 py-0.5 text-2xs font-medium"
+        style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
+      >
+        Suggested change
+      </div>
+      {original ? side(original, "del") : null}
+      {side(added, "add")}
     </div>
   );
 }
@@ -467,11 +518,9 @@ function BlockList({ blocks }: { blocks: MdBlock[] }) {
       {blocks.map((block, i) => {
         switch (block.type) {
           case "code":
-            return block.lang === "mermaid" ? (
-              <MermaidBlock key={i} code={block.code} open={block.open} />
-            ) : (
-              <CodeBlock key={i} code={block.code} lang={block.lang} />
-            );
+            if (block.lang === "mermaid") return <MermaidBlock key={i} code={block.code} open={block.open} />;
+            if (block.lang === "suggestion") return <SuggestionBlock key={i} code={block.code} />;
+            return <CodeBlock key={i} code={block.code} lang={block.lang} />;
           case "table":
             return (
               <div key={i} className="my-1.5 overflow-x-auto">

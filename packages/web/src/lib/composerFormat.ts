@@ -18,7 +18,20 @@ export interface TextEdit {
   end: number;
 }
 
-export type FormatAction = "bold" | "italic" | "code" | "link" | "bullet" | "ordered" | "quote" | "task";
+export type FormatAction =
+  | "bold"
+  | "italic"
+  | "code"
+  | "link"
+  | "bullet"
+  | "ordered"
+  | "quote"
+  | "task"
+  /** a ```suggestion block over the commented lines (lib/suggestion.ts); needs those lines, so not an {@link applyFormat} edit */
+  | "suggestion";
+
+/** The actions that are a pure edit of the text: everything but a suggestion. */
+export type EditAction = Exclude<FormatAction, "suggestion">;
 
 export type LinePrefixKind = Extract<FormatAction, "bullet" | "ordered" | "quote" | "task">;
 
@@ -226,9 +239,9 @@ export interface FormatKey {
 
 /**
  * Which formatting a keystroke asks for, if any. ⌘ (Ctrl elsewhere) with
- * B / I / E / K; with ⇧ as well, 7 ordered, 8 bullet, . quote — matched on the
- * physical key, since ⇧7 arrives as "&" on most layouts. Alt chords, ⌘⇧P
- * (preview), ⌘↵ and ⌘F are not ours.
+ * B / I / E / K; with ⇧ as well, 7 ordered, 8 bullet, . quote, S suggestion —
+ * matched on the physical key, since ⇧7 arrives as "&" on most layouts. Alt
+ * chords, ⌘⇧P (preview), ⌘↵ and ⌘F are not ours.
  */
 export function formatActionFor(e: FormatKey): FormatAction | null {
   if (!(e.metaKey || e.ctrlKey) || e.altKey) return null;
@@ -237,6 +250,7 @@ export function formatActionFor(e: FormatKey): FormatAction | null {
     if (e.code === "Digit7" || key === "7" || key === "&") return "ordered";
     if (e.code === "Digit8" || key === "8" || key === "*") return "bullet";
     if (e.code === "Period" || key === "." || key === ">") return "quote";
+    if (e.code === "KeyS" || key === "s") return "suggestion";
     return null;
   }
   switch (key) {
@@ -254,7 +268,7 @@ export function formatActionFor(e: FormatKey): FormatAction | null {
 }
 
 /** One formatting action against a text and selection. */
-export function applyFormat(text: string, sel: Selection, action: FormatAction): TextEdit {
+export function applyFormat(text: string, sel: Selection, action: EditAction): TextEdit {
   switch (action) {
     case "bold":
       return wrapSelection(text, sel, "**");
@@ -281,6 +295,7 @@ export const FORMAT_LABELS: Record<FormatAction, { label: string; chord: string 
   ordered: { label: "Numbered list", chord: "⌘⇧7" },
   quote: { label: "Quote", chord: "⌘⇧." },
   task: { label: "Task list", chord: null },
+  suggestion: { label: "Suggest a change", chord: "⌘⇧S" },
 };
 
 function ordered(sel: Selection): Selection {
