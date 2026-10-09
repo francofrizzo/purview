@@ -485,7 +485,7 @@ export function ChatPanel({
   return (
     <CodeLinkContext.Provider value={linkUnit}>
     <aside
-      className="pane relative m-1.5 flex flex-none flex-col overflow-hidden"
+      className="pane relative m-1.5 ml-0 flex flex-none flex-col overflow-hidden"
       data-testid="chat-panel"
       style={{ width, borderColor: "var(--border)", background: "var(--bg-raised)" }}
     >

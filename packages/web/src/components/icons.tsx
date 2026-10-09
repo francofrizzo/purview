@@ -9,6 +9,8 @@ import {
   IconBarbell,
   IconBolt as TablerBolt,
   IconCheck as TablerCheck,
+  IconEye as TablerEye,
+  IconEyeOff as TablerEyeOff,
   IconChevronDown,
   IconChevronRight,
   IconChevronUp,
@@ -92,6 +94,8 @@ export const IconClose = wrap(IconX);
 export const IconArrowLeft = wrap(TablerArrowLeft);
 export const IconWarning = wrap(IconAlertTriangle);
 export const IconCheck = wrap(TablerCheck);
+export const IconEye = wrap(TablerEye);
+export const IconEyeOff = wrap(TablerEyeOff);
 export const IconRefresh = wrap(TablerRefresh);
 export const IconUpload = wrap(TablerUpload);
 export const IconPlus = wrap(TablerPlus);

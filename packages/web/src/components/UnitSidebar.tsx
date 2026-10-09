@@ -9,7 +9,7 @@ import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { ChangedBadge, HunkProgress, KindChip, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconCheck, IconChevron, IconGenerated } from "./icons";
+import { IconChevron, IconEye, IconEyeOff, IconGenerated } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
 import { InlineMarkdown } from "./Markdown";
 
@@ -113,21 +113,22 @@ export function UnitSidebar({
         className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-2xs"
         style={{ color: "var(--fg-faint)" }}
       >
-        {/* A quiet toggle, not a form control: on, it carries a check and
-            the accent; off, it is just faint text. */}
+        {/* A toggle, drawn as one: an eye that closes when reviewed units
+            are hidden, in a bordered chip that takes the accent when on. */}
         <button
           type="button"
           data-testid="hide-reviewed-units"
           aria-pressed={hide}
           title={HIDE_REVIEWED_TITLE}
           onClick={() => update({ hideReviewedUnits: !hide })}
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs transition-colors"
+          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs transition-colors"
           style={{
-            color: hide ? "var(--accent)" : "var(--fg-faint)",
+            color: hide ? "var(--accent)" : "var(--fg-muted)",
+            borderColor: hide ? "var(--accent)" : "var(--border)",
             background: hide ? "var(--accent-soft)" : "transparent",
           }}
         >
-          {hide ? <IconCheck width={10} height={10} /> : null}
+          {hide ? <IconEyeOff width={11} height={11} /> : <IconEye width={11} height={11} />}
           Hide reviewed
         </button>
         {hide && totalHidden > 0 ? (
