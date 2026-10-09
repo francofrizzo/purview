@@ -35,6 +35,7 @@ import { BotChip, ThreadFilterMenu } from "./Threads";
 import { AttachmentContext, Markdown } from "./Markdown";
 import { AttachButton, AttachmentStrip, DropHint, useAttachmentEditor } from "./Attachments";
 import { ComposerPreview, useWritePreview, WritePreviewToggle } from "./WritePreview";
+import { FormatToolbar, useComposerFormat } from "./FormatToolbar";
 import { CommentCard } from "./CommentCard";
 
 /**
@@ -136,6 +137,8 @@ export function CommentComposer({
   const attach = useAttachmentEditor({ prKey, textareaRef: ref, body, setBody });
   // Write / Preview: the preview stands in for the textarea (lib/composerMode.ts).
   const wp = useWritePreview(ref);
+  // Bold, lists, links…: the toolbar and the ⌘B family (lib/composerFormat.ts).
+  const fmt = useComposerFormat({ textareaRef: ref, body, setBody });
   const cancel = () => {
     attach.discard();
     onCancel();
@@ -199,26 +202,34 @@ export function CommentComposer({
         } else onSubmit(body.trim());
       }}
     >
-      <div className="flex items-center gap-2 px-3 pt-2 text-2xs">
-        <span className="font-medium" style={{ color: "var(--accent)" }}>
-          {reply ? "Reply" : "New comment"}
+      {/* Title, then the formatting controls; on the narrow floating box the
+          controls drop to a second line rather than squeeze the file name. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pr-8 pt-2 text-2xs">
+        <span className="flex min-w-0 flex-1 items-center gap-2">
+          <span className="flex-none font-medium" style={{ color: "var(--accent)" }}>
+            {reply ? "Reply" : "New comment"}
+          </span>
+          <span className="min-w-0 truncate" style={{ color: "var(--fg-faint)" }}>
+            {floating ? (
+              <>
+                {reply ? `${where} · ` : null}
+                <span className="font-mono">
+                  {target.file}
+                  {fileLevel ? "" : `:${target.line}${target.side === "LEFT" ? " (old)" : ""}`}
+                </span>
+              </>
+            ) : (
+              where
+            )}
+          </span>
         </span>
-        <span className="min-w-0 truncate" style={{ color: "var(--fg-faint)" }}>
-          {floating ? (
-            <>
-              {reply ? `${where} · ` : null}
-              <span className="font-mono">
-                {target.file}
-                {fileLevel ? "" : `:${target.line}${target.side === "LEFT" ? " (old)" : ""}`}
-              </span>
-            </>
-          ) : (
-            where
-          )}
+        <span className="ml-auto flex flex-none items-center gap-1.5">
+          <FormatToolbar fmt={fmt} disabled={!wp.writing} testId="composer-format" />
+          <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} />
         </span>
         <button
           type="button"
-          className="ml-auto flex-none rounded p-1 hover:bg-[var(--bg-hover)]"
+          className="absolute right-2 top-2 rounded p-1 hover:bg-[var(--bg-hover)]"
           onClick={cancel}
           title="Discard (esc)"
           aria-label="Discard"
@@ -236,7 +247,11 @@ export function CommentComposer({
         placeholder={reply ? "Reply…" : fileLevel ? "Comment on this file…" : "Comment on this line…"}
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        onPaste={prKey ? attach.onPaste : undefined}
+        onKeyDown={fmt.onKeyDown}
+        onPaste={(e) => {
+          if (prKey) attach.onPaste(e);
+          if (!e.defaultPrevented) fmt.onPaste(e);
+        }}
       />
       {wp.writing ? null : (
         <ComposerPreview body={body} wp={wp} textClass="text-[13px] leading-[20px]" className="px-3 py-1.5" />
@@ -249,7 +264,6 @@ export function CommentComposer({
         </>
       ) : null}
       <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
-        <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} />
         <span className="hidden text-2xs sm:inline" style={{ color: "var(--fg-faint)" }}>
           markdown · ⌘↵ save{onSendToChat ? " · ⌘⇧↵ ask chat" : ""}
         </span>
@@ -428,6 +442,7 @@ export function CommentBody({
   const prKey = useContext(AttachmentContext)?.prKey ?? "";
   const attach = useAttachmentEditor({ prKey, textareaRef: ref, body: value, setBody: setValue });
   const wp = useWritePreview(ref);
+  const fmt = useComposerFormat({ textareaRef: ref, body: value, setBody: setValue });
 
   useEffect(() => {
     if (mode === "edit") wp.focus();
@@ -564,6 +579,10 @@ export function CommentBody({
         }
       }}
     >
+      <div className="mb-1 flex flex-wrap items-center gap-1.5">
+        <FormatToolbar fmt={fmt} disabled={!wp.writing} testId={`format-${comment.id}`} />
+        <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} testId={`mode-${comment.id}`} />
+      </div>
       <textarea
         ref={ref}
         data-testid={`editor-${comment.id}`}
@@ -571,7 +590,11 @@ export function CommentBody({
         style={{ display: wp.writing ? undefined : "none" }}
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        onPaste={prKey ? attach.onPaste : undefined}
+        onKeyDown={fmt.onKeyDown}
+        onPaste={(e) => {
+          if (prKey) attach.onPaste(e);
+          if (!e.defaultPrevented) fmt.onPaste(e);
+        }}
       />
       {wp.writing ? null : (
         <ComposerPreview
@@ -590,7 +613,6 @@ export function CommentBody({
         </div>
       ) : null}
       <p className="mt-1 flex items-center gap-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} testId={`mode-${comment.id}`} />
         <span>{EDIT_HINT[status]} (esc to cancel, ⌘↵ to save)</span>
         {prKey ? <AttachButton editor={attach} testId={`attach-${comment.id}`} disabled={!wp.writing} /> : null}
       </p>

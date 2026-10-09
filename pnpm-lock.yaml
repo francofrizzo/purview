@@ -78,6 +78,9 @@ importers:
       '@fontsource-variable/ibm-plex-sans':
         specifier: ^5.3.0
         version: 5.3.0
+      '@tabler/icons-react':
+        specifier: 3.49.0
+        version: 3.49.0(react@18.3.1)
       '@tanstack/react-query':
         specifier: ^5.51.1
         version: 5.101.4(react@18.3.1)
@@ -1405,6 +1408,14 @@ packages:
 
   '@shikijs/vscode-textmate@10.0.2':
     resolution: {integrity: sha512-83yeghZ2xxin3Nj8z1NMd/NCuca+gsYXswywDy5bHvwlWL8tpTQmzGeUuHd9FC3E/SBEMvzJRwWEOz5gGes9Qg==}
+
+  '@tabler/icons-react@3.49.0':
+    resolution: {integrity: sha512-Um59pm5RVNUaQjFUtG0r4oYJbZuBS3tGugAA2tgBg0WufMk34Eio3nsO30RUkLuL2giYPQUNdY9HvqltLLYyNA==}
+    peerDependencies:
+      react: '>= 16'
+
+  '@tabler/icons@3.49.0':
+    resolution: {integrity: sha512-l+GnSkFETx0U26icxv1VUFnxxiTqXfCcVRiRAnyMwibupM2S2L/hSaZ9gmSgz01rkrsH/93NvLsxykqdanc6lw==}
 
   '@tanstack/query-core@5.101.4':
     resolution: {integrity: sha512-gNwcvOJcRbLWPOLG/2OBm+zM+Yv+MKsXKEOWC57USuZDEsI71hEErQsiEGx5wX9rzWWkfwM0fVSPoiIFSsxfiw==}
@@ -4541,6 +4552,13 @@ snapshots:
       '@types/hast': 3.0.5
 
   '@shikijs/vscode-textmate@10.0.2': {}
+
+  '@tabler/icons-react@3.49.0(react@18.3.1)':
+    dependencies:
+      '@tabler/icons': 3.49.0
+      react: 18.3.1
+
+  '@tabler/icons@3.49.0': {}
 
   '@tanstack/query-core@5.101.4': {}
 

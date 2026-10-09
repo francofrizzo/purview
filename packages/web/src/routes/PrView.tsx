@@ -1157,7 +1157,8 @@ export function PrView() {
               in a comment: <kbd>⌘↵</kbd> save · <kbd>⌘⇧↵</kbd> ask chat ·{" "}
               <span title={PREVIEW_LIMITS}>
                 <kbd>⌘⇧P</kbd> preview
-              </span>
+              </span>{" "}
+              · <kbd>⌘B/I/E/K</kbd> format · <kbd>⌘⇧7/8</kbd> lists · <kbd>⌘⇧.</kbd> quote
             </div>
           </div>
         ) : null}
