@@ -78,6 +78,7 @@ import {
 } from "../components/Drafts";
 import { CommentBubble, InlineCommentList } from "../components/InlineComments";
 import { isLineInDiff } from "../lib/comments";
+import { PREVIEW_LIMITS } from "../lib/composerMode";
 import { buildThreadGroups, replyTarget, type DisplayThread } from "../lib/threads";
 import { ThreadFilterMenu } from "../components/Threads";
 import { UnitChangelog } from "../components/UnitChangelog";
@@ -1151,6 +1152,12 @@ export function PrView() {
               <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
               {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>s</kbd> summary · <kbd>/</kbd>{" "}
               search · <kbd>b</kbd> sidebar · <kbd>⌘</kbd>click definition
+            </div>
+            <div>
+              in a comment: <kbd>⌘↵</kbd> save · <kbd>⌘⇧↵</kbd> ask chat ·{" "}
+              <span title={PREVIEW_LIMITS}>
+                <kbd>⌘⇧P</kbd> preview
+              </span>
             </div>
           </div>
         ) : null}

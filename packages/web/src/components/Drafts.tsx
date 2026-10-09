@@ -34,6 +34,7 @@ import { IconChat, IconCheck, IconClose } from "./icons";
 import { BotChip, ThreadFilterMenu } from "./Threads";
 import { AttachmentContext, Markdown } from "./Markdown";
 import { AttachButton, AttachmentStrip, DropHint, useAttachmentEditor } from "./Attachments";
+import { ComposerPreview, useWritePreview, WritePreviewToggle } from "./WritePreview";
 import { CommentCard } from "./CommentCard";
 
 /**
@@ -133,6 +134,8 @@ export function CommentComposer({
   // referenced from the body (lib/attachments.ts). Only inside a PR page.
   const prKey = useContext(AttachmentContext)?.prKey ?? "";
   const attach = useAttachmentEditor({ prKey, textareaRef: ref, body, setBody });
+  // Write / Preview: the preview stands in for the textarea (lib/composerMode.ts).
+  const wp = useWritePreview(ref);
   const cancel = () => {
     attach.discard();
     onCancel();
@@ -150,17 +153,24 @@ export function CommentComposer({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Opened in the remembered Preview mode, the preview is what takes focus.
+    if (!wp.writing) {
+      wp.focus();
+      return;
+    }
     el.focus({ preventScroll: variant === "inline" });
     el.setSelectionRange(el.value.length, el.value.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorKey, variant]);
 
-  // Grow with the text, up to a cap, instead of a fixed box.
+  // Grow with the text, up to a cap, instead of a fixed box. Not while hidden
+  // behind the preview: a display:none textarea measures 0.
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el || !wp.writing) return;
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
-  }, [body]);
+  }, [body, wp.writing]);
 
   const floating = variant === "floating";
   return (
@@ -174,8 +184,9 @@ export function CommentComposer({
       }
       style={{ background: "var(--bg-raised)", border: "1px dashed var(--accent)" }}
       onClick={(e) => e.stopPropagation()}
-      {...(prKey ? attach.dropProps : {})}
+      {...(prKey && wp.writing ? attach.dropProps : {})}
       onKeyDown={(e) => {
+        if (wp.onKeyDown(e)) return;
         if (e.key === "Escape") {
           e.stopPropagation();
           cancel();
@@ -220,13 +231,16 @@ export function CommentComposer({
         ref={ref}
         rows={3}
         className="block w-full resize-none bg-transparent px-3 py-1.5 text-[13px] leading-[20px] outline-none"
-        style={{ color: "var(--fg)" }}
+        style={{ color: "var(--fg)", display: wp.writing ? undefined : "none" }}
         data-testid="composer-textarea"
         placeholder={reply ? "Reply…" : fileLevel ? "Comment on this file…" : "Comment on this line…"}
         value={body}
         onChange={(e) => setBody(e.target.value)}
         onPaste={prKey ? attach.onPaste : undefined}
       />
+      {wp.writing ? null : (
+        <ComposerPreview body={body} wp={wp} textClass="text-[13px] leading-[20px]" className="px-3 py-1.5" />
+      )}
       {prKey ? (
         <>
           <AttachmentStrip prKey={prKey} body={body} editor={attach} />
@@ -235,10 +249,11 @@ export function CommentComposer({
         </>
       ) : null}
       <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
+        <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} />
         <span className="hidden text-2xs sm:inline" style={{ color: "var(--fg-faint)" }}>
           markdown · ⌘↵ save{onSendToChat ? " · ⌘⇧↵ ask chat" : ""}
         </span>
-        {prKey ? <AttachButton editor={attach} testId="composer-attach" /> : null}
+        {prKey ? <AttachButton editor={attach} testId="composer-attach" disabled={!wp.writing} /> : null}
         <span className="ml-auto flex items-center gap-1.5">
           {exportCtx ? (
             <CopyForAgentButton
@@ -412,9 +427,11 @@ export function CommentBody({
   // Pictures can be added while editing too — same flow as the composer.
   const prKey = useContext(AttachmentContext)?.prKey ?? "";
   const attach = useAttachmentEditor({ prKey, textareaRef: ref, body: value, setBody: setValue });
+  const wp = useWritePreview(ref);
 
   useEffect(() => {
-    if (mode === "edit") ref.current?.focus();
+    if (mode === "edit") wp.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   // Someone else (a sync, a refetch) changed the text while we were idle.
@@ -534,8 +551,9 @@ export function CommentBody({
   return (
     <div
       className="relative mt-1"
-      {...(prKey ? attach.dropProps : {})}
+      {...(prKey && wp.writing ? attach.dropProps : {})}
       onKeyDown={(e) => {
+        if (wp.onKeyDown(e)) return;
         if (e.key === "Escape") {
           e.stopPropagation();
           cancel();
@@ -550,10 +568,20 @@ export function CommentBody({
         ref={ref}
         data-testid={`editor-${comment.id}`}
         className="input h-24 resize-none text-xs leading-[18px]"
+        style={{ display: wp.writing ? undefined : "none" }}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onPaste={prKey ? attach.onPaste : undefined}
       />
+      {wp.writing ? null : (
+        <ComposerPreview
+          body={value}
+          wp={wp}
+          textClass={bodyClass}
+          className="input"
+          testId={`preview-${comment.id}`}
+        />
+      )}
       {prKey ? (
         <div className="-mx-3 mt-1">
           <AttachmentStrip prKey={prKey} body={value} editor={attach} />
@@ -561,9 +589,10 @@ export function CommentBody({
           {attach.input}
         </div>
       ) : null}
-      <p className="mt-1 flex items-center gap-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+      <p className="mt-1 flex items-center gap-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} testId={`mode-${comment.id}`} />
         <span>{EDIT_HINT[status]} (esc to cancel, ⌘↵ to save)</span>
-        {prKey ? <AttachButton editor={attach} testId={`attach-${comment.id}`} /> : null}
+        {prKey ? <AttachButton editor={attach} testId={`attach-${comment.id}`} disabled={!wp.writing} /> : null}
       </p>
       {error ? (
         <p className="mt-1 text-2xs leading-4" style={{ color: "var(--risk)" }}>

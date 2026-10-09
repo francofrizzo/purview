@@ -195,15 +195,29 @@ export function useAttachmentEditor({
 }
 
 /** The paperclip: opens the file picker. */
-export function AttachButton({ editor, testId = "attach" }: { editor: AttachmentEditor; testId?: string }) {
+export function AttachButton({
+  editor,
+  testId = "attach",
+  disabled = false,
+}: {
+  editor: AttachmentEditor;
+  testId?: string;
+  /** while the editor previews: pictures go in through the textarea */
+  disabled?: boolean;
+}) {
   return (
     <button
       type="button"
-      className="flex-none rounded p-1 hover:bg-[var(--bg-hover)]"
+      className="flex-none rounded p-1 enabled:hover:bg-[var(--bg-hover)] disabled:opacity-50"
       style={{ color: "var(--fg-faint)" }}
-      title="Attach an image (or paste / drop one). It is uploaded to GitHub when the comment is pushed."
+      title={
+        disabled
+          ? "Switch to Write to attach an image"
+          : "Attach an image (or paste / drop one). It is uploaded to GitHub when the comment is pushed."
+      }
       aria-label="Attach an image"
       data-testid={testId}
+      disabled={disabled}
       onClick={editor.pick}
     >
       <IconPaperclip width={12} height={12} />
