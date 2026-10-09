@@ -196,6 +196,20 @@ export interface LineCommentProps {
   comments?: DisplayThread[];
   expanded?: boolean;
   onToggleComments?: () => void;
+  /** the pointer is over this line's marker (lights up a multi-line comment's lines) */
+  onMarkerHover?: (hovering: boolean) => void;
+  /**
+   * What the `+` offers: "Comment on this line" unless the line closes a
+   * gutter selection, when it is "Comment on lines A–B" and stays visible
+   * (not hover-only) so the selection has an obvious next step.
+   */
+  commentLabel?: string;
+  commentVisible?: boolean;
+  /**
+   * Inside an open (or hovered) multi-line comment's range: a bar down the
+   * row's left edge ties the covered lines to the marker on the last one.
+   */
+  covered?: boolean;
 }
 
 function CommentColumn({
@@ -203,8 +217,12 @@ function CommentColumn({
   comments,
   expanded,
   onToggleComments,
-}: { onComment?: () => void } & LineCommentProps) {
+  onMarkerHover,
+  commentLabel,
+  commentVisible,
+}: { onComment?: () => void } & Omit<LineCommentProps, "covered">) {
   const has = Boolean(comments && comments.length);
+  const label = commentLabel ?? (has ? "Add another comment on this line" : "Comment on this line");
   return (
     <span
       className="relative flex flex-none items-start justify-end pr-[3px] pt-px"
@@ -216,21 +234,23 @@ function CommentColumn({
           threads={comments!}
           expanded={Boolean(expanded)}
           onToggle={onToggleComments}
+          onHoverChange={onMarkerHover}
         />
       ) : null}
       {onComment ? (
         <button
           type="button"
+          data-testid={commentVisible ? "comment-selection" : undefined}
           onClick={(e) => {
             e.stopPropagation();
             onComment();
           }}
-          title={has ? "Add another comment on this line" : "Comment on this line"}
-          aria-label={has ? "Add another comment on this line" : "Comment on this line"}
+          title={label}
+          aria-label={label}
           // Hover-only, the same 18px rounded square as the marker: in the
           // marker's slot on a line without comments, just left of it on one
           // with. Accent and outlined, so it never reads as the diff's green +.
-          className={`diff-comment-affordance absolute ${has ? "right-[23px]" : "right-[3px]"} top-px z-10 inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[4px] opacity-0 transition-opacity hover:!bg-[var(--accent)] hover:!text-[var(--bg)] group-hover:opacity-100 group-hover/half:opacity-100`}
+          className={`diff-comment-affordance absolute ${has ? "right-[23px]" : "right-[3px]"} top-px z-10 inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[4px] ${commentVisible ? "opacity-100" : "opacity-0"} transition-opacity hover:!bg-[var(--accent)] hover:!text-[var(--bg)] group-hover:opacity-100 group-hover/half:opacity-100`}
           style={{
             background: "var(--bg-raised)",
             boxShadow: "inset 0 0 0 1px var(--border-strong)",
@@ -353,6 +373,10 @@ export const DiffLine = memo(function DiffLine({
   comments,
   expanded,
   onToggleComments,
+  onMarkerHover,
+  commentLabel,
+  commentVisible,
+  covered,
   marks,
   onSelectDown,
   onSelectEnter,
@@ -385,6 +409,7 @@ export const DiffLine = memo(function DiffLine({
       data-moved={moved ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       data-changed={changed ? "true" : undefined}
+      data-covered={covered ? "true" : undefined}
       style={{
         background: rowBackground(row.type, moved, changed),
         ...(changed ? { ["--row-bg" as string]: bgFor(row.type, moved) } : {}),
@@ -415,6 +440,9 @@ export const DiffLine = memo(function DiffLine({
           comments={comments}
           expanded={expanded}
           onToggleComments={onToggleComments}
+          onMarkerHover={onMarkerHover}
+          commentLabel={commentLabel}
+          commentVisible={commentVisible}
         />
         <span className="diff-marker" style={{ color: markerColor(row.type) }}>
           {marker}
@@ -458,6 +486,10 @@ function SplitHalf({
   comments,
   expanded,
   onToggleComments,
+  onMarkerHover,
+  commentLabel,
+  commentVisible,
+  covered,
   marks,
   selected,
   onSelectDown,
@@ -500,6 +532,7 @@ function SplitHalf({
       data-moved={moved ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       data-changed={changed ? "true" : undefined}
+      data-covered={covered ? "true" : undefined}
       style={{
         background: rowBackground(row.type, moved, changed),
         ...(changed ? { ["--row-bg" as string]: bgFor(row.type, moved) } : {}),
@@ -522,6 +555,9 @@ function SplitHalf({
           comments={comments}
           expanded={expanded}
           onToggleComments={onToggleComments}
+          onMarkerHover={onMarkerHover}
+          commentLabel={commentLabel}
+          commentVisible={commentVisible}
         />
         <span className="diff-marker" style={{ color: markerColor(row.type) }}>
           {marker}
@@ -551,6 +587,15 @@ export interface SplitDiffLineProps {
   expandedRight?: boolean;
   onToggleCommentsLeft?: () => void;
   onToggleCommentsRight?: () => void;
+  onMarkerHoverLeft?: (hovering: boolean) => void;
+  onMarkerHoverRight?: (hovering: boolean) => void;
+  commentLabelLeft?: string;
+  commentLabelRight?: string;
+  commentVisibleLeft?: boolean;
+  commentVisibleRight?: boolean;
+  /** inside an open multi-line comment's range, per half */
+  coveredLeft?: boolean;
+  coveredRight?: boolean;
   marksLeft?: LineMarks;
   marksRight?: LineMarks;
   selectedLeft?: boolean;
@@ -594,6 +639,14 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   expandedRight,
   onToggleCommentsLeft,
   onToggleCommentsRight,
+  onMarkerHoverLeft,
+  onMarkerHoverRight,
+  commentLabelLeft,
+  commentLabelRight,
+  commentVisibleLeft,
+  commentVisibleRight,
+  coveredLeft,
+  coveredRight,
   marksLeft,
   marksRight,
   selectedLeft,
@@ -621,6 +674,10 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         comments={commentsLeft}
         expanded={expandedLeft}
         onToggleComments={onToggleCommentsLeft}
+        onMarkerHover={onMarkerHoverLeft}
+        commentLabel={commentLabelLeft}
+        commentVisible={commentVisibleLeft}
+        covered={coveredLeft}
         marks={marksLeft}
         selected={selectedLeft}
         onSelectDown={onSelectDown}
@@ -642,6 +699,10 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         comments={commentsRight}
         expanded={expandedRight}
         onToggleComments={onToggleCommentsRight}
+        onMarkerHover={onMarkerHoverRight}
+        commentLabel={commentLabelRight}
+        commentVisible={commentVisibleRight}
+        covered={coveredRight}
         marks={marksRight}
         selected={selectedRight}
         onSelectDown={onSelectDown}

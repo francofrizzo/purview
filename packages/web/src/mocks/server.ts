@@ -125,7 +125,9 @@ function mirrorPushed(d: DraftComment) {
     subjectType: fileLevel ? "file" : "line",
     line: fileLevel ? null : d.line,
     originalLine: fileLevel ? null : d.line,
-    startLine: null,
+    startLine: fileLevel ? null : d.startLine ?? null,
+    originalStartLine: fileLevel ? null : d.startLine ?? null,
+    startSide: fileLevel || d.startLine == null ? null : d.side ?? "RIGHT",
     side: d.side ?? "RIGHT",
     isResolved: false,
     isOutdated: false,
@@ -1173,12 +1175,15 @@ export const mockApi = {
     await delay(120);
     if (!input.body.trim()) throw new ApiError("invalid_body", 400, "Body must be non-empty");
     const fileLevel = input.subjectType === "file";
+    // Like the server: a range starts before its line, on the same side.
+    const startLine = !fileLevel && input.startLine !== undefined && input.startLine < input.line ? input.startLine : undefined;
     const draft: DraftComment = {
       id: `draft-${drafts.length + 1}-${Date.now()}`,
       file: input.file,
       body: input.body,
       line: fileLevel ? null : input.line,
       side: fileLevel ? null : input.side,
+      ...(startLine !== undefined && !fileLevel ? { startLine, startSide: input.side } : {}),
       subjectType: fileLevel ? "file" : "line",
       createdAt: new Date().toISOString(),
       status: "draft",
@@ -1316,7 +1321,11 @@ export const mockApi = {
     if (isFileComment(target)) {
       throw new ApiError("not_line_comment", 400, "Only line comments can be repositioned");
     }
-    if (input.line !== undefined) target.line = input.line;
+    if (input.line !== undefined) {
+      // A range moves as a whole, like the server's updateCommentPosition.
+      if (target.startLine != null && target.line != null) target.startLine += input.line - target.line;
+      target.line = input.line;
+    }
     if (input.file !== undefined) target.file = input.file;
     return { comment: structuredClone(target), remote: null };
   },
@@ -1362,6 +1371,7 @@ export const mockApi = {
           file: d.file,
           line: d.line,
           side: d.side,
+          ...(d.startLine != null ? { startLine: d.startLine } : {}),
           body: d.body,
           status: d.status ?? "draft",
           subjectType: d.subjectType ?? "line",

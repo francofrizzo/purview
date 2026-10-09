@@ -21,6 +21,7 @@ export function CommentBubble({
   expanded,
   onToggle,
   compact,
+  onHoverChange,
 }: {
   /** what hangs off this line / file / folded hunk */
   threads: DisplayThread[];
@@ -28,6 +29,8 @@ export function CommentBubble({
   onToggle: () => void;
   /** the diff gutter variant */
   compact?: boolean;
+  /** see CommentPill */
+  onHoverChange?: (hovering: boolean) => void;
 }) {
   return (
     <CommentPill
@@ -36,6 +39,7 @@ export function CommentBubble({
       onToggle={onToggle}
       compact={compact}
       title={threadsTitle(threads)}
+      onHoverChange={onHoverChange}
     />
   );
 }

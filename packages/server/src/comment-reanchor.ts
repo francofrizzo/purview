@@ -58,16 +58,22 @@ function expandHunk(hunk: Hunk): ExpandedLine[] {
   return lines;
 }
 
-/** ~`CONTEXT_RADIUS` lines around the comment's anchored line, with it marked `>>`. */
-function renderAnchoredContext(hunk: Hunk, line: number, side: CommentSide): string {
+/**
+ * ~`CONTEXT_RADIUS` lines around the comment's anchored line, with it marked
+ * `>>` — every line of the range, for a multi-line comment.
+ */
+function renderAnchoredContext(hunk: Hunk, line: number, side: CommentSide, startLine = line): string {
   const expanded = expandHunk(hunk);
-  const idx = expanded.findIndex((l) => (side === "RIGHT" ? l.newLine : l.oldLine) === line);
-  const lo = Math.max(0, idx - CONTEXT_RADIUS);
+  const numberOf = (l: ExpandedLine) => (side === "RIGHT" ? l.newLine : l.oldLine);
+  const idx = expanded.findIndex((l) => numberOf(l) === line);
+  const startIdx = expanded.findIndex((l) => numberOf(l) === startLine);
+  const lo = Math.max(0, (startIdx === -1 ? idx : startIdx) - CONTEXT_RADIUS);
   const hi = Math.min(expanded.length, idx + CONTEXT_RADIUS + 1);
   const out: string[] = [`@@ ${hunk.header} @@`];
   for (let i = lo; i < hi; i++) {
     const l = expanded[i];
-    const marker = i === idx ? ">>" : "  ";
+    const n = numberOf(l);
+    const marker = n !== null && n >= startLine && n <= line ? ">>" : "  ";
     const ln = side === "RIGHT" ? l.newLine : l.oldLine;
     out.push(`${marker} ${String(ln ?? "").padStart(5)} ${l.prefix}${l.text}`);
   }
@@ -163,9 +169,9 @@ export async function proposeCommentReanchor(
     } catch {
       continue; // tolerate a missing files.json for an intermediate revision
     }
-    const hunk = findAnchoringHunk(files, comment.file, line, side);
+    const hunk = findAnchoringHunk(files, comment.file, line, side, comment.startLine);
     if (hunk) {
-      previousContext = renderAnchoredContext(hunk, line, side);
+      previousContext = renderAnchoredContext(hunk, line, side, comment.startLine);
       break;
     }
   }

@@ -1,6 +1,7 @@
 import { loadState, type PrKey } from "@reviewer/core";
 import {
   commentCounts,
+  commentPosition,
   markPushed,
   reanchorDraftComments,
   readComments,
@@ -52,6 +53,7 @@ const toLineInput = (c: Comment): LineReviewCommentInput => ({
   path: c.file,
   line: c.line!,
   side: c.side!,
+  ...(c.startLine !== undefined ? { startLine: c.startLine, startSide: c.startSide ?? c.side! } : {}),
   body: c.body,
 });
 
@@ -71,22 +73,14 @@ function uploadFailure(draft: Comment, err: unknown): ReviewError {
   const raw = err instanceof Error ? err.message : String(err);
   return new ReviewError(
     "attachment_upload_failed",
-    `Could not attach an image to the comment at ${draft.file}${draft.line ? `:${draft.line}` : ""}: ${raw}`,
+    `Could not attach an image to the comment at ${commentPosition(draft)}: ${raw}`,
     raw,
     502,
   );
 }
 
 const toInput = (c: Comment): ReviewCommentInput =>
-  c.subjectType === "file"
-    ? { subjectType: "file", path: c.file, body: c.body }
-    : {
-        subjectType: "line",
-        path: c.file,
-        line: c.line!,
-        side: c.side!,
-        body: c.body,
-      };
+  c.subjectType === "file" ? { subjectType: "file", path: c.file, body: c.body } : toLineInput(c);
 
 /**
  * Append drafts to an existing pending review one thread at a time, recording
@@ -178,7 +172,7 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       ok: false,
       pushed: 0,
       error:
-        `A draft comment at ${c.file}:${c.line} ("${snippet}") is outside the current diff. ` +
+        `A draft comment at ${commentPosition(c)} ("${snippet}") is outside the current diff. ` +
         `The PR changed under this comment — edit its position, delete it, or use ` +
         `"Suggest new anchor".`,
       errorCode: "comment_outside_diff",
@@ -258,8 +252,9 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       // both the REST databaseId (githubCommentId) and the GraphQL node id
       // (githubCommentNodeId — REST comment payloads carry it as `node_id`)
       // so a later local delete/edit can act on the right remote comment,
-      // via whichever API needs which id. Matching is by path+line, consumed
-      // once per match: two drafts can legitimately target the same
+      // via whichever API needs which id. Matching is by path+line (and the
+      // range start, so a one-line draft and a range ending on the same
+      // line stay apart), consumed once per match: two drafts can legitimately target the same
       // file+line (e.g. a comment added after an earlier one at the same
       // spot was deleted upstream), and reusing the same remote comment for
       // both would silently mis-attribute one of them. Removing each match
@@ -273,7 +268,10 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
         key,
         lineDrafts.map((c) => {
           const idx = remaining.findIndex(
-            (r) => r.path === c.file && (r.line ?? r.original_line) === c.line,
+            (r) =>
+              r.path === c.file &&
+              (r.line ?? r.original_line) === c.line &&
+              (r.start_line ?? r.original_start_line ?? undefined) === c.startLine,
           );
           const match = idx === -1 ? undefined : remaining.splice(idx, 1)[0];
           return {

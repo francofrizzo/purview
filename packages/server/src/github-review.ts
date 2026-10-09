@@ -126,7 +126,7 @@ export function classifyGhReviewError(err: unknown): ReviewError {
     );
   }
   if (
-    /line must be part of the diff|not part of the diff|pull_request_review_thread|invalid line|must be part of the/i.test(
+    /line must be part of the diff|not part of the diff|pull_request_review_thread|invalid line|must be part of the|start_line|start line/i.test(
       raw,
     )
   ) {
@@ -223,7 +223,16 @@ export function findPendingReview(key: PrKey): PendingReview | undefined {
  * it carries no line or side.
  */
 export type ReviewCommentInput =
-  | { subjectType: "line"; path: string; line: number; side: "LEFT" | "RIGHT"; body: string }
+  | {
+      subjectType: "line";
+      path: string;
+      line: number;
+      side: "LEFT" | "RIGHT";
+      /** multi-line: the comment covers `startLine..line` (GitHub's `start_line`) */
+      startLine?: number;
+      startSide?: "LEFT" | "RIGHT";
+      body: string;
+    }
   | { subjectType: "file"; path: string; body: string };
 
 /** REST create-review `comments[]` entries — line comments only (see below). */
@@ -265,6 +274,10 @@ export function createPendingReview(
           path: c.path,
           line: c.line,
           side: c.side,
+          // GitHub wants both halves of a range, or neither.
+          ...(c.startLine !== undefined
+            ? { start_line: c.startLine, start_side: c.startSide ?? c.side }
+            : {}),
           body: c.body,
         })),
       }),
@@ -288,9 +301,10 @@ export function createPendingReview(
  * `.subjectType: PullRequestReviewThreadSubjectType` = `LINE | FILE`).
  * Omitted variables are simply absent from the request, i.e. null.
  */
-const ADD_THREAD = `mutation($reviewId:ID!,$path:String!,$line:Int,$side:DiffSide,$body:String!,$subjectType:PullRequestReviewThreadSubjectType){
+const ADD_THREAD = `mutation($reviewId:ID!,$path:String!,$line:Int,$side:DiffSide,$startLine:Int,$startSide:DiffSide,$body:String!,$subjectType:PullRequestReviewThreadSubjectType){
   addPullRequestReviewThread(input:{
-    pullRequestReviewId:$reviewId, path:$path, line:$line, side:$side, body:$body,
+    pullRequestReviewId:$reviewId, path:$path, line:$line, side:$side,
+    startLine:$startLine, startSide:$startSide, body:$body,
     subjectType:$subjectType
   }){
     thread{ id comments(first:1){ nodes{ id databaseId } } }
@@ -343,9 +357,14 @@ export function appendCommentToPendingReview(
         // Enum variables travel as strings; GitHub coerces them.
         "-f",
         `subjectType=${comment.subjectType === "file" ? "FILE" : "LINE"}`,
-        // Line/side are omitted entirely for a file-level thread.
+        // Line/side are omitted entirely for a file-level thread; the range
+        // start only travels on a multi-line comment (`startLine`/`startSide`
+        // on AddPullRequestReviewThreadInput, both nullable).
         ...(comment.subjectType === "line"
           ? ["-F", `line=${comment.line}`, "-f", `side=${comment.side}`]
+          : []),
+        ...(comment.subjectType === "line" && comment.startLine !== undefined
+          ? ["-F", `startLine=${comment.startLine}`, "-f", `startSide=${comment.startSide ?? comment.side}`]
           : []),
         "-f",
         `body=${comment.body}`,
@@ -427,6 +446,10 @@ export interface RemoteReviewComment {
   line?: number;
   original_line?: number;
   side?: string;
+  /** first line of a multi-line comment; null/absent on a single-line one */
+  start_line?: number | null;
+  original_start_line?: number | null;
+  start_side?: string | null;
   /** GitHub's own discriminator: "line" (or absent, on older payloads) vs "file". */
   subject_type?: string;
   body: string;

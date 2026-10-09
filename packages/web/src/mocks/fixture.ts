@@ -1018,6 +1018,19 @@ export const mockDrafts: DraftComment[] = [
     status: "draft",
     inReplyTo: "PRRT_charge25",
   },
+  // Multi-line: covers the whole `if (!res.ok)` block, marker on its last line.
+  {
+    id: "draft-10",
+    file: "src/billing/charge.ts",
+    line: 31,
+    side: "RIGHT",
+    startLine: 28,
+    startSide: "RIGHT",
+    subjectType: "line",
+    body: "Recording the failure and then throwing means a *transient* gateway error leaves a failure row behind — the retry above only wraps `charge`, not this block. Should `recordFailure` only run for non-transient codes?",
+    createdAt: "2026-08-12T09:25:00Z",
+    status: "draft",
+  },
   // Anchored to the OLD side: in split view its bubble belongs on the left half.
   {
     id: "draft-8",
@@ -1074,6 +1087,8 @@ function thread(over: Partial<RemoteThread> & Pick<RemoteThread, "id" | "path" |
     line: null,
     originalLine: null,
     startLine: null,
+    originalStartLine: null,
+    startSide: null,
     side: "RIGHT",
     isResolved: false,
     isOutdated: false,
@@ -1146,6 +1161,24 @@ export const mockThreads: RemoteThread[] = [
         { updatedAt: "2026-08-11T15:52:00Z" },
       ),
       remote("maria", "Fair. Can you leave a `TODO(BILL-1190)` so we don't forget?", "2026-08-11T16:05:00Z"),
+    ],
+  }),
+  // Multi-line: @maria on the backoff lines of the retry loop (77–79).
+  thread({
+    id: "PRRT_charge77_79",
+    path: "src/billing/charge.ts",
+    line: 79,
+    originalLine: 79,
+    startLine: 77,
+    originalStartLine: 77,
+    startSide: "RIGHT",
+    comments: [
+      remote(
+        "maria",
+        "With `delay + random() * delay` the wait can reach `2 * delay` *and then* doubles — the third attempt may sit ~1.6s. Cap the backoff, or jitter inside a fixed window?",
+        "2026-08-11T14:20:00Z",
+      ),
+      remote("dana", "Good catch — will cap at 2s and use full jitter.", "2026-08-11T15:45:00Z"),
     ],
   }),
   // Resolved: collapses to one line.

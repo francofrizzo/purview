@@ -28,6 +28,8 @@ import {
   compareCommentOrder,
   isAgentActor,
   isByAgent,
+  isRange,
+  lineLabel,
 } from "../lib/comments";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
 import { IconChat, IconCheck, IconClose } from "./icons";
@@ -43,7 +45,15 @@ import { CommentCard } from "./CommentCard";
  * side, which is exactly what the POST body will look like.
  */
 export type CommentTarget = (
-  | { subjectType: "line"; file: string; line: number; side: "LEFT" | "RIGHT" }
+  | {
+      subjectType: "line";
+      file: string;
+      /** the last line, for a multi-line comment */
+      line: number;
+      side: "LEFT" | "RIGHT";
+      /** first line of a multi-line comment: it covers `startLine..line` */
+      startLine?: number;
+    }
   | { subjectType: "file"; file: string }
 ) & {
   /** a reply to this GitHub thread (node id), drawn at the end of the thread */
@@ -54,15 +64,18 @@ export type CommentTarget = (
 
 /** One string per target, so switching targets (or threads) resets the composer. */
 export function targetKey(target: CommentTarget): string {
-  const where = target.subjectType === "file" ? `f:${target.file}` : `${target.file}:${target.line}:${target.side}`;
+  const where =
+    target.subjectType === "file"
+      ? `f:${target.file}`
+      : `${target.file}:${target.startLine !== undefined ? `${target.startLine}-` : ""}${target.line}:${target.side}`;
   return target.inReplyTo ? `${where}>${target.inReplyTo}` : where;
 }
 
-/** The chat ref for where a comment box points: its line, or its whole file. */
+/** The chat ref for where a comment box points: its line (or lines), or its whole file. */
 export function targetRef(target: CommentTarget): ChatRef {
   if (target.subjectType === "file") return { kind: "file", path: target.file };
   const side = target.side === "LEFT" ? "old" : "new";
-  return { kind: "line-range", path: target.file, side, start: target.line, end: target.line };
+  return { kind: "line-range", path: target.file, side, start: target.startLine ?? target.line, end: target.line };
 }
 
 /** The chat ref for a comment — file-level ones carry no line to point at. */
@@ -72,7 +85,8 @@ export function commentRef(c: DraftComment): ChatRef {
     kind: "comment",
     id: c.id,
     path: c.file,
-    start: c.line ?? undefined,
+    start: c.startLine ?? c.line ?? undefined,
+    ...(isRange(c) ? { end: c.line as number } : {}),
     side: c.side === "LEFT" ? "old" : "new",
   };
 }
@@ -80,20 +94,24 @@ export function commentRef(c: DraftComment): ChatRef {
 /** The comment a target would create, once a body is typed. */
 export function targetToInput(target: CommentTarget, body: string): AddCommentInput {
   const reply = target.inReplyTo ? { inReplyTo: target.inReplyTo } : {};
-  return target.subjectType === "file"
-    ? { subjectType: "file", file: target.file, body, ...reply }
-    : { subjectType: "line", file: target.file, line: target.line, side: target.side, body, ...reply };
+  if (target.subjectType === "file") return { subjectType: "file", file: target.file, body, ...reply };
+  const range =
+    target.startLine !== undefined && target.startLine < target.line
+      ? { startLine: target.startLine, startSide: target.side }
+      : {};
+  return { subjectType: "line", file: target.file, line: target.line, side: target.side, ...range, body, ...reply };
 }
 
-/** "src/a.ts:24 (new)" or "src/a.ts (whole file)" — used wherever a comment is labelled. */
+/** "src/a.ts:24", "src/a.ts:12–18 (old)" or "src/a.ts (file)" — used wherever a comment is labelled. */
 export function commentAnchorLabel(c: {
   file: string;
   line?: number | null;
   side?: "LEFT" | "RIGHT" | null;
+  startLine?: number | null;
   subjectType?: "line" | "file";
 }): string {
   if (isFileComment(c)) return `${c.file} (file)`;
-  return `${c.file}:${c.line}${c.side === "LEFT" ? " (old)" : ""}`;
+  return `${c.file}:${lineLabel(c)}${c.side === "LEFT" ? " (old)" : ""}`;
 }
 
 export function CommentComposer({
@@ -147,11 +165,13 @@ export function CommentComposer({
   const fileLevel = target.subjectType === "file";
   const anchorKey = targetKey(target);
   const reply = Boolean(target.inReplyTo);
+  const ranged = !fileLevel && isRange(target);
+  const lines = fileLevel ? "" : `${lineLabel(target)}${target.side === "LEFT" ? " (old)" : ""}`;
   const where = reply
     ? `to ${target.replyTo ?? "the thread"}`
     : fileLevel
       ? "on this file"
-      : `on line ${target.line}${target.side === "LEFT" ? " (old)" : ""}`;
+      : `on ${ranged ? "lines" : "line"} ${lines}`;
 
   useEffect(() => {
     const el = ref.current;
@@ -213,9 +233,9 @@ export function CommentComposer({
             {floating ? (
               <>
                 {reply ? `${where} · ` : null}
-                <span className="font-mono">
+                <span className="font-mono" data-testid="composer-anchor">
                   {target.file}
-                  {fileLevel ? "" : `:${target.line}${target.side === "LEFT" ? " (old)" : ""}`}
+                  {fileLevel ? "" : `:${lines}`}
                 </span>
               </>
             ) : (
@@ -244,7 +264,7 @@ export function CommentComposer({
         className="block w-full resize-none bg-transparent px-3 py-1.5 text-[13px] leading-[20px] outline-none"
         style={{ color: "var(--fg)", display: wp.writing ? undefined : "none" }}
         data-testid="composer-textarea"
-        placeholder={reply ? "Reply…" : fileLevel ? "Comment on this file…" : "Comment on this line…"}
+        placeholder={reply ? "Reply…" : fileLevel ? "Comment on this file…" : ranged ? "Comment on these lines…" : "Comment on this line…"}
         value={body}
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={fmt.onKeyDown}
@@ -279,7 +299,13 @@ export function CommentComposer({
                 formatComment(
                   fileLevel
                     ? { file: target.file, line: null, side: null, subjectType: "file", body: body.trim() }
-                    : { file: target.file, line: target.line, side: target.side, body: body.trim() },
+                    : {
+                        file: target.file,
+                        line: target.line,
+                        side: target.side,
+                        startLine: ranged ? target.startLine : undefined,
+                        body: body.trim(),
+                      },
                   exportCtx,
                 )
               }
@@ -926,8 +952,9 @@ function GithubThreadRow({ thread, onJump }: { thread: RemoteThread; onJump: () 
   const root = thread.comments[0];
   const author = authorOf({ kind: "remote", comment: root });
   const line = thread.line ?? thread.originalLine;
+  const lines = lineLabel({ line, startLine: thread.startLine ?? thread.originalStartLine });
   const where = `${thread.path.slice(thread.path.lastIndexOf("/") + 1)}${
-    thread.subjectType === "file" || line === null ? "" : `:${line}`
+    thread.subjectType === "file" || line === null ? "" : `:${lines}`
   }`;
   const replies = thread.comments.length - 1;
   return (
@@ -940,7 +967,7 @@ function GithubThreadRow({ thread, onJump }: { thread: RemoteThread; onJump: () 
         background: "var(--bg)",
         opacity: thread.isResolved ? 0.7 : undefined,
       }}
-      title={`${thread.path}${line !== null && thread.subjectType !== "file" ? `:${line}` : ""} — show it in the diff`}
+      title={`${thread.path}${line !== null && thread.subjectType !== "file" ? `:${lines}` : ""} — show it in the diff`}
       onClick={onJump}
     >
       <span className="flex items-center gap-1.5 text-2xs">

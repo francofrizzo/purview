@@ -25,7 +25,7 @@ import {
   type RemoteComment,
   type RemoteThread,
 } from "../api/types";
-import { attentionStatus, bubbleTitle, lineAnchor } from "./comments";
+import { attentionStatus, bubbleTitle, isRange, lineAnchor, lineLabel } from "./comments";
 
 export type ThreadItem =
   | { kind: "local"; comment: DraftComment }
@@ -144,7 +144,10 @@ function placementOf(
 ): ThreadPlacement {
   if (t.subjectType === "file") return "file";
   if (t.line === null || t.isOutdated) return "outdated";
-  if (inDiff && !inDiff(t.path, t.line, t.side)) return "off-diff";
+  // A multi-line thread needs both its ends in the diff to hang off its line.
+  if (inDiff && !(inDiff(t.path, t.line, t.side) && (t.startLine === null || inDiff(t.path, t.startLine, t.side)))) {
+    return "off-diff";
+  }
   return "line";
 }
 
@@ -254,6 +257,21 @@ export function buildThreadGroups({
   for (const list of byFile.values()) list.sort(byTime);
 
   return { byLine, byFile, located, hidden };
+}
+
+/** The lines a multi-line thread covers (`start..end`, on one side); null for a single-line one. */
+export function threadRange(
+  thread: DisplayThread,
+): { path: string; side: "LEFT" | "RIGHT"; start: number; end: number } | null {
+  const t = thread.remote;
+  if (t) {
+    if (t.subjectType === "file" || t.line === null || t.startLine === null || t.startLine >= t.line) return null;
+    return { path: t.path, side: t.side, start: t.startLine, end: t.line };
+  }
+  const only = thread.items[0];
+  if (only.kind !== "local" || !isRange(only.comment)) return null;
+  const c = only.comment;
+  return { path: c.file, side: c.side ?? "RIGHT", start: c.startLine as number, end: c.line as number };
 }
 
 /** Every Purview comment the threads hold, in display order. */
@@ -377,10 +395,10 @@ export function placementLabel(thread: DisplayThread): string | null {
   const t = thread.remote;
   if (!t) return null;
   if (thread.placement === "outdated") {
-    const was = t.originalLine ?? t.line;
-    return was !== null ? `outdated · was line ${was}` : "outdated";
+    const was = { line: t.originalLine ?? t.line, startLine: t.originalStartLine ?? t.startLine };
+    return was.line !== null ? `outdated · was ${isRange(was) ? "lines" : "line"} ${lineLabel(was)}` : "outdated";
   }
-  if (thread.placement === "off-diff") return `line ${t.line} · not in this diff`;
+  if (thread.placement === "off-diff") return `${isRange(t) ? "lines" : "line"} ${lineLabel(t)} · not in this diff`;
   if (thread.placement === "file") return "whole file";
   return null;
 }

@@ -721,7 +721,8 @@ comment
   .command("add")
   .argument("<key>")
   .requiredOption("--file <path>", "file path as it appears in the diff")
-  .option("--line <n>", "line number on --side (new side by default)")
+  .option("--line <n>", "line number on --side (new side by default); the last line of a range")
+  .option("--start-line <n>", "first line of a multi-line comment (covers start-line..line, same hunk)")
   .option("--side <RIGHT|LEFT>", "RIGHT = the new version (default), LEFT = the old one")
   .option("--whole-file", "comment on the file as a whole instead of a line")
   .option("--body <text>", "the comment text (single-quote it)")
@@ -730,7 +731,15 @@ comment
   .action(
     async (
       keyArg: string,
-      opts: { file: string; line?: string; side?: string; wholeFile?: boolean; body?: string; bodyFile?: string },
+      opts: {
+        file: string;
+        line?: string;
+        startLine?: string;
+        side?: string;
+        wholeFile?: boolean;
+        body?: string;
+        bodyFile?: string;
+      },
     ) => {
       const key = parseKey(keyArg);
       const payload = { ...newCommentPayload(opts), body: resolveBody(opts, readBodyFile) };

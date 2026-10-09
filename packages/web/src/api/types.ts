@@ -724,10 +724,17 @@ export type CommentSubject = "line" | "file";
 export interface DraftComment {
   id: string;
   file: string;
-  /** null for file-level comments */
+  /** null for file-level comments; on a multi-line comment, the LAST line of the range */
   line: number | null;
   /** null for file-level comments */
   side: "LEFT" | "RIGHT" | null;
+  /**
+   * A multi-line comment covers `startLine..line` inclusive (GitHub's
+   * `start_line`). Absent or null on a single-line comment.
+   */
+  startLine?: number | null;
+  /** GitHub's `start_side`; always `side` in practice */
+  startSide?: "LEFT" | "RIGHT" | null;
   body: string;
   createdAt?: string;
   status?: CommentStatus;
@@ -789,7 +796,16 @@ export function isFileComment(c: {
  * a target around without branching until the wire.
  */
 export type AddCommentInput = (
-  | { subjectType?: "line"; file: string; line: number; side: "LEFT" | "RIGHT"; body: string }
+  | {
+      subjectType?: "line";
+      file: string;
+      line: number;
+      side: "LEFT" | "RIGHT";
+      /** first line of a multi-line comment (`startLine..line`, one hunk, one side) */
+      startLine?: number;
+      startSide?: "LEFT" | "RIGHT";
+      body: string;
+    }
   | { subjectType: "file"; file: string; body: string }
 ) & {
   /** reply to this GitHub thread (node id) rather than start a new one */
@@ -863,6 +879,8 @@ export interface ReviewStatus {
     file: string;
     line: number | null;
     side: "LEFT" | "RIGHT" | null;
+    /** first line of a multi-line comment */
+    startLine?: number | null;
     body: string;
     status: CommentStatus;
     subjectType?: CommentSubject;
@@ -1161,6 +1179,10 @@ export interface RemoteThread {
   originalLine: number | null;
   /** first line of a multi-line comment, when it spans several */
   startLine: number | null;
+  /** its first line as written (`originalLine`'s counterpart); absent on older caches */
+  originalStartLine?: number | null;
+  /** GitHub's `startDiffSide` — `side` in practice; absent on older caches */
+  startSide?: "LEFT" | "RIGHT" | null;
   side: "LEFT" | "RIGHT";
   isResolved: boolean;
   /** the code it was written on changed since; `line` is then null */

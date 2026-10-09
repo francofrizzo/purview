@@ -158,3 +158,17 @@ describe("baseName", () => {
     expect(baseName("")).toBe("");
   });
 });
+
+describe("multi-line comment refs", () => {
+  it("labels and titles a range comment with its lines", () => {
+    const ctx = refContext(detail, [
+      { id: "r1", file: "src/billing/ledger.ts", line: 18, startLine: 12, side: "RIGHT", body: "range" },
+    ]);
+    const ref: ChatRef = { kind: "comment", id: "r1", path: "src/billing/ledger.ts", start: 12, end: 18, side: "new" };
+    expect(refLabel(ref, ctx)).toBe("comment @ ledger.ts:12–18");
+    expect(refTitle(ref, ctx)).toBe("Comment on src/billing/ledger.ts:12–18");
+    // Without the lookup, the ref's own start/end still say so.
+    expect(refLabel(ref)).toBe("comment @ ledger.ts:12–18");
+    expect(refLabel({ ...ref, end: undefined })).toBe("comment @ ledger.ts:12");
+  });
+});

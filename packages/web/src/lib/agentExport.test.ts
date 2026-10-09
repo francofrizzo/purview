@@ -337,3 +337,20 @@ describe("helpers", () => {
     expect(blockquote("a\n\n")).toBe("> a");
   });
 });
+
+describe("multi-line comments", () => {
+  const h = hunk("src/a.ts", 1, [" ctx1", "+a", "+b", "+c", "+d", " ctx6", " ctx7", " ctx8"]);
+  const ctx = ctxOf(file("src/a.ts", [h]));
+
+  it("names the range in the heading and carries every covered line, with context around the range", () => {
+    const text = formatComment(comment({ line: 5, startLine: 2, body: "collapse these" }), ctx);
+    expect(text).toContain("### `src/a.ts:2–5` (new side)");
+    const snippet = snippetFor(comment({ line: 5, startLine: 2 }), ctx)!;
+    expect(snippet.lines).toEqual(["ctx1", "+a", "+b", "+c", "+d", "ctx6", "ctx7"]);
+  });
+
+  it("is stale when the hunk lacks the range's start", () => {
+    expect(snippetFor(comment({ line: 5, startLine: 0 }), ctx)).toBeNull();
+    expect(formatComment(comment({ line: 5, startLine: 0 }), ctx)).toContain(STALE_NOTE);
+  });
+});

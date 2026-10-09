@@ -1253,7 +1253,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       if (parsed.success && !parsed.data.inReplyTo) {
         const state = loadState(key, root);
         const files = readFilesJson(key, state.currentRevision, root).files;
-        const { file, line, side, subjectType } = parsed.data;
+        const { file, line, side, subjectType, startLine } = parsed.data;
         if (!files.some((f) => f.path === file)) {
           throw new HttpError(
             422,
@@ -1261,11 +1261,13 @@ export function createApp(opts: AppOptions = {}): Hono {
             `${file} is not one of the files changed in revision ${state.currentRevision}`,
           );
         }
-        if (subjectType === "line" && !findAnchoringHunk(files, file, line!, side!)) {
+        if (subjectType === "line" && !findAnchoringHunk(files, file, line!, side!, startLine)) {
+          const where = startLine !== undefined ? `${startLine}–${line}` : `${line}`;
           throw new HttpError(
             422,
             "comment_outside_diff",
-            `${file}:${line} (${side === "LEFT" ? "old" : "new"} side) is not part of the current diff`,
+            `${file}:${where} (${side === "LEFT" ? "old" : "new"} side) is not part of the current diff` +
+              (startLine !== undefined ? " — a multi-line comment must stay inside one hunk" : ""),
           );
         }
       }
@@ -1409,12 +1411,16 @@ export function createApp(opts: AppOptions = {}): Hono {
       }
       const state = loadState(key, root);
       const currentFiles = readFilesJson(key, state.currentRevision, root).files;
-      const hunk = findAnchoringHunk(currentFiles, nextFile, nextLine, target.side ?? "RIGHT");
+      // A range moves as a whole (see `updateCommentPosition`), so the whole
+      // shifted range has to land inside one hunk.
+      const nextStart =
+        target.startLine !== undefined ? target.startLine + (nextLine - target.line!) : undefined;
+      const hunk = findAnchoringHunk(currentFiles, nextFile, nextLine, target.side ?? "RIGHT", nextStart);
       if (!hunk) {
         throw new HttpError(
           422,
           "comment_outside_diff",
-          `${nextFile}:${nextLine} is not part of the current diff`,
+          `${nextFile}:${nextStart !== undefined ? `${nextStart}–` : ""}${nextLine} is not part of the current diff`,
         );
       }
       const moved = updateCommentPosition(key, id, { line: nextLine, file: nextFile }, root);

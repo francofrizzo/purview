@@ -13,6 +13,9 @@ export interface FakeReviewComment {
   /** absent on a file-level comment, exactly as GitHub returns it */
   line?: number;
   side?: string;
+  /** a multi-line comment's first line (GitHub's `start_line`/`start_side`) */
+  start_line?: number;
+  start_side?: string;
   /** GitHub's `subject_type`: "line" or "file". */
   subject_type: string;
   body: string;
@@ -292,12 +295,19 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
       if (!fileLevel && rawLine === undefined) {
         throw new Error(`gh ${joined} failed: HTTP 422 line is required for a LINE thread`);
       }
+      // A range: GitHub wants startLine < line, both inside one hunk; the
+      // former is checked here, the latter is the server's pre-flight.
+      const rawStart = field("startLine");
+      if (rawStart !== undefined && Number(rawStart) >= Number(rawLine)) {
+        throw new Error(`gh ${joined} failed: HTTP 422 start_line must precede the end line`);
+      }
       review.comments.push({
         id,
         node_id: `PRRC_${id}`,
         path: field("path")!,
         subject_type: fileLevel ? "file" : "line",
         ...(fileLevel ? {} : { line: Number(rawLine), side: field("side")! }),
+        ...(rawStart !== undefined ? { start_line: Number(rawStart), start_side: field("startSide")! } : {}),
         body: field("body")!,
       });
       return JSON.stringify({
@@ -412,6 +422,11 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
               `gh ${joined} failed: HTTP 422 Unprocessable Entity: comments[].subject_type is not a permitted key`,
             );
           }
+          if (c.start_line !== undefined && Number(c.start_line) >= Number(c.line)) {
+            throw new Error(
+              `gh ${joined} failed: HTTP 422 Unprocessable Entity: Validation Failed — start_line must precede the end line`,
+            );
+          }
           const commentId = nextCommentId++;
           return {
             id: commentId,
@@ -420,6 +435,9 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
             subject_type: "line",
             line: Number(c.line),
             side: String(c.side),
+            ...(c.start_line !== undefined
+              ? { start_line: Number(c.start_line), start_side: String(c.start_side) }
+              : {}),
             body: String(c.body),
           };
         }),

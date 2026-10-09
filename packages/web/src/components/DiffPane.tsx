@@ -2,8 +2,8 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/rea
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Attention, ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { baseName, lineRangeRef } from "../lib/chatRefs";
-import { lineAnchor } from "../lib/comments";
-import { buildThreadGroups, itemCount, type DisplayThread, type ThreadGroups } from "../lib/threads";
+import { isRangeInDiff, lineAnchor } from "../lib/comments";
+import { buildThreadGroups, itemCount, threadRange, type DisplayThread, type ThreadGroups } from "../lib/threads";
 import {
   buildMoveIndex,
   buildRows,
@@ -574,6 +574,39 @@ export function DiffPane({
    */
   const [expandedAnchors, setExpandedAnchors] = useState<Set<string>>(() => new Set());
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(() => new Set());
+
+  /* ---------------------------------------------- multi-line comment spans */
+
+  // Anchors whose threads include a multi-line comment: only their markers
+  // report hover (anything else would re-render the pane for nothing).
+  const rangeAnchors = useMemo(() => {
+    const out = new Set<string>();
+    for (const [anchor, list] of grouped.byLine) if (list.some((t) => threadRange(t))) out.add(anchor);
+    return out;
+  }, [grouped]);
+  const [hoveredAnchor, setHoveredAnchor] = useState<string | null>(null);
+  // The lines to light up: every line of each multi-line comment whose thread
+  // is open or whose marker is hovered, plus the range being written.
+  const coveredLines = useMemo(() => {
+    const out = new Set<string>();
+    const cover = (path: string, side: "LEFT" | "RIGHT", start: number, end: number) => {
+      for (let n = start; n <= end; n++) out.add(lineAnchor(path, n, side));
+    };
+    const anchors = hoveredAnchor ? [...expandedAnchors, hoveredAnchor] : [...expandedAnchors];
+    for (const anchor of anchors) {
+      if (!rangeAnchors.has(anchor)) continue;
+      for (const t of grouped.byLine.get(anchor) ?? []) {
+        const r = threadRange(t);
+        if (r) cover(r.path, r.side, r.start, r.end);
+      }
+    }
+    if (composeTarget?.subjectType === "line" && composeTarget.startLine !== undefined && !composeTarget.inReplyTo) {
+      cover(composeTarget.file, composeTarget.side, composeTarget.startLine, composeTarget.line);
+    }
+    return out;
+  }, [grouped, rangeAnchors, expandedAnchors, hoveredAnchor, composeTarget]);
+  const markerHover = (anchor: string) =>
+    rangeAnchors.has(anchor) ? (h: boolean) => setHoveredAnchor((cur) => (h ? anchor : cur === anchor ? null : cur)) : undefined;
 
   const toggleAnchor = useCallback((anchor: string) => {
     captureAnchorPosition();
@@ -1606,6 +1639,45 @@ export function DiffPane({
     setSelection(null);
   };
 
+  /**
+   * The comment a gutter selection would open: anchored on its last line,
+   * covering the rest (`startLine`), the way GitHub's own drag-to-comment
+   * works. Null when there is no selection, or when it straddles two hunks —
+   * GitHub refuses that range, so it is not offered. A one-line selection is
+   * a plain line comment.
+   */
+  const selectionTarget = useMemo((): (CommentTarget & { subjectType: "line" }) | null => {
+    if (!selection) return null;
+    const side: "LEFT" | "RIGHT" = selection.side === "old" ? "LEFT" : "RIGHT";
+    const start = Math.min(selection.anchor, selection.focus);
+    const end = Math.max(selection.anchor, selection.focus);
+    if (!isRangeInDiff(detail.files, selection.path, side, start, end)) return null;
+    return { subjectType: "line", file: selection.path, line: end, side, ...(start < end ? { startLine: start } : {}) };
+  }, [selection, detail.files]);
+  const commentOnSelection = () => {
+    if (!selectionTarget) return;
+    onComment(selectionTarget);
+    setSelection(null);
+  };
+  /** The `+` on a selected line comments on the whole selection, not just that line. */
+  const lineCommentProps = (path: string, side: "LEFT" | "RIGHT", line: number) => {
+    const sel =
+      selectionTarget && selectionTarget.file === path && selectionTarget.side === side && selectionTarget.startLine !== undefined
+        ? selectionTarget
+        : null;
+    const inSel = sel !== null && line >= sel.startLine! && line <= sel.line;
+    return {
+      onComment: () => {
+        if (inSel) commentOnSelection();
+        else onComment({ subjectType: "line", file: path, line, side });
+      },
+      commentLabel: inSel ? `Comment on lines ${sel!.startLine}–${sel!.line}` : undefined,
+      commentVisible: inSel && line === sel!.line,
+    };
+  };
+  const isCovered = (path: string, side: "LEFT" | "RIGHT", line: number | undefined) =>
+    line !== undefined && coveredLines.has(lineAnchor(path, line, side));
+
   /** Keyboard navigation moves focus AND the viewport; clicks only focus. */
   const focusAndScroll = useCallback(
     (id: string) => {
@@ -1956,9 +2028,28 @@ export function DiffPane({
         >
           <span className="font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
             {selection.path.split("/").pop()}:{Math.min(selection.anchor, selection.focus)}
-            {selectionCount > 1 ? `-${Math.max(selection.anchor, selection.focus)}` : ""}
+            {selectionCount > 1 ? `–${Math.max(selection.anchor, selection.focus)}` : ""}
             {selection.side === "old" ? " (old)" : ""}
           </span>
+          {/* A range that straddles two hunks can't be commented on (GitHub
+              refuses it), so the button says why instead of disappearing. */}
+          <button
+            type="button"
+            className="btn"
+            data-testid="comment-selection-button"
+            disabled={!selectionTarget}
+            title={
+              selectionTarget
+                ? selectionCount > 1
+                  ? `Comment on lines ${Math.min(selection.anchor, selection.focus)}–${Math.max(selection.anchor, selection.focus)}`
+                  : "Comment on this line"
+                : "A comment can only cover lines inside one hunk — shorten the selection"
+            }
+            onClick={commentOnSelection}
+          >
+            <IconComment width={10} height={10} />
+            comment
+          </button>
           <button
             type="button"
             className="btn btn-primary"
@@ -2717,16 +2808,16 @@ export function DiffPane({
               ? undefined
               : () => toggleAnchor(lineAnchor(path, rightNo, "RIGHT"))
           }
-          onCommentLeft={
-            leftNo === undefined
-              ? undefined
-              : () => onComment({ subjectType: "line", file: path, line: leftNo, side: "LEFT" })
-          }
-          onCommentRight={
-            rightNo === undefined
-              ? undefined
-              : () => onComment({ subjectType: "line", file: path, line: rightNo, side: "RIGHT" })
-          }
+          onMarkerHoverLeft={leftNo === undefined ? undefined : markerHover(lineAnchor(path, leftNo, "LEFT"))}
+          onMarkerHoverRight={rightNo === undefined ? undefined : markerHover(lineAnchor(path, rightNo, "RIGHT"))}
+          onCommentLeft={leftNo === undefined ? undefined : lineCommentProps(path, "LEFT", leftNo).onComment}
+          onCommentRight={rightNo === undefined ? undefined : lineCommentProps(path, "RIGHT", rightNo).onComment}
+          commentLabelLeft={leftNo === undefined ? undefined : lineCommentProps(path, "LEFT", leftNo).commentLabel}
+          commentLabelRight={rightNo === undefined ? undefined : lineCommentProps(path, "RIGHT", rightNo).commentLabel}
+          commentVisibleLeft={leftNo === undefined ? undefined : lineCommentProps(path, "LEFT", leftNo).commentVisible}
+          commentVisibleRight={rightNo === undefined ? undefined : lineCommentProps(path, "RIGHT", rightNo).commentVisible}
+          coveredLeft={isCovered(path, "LEFT", leftNo)}
+          coveredRight={isCovered(path, "RIGHT", rightNo)}
           selectedLeft={inSelection(selection, path, "old", left?.row.oldNumber)}
           selectedRight={inSelection(selection, path, "new", right?.row.newNumber)}
           onSelectDown={
@@ -2763,12 +2854,9 @@ export function DiffPane({
         comments={anchor ? grouped.byLine.get(anchor) : undefined}
         expanded={anchor ? expandedAnchors.has(anchor) : false}
         onToggleComments={anchor ? () => toggleAnchor(anchor) : undefined}
-        onComment={
-          lineNo === undefined
-            ? undefined
-            : () =>
-                onComment({ subjectType: "line", file: row.entry.file.path, line: lineNo, side })
-        }
+        onMarkerHover={anchor ? markerHover(anchor) : undefined}
+        covered={isCovered(row.entry.file.path, side, lineNo)}
+        {...(lineNo === undefined ? {} : lineCommentProps(row.entry.file.path, side, lineNo))}
         selectedOld={inSelection(selection, row.entry.file.path, "old", line.oldNumber)}
         selectedNew={inSelection(selection, row.entry.file.path, "new", line.newNumber)}
         onSelectDown={

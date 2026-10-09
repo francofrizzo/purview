@@ -19,6 +19,7 @@ import {
   knownBots,
   placementLabel,
   splitReviewTags,
+  threadRange,
   threadSummary,
   type DisplayThread,
   type ThreadFilters,
@@ -194,7 +195,10 @@ export function ThreadView({
     const only = thread.items[0];
     return only.kind === "local" ? <CommentCard comment={only.comment} actions={actions} /> : null;
   }
-  const label = showPlacement ? placementLabel(thread) : null;
+  // On its line, a multi-line thread still says which lines (the diff lights
+  // them up too); in the file block the placement label covers that.
+  const range = showPlacement ? null : threadRange(thread);
+  const label = showPlacement ? placementLabel(thread) : range ? `lines ${range.start}–${range.end}` : null;
   const replies = thread.items.length - 1;
 
   if (thread.resolved && !open && !replying) {

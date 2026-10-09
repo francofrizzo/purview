@@ -17,7 +17,7 @@ import {
   type PrKey,
   liveUnits,
 } from "@reviewer/core";
-import { readComments } from "./comments.js";
+import { commentPosition, readComments } from "./comments.js";
 import { checkoutNote } from "./analysis.js";
 import { baseNote } from "./base-note.js";
 import { descriptionBlock } from "./pr-description.js";
@@ -257,7 +257,7 @@ export function resolveRefs(key: PrKey, refs: ChatRef[], root = stateRoot()): st
         blocks.push(
           comment!.subjectType === "file"
             ? `### Draft comment on ${comment!.file} (file-level, ${comment!.status})\n${comment!.body}`
-            : `### Draft comment on ${comment!.file}:${comment!.line} (${comment!.side}, ${comment!.status})\n${comment!.body}`,
+            : `### Draft comment on ${commentPosition(comment!)} (${comment!.side}, ${comment!.status})\n${comment!.body}`,
         );
         break;
       }
@@ -390,7 +390,8 @@ function draftCommentLines(key: PrKey, terminal?: { harness: HarnessId }): strin
     `- Create a draft: \`${cmd} comment add ${k} --file <path> --line <n> [--side LEFT] --body '<text>'\`, ` +
       "or `--whole-file` instead of `--line` for a file-level comment. `--line` is a line of the NEW version " +
       "(add `--side LEFT` for a line that only exists in the old version); it must be inside the current diff, " +
-      "so take it from the gutter of `show` output, never guess it.",
+      "so take it from the gutter of `show` output, never guess it. For a comment about several consecutive " +
+      "lines add `--start-line <n>`: the comment then covers start-line..line (both inside the same hunk).",
     `- Edit a draft: \`${cmd} comment edit ${k} <comment-id> --body '<text>'\`. ` +
       `Delete a draft: \`${cmd} comment delete ${k} <comment-id>\`.`,
     "- Quoting: pass the body in ONE pair of single quotes, and write every apostrophe inside it as `'\\''` " +

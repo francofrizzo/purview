@@ -28,3 +28,30 @@ describe("formatCommentList", () => {
     ).toBe("c1  draft     author=agent  a.ts:3  hi\n");
   });
 });
+
+describe("multi-line comments", () => {
+  it("prints the range as path:start–line", async () => {
+    const { commentLocation, newCommentPayload } = await import("../src/comment-client.js");
+    expect(commentLocation({ file: "a.ts", subjectType: "line", line: 18, startLine: 12 })).toBe("a.ts:12–18");
+    expect(commentLocation({ file: "a.ts", subjectType: "line", line: 18, startLine: 12, side: "LEFT" })).toBe(
+      "a.ts:12–18 (old side)",
+    );
+    expect(commentLocation({ file: "a.ts", subjectType: "line", line: 18 })).toBe("a.ts:18");
+    expect(newCommentPayload({ file: "a.ts", line: "18", startLine: "12" })).toEqual({
+      file: "a.ts",
+      subjectType: "line",
+      line: 18,
+      side: "RIGHT",
+      startLine: 12,
+    });
+    // A one-line range is a line comment.
+    expect(newCommentPayload({ file: "a.ts", line: "18", startLine: "18" })).toEqual({
+      file: "a.ts",
+      subjectType: "line",
+      line: 18,
+      side: "RIGHT",
+    });
+    expect(() => newCommentPayload({ file: "a.ts", line: "18", startLine: "20" })).toThrow(/must not come after/);
+    expect(() => newCommentPayload({ file: "a.ts", wholeFile: true, startLine: "2" })).toThrow(/--start-line/);
+  });
+});

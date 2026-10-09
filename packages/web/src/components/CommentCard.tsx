@@ -12,6 +12,7 @@
 import { useState, type ReactNode } from "react";
 import type { ChatRef, CommentStatus, DraftComment } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
+import { isRange, lineLabel } from "../lib/comments";
 import { pendingAttachmentCount } from "../lib/attachments";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
@@ -109,6 +110,14 @@ export function CommentCard({
         <span className="flex-none font-medium" style={{ color: meta.ink }} title={meta.hint}>
           {meta.label}
         </span>
+        {/* Inline, the covered lines light up; the words still say so (and
+            are all there is when the card sits in a file block or a list
+            that names no anchor). */}
+        {!anchor && isRange(comment) ? (
+          <span className="flex-none font-mono" style={{ color: "var(--fg-faint)" }} data-testid="comment-lines">
+            lines {lineLabel(comment)}
+          </span>
+        ) : null}
         <ByAgentChip comment={comment} />
         <PendingImagesChip comment={comment} />
         {Number.isFinite(age) ? (
@@ -277,6 +286,7 @@ export function CommentPill({
   onToggle,
   compact,
   title,
+  onHoverChange,
 }: {
   marker: MarkerSummary;
   expanded: boolean;
@@ -284,6 +294,8 @@ export function CommentPill({
   /** the diff gutter variant (hover follows the line, not the icon) */
   compact?: boolean;
   title: string;
+  /** the pointer is over the marker (the diff lights up a multi-line comment's lines) */
+  onHoverChange?: (hovering: boolean) => void;
 }) {
   const { look, count, resolved } = marker;
   const meta = markerLook(look);
@@ -302,6 +314,8 @@ export function CommentPill({
         e.stopPropagation();
         onToggle();
       }}
+      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
+      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
       className={`comment-marker relative inline-flex h-[18px] w-[18px] flex-none select-none items-center justify-center rounded-[4px] transition-colors ${
         compact
           ? "group-hover:bg-[var(--bg-raised)] group-hover:shadow-[inset_0_0_0_1px_var(--border-strong)] group-hover/half:bg-[var(--bg-raised)] group-hover/half:shadow-[inset_0_0_0_1px_var(--border-strong)]"

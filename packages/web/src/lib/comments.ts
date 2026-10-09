@@ -16,9 +16,36 @@ import {
   type DraftComment,
 } from "../api/types";
 
-/** Anchor key for a line comment: the tuple GitHub itself anchors on. */
+/**
+ * Anchor key for a line comment: the tuple GitHub itself anchors on. A
+ * multi-line comment anchors on its LAST line (that is where its marker goes).
+ */
 export function lineAnchor(file: string, line: number, side: "LEFT" | "RIGHT"): string {
   return `${file}:${line}:${side}`;
+}
+
+/** What a comment's lines look like: `startLine..line` for a range, else just the line. */
+export interface LineSpan {
+  line?: number | null;
+  startLine?: number | null;
+}
+
+/** `12–18` for a range, `18` for one line (an en dash, like GitHub's own label). */
+export function lineLabel(c: LineSpan): string {
+  if (c.line === null || c.line === undefined) return "";
+  const start = c.startLine ?? undefined;
+  return start !== undefined && start !== c.line ? `${start}–${c.line}` : `${c.line}`;
+}
+
+/** The first line a comment covers — `line` itself unless it is a range. */
+export function firstLine(c: LineSpan): number | undefined {
+  if (c.line === null || c.line === undefined) return undefined;
+  return c.startLine ?? c.line;
+}
+
+/** Is this a multi-line comment (a range of two or more lines)? */
+export function isRange(c: LineSpan): boolean {
+  return c.startLine !== null && c.startLine !== undefined && c.line !== null && c.line !== undefined && c.startLine < c.line;
 }
 
 export interface CommentGroups {
@@ -129,18 +156,38 @@ export function statusColors(status: CommentStatus): { fg: string; bg: string } 
  */
 export function isCommentAnchored(files: FilesJson, comment: DraftComment): boolean {
   if (isFileComment(comment)) return true;
-  return isLineInDiff(files, comment.file, comment.line as number, comment.side ?? "RIGHT");
+  const side = comment.side ?? "RIGHT";
+  const line = comment.line as number;
+  return isRange(comment)
+    ? isRangeInDiff(files, comment.file, side, comment.startLine as number, line)
+    : isLineInDiff(files, comment.file, line, side);
 }
 
 /** Is this line, on this side, inside one of the file's hunks? */
 export function isLineInDiff(files: FilesJson, path: string, line: number, side: "LEFT" | "RIGHT"): boolean {
+  return isRangeInDiff(files, path, side, line, line);
+}
+
+/**
+ * Is the whole `start..end` range (on one side) inside ONE of the file's
+ * hunks? GitHub refuses a multi-line comment that straddles two hunks, so the
+ * compose affordance and the "outside the diff" verdict both ask this.
+ */
+export function isRangeInDiff(
+  files: FilesJson,
+  path: string,
+  side: "LEFT" | "RIGHT",
+  start: number,
+  end: number,
+): boolean {
   const file = files.files.find((f) => f.path === path);
   if (!file) return false;
-  return file.hunks.some((h) =>
-    side === "RIGHT"
-      ? h.newLines > 0 && line >= h.newStart && line < h.newStart + h.newLines
-      : h.oldLines > 0 && line >= h.oldStart && line < h.oldStart + h.oldLines,
-  );
+  const lo = Math.min(start, end);
+  const hi = Math.max(start, end);
+  return file.hunks.some((h) => {
+    const [from, count] = side === "RIGHT" ? [h.newStart, h.newLines] : [h.oldStart, h.oldLines];
+    return count > 0 && lo >= from && hi < from + count;
+  });
 }
 
 /** "3 comments (1 submitted)" — the bubble's tooltip. */

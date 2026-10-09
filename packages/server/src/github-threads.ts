@@ -52,7 +52,12 @@ export interface RemoteThread {
   subjectType: "line" | "file";
   line: number | null;
   originalLine: number | null;
+  /** first line of a multi-line thread (`startLine..line`); null on a single-line one */
   startLine: number | null;
+  /** the first line as it was when written (`originalLine`'s counterpart) */
+  originalStartLine: number | null;
+  /** GitHub's `startDiffSide`; in practice always `side` */
+  startSide: "LEFT" | "RIGHT" | null;
   side: "LEFT" | "RIGHT";
   isResolved: boolean;
   isOutdated: boolean;
@@ -183,6 +188,8 @@ export interface RawThread {
   line?: number | null;
   originalLine?: number | null;
   startLine?: number | null;
+  originalStartLine?: number | null;
+  startDiffSide?: string | null;
   diffSide?: string | null;
   subjectType?: string | null;
   isResolved?: boolean;
@@ -229,7 +236,7 @@ const THREADS_QUERY = `query($owner:String!,$repo:String!,$number:Int!,$after:St
       reviewThreads(first:100,after:$after){
         pageInfo{ hasNextPage endCursor }
         nodes{
-          id path line originalLine startLine diffSide subjectType
+          id path line originalLine startLine originalStartLine startDiffSide diffSide subjectType
           isResolved isOutdated resolvedBy{ login }
           viewerCanResolve viewerCanUnresolve viewerCanReply
           comments(first:100){
@@ -417,6 +424,17 @@ export function normalizeThreads(raw: readonly RawThread[], opts: NormalizeOptio
       line: t.line ?? null,
       originalLine: t.originalLine ?? null,
       startLine: t.startLine ?? null,
+      originalStartLine: t.originalStartLine ?? null,
+      startSide:
+        t.startLine == null && t.originalStartLine == null
+          ? null
+          : t.startDiffSide === "LEFT"
+            ? "LEFT"
+            : t.startDiffSide === "RIGHT"
+              ? "RIGHT"
+              : t.diffSide === "LEFT"
+                ? "LEFT"
+                : "RIGHT",
       side: t.diffSide === "LEFT" ? "LEFT" : "RIGHT",
       isResolved: t.isResolved ?? false,
       isOutdated: t.isOutdated ?? false,
@@ -488,7 +506,21 @@ export function normalizeConversation(
 
 /** What `linkLocal` needs of a Purview comment. */
 export type LocalForLink = Pick<Comment, "id" | "githubCommentId"> &
-  Partial<Pick<Comment, "file" | "line" | "body" | "status" | "subjectType">>;
+  Partial<Pick<Comment, "file" | "line" | "startLine" | "body" | "status" | "subjectType">>;
+
+/**
+ * Does a local line comment sit where a thread does? The line, current or
+ * original (an outdated thread keeps only the latter), and the range start
+ * likewise — a one-line comment never matches a range ending on its line.
+ * Caches written before `startLine` existed carry neither field on the
+ * thread, so an absent start there matches only a single-line comment.
+ */
+function samePlace(l: LocalForLink, t: RemoteThread): boolean {
+  if (l.line !== t.line && l.line !== t.originalLine) return false;
+  const start = t.startLine ?? t.originalStartLine ?? undefined;
+  const origStart = t.originalStartLine ?? undefined;
+  return l.startLine === undefined ? start === undefined : l.startLine === start || l.startLine === origStart;
+}
 
 /**
  * Point each remote comment at the Purview comment it mirrors, so the UI shows
@@ -520,9 +552,7 @@ export function linkLocal(threads: RemoteThread[], localComments: readonly Local
             !taken.has(l.id) &&
             l.file === t.path &&
             (l.body ?? "").trim() === c.body.trim() &&
-            (t.subjectType === "file"
-              ? l.subjectType === "file"
-              : l.line === t.line || l.line === t.originalLine),
+            (t.subjectType === "file" ? l.subjectType === "file" : samePlace(l, t)),
         );
         if (match) {
           taken.add(match.id);

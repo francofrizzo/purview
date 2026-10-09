@@ -89,10 +89,21 @@ const CommentObjectSchema = z.object({
   id: z.string(),
   file: z.string(),
   subjectType: CommentSubjectTypeSchema,
-  /** Absent on file-level comments. */
+  /** Absent on file-level comments. On a multi-line comment, the LAST line of the range. */
   line: z.number().int().optional(),
   /** Absent on file-level comments. */
   side: CommentSideSchema.optional(),
+  /**
+   * A multi-line comment covers `startLine..line` inclusive, GitHub's own
+   * model (`start_line`/`line`). Absent on a single-line comment — never
+   * equal to `line`. The range lies inside one hunk, on one side.
+   */
+  startLine: z.number().int().optional(),
+  /**
+   * GitHub's `start_side`. In practice always `side` (a range on one side of
+   * the diff), stored anyway so the wire shape round-trips faithfully.
+   */
+  startSide: CommentSideSchema.optional(),
   body: z.string().min(1),
   createdAt: z.string(),
   status: CommentStatusSchema,
@@ -133,9 +144,19 @@ const CommentObjectSchema = z.object({
   history: z.array(CommentBodyRevisionSchema).optional(),
 });
 
-/** `subjectType` decides which of `line`/`side` are legal — both, or neither. */
+/**
+ * `subjectType` decides which of `line`/`side` are legal — both, or neither —
+ * and a range (`startLine`) is only legal on a line comment, ahead of `line`
+ * and on the same side.
+ */
 function subjectInvariant(
-  v: { subjectType: CommentSubjectType; line?: number; side?: CommentSide },
+  v: {
+    subjectType: CommentSubjectType;
+    line?: number;
+    side?: CommentSide;
+    startLine?: number;
+    startSide?: CommentSide;
+  },
   ctx: z.RefinementCtx,
 ): void {
   if (v.subjectType === "file") {
@@ -151,6 +172,13 @@ function subjectInvariant(
         code: z.ZodIssueCode.custom,
         path: ["side"],
         message: "A file-level comment must not carry a side",
+      });
+    }
+    if (v.startLine !== undefined || v.startSide !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["startLine"],
+        message: "A file-level comment must not carry a line range",
       });
     }
     return;
@@ -169,6 +197,35 @@ function subjectInvariant(
       message: "A line comment requires a side (LEFT or RIGHT)",
     });
   }
+  if (v.startLine !== undefined && v.line !== undefined && v.startLine >= v.line) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["startLine"],
+      message: "A multi-line comment's startLine must come before its line",
+    });
+  }
+  if (v.startSide !== undefined && v.side !== undefined && v.startSide !== v.side) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["startSide"],
+      message: "A multi-line comment must stay on one side of the diff",
+    });
+  }
+  if (v.startSide !== undefined && v.startLine === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["startSide"],
+      message: "startSide requires a startLine",
+    });
+  }
+}
+
+/** `path:12–18` for a range, `path:18` for one line, `path` for the whole file. */
+export function commentPosition(
+  c: Pick<Comment, "file" | "subjectType" | "line" | "startLine">,
+): string {
+  if (c.subjectType === "file" || c.line === undefined) return c.file;
+  return `${c.file}:${c.startLine !== undefined ? `${c.startLine}–` : ""}${c.line}`;
 }
 
 export const CommentSchema = CommentObjectSchema.superRefine(subjectInvariant);
@@ -208,14 +265,25 @@ export const NewCommentSchema = z
     subjectType: CommentSubjectTypeSchema.optional(),
     line: z.number().int().optional(),
     side: CommentSideSchema.optional(),
+    /** first line of a multi-line comment (`startLine..line`); omit for one line */
+    startLine: z.number().int().optional(),
+    /** defaults to `side` — a range never straddles the two sides */
+    startSide: CommentSideSchema.optional(),
     body: z.string().min(1),
     /** reply to this GitHub thread (node id) rather than start a new one */
     inReplyTo: z.string().min(1).optional(),
   })
-  .transform((v) => ({
-    ...v,
-    subjectType: v.subjectType ?? (v.line === undefined ? ("file" as const) : ("line" as const)),
-  }))
+  .transform((v) => {
+    // A "range" of one line is a single-line comment; say so in the stored
+    // shape rather than carrying a redundant startLine around.
+    const { startLine: rawStart, startSide: rawStartSide, ...rest } = v;
+    const startLine = rawStart !== undefined && rawStart === v.line ? undefined : rawStart;
+    return {
+      ...rest,
+      subjectType: v.subjectType ?? (v.line === undefined ? ("file" as const) : ("line" as const)),
+      ...(startLine !== undefined ? { startLine, startSide: rawStartSide ?? v.side } : {}),
+    };
+  })
   .superRefine(subjectInvariant);
 export type NewComment = z.infer<typeof NewCommentSchema>;
 
@@ -238,10 +306,22 @@ function normalize(raw: z.infer<typeof StoredCommentSchema>): Comment {
   const subjectType: CommentSubjectType =
     raw.subjectType === "file" || raw.line === undefined ? "file" : "line";
   if (subjectType === "file") {
-    const { line: _line, side: _side, ...rest } = raw;
+    const { line: _line, side: _side, startLine: _start, startSide: _startSide, ...rest } = raw;
     return { ...rest, subjectType, status };
   }
-  return { ...raw, subjectType, line: raw.line, side: raw.side ?? "RIGHT", status };
+  const side = raw.side ?? "RIGHT";
+  // A range that does not precede its line is unrepresentable (GitHub rejects
+  // it too); read it as the single-line comment it would have been.
+  const { startLine: rawStart, startSide: _rawStartSide, ...rest } = raw;
+  const startLine = rawStart !== undefined && rawStart < raw.line! ? rawStart : undefined;
+  return {
+    ...rest,
+    subjectType,
+    line: raw.line,
+    side,
+    ...(startLine !== undefined ? { startLine, startSide: side } : {}),
+    status,
+  };
 }
 
 export function readComments(key: PrKey, root = stateRoot()): Comment[] {
@@ -529,7 +609,13 @@ export function updateCommentPosition(
   if (line === target.line && file === target.file) {
     return { found: true, changed: false, comment: target };
   }
-  const updated: Comment = { ...target, line, file };
+  // A range moves as a whole: its first line shifts by the same amount as its
+  // last. (The route has already checked the shifted range is in the diff.)
+  const startLine =
+    target.startLine !== undefined && line !== undefined && target.line !== undefined
+      ? target.startLine + (line - target.line)
+      : target.startLine;
+  const updated: Comment = { ...target, line, file, ...(startLine !== undefined ? { startLine } : {}) };
   const next = [...comments];
   next[idx] = updated;
   writeComments(key, next, root);
@@ -677,16 +763,30 @@ function hunkAnchorsLine(hunk: Hunk, line: number, side: CommentSide): boolean {
   return hunk.oldLines > 0 && line >= hunk.oldStart && line < hunk.oldStart + hunk.oldLines;
 }
 
-/** The hunk (if any) that anchors `file:line` on `side`, in a given revision's files. */
+/**
+ * The hunk (if any) that anchors `file:line` on `side`, in a given revision's
+ * files. With `startLine` (a multi-line comment), the one hunk that anchors
+ * the whole `startLine..line` range — GitHub refuses a range that straddles
+ * two hunks, so one that does is "not in the diff" here too.
+ */
 export function findAnchoringHunk(
   files: FileDiff[],
   file: string,
   line: number,
   side: CommentSide,
+  startLine?: number,
 ): Hunk | undefined {
   const f = files.find((f) => f.path === file);
   if (!f) return undefined;
-  return f.hunks.find((h) => hunkAnchorsLine(h, line, side));
+  return f.hunks.find(
+    (h) =>
+      hunkAnchorsLine(h, line, side) && (startLine === undefined || hunkAnchorsLine(h, startLine, side)),
+  );
+}
+
+/** `findAnchoringHunk` for a stored line comment, range and all. */
+export function anchoringHunkOf(files: FileDiff[], c: Comment): Hunk | undefined {
+  return findAnchoringHunk(files, c.file, c.line!, c.side!, c.startLine);
 }
 
 /**
@@ -722,6 +822,9 @@ export interface DraftCommentMove {
   toLine: number;
   /** set only when the anchoring hunk now lives under a different path (rename) */
   toFile?: string;
+  /** a multi-line comment's first line, before and after (absent on a single-line one) */
+  fromStartLine?: number;
+  toStartLine?: number;
 }
 
 /**
@@ -764,8 +867,12 @@ export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftComm
   for (const draft of drafts) {
     const line = draft.line!;
     const side = draft.side!;
-    if (findAnchoringHunk(currentFiles, draft.file, line, side)) continue;
+    if (anchoringHunkOf(currentFiles, draft)) continue;
 
+    // A multi-line comment is looked up as a whole: the hunk must have held
+    // both ends. One that only ever held one end gives no safe offset, so the
+    // comment stays put and is reported as outside the diff rather than
+    // quietly shrunk to the end that survived.
     let anchoringHunk: Hunk | undefined;
     for (const rev of priorRevisions(state)) {
       let files: FileDiff[];
@@ -774,7 +881,7 @@ export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftComm
       } catch {
         continue; // no files.json for this revision — tolerate and keep looking
       }
-      const hunk = findAnchoringHunk(files, draft.file, line, side);
+      const hunk = anchoringHunkOf(files, draft);
       if (hunk) {
         anchoringHunk = hunk;
         break;
@@ -785,14 +892,30 @@ export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftComm
     const current = currentById.get(anchoringHunk.id);
     if (!current) continue; // the hunk itself is gone from the current revision
 
-    const toLine =
+    // Same id => same added/removed lines, so an offset into the hunk
+    // transfers. Context lines are not part of the id, though: a hunk that
+    // lost some can be shorter than it was, and an offset that fit before
+    // can fall off its end — for a range, either end. Leave such a comment
+    // alone (it is then reported as outside the diff) rather than move it
+    // somewhere it does not anchor, or shrink it to the end that survived.
+    const shift =
       side === "RIGHT"
-        ? line - anchoringHunk.newStart + current.hunk.newStart
-        : line - anchoringHunk.oldStart + current.hunk.oldStart;
+        ? current.hunk.newStart - anchoringHunk.newStart
+        : current.hunk.oldStart - anchoringHunk.oldStart;
+    const toLine = line + shift;
+    const toStartLine = draft.startLine !== undefined ? draft.startLine + shift : undefined;
+    if (!hunkAnchorsLine(current.hunk, toLine, side)) continue;
+    if (toStartLine !== undefined && !hunkAnchorsLine(current.hunk, toStartLine, side)) continue;
     const toFile = current.file !== draft.file ? current.file : undefined;
+    const range = toStartLine !== undefined ? { fromStartLine: draft.startLine!, toStartLine } : {};
 
-    byId.set(draft.id, { ...draft, line: toLine, file: toFile ?? draft.file });
-    moves.push({ id: draft.id, file: draft.file, fromLine: line, toLine, toFile });
+    byId.set(draft.id, {
+      ...draft,
+      line: toLine,
+      file: toFile ?? draft.file,
+      ...(range.toStartLine !== undefined ? { startLine: range.toStartLine } : {}),
+    });
+    moves.push({ id: draft.id, file: draft.file, fromLine: line, toLine, toFile, ...range });
   }
 
   if (moves.length > 0) {
@@ -822,5 +945,5 @@ export function unanchoredDraftLineComments(key: PrKey, root = stateRoot()): Com
   } catch {
     return [];
   }
-  return drafts.filter((c) => !findAnchoringHunk(currentFiles, c.file, c.line!, c.side!));
+  return drafts.filter((c) => !anchoringHunkOf(currentFiles, c));
 }

@@ -8,7 +8,7 @@
  */
 
 import { isFileComment, type CommentStatus, type CommentSubject, type FilesJson, type Hunk } from "../api/types";
-import { compareCommentOrder } from "./comments";
+import { compareCommentOrder, firstLine, lineLabel } from "./comments";
 import { buildRows, languageFor } from "./diffModel";
 
 /** How much of the surrounding hunk travels with the anchored line. */
@@ -31,6 +31,8 @@ export interface ExportableComment {
   line: number | null;
   /** null for a file-level comment */
   side: "LEFT" | "RIGHT" | null;
+  /** first line of a multi-line comment (`startLine..line`) */
+  startLine?: number | null;
   body: string;
   status?: CommentStatus;
   /** absent → "line", so older payloads export exactly as they always did */
@@ -88,9 +90,10 @@ export interface Snippet {
 }
 
 /**
- * The lines a comment anchors to: the hunk that contains the anchored line,
- * sliced to ±`CONTEXT_LINES` around it. `null` when no hunk in the current
- * revision still has that line — a stale comment.
+ * The lines a comment anchors to: the hunk that contains the anchored line
+ * (every line of the range, for a multi-line comment), sliced to
+ * ±`CONTEXT_LINES` around it. `null` when no hunk in the current revision
+ * still has that line — a stale comment.
  */
 export function snippetFor(comment: ExportableComment, ctx: DiffContext): Snippet | null {
   // A file-level comment points at no line, so there is no code to carry.
@@ -111,10 +114,14 @@ function sliceHunk(hunk: Hunk, comment: ExportableComment, diff: string): string
     comment.side === "LEFT" ? r.oldNumber : r.newNumber;
   const at = rows.findIndex((r) => number(r) === comment.line);
   if (at === -1) return null;
+  // A range starts earlier in the same hunk (GitHub, and the server, refuse
+  // one that straddles two) — if this hunk lacks the start, it isn't the one.
+  const startAt = rows.findIndex((r) => number(r) === firstLine(comment));
+  if (startAt === -1) return null;
 
   // Clamped, not padded: a comment on the first line of a hunk gets whatever
   // context the hunk actually has, rather than blank filler.
-  const from = Math.max(0, at - CONTEXT_LINES);
+  const from = Math.max(0, startAt - CONTEXT_LINES);
   const to = Math.min(rows.length, at + CONTEXT_LINES + 1);
   return rows.slice(from, to).map((r) => {
     if (r.type === "add") return `+${r.content}`;
@@ -138,7 +145,7 @@ function heading(comment: ExportableComment, index?: number): string {
   const number = index === undefined ? "" : `${index}. `;
   if (isFileComment(comment)) return `### ${number}\`${comment.file}\` (file-level)`;
   const side = comment.side === "LEFT" ? "old side" : "new side";
-  return `### ${number}\`${comment.file}:${comment.line}\` (${side})`;
+  return `### ${number}\`${comment.file}:${lineLabel(comment)}\` (${side})`;
 }
 
 /**

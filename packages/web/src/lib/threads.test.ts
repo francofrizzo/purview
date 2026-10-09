@@ -398,3 +398,36 @@ describe("drawerThreads", () => {
     expect(drawerThreads([lone, answered, theirs]).map((t) => t.id)).toEqual([answered.id, theirs.id]);
   });
 });
+
+describe("multi-line threads", () => {
+  it("hangs a range thread off its last line only when both ends are in the diff", () => {
+    const t = thread({ line: 9, startLine: 7, originalLine: 9, originalStartLine: 7, startSide: "RIGHT" });
+    const inDiff = (_f: string, line: number) => line >= 8;
+    const g = buildThreadGroups({ comments: [], threads: [t], inDiff });
+    expect(g.byLine.size).toBe(0);
+    expect(g.byFile.get("src/a.ts")?.[0].placement).toBe("off-diff");
+    expect(placementLabel(g.byFile.get("src/a.ts")![0])).toBe("lines 7–9 · not in this diff");
+    const ok = buildThreadGroups({ comments: [], threads: [t], inDiff: () => true });
+    expect(ok.byLine.get(lineAnchor("src/a.ts", 9, "RIGHT"))).toHaveLength(1);
+  });
+
+  it("says what lines an outdated range was on", () => {
+    const t = thread({ line: null, startLine: null, originalLine: 9, originalStartLine: 7, isOutdated: true });
+    const g = buildThreadGroups({ comments: [], threads: [t] });
+    expect(placementLabel(g.byFile.get("src/a.ts")![0])).toBe("outdated · was lines 7–9");
+  });
+
+  it("reports the lines a thread covers, remote or local", async () => {
+    const { threadRange } = await import("./threads");
+    const remote = thread({ line: 9, startLine: 7 });
+    const g = buildThreadGroups({
+      comments: [local({ id: "r", line: 20, startLine: 18 }), local({ id: "s", line: 21 })],
+      threads: [remote],
+    });
+    const by = (key: string) => [...g.byLine.values()].flat().find((t) => t.key === key)!;
+    expect(threadRange(by(remote.id))).toEqual({ path: "src/a.ts", side: "RIGHT", start: 7, end: 9 });
+    expect(threadRange(by("local:r"))).toEqual({ path: "src/a.ts", side: "RIGHT", start: 18, end: 20 });
+    expect(threadRange(by("local:s"))).toBeNull();
+    expect(threadRange(by(thread({ line: 9, startLine: null }).id) ?? by(remote.id))).not.toBeNull();
+  });
+});

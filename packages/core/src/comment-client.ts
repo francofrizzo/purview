@@ -56,16 +56,21 @@ export interface ServerComment {
   subjectType: "line" | "file";
   line?: number;
   side?: "LEFT" | "RIGHT";
+  /** first line of a multi-line comment (`startLine..line`) */
+  startLine?: number;
   body: string;
   status: "draft" | "pushed" | "submitted";
   author?: ServerCommentActor;
   lastEditedBy?: ServerCommentActor;
 }
 
-/** `path:line`, `path:line (old side)`, or `path (whole file)`. */
-export function commentLocation(c: Pick<ServerComment, "file" | "subjectType" | "line" | "side">): string {
+/** `path:line`, `path:12–18` (a range), `path:line (old side)`, or `path (whole file)`. */
+export function commentLocation(
+  c: Pick<ServerComment, "file" | "subjectType" | "line" | "side" | "startLine">,
+): string {
   if (c.subjectType === "file" || c.line === undefined) return `${c.file} (whole file)`;
-  return `${c.file}:${c.line}${c.side === "LEFT" ? " (old side)" : ""}`;
+  const range = c.startLine !== undefined && c.startLine !== c.line ? `${c.startLine}–` : "";
+  return `${c.file}:${range}${c.line}${c.side === "LEFT" ? " (old side)" : ""}`;
 }
 
 function firstLine(body: string, max = 80): string {
@@ -92,6 +97,8 @@ export function formatCommentList(comments: ServerComment[]): string {
 export interface NewCommentArgs {
   file: string;
   line?: string;
+  /** first line of a multi-line comment; the comment covers startLine..line */
+  startLine?: string;
   side?: string;
   wholeFile?: boolean;
 }
@@ -102,12 +109,14 @@ export function newCommentPayload(args: NewCommentArgs): {
   subjectType: "line" | "file";
   line?: number;
   side?: "LEFT" | "RIGHT";
+  startLine?: number;
 } {
   const file = args.file.replace(/^\.\//, "");
   if (!file) throw new Error("--file is required");
   if (args.wholeFile) {
     if (args.line !== undefined) throw new Error("Pass either --line or --whole-file, not both");
     if (args.side !== undefined) throw new Error("--side only applies to line comments");
+    if (args.startLine !== undefined) throw new Error("--start-line only applies to line comments");
     return { file, subjectType: "file" };
   }
   if (args.line === undefined) throw new Error("Pass --line <n> (or --whole-file for a file-level comment)");
@@ -115,7 +124,12 @@ export function newCommentPayload(args: NewCommentArgs): {
   if (!Number.isInteger(line) || line < 1) throw new Error(`Invalid --line "${args.line}"`);
   const side = (args.side ?? "RIGHT").toUpperCase();
   if (side !== "RIGHT" && side !== "LEFT") throw new Error(`--side must be RIGHT or LEFT, not "${args.side}"`);
-  return { file, subjectType: "line", line, side };
+  if (args.startLine === undefined) return { file, subjectType: "line", line, side };
+  const startLine = Number(args.startLine);
+  if (!Number.isInteger(startLine) || startLine < 1) throw new Error(`Invalid --start-line "${args.startLine}"`);
+  if (startLine > line) throw new Error(`--start-line (${startLine}) must not come after --line (${line})`);
+  // A one-line "range" is just a line comment.
+  return startLine === line ? { file, subjectType: "line", line, side } : { file, subjectType: "line", line, side, startLine };
 }
 
 /** Exactly one of --body / --body-file; the body must not be blank. */

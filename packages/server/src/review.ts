@@ -44,6 +44,8 @@ export interface ReviewStatus {
       subjectType: "line" | "file";
       line?: number;
       side?: "LEFT" | "RIGHT";
+      /** first line of a multi-line comment (`startLine..line`) */
+      startLine?: number;
       body: string;
       status: string;
     }[];
@@ -101,6 +103,7 @@ export function reviewStatus(
           subjectType: c.subjectType,
           line: c.line,
           side: c.side,
+          ...(c.startLine !== undefined ? { startLine: c.startLine } : {}),
           body: c.body,
           status: c.status,
         })),

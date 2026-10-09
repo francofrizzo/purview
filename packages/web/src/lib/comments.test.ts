@@ -260,3 +260,42 @@ describe("attentionStatus", () => {
     expect(attentionStatus([{}])).toBe("draft");
   });
 });
+
+describe("multi-line comments", () => {
+  const files: FilesJson = {
+    files: [
+      {
+        path: "src/a.ts",
+        hunks: [
+          { id: "h1", file: "src/a.ts", oldStart: 10, oldLines: 3, newStart: 10, newLines: 3, header: "" },
+          { id: "h2", file: "src/a.ts", oldStart: 30, oldLines: 2, newStart: 30, newLines: 4, header: "" },
+        ],
+      },
+    ],
+  };
+
+  it("labels a range with an en dash and a single line plainly", async () => {
+    const { lineLabel, firstLine, isRange } = await import("./comments");
+    expect(lineLabel({ line: 18, startLine: 12 })).toBe("12–18");
+    expect(lineLabel({ line: 18 })).toBe("18");
+    expect(lineLabel({ line: 18, startLine: null })).toBe("18");
+    expect(lineLabel({ line: 18, startLine: 18 })).toBe("18");
+    expect(lineLabel({ line: null })).toBe("");
+    expect(firstLine({ line: 18, startLine: 12 })).toBe(12);
+    expect(firstLine({ line: 18 })).toBe(18);
+    expect(isRange({ line: 18, startLine: 12 })).toBe(true);
+    expect(isRange({ line: 18, startLine: 18 })).toBe(false);
+    expect(isRange({ line: 18 })).toBe(false);
+  });
+
+  it("anchors a range only when one hunk holds both ends", async () => {
+    const { isRangeInDiff } = await import("./comments");
+    expect(isRangeInDiff(files, "src/a.ts", "RIGHT", 10, 12)).toBe(true);
+    expect(isRangeInDiff(files, "src/a.ts", "RIGHT", 12, 10)).toBe(true); // either order
+    expect(isRangeInDiff(files, "src/a.ts", "RIGHT", 11, 31)).toBe(false); // two hunks
+    expect(isRangeInDiff(files, "src/a.ts", "RIGHT", 30, 33)).toBe(true);
+    expect(isRangeInDiff(files, "src/a.ts", "LEFT", 30, 33)).toBe(false); // old side has 2 lines there
+    expect(isCommentAnchored(files, c({ line: 12, startLine: 10 }))).toBe(true);
+    expect(isCommentAnchored(files, c({ line: 31, startLine: 11 }))).toBe(false);
+  });
+});
