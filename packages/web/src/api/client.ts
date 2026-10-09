@@ -11,6 +11,7 @@ import type {
   ChatMessage,
   ChatRef,
   ChatHandoff,
+  StopChatResult,
   ChatAgentResult,
   ChatAgentSelection,
   AgentsInfo,
@@ -1013,6 +1014,17 @@ export const api = {
       onEvent,
       signal,
     );
+  },
+
+  /**
+   * Stop the turn in flight. Resolves once the server has finalized it — the
+   * reply so far is persisted as an `interrupted` message and the running
+   * stream ends with that same `done` — so a send right after is accepted.
+   * 409 `chat_idle` when nothing is running.
+   */
+  async stopChat(key: string): Promise<StopChatResult> {
+    if (MOCK) return mockApi.stopChat(key);
+    return post<StopChatResult>(`/prs/${encodeKey(key)}/chat/stop`);
   },
 
   /**

@@ -31,6 +31,7 @@ import {
   IconMinimize,
   IconPaperclip as TablerPaperclip,
   IconPencil,
+  IconPlayerStopFilled,
   IconPlus as TablerPlus,
   IconQuote as TablerQuote,
   IconRefresh as TablerRefresh,
@@ -139,6 +140,9 @@ export const IconSpinner = ({ className, ...p }: P) => (
     className={["animate-spin", className].filter(Boolean).join(" ")}
   />
 );
+
+/** Stop the reply in flight. */
+export const IconStop = wrap(IconPlayerStopFilled);
 
 /** Downward arrow — jump to the latest message. */
 export const IconArrowDown = wrap(TablerArrowDown);

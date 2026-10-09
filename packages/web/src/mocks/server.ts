@@ -26,6 +26,7 @@ import type {
   PrDetail,
   PrListEntry,
   ChatHandoff,
+  StopChatResult,
   ChatAgentResult,
   GlobalConfig,
   GlobalConfigPatch,
@@ -545,6 +546,13 @@ function recomputeFileRollups() {
 /* ------------------------------------------------------------------------ */
 
 const chats: Record<string, ChatMessage[]> = {};
+
+/**
+ * The turn streaming for a PR, while there is one: `stopChat` flags it and
+ * waits for the stream to finalize, the way the server's stop waits for the
+ * child to exit and the transcript to be written.
+ */
+const liveTurns: Record<string, { stopped: boolean; done: Promise<ChatMessage | null> } | undefined> = {};
 const repoPaths: Record<string, string> = {};
 
 /**
@@ -1769,6 +1777,18 @@ export const mockApi = {
     const shouldFail = /\bfail\b/i.test(input.text);
     const chunks = chunkReply(CANNED_REPLY);
     let cancelled = false;
+    let finish!: (message: ChatMessage | null) => void;
+    const live = {
+      stopped: false,
+      done: new Promise<ChatMessage | null>((resolve) => {
+        finish = resolve;
+      }),
+    };
+    liveTurns[key] = live;
+    const end = (message: ChatMessage | null) => {
+      if (liveTurns[key] === live) liveTurns[key] = undefined;
+      finish(message);
+    };
 
     return new ReadableStream<Uint8Array>({
       async start(controller) {
@@ -1776,9 +1796,19 @@ export const mockApi = {
         signal?.addEventListener("abort", () => {
           cancelled = true;
         });
+        let text = "";
+        /** A stop lands like the server's: the text so far, marked, persisted, and `done`. */
+        const interrupt = () => {
+          const message: ChatMessage = { role: "assistant", text, ts: new Date().toISOString(), interrupted: true };
+          store.push(message);
+          controller.enqueue(frame("done", { message }));
+          controller.close();
+          end(message);
+        };
 
         await delay(320);
-        if (stop()) return controller.close();
+        if (live.stopped) return interrupt();
+        if (stop()) return (controller.close(), end(null));
 
         if (shouldFail) {
           controller.enqueue(
@@ -1786,10 +1816,9 @@ export const mockApi = {
           );
           controller.close();
           store.pop();
-          return;
+          return end(null);
         }
 
-        let text = "";
         for (let i = 0; i < chunks.length; i++) {
           for (const tool of TOOL_CALLS) {
             if (tool.at === i) {
@@ -1797,7 +1826,8 @@ export const mockApi = {
               await delay(420);
             }
           }
-          if (stop()) return controller.close();
+          if (live.stopped) return interrupt();
+          if (stop()) return (controller.close(), end(null));
           text += chunks[i];
           controller.enqueue(frame("delta", { text: chunks[i] }));
           await delay(18 + Math.round(Math.random() * 26));
@@ -1807,11 +1837,31 @@ export const mockApi = {
         store.push(message);
         controller.enqueue(frame("done", { message }));
         controller.close();
+        end(message);
       },
       cancel() {
         cancelled = true;
+        end(null);
       },
     });
+  },
+
+  /**
+   * Stop the turn streaming for this PR: the stream ends with an `interrupted`
+   * `done` carrying the text so far, and this resolves once it has. 409
+   * `chat_idle` when nothing is streaming, like the server.
+   */
+  async stopChat(key: string): Promise<StopChatResult> {
+    const live = liveTurns[key];
+    if (!live) {
+      throw new ApiError("chat_idle", 409, { error: "chat_idle", detail: `No chat turn is running for ${key}` });
+    }
+    live.stopped = true;
+    const message = await live.done;
+    if (!message) {
+      throw new ApiError("chat_idle", 409, { error: "chat_idle", detail: "The chat turn had already ended" });
+    }
+    return { ok: true, message };
   },
 
   /**

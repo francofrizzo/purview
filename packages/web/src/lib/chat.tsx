@@ -110,6 +110,17 @@ interface ChatContextValue {
   queue: QueuedMessage[];
   /** drop a queued message; returns it, so "edit" can load it back into the composer */
   unqueue: (id: number) => QueuedMessage | undefined;
+  /**
+   * Stop the reply in flight. The server keeps what had streamed as an
+   * `interrupted` message and ends the stream, which is what moves the queue
+   * on; this resolves when the stop was acknowledged (or refused: idle).
+   */
+  stop: () => Promise<void>;
+  /**
+   * Stop the current reply and send this queued message next: it moves to
+   * the head of the queue, the rest keep their order behind it.
+   */
+  sendQueuedNow: (id: number) => void;
   /** give up on the failed turn (no retry), letting the queue move on */
   dismissFailure: () => void;
   retry: () => void;
@@ -359,7 +370,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         ts: new Date().toISOString(),
         tools: seenTools.length ? seenTools : undefined,
       };
-      if (message.text.trim()) setMessages((cur) => [...cur, message]);
+      // An interrupted reply stays even when empty: its "stopped" marker is
+      // what tells the reader why the question above it has no answer.
+      if (message.text.trim() || message.interrupted) setMessages((cur) => [...cur, message]);
     })();
   }, [queryClient]);
 
@@ -397,6 +410,27 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   );
 
   const dismissFailure = useCallback(() => setFailure(null), []);
+
+  // Only a request: the running stream sees the server's `done` (marked
+  // interrupted) and winds the turn down itself, exactly as a natural end
+  // would, so there is no second code path for the transcript to get out of
+  // step on. A refusal (the turn ended on its own first) is nothing to show.
+  const stop = useCallback(async () => {
+    const key = keyRef.current;
+    if (!key || !abortRef.current) return;
+    await api.stopChat(key).catch(() => {});
+  }, []);
+
+  const sendQueuedNow = useCallback(
+    (id: number) => {
+      setQueue((cur) => {
+        const pick = cur.find((q) => q.id === id);
+        return pick ? [pick, ...cur.filter((q) => q.id !== id)] : cur;
+      });
+      void stop();
+    },
+    [stop],
+  );
 
   const unqueue = useCallback((id: number) => {
     const found = queueRef.current.find((q) => q.id === id);
@@ -569,6 +603,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       send,
       queue,
       unqueue,
+      stop,
+      sendQueuedNow,
       dismissFailure,
       retry,
       clearConversation,
@@ -601,6 +637,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       send,
       queue,
       unqueue,
+      stop,
+      sendQueuedNow,
       dismissFailure,
       retry,
       clearConversation,

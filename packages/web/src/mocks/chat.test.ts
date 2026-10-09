@@ -82,3 +82,26 @@ describe("mock chat edit", () => {
     expect(() => mockApi.streamEditChat(key, { index: 999, text: "x" })).toThrow();
   });
 });
+
+describe("mock chat stop", () => {
+  it("ends the stream with an interrupted `done` carrying the text so far, and persists it", async () => {
+    const key = nextKey();
+    const stream = mockApi.streamChat(key, { text: "hello" });
+    const drained = drain(stream);
+    await new Promise((r) => setTimeout(r, 1400));
+    const result = await mockApi.stopChat(key);
+    expect(result.message.interrupted).toBe(true);
+    const events = await drained;
+    const done = events.find((e) => e.type === "done");
+    expect(done && done.type === "done" && done.message.interrupted).toBe(true);
+    const text = events.filter((e) => e.type === "delta").map((e) => (e.type === "delta" ? e.text : "")).join("");
+    expect(done && done.type === "done" ? done.message.text : "").toBe(text);
+    const after = await mockApi.getChat(key);
+    expect(after.messages).toHaveLength(2);
+    expect(after.messages[1]).toMatchObject({ role: "assistant", interrupted: true });
+  }, 20_000);
+
+  it("409s chat_idle when nothing is streaming", async () => {
+    await expect(mockApi.stopChat(nextKey())).rejects.toMatchObject({ status: 409 });
+  });
+});

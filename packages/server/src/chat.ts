@@ -53,6 +53,12 @@ export const ChatMessageSchema = z.object({
   text: z.string(),
   ts: z.string(),
   refs: z.array(ChatRefSchema).optional(),
+  /**
+   * An assistant reply the reader stopped before it finished: its text is
+   * whatever had streamed by then. The UI marks it; a replay says so too, so a
+   * fresh session does not mistake a truncated answer for a complete one.
+   */
+  interrupted: z.boolean().optional(),
 });
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
 
@@ -289,10 +295,16 @@ const REPLAY_BUDGET_CHARS = 24_000;
  *
  * Pure and side-effect free so it is testable without a chat.json on disk.
  */
+/** How a replay marks a reply the reader stopped (see `ChatMessage.interrupted`). */
+export const INTERRUPTED_NOTE = "[the reader stopped this reply here, before it was finished]";
+
 export function replayTranscript(messages: ChatMessage[]): string {
   if (messages.length === 0) return "";
 
-  const turns = messages.map((m) => `${m.role === "user" ? "You" : "Assistant"}: ${m.text}`);
+  const turns = messages.map((m) => {
+    const text = m.interrupted ? `${m.text}${m.text ? "\n" : ""}${INTERRUPTED_NOTE}` : m.text;
+    return `${m.role === "user" ? "You" : "Assistant"}: ${text}`;
+  });
 
   // The reader already sees every kept message in the transcript; only the
   // model's memory of them is at stake here, so the oldest are dropped first
