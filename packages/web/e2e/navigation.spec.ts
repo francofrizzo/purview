@@ -61,8 +61,10 @@ test("s toggles the summary strip", async ({ page }) => {
   await expect(strip).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByTestId("summary-overlay")).toBeVisible();
   await expect(page.getByTestId("pr-summary")).toBeVisible();
-  await page.getByTestId("summary-tab-description").click();
   await expect(page.getByTestId("pr-description")).toContainText("Retried charges could double-bill");
+  // The tabs jump: the description scrolls to the panel's top and its tab lights up.
+  await page.getByTestId("summary-tab-description").click();
+  await expect(page.getByTestId("summary-tab-description")).toHaveAttribute("aria-selected", "true");
 
   await page.keyboard.press("s");
   await expect(strip).toHaveAttribute("aria-expanded", "false");

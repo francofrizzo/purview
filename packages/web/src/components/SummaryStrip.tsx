@@ -7,9 +7,10 @@
  * something they read once. So the default state is a single-line strip (its
  * first sentence, ellipsized) and the full text arrives in a floating panel
  * that drops *over* the panes — absolutely positioned, so the sidebar and the
- * diff never reflow when it opens. The panel shows one thing at a time:
- * Purview's summary, the author's description or the GitHub reviews, picked
- * by tabs, so the two prose blocks never read as one.
+ * diff never reflow when it opens. Inside, Purview's summary, the author's
+ * description and the GitHub reviews stack in that order; the tab row on top
+ * is a jump bar — it scrolls to a section and underlines the one in view —
+ * so everything is one scroll away and the two prose blocks never read as one.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,12 +24,14 @@ import { IconChevron } from "./icons";
 
 export type SummaryTab = "summary" | "description" | "reviews";
 
-/** Which tab opens first: the last one the reader picked this session, if it still exists. */
-let lastTab: SummaryTab | null = null;
-
-export function initialTab(available: SummaryTab[]): SummaryTab {
-  if (lastTab && available.includes(lastTab)) return lastTab;
-  return available[0] ?? "summary";
+/**
+ * Which section the jump bar underlines: the last one whose top has scrolled
+ * past the panel's top edge (plus a little slack), or the first one.
+ */
+export function sectionInView(tops: number[], scrollTop: number, slack = 24): number {
+  let i = 0;
+  for (let k = 0; k < tops.length; k++) if (tops[k] - slack <= scrollTop) i = k;
+  return i;
 }
 
 /**
@@ -140,11 +143,33 @@ export function SummaryStrip({
       ) as SummaryTab[],
     [summary, description, hasReviews],
   );
-  const [tab, setTab] = useState<SummaryTab>(() => initialTab(available));
-  const current: SummaryTab = available.includes(tab) ? tab : initialTab(available);
-  const pickTab = (t: SummaryTab) => {
-    lastTab = t;
-    setTab(t);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(0);
+  const current: SummaryTab = available[Math.min(inView, available.length - 1)] ?? "summary";
+  const sectionTops = () => {
+    const panel = panelRef.current;
+    if (!panel) return [];
+    return available.map((t) => {
+      const el = panel.querySelector<HTMLElement>(`[data-section="${t}"]`);
+      return el ? el.offsetTop : 0;
+    });
+  };
+  const onPanelScroll = () => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    // Scrolled to the end: the last section is the one being read even when
+    // it is too short to reach the top.
+    const atEnd = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 2;
+    setInView(atEnd ? available.length - 1 : sectionInView(sectionTops(), panel.scrollTop));
+  };
+  const jumpTo = (t: SummaryTab) => {
+    const panel = panelRef.current;
+    const el = panel?.querySelector<HTMLElement>(`[data-section="${t}"]`);
+    if (!panel || !el) return;
+    const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    panel.scrollTo({ top: el.offsetTop, behavior: reduce ? "auto" : "smooth" });
+    // Underline it now; a short last section may never reach the top on its own.
+    setInView(available.indexOf(t));
   };
   const what =
     [summary ? "analysis summary" : "", description ? "PR description" : "", hasReviews ? "reviews" : ""]
@@ -289,7 +314,7 @@ export function SummaryStrip({
               style={{ borderColor: "var(--border)" }}
             >
               {available.map((t) => (
-                <SummaryTabButton key={t} id={t} active={t === current} onPick={pickTab}>
+                <SummaryTabButton key={t} id={t} active={t === current} onPick={jumpTo}>
                   {t === "summary" ? (
                     "Summary"
                   ) : t === "description" ? (
@@ -308,35 +333,64 @@ export function SummaryStrip({
               ))}
             </div>
           ) : null}
-          <div className="min-h-0 overflow-y-auto" role="tabpanel">
-            {current === "summary" ? (
+          <div ref={panelRef} onScroll={onPanelScroll} className="relative min-h-0 overflow-y-auto">
+            {summary ? (
               // Purview's own read of the PR: one short paragraph, set as a
               // lede so it reads at a glance rather than as more fine print.
               <section
+                data-section="summary"
                 data-testid="pr-summary"
                 className="px-5 py-4 [&>div]:text-[14px] [&>div]:leading-[23px]"
                 style={{ color: "var(--fg)" }}
               >
                 <Markdown text={withoutHeadings(summary.trim())} />
               </section>
-            ) : current === "description" ? (
+            ) : null}
+            {description ? (
               // The author's own words, headings and all: unlike the summary,
               // it is a document, and its structure is its own.
               <section
+                data-section="description"
                 data-testid="pr-description"
                 className="px-5 py-4 [&>div]:text-[13px] [&>div]:leading-[21px]"
+                style={summary ? { borderTop: "1px solid var(--border)" } : undefined}
               >
+                {available.length > 1 ? (
+                  <SectionTitle>
+                    {author ? <AuthorAvatar author={author} url={authorAvatarUrl} size={14} /> : null}
+                    Description{author ? <span style={{ color: "var(--fg-faint)" }}>by {author}</span> : null}
+                  </SectionTitle>
+                ) : null}
                 <Markdown text={description} />
               </section>
-            ) : (
-              <section data-testid="pr-reviews" className="px-5 py-4">
+            ) : null}
+            {hasReviews ? (
+              <section
+                data-section="reviews"
+                data-testid="pr-reviews"
+                className="px-5 py-4"
+                style={summary || description ? { borderTop: "1px solid var(--border)" } : undefined}
+              >
+                {available.length > 1 ? (
+                  <SectionTitle>
+                    Reviews<span style={{ color: "var(--fg-faint)" }}>on GitHub</span>
+                  </SectionTitle>
+                ) : null}
                 <ReviewTimeline entries={timeline.entries} hidden={timeline.hidden} revisions={revisions} />
               </section>
-            )}
+            ) : null}
           </div>
         </div>
       ) : null}
     </div>
+  );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold" style={{ color: "var(--fg-muted)" }}>
+      {children}
+    </h2>
   );
 }
 
