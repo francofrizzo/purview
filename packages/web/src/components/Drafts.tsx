@@ -294,7 +294,7 @@ export function CommentComposer({
       ) : null}
       <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
         <span className="hidden text-2xs sm:inline" style={{ color: "var(--fg-faint)" }}>
-          markdown · ⌘↵ save{onSendToChat ? " · ⌘⇧↵ ask chat" : ""}
+          markdown · <kbd>⌘↵</kbd> save{onSendToChat ? <> · <kbd>⌘⇧↵</kbd> ask chat</> : null}
         </span>
         {prKey ? <AttachButton editor={attach} testId="composer-attach" disabled={!wp.writing} /> : null}
         <span className="ml-auto flex items-center gap-1.5">
@@ -651,7 +651,9 @@ export function CommentBody({
         </div>
       ) : null}
       <p className="mt-1 flex items-center gap-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        <span>{EDIT_HINT[status]} (esc to cancel, ⌘↵ to save)</span>
+        <span>
+          {EDIT_HINT[status]} <kbd>esc</kbd> cancels, <kbd>⌘↵</kbd> saves
+        </span>
         {prKey ? <AttachButton editor={attach} testId={`attach-${comment.id}`} disabled={!wp.writing} /> : null}
       </p>
       {error ? (

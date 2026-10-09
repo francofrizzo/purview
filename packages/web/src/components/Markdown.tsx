@@ -142,13 +142,7 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
         }
         if (node.type === "kbd") {
           return (
-            <kbd
-              key={i}
-              className="rounded border px-1 font-mono"
-              style={{ fontSize: "0.88em", borderColor: "var(--border-strong)", background: "var(--bg-raised)", color: "var(--fg)" }}
-            >
-              {node.text}
-            </kbd>
+            <kbd key={i}>{node.text}</kbd>
           );
         }
         if (node.type === "del") return <del key={i} style={{ opacity: 0.75 }}>{node.text}</del>;

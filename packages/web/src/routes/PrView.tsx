@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
@@ -78,7 +78,6 @@ import {
 } from "../components/Drafts";
 import { CommentBubble, InlineCommentList } from "../components/InlineComments";
 import { isLineInDiff } from "../lib/comments";
-import { PREVIEW_LIMITS } from "../lib/composerMode";
 import { buildThreadGroups, replyTarget, type DisplayThread } from "../lib/threads";
 import { ThreadFilterMenu } from "../components/Threads";
 import { UnitChangelog } from "../components/UnitChangelog";
@@ -1092,24 +1091,29 @@ export function PrView() {
   // a different container depending on `sidebarMode`.
   const sidebarBody = (
     <>
-      <div className="flex flex-none border-b" style={{ borderColor: "var(--border)" }}>
+      {/* Same jump-bar vocabulary as the summary panel: sentence case, a
+          2px accent underline on the current one. */}
+      <div className="flex flex-none items-end gap-1 border-b px-2 pt-1.5" style={{ borderColor: "var(--border)" }}>
         {(["units", "files"] as const).map((t) => (
           <button
             key={t}
             type="button"
+            role="tab"
+            aria-selected={tab === t}
             onClick={() => setTab(t)}
-            className="sidebar-tab-btn flex-1 border-b-2 px-2 py-1.5 text-2xs uppercase tracking-wider transition-colors"
+            className="sidebar-tab-btn -mb-px border-b-2 px-2 pb-1.5 pt-1 text-xs font-medium transition-colors"
             style={{
               borderColor: tab === t ? "var(--accent)" : "transparent",
-              color: tab === t ? "var(--fg)" : "var(--fg-faint)",
+              color: tab === t ? "var(--fg)" : "var(--fg-muted)",
             }}
           >
-            {t === "units" ? "review units" : "files"}
+            {t === "units" ? "Review units" : "Files"}
           </button>
         ))}
+        <span className="flex-1" />
         <button
           type="button"
-          className="flex-none px-2"
+          className="flex-none px-2 pb-2"
           style={{ color: "var(--fg-faint)" }}
           title={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
           aria-label={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
@@ -1155,24 +1159,43 @@ export function PrView() {
           keyboard shortcuts
         </button>
         {showShortcuts ? (
-          <div className="mt-1">
-            <div>
-              <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>J</kbd>/<kbd>K</kbd> unit · <kbd>v</kbd> viewed ·{" "}
-              <kbd>V</kbd> unit viewed · <kbd>z</kbd> folds · <kbd>space</kbd> next unviewed · <kbd>n</kbd> comment (then a line number)
-            </div>
-            <div>
-              <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}
-              {wrap ? "no wrap" : "wrap"} · <kbd>c</kbd> chat · <kbd>s</kbd> summary · <kbd>/</kbd>{" "}
-              search · <kbd>b</kbd> sidebar · <kbd>⌘</kbd>click definition
-            </div>
-            <div>
-              in a comment: <kbd>⌘↵</kbd> save · <kbd>⌘⇧↵</kbd> ask chat ·{" "}
-              <span title={PREVIEW_LIMITS}>
-                <kbd>⌘⇧P</kbd> preview
-              </span>{" "}
-              · <kbd>⌘B/I/E/K</kbd> format · <kbd>⌘⇧7/8</kbd> lists · <kbd>⌘⇧.</kbd> quote ·{" "}
-              <kbd>⌘⇧S</kbd> suggest
-            </div>
+          <div className="mt-2 flex flex-col gap-2.5 pb-1">
+            <ShortcutGroup
+              title="Reading"
+              rows={[
+                [["j", "k"], "next / previous hunk"],
+                [["J", "K"], "next / previous unit"],
+                [["v"], "mark hunk viewed"],
+                [["V"], "mark unit viewed"],
+                [["space"], "next unviewed hunk"],
+                [["z"], "fold / unfold"],
+                [["n"], "comment (then a line number)"],
+              ]}
+            />
+            <ShortcutGroup
+              title="View"
+              rows={[
+                [["d"], viewMode === "split" ? "unified diff" : "split diff"],
+                [["w"], wrap ? "stop wrapping" : "wrap long lines"],
+                [["s"], "summary"],
+                [["c"], "chat"],
+                [["b"], "sidebar"],
+                [["/"], "search"],
+                [["⌘", "click"], "go to definition"],
+              ]}
+            />
+            <ShortcutGroup
+              title="In a comment"
+              rows={[
+                [["⌘↵"], "save"],
+                [["⌘⇧↵"], "ask chat"],
+                [["⌘⇧P"], "preview"],
+                [["⌘B", "⌘I", "⌘E", "⌘K"], "bold, italic, code, link"],
+                [["⌘⇧7", "⌘⇧8"], "numbered / bullet list"],
+                [["⌘⇧."], "quote"],
+                [["⌘⇧S"], "suggest a change"],
+              ]}
+            />
           </div>
         ) : null}
       </div>
@@ -1416,14 +1439,14 @@ export function PrView() {
         />
       ) : null}
 
-      {/* The workspace: the diff is the desk, the sidebar and side panels are
-          instruments resting on it — bordered, rounded, a hair of gutter
-          between them. Only things that truly float (the summary panel, pills,
-          menus) cast a shadow; resting surfaces never do. */}
-      <div className="workspace relative flex min-h-0 flex-1 gap-1.5 p-1.5" style={{ background: "var(--bg-inset)" }}>
+      {/* The workspace: the diff is the desk — it runs to the edges, unframed —
+          and the sidebar and side panels are instruments resting on it:
+          bordered, rounded, a hair of gutter around each. Only things that
+          truly float (the summary panel, pills, menus) cast a shadow. */}
+      <div className="workspace relative flex min-h-0 flex-1" style={{ background: "var(--bg)" }}>
         {sidebarMode === "column" ? (
           <nav
-            className="pane flex flex-none flex-col overflow-hidden transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
+            className="pane m-1.5 flex flex-none flex-col overflow-hidden transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
             style={{
               width: sidebarCollapsed ? "var(--sidebar-rail-width)" : "19rem",
               borderColor: "var(--border)",
@@ -1451,7 +1474,7 @@ export function PrView() {
           // never unmounted — with the full sidebar floating over it (and
           // over the diff) exactly like it floats when opened below.
           <nav
-            className="pane flex flex-none flex-col overflow-hidden"
+            className="pane m-1.5 flex flex-none flex-col overflow-hidden"
             style={{
               width: "var(--sidebar-rail-width)",
               borderColor: "var(--border)",
@@ -1487,13 +1510,15 @@ export function PrView() {
           </>
         ) : null}
 
-        <main ref={mainRef} className="pane relative flex min-w-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--bg)" }}>
+        <main ref={mainRef} className="relative flex min-w-0 flex-1 flex-col">
           {tab === "units" && selectedUnit ? (
             <div
               ref={setHeaderEl}
               data-testid="unit-header"
               data-collapsed={headerCollapsed ? "true" : "false"}
-              className={`flex-none border-b px-4 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
+              // The unit's brief rests on the desk like the other instruments;
+              // the file headers below it belong to the desk itself.
+              className={`pane mx-1.5 mt-1.5 flex-none px-4 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
                 headerCollapsed ? "cursor-pointer py-1" : "py-2.5"
               }`}
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
@@ -2018,6 +2043,34 @@ function ErrorBar({ message }: { message: string }) {
       style={{ background: "var(--risk-soft)", color: "var(--risk)", borderColor: "var(--border)" }}
     >
       {message}
+    </div>
+  );
+}
+
+/** One group of the shortcuts legend: a two-column list of keys and what they do. */
+function ShortcutGroup({ title, rows }: { title: string; rows: [string[], string][] }) {
+  return (
+    <div>
+      <div className="mb-1 text-2xs font-medium" style={{ color: "var(--fg-muted)" }}>
+        {title}
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-2.5 gap-y-1">
+        {rows.map(([keys, what]) => (
+          <Fragment key={what}>
+            <dt className="flex items-center gap-0.5 whitespace-nowrap">
+              {keys.map((k, i) => (
+                <Fragment key={k}>
+                  {i > 0 ? <span style={{ color: "var(--fg-faint)" }}>/</span> : null}
+                  <kbd>{k}</kbd>
+                </Fragment>
+              ))}
+            </dt>
+            <dd className="text-2xs" style={{ color: "var(--fg-muted)" }}>
+              {what}
+            </dd>
+          </Fragment>
+        ))}
+      </dl>
     </div>
   );
 }

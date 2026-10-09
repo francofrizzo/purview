@@ -9,7 +9,7 @@ import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { ChangedBadge, HunkProgress, KindChip, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconChevron, IconGenerated } from "./icons";
+import { IconCheck, IconChevron, IconGenerated } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
 import { InlineMarkdown } from "./Markdown";
 
@@ -20,9 +20,9 @@ export const UNPLACED_TITLE =
   "Hunks the analysis hasn't placed in a unit yet — usually new commits since the last analysis.";
 
 const GROUPS: { attention: Attention; label: string; defaultOpen: boolean }[] = [
-  { attention: "must-read", label: "must read", defaultOpen: true },
-  { attention: "skim", label: "skim", defaultOpen: true },
-  { attention: "skip", label: "skip", defaultOpen: false },
+  { attention: "must-read", label: "Must read", defaultOpen: true },
+  { attention: "skim", label: "Skim", defaultOpen: true },
+  { attention: "skip", label: "Skip", defaultOpen: false },
 ];
 
 export function UnitSidebar({
@@ -113,15 +113,23 @@ export function UnitSidebar({
         className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-2xs"
         style={{ color: "var(--fg-faint)" }}
       >
-        <label className="flex cursor-pointer items-center gap-1.5" title={HIDE_REVIEWED_TITLE}>
-          <input
-            type="checkbox"
-            data-testid="hide-reviewed-units"
-            checked={hide}
-            onChange={(e) => update({ hideReviewedUnits: e.target.checked })}
-          />
-          hide reviewed
-        </label>
+        {/* A quiet toggle, not a form control: on, it carries a check and
+            the accent; off, it is just faint text. */}
+        <button
+          type="button"
+          data-testid="hide-reviewed-units"
+          aria-pressed={hide}
+          title={HIDE_REVIEWED_TITLE}
+          onClick={() => update({ hideReviewedUnits: !hide })}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs transition-colors"
+          style={{
+            color: hide ? "var(--accent)" : "var(--fg-faint)",
+            background: hide ? "var(--accent-soft)" : "transparent",
+          }}
+        >
+          {hide ? <IconCheck width={10} height={10} /> : null}
+          Hide reviewed
+        </button>
         {hide && totalHidden > 0 ? (
           <span className="ml-auto tabular-nums" data-testid="hidden-total">
             {totalHidden} hidden
@@ -154,7 +162,7 @@ export function UnitSidebar({
             <button
               type="button"
               onClick={() => setOpen((s) => ({ ...s, [g.attention]: !s[g.attention] }))}
-              className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-2xs uppercase tracking-wider transition-colors hover:opacity-100"
+              className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors hover:opacity-100"
               style={{
                 color:
                   g.attention === "must-read"
@@ -237,7 +245,7 @@ function UnplacedGroup({
         onClick={onSelect}
         title={UNPLACED_TITLE}
         aria-current={selected ? "true" : undefined}
-        className="flex w-full items-center gap-1.5 border-l-2 px-2.5 py-1.5 text-2xs uppercase tracking-wider transition-colors"
+        className="flex w-full items-center gap-1.5 border-l-2 px-2.5 py-1.5 text-xs font-medium transition-colors"
         style={{
           color: selected ? "var(--fg-muted)" : "var(--fg-faint)",
           borderColor: selected ? "var(--accent)" : "transparent",
@@ -252,7 +260,7 @@ function UnplacedGroup({
       >
         {/* Stands in for the chevron so the label lines up with the groups above. */}
         <span className="inline-block w-[10px] text-center normal-case">?</span>
-        not in any unit
+        Not in any unit
         <span>({hunkIds.length})</span>
         {matches ? <MatchBadge count={matches} /> : null}
         <span className="ml-auto tabular-nums">
@@ -278,11 +286,11 @@ function RemovedGroup({ units }: { units: ReviewUnit[] }) {
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-2xs uppercase tracking-wider transition-colors hover:opacity-100"
+        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors hover:opacity-100"
         style={{ color: "var(--fg-faint)" }}
       >
         <IconChevron open={isOpen} width={10} height={10} />
-        removed
+        Removed
         <span>({units.length})</span>
       </button>
       {isOpen ? (

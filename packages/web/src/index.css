@@ -148,6 +148,28 @@
     color: var(--fg);
     -webkit-font-smoothing: antialiased;
   }
+  /* Every key named in the UI is drawn as a small cap, the same everywhere:
+     the shortcuts legend, composer hints, markdown <kbd>. Sized in em so it
+     follows the text it sits in. */
+  kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4em;
+    padding: 0 0.35em;
+    border-radius: 0.25rem;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-inset);
+    color: var(--fg);
+    /* The UI face, not the code face: the mono fallback draws ⌘ ⇧ ↵ at
+       half size. */
+    font-family: inherit;
+    font-size: 0.85em;
+    font-weight: 500;
+    line-height: 1.5;
+    vertical-align: baseline;
+    white-space: nowrap;
+  }
 
   /* Standalone/fullscreen on an iPad: keep the app clear of the status bar
      and the home indicator. A no-op (0px) everywhere else. */

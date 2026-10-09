@@ -2106,8 +2106,8 @@ export function DiffPane({
               {linePrompt.error}
             </span>
           ) : (
-            <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-              ↵ comment · esc
+            <span className="flex items-center gap-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
+              <kbd>↵</kbd> comment · <kbd>esc</kbd>
             </span>
           )}
         </form>
