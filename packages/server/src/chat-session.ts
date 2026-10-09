@@ -13,7 +13,7 @@ import {
 } from "@reviewer/core";
 import { resolveRunCheckout } from "./pr-checkout.js";
 import { cliEnvironment, getHarness } from "./agent/registry.js";
-import type { AgentAction, AgentHarness, AgentSession, HarnessId } from "./agent/types.js";
+import type { AgentAction, AgentHarness, AgentRun, AgentSession, HarnessId } from "./agent/types.js";
 import { skillDir } from "./skill-paths.js";
 import { effectiveChatAgent, effectiveRepoPath } from "./repo-config.js";
 import { loadCommittedConfig } from "./team-config.js";
@@ -27,6 +27,7 @@ import {
   resolveRefs,
   terminalContext,
   writeChat,
+  type ChatMessage,
   type ChatRef,
 } from "./chat.js";
 import { HttpError } from "./http-error.js";
@@ -42,7 +43,7 @@ export type ChatStreamEvent =
   | { type: "delta"; text: string }
   /** `kind` is the normalized action kind; absent on Purview's own steps (e.g. the checkout) */
   | { type: "tool"; name: string; detail: string; kind?: AgentAction["kind"] }
-  | { type: "done"; message: { role: "assistant"; text: string; ts: string } }
+  | { type: "done"; message: ChatMessage & { role: "assistant" } }
   | { type: "error"; error: string };
 
 export interface ChatTurn {
@@ -50,12 +51,40 @@ export interface ChatTurn {
   /** events already emitted before the subscriber attached */
   backlog: ChatStreamEvent[];
   done: Promise<void>;
+  /**
+   * Stop the turn: the agent child gets SIGTERM (then SIGKILL after a grace),
+   * and the turn finalizes with whatever had streamed so far as an
+   * `interrupted` reply. Idempotent; `done` still resolves exactly once.
+   */
+  stop(): void;
 }
 
 const turns = new Map<string, ChatTurn>();
 
 export function chatBusy(key: PrKey): boolean {
   return turns.has(keyToString(key));
+}
+
+/** `stop()` landed before the agent child was spawned; nothing to kill. */
+class StoppedBeforeRun extends Error {}
+
+/**
+ * Stop the turn running for this PR and wait for it to finalize, so the
+ * caller's response means "the slot is free": a send right after it is not
+ * refused with `chat_busy`. Resolves with the interrupted reply as persisted.
+ */
+export async function stopChatTurn(key: PrKey): Promise<ChatMessage & { role: "assistant" }> {
+  const keyStr = keyToString(key);
+  const turn = turns.get(keyStr);
+  if (!turn) throw new HttpError(409, "chat_idle", `No chat turn is running for ${keyStr}`);
+  turn.stop();
+  await turn.done;
+  const done = turn.backlog.find((e) => e.type === "done");
+  if (!done || done.type !== "done") {
+    // Only reachable if the turn finished on an error in the same instant.
+    throw new HttpError(409, "chat_idle", `The chat turn for ${keyStr} had already ended`);
+  }
+  return done.message;
 }
 
 const CHAT_TIMEOUT_MS = 10 * 60_000;
@@ -138,12 +167,29 @@ export function startChatTurn(
     emitter.emit("event", event);
   };
 
+  // `stop()` may arrive before the child exists (the checkout is still being
+  // resolved): the flag makes the turn skip the run altogether, and the run
+  // handle lets a later stop reach the child.
+  let stopped = false;
+  let run: AgentRun | undefined;
+  const stop = () => {
+    stopped = true;
+    run?.cancel();
+  };
+
   const done = (async () => {
     let full = "";
     /** text the agent wrote before its latest action (see the `action` case) */
     let narration = "";
+    /**
+     * Deltas of the block in progress. A complete `output` block supersedes
+     * them; only a stop mid-block (no `output` ever arrives for it) needs them.
+     */
+    let partial = "";
     let streamed = false;
     let failure: string | undefined;
+    /** the harness reported a clean end: a stop landing after it changes nothing */
+    let completed = false;
     let session = stored;
     try {
       // Resolved per turn: the managed checkout follows the current head, and
@@ -183,7 +229,8 @@ export function startChatTurn(
         root,
       );
 
-      const run = harness.run({
+      if (stopped) throw new StoppedBeforeRun();
+      run = harness.run({
         task: { kind: "chat", reviewerCommands: CHAT_CLI_SUBCOMMANDS },
         prompt,
         cwd,
@@ -204,12 +251,14 @@ export function startChatTurn(
             break;
           case "output-delta":
             streamed = true;
+            partial += event.text;
             emit({ type: "delta", text: event.text });
             break;
           case "output":
             // Complete blocks are the authoritative transcript; when deltas
             // were streamed they already carried this text to the client.
             full += (full ? "\n" : "") + event.text;
+            partial = "";
             if (!streamed) emit({ type: "delta", text: event.text });
             break;
           case "action":
@@ -221,6 +270,7 @@ export function startChatTurn(
               narration = full;
               full = "";
             }
+            partial = "";
             emit({
               type: "tool",
               name: event.action.name,
@@ -229,22 +279,36 @@ export function startChatTurn(
             });
             break;
           case "completed":
-            if (!event.ok) failure = event.error ?? "agent run failed";
+            if (event.ok) completed = true;
+            else failure = event.error ?? "agent run failed";
             if (event.session) session = event.session;
             break;
         }
       }
     } catch (err) {
-      failure = (err as Error).message;
+      if (!(err instanceof StoppedBeforeRun)) failure = (err as Error).message;
     }
 
-    if (!full) full = narration;
     const ts = new Date().toISOString();
     const persisted = { session: session ?? null };
-    if (failure && !full) {
+    if (stopped && !completed) {
+      // A stopped turn is not a failure: the "cancelled" the harness reports
+      // is what was asked for. The reply is whatever had streamed — the
+      // block in progress included — and it is always persisted, even empty,
+      // so the transcript shows that the question was answered by a stop
+      // rather than left hanging. The session is kept: the harness's own
+      // transcript has the partial turn, and the next message resumes it.
+      if (partial) full += (full ? "\n" : "") + partial;
+      if (!full) full = narration;
+      const message: ChatMessage & { role: "assistant" } = { role: "assistant", text: full, ts, interrupted: true };
+      const current = readChat(key, root);
+      writeChat(key, { ...current, ...persisted, messages: [...current.messages, message] }, root);
+      emit({ type: "done", message });
+    } else if (failure && !full && !narration) {
       writeChat(key, { ...readChat(key, root), ...persisted }, root);
       emit({ type: "error", error: failure });
     } else {
+      if (!full) full = narration;
       const current = readChat(key, root);
       writeChat(
         key,
@@ -261,7 +325,7 @@ export function startChatTurn(
     turns.delete(keyStr);
   })();
 
-  const turn: ChatTurn = { emitter, backlog, done };
+  const turn: ChatTurn = { emitter, backlog, done, stop };
   turns.set(keyStr, turn);
   return turn;
 }

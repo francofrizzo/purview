@@ -941,6 +941,14 @@ export interface ChatMessage {
   text: string;
   ts: string;
   refs?: ChatRef[];
+  /** an assistant reply the reader stopped before it finished; `text` is what had streamed */
+  interrupted?: boolean;
+}
+
+/** POST /api/prs/:key/chat/stop: the interrupted reply as the server persisted it. */
+export interface StopChatResult {
+  ok: true;
+  message: ChatMessage;
 }
 
 /**

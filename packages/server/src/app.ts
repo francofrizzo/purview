@@ -119,7 +119,14 @@ import {
   resolveAutoSharedAnalysis,
   shareAnalysisToPr,
 } from "./analysis-share-server.js";
-import { chatBusy, chatHandoff, startChatTurn, type ChatStreamEvent, type ChatTurn } from "./chat-session.js";
+import {
+  chatBusy,
+  chatHandoff,
+  startChatTurn,
+  stopChatTurn,
+  type ChatStreamEvent,
+  type ChatTurn,
+} from "./chat-session.js";
 import { ChatRefSchema, clearChat, readChat, resolveRefs, rewindChat, setChatAgent } from "./chat.js";
 import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
@@ -999,6 +1006,19 @@ export function createApp(opts: AppOptions = {}): Hono {
     const refs = z.array(ChatRefSchema).default([]).parse(body.refs ?? []);
     const turn = startChatTurn(key, { text: body.text ?? "", refs }, root, { serverPort: port });
     return streamChatTurn(c, turn);
+  });
+
+  /**
+   * Stop the turn in flight: SIGTERM to the agent child (SIGKILL after a
+   * grace), and the reply so far is kept as an `interrupted` assistant
+   * message. Answers only once the turn has finalized, so a send issued right
+   * after is not refused as `chat_busy`. 409 `chat_idle` when nothing runs.
+   */
+  app.post("/api/prs/:key/chat/stop", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const message = await stopChatTurn(key);
+    return c.json({ ok: true, message });
   });
 
   /**

@@ -56,6 +56,7 @@ import {
   IconRewind,
   IconSettings,
   IconSpinner,
+  IconStop,
   IconTerminal,
 } from "./icons";
 
@@ -262,9 +263,24 @@ function MessageBlock({
               ) : null}
             </div>
           ) : null}
-          <Markdown text={message.text} textClass={CHAT_TEXT} />
+          {message.text ? <Markdown text={message.text} textClass={CHAT_TEXT} /> : null}
+          {message.interrupted ? <StoppedMarker trailing={Boolean(message.text)} /> : null}
         </>
       )}
+    </div>
+  );
+}
+
+/** The quiet trailer under a reply the reader stopped; the text above it is all there was. */
+function StoppedMarker({ trailing }: { trailing: boolean }) {
+  return (
+    <div
+      className={`flex items-center gap-1.5 text-2xs italic ${trailing ? "mt-1.5" : ""}`}
+      data-testid="chat-stopped"
+      style={{ color: "var(--fg-faint)" }}
+    >
+      <IconStop width={8} height={8} />
+      stopped by you
     </div>
   );
 }
@@ -426,6 +442,9 @@ export function ChatPanel({
     if (e.key === "Escape") {
       e.stopPropagation();
       if (chat.editingIndex !== null) cancelEditing();
+      // While a reply streams, Esc stops it: closing the panel would hide the
+      // very thing the reader is trying to interrupt.
+      else if (chat.busy) void chat.stop();
       else chat.closeChat();
     }
   };
@@ -485,9 +504,21 @@ export function ChatPanel({
         <IconChat width={12} height={12} />
         <span className="text-xs font-semibold">{capitalized(agentName)}</span>
         {chat.busy ? (
-          <span className="flex items-center gap-1 text-2xs" style={{ color: "var(--accent)" }}>
+          <span className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--accent)" }}>
             <IconSpinner width={10} height={10} />
             thinking…
+            <button
+              type="button"
+              data-testid="chat-stop"
+              className="inline-flex items-center gap-1 rounded border px-1.5 py-px"
+              style={{ borderColor: "var(--border-strong)", color: "var(--fg-muted)", background: "var(--bg-inset)" }}
+              title="Stop the reply (Esc)"
+              aria-label="Stop the reply"
+              onClick={() => void chat.stop()}
+            >
+              <IconStop width={8} height={8} />
+              stop
+            </button>
           </span>
         ) : null}
         {chat.agent && chat.configuredAgent ? (
@@ -731,6 +762,18 @@ export function ChatPanel({
                     </span>
                   ) : null}
                 </span>
+                {chat.busy && !chat.failure ? (
+                  <button
+                    type="button"
+                    className="flex-none text-2xs opacity-70 hover:opacity-100"
+                    style={{ color: "var(--accent)" }}
+                    title="Stop the current reply and send this message next"
+                    data-testid="chat-queue-send-now"
+                    onClick={() => chat.sendQueuedNow(q.id)}
+                  >
+                    send now
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="flex-none text-2xs opacity-70 hover:opacity-100"
@@ -795,7 +838,7 @@ export function ChatPanel({
           rows={2}
           placeholder={
             chat.busy
-              ? `${capitalized(agentName)} is replying — queue a message…  (↵ queue · ⇧↵ newline)`
+              ? `${capitalized(agentName)} is replying — queue a message…  (↵ queue · ⇧↵ newline · esc stop)`
               : chat.editingIndex !== null
                 ? "Edit your message…  (↵ send · ⇧↵ newline)"
                 : "Ask about this PR…  (↵ send · ⇧↵ newline)"
