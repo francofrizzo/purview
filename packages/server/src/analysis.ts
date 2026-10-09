@@ -139,7 +139,10 @@ export function checkoutNote(
     return (
       `An exact checkout of the PR head (${sha}) is at ${resolution.path}. ` +
       "It is the code as this PR leaves it — read from it freely, never modify it. " +
-      `To see a file as it was before the PR, run \`${cliCommand()} base-file ${keyStr} <path>\`.`
+      `To see a file as it was before the PR, run \`${cliCommand()} base-file ${keyStr} <path>\`. ` +
+      `When who changed a file and when would change a verdict (a moved function, a line untouched for years), ` +
+      `run \`${cliCommand()} history ${keyStr} <path>\` (add \`--lines A-B\` to blame a range); ` +
+      "it reads the checkout's own git history and costs context, so use it for specific questions, not routinely."
     );
   }
   if (resolution.error) {
@@ -548,6 +551,7 @@ export const ANALYSIS_CLI_SUBCOMMANDS: readonly ReviewerCommand[] = [
   "show",
   "changes",
   "base-file",
+  "history",
   "description",
   "set-analysis",
   "set-unit",

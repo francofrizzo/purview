@@ -56,7 +56,7 @@ describe("task -> Claude tool policy", () => {
         `Edit(/${scratch}/**)`,
         "Edit(scratch/**)",
         "Read(//home/u/.claude/projects/x/**)",
-        ...["report", "list", "units", "triage", "show", "changes", "base-file", "description", "set-analysis", "set-unit", "set-units"].map(
+        ...["report", "list", "units", "triage", "show", "changes", "base-file", "history", "description", "set-analysis", "set-unit", "set-units"].map(
           (s) => `Bash(${cmd} ${s}:*)`,
         ),
         ...["grep:*", "rg:*", "sed -n:*", "ls:*", "cat:*", "head:*", "tail:*", "wc:*"].map((r) => `Bash(${r})`),
@@ -64,7 +64,7 @@ describe("task -> Claude tool policy", () => {
     );
     expect(sorted(policy.disallowedTools)).toEqual(
       sorted([
-        ...["sync", "init", "refresh", "discard-revision", "remove-repo", "comment", "view", "history"].map(
+        ...["sync", "init", "refresh", "discard-revision", "remove-repo", "comment", "view"].map(
           (s) => `Bash(${cmd} ${s}:*)`,
         ),
         "Bash(sed * -i*)",
