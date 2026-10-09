@@ -12,6 +12,7 @@
 import { useState, type ReactNode } from "react";
 import type { ChatRef, CommentStatus, DraftComment } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
+import { pendingAttachmentCount } from "../lib/attachments";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
 import type { MarkerLook, MarkerSummary } from "../lib/threads";
@@ -109,6 +110,7 @@ export function CommentCard({
           {meta.label}
         </span>
         <ByAgentChip comment={comment} />
+        <PendingImagesChip comment={comment} />
         {Number.isFinite(age) ? (
           <span className="flex-none" style={{ color: "var(--fg-faint)" }} title={formatFullTimestamp(comment.createdAt!)}>
             {formatCompactAge(age) === "just now" ? "just now" : `${formatCompactAge(age)} ago`}
@@ -189,6 +191,22 @@ export function CommentCard({
         </div>
       ) : null}
     </article>
+  );
+}
+
+/** "2 images" — a draft's pictures are still only on this machine; they go up with the push. */
+function PendingImagesChip({ comment }: { comment: Pick<DraftComment, "body" | "status"> }) {
+  const n = pendingAttachmentCount(comment);
+  if (n === 0) return null;
+  return (
+    <span
+      className="chip"
+      data-testid="pending-images"
+      style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+      title={`${n === 1 ? "This image is" : "These images are"} only on this machine; uploaded to GitHub when the comment is pushed`}
+    >
+      {n} {n === 1 ? "image" : "images"}
+    </span>
   );
 }
 

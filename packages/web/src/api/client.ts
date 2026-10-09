@@ -6,6 +6,7 @@ import { isGeneratedUnit, isRemovedUnit, TOOL_KINDS } from "./types";
 import type {
   AddCommentInput,
   AnalysisImportReport,
+  Attachment,
   AnalysisJob,
   ChatMessage,
   ChatRef,
@@ -109,6 +110,12 @@ const put = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "PUT", body: JSON.stringify(body) });
 
 export const encodeKey = (key: string) => encodeURIComponent(key);
+
+/** Where the local copy of an attachment is served from (an object URL in mock mode). */
+export function attachmentSrc(key: string, id: string): string {
+  if (MOCK) return mockApi.attachmentSrc(key, id);
+  return `/api/prs/${encodeKey(key)}/attachments/${encodeURIComponent(id)}`;
+}
 
 /** `:rkey` on the repo routes is a URL-encoded `host/owner/repo`. */
 export const repoKey = (r: { host: string; owner: string; repo: string }) =>
@@ -779,6 +786,34 @@ export const api = {
   async proposeReanchor(key: string, id: string): Promise<ReanchorResult> {
     if (MOCK) return mockApi.proposeReanchor(key, id);
     return post<ReanchorResult>(`/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}/reanchor`);
+  },
+
+  /* ---------------------------------------------------------- attachments */
+
+  /** The PR's attachments, uploaded or not — what maps a GitHub asset URL back to its local copy. */
+  async listAttachments(key: string): Promise<Attachment[]> {
+    if (MOCK) return mockApi.listAttachments(key);
+    const res = await request<{ attachments?: Attachment[] }>(`/prs/${encodeKey(key)}/attachments`);
+    return res.attachments ?? [];
+  },
+
+  /**
+   * Store a picture on the local server. Raw file as the body, the name in
+   * the query: nothing goes to GitHub until the draft is pushed.
+   */
+  async uploadAttachment(key: string, file: File): Promise<Attachment> {
+    if (MOCK) return mockApi.uploadAttachment(key, file);
+    const res = await request<{ attachment: Attachment }>(
+      `/prs/${encodeKey(key)}/attachments?name=${encodeURIComponent(file.name || "image")}`,
+      { method: "POST", body: file, headers: { "content-type": file.type || "application/octet-stream" } },
+    );
+    return res.attachment;
+  },
+
+  /** Drop a local attachment nothing refers to (409 while a comment still does). */
+  async deleteAttachment(key: string, id: string): Promise<void> {
+    if (MOCK) return mockApi.deleteAttachment(key, id);
+    await del(`/prs/${encodeKey(key)}/attachments/${encodeURIComponent(id)}`);
   },
 
   /* ------------------------------------------------------ review lifecycle */

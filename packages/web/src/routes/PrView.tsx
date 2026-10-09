@@ -125,7 +125,8 @@ import { latestVerdicts } from "../lib/reviews";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
 import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
-import { InlineMarkdown } from "../components/Markdown";
+import { AttachmentContext, InlineMarkdown } from "../components/Markdown";
+import { useAttachmentScope } from "../components/Attachments";
 
 /** No changelog highlight; one shared array, so nothing downstream sees a new one each render. */
 const NO_REVISIONS: number[] = [];
@@ -200,6 +201,8 @@ export function PrView() {
   // that is enough: it decides whether the 5-minute interval is worth running
   // (a merged or closed PR grows no commits, so it is mount + focus only).
   const staleness = useStaleness(prKey);
+  // Comment pictures: where editors upload to, and how bodies find their local copies.
+  const attachmentScope = useAttachmentScope(prKey);
   const stale = staleness.data?.stale === true;
   const showStalenessHint =
     stale && shouldShowStalenessHint(staleness.data, dismissedStaleKey);
@@ -1180,6 +1183,7 @@ export function PrView() {
       />
     ) : null;
   return (
+    <AttachmentContext.Provider value={attachmentScope}>
     <div className="flex h-full flex-col">
       <TopBar
         detail={detail}
@@ -1853,6 +1857,7 @@ export function PrView() {
         ) : null}
       </div>
     </div>
+    </AttachmentContext.Provider>
   );
 }
 

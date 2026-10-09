@@ -4,6 +4,7 @@ import { isFileComment, isGeneratedUnit } from "../api/types";
 import type {
   AgentSelection,
   AgentsInfo,
+  Attachment,
   ChatAgentSelection,
   ConfigSource,
   ResolvedAgent,
@@ -134,6 +135,26 @@ function mirrorPushed(d: DraftComment) {
     comments: [comment],
   });
 }
+/**
+ * Mock attachment store: the blobs live in memory as object URLs. A "push"
+ * rewrites each referenced `purview-attachment:` to a made-up GitHub asset
+ * URL and remembers it, exactly as the server does.
+ */
+const attachments: (Attachment & { objectUrl: string })[] = [];
+const ATTACHMENT_REF = /!\[([^\]\n]*)\]\(purview-attachment:([0-9a-f-]{36})\)/g;
+const mockUuid = () =>
+  (globalThis.crypto?.randomUUID?.() ??
+    "xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx".replace(/x/g, () => Math.floor(Math.random() * 16).toString(16)));
+function githubBody(body: string): string {
+  return body.replace(ATTACHMENT_REF, (whole, alt: string, id: string) => {
+    const a = attachments.find((x) => x.id === id);
+    if (!a) return whole;
+    a.githubUrl ??= `https://github.com/user-attachments/assets/mock-${id.slice(0, 8)}`;
+    a.uploadedAt ??= new Date().toISOString();
+    return a.mime.startsWith("video/") ? a.githubUrl : `![${alt}](${a.githubUrl})`;
+  });
+}
+
 const repos: RepoSummary[] = structuredClone(mockRepos);
 const repoConfigs: Record<string, RepoConfig> = structuredClone(mockRepoConfigs);
 
@@ -982,6 +1003,7 @@ export const mockApi = {
     for (const d of drafts) {
       if (d.status !== "draft") continue;
       d.status = "pushed";
+      d.body = githubBody(d.body);
       mirrorPushed(d);
     }
     review.pending = true;
@@ -1214,6 +1236,45 @@ export const mockApi = {
         deletedDrafts.push({ ...gone, deletedAt: new Date().toISOString(), deletedBy: "you" });
       }
     }
+  },
+
+  /* ---------------------------------------------------------- attachments */
+
+  async listAttachments(_key: string): Promise<Attachment[]> {
+    await delay(30);
+    return attachments.map(({ objectUrl: _u, ...a }) => structuredClone(a));
+  },
+
+  async uploadAttachment(_key: string, file: File): Promise<Attachment> {
+    await delay(250);
+    const name = file.name || "image.png";
+    const ext = name.includes(".") ? name.slice(name.lastIndexOf(".")).toLowerCase() : ".png";
+    const a = {
+      id: mockUuid(),
+      name: name.includes(".") ? name : `${name}${ext}`,
+      mime: file.type || "image/png",
+      ext,
+      size: file.size,
+      createdAt: new Date().toISOString(),
+      objectUrl: URL.createObjectURL(file),
+    };
+    attachments.push(a);
+    const { objectUrl: _u, ...out } = a;
+    return out;
+  },
+
+  async deleteAttachment(_key: string, id: string): Promise<void> {
+    await delay(40);
+    const i = attachments.findIndex((a) => a.id === id);
+    if (i < 0) throw new ApiError("not_found", 404, `No attachment "${id}"`);
+    const inUse = [...drafts, ...deletedDrafts].some((d) => d.body.includes(`purview-attachment:${id})`));
+    if (inUse) throw new ApiError("attachment_in_use", 409, "A comment still refers to this attachment");
+    URL.revokeObjectURL(attachments[i].objectUrl);
+    attachments.splice(i, 1);
+  },
+
+  attachmentSrc(_key: string, id: string): string {
+    return attachments.find((a) => a.id === id)?.objectUrl ?? "";
   },
 
   async listDeletedComments(_key: string): Promise<DeletedComment[]> {

@@ -232,6 +232,22 @@ describe("parseInline GitHub extras", () => {
     expect(parseInline("List<Promise<void>>")).toEqual([{ type: "text", text: "List<Promise<void>>" }]);
   });
 
+  it("parses a markdown image, with escaped brackets in its alt text", () => {
+    expect(parseInline("see ![a shot](https://i/p.png) here")).toEqual([
+      { type: "text", text: "see " },
+      { type: "image", alt: "a shot", href: "https://i/p.png" },
+      { type: "text", text: " here" },
+    ]);
+    expect(parseInline("![x\\]y](purview-attachment:11111111-1111-4111-8111-111111111111)")).toEqual([
+      { type: "image", alt: "x]y", href: "purview-attachment:11111111-1111-4111-8111-111111111111" },
+    ]);
+    // A link is still a link, and `!` before anything else stays text.
+    expect(parseInline("![not an image] (x) [l](https://l)")).toEqual([
+      { type: "text", text: "![not an image] (x) " },
+      { type: "link", text: "l", href: "https://l" },
+    ]);
+  });
+
   it("renders strike, kbd, sub/sup, b/i, br, a and img", () => {
     expect(parseInline("~~old~~ press <kbd>Ctrl</kbd> H<sub>2</sub>O x<sup>2</sup>")).toEqual([
       { type: "del", text: "old" },

@@ -536,7 +536,12 @@ export function updateCommentPosition(
   return { found: true, changed: true, comment: updated };
 }
 
-/** Mark comments as living in the pending review on GitHub. */
+/**
+ * Mark comments as living in the pending review on GitHub. `body` is the text
+ * as it went out when the push rewrote it (local attachment references
+ * become GitHub asset URLs — see attachments.ts); it replaces the local body
+ * without a history entry, since the reader never typed the difference.
+ */
 export function markPushed(
   key: PrKey,
   updates: {
@@ -544,6 +549,7 @@ export function markPushed(
     githubCommentId?: number;
     githubCommentNodeId?: string;
     githubThreadId?: string;
+    body?: string;
   }[],
   root = stateRoot(),
 ): void {
@@ -559,6 +565,7 @@ export function markPushed(
         ...c,
         status: "pushed" as const,
         pushedAt: now,
+        body: u.body ?? c.body,
         githubCommentId: u.githubCommentId ?? c.githubCommentId,
         githubCommentNodeId: u.githubCommentNodeId ?? c.githubCommentNodeId,
         githubThreadId: u.githubThreadId ?? c.githubThreadId,
@@ -581,6 +588,34 @@ export function setCommentNodeId(
   const next = [...comments];
   next[idx] = { ...next[idx], githubCommentNodeId };
   writeComments(key, next, root);
+}
+
+/**
+ * Replace a body without touching history or the edit stamps: the push-time
+ * rewrite of attachment references (attachments.ts), applied after GitHub
+ * accepted the rewritten text. Nothing the reader would want to undo.
+ */
+export function setCommentBody(key: PrKey, id: string, body: string, root = stateRoot()): void {
+  const comments = readComments(key, root);
+  const idx = comments.findIndex((c) => c.id === id);
+  if (idx === -1 || comments[idx].body === body) return;
+  const next = [...comments];
+  next[idx] = { ...next[idx], body };
+  writeComments(key, next, root);
+}
+
+/**
+ * Every body that may still refer to an attachment: current texts, the
+ * earlier ones undo can bring back, and deleted drafts still in the trash.
+ * What `pruneAttachments` keeps alive.
+ */
+export function allCommentBodies(key: PrKey, root = stateRoot()): string[] {
+  const live = readComments(key, root).flatMap((c) => [c.body, ...(c.history ?? []).map((h) => h.body)]);
+  const trashed = readDeletedComments(key, root).flatMap((c) => [
+    c.body,
+    ...(c.history ?? []).map((h) => h.body),
+  ]);
+  return [...live, ...trashed];
 }
 
 /** The review went public: every pushed comment went with it. */

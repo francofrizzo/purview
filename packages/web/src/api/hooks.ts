@@ -12,6 +12,7 @@ import { stalenessPollInterval } from "../lib/staleness";
 import type {
   AnalysisImportReport,
   AnalysisJob,
+  Attachment,
   DiffOfDiffs,
   RevisionLineChanges,
   DiscardPendingResult,
@@ -66,6 +67,8 @@ export const qk = {
    * discard, a reply, an edit mirrored to GitHub) changes the threads.
    */
   threads: (key: string) => ["comments", key, "threads"] as const,
+  /** Under qk.comments: a push uploads attachments and rewrites the bodies that use them. */
+  attachments: (key: string) => ["comments", key, "attachments"] as const,
   review: (key: string) => ["review", key] as const,
   analysisJob: (key: string) => ["analysis-job", key] as const,
   staleness: (key: string) => ["staleness", key] as const,
@@ -695,6 +698,33 @@ export function useResolveThread(
       );
     },
     onSettled: () => void qc.invalidateQueries({ queryKey: qk.threads(key) }),
+  });
+}
+
+/** The PR's attachments (pushed ones carry their GitHub URL), for previews. */
+export function useAttachments(key: string) {
+  return useQuery<Attachment[]>({
+    queryKey: qk.attachments(key),
+    queryFn: () => api.listAttachments(key),
+    staleTime: 30_000,
+    // An editor outside a PR page (no AttachmentContext) has no store to ask.
+    enabled: key !== "",
+  });
+}
+
+export function useUploadAttachment(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file: File) => api.uploadAttachment(key, file),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.attachments(key) }),
+  });
+}
+
+export function useDeleteAttachment(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteAttachment(key, id),
+    onSettled: () => void qc.invalidateQueries({ queryKey: qk.attachments(key) }),
   });
 }
 

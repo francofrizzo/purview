@@ -65,16 +65,62 @@ export interface CodeLink {
  */
 export const CodeLinkContext = createContext<((text: string) => CodeLink | null) | null>(null);
 
+/** A picture the page may draw itself: the local copy of a comment attachment. */
+export interface LocalMedia {
+  src: string;
+  kind: "image" | "video";
+  name: string;
+}
+
+/**
+ * Lets a surface draw images from the local attachment store (lib/attachments.ts):
+ * a `purview-attachment:` reference, or the GitHub asset URL it became when the
+ * comment was pushed, when a local copy exists. Everything else keeps the rule
+ * below — images stay links, no remote content loads into the review page.
+ */
+export interface AttachmentScope {
+  /** the PR whose attachment store editors upload into */
+  prKey: string;
+  resolve: (href: string) => LocalMedia | null;
+}
+export const AttachmentContext = createContext<AttachmentScope | null>(null);
+
 function Inline({ nodes }: { nodes: MdInline[] }) {
   const linkFor = useContext(CodeLinkContext);
+  const mediaFor = useContext(AttachmentContext)?.resolve;
   return (
     <>
       {nodes.map((node, i) => {
         const link = node.type === "code" ? linkFor?.(node.text) : null;
         if (node.type === "br") return <br key={i} />;
         if (node.type === "image") {
-          // Images stay links: a PR description's screenshots open on GitHub
-          // rather than loading remote content into the review page.
+          const local = node.href ? mediaFor?.(node.href) : null;
+          if (local) {
+            // A comment's own picture, served by the local server.
+            return local.kind === "video" ? (
+              <video
+                key={i}
+                src={local.src}
+                controls
+                preload="metadata"
+                data-testid="attachment-media"
+                className="my-1 block max-h-80 max-w-full rounded"
+                style={{ border: "1px solid var(--border)" }}
+              />
+            ) : (
+              <a key={i} href={local.src} target="_blank" rel="noreferrer noopener" title={node.alt || local.name}>
+                <img
+                  src={local.src}
+                  alt={node.alt || local.name}
+                  data-testid="attachment-media"
+                  className="my-1 block max-h-80 max-w-full rounded"
+                  style={{ border: "1px solid var(--border)" }}
+                />
+              </a>
+            );
+          }
+          // Other images stay links: a PR description's screenshots open on
+          // GitHub rather than loading remote content into the review page.
           return node.href ? (
             <a
               key={i}

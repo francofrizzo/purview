@@ -266,9 +266,10 @@ export type MdInline =
   | { type: "br" }
   | { type: "image"; alt: string; href: string };
 
-// Code first: backticks win over emphasis, as in real markdown.
+// Code first: backticks win over emphasis, as in real markdown. An image is
+// a link with a `!` in front, matched before the link so the `!` is not text.
 const INLINE =
-  /(`+)([\s\S]*?)\1|\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|(\*\*|__)([\s\S]+?)\5|(\*|_)([^\s][\s\S]*?)\7|(https?:\/\/[^\s<>()]+)/;
+  /(`+)([\s\S]*?)\1|!\[((?:[^\]\\\n]|\\.)*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)|(\*\*|__)([\s\S]+?)\7|(\*|_)([^\s][\s\S]*?)\9|(https?:\/\/[^\s<>()]+)/;
 
 /**
  * ~~strike~~ plus the inline HTML GitHub renders. Anything not listed here
@@ -356,7 +357,7 @@ export function parseInline(src: string): MdInline[] {
     }
     if (!m || m.index === undefined) break;
     const at = src.length - rest.length + m.index;
-    const delim = m[5] ?? m[7];
+    const delim = m[7] ?? m[9];
     if (delim && intrawordUnderscore(src, at, at + m[0].length, delim)) {
       // Not emphasis: keep the delimiter as text and look again after it.
       out.push({ type: "text", text: rest.slice(0, m.index + delim.length) });
@@ -368,13 +369,16 @@ export function parseInline(src: string): MdInline[] {
       // Exactly one space of padding is decoration, not content.
       out.push({ type: "code", text: m[2].replace(/^ (.*) $/, "$1") });
     } else if (m[4]) {
-      out.push({ type: "link", text: m[3] || m[4], href: m[4] });
-    } else if (m[5]) {
-      out.push({ type: "strong", text: m[6] });
+      // `\]` in alt text is an escaped bracket (see lib/attachments.ts).
+      out.push({ type: "image", alt: m[3].replace(/\\([\\\[\]])/g, "$1"), href: m[4] });
+    } else if (m[6]) {
+      out.push({ type: "link", text: m[5] || m[6], href: m[6] });
     } else if (m[7]) {
-      out.push({ type: "em", text: m[8] });
+      out.push({ type: "strong", text: m[8] });
     } else if (m[9]) {
-      out.push({ type: "link", text: m[9], href: m[9] });
+      out.push({ type: "em", text: m[10] });
+    } else if (m[11]) {
+      out.push({ type: "link", text: m[11], href: m[11] });
     }
     rest = rest.slice(m.index + m[0].length);
   }

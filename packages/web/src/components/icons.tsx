@@ -306,6 +306,13 @@ export const IconTrash = (p: P) => (
   </svg>
 );
 
+/** A paperclip — attach a picture to a comment. */
+export const IconPaperclip = (p: P) => (
+  <svg {...base} {...p}>
+    <path d="M10.5 5.5 6 10a1.6 1.6 0 0 0 2.3 2.3l5-5a3.2 3.2 0 0 0-4.5-4.5l-5.2 5.2a4.6 4.6 0 0 0 6.5 6.5l3.9-3.9" />
+  </svg>
+);
+
 export const IconEdit = (p: P) => (
   <svg {...base} {...p}>
     <path d="M10.5 2.5 13.5 5.5 5 14H2v-3z" />

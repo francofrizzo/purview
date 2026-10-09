@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { errorText, isConfirmRequired } from "../api/errors";
 import { useAgentName } from "../api/hooks";
 import {
@@ -32,7 +32,8 @@ import {
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
 import { IconChat, IconCheck, IconClose } from "./icons";
 import { BotChip, ThreadFilterMenu } from "./Threads";
-import { Markdown } from "./Markdown";
+import { AttachmentContext, Markdown } from "./Markdown";
+import { AttachButton, AttachmentStrip, DropHint, useAttachmentEditor } from "./Attachments";
 import { CommentCard } from "./CommentCard";
 
 /**
@@ -128,6 +129,14 @@ export function CommentComposer({
   const body = value ?? own;
   const setBody = onChange ?? setOwn;
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Pictures: pasted, dropped or picked, uploaded to the local store and
+  // referenced from the body (lib/attachments.ts). Only inside a PR page.
+  const prKey = useContext(AttachmentContext)?.prKey ?? "";
+  const attach = useAttachmentEditor({ prKey, textareaRef: ref, body, setBody });
+  const cancel = () => {
+    attach.discard();
+    onCancel();
+  };
 
   const fileLevel = target.subjectType === "file";
   const anchorKey = targetKey(target);
@@ -161,14 +170,15 @@ export function CommentComposer({
       className={
         floating
           ? "absolute bottom-3 right-4 z-40 w-[28rem] rounded-md elev-3"
-          : "w-full max-w-[46rem] rounded-md"
+          : "relative w-full max-w-[46rem] rounded-md"
       }
       style={{ background: "var(--bg-raised)", border: "1px dashed var(--accent)" }}
       onClick={(e) => e.stopPropagation()}
+      {...(prKey ? attach.dropProps : {})}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
-          onCancel();
+          cancel();
         }
         if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey) || !body.trim()) return;
         e.preventDefault();
@@ -198,7 +208,7 @@ export function CommentComposer({
         <button
           type="button"
           className="ml-auto flex-none rounded p-1 hover:bg-[var(--bg-hover)]"
-          onClick={onCancel}
+          onClick={cancel}
           title="Discard (esc)"
           aria-label="Discard"
           style={{ color: "var(--fg-faint)" }}
@@ -215,11 +225,20 @@ export function CommentComposer({
         placeholder={reply ? "Reply…" : fileLevel ? "Comment on this file…" : "Comment on this line…"}
         value={body}
         onChange={(e) => setBody(e.target.value)}
+        onPaste={prKey ? attach.onPaste : undefined}
       />
+      {prKey ? (
+        <>
+          <AttachmentStrip prKey={prKey} body={body} editor={attach} />
+          <DropHint active={attach.dragging} />
+          {attach.input}
+        </>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
         <span className="hidden text-2xs sm:inline" style={{ color: "var(--fg-faint)" }}>
           markdown · ⌘↵ save{onSendToChat ? " · ⌘⇧↵ ask chat" : ""}
         </span>
+        {prKey ? <AttachButton editor={attach} testId="composer-attach" /> : null}
         <span className="ml-auto flex items-center gap-1.5">
           {exportCtx ? (
             <CopyForAgentButton
@@ -390,6 +409,9 @@ export function CommentBody({
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Pictures can be added while editing too — same flow as the composer.
+  const prKey = useContext(AttachmentContext)?.prKey ?? "";
+  const attach = useAttachmentEditor({ prKey, textareaRef: ref, body: value, setBody: setValue });
 
   useEffect(() => {
     if (mode === "edit") ref.current?.focus();
@@ -401,6 +423,7 @@ export function CommentBody({
   }, [comment.body, mode]);
 
   const cancel = () => {
+    attach.discard();
     setMode("view");
     setValue(comment.body);
     setError(null);
@@ -510,7 +533,8 @@ export function CommentBody({
 
   return (
     <div
-      className="mt-1"
+      className="relative mt-1"
+      {...(prKey ? attach.dropProps : {})}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.stopPropagation();
@@ -528,9 +552,18 @@ export function CommentBody({
         className="input h-24 resize-none text-xs leading-[18px]"
         value={value}
         onChange={(e) => setValue(e.target.value)}
+        onPaste={prKey ? attach.onPaste : undefined}
       />
-      <p className="mt-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        {EDIT_HINT[status]} (esc to cancel, ⌘↵ to save)
+      {prKey ? (
+        <div className="-mx-3 mt-1">
+          <AttachmentStrip prKey={prKey} body={value} editor={attach} />
+          <DropHint active={attach.dragging} />
+          {attach.input}
+        </div>
+      ) : null}
+      <p className="mt-1 flex items-center gap-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        <span>{EDIT_HINT[status]} (esc to cancel, ⌘↵ to save)</span>
+        {prKey ? <AttachButton editor={attach} testId={`attach-${comment.id}`} /> : null}
       </p>
       {error ? (
         <p className="mt-1 text-2xs leading-4" style={{ color: "var(--risk)" }}>

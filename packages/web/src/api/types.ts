@@ -751,6 +751,21 @@ export interface DraftComment {
   inReplyTo?: string;
 }
 
+/**
+ * A picture attached to a comment, stored by the local server until the
+ * draft is pushed (see lib/attachments.ts). `githubUrl` is set once uploaded.
+ */
+export interface Attachment {
+  id: string;
+  name: string;
+  mime: string;
+  ext: string;
+  size: number;
+  createdAt: string;
+  githubUrl?: string;
+  uploadedAt?: string;
+}
+
 /** The reader, or the review chat writing through `reviewer-state comment`. */
 /**
  * The reader, or an agent in the review chat (and the harness it ran on).

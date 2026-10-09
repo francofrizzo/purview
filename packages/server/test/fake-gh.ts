@@ -60,6 +60,14 @@ export interface FakeGh {
   deletedCommentIds: number[];
   /** every addPullRequestReviewThreadReply, in order */
   replies: { threadId: string; reviewId: string; body: string; id: number }[];
+  /**
+   * Every `POST uploads.github.com/user-attachments/assets` (see
+   * attachments.ts): the query GitHub got, the headers, and the file gh was
+   * told to read with `--input`.
+   */
+  uploads: { name: string; contentType: string; repositoryId: string; headers: string[]; input: string; url: string }[];
+  /** the numeric id `GET repos/{o}/{r}` answers with */
+  repositoryId: number;
   install: () => void;
 }
 
@@ -79,6 +87,8 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
     login: opts.login ?? "reviewer-bot",
     deletedCommentIds: [],
     replies: [],
+    uploads: [],
+    repositoryId: 424242,
     fail: (match, message, once = false, after) => {
       failures.push({ match, message, once, after });
     },
@@ -127,6 +137,33 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
 
     if (joined === "api user" || /\bapi (--hostname \S+ )?user$/.test(joined)) {
       return JSON.stringify({ login: state.login, id: 1 });
+    }
+
+    // POST https://uploads.github.com/user-attachments/assets?... — the
+    // user-attachments store. Absolute URL, raw body from `--input <file>`.
+    const uploadUrl = args.find((a) => /^https:\/\/uploads\.[^/]+\/user-attachments\/assets\?/.test(a));
+    if (uploadUrl) {
+      if (!(args.includes("--method") && args[args.indexOf("--method") + 1] === "POST")) {
+        throw new Error(`gh ${joined} failed: HTTP 405 Method Not Allowed`);
+      }
+      const q = new URL(uploadUrl).searchParams;
+      const headers = args.filter((a, i) => args[i - 1] === "-H");
+      const input = args[args.indexOf("--input") + 1];
+      if (!input || input === "-") throw new Error(`gh ${joined} failed: upload needs --input <file>`);
+      if (q.get("repository_id") !== String(state.repositoryId)) {
+        throw new Error(`gh ${joined} failed: HTTP 404 Not Found`);
+      }
+      const n = state.uploads.length + 1;
+      const url = `https://github.com/user-attachments/assets/asset-${n}`;
+      state.uploads.push({
+        name: q.get("name") ?? "",
+        contentType: q.get("content_type") ?? "",
+        repositoryId: q.get("repository_id") ?? "",
+        headers,
+        input,
+        url,
+      });
+      return JSON.stringify({ url });
     }
 
     // GraphQL
@@ -279,6 +316,11 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
       args.includes("--method") ? args[args.indexOf("--method") + 1] : "GET";
     const endpoint = args.find((a) => a.startsWith("repos/")) ?? "";
     const body = input ? (JSON.parse(input) as Record<string, unknown>) : {};
+
+    // GET /repos/{o}/{r} — the numeric id the upload endpoint wants.
+    if (method === "GET" && /^repos\/[^/]+\/[^/]+$/.test(endpoint)) {
+      return JSON.stringify({ id: state.repositoryId, default_branch: "main" });
+    }
 
     // GET /pulls/{n}/reviews
     if (method === "GET" && /\/pulls\/\d+\/reviews\?/.test(endpoint)) {

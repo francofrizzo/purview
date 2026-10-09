@@ -61,6 +61,7 @@ import {
 } from "@reviewer/core";
 import {
   addComment,
+  allCommentBodies,
   deleteComment,
   findAnchoringHunk,
   NewCommentSchema,
@@ -68,6 +69,7 @@ import {
   readComments,
   readDeletedComments,
   restoreDeletedComment,
+  setCommentBody,
   setCommentNodeId,
   undoCommentEdit,
   updateCommentBody,
@@ -77,6 +79,16 @@ import {
   type CommentActor,
 } from "./comments.js";
 import { recoverCommentNodeId, syncCommentsToGithub } from "./comment-sync.js";
+import {
+  assertAttachmentRefsExist,
+  attachmentFilePath,
+  deleteAttachment,
+  findAttachment,
+  pruneAttachments,
+  readAttachments,
+  resolveBodyForGithub,
+  storeAttachment,
+} from "./attachments.js";
 import { proposeCommentReanchor } from "./comment-reanchor.js";
 import {
   SUBMIT_EVENTS,
@@ -1258,6 +1270,11 @@ export function createApp(opts: AppOptions = {}): Hono {
         }
       }
     }
+    // A body may name attachments (`purview-attachment:<id>`); each must
+    // exist on this PR, whoever wrote the body — see attachments.ts.
+    if (typeof (body as { body?: unknown })?.body === "string") {
+      assertAttachmentRefsExist(key, (body as { body: string }).body, root);
+    }
     try {
       const comment = addComment(key, body, root, actor);
       return c.json({ comment }, 201);
@@ -1275,6 +1292,9 @@ export function createApp(opts: AppOptions = {}): Hono {
     assertChatMayTouch(actor, target, "delete");
     const result = deleteComment(key, id, root, actor);
     if (!result.removed) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    // Its pictures go with it, unless another comment (or the trash, which
+    // can bring a draft back) still refers to them. Local files only.
+    pruneAttachments(key, allCommentBodies(key, root), root);
     // A failed remote delete is reported, never fatal — see comments.ts.
     return c.json({ ok: true, trashed: result.trashed ?? false, remote: result.remote ?? null });
   });
@@ -1410,6 +1430,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (target.body === newBody) {
       return c.json({ comment: target, remote: null });
     }
+    assertAttachmentRefsExist(key, newBody, root);
 
     if (target.status === "submitted" && body.confirm !== true) {
       throw new HttpError(
@@ -1447,16 +1468,85 @@ export function createApp(opts: AppOptions = {}): Hono {
         },
       });
     }
+    // An edit may add a picture to a comment that is already on GitHub: it
+    // is uploaded here, exactly as at push time, and the local text takes
+    // the rewritten form once GitHub has it. A failed upload is reported
+    // like a failed remote update — saved locally, GitHub not updated.
+    let outgoing: string;
     try {
-      updatePullRequestReviewCommentBody(key, nodeId, newBody);
+      outgoing = resolveBodyForGithub(key, newBody, root);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return c.json({ comment: result.comment, remote: { ok: false, reason } });
+    }
+    try {
+      updatePullRequestReviewCommentBody(key, nodeId, outgoing);
+      if (outgoing !== newBody) setCommentBody(key, id, outgoing, root);
       return c.json({
-        comment: { ...result.comment, githubCommentNodeId: nodeId },
+        comment: { ...result.comment, body: outgoing, githubCommentNodeId: nodeId },
         remote: { ok: true },
       });
     } catch (err) {
       const e = classifyGhReviewError(err);
       return c.json({ comment: result.comment, remote: { ok: false, reason: e.message } });
     }
+  });
+
+  /* ---------------------------------------------------------- attachments */
+
+  /**
+   * Pictures for comments, kept under the PR's state dir until a push uploads
+   * them to GitHub (see attachments.ts). The upload is the raw file as the
+   * body, its name in the query — the same shape GitHub's own endpoint takes,
+   * and what `fetch(url, { body: file })` sends without a multipart dance.
+   */
+  app.get("/api/prs/:key/attachments", (c) => {
+    const key = keyParam(c);
+    return c.json({ attachments: readAttachments(key, root) });
+  });
+
+  app.post("/api/prs/:key/attachments", async (c) => {
+    const key = keyParam(c);
+    if (!prExists(key, root)) throw new HttpError(404, "not_found", `${keyToString(key)} is not tracked`);
+    const name = c.req.query("name")?.trim();
+    if (!name) throw new HttpError(400, "missing_name", "`?name=<file name>` is required");
+    const bytes = Buffer.from(await c.req.arrayBuffer());
+    const attachment = storeAttachment(key, { name, mime: c.req.header("content-type"), bytes }, root);
+    return c.json({ attachment }, 201);
+  });
+
+  /** The local copy, for previews — before the push and after it. */
+  app.get("/api/prs/:key/attachments/:id", (c) => {
+    const key = keyParam(c);
+    const attachment = findAttachment(key, c.req.param("id"), root);
+    const file = attachment ? attachmentFilePath(key, attachment, root) : undefined;
+    if (!attachment || !file || !fs.existsSync(file)) {
+      throw new HttpError(404, "not_found", `No attachment "${c.req.param("id")}"`);
+    }
+    return new Response(fs.readFileSync(file), {
+      headers: {
+        "content-type": attachment.mime,
+        "content-disposition": "inline",
+        // The id is a UUID minted at upload: the bytes behind it never change.
+        "cache-control": "private, max-age=31536000, immutable",
+        "x-content-type-options": "nosniff",
+        // An SVG is a document: opened directly it could run script on this
+        // origin. Sandboxed, it still draws fine inside an <img>.
+        ...(attachment.mime === "image/svg+xml" ? { "content-security-policy": "sandbox" } : {}),
+      },
+    });
+  });
+
+  /** Drop a local attachment nothing refers to (a thumbnail removed, a composer discarded). */
+  app.delete("/api/prs/:key/attachments/:id", (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    const outcome = deleteAttachment(key, id, allCommentBodies(key, root), root);
+    if (outcome === "missing") throw new HttpError(404, "not_found", `No attachment "${id}"`);
+    if (outcome === "referenced") {
+      throw new HttpError(409, "attachment_in_use", "A comment still refers to this attachment");
+    }
+    return c.json({ ok: true });
   });
 
   /* ------------------------------------------------------ review threads */

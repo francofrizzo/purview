@@ -21,6 +21,7 @@ import {
   type ReviewCommentInput,
 } from "./github-review.js";
 import { clearPendingReview, patchReviewDraft, readReviewDraft } from "./review-store.js";
+import { resolveBodyForGithub } from "./attachments.js";
 
 export interface CommentSyncResult {
   ok: boolean;
@@ -54,6 +55,28 @@ const toLineInput = (c: Comment): LineReviewCommentInput => ({
   body: c.body,
 });
 
+/**
+ * A draft with its attachment references uploaded and rewritten to GitHub
+ * URLs (attachments.ts) — the text GitHub receives. Pure on the comment: the
+ * local body is only replaced once GitHub has accepted it (`markPushed`).
+ * Throws when an upload fails; the draft then stays as it was.
+ */
+function withGithubBody(key: PrKey, draft: Comment, root?: string): Comment {
+  const body = resolveBodyForGithub(key, draft.body, root);
+  return body === draft.body ? draft : { ...draft, body };
+}
+
+/** An upload failure, reported like any other per-comment push error. */
+function uploadFailure(draft: Comment, err: unknown): ReviewError {
+  const raw = err instanceof Error ? err.message : String(err);
+  return new ReviewError(
+    "attachment_upload_failed",
+    `Could not attach an image to the comment at ${draft.file}${draft.line ? `:${draft.line}` : ""}: ${raw}`,
+    raw,
+    502,
+  );
+}
+
 const toInput = (c: Comment): ReviewCommentInput =>
   c.subjectType === "file"
     ? { subjectType: "file", path: c.file, body: c.body }
@@ -82,10 +105,18 @@ function appendDrafts(
 ): { pushed: number; failure?: ReviewError } {
   let pushed = 0;
   for (const draft of drafts) {
+    // Attachments go up first: a failed upload leaves the draft untouched
+    // and stops the push here, like any failed append.
+    let outgoing: Comment;
     try {
-      const res = draft.inReplyTo
-        ? appendReplyToPendingReview(key, reviewNodeId, draft.inReplyTo, draft.body)
-        : appendCommentToPendingReview(key, reviewNodeId, toInput(draft));
+      outgoing = withGithubBody(key, draft, root);
+    } catch (err) {
+      return { pushed, failure: uploadFailure(draft, err) };
+    }
+    try {
+      const res = outgoing.inReplyTo
+        ? appendReplyToPendingReview(key, reviewNodeId, outgoing.inReplyTo, outgoing.body)
+        : appendCommentToPendingReview(key, reviewNodeId, toInput(outgoing));
       markPushed(
         key,
         [
@@ -94,6 +125,7 @@ function appendDrafts(
             githubCommentId: res.commentId,
             githubCommentNodeId: res.commentNodeId,
             githubThreadId: res.threadId,
+            body: outgoing.body,
           },
         ],
         root,
@@ -206,8 +238,21 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       // via the GraphQL mutation that can express them. Line drafts still go
       // out in the single create call. Replies can't either (the payload
       // only opens new threads), so they are appended alongside.
-      const lineDrafts = drafts.filter((c) => c.subjectType === "line" && !c.inReplyTo);
       const appendLater = drafts.filter((c) => c.subjectType === "file" || c.inReplyTo);
+      // The line drafts travel in one create call, so their attachments are
+      // uploaded up front; a draft whose upload fails is left out of the
+      // call (it stays a local draft) and the failure is reported with the
+      // rest of the result. The others still go out: nothing about them
+      // changed.
+      const lineDrafts: Comment[] = [];
+      let uploadFailed: ReviewError | undefined;
+      for (const draft of drafts.filter((c) => c.subjectType === "line" && !c.inReplyTo)) {
+        try {
+          lineDrafts.push(withGithubBody(key, draft, root));
+        } catch (err) {
+          uploadFailed ??= uploadFailure(draft, err);
+        }
+      }
       const created = createPendingReview(key, commitId, lineDrafts.map(toLineInput));
       // The create response carries no per-comment ids; this read backfills
       // both the REST databaseId (githubCommentId) and the GraphQL node id
@@ -231,7 +276,12 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
             (r) => r.path === c.file && (r.line ?? r.original_line) === c.line,
           );
           const match = idx === -1 ? undefined : remaining.splice(idx, 1)[0];
-          return { id: c.id, githubCommentId: match?.id, githubCommentNodeId: match?.node_id };
+          return {
+            id: c.id,
+            githubCommentId: match?.id,
+            githubCommentNodeId: match?.node_id,
+            body: c.body,
+          };
         }),
         root,
       );
@@ -244,7 +294,9 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
         },
         root,
       );
-      const appended = appendDrafts(key, created.nodeId, appendLater, root);
+      const appended = uploadFailed
+        ? { pushed: 0, failure: uploadFailed }
+        : appendDrafts(key, created.nodeId, appendLater, root);
       return {
         ok: !appended.failure,
         pushed: lineDrafts.length + appended.pushed,

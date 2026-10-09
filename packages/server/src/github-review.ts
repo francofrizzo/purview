@@ -47,6 +47,7 @@ export type ReviewErrorCode =
   | "not_authenticated"
   | "thread_not_found"
   | "thread_not_permitted"
+  | "attachment_upload_failed"
   | "gh_failed";
 
 export class ReviewError extends Error {
@@ -71,6 +72,7 @@ const STATUS_BY_CODE: Record<ReviewErrorCode, number> = {
   not_authenticated: 502,
   thread_not_found: 404,
   thread_not_permitted: 403,
+  attachment_upload_failed: 502,
   gh_failed: 502,
 };
 
