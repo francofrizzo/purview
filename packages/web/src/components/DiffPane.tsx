@@ -1586,6 +1586,8 @@ export function DiffPane({
   /* ------------------------------------------------- line-range selection */
 
   const [selection, setSelection] = useState<LineSelection | null>(null);
+  /** The `n` prompt: which file to comment in, the typed line(s), and why the last attempt failed. */
+  const [linePrompt, setLinePrompt] = useState<{ file: string; value: string; error?: string } | null>(null);
   const dragging = useRef(false);
 
   const startSelect = useCallback(
@@ -2003,11 +2005,10 @@ export function DiffPane({
         const first = rows.find((r) => r.type === "add") ?? rows.find((r) => r.type === "del");
         if (!first) return;
         e.preventDefault();
-        onComment(
-          first.type === "add"
-            ? { subjectType: "line", file: entry.hunk.file, line: first.newNumber!, side: "RIGHT" }
-            : { subjectType: "line", file: entry.hunk.file, line: first.oldNumber!, side: "LEFT" },
-        );
+        // The prompt opens prefilled with that line: Enter takes it, digits
+        // (or `12-18`) pick another line of the same file.
+        const line = first.type === "add" ? first.newNumber! : first.oldNumber!;
+        setLinePrompt({ file: entry.hunk.file, value: String(line) });
       } else if (e.key === " ") {
         e.preventDefault();
         const start = cur + 1;
@@ -2048,8 +2049,69 @@ export function DiffPane({
 
   const selectionCount = selection ? Math.abs(selection.focus - selection.anchor) + 1 : 0;
 
+  /** Enter in the `n` prompt: `12` or `12-18`, on the new side when the diff has it there, else the old side. */
+  const submitLinePrompt = () => {
+    if (!linePrompt) return;
+    const m = /^\s*(\d+)\s*(?:[-–]\s*(\d+))?\s*$/.exec(linePrompt.value);
+    if (!m) {
+      setLinePrompt({ ...linePrompt, error: "a line number, or a range like 12-18" });
+      return;
+    }
+    const a = Number(m[1]);
+    const b = m[2] ? Number(m[2]) : a;
+    const start = Math.min(a, b);
+    const end = Math.max(a, b);
+    const side = (["RIGHT", "LEFT"] as const).find((sd) => isRangeInDiff(detail.files, linePrompt.file, sd, start, end));
+    if (!side) {
+      setLinePrompt({ ...linePrompt, error: "not in this file's diff (a range must stay inside one hunk)" });
+      return;
+    }
+    setLinePrompt(null);
+    onComment({ subjectType: "line", file: linePrompt.file, line: end, side, ...(start < end ? { startLine: start } : {}) });
+  };
+
   return (
     <div className="relative flex h-full flex-col">
+      {linePrompt ? (
+        <form
+          className="surface absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full px-2.5 py-1 elev-2"
+          data-testid="line-prompt"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitLinePrompt();
+          }}
+        >
+          <span className="text-2xs" style={{ color: "var(--fg-muted)" }}>
+            comment on <span className="font-mono">{linePrompt.file.split("/").pop()}:</span>
+          </span>
+          <input
+            autoFocus
+            data-testid="line-prompt-input"
+            className="w-16 rounded border bg-transparent px-1.5 py-0.5 font-mono text-2xs outline-none"
+            style={{ borderColor: linePrompt.error ? "var(--risk)" : "var(--border)", color: "var(--fg)" }}
+            value={linePrompt.value}
+            onFocus={(e) => e.currentTarget.select()}
+            onChange={(e) => setLinePrompt({ file: linePrompt.file, value: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setLinePrompt(null);
+              }
+            }}
+            title="A line number, or a range like 12-18 · enter to comment · esc to cancel"
+          />
+          {linePrompt.error ? (
+            <span className="text-2xs" style={{ color: "var(--risk)" }}>
+              {linePrompt.error}
+            </span>
+          ) : (
+            <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
+              ↵ comment · esc
+            </span>
+          )}
+        </form>
+      ) : null}
       {selection && onQuote ? (
         <div
           className="surface absolute bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 rounded-full px-2.5 py-1 elev-2"

@@ -789,6 +789,14 @@ export function PrView() {
           e.preventDefault();
           setSelectedUnitId(next.id);
         }
+      } else if (e.key === "V" && tab === "units") {
+        // Shift+v: the unit-sized "mark unit viewed", next to v for one hunk.
+        if (!selectedUnit || !detail || setUnitViewed.isPending) return;
+        const p = unitProgress(detail, selectedUnit);
+        if (p.total === 0 || p.viewed === p.total) return;
+        e.preventDefault();
+        const id = selectedUnit.id;
+        setUnitViewed.mutate(id, { onSuccess: () => advanceAfterUnitViewed(id) });
       } else if (e.key === "b") {
         // `b` (as in VS Code's ⌘B), not `[`: on Spanish and other ISO layouts
         // the bracket is an Option chord, and the modifier guard above would
@@ -828,6 +836,10 @@ export function PrView() {
     toggleSidebar,
     sidebarMode,
     drawerOpen,
+    selectedUnit,
+    detail,
+    setUnitViewed,
+    advanceAfterUnitViewed,
     highlightActive,
     clearHighlight,
     summaryOpen,
@@ -1146,7 +1158,7 @@ export function PrView() {
           <div className="mt-1">
             <div>
               <kbd>j</kbd>/<kbd>k</kbd> hunk · <kbd>J</kbd>/<kbd>K</kbd> unit · <kbd>v</kbd> viewed ·{" "}
-              <kbd>z</kbd> folds · <kbd>space</kbd> next unviewed · <kbd>n</kbd> comment
+              <kbd>V</kbd> unit viewed · <kbd>z</kbd> folds · <kbd>space</kbd> next unviewed · <kbd>n</kbd> comment (then a line number)
             </div>
             <div>
               <kbd>d</kbd> {viewMode === "split" ? "unified" : "split"} · <kbd>w</kbd>{" "}

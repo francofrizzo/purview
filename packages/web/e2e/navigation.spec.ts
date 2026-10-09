@@ -66,3 +66,14 @@ test("s toggles the summary strip", async ({ page }) => {
   await expect(strip).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("summary-overlay")).toHaveCount(0);
 });
+
+test("V marks the whole unit viewed and moves on", async ({ page }) => {
+  await page.mouse.move(5, 5);
+  await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile.slice(0, 30));
+  await page.keyboard.press("Shift+KeyV");
+  // The unit is done, so the view advances to the next one in sidebar order.
+  await expect(page.getByTestId("unit-header")).not.toContainText(UNITS.reconcile.slice(0, 30));
+  // The sidebar row is the button that holds the title; its progress reads full.
+  const row = page.locator("nav button", { hasText: UNITS.reconcile }).first();
+  await expect(row).toContainText("5/5");
+});

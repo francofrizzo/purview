@@ -95,6 +95,27 @@ test("`n` opens the composer: on the gutter range, else on the focused hunk's fi
   await page.mouse.move(5, 5);
   await page.keyboard.press("j");
   await page.keyboard.press("n");
-  await expect(composer).toBeVisible();
-  await expect(composer).toContainText(/on line \d+/);
+  const prompt = page.getByTestId("line-prompt-input");
+  await expect(prompt).toBeFocused();
+  const prefilled = await prompt.inputValue();
+  expect(prefilled).toMatch(/^\d+$/);
+  await page.keyboard.press("Enter");
+  await expect(composer).toContainText(`on line ${prefilled}`);
+  await page.keyboard.press("Escape");
+  await expect(composer).toHaveCount(0);
+
+  // Digits pick another line of the same file; a range works too.
+  await page.keyboard.press("n");
+  await prompt.fill("11-13");
+  await page.keyboard.press("Enter");
+  await expect(composer).toContainText("on lines 11–13");
+  await page.keyboard.press("Escape");
+
+  // A line outside the diff is refused, and the prompt stays open to fix it.
+  await page.keyboard.press("n");
+  await prompt.fill("9999");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("line-prompt")).toContainText("not in this file's diff");
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("line-prompt")).toHaveCount(0);
 });
