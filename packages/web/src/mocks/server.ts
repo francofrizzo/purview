@@ -639,7 +639,14 @@ export const mockApi = {
     const [, host, owner, repo, number] = m;
     const key = `${host}/${owner}/${repo}/${number}`;
     const existing = list.find((p) => p.key === key);
-    if (existing) return existing;
+    if (existing) {
+      // as the server: adding a PR you archived brings it back
+      if (existing.archived) {
+        existing.archived = false;
+        syncRepoCounts();
+      }
+      return existing;
+    }
     const entry: PrListEntry = {
       key,
       meta: { host, owner, repo, number: Number(number), url, title: `${repo}#${number}` },

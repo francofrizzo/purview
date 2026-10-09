@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  readMeta,
   keyToString,
   loadState,
   parseDiff,
@@ -408,5 +409,37 @@ describe("importReviewRequestsSince — shared-analysis auto-detection", () => {
     expect(claude.runs).toHaveLength(0);
     const state = loadState(key, root);
     expect(state.units).toEqual([]);
+  });
+});
+
+describe("POST /api/prs on a PR already tracked", () => {
+  const add = () =>
+    app.request("/api/prs?analyze=false", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url: `https://${key.host}/${key.owner}/${key.repo}/pull/${key.number}` }),
+    });
+
+  it("brings an archived PR back out of the archive", async () => {
+    setGhRunner(ghWithComments({ patch: REV1_PATCH, sha: "1", seedComments: [] }));
+    expect((await add()).status).toBe(200);
+    await app.request(`/api/prs/${encodedKey}/archive`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ archived: true }),
+    });
+    expect(readMeta(key, root).archived).toBe(true);
+
+    const body = await (await add()).json();
+    expect(body.created).toBe(false);
+    expect(body.unarchived).toBe(true);
+    expect(readMeta(key, root).archived).toBe(false);
+  });
+
+  it("says nothing was unarchived when the PR wasn't archived", async () => {
+    setGhRunner(ghWithComments({ patch: REV1_PATCH, sha: "1", seedComments: [] }));
+    await add();
+    const body = await (await add()).json();
+    expect(body.unarchived).toBe(false);
   });
 });

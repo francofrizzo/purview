@@ -454,6 +454,14 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw classifyError(err);
     }
     const result = initPr(key, root);
+    // Adding a PR you had archived is asking for it back: bring it out of the
+    // archive instead of leaving the add looking like it did nothing. (Only
+    // this explicit add; the background importer never resurrects one.)
+    let unarchived = false;
+    if (!result.created && readMeta(key, root).archived) {
+      updateMeta(key, { archived: false }, root);
+      unarchived = true;
+    }
     // A freshly tracked PR has no analysis at all, so init would normally kick
     // one off (unless the caller opted out with ?analyze=false) — but first
     // check whether a teammate already shared one for this exact revision on
@@ -474,6 +482,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json({
       key: keyToString(result.key),
       created: result.created,
+      unarchived,
       revision: result.revision,
       state: sharedAnalysis ? loadState(key, root) : result.state,
       analysisJob: job,

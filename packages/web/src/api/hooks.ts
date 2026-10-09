@@ -140,7 +140,11 @@ export function useAddPr() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (url: string) => api.addPr(url),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: qk.prs }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      // an add can bring an archived PR back, which moves the repo's counts
+      void qc.invalidateQueries({ queryKey: qk.repos });
+    },
   });
 }
 

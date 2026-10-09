@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isGeneratedUnit, type Attention, type ChatRef, type PrDetail, type ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
 import { useSettings } from "../lib/settings";
@@ -51,6 +51,15 @@ export function UnitSidebar({
   });
   const { settings, update } = useSettings();
   const hide = settings.hideReviewedUnits;
+
+  // Selecting a unit opens its group: a selection hidden inside a collapsed
+  // bucket loses the reader's place. Only on a new selection, so the group
+  // can still be collapsed by hand afterwards.
+  const selectedAttention = detail.state.units.find((u) => u.id === selectedUnitId)?.attention;
+  useEffect(() => {
+    if (selectedAttention) setOpen((s) => (s[selectedAttention] ? s : { ...s, [selectedAttention]: true }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUnitId]);
 
   // Reading order: by attention bucket, `order` within it, the generated unit last.
   const units = unitDisplayOrder(detail.state.units);
