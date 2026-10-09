@@ -1446,7 +1446,7 @@ export function PrView() {
       <div className="workspace relative flex min-h-0 flex-1" style={{ background: "var(--bg)" }}>
         {sidebarMode === "column" ? (
           <nav
-            className="pane m-1.5 mr-0 flex flex-none flex-col overflow-hidden transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
+            className="pane m-[7px] mr-0 rounded-br-none flex flex-none flex-col overflow-hidden transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
             style={{
               width: sidebarCollapsed ? "var(--sidebar-rail-width)" : "19rem",
               borderColor: "var(--border)",
@@ -1474,7 +1474,7 @@ export function PrView() {
           // never unmounted — with the full sidebar floating over it (and
           // over the diff) exactly like it floats when opened below.
           <nav
-            className="pane m-1.5 mr-0 flex flex-none flex-col overflow-hidden"
+            className="pane m-[7px] mr-0 rounded-br-none flex flex-none flex-col overflow-hidden"
             style={{
               width: "var(--sidebar-rail-width)",
               borderColor: "var(--border)",
@@ -1502,7 +1502,7 @@ export function PrView() {
               onClick={() => setDrawerOpen(false)}
             />
             <nav
-              className="pane elev-3 absolute inset-y-1.5 left-1.5 z-40 flex w-[19rem] flex-none flex-col overflow-hidden"
+              className="pane elev-3 absolute inset-y-[7px] left-[7px] z-40 flex w-[19rem] flex-none flex-col overflow-hidden"
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
               {sidebarBody}
@@ -1520,7 +1520,7 @@ export function PrView() {
               // the file headers below it belong to the desk itself.
               // px-2 inside a 6px margin + 1px border lands the title on the
               // same x as the file path in the rows below.
-              className={`pane m-1.5 flex-none px-2 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
+              className={`pane m-[7px] flex-none px-2 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
                 headerCollapsed ? "cursor-pointer py-1" : "py-2"
               }`}
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
