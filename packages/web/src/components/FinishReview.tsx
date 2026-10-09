@@ -120,7 +120,7 @@ export function FinishReviewPanel({
 
   return (
     <aside
-      className="flex w-[26rem] flex-none flex-col border-l"
+      className="pane flex w-[26rem] flex-none flex-col overflow-hidden"
       style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
     >
       <div

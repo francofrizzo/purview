@@ -1416,10 +1416,14 @@ export function PrView() {
         />
       ) : null}
 
-      <div className="relative flex min-h-0 flex-1">
+      {/* The workspace: the diff is the desk, the sidebar and side panels are
+          instruments resting on it — bordered, rounded, a hair of gutter
+          between them. Only things that truly float (the summary panel, pills,
+          menus) cast a shadow; resting surfaces never do. */}
+      <div className="workspace relative flex min-h-0 flex-1 gap-1.5 p-1.5" style={{ background: "var(--bg-inset)" }}>
         {sidebarMode === "column" ? (
           <nav
-            className="flex flex-none flex-col overflow-hidden border-r transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
+            className="pane flex flex-none flex-col overflow-hidden transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
             style={{
               width: sidebarCollapsed ? "var(--sidebar-rail-width)" : "19rem",
               borderColor: "var(--border)",
@@ -1447,7 +1451,7 @@ export function PrView() {
           // never unmounted — with the full sidebar floating over it (and
           // over the diff) exactly like it floats when opened below.
           <nav
-            className="flex flex-none flex-col border-r"
+            className="pane flex flex-none flex-col overflow-hidden"
             style={{
               width: "var(--sidebar-rail-width)",
               borderColor: "var(--border)",
@@ -1475,7 +1479,7 @@ export function PrView() {
               onClick={() => setDrawerOpen(false)}
             />
             <nav
-              className="elev-3 absolute inset-y-0 left-0 z-40 flex w-[19rem] flex-none flex-col border-r"
+              className="pane elev-3 absolute inset-y-1.5 left-1.5 z-40 flex w-[19rem] flex-none flex-col overflow-hidden"
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
               {sidebarBody}
@@ -1483,7 +1487,7 @@ export function PrView() {
           </>
         ) : null}
 
-        <main ref={mainRef} className="relative flex min-w-0 flex-1 flex-col">
+        <main ref={mainRef} className="pane relative flex min-w-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--bg)" }}>
           {tab === "units" && selectedUnit ? (
             <div
               ref={setHeaderEl}

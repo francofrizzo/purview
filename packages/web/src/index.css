@@ -192,6 +192,13 @@
     border: 1px solid var(--border);
   }
 
+  /* A resting surface in the workspace: bordered and rounded, never
+     shadowed — the shadow is reserved for things that float over it. */
+  .pane {
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+  }
+
   /* Elevation scale (values live in the theme tokens): 1 = resting card,
      2 = popover / menu / floating pill, 3 = modal / drawer. */
   .elev-1 {
