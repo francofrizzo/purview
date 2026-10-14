@@ -69,9 +69,7 @@ function UpdateChip({ latest, compact }: { latest: string; compact: boolean }) {
             style={{ background: "var(--accent)", boxShadow: "0 0 0 1.5px var(--bg)" }}
           />
         ) : (
-          <>
-            <span className="font-mono">{latest}</span> available
-          </>
+          "Update available"
         )}
       </button>
       {open ? (

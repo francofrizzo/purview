@@ -9,7 +9,7 @@ test("a newer release on origin shows an update chip, with the command; the chec
 
   const chip = page.getByTestId("update-available");
   await expect(chip).toBeVisible();
-  await expect(chip).toContainText("2026.10.15.1 available");
+  await expect(chip).toHaveText("Update available");
   await chip.click();
   const card = page.getByTestId("update-card");
   await expect(card).toContainText("Purview 2026.10.15.1 is available");
