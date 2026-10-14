@@ -6,6 +6,7 @@ import {
   useLanAccess,
   useRegenerateLanToken,
   useSaveGlobalConfig,
+  useVersion,
 } from "../api/hooks";
 import type { AgentSelection, AgentsInfo, ResolvedAgent } from "../api/types";
 import {
@@ -20,6 +21,7 @@ import {
 } from "../lib/agentSelection";
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
 import { Modal, useCloseModal } from "../components/Modal";
+import { WhatsNew } from "../components/WhatsNew";
 import { IconSettings } from "../components/icons";
 import { tokenizeLines, type Tok } from "../lib/highlight";
 import {
@@ -78,6 +80,7 @@ export function SettingsModal() {
       <YourPrsSection />
 
       <NetworkSection />
+      <AboutSection />
 
       <Section title="Diff defaults" hint="The same preferences the d / w keys toggle while reviewing.">
         <div className="flex flex-wrap items-center gap-6">
@@ -995,6 +998,27 @@ function LoginListField({
         </p>
       )}
     </>
+  );
+}
+
+/** Version and the full changelog: the version is the newest CHANGELOG.md heading. */
+function AboutSection() {
+  const version = useVersion();
+  const [log, setLog] = useState(false);
+  const v = version.data;
+  return (
+    <Section title="About" hint="The version is defined by the changelog: it moves when there is something to tell you.">
+      <div className="flex flex-wrap items-center gap-3 text-2xs">
+        <span className="font-mono" style={{ color: "var(--fg-muted)" }} data-testid="about-version">
+          Purview {v?.version ?? "—"}
+          {v?.sha ? <span style={{ color: "var(--fg-faint)" }}> · {v.sha}</span> : null}
+        </span>
+        <button type="button" className="btn" onClick={() => setLog(true)} disabled={!v?.entries.length}>
+          What's new
+        </button>
+      </div>
+      {log && v ? <WhatsNew entries={v.entries} version={v.version} title="Changelog" onClose={() => setLog(false)} /> : null}
+    </Section>
   );
 }
 

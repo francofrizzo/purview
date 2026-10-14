@@ -1275,3 +1275,24 @@ export interface ThreadsResponse {
 export interface ResolveThreadResult {
   thread: Pick<RemoteThread, "id" | "isResolved" | "resolvedBy" | "viewerCanResolve" | "viewerCanUnresolve">;
 }
+
+/** One shipped change, as CHANGELOG.md states it. */
+export interface ChangelogEntry {
+  version: string;
+  /** ISO date */
+  date: string;
+  /** inline markdown bullets */
+  items: string[];
+}
+
+/** GET /api/version */
+export interface VersionInfo {
+  /** the newest changelog heading; null when there is no changelog */
+  version: string | null;
+  /** the running checkout's short commit; null outside git */
+  sha: string | null;
+  lastSeen: string | null;
+  /** what "What's new" should show now; empty when up to date */
+  unseen: ChangelogEntry[];
+  entries: ChangelogEntry[];
+}

@@ -135,6 +135,7 @@ import { LAN_WARNING, lanQrSvg, lanUrl } from "./lan.js";
 import { checkStaleness, clearStalenessCache } from "./staleness.js";
 import { reviewEffort } from "./effort.js";
 import { diffSize } from "./diff-size.js";
+import { compareVersions, entriesSince, headSha, readChangelog } from "./changelog.js";
 import {
   autoAnalyzeAllowed,
   autoAnalyzeBlocker,
@@ -1859,6 +1860,38 @@ export function createApp(opts: AppOptions = {}): Hono {
     .strict();
 
   app.get("/api/config", (c) => c.json(globalConfigPayload()));
+
+  /* ------------------------------------------------------------- version */
+
+  /**
+   * The running version (the newest CHANGELOG.md heading), the checkout's
+   * commit, the last version this reader was shown, and the entries to show
+   * now. The web asks on the home page and shows "What's new" when `unseen`
+   * is not empty.
+   */
+  app.get("/api/version", (c) => {
+    const entries = readChangelog();
+    const lastSeen = readConfig(root).lastSeenVersion;
+    return c.json({
+      version: entries[0]?.version ?? null,
+      sha: headSha(),
+      lastSeen,
+      unseen: entriesSince(entries, lastSeen),
+      entries,
+    });
+  });
+
+  /** The reader closed "What's new": remember the version, never go backwards. */
+  app.post("/api/version/seen", async (c) => {
+    const body = (await readJsonBody(c)) as { version?: unknown };
+    if (typeof body.version !== "string" || !body.version) {
+      throw new HttpError(400, "invalid_body", "Body must include { version: string }");
+    }
+    const current = readConfig(root).lastSeenVersion;
+    const next = current && compareVersions(current, body.version) >= 0 ? current : body.version;
+    if (next !== current) writeConfig({ lastSeenVersion: next }, root);
+    return c.json({ lastSeen: next });
+  });
 
   /**
    * The harnesses this server can run, as their manifests describe them: the

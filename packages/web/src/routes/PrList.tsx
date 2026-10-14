@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK } from "../api/client";
-import { useAddPr, useImportReviews, usePrs, useRepos, useSetArchived } from "../api/hooks";
+import { useAddPr, useImportReviews, useMarkVersionSeen, usePrs, useRepos, useSetArchived, useVersion } from "../api/hooks";
 import type { PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
@@ -14,6 +14,7 @@ import {
   DiffSizeStat,
 } from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
+import { WhatsNew } from "../components/WhatsNew";
 import { IconArchive, IconChevron, IconPlus, IconSettings } from "../components/icons";
 import { errorText } from "../api/errors";
 import { formatImportResult } from "../lib/reviewImport";
@@ -38,6 +39,11 @@ export function PrList() {
   const addPr = useAddPr();
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
+  // First open after an update: the unseen changelog entries float over the
+  // list until dismissed, which records the version on the server.
+  const version = useVersion();
+  const markSeen = useMarkVersionSeen();
+  const unseen = version.data?.unseen ?? [];
 
   const groups = useMemo(() => groupPrsByRepo(prs), [prs]);
   const tiers = useMemo(() => partitionRepoGroups(groups), [groups]);
@@ -67,6 +73,13 @@ export function PrList() {
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col px-6 py-10">
+      {unseen.length && version.data?.version && !markSeen.isPending ? (
+        <WhatsNew
+          entries={unseen}
+          version={version.data.version}
+          onClose={() => markSeen.mutate(version.data!.version!)}
+        />
+      ) : null}
       <header className="mb-6 flex items-start">
         <div className="min-w-0 flex-1">
           <h1>

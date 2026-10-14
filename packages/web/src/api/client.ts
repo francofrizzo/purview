@@ -66,6 +66,7 @@ import type {
   SubmitReviewResult,
   SyncResult,
   ToolKind,
+  VersionInfo,
 } from "./types";
 
 export const MOCK = import.meta.env.VITE_MOCK === "1";
@@ -536,6 +537,18 @@ export const api = {
   async saveConfig(patch: GlobalConfigPatch): Promise<GlobalConfig> {
     if (MOCK) return mockApi.saveConfig(patch);
     return put<GlobalConfig>("/config", patch);
+  },
+
+  /* --------------------------------------------------------- version */
+
+  async getVersion(): Promise<VersionInfo> {
+    if (MOCK) return mockApi.getVersion();
+    return request<VersionInfo>("/version");
+  },
+
+  async markVersionSeen(version: string): Promise<{ lastSeen: string }> {
+    if (MOCK) return mockApi.markVersionSeen(version);
+    return post<{ lastSeen: string }>("/version/seen", { version });
   },
 
   /* ------------------------------------------------------ LAN access */

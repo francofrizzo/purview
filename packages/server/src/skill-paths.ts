@@ -26,7 +26,7 @@ function moduleDir(): string {
 }
 
 /** Repo root: `<root>/packages/server/{src,dist}/skill-paths.{ts,js}` -> `<root>`. */
-function repoRoot(): string {
+export function repoRoot(): string {
   return path.resolve(moduleDir(), "../../..");
 }
 

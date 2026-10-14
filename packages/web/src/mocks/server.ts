@@ -52,6 +52,8 @@ import type {
   StalenessReason,
   SubmitReviewResult,
   SyncResult,
+  ChangelogEntry,
+  VersionInfo,
 } from "../api/types";
 import {
   mockConversation,
@@ -282,6 +284,32 @@ function resolveRepoAgent(rkey: string, kind: "analysis" | "chat", pin?: ChatAge
     kind === "analysis",
   );
 }
+
+/** Two entries, the older one already seen, so the home page shows one "What's new". */
+const MOCK_CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "2026.10.14.1",
+    date: "2026-10-14",
+    items: [
+      "The PR header and every home row show GitHub's size stat: files changed, lines added, lines removed.",
+      "Purview has a version, defined by the changelog, and shows what's new after an update.",
+    ],
+  },
+  {
+    version: "2026.10.9.1",
+    date: "2026-10-09",
+    items: ["The diff is the desk: the sidebar, the unit brief and the side panels rest on it as bordered panes."],
+  },
+];
+// Survives a reload within the tab, the way the real server remembers it.
+const LAST_SEEN_KEY = "purview-mock-last-seen";
+let mockLastSeen: string | null = (() => {
+  try {
+    return sessionStorage.getItem(LAST_SEEN_KEY) ?? "2026.10.9.1";
+  } catch {
+    return "2026.10.9.1";
+  }
+})();
 
 function globalPayload(): GlobalConfig {
   return {
@@ -793,6 +821,33 @@ export const mockApi = {
     if (patch.extraAuthors !== undefined) globalConfig.extraAuthors = patch.extraAuthors;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return globalPayload();
+  },
+
+  async getVersion(): Promise<VersionInfo> {
+    await delay(60);
+    const entries = MOCK_CHANGELOG;
+    // Numeric, segment by segment, like the server: 2026.10.14.1 is newer than 2026.10.9.1.
+    const newer = (a: string, b: string) => {
+      const pa = a.split(".").map(Number);
+      const pb = b.split(".").map(Number);
+      for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) > (pb[i] ?? 0);
+      }
+      return false;
+    };
+    const unseen = mockLastSeen === null ? [entries[0]] : entries.filter((e) => newer(e.version, mockLastSeen!));
+    return structuredClone({ version: entries[0].version, sha: "m0ck5ha", lastSeen: mockLastSeen, unseen, entries });
+  },
+
+  async markVersionSeen(version: string): Promise<{ lastSeen: string }> {
+    await delay(40);
+    mockLastSeen = version;
+    try {
+      sessionStorage.setItem(LAST_SEEN_KEY, version);
+    } catch {
+      // private mode or blocked storage: the in-memory value still works for this load
+    }
+    return { lastSeen: version };
   },
 
   async getLan(): Promise<LanAccess> {

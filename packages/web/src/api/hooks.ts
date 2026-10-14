@@ -48,6 +48,7 @@ import type {
   Staleness,
   SubmitReviewResult,
   SyncResult,
+  VersionInfo,
 } from "./types";
 
 export const qk = {
@@ -58,6 +59,7 @@ export const qk = {
   config: ["config"] as const,
   agents: ["agents"] as const,
   lan: ["lan"] as const,
+  version: ["version"] as const,
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
   /** under qk.comments, so every comments invalidation refreshes the trash too */
@@ -371,6 +373,20 @@ export function useSaveGlobalConfig() {
  * 403s when the app is itself being read over the LAN — which is the point:
  * the token cannot be fetched by anything holding it.
  */
+export function useVersion() {
+  return useQuery<VersionInfo>({ queryKey: qk.version, queryFn: api.getVersion, retry: false, staleTime: 60_000 });
+}
+
+/** Closing "What's new": the server remembers, and the cached payload is updated in place. */
+export function useMarkVersionSeen(): UseMutationResult<{ lastSeen: string }, Error, string> {
+  const qc = useQueryClient();
+  return useMutation<{ lastSeen: string }, Error, string>({
+    mutationFn: (version) => api.markVersionSeen(version),
+    onSuccess: ({ lastSeen }) =>
+      qc.setQueryData<VersionInfo>(qk.version, (v) => (v ? { ...v, lastSeen, unseen: [] } : v)),
+  });
+}
+
 export function useLanAccess() {
   return useQuery<LanAccess>({ queryKey: qk.lan, queryFn: api.getLan, retry: false });
 }

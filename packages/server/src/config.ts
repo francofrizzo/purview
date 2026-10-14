@@ -91,6 +91,8 @@ export const ConfigSchema = z.object({
    * viewer login as "mine".
    */
   extraAuthors: z.array(z.string()).default([]),
+  /** The newest changelog version the reader has been shown; null = never. */
+  lastSeenVersion: z.string().nullable().default(null),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;
