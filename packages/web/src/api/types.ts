@@ -624,6 +624,8 @@ export interface GlobalConfig {
    * own (an agent's bot account). Absent on a server that predates it.
    */
   extraAuthors?: string[];
+  /** ask origin once a day for a newer release and show it on the home page */
+  updateCheck?: boolean;
   /** what this layer resolves to on its own — the end of the chain */
   effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }
@@ -634,6 +636,7 @@ export interface GlobalConfigPatch {
   managedCheckouts?: boolean;
   aiReviewers?: string[];
   extraAuthors?: string[];
+  updateCheck?: boolean;
 }
 
 /**
@@ -1295,4 +1298,10 @@ export interface VersionInfo {
   /** what "What's new" should show now; empty when up to date */
   unseen: ChangelogEntry[];
   entries: ChangelogEntry[];
+  /** a newer release on origin than the one running; null when up to date, unknown, or the check is off */
+  latest: string | null;
+  /** when origin was last asked, ISO; null before the first check or with the check off */
+  checkedAt: string | null;
+  /** the daily check is on (a global setting) */
+  updateCheck: boolean;
 }

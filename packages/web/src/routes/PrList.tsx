@@ -14,6 +14,7 @@ import {
   DiffSizeStat,
 } from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
+import { UpdateAvailable } from "../components/UpdateAvailable";
 import { WhatsNew } from "../components/WhatsNew";
 import { IconArchive, IconChevron, IconPlus, IconSettings } from "../components/icons";
 import { errorText } from "../api/errors";
@@ -93,10 +94,13 @@ export function PrList() {
             </p>
           ) : null}
         </div>
-        <Link to="/settings" state={{ background }} className="btn flex-none" title="Settings">
-          <IconSettings width={12} height={12} />
-          settings
-        </Link>
+        <div className="flex flex-none items-center gap-2">
+          {version.data?.latest ? <UpdateAvailable latest={version.data.latest} /> : null}
+          <Link to="/settings" state={{ background }} className="btn" title="Settings">
+            <IconSettings width={12} height={12} />
+            settings
+          </Link>
+        </div>
       </header>
 
       <form onSubmit={submit} className="mb-6 flex gap-2">

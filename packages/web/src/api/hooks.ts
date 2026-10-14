@@ -362,6 +362,8 @@ export function useSaveGlobalConfig() {
     onSuccess: (config) => {
       qc.setQueryData(qk.config, config);
       void qc.invalidateQueries({ queryKey: ["repo-config"] });
+      // `updateCheck` changes what /api/version reports.
+      void qc.invalidateQueries({ queryKey: qk.version });
     },
   });
 }
@@ -378,6 +380,15 @@ export function useVersion() {
 }
 
 /** Closing "What's new": the server remembers, and the cached payload is updated in place. */
+/** "Check now" in About: a forced check, folded into the cached version info. */
+export function useCheckForUpdate(): UseMutationResult<{ latest: string | null; checkedAt: string | null }, Error, void> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.checkForUpdate(),
+    onSuccess: (r) => qc.setQueryData<VersionInfo>(qk.version, (v) => (v ? { ...v, ...r } : v)),
+  });
+}
+
 export function useMarkVersionSeen(): UseMutationResult<{ lastSeen: string }, Error, string> {
   const qc = useQueryClient();
   return useMutation<{ lastSeen: string }, Error, string>({

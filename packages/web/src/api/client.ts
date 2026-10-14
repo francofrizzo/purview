@@ -546,6 +546,11 @@ export const api = {
     return request<VersionInfo>("/version");
   },
 
+  async checkForUpdate(): Promise<{ latest: string | null; checkedAt: string | null }> {
+    if (MOCK) return mockApi.checkForUpdate();
+    return post<{ latest: string | null; checkedAt: string | null }>("/version/check", {});
+  },
+
   async markVersionSeen(version: string): Promise<{ lastSeen: string }> {
     if (MOCK) return mockApi.markVersionSeen(version);
     return post<{ lastSeen: string }>("/version/seen", { version });

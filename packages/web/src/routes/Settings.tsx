@@ -5,6 +5,7 @@ import {
   useGlobalConfig,
   useLanAccess,
   useRegenerateLanToken,
+  useCheckForUpdate,
   useSaveGlobalConfig,
   useVersion,
 } from "../api/hooks";
@@ -22,6 +23,7 @@ import {
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
 import { Modal, useCloseModal } from "../components/Modal";
 import { Section, SettingsLayout, type SettingsNavGroup } from "../components/SettingsSections";
+import { UPDATE_COMMAND } from "../components/UpdateAvailable";
 import { WhatsNew } from "../components/WhatsNew";
 import { IconSettings } from "../components/icons";
 import { tokenizeLines, type Tok } from "../lib/highlight";
@@ -1033,8 +1035,13 @@ function LoginListField({
 /** Version and the full changelog: the version is the newest CHANGELOG.md heading. */
 function AboutSection() {
   const version = useVersion();
+  const config = useGlobalConfig();
+  const save = useSaveGlobalConfig();
+  const check = useCheckForUpdate();
   const [log, setLog] = useState(false);
   const v = version.data;
+  // The server reads the flag from the same config; an unknown (older server) counts as on.
+  const checking = config.data?.updateCheck ?? v?.updateCheck ?? true;
   return (
     <Section id="about" title="About" hint="The version is defined by the changelog: it moves when there is something to tell you.">
       <div className="flex flex-wrap items-center gap-3 text-2xs">
@@ -1045,6 +1052,49 @@ function AboutSection() {
         <button type="button" className="btn" onClick={() => setLog(true)} disabled={!v?.entries.length}>
           What's new
         </button>
+      </div>
+      <div className="mt-3 flex flex-col gap-2 text-2xs">
+        <label className="flex items-center gap-2" style={{ color: "var(--fg-muted)" }}>
+          <input
+            type="checkbox"
+            data-testid="global-update-check"
+            checked={checking}
+            disabled={!config.data || save.isPending}
+            onChange={(e) => save.mutate({ updateCheck: e.target.checked })}
+            style={{ accentColor: "var(--accent)" }}
+          />
+          Check for updates once a day — asks GitHub for a newer release and shows it on the home page
+        </label>
+        {!checking || !v ? null : (
+          <div className="flex flex-wrap items-center gap-3">
+            {v.latest ? (
+              <p data-testid="about-update" style={{ color: "var(--fg-muted)" }}>
+                <span style={{ color: "var(--accent)" }}>Purview {v.latest} is available.</span> In the checkout, run{" "}
+                <span className="font-mono">{UPDATE_COMMAND}</span> and reload.
+              </p>
+            ) : v.checkedAt ? (
+              <p data-testid="about-update" style={{ color: "var(--fg-faint)" }}>
+                Up to date · last checked {new Date(v.checkedAt).toLocaleString()}
+              </p>
+            ) : (
+              <p data-testid="about-update" style={{ color: "var(--fg-faint)" }}>
+                Not checked yet — this needs a git checkout with an <span className="font-mono">origin</span> remote.
+              </p>
+            )}
+            <button
+              type="button"
+              className="btn"
+              data-testid="about-check-now"
+              disabled={check.isPending}
+              onClick={() => check.mutate()}
+            >
+              {check.isPending ? "checking…" : "Check now"}
+            </button>
+            {check.error ? (
+              <span style={{ color: "var(--risk)" }}>{errorText(check.error) || "Could not reach origin."}</span>
+            ) : null}
+          </div>
+        )}
       </div>
       {log && v ? <WhatsNew entries={v.entries} version={v.version} title="Changelog" onClose={() => setLog(false)} /> : null}
     </Section>

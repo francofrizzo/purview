@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- Purview tells you when a newer release is on GitHub: an "update" chip on the home page with the command to run, and in Settings → About the status, a "Check now" button, and a switch to turn the daily check off.
+
 ## 2026.10.14.3
 
 - Settings are grouped (Appearance, Review, System; and for a repo: Repo, Review, Sources, Danger) with a section list on the left that scrolls to each section and follows where you are.

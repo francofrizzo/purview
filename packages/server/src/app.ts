@@ -136,6 +136,7 @@ import { checkStaleness, clearStalenessCache } from "./staleness.js";
 import { reviewEffort } from "./effort.js";
 import { diffSize } from "./diff-size.js";
 import { compareVersions, entriesSince, headSha, readChangelog } from "./changelog.js";
+import { createUpdateChecker, noUpdateChecker, type UpdateChecker } from "./updates.js";
 import {
   autoAnalyzeAllowed,
   autoAnalyzeBlocker,
@@ -183,6 +184,12 @@ export interface AppOptions {
    * clock/resolver (tests).
    */
   reviewRequestRefresh?: RefreshDeps | false;
+  /**
+   * The "is there a newer Purview?" check behind `GET /api/version` (see
+   * updates.ts). `false` never asks the network (tests); an object swaps the
+   * `git ls-remote` runner and clock.
+   */
+  updateChecker?: UpdateChecker | false;
 }
 
 const isYou = (author: string | undefined, login: string | null | undefined): boolean =>
@@ -333,6 +340,8 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
   };
   const autoAnalyze = opts.autoAnalyze ?? true;
+  const updateChecker =
+    opts.updateChecker === false ? noUpdateChecker : (opts.updateChecker ?? createUpdateChecker());
   // A "running" job record can only be stale at boot — nothing is running yet.
   reconcileStaleJobs(root);
 
@@ -1831,6 +1840,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       managedCheckouts: config.managedCheckouts,
       aiReviewers: config.aiReviewers,
       extraAuthors: config.extraAuthors,
+      updateCheck: config.updateCheck,
       /** what this layer resolves to on its own — the end of the inheritance chain */
       effective: {
         analysisAgent: agentView(resolveAgent("analysis", [["global", config.analysisAgent]], true)),
@@ -1856,6 +1866,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       aiReviewers: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
       /** logins whose PRs count as yours on the list; the whole list, replacing the stored one */
       extraAuthors: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
+      /** ask origin for newer releases once a day */
+      updateCheck: z.boolean().optional(),
     })
     .strict();
 
@@ -1865,20 +1877,34 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /**
    * The running version (the newest CHANGELOG.md heading), the checkout's
-   * commit, the last version this reader was shown, and the entries to show
-   * now. The web asks on the home page and shows "What's new" when `unseen`
-   * is not empty.
+   * commit, the last version this reader was shown, the entries to show now,
+   * and — when the reader allows the daily check — the newer release on
+   * origin, if any. The web asks on the home page: "What's new" when `unseen`
+   * is not empty, an update chip when `latest` is set.
    */
-  app.get("/api/version", (c) => {
+  app.get("/api/version", async (c) => {
     const entries = readChangelog();
-    const lastSeen = readConfig(root).lastSeenVersion;
+    const config = readConfig(root);
+    const version = entries[0]?.version ?? null;
+    const update = config.updateCheck ? await updateChecker.status(version) : { latest: null, checkedAt: null };
     return c.json({
-      version: entries[0]?.version ?? null,
+      version,
       sha: headSha(),
-      lastSeen,
-      unseen: entriesSince(entries, lastSeen),
+      lastSeen: config.lastSeenVersion,
+      unseen: entriesSince(entries, config.lastSeenVersion),
       entries,
+      latest: update.latest,
+      checkedAt: update.checkedAt,
+      updateCheck: config.updateCheck,
     });
+  });
+
+  /** "Check now": ask origin regardless of the daily cache; the flag still has to be on. */
+  app.post("/api/version/check", async (c) => {
+    const config = readConfig(root);
+    if (!config.updateCheck) throw new HttpError(409, "update_check_off", "The update check is turned off");
+    const version = readChangelog()[0]?.version ?? null;
+    return c.json(await updateChecker.check(version));
   });
 
   /** The reader closed "What's new": remember the version, never go backwards. */
@@ -1928,6 +1954,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // Both login lists are stored as typed, minus case-insensitive duplicates.
     if (body.aiReviewers !== undefined) patch.aiReviewers = dedupeLogins(body.aiReviewers);
     if (body.extraAuthors !== undefined) patch.extraAuthors = dedupeLogins(body.extraAuthors);
+    if (body.updateCheck !== undefined) patch.updateCheck = body.updateCheck;
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
   });

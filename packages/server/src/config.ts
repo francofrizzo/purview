@@ -93,6 +93,11 @@ export const ConfigSchema = z.object({
   extraAuthors: z.array(z.string()).default([]),
   /** The newest changelog version the reader has been shown; null = never. */
   lastSeenVersion: z.string().nullable().default(null),
+  /**
+   * Ask origin once a day for a newer release tag and say so in the app (see
+   * updates.ts). The only thing it reveals to GitHub is that a checkout exists.
+   */
+  updateCheck: z.boolean().default(true),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;

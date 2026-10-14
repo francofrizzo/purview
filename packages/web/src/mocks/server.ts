@@ -196,6 +196,7 @@ const globalConfig: {
   managedCheckouts: boolean;
   aiReviewers: string[];
   extraAuthors: string[];
+  updateCheck: boolean;
 } = {
   analysisAgent: null,
   chatAgent: null,
@@ -203,6 +204,7 @@ const globalConfig: {
   aiReviewers: [],
   // The fixture's bot-opened PR (billing #502) lands under "Your PRs" through this.
   extraAuthors: ["acme-agent[bot]"],
+  updateCheck: true,
 };
 
 /**
@@ -286,6 +288,8 @@ function resolveRepoAgent(rkey: string, kind: "analysis" | "chat", pin?: ChatAge
 }
 
 /** Two entries, the older one already seen, so the home page shows one "What's new". */
+const MOCK_LATEST = "2026.10.15.1";
+
 const MOCK_CHANGELOG: ChangelogEntry[] = [
   {
     version: "2026.10.14.1",
@@ -819,6 +823,7 @@ export const mockApi = {
     if (patch.managedCheckouts !== undefined) globalConfig.managedCheckouts = patch.managedCheckouts;
     if (patch.aiReviewers !== undefined) globalConfig.aiReviewers = patch.aiReviewers;
     if (patch.extraAuthors !== undefined) globalConfig.extraAuthors = patch.extraAuthors;
+    if (patch.updateCheck !== undefined) globalConfig.updateCheck = patch.updateCheck;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return globalPayload();
   },
@@ -836,7 +841,22 @@ export const mockApi = {
       return false;
     };
     const unseen = mockLastSeen === null ? [entries[0]] : entries.filter((e) => newer(e.version, mockLastSeen!));
-    return structuredClone({ version: entries[0].version, sha: "m0ck5ha", lastSeen: mockLastSeen, unseen, entries });
+    // A release ahead of the fixture's version, so the home shows the update chip.
+    return structuredClone({
+      version: entries[0].version,
+      sha: "m0ck5ha",
+      lastSeen: mockLastSeen,
+      unseen,
+      entries,
+      latest: globalConfig.updateCheck ? MOCK_LATEST : null,
+      checkedAt: globalConfig.updateCheck ? new Date().toISOString() : null,
+      updateCheck: globalConfig.updateCheck,
+    });
+  },
+
+  async checkForUpdate(): Promise<{ latest: string | null; checkedAt: string | null }> {
+    await delay(300);
+    return { latest: globalConfig.updateCheck ? MOCK_LATEST : null, checkedAt: new Date().toISOString() };
   },
 
   async markVersionSeen(version: string): Promise<{ lastSeen: string }> {
