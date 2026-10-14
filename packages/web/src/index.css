@@ -214,6 +214,20 @@
     border: 1px solid var(--border);
   }
 
+  /* A menu item that starts a new group: a rule above, with a little air. */
+  .menu-divider {
+    position: relative;
+    margin-top: 0.5rem;
+  }
+  .menu-divider::before {
+    content: "";
+    position: absolute;
+    left: 0.25rem;
+    right: 0.25rem;
+    top: -0.25rem;
+    border-top: 1px solid var(--border);
+  }
+
   /* A resting surface in the workspace: bordered and rounded, never
      shadowed — the shadow is reserved for things that float over it. */
   .pane {

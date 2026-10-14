@@ -14,13 +14,20 @@ import { CopyPathButton } from "./DiffPane";
 import { useModalBackground } from "./Modal";
 import {
   IconArchive,
-  IconCheck,
   IconArrowLeft,
+  IconBolt,
+  IconCheck,
+  IconClose,
   IconCollapse,
   IconComment,
+  IconDownload,
   IconExpand,
+  IconFileImport,
+  IconInbox,
   IconMore,
   IconRefresh,
+  IconSettings,
+  IconShare,
   IconUpload,
 } from "./icons";
 
@@ -353,6 +360,7 @@ export function TopBar({
             // sync moves in here.
             {
               label: syncing ? "syncing…" : "sync",
+              icon: <IconUpload width={12} height={12} />,
               narrowOnly: true,
               disabled: syncing,
               hint: "Push viewed files and comments to GitHub.",
@@ -361,12 +369,14 @@ export function TopBar({
             live
               ? {
                   label: analysisCancelling ? "cancelling analysis…" : "cancel analysis",
+                  icon: <IconClose width={12} height={12} />,
                   testId: "menu-cancel-analysis",
                   disabled: analysisCancelling,
                   onClick: onCancelAnalysis,
                 }
               : {
                   label: analysisStarting ? "starting analysis…" : "analyze again",
+                  icon: <IconBolt width={12} height={12} />,
                   testId: "menu-analyze-again",
                   disabled: analysisStarting,
                   hint: "Re-runs the automatic analysis for this revision.",
@@ -374,6 +384,7 @@ export function TopBar({
                 },
             {
               label: exporting ? "exporting…" : "export analysis",
+              icon: <IconDownload width={12} height={12} />,
               testId: "menu-export-analysis",
               disabled: exporting || !hasAnalysis,
               hint: hasAnalysis
@@ -383,12 +394,14 @@ export function TopBar({
             },
             {
               label: "import analysis…",
+              icon: <IconFileImport width={12} height={12} />,
               testId: "menu-import-analysis",
               hint: "Replaces the current analysis with one exported from a teammate's copy of this PR.",
               onClick: () => importInputRef.current?.click(),
             },
             {
               label: sharing ? "sharing…" : "share analysis to PR",
+              icon: <IconShare width={12} height={12} />,
               testId: "menu-share-analysis-to-pr",
               disabled: sharing || !hasAnalysis,
               hint: hasAnalysis
@@ -396,10 +409,20 @@ export function TopBar({
                 : "No analysis yet — analyze first.",
               onClick: onShareToPr,
             },
+            {
+              label: importingFromPr ? "importing…" : "import analysis from PR",
+              icon: <IconInbox width={12} height={12} />,
+              testId: "menu-import-analysis-from-pr",
+              disabled: importingFromPr,
+              hint: "Replaces the current analysis with the one shared as a comment on this PR.",
+              onClick: onImportFromPr,
+            },
             ...(onSetArchived
               ? [
                   {
                     label: meta.archived ? "unarchive" : "archive",
+                    dividerBefore: true,
+                    icon: <IconArchive out={meta.archived} width={12} height={12} />,
                     testId: "menu-archive",
                     disabled: archiving,
                     hint: meta.archived
@@ -409,16 +432,11 @@ export function TopBar({
                   },
                 ]
               : []),
-            {
-              label: importingFromPr ? "importing…" : "import analysis from PR",
-              testId: "menu-import-analysis-from-pr",
-              disabled: importingFromPr,
-              hint: "Replaces the current analysis with the one shared as a comment on this PR.",
-              onClick: onImportFromPr,
-            },
             // App-level, not about this PR: last.
             {
               label: "repo settings",
+              dividerBefore: true,
+              icon: <IconSettings width={12} height={12} />,
               testId: "menu-repo-settings",
               hint: `Shared by every PR in ${meta.owner}/${meta.repo}.`,
               onClick: () =>
@@ -428,6 +446,7 @@ export function TopBar({
             },
             {
               label: "app settings",
+              icon: <IconSettings width={12} height={12} />,
               hint: "Theme, fonts, diff defaults; for every repo.",
               onClick: () => navigate("/settings", { state: { background } }),
             },
@@ -464,10 +483,16 @@ export interface MenuItem {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  /** shown as the item's tooltip, not inline: the menu stays one line per action */
   hint?: string;
+  icon?: React.ReactNode;
+  /** a destructive action, drawn in the risk color */
+  danger?: boolean;
   testId?: string;
   /** listed only at phone width, where its button leaves the row */
   narrowOnly?: boolean;
+  /** starts a new group: a rule is drawn above it */
+  dividerBefore?: boolean;
 }
 
 /**
@@ -535,7 +560,7 @@ export function OverflowMenu({
   const menu = (
     <div
       ref={menuRef}
-      className={`surface z-40 w-60 rounded-md p-1 elev-2 ${fixed ? "fixed" : "absolute right-0 top-7"}`}
+      className={`surface z-40 w-52 rounded-md p-1 elev-2 ${fixed ? "fixed" : "absolute right-0 top-7"}`}
       style={fixed && anchor ? { top: anchor.top, right: anchor.right } : undefined}
     >
       {items.map((item) => (
@@ -544,20 +569,21 @@ export function OverflowMenu({
           type="button"
           data-testid={item.testId}
           disabled={item.disabled}
-          className={`w-full rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 ${
+          title={item.hint}
+          data-divider={item.dividerBefore ? "true" : undefined}
+          className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 ${
             item.narrowOnly ? "sm:hidden" : ""
-          }`}
+          } ${item.dividerBefore ? "menu-divider" : ""}`}
+          style={{ color: item.danger ? "var(--risk)" : "var(--fg)" }}
           onClick={() => {
             setOpen(false);
             item.onClick();
           }}
         >
-          <span style={{ color: "var(--fg)" }}>{item.label}</span>
-          {item.hint ? (
-            <span className="mt-0.5 block text-2xs" style={{ color: "var(--fg-faint)" }}>
-              {item.hint}
-            </span>
-          ) : null}
+          <span className="flex w-3.5 flex-none items-center justify-center" style={{ color: item.danger ? "var(--risk)" : "var(--fg-muted)" }}>
+            {item.icon}
+          </span>
+          <span className="min-w-0 flex-1 truncate">{item.label}</span>
         </button>
       ))}
     </div>

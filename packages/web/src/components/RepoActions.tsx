@@ -10,6 +10,7 @@ import {
 } from "../lib/repoRemoval";
 import { useModalBackground } from "./Modal";
 import { OverflowMenu } from "./TopBar";
+import { IconArchive, IconInbox, IconTrash } from "./icons";
 
 /**
  * Repo-level archive and removal: the ⋯ menu on a PR-list repo header, and
@@ -42,16 +43,12 @@ export function RepoMenu({
   repo,
   archived,
   onImport,
-  finishedKeys = [],
 }: {
   repo: RepoRef;
   archived: boolean;
   onImport?: () => void;
-  /** this repo's merged or closed PRs not archived yet: what auto-archive sweeps */
-  finishedKeys?: string[];
 }) {
   const setRepoArchived = useSetRepoArchived();
-  const archiveMany = useArchiveMany();
   const navigate = useNavigate();
   const background = useModalBackground();
   const rkey = rkeyOf(repo);
@@ -68,29 +65,16 @@ export function RepoMenu({
           ? [
               {
                 label: "import review requests…",
+                icon: <IconInbox width={12} height={12} />,
                 testId: `import-reviews-toggle-${rkey}`,
                 hint: "Add the PRs where your review was requested in the last few days.",
                 onClick: onImport,
               },
             ]
           : []),
-        ...(archived
-          ? []
-          : [
-              {
-                label: finishedKeys.length
-                  ? `auto-archive merged & closed (${finishedKeys.length})`
-                  : "auto-archive merged & closed",
-                testId: `repo-auto-archive-${rkey}`,
-                disabled: finishedKeys.length === 0 || archiveMany.isPending,
-                hint: finishedKeys.length
-                  ? `Move the ${finishedKeys.length} merged or closed PR${finishedKeys.length === 1 ? "" : "s"} into this repo's archived list. Local only; unarchive any of them any time.`
-                  : "No merged or closed PRs left to archive here.",
-                onClick: () => archiveMany.mutate(finishedKeys),
-              },
-            ]),
         {
           label: archived ? "unarchive repo" : "archive repo",
+          icon: <IconArchive out={archived} width={12} height={12} />,
           testId: `repo-archive-${rkey}`,
           disabled: setRepoArchived.isPending,
           hint: archived ? REPO_UNARCHIVE_HINT : REPO_ARCHIVE_HINT,
@@ -98,6 +82,8 @@ export function RepoMenu({
         },
         {
           label: "remove from Purview…",
+          icon: <IconTrash width={12} height={12} />,
+          danger: true,
           testId: `repo-remove-${rkey}`,
           hint: "Delete all local state for this repo. Asks for confirmation first.",
           onClick: () =>
@@ -105,6 +91,32 @@ export function RepoMenu({
         },
       ]}
     />
+  );
+}
+
+/**
+ * The one-click cleanup, out of the menu and next to the archived list it
+ * feeds: moves this repo's merged and closed PRs into the archive. Renders
+ * nothing when there is nothing to sweep.
+ */
+export function AutoArchiveButton({ repo, finishedKeys }: { repo: RepoRef; finishedKeys: string[] }) {
+  const archiveMany = useArchiveMany();
+  const rkey = rkeyOf(repo);
+  if (!finishedKeys.length) return null;
+  const n = finishedKeys.length;
+  return (
+    <button
+      type="button"
+      data-testid={`repo-auto-archive-${rkey}`}
+      disabled={archiveMany.isPending}
+      title={`Move the ${n} merged or closed PR${n === 1 ? "" : "s"} into this repo's archived list. Local only; unarchive any of them any time.`}
+      onClick={() => archiveMany.mutate(finishedKeys)}
+      className="flex flex-none items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50"
+      style={{ color: "var(--fg-muted)" }}
+    >
+      <IconArchive width={11} height={11} />
+      archive {n} merged &amp; closed
+    </button>
   );
 }
 

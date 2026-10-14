@@ -28,7 +28,7 @@ import {
   prUrlForNumber,
   type RepoGroup,
 } from "../lib/prList";
-import { RepoMenu } from "../components/RepoActions";
+import { AutoArchiveButton, RepoMenu } from "../components/RepoActions";
 import logoDark from "../assets/logo-dark.png";
 import logoLight from "../assets/logo-light.png";
 
@@ -187,6 +187,7 @@ export function PrList() {
  */
 function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) {
   const [showArchived, setShowArchived] = useState(false);
+  const finishedKeys = finishedPrKeys(group);
   const [importOpen, setImportOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const background = useModalBackground();
@@ -267,12 +268,7 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
         >
           <IconSettings width={12} height={12} />
         </Link>
-        <RepoMenu
-          repo={group}
-          archived={repoArchived}
-          onImport={repoArchived ? undefined : () => setImportOpen(true)}
-          finishedKeys={finishedPrKeys(group)}
-        />
+        <RepoMenu repo={group} archived={repoArchived} onImport={repoArchived ? undefined : () => setImportOpen(true)} />
       </header>
 
       {addOpen && !repoArchived ? <AddByNumberForm repo={group} onClose={() => setAddOpen(false)} /> : null}
@@ -308,27 +304,33 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
         </p>
       )}
 
-      {group.archived.length ? (
-        <div className="border-t" style={{ borderColor: "var(--border)" }}>
-          <button
-            type="button"
-            onClick={() => setShowArchived((v) => !v)}
-            data-testid={`archived-toggle-${group.key}`}
-            aria-expanded={showArchived}
-            className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-2xs transition-colors hover:bg-[var(--bg-hover)]"
-            style={{ color: "var(--fg-faint)" }}
-          >
-            <IconChevron open={showArchived} width={10} height={10} />
-            archived ({group.archived.length})
-          </button>
-          {showArchived ? (
-            <ul style={{ borderTop: "1px solid var(--border)" }}>
-              {group.archived.map((pr) => (
-                <PrRow key={pr.key} pr={pr} />
-              ))}
-            </ul>
-          ) : null}
+      {group.archived.length || finishedKeys.length ? (
+        <div className="flex items-center border-t" style={{ borderColor: "var(--border)" }}>
+          {group.archived.length ? (
+            <button
+              type="button"
+              onClick={() => setShowArchived((v) => !v)}
+              data-testid={`archived-toggle-${group.key}`}
+              aria-expanded={showArchived}
+              className="flex min-w-0 flex-1 items-center gap-1.5 px-3 py-1.5 text-left text-2xs transition-colors hover:bg-[var(--bg-hover)]"
+              style={{ color: "var(--fg-faint)" }}
+            >
+              <IconChevron open={showArchived} width={10} height={10} />
+              archived ({group.archived.length})
+            </button>
+          ) : (
+            <span className="flex-1" />
+          )}
+          {/* The cleanup sits by the list it feeds, not in the ⋯ menu. */}
+          {repoArchived ? null : <AutoArchiveButton repo={group} finishedKeys={finishedKeys} />}
         </div>
+      ) : null}
+      {group.archived.length && showArchived ? (
+        <ul style={{ borderTop: "1px solid var(--border)" }}>
+          {group.archived.map((pr) => (
+            <PrRow key={pr.key} pr={pr} />
+          ))}
+        </ul>
       ) : null}
     </section>
   );
