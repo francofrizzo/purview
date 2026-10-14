@@ -29,7 +29,9 @@ If `## Unreleased` has bullets at the end of a turn, remind the user in one line
 that there is unreleased work and offer to ship it.
 
 Internal changes (documentation, tests, refactors, tooling) get no entry and no
-version bump.
+version bump. Neither do small tweaks the reader would not look for in a
+changelog: a label's wording, a spacing or color nudge, a tooltip. An entry is
+for something the reader can do, see or configure that they could not before.
 
 ## Checks before pushing
 
