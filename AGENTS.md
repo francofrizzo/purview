@@ -22,6 +22,10 @@ When a change is visible to the person using the app:
 Internal changes (documentation, tests, refactors, tooling) get no entry and no
 version bump.
 
+When the user asks for several changes in one go, ship them as one version: one
+heading with one bullet per change, one tag, once the batch is done. Do not cut
+a version after each change in the middle of a batch.
+
 ## Checks before pushing
 
 - `packages/core`, `packages/server`: `npx vitest run`, `npm run build`.
