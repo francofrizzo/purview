@@ -7,7 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- Purview tells you when a newer release is on GitHub: an "update" chip on the home page with the command to run, and in Settings → About the status, a "Check now" button, and a switch to turn the daily check off.
+- Purview tells you when a newer release is on GitHub: a chip with the version on the home page (an icon with a dot inside a PR) that opens the command to run, and in Settings → About the status, a "Check now" button, and a switch to turn the daily check off.
 
 ## 2026.10.14.3
 

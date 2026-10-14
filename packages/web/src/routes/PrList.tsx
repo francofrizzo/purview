@@ -95,7 +95,7 @@ export function PrList() {
           ) : null}
         </div>
         <div className="flex flex-none items-center gap-2">
-          {version.data?.latest ? <UpdateAvailable latest={version.data.latest} /> : null}
+          <UpdateAvailable />
           <Link to="/settings" state={{ background }} className="btn" title="Settings">
             <IconSettings width={12} height={12} />
             settings

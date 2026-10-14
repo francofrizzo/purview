@@ -9,12 +9,22 @@ test("a newer release on origin shows an update chip, with the command; the chec
 
   const chip = page.getByTestId("update-available");
   await expect(chip).toBeVisible();
+  await expect(chip).toContainText("2026.10.15.1 available");
   await chip.click();
   const card = page.getByTestId("update-card");
   await expect(card).toContainText("Purview 2026.10.15.1 is available");
   await expect(card).toContainText("git pull && pnpm start");
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
+
+  // Inside a PR the same chip is the icon with a dot, named on hover.
+  await page.getByText("Charge retries: idempotency keys + backoff").click();
+  await expect(page.getByTestId("topbar-comments")).toBeVisible();
+  const compact = page.getByTestId("update-available");
+  await expect(compact).toHaveAttribute("title", "Purview 2026.10.15.1 is available");
+  await expect(compact).not.toContainText("available");
+  await page.goBack();
+  await expect(page.getByText("Waiting on your review").first()).toBeVisible();
 
   // Open settings from the header so the app (and the mock's in-memory config) stays alive.
   await page.getByRole("link", { name: "settings", exact: true }).click();

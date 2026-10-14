@@ -1,16 +1,24 @@
 import { useEffect, useRef, useState } from "react";
+import { useVersion } from "../api/hooks";
 import { IconDownload } from "./icons";
 
 /** How to move a checkout to the newest release; the server restarts on `pnpm start`. */
 export const UPDATE_COMMAND = "git pull && pnpm start";
 
 /**
- * "A newer Purview is on origin": a chip on the home page that opens a short
- * card with the version and the command to run. Nothing here updates anything
- * — the server cannot replace itself while serving — so the card says exactly
+ * "A newer Purview is on origin": a chip that opens a short card with the
+ * version and the command to run. On the home it says the version outright;
+ * `compact` (the PR top bar) is the icon with a dot, named on hover. It
+ * renders nothing while there is no update. Nothing here updates anything —
+ * the server cannot replace itself while serving — so the card says exactly
  * what to type and leaves it there.
  */
-export function UpdateAvailable({ latest }: { latest: string }) {
+export function UpdateAvailable({ compact = false }: { compact?: boolean }) {
+  const latest = useVersion().data?.latest ?? null;
+  return latest ? <UpdateChip latest={latest} compact={compact} /> : null;
+}
+
+function UpdateChip({ latest, compact }: { latest: string; compact: boolean }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -45,15 +53,26 @@ export function UpdateAvailable({ latest }: { latest: string }) {
     <div ref={wrap} className="relative">
       <button
         type="button"
-        className="btn"
+        className="btn relative"
         data-testid="update-available"
         aria-expanded={open}
+        aria-label={`Purview ${latest} is available`}
         title={`Purview ${latest} is available`}
         onClick={() => setOpen((v) => !v)}
         style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
       >
         <IconDownload width={12} height={12} />
-        update
+        {compact ? (
+          <span
+            aria-hidden
+            className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full"
+            style={{ background: "var(--accent)", boxShadow: "0 0 0 1.5px var(--bg)" }}
+          />
+        ) : (
+          <>
+            <span className="font-mono">{latest}</span> available
+          </>
+        )}
       </button>
       {open ? (
         <div

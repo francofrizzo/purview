@@ -7,6 +7,7 @@ import { AnalysisChip, AnalysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { DiffSizeStat, ReviewRequestAge, StackedOnChip } from "./Chips";
 import { RevisionMenu } from "./RevisionMenu";
+import { UpdateAvailable } from "./UpdateAvailable";
 import { diffTotals, formatAddedAt } from "../lib/prList";
 import { stackedOnLink } from "../lib/stacked";
 import { ChatButton } from "./ChatPanel";
@@ -270,6 +271,7 @@ export function TopBar({
       </div>
 
       <div className="ml-auto flex flex-none items-center gap-1.5 sm:gap-2">
+        <UpdateAvailable compact />
         {/* Two pairs, icon-only (each names itself on hover): the
             conversation about this PR, and keeping it in step with GitHub. */}
         <div className="btn-group">
