@@ -25,6 +25,7 @@ import { parsePatternLines } from "../lib/generated";
 import { Markdown } from "../components/Markdown";
 import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
 import { RepoDangerZone } from "../components/RepoActions";
+import { Section, SettingsLayout, type SettingsNavGroup } from "../components/SettingsSections";
 import { IconCheck, IconChevron, IconFile, IconSettings } from "../components/icons";
 
 /** Long committed rubrics start collapsed; short ones are shown whole. */
@@ -118,8 +119,8 @@ function RepoSettingsBody({
   const save = useSaveRepoConfig(rkey);
 
   return (
-    <>
-      <Section title="Overview">
+    <SettingsLayout groups={REPO_SETTINGS_NAV}>
+      <Section id="overview" title="Overview">
         <dl className="flex flex-wrap gap-x-8 gap-y-2">
           <Stat label="Repository">
             <span className="font-mono text-xs">
@@ -167,29 +168,52 @@ function RepoSettingsBody({
       </Section>
 
       <AnalysisSection config={config} save={save} />
-      <WatchSection config={config} save={save} />
-      <CheckoutSection config={config} save={save} />
       <RubricSection config={config} save={save} />
       <GeneratedSection config={config} save={save} />
       <ChatInstructionsSection config={config} save={save} />
+      <WatchSection config={config} save={save} />
+      <CheckoutSection config={config} save={save} />
+      <div id="settings-danger" className="scroll-mt-4">
       <RepoDangerZone
         repo={{ host, owner, repo }}
         archived={repoArchived}
         watchReviews={config.local.watchReviews === true}
         startConfirming={confirmRemove}
       />
+      </div>
 
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Saved on the server under <span className="font-mono">{rkey}</span>. The committed half is
         read-only here — edit it in the repo and commit.
       </p>
-    </>
+    </SettingsLayout>
   );
 }
 
 /* --------------------------------------------------------------- analysis */
 
 type Save = ReturnType<typeof useSaveRepoConfig>;
+
+const REPO_SETTINGS_NAV: SettingsNavGroup[] = [
+  { label: "Repo", items: [{ id: "overview", title: "Overview" }] },
+  {
+    label: "Review",
+    items: [
+      { id: "analysis", title: "Analysis" },
+      { id: "rubric", title: "Rubric" },
+      { id: "generated", title: "Generated files" },
+      { id: "chat", title: "Chat instructions" },
+    ],
+  },
+  {
+    label: "Sources",
+    items: [
+      { id: "watch", title: "Watch" },
+      { id: "checkout", title: "Local checkout" },
+    ],
+  },
+  { label: "Danger", items: [{ id: "danger", title: "Archive or remove" }] },
+];
 
 const AUTO_ANALYZE_OPTIONS = [
   { value: "inherit", label: "inherit default" },
@@ -215,6 +239,7 @@ function AnalysisSection({ config, save }: { config: RepoConfig; save: Save }) {
 
   return (
     <Section
+      id="analysis"
       title="Analysis"
       hint="Whether a new revision is analyzed automatically as soon as it is fetched, and which model runs the analysis."
     >
@@ -278,6 +303,7 @@ function WatchSection({ config, save }: { config: RepoConfig; save: Save }) {
 
   return (
     <Section
+      id="watch"
       title="Watch"
       hint="Poll GitHub in the background for PRs assigned to you for review, and import the new ones automatically."
     >
@@ -328,6 +354,7 @@ function CheckoutSection({ config, save }: { config: RepoConfig; save: Save }) {
 
   return (
     <Section
+      id="checkout"
       title="Local checkout"
       hint="The agent reads the working tree here to answer questions about code the diff only touches partially, and analysis uses it for context."
     >
@@ -379,6 +406,7 @@ function RubricSection({ config, save }: { config: RepoConfig; save: Save }) {
 
   return (
     <Section
+      id="rubric"
       title="Rubric"
       hint="What the analysis should treat as must-read, skim or skip in this repo. Layering: the local overlay refines the committed team rubric, which refines the built-in one."
     >
@@ -465,6 +493,7 @@ function ChatInstructionsSection({ config, save }: { config: RepoConfig; save: S
 
   return (
     <Section
+      id="chat"
       title="Chat instructions"
       hint="Guidance for the review chat only — not the analysis rubric. Layering: the local overlay refines the committed team chat instructions."
     >
@@ -566,6 +595,7 @@ function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) 
 
   return (
     <Section
+      id="generated"
       title="Generated files"
       hint="Generated files and lockfiles go to one skip unit the analysis never reads. Lockfiles, generated-code paths and “Code generated … DO NOT EDIT” markers are detected on their own; these lists adjust that for this repo. One glob per line."
     >
@@ -687,29 +717,6 @@ function SavedFlash({ shown, error }: { shown: boolean; error: unknown }) {
   );
 }
 
-function Section({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="surface mb-4 rounded-md p-4">
-      <h2 className="text-[13px] font-semibold">{title}</h2>
-      {hint ? (
-        <p className="mb-3 mt-0.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-          {hint}
-        </p>
-      ) : (
-        <div className="mb-3" />
-      )}
-      {children}
-    </section>
-  );
-}
 
 function PaneLabel({ children }: { children: React.ReactNode }) {
   return (

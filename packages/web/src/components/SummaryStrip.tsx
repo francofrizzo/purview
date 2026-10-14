@@ -145,6 +145,10 @@ export function SummaryStrip({
   );
   const panelRef = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(0);
+  // A tab was clicked and the smooth scroll is still travelling: the
+  // underline stays on it until the scroll lands, instead of flickering
+  // through the sections it passes.
+  const jumping = useRef<{ index: number; top: number } | null>(null);
   const current: SummaryTab = available[Math.min(inView, available.length - 1)] ?? "summary";
   const sectionTops = () => {
     const panel = panelRef.current;
@@ -157,6 +161,12 @@ export function SummaryStrip({
   const onPanelScroll = () => {
     const panel = panelRef.current;
     if (!panel) return;
+    const j = jumping.current;
+    if (j) {
+      const landed = Math.abs(panel.scrollTop - j.top) < 2 || panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 2;
+      if (!landed) return;
+      jumping.current = null;
+    }
     // Scrolled to the end: the last section is the one being read even when
     // it is too short to reach the top.
     const atEnd = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 2;
@@ -167,6 +177,7 @@ export function SummaryStrip({
     const el = panel?.querySelector<HTMLElement>(`[data-section="${t}"]`);
     if (!panel || !el) return;
     const reduce = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    jumping.current = { index: available.indexOf(t), top: el.offsetTop };
     panel.scrollTo({ top: el.offsetTop, behavior: reduce ? "auto" : "smooth" });
     // Underline it now; a short last section may never reach the top on its own.
     setInView(available.indexOf(t));
@@ -183,12 +194,13 @@ export function SummaryStrip({
   };
 
   const scheduleOpen = useCallback(() => {
-    if (!hoverCapable()) return;
+    if (!hoverCapable() || suppressPeek.current) return;
     clearTimer();
     timer.current = window.setTimeout(() => setPeeking(true), HOVER_OPEN_MS);
   }, []);
 
   const scheduleClose = useCallback(() => {
+    suppressPeek.current = false;
     if (!hoverCapable()) return;
     clearTimer();
     timer.current = window.setTimeout(() => setPeeking(false), HOVER_CLOSE_MS);
@@ -197,12 +209,21 @@ export function SummaryStrip({
   useEffect(() => clearTimer, []);
 
   // A pinned overlay is not a peek any more; drop the transient state so the
-  // pin is the only thing holding it open.
+  // pin is the only thing holding it open. And an explicit close (`s`, Esc, a
+  // click) wins over the hover: the pointer is usually still over the panel
+  // at that moment, so peeking stays off until it leaves.
+  const suppressPeek = useRef(false);
+  const wasOpen = useRef(open);
   useEffect(() => {
     if (open) {
       clearTimer();
       setPeeking(false);
+    } else if (wasOpen.current) {
+      clearTimer();
+      setPeeking(false);
+      suppressPeek.current = true;
     }
+    wasOpen.current = open;
   }, [open]);
 
   useEffect(() => {

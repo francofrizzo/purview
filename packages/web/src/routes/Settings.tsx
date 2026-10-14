@@ -21,6 +21,7 @@ import {
 } from "../lib/agentSelection";
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
 import { Modal, useCloseModal } from "../components/Modal";
+import { Section, SettingsLayout, type SettingsNavGroup } from "../components/SettingsSections";
 import { WhatsNew } from "../components/WhatsNew";
 import { IconSettings } from "../components/icons";
 import { tokenizeLines, type Tok } from "../lib/highlight";
@@ -45,6 +46,33 @@ import { parseLoginList } from "../lib/threads";
 import { MONOKAI_PRO_NOTE, THEMES, previewColors, shikiThemeFor } from "../lib/themes";
 
 /** App-wide appearance settings, floating over whatever route is underneath. */
+const APP_SETTINGS_NAV: SettingsNavGroup[] = [
+  {
+    label: "Appearance",
+    items: [
+      { id: "theme", title: "Theme" },
+      { id: "typography", title: "Typography" },
+      { id: "diff", title: "Diff defaults" },
+      { id: "pr-list", title: "PR list" },
+    ],
+  },
+  {
+    label: "Review",
+    items: [
+      { id: "agents", title: "Agents" },
+      { id: "threads", title: "GitHub review threads" },
+      { id: "your-prs", title: "Your pull requests" },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { id: "network", title: "Network access" },
+      { id: "about", title: "About" },
+    ],
+  },
+];
+
 export function SettingsModal() {
   const { settings, appearance, update, reset } = useSettings();
   const close = useCloseModal();
@@ -62,27 +90,19 @@ export function SettingsModal() {
         </button>
       }
     >
+      <SettingsLayout groups={APP_SETTINGS_NAV}>
+      <Section id="theme" title="Theme" hint={MONOKAI_PRO_NOTE}>
+        <ThemeSection themeId={settings.themeId} update={update} />
+        <ThemePreview />
+      </Section>
       <Section
+        id="typography"
         title="Typography"
         hint="Applies to the diff and every other code surface. The UI font follows it only if you ask it to."
       >
         <FontSection settings={settings} update={update} />
       </Section>
-
-      <Section title="Theme" hint={MONOKAI_PRO_NOTE}>
-        <ThemeSection themeId={settings.themeId} update={update} />
-        <ThemePreview />
-      </Section>
-
-      <AgentsSection />
-
-      <ReviewThreadsSection settings={settings} update={update} />
-      <YourPrsSection />
-
-      <NetworkSection />
-      <AboutSection />
-
-      <Section title="Diff defaults" hint="The same preferences the d / w keys toggle while reviewing.">
+      <Section id="diff" title="Diff defaults" hint="The same preferences the d / w keys toggle while reviewing.">
         <div className="flex flex-wrap items-center gap-6">
           <Field label="Layout">
             <Segmented
@@ -121,18 +141,23 @@ export function SettingsModal() {
           that choice sticks until its viewed state next changes.
         </p>
       </Section>
-
       <Section
+        id="pr-list"
         title="PR list"
         hint={`How long a review request may wait before "asked you 3d ago" changes color.`}
       >
         <RequestAgeFields days={settings.requestAgeDays} update={update} />
       </Section>
-
+      <AgentsSection />
+      <ReviewThreadsSection settings={settings} update={update} />
+      <YourPrsSection />
+      <NetworkSection />
+      <AboutSection />
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Stored under <span className="font-mono">reviewer.settings</span> in localStorage · active
         theme <span className="font-mono">{appearance.theme.id}</span>
       </p>
+      </SettingsLayout>
     </Modal>
   );
 }
@@ -514,6 +539,7 @@ function NetworkSection() {
 
   return (
     <Section
+      id="network"
       title="Network access"
       hint="Read a PR from the couch: your iPad or phone on the same network can open this Purview, with a QR code to get it onto the device."
     >
@@ -607,6 +633,7 @@ function AgentsSection() {
 
   return (
     <Section
+      id="agents"
       title="Agents"
       hint="Which agent and model analysis runs and review chats use, for every repo that does not override it. Runs go through the agent's own CLI on this machine, so this is what they cost you."
     >
@@ -673,6 +700,7 @@ function ReviewThreadsSection({
 }) {
   return (
     <Section
+      id="threads"
       title="GitHub review threads"
       hint="Everyone's review comments on the PR show inline next to yours. GitHub's own bots are recognized as AI reviewers; list any other logins that should count too."
     >
@@ -917,6 +945,7 @@ function RequestAgeFields({
 function YourPrsSection() {
   return (
     <Section
+      id="your-prs"
       title="Your pull requests"
       hint="The PR list groups what you opened under “Your PRs”. An agent that opens PRs for you from a bot account lands under “Other PRs” unless its login is listed here; the row keeps showing who opened it. Review threads still count only your own comments as yours."
     >
@@ -1007,7 +1036,7 @@ function AboutSection() {
   const [log, setLog] = useState(false);
   const v = version.data;
   return (
-    <Section title="About" hint="The version is defined by the changelog: it moves when there is something to tell you.">
+    <Section id="about" title="About" hint="The version is defined by the changelog: it moves when there is something to tell you.">
       <div className="flex flex-wrap items-center gap-3 text-2xs">
         <span className="font-mono" style={{ color: "var(--fg-muted)" }} data-testid="about-version">
           Purview {v?.version ?? "—"}
@@ -1022,29 +1051,6 @@ function AboutSection() {
   );
 }
 
-function Section({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="surface mb-4 rounded-md p-4">
-      <h2 className="text-[13px] font-semibold">{title}</h2>
-      {hint ? (
-        <p className="mb-3 mt-0.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-          {hint}
-        </p>
-      ) : (
-        <div className="mb-3" />
-      )}
-      {children}
-    </section>
-  );
-}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
