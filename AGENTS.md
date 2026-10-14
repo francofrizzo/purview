@@ -11,20 +11,25 @@ then a counter within the day) is one shipped change, and the newest heading is
 the version the app reports. "What's new" shows the entries above the one the
 reader last closed.
 
-When a change is visible to the person using the app:
+When a change is visible to the person using the app, add a bullet under the
+`## Unreleased` heading at the top of `CHANGELOG.md` (create it if missing).
+Write it for the reader of the app: what changed in the review, not which file
+moved. The parser ignores that heading, so unreleased bullets never reach the
+app.
 
-1. Add a bullet under today's heading in `CHANGELOG.md`, or start a new heading
-   with the next counter. Write it for the reader of the app: what changed in the
-   review, not which file moved.
-2. Tag the commit with the version: `git tag -a v2026.10.14.2 -m 2026.10.14.2`
-   and push with `--tags`.
+Do not cut a version on your own. Only when the user says to ship (or release,
+or tag) a version:
+
+1. Rename `## Unreleased` to the next version: today's date, then the next
+   counter for the day (`## 2026.10.14.4`).
+2. Commit, tag it (`git tag -a v2026.10.14.4 -m 2026.10.14.4`) and push with
+   `--tags`.
+
+If `## Unreleased` has bullets at the end of a turn, remind the user in one line
+that there is unreleased work and offer to ship it.
 
 Internal changes (documentation, tests, refactors, tooling) get no entry and no
 version bump.
-
-When the user asks for several changes in one go, ship them as one version: one
-heading with one bullet per change, one tag, once the batch is done. Do not cut
-a version after each change in the middle of a batch.
 
 ## Checks before pushing
 
