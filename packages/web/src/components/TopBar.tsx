@@ -5,9 +5,9 @@ import type { AnalysisJob, PrDetail } from "../api/types";
 import { isJobLive } from "../api/types";
 import { AnalysisChip, AnalysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
-import { ReviewRequestAge, StackedOnChip } from "./Chips";
+import { DiffSizeStat, ReviewRequestAge, StackedOnChip } from "./Chips";
 import { RevisionMenu } from "./RevisionMenu";
-import { formatAddedAt } from "../lib/prList";
+import { diffTotals, formatAddedAt } from "../lib/prList";
 import { stackedOnLink } from "../lib/stacked";
 import { ChatButton } from "./ChatPanel";
 import { CopyPathButton } from "./DiffPane";
@@ -197,6 +197,7 @@ export function TopBar({
               </span>
             ) : null}
           </span>
+          <DiffSizeStat size={diffTotals(detail.files.files)} />
           <RevisionMenu
             state={state}
             analysisLive={live}

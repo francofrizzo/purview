@@ -11,6 +11,7 @@ import {
   PrStateChip,
   ReviewDecisionChip,
   ReviewRequestAge,
+  DiffSizeStat,
 } from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
 import { IconArchive, IconChevron, IconPlus, IconSettings } from "../components/icons";
@@ -582,6 +583,7 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
       <ReviewDecisionChip decision={decision} />
       <AnalysisChip job={pr.analysisJob} />
       <EffortChip effort={pr.effort} />
+      <DiffSizeStat size={pr.diffSize} files={false} />
       {pr.totalHunks ? <HunkProgress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} /> : null}
     </div>
   );

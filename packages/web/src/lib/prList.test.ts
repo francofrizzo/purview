@@ -280,3 +280,35 @@ describe("finishedPrKeys", () => {
     ).toEqual(["b", "c", "e"]);
   });
 });
+
+describe("diffTotals", () => {
+  it("uses the file's own counts when GitHub supplied them, counting files without numbers", async () => {
+    const { diffTotals } = await import("./prList");
+    expect(
+      diffTotals([
+        { additions: 34, deletions: 3 },
+        { additions: 14, deletions: 0 },
+        { /* binary */ },
+      ]),
+    ).toEqual({ files: 3, additions: 48, deletions: 3 });
+    expect(diffTotals([])).toEqual({ files: 0, additions: 0, deletions: 0 });
+  });
+
+  it("counts +/- hunk lines when the file carries null counts (real files.json)", async () => {
+    const { diffTotals } = await import("./prList");
+    expect(
+      diffTotals([
+        {
+          additions: null,
+          deletions: null,
+          hunks: [
+            { lines: [" ctx", "+a", "+b", "-old", " ctx", "\\ No newline at end of file"] },
+            { lines: ["-x", "-y", "+z"] },
+          ],
+        },
+        // A hunk from before bodies were kept: the content-only arrays stand in.
+        { hunks: [{ addedLines: ["p", "q"], removedLines: [] }] },
+      ]),
+    ).toEqual({ files: 2, additions: 5, deletions: 3 });
+  });
+});

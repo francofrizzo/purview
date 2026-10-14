@@ -65,6 +65,7 @@ import {
 } from "./fixture";
 import { buildGeneratedUnit } from "./generated";
 import { loginListed } from "../lib/threads";
+import { diffTotals } from "../lib/prList";
 
 /** Stand-in for the previous revision's body of the one hunk that changed. */
 const MOCK_DOD_BEFORE: Record<string, string[]> = {
@@ -669,6 +670,8 @@ export const mockApi = {
         // as the server: yours when you opened it, or a login in extraAuthors did
         authoredByYou: p.authoredByYou || loginListed(p.meta?.author, globalConfig.extraAuthors),
         repoArchived: archivedRepos.has(repoKeyOfPr(p.key)),
+        // As the server: summed from the PR's files when it has them.
+        diffSize: details[p.key] ? diffTotals(details[p.key].files.files) : (p.diffSize ?? null),
       })),
     );
   },

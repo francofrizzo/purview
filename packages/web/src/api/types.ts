@@ -452,8 +452,17 @@ export interface ReviewEffort {
 }
 
 /** GET /api/prs — flattened by `client.ts` from the server's progress envelope. */
+/** GitHub's header stat: files changed, lines added, lines removed. */
+export interface DiffSize {
+  files: number;
+  additions: number;
+  deletions: number;
+}
+
 export interface PrListEntry {
   key: string;
+  /** Absent from an older server; `null` until the revision's files are stored. */
+  diffSize?: DiffSize | null;
   meta: PrMeta;
   title?: string;
   currentRevision?: number;

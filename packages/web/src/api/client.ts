@@ -147,6 +147,7 @@ interface WireProgress {
 
 interface WireListEntry {
   key: string;
+  diffSize?: PrListEntry["diffSize"];
   meta: PrListEntry["meta"];
   title?: string;
   currentRevision: number;
@@ -465,6 +466,7 @@ export const api = {
       totalHunks: e.progress?.hunks.total,
       analysisJob: e.analysisJob ?? null,
       effort: e.effort ?? null,
+      diffSize: e.diffSize ?? null,
       // Defaults keep an older server (which does not send these yet) from
       // blanking the row: it simply reads as a never-archived open PR.
       state: e.state ?? "open",

@@ -231,3 +231,43 @@ export function finishedPrKeys(group: Pick<RepoGroup, "needsReview" | "mine" | "
     .filter((pr) => pr.state === "merged" || pr.state === "closed")
     .map((pr) => pr.key);
 }
+
+/**
+ * The PR's size the way GitHub states it in its header: files changed, lines
+ * added, lines removed — summed over the current revision's files. A file's
+ * own `additions`/`deletions` are used when GitHub supplied them; files.json
+ * usually carries null there, so the counts come from the hunk bodies
+ * (`+`/`-` lines, as `hunkBodyLines` splits them), or from the content-only
+ * `addedLines`/`removedLines` on a hunk written before bodies were kept.
+ * A binary file contributes nothing to the lines but still counts as a file.
+ */
+export function diffTotals(
+  files: readonly {
+    additions?: number | null;
+    deletions?: number | null;
+    hunks?: readonly { lines?: string[]; addedLines?: string[]; removedLines?: string[] }[];
+  }[],
+): { files: number; additions: number; deletions: number } {
+  let additions = 0;
+  let deletions = 0;
+  for (const f of files) {
+    if (typeof f.additions === "number" && typeof f.deletions === "number") {
+      additions += f.additions;
+      deletions += f.deletions;
+      continue;
+    }
+    for (const h of f.hunks ?? []) {
+      if (h.lines) {
+        for (const l of h.lines) {
+          // "\ No newline at end of file" is neither.
+          if (l.startsWith("+")) additions++;
+          else if (l.startsWith("-")) deletions++;
+        }
+      } else {
+        additions += h.addedLines?.length ?? 0;
+        deletions += h.removedLines?.length ?? 0;
+      }
+    }
+  }
+  return { files: files.length, additions, deletions };
+}

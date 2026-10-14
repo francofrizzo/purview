@@ -134,6 +134,7 @@ import { localOnlyGuard, loopbackOnly } from "./security.js";
 import { LAN_WARNING, lanQrSvg, lanUrl } from "./lan.js";
 import { checkStaleness, clearStalenessCache } from "./staleness.js";
 import { reviewEffort } from "./effort.js";
+import { diffSize } from "./diff-size.js";
 import {
   autoAnalyzeAllowed,
   autoAnalyzeBlocker,
@@ -465,6 +466,8 @@ export function createApp(opts: AppOptions = {}): Hono {
         // Best-effort: a broken computation for one PR must never take the
         // whole list down.
         effort: safeEffort(key),
+        // GitHub's "+120 −34" for the row; null until the revision's files exist.
+        diffSize: diffSize(key, state.currentRevision, root),
       };
     });
     // Nothing else re-reads every tracked PR, so the list load is the trigger

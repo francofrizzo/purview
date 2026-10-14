@@ -1,5 +1,6 @@
 import type {
   Attention,
+  DiffSize,
   EffortBadge,
   Kind,
   PrGithubState,
@@ -300,6 +301,31 @@ export function Progress({ viewed, total }: { viewed: number; total: number }) {
       >
         {viewed}/{total}
       </span>
+    </span>
+  );
+}
+
+/**
+ * "9 files · +120 −34", GitHub's own size stat: in the PR header, and on the
+ * list row without the file count. Added green, removed red, like the diff;
+ * nothing at all when there are no files yet.
+ */
+export function DiffSizeStat({ size, files = true }: { size: DiffSize | null | undefined; files?: boolean }) {
+  if (!size || size.files === 0) return null;
+  const { files: n, additions, deletions } = size;
+  return (
+    <span
+      className="inline-flex flex-none items-center gap-1 text-2xs tabular-nums"
+      data-testid="diff-size"
+      title={`${n} ${n === 1 ? "file" : "files"} changed: ${additions} ${additions === 1 ? "line" : "lines"} added, ${deletions} removed`}
+    >
+      {files ? (
+        <span>
+          {n} {n === 1 ? "file" : "files"}
+        </span>
+      ) : null}
+      <span style={{ color: "var(--ok)" }}>+{additions}</span>
+      <span style={{ color: "var(--risk)" }}>−{deletions}</span>
     </span>
   );
 }
