@@ -5,6 +5,7 @@ import {
   isFileComment,
   type AddCommentInput,
   type ChatRef,
+  type CommentAudience,
   type CommentStatus,
   type DeletedComment,
   type DraftComment,
@@ -28,11 +29,13 @@ import {
   compareCommentOrder,
   isAgentActor,
   isByAgent,
+  isForAgent,
   isRange,
   lineLabel,
 } from "../lib/comments";
+import { AUDIENCE_HINT, AudienceSwitch } from "./AudienceSwitch";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
-import { IconChat, IconCheck, IconClose } from "./icons";
+import { IconChat, IconCheck, IconClose, IconSend } from "./icons";
 import { BotChip, ThreadFilterMenu } from "./Threads";
 import { AttachmentContext, Markdown, SuggestionContext } from "./Markdown";
 import { suggestionSource, type SuggestionSource } from "../lib/suggestion";
@@ -126,9 +129,14 @@ export function CommentComposer({
   variant = "floating",
   value,
   onChange,
+  audience = "github",
+  onAudienceChange,
 }: {
   target: CommentTarget;
   pending: boolean;
+  /** who the comment is for (the global switch); a reply is always for GitHub */
+  audience?: CommentAudience;
+  onAudienceChange?: (next: CommentAudience) => void;
   /** enables "copy for agent" straight from the composer, before saving */
   exportCtx?: DiffContext;
   onCancel: () => void;
@@ -172,6 +180,9 @@ export function CommentComposer({
   const fileLevel = target.subjectType === "file";
   const anchorKey = targetKey(target);
   const reply = Boolean(target.inReplyTo);
+  // A reply joins a GitHub thread; there is no agent version of that.
+  const forAgent = !reply && audience === "agent";
+  const ink = forAgent ? "var(--agent)" : "var(--accent)";
   const ranged = !fileLevel && isRange(target);
   const lines = fileLevel ? "" : `${lineLabel(target)}${target.side === "LEFT" ? " (old)" : ""}`;
   const where = reply
@@ -212,7 +223,8 @@ export function CommentComposer({
           ? "absolute bottom-3 right-4 z-40 w-[28rem] rounded-md elev-3"
           : "relative w-full max-w-[46rem] rounded-md"
       }
-      style={{ background: "var(--bg-raised)", border: "1px dashed var(--accent)" }}
+      data-audience={forAgent ? "agent" : "github"}
+      style={{ background: "var(--bg-raised)", border: `1px solid ${ink}`, boxShadow: `inset 3px 0 0 ${ink}` }}
       onClick={(e) => e.stopPropagation()}
       {...(prKey && wp.writing ? attach.dropProps : {})}
       onKeyDown={(e) => {
@@ -233,8 +245,8 @@ export function CommentComposer({
           controls drop to a second line rather than squeeze the file name. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pr-8 pt-2 text-2xs">
         <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="flex-none font-medium" style={{ color: "var(--accent)" }}>
-            {reply ? "Reply" : "New comment"}
+          <span className="flex-none font-medium" style={{ color: ink }}>
+            {reply ? "Reply" : forAgent ? "Note for agent" : "New comment"}
           </span>
           <span className="min-w-0 truncate" style={{ color: "var(--fg-faint)" }}>
             {floating ? (
@@ -251,6 +263,9 @@ export function CommentComposer({
           </span>
         </span>
         <span className="ml-auto flex flex-none items-center gap-1.5">
+          {onAudienceChange && !reply ? (
+            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="composer-audience" />
+          ) : null}
           <FormatToolbar fmt={fmt} disabled={!wp.writing} testId="composer-format" />
           <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} />
         </span>
@@ -339,13 +354,17 @@ export function CommentComposer({
           ) : null}
           <button
             type="button"
-            className="btn btn-primary"
+            className={forAgent ? "btn btn-agent" : "btn btn-primary"}
             data-testid="composer-save"
-            title="Saved on this machine; it reaches GitHub when you sync or finish the review. (⌘↵)"
+            title={
+              forAgent
+                ? `${AUDIENCE_HINT.agent}. (⌘↵)`
+                : "Saved on this machine; it reaches GitHub when you sync or finish the review. (⌘↵)"
+            }
             disabled={!body.trim() || pending}
             onClick={() => onSubmit(body.trim())}
           >
-            {pending ? "saving…" : "save draft"}
+            {pending ? "saving…" : forAgent ? "save note" : "save draft"}
           </button>
         </span>
       </div>
@@ -699,6 +718,15 @@ export function DraftsDrawer({
   onUndoEdit,
   undoing,
   github,
+  audience = "github",
+  onAudienceChange,
+  onMove,
+  moving,
+  onPublish,
+  publishing,
+  onSendToChat,
+  chatBusy,
+  onFinishReview,
 }: {
   drafts: DraftComment[];
   /** the PR's GitHub review threads, with the reader's filters */
@@ -719,24 +747,65 @@ export function DraftsDrawer({
   onDeleteMany?: (ids: string[]) => Promise<unknown>;
   onEdit?: EditComment;
   onQuote?: (ref: ChatRef) => void;
+  /** the global switch: who new comments are for */
+  audience?: CommentAudience;
+  onAudienceChange?: (next: CommentAudience) => void;
+  /** re-file a draft for the other audience */
+  onMove?: (draft: DraftComment, audience: CommentAudience) => void;
+  moving?: boolean;
+  /** post one GitHub draft publicly, now */
+  onPublish?: (draft: DraftComment) => void;
+  publishing?: boolean;
+  /** hand the notes for the agent to the review chat, as one message */
+  onSendToChat?: (notes: DraftComment[]) => void;
+  chatBusy?: boolean;
+  /** open the finish-review panel */
+  onFinishReview?: () => void;
 }) {
-  // Status buckets stay the outer grouping (the review lifecycle order), but
-  // within each bucket the ordering matches the agent-export bundle — same
-  // comparator, so the drawer and "copy for agent" can never read differently.
-  const local = drafts.filter((d) => (d.status ?? "draft") === "draft").sort(compareCommentOrder);
-  const pushed = drafts.filter((d) => d.status === "pushed").sort(compareCommentOrder);
-  const submitted = drafts.filter((d) => d.status === "submitted").sort(compareCommentOrder);
+  // Two audiences, each its own section: the review (GitHub) in the lifecycle
+  // order, then the notes for an agent. Within a bucket the ordering matches
+  // the agent-export bundle — same comparator, so the drawer and "copy for
+  // agent" can never read differently.
+  const forGithub = drafts.filter((d) => !isForAgent(d));
+  const notes = drafts.filter(isForAgent).sort(compareCommentOrder);
+  const local = forGithub.filter((d) => (d.status ?? "draft") === "draft").sort(compareCommentOrder);
+  const pushed = forGithub.filter((d) => d.status === "pushed").sort(compareCommentOrder);
+  const submitted = forGithub.filter((d) => d.status === "submitted").sort(compareCommentOrder);
+  const unsent = local.length + pushed.length;
   // Dismissing a notice only hides it here; the draft stays restorable until
   // the server's trash lets it go.
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(() => new Set());
   const chatDeleted = onRestore ? agentDeletedDrafts(deleted, dismissed) : [];
   const threadCount = github ? drawerThreads(github.threads).length : 0;
+  const cardActions = {
+    onEdit,
+    onDelete,
+    deleting,
+    onQuote,
+    exportCtx: bundle?.ctx,
+    onUndoEdit,
+    undoing,
+    onMove,
+    moving,
+    onPublish,
+    publishing,
+  };
+  const cards = (list: DraftComment[]) => (
+    <ul className="flex flex-col gap-1.5">
+      {list.map((d) => (
+        <li key={d.id}>
+          <CommentCard
+            comment={d}
+            anchor={{ label: commentAnchorLabel(d), onJump: () => onJump(d) }}
+            actions={cardActions}
+          />
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
-    <aside
-      className="flex w-[22rem] flex-none flex-col border-l"
-      style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
-    >
+    <aside className="pane m-[7px] ml-0 rounded-bl-none flex w-[22rem] flex-none flex-col overflow-hidden">
       <div className="flex-none border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
         <div className="flex items-center gap-2">
           <span className="text-xs font-semibold">Comments</span>
@@ -746,6 +815,7 @@ export function DraftsDrawer({
               local.length ? `${local.length} draft` : "",
               pushed.length ? `${pushed.length} pushed` : "",
               submitted.length ? `${submitted.length} submitted` : "",
+              notes.length ? `${notes.length} for agent` : "",
               threadCount ? `${threadCount} on GitHub` : "",
             ]
               .filter(Boolean)
@@ -769,13 +839,11 @@ export function DraftsDrawer({
             </button>
           </span>
         </div>
-        {bundle && drafts.length > 0 ? (
-          <CopyBundleControls
-            testId="copy-bundle-drawer"
-            className="mt-1.5"
-            source={{ ...bundle, comments: drafts }}
-            onDeleteCopied={onDeleteMany}
-          />
+        {onAudienceChange ? (
+          <div className="mt-1.5 flex items-center gap-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
+            <span>New comments are for</span>
+            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="drawer-audience" />
+          </div>
         ) : null}
       </div>
       {chatDeleted.length ? (
@@ -820,54 +888,109 @@ export function DraftsDrawer({
             file header to comment on a whole file.
           </p>
         ) : (
-          <div className="flex flex-col gap-3 p-2.5">
-            {(
-              [
-                ["Drafts", "Only on this machine", local],
-                ["Pushed", "In your pending review on GitHub", pushed],
-                ["Submitted", "Public on GitHub", submitted],
-              ] as const
-            )
-              .filter(([, , list]) => list.length)
-              .map(([title, hint, list]) => (
-                <section key={title} data-testid={`drawer-group-${title.toLowerCase()}`}>
-                  <h3 className="mb-1.5 flex items-baseline gap-1.5 px-0.5 text-2xs">
-                    <span className="font-semibold" style={{ color: "var(--fg-muted)" }}>
-                      {title}
+          <div className="flex flex-col gap-4 p-2.5">
+            {forGithub.length ? (
+              <section data-testid="drawer-section-github" className="flex flex-col gap-2.5">
+                <DrawerSectionTitle
+                  ink="var(--accent)"
+                  title="For GitHub"
+                  count={forGithub.length}
+                  hint="your review"
+                />
+                {(
+                  [
+                    ["Drafts", "Only on this machine", local],
+                    ["Pushed", "In your pending review on GitHub", pushed],
+                    ["Submitted", "Public on GitHub", submitted],
+                  ] as const
+                )
+                  .filter(([, , list]) => list.length)
+                  .map(([title, hint, list]) => (
+                    <section key={title} data-testid={`drawer-group-${title.toLowerCase()}`}>
+                      <h4 className="mb-1.5 flex items-baseline gap-1.5 px-0.5 text-2xs">
+                        <span className="font-medium" style={{ color: "var(--fg-muted)" }}>
+                          {title}
+                        </span>
+                        <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
+                          {list.length}
+                        </span>
+                        <span className="truncate" style={{ color: "var(--fg-faint)" }}>
+                          · {hint}
+                        </span>
+                      </h4>
+                      {cards(list)}
+                    </section>
+                  ))}
+                {onFinishReview && unsent > 0 ? (
+                  <div className="flex items-center gap-2 px-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                    <span className="min-w-0 flex-1 truncate">
+                      {unsent} {unsent === 1 ? "comment goes" : "comments go"} out with the review
                     </span>
-                    <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
-                      {list.length}
-                    </span>
-                    <span className="truncate" style={{ color: "var(--fg-faint)" }}>
-                      · {hint}
-                    </span>
-                  </h3>
-                  <ul className="flex flex-col gap-1.5">
-                    {list.map((d) => (
-                      <li key={d.id}>
-                        <CommentCard
-                          comment={d}
-                          anchor={{ label: commentAnchorLabel(d), onJump: () => onJump(d) }}
-                          actions={{
-                            onEdit,
-                            onDelete,
-                            deleting,
-                            onQuote,
-                            exportCtx: bundle?.ctx,
-                            onUndoEdit,
-                            undoing,
-                          }}
-                        />
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))}
+                    <button type="button" className="btn flex-none" data-testid="drawer-finish-review" onClick={onFinishReview}>
+                      <IconCheck width={11} height={11} />
+                      finish review
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+            {notes.length ? (
+              <section data-testid="drawer-section-agent" className="flex flex-col gap-2">
+                <DrawerSectionTitle
+                  ink="var(--agent)"
+                  title="For agent"
+                  count={notes.length}
+                  hint="never sent to GitHub"
+                />
+                {bundle ? (
+                  <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+                    <CopyBundleControls
+                      testId="copy-bundle-drawer"
+                      source={{ ...bundle, comments: notes }}
+                      onDeleteCopied={onDeleteMany}
+                    />
+                    {onSendToChat ? (
+                      <button
+                        type="button"
+                        className="btn"
+                        data-testid="drawer-send-to-chat"
+                        title={
+                          chatBusy
+                            ? "The chat is still replying: the notes are queued and sent when it finishes."
+                            : "Hand these notes to the review chat, as one message with each note attached"
+                        }
+                        onClick={() => onSendToChat(notes)}
+                      >
+                        <IconSend width={11} height={11} />
+                        {chatBusy ? "queue for chat" : "send to chat"}
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {cards(notes)}
+              </section>
+            ) : null}
             {github && threadCount ? <GithubThreadsSection github={github} /> : null}
           </div>
         )}
       </div>
     </aside>
+  );
+}
+
+function DrawerSectionTitle({ ink, title, count, hint }: { ink: string; title: string; count: number; hint: string }) {
+  return (
+    <h3 className="flex items-baseline gap-1.5 px-0.5 text-xs">
+      <span className="font-semibold" style={{ color: ink }}>
+        {title}
+      </span>
+      <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+        {count}
+      </span>
+      <span className="truncate text-2xs" style={{ color: "var(--fg-faint)" }}>
+        · {hint}
+      </span>
+    </h3>
   );
 }
 

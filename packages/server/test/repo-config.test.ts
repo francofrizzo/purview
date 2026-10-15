@@ -1103,6 +1103,7 @@ describe("/api/config", () => {
       aiReviewers: [],
       extraAuthors: [],
       updateCheck: true,
+      commentAudience: "github",
       effective: {
         // Medium is the harness's default now, not a value every config.json pins.
         analysisAgent: {

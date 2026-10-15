@@ -25,7 +25,7 @@ import {
   type RemoteComment,
   type RemoteThread,
 } from "../api/types";
-import { attentionStatus, bubbleTitle, isRange, lineAnchor, lineLabel } from "./comments";
+import { attentionStatus, bubbleTitle, isRange, lineAnchor, lineLabel, isForAgent } from "./comments";
 
 export type ThreadItem =
   | { kind: "local"; comment: DraftComment }
@@ -290,7 +290,7 @@ export function itemCount(threads: DisplayThread[]): number {
  * (the one that still needs them), else a neutral "remote" look for other
  * people's threads, or a bot tint when every thread there is an AI reviewer's.
  */
-export type MarkerLook = CommentStatus | "remote" | "bot";
+export type MarkerLook = CommentStatus | "agent" | "remote" | "bot";
 
 export interface MarkerSummary {
   count: number;
@@ -301,8 +301,13 @@ export interface MarkerSummary {
 
 export function threadMarker(threads: DisplayThread[]): MarkerSummary {
   const local = localComments(threads);
+  // A line holding only notes for an agent is violet; one GitHub comment
+  // among them and the review's lifecycle colour wins (it is the one that
+  // still has somewhere to go).
   const look: MarkerLook = local.length
-    ? attentionStatus(local)
+    ? local.every(isForAgent)
+      ? "agent"
+      : attentionStatus(local.filter((c) => !isForAgent(c)))
     : threads.length && threads.every((t) => t.author.kind === "bot")
       ? "bot"
       : "remote";

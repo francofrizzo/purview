@@ -49,6 +49,8 @@ import type {
   SubmitReviewResult,
   SyncResult,
   VersionInfo,
+  CommentAudience,
+  PublishCommentResult,
 } from "./types";
 
 export const qk = {
@@ -806,6 +808,72 @@ export function useEditComment(
       void qc.invalidateQueries({ queryKey: qk.review(key) });
     },
   });
+}
+
+/**
+ * Move a draft between "for GitHub" and "for agent": optimistic, since the
+ * drawer re-files the card at once and the server only refuses when the
+ * comment is no longer a draft.
+ */
+export function useSetCommentAudience(
+  key: string,
+): UseMutationResult<EditCommentResult, Error, { id: string; audience: CommentAudience }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, audience }: { id: string; audience: CommentAudience }) =>
+      api.setCommentAudience(key, id, audience),
+    onMutate: async ({ id, audience }) => {
+      await qc.cancelQueries({ queryKey: qk.comments(key) });
+      const previousComments = qc.getQueryData<DraftComment[]>(qk.comments(key));
+      if (previousComments) {
+        qc.setQueryData<DraftComment[]>(
+          qk.comments(key),
+          previousComments.map((c) => (c.id === id ? { ...c, audience } : c)),
+        );
+      }
+      return { previousComments };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previousComments) qc.setQueryData(qk.comments(key), ctx.previousComments);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
+/** "Publish now": one GitHub draft posted publicly, outside any review. */
+export function usePublishComment(key: string): UseMutationResult<PublishCommentResult, Error, string> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.publishComment(key, id),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+      void qc.invalidateQueries({ queryKey: qk.threads(key) });
+    },
+  });
+}
+
+/**
+ * The global switch: what new comments are for. Read from the server's
+ * config (so the CLI and the chat follow the same switch); "github" until
+ * the config has loaded or on a server that predates it.
+ */
+export function useCommentAudience(): {
+  audience: CommentAudience;
+  set: (audience: CommentAudience) => void;
+  toggle: () => void;
+  saving: boolean;
+} {
+  const config = useGlobalConfig();
+  const save = useSaveGlobalConfig();
+  const audience: CommentAudience = config.data?.commentAudience ?? "github";
+  const set = (next: CommentAudience) => {
+    if (next !== audience) save.mutate({ commentAudience: next });
+  };
+  return { audience, set, toggle: () => set(audience === "github" ? "agent" : "github"), saving: save.isPending };
 }
 
 /** Deleted drafts the server still keeps restorable. */

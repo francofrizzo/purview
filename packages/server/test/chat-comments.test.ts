@@ -401,20 +401,20 @@ describe("reviewer-state comment (CLI -> server)", () => {
       "--body", "Why 'new2'? $HOME stays literal\nsecond line",
     ]);
     expect(add.code, add.stderr).toBe(0);
-    const id = /Created draft comment (\S+) at src\/foo\.ts:2\./.exec(add.stdout)?.[1];
+    const id = /Created draft comment (\S+) \(for github\) at src\/foo\.ts:2\./.exec(add.stdout)?.[1];
     expect(id).toBeTruthy();
     const stored = readComments(key, root)[0];
     expect(stored).toMatchObject({ id, author: { agent: "claude-code" }, status: "draft", line: 2, side: "RIGHT" });
     expect(stored.body).toBe("Why 'new2'? $HOME stays literal\nsecond line");
 
     const list = await cli(["comment", "list", keyStr]);
-    expect(list.stdout).toContain(`${id}  draft     author=agent  src/foo.ts:2  Why 'new2'? $HOME stays literal`);
+    expect(list.stdout).toContain(`${id}  draft     for=github author=agent  src/foo.ts:2  Why 'new2'? $HOME stays literal`);
 
     const bodyFile = path.join(root, "body.md");
     fs.writeFileSync(bodyFile, "Edited from a file\n");
     const edit = await cli(["comment", "edit", keyStr, id!, "--body-file", bodyFile]);
     expect(edit.code, edit.stderr).toBe(0);
-    expect(edit.stdout).toContain(`Edited draft comment ${id} at src/foo.ts:2.`);
+    expect(edit.stdout).toContain(`Edited draft comment ${id} (for github) at src/foo.ts:2.`);
     expect(readComments(key, root)[0].body).toBe("Edited from a file");
 
     const del = await cli(["comment", "delete", keyStr, id!]);

@@ -40,6 +40,8 @@ export const TOKEN_NAMES = [
   "fg-faint",
   "accent",
   "accent-soft",
+  "agent",
+  "agent-soft",
   "add-bg",
   "add-bg-strong",
   "add-gutter",
@@ -188,6 +190,9 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
 
     accent,
     "accent-soft": rgba(accent, dark ? 0.14 : 0.1),
+    // Comments for a coding agent: violet, like the moved-code tint.
+    agent: moved,
+    "agent-soft": rgba(moved, dark ? 0.14 : 0.1),
 
     "add-bg": rgba(palette.green, tint),
     "add-bg-strong": rgba(palette.green, tintStrong),
@@ -457,6 +462,8 @@ const REVIEWER_DARK: ThemeDef = {
     "fg-faint": "#6b7280",
     accent: "#7aa2f7",
     "accent-soft": "rgba(122, 162, 247, 0.14)",
+    agent: "#a371f7",
+    "agent-soft": "rgba(163, 113, 247, 0.14)",
     "add-bg": "rgba(63, 185, 80, 0.1)",
     "add-bg-strong": "rgba(63, 185, 80, 0.26)",
     "add-gutter": "rgba(63, 185, 80, 0.16)",
@@ -523,6 +530,8 @@ const REVIEWER_LIGHT: ThemeDef = {
     "fg-faint": "#8b93a1",
     accent: "#2f6feb",
     "accent-soft": "rgba(47, 111, 235, 0.1)",
+    agent: "#8250df",
+    "agent-soft": "rgba(130, 80, 223, 0.1)",
     "add-bg": "rgba(34, 134, 58, 0.09)",
     "add-bg-strong": "rgba(34, 134, 58, 0.22)",
     "add-gutter": "rgba(34, 134, 58, 0.13)",

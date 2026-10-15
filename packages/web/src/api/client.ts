@@ -27,6 +27,8 @@ import type {
   DiscardRevisionResult,
   DraftComment,
   EditCommentResult,
+  CommentAudience,
+  PublishCommentResult,
   FileEntry,
   FileRollup,
   Hunk,
@@ -747,6 +749,26 @@ export const api = {
       { body: input.body, ...(input.confirm ? { confirm: true } : {}) },
     );
     return { comment: adaptComment(res.comment), remote: res.remote ?? null };
+  },
+
+  /** Move a draft between "for GitHub" and "for agent". */
+  async setCommentAudience(key: string, id: string, audience: CommentAudience): Promise<EditCommentResult> {
+    if (MOCK) return mockApi.setCommentAudience(key, id, audience);
+    const res = await patch<{ comment: WireComment; remote: EditCommentResult["remote"] }>(
+      `/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}`,
+      { audience },
+    );
+    return { comment: adaptComment(res.comment), remote: res.remote ?? null };
+  },
+
+  /** Post one GitHub draft as a public comment right now, outside any review. */
+  async publishComment(key: string, id: string): Promise<PublishCommentResult> {
+    if (MOCK) return mockApi.publishComment(key, id);
+    const res = await post<{ comment: WireComment; url?: string }>(
+      `/prs/${encodeKey(key)}/comments/${encodeURIComponent(id)}/publish`,
+      { confirm: true },
+    );
+    return { comment: adaptComment(res.comment), url: res.url };
   },
 
   async deleteComment(key: string, id: string): Promise<void> {

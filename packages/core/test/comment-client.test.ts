@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actorHeaders, formatCommentList, type ServerComment } from "../src/comment-client.js";
+import { actorHeaders, formatCommentList, newCommentPayload, parseAudience, type ServerComment } from "../src/comment-client.js";
 
 describe("actorHeaders", () => {
   it("names the chat's harness only when the CLI runs as the chat", () => {
@@ -13,19 +13,19 @@ describe("actorHeaders", () => {
 });
 
 describe("formatCommentList", () => {
-  const base: ServerComment = { id: "c1", file: "a.ts", subjectType: "line", line: 3, body: "hi", status: "draft" };
+  const base: ServerComment = { id: "c1", file: "a.ts", subjectType: "line", line: 3, body: "hi", status: "draft", audience: "github" };
 
   it("shows any agent as author=agent, whatever its harness", () => {
     expect(formatCommentList([{ ...base, author: { agent: "claude-code" } }])).toBe(
-      "c1  draft     author=agent  a.ts:3  hi\n",
+      "c1  draft     for=github author=agent  a.ts:3  hi\n",
     );
     expect(
       formatCommentList([{ ...base, author: "you", lastEditedBy: { agent: "other" } }]),
-    ).toBe("c1  draft     author=you edited-by=agent  a.ts:3  hi\n");
+    ).toBe("c1  draft     for=github author=you edited-by=agent  a.ts:3  hi\n");
     // Same actor twice is not an edit worth mentioning.
     expect(
       formatCommentList([{ ...base, author: { agent: "a" }, lastEditedBy: { agent: "a" } }]),
-    ).toBe("c1  draft     author=agent  a.ts:3  hi\n");
+    ).toBe("c1  draft     for=github author=agent  a.ts:3  hi\n");
   });
 });
 
@@ -53,5 +53,22 @@ describe("multi-line comments", () => {
     });
     expect(() => newCommentPayload({ file: "a.ts", line: "18", startLine: "20" })).toThrow(/must not come after/);
     expect(() => newCommentPayload({ file: "a.ts", wholeFile: true, startLine: "2" })).toThrow(/--start-line/);
+  });
+});
+
+describe("audience (--for)", () => {
+  const base: ServerComment = { id: "c1", file: "a.ts", subjectType: "line", line: 3, body: "hi", status: "draft", audience: "github" };
+  it("prints who a comment is for, and an older server's comments as github", () => {
+    expect(formatCommentList([{ ...base, audience: "agent" }])).toBe("c1  draft     for=agent  author=you  a.ts:3  hi\n");
+    expect(formatCommentList([{ ...base, audience: undefined as unknown as "github" }])).toContain("for=github");
+  });
+
+  it("validates --for into the payload's audience", () => {
+    expect(parseAudience(undefined)).toBeUndefined();
+    expect(parseAudience(" Agent ")).toBe("agent");
+    expect(() => parseAudience("me")).toThrow(/github or agent/);
+    expect(newCommentPayload({ file: "a.ts", line: "3" })).not.toHaveProperty("audience");
+    expect(newCommentPayload({ file: "a.ts", line: "3", for: "agent" })).toMatchObject({ audience: "agent" });
+    expect(newCommentPayload({ file: "a.ts", wholeFile: true, for: "github" })).toEqual({ file: "a.ts", subjectType: "file", audience: "github" });
   });
 });

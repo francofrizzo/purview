@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
-import type { AnalysisJob, PrDetail } from "../api/types";
+import type { AnalysisJob, CommentAudience, PrDetail } from "../api/types";
 import { isJobLive } from "../api/types";
 import { AnalysisChip, AnalysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { DiffSizeStat, ReviewRequestAge, StackedOnChip } from "./Chips";
 import { RevisionMenu } from "./RevisionMenu";
+import { AudienceSwitch } from "./AudienceSwitch";
 import { UpdateAvailable } from "./UpdateAvailable";
 import { diffTotals, formatAddedAt } from "../lib/prList";
 import { stackedOnLink } from "../lib/stacked";
@@ -58,6 +59,8 @@ export function TopBar({
   onToggleDrafts,
   onToggleChat,
   onFinishReview,
+  audience = "github",
+  onAudienceChange,
   onAnalyze,
   onCancelAnalysis,
   onExportAnalysis,
@@ -103,6 +106,9 @@ export function TopBar({
   onRefresh: () => void;
   onSync: () => void;
   onToggleDrafts: () => void;
+  /** the global switch: who new comments are for */
+  audience?: CommentAudience;
+  onAudienceChange?: (next: CommentAudience) => void;
   onToggleChat: () => void;
   onFinishReview: () => void;
   onAnalyze: () => void;
@@ -272,6 +278,11 @@ export function TopBar({
 
       <div className="ml-auto flex flex-none items-center gap-1.5 sm:gap-2">
         <UpdateAvailable compact />
+        {onAudienceChange ? (
+          <span className="hidden lg:inline-flex">
+            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="topbar-audience" />
+          </span>
+        ) : null}
         {/* Two pairs, icon-only (each names itself on hover): the
             conversation about this PR, and keeping it in step with GitHub. */}
         <div className="btn-group">

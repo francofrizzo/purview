@@ -2,17 +2,17 @@
  * One comment, drawn the same way wherever it appears: the inline thread under
  * a diff line, the comments drawer, and the finish-review list.
  *
- * Status is carried by the card's own outline rather than a chip: a dashed
- * accent edge for a draft (it has gone nowhere yet), a solid accent edge once
- * pushed into the pending review on GitHub, and a quiet solid edge once
- * submitted and public. The same three edges mark the gutter pill, so a line's
- * marker and its thread read as one thing.
+ * Who it is for is carried by a bar on the card's left edge: accent for a
+ * comment headed to GitHub, violet for a note to a coding agent, quiet once
+ * submitted and public. The status word next to the anchor says where it is
+ * in the review's lifecycle. The gutter pill uses the same colours, so a
+ * line's marker and its thread read as one thing.
  */
 
 import { useMemo, useState, type ReactNode } from "react";
-import type { ChatRef, CommentStatus, DraftComment } from "../api/types";
+import type { ChatRef, CommentAudience, CommentStatus, DraftComment } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
-import { isRange, lineLabel } from "../lib/comments";
+import { isForAgent, isRange, lineLabel } from "../lib/comments";
 import { pendingAttachmentCount } from "../lib/attachments";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
@@ -21,7 +21,7 @@ import type { MarkerLook, MarkerSummary } from "../lib/threads";
 import { QuoteButton } from "./ChatPanel";
 import { CopyForAgentButton } from "./CopyForAgent";
 import { AgentEditNote, ByAgentChip, CommentBody, commentRef, type EditComment } from "./Drafts";
-import { IconComment, IconCommentFilled, IconEdit, IconTrash } from "./icons";
+import { IconComment, IconCommentFilled, IconEdit, IconSend, IconSwap, IconTrash } from "./icons";
 import { SuggestionContext } from "./Markdown";
 
 export const COMMENT_STATUS: Record<
@@ -31,24 +31,33 @@ export const COMMENT_STATUS: Record<
   draft: {
     label: "draft",
     hint: "Only on this machine until you sync or finish the review",
-    edge: "1px dashed var(--accent)",
+    edge: "var(--accent)",
     ink: "var(--accent)",
     tint: "var(--accent-soft)",
   },
   pushed: {
     label: "pushed",
     hint: "In your pending review on GitHub — not public until you submit it",
-    edge: "1px solid var(--accent)",
+    edge: "var(--accent)",
     ink: "var(--accent)",
     tint: "var(--accent-soft)",
   },
   submitted: {
     label: "submitted",
     hint: "Submitted with a review: public on GitHub",
-    edge: "1px solid var(--border-strong)",
+    edge: "var(--border-strong)",
     ink: "var(--fg-muted)",
     tint: "var(--bg-inset)",
   },
+};
+
+/** The look of a note for a coding agent: violet, never on its way anywhere. */
+export const AGENT_LOOK = {
+  label: "for agent",
+  hint: "A note for a coding agent: copy it or send it to the chat. It never goes to GitHub.",
+  edge: "var(--agent)",
+  ink: "var(--agent)",
+  tint: "var(--agent-soft)",
 };
 
 /** The actions a comment offers; each one is optional and hidden when absent. */
@@ -62,6 +71,12 @@ export interface CommentActions {
   /** take back the review chat's latest edit to a draft */
   onUndoEdit?: (id: string) => void;
   undoing?: boolean;
+  /** re-file a draft for the other audience (GitHub ↔ agent) */
+  onMove?: (comment: DraftComment, audience: CommentAudience) => void;
+  moving?: boolean;
+  /** post a GitHub draft publicly right now, outside any review */
+  onPublish?: (comment: DraftComment) => void;
+  publishing?: boolean;
 }
 
 export function CommentCard({
@@ -81,11 +96,17 @@ export function CommentCard({
   notice?: ReactNode;
 }) {
   const status: CommentStatus = comment.status ?? "draft";
-  const meta = COMMENT_STATUS[status];
-  const { onEdit, onDelete, deleting, onQuote, exportCtx, onUndoEdit, undoing } = actions;
+  const forAgent = isForAgent(comment);
+  const meta = forAgent ? AGENT_LOOK : COMMENT_STATUS[status];
+  const { onEdit, onDelete, deleting, onQuote, exportCtx, onUndoEdit, undoing, onMove, moving, onPublish, publishing } =
+    actions;
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmPublish, setConfirmPublish] = useState(false);
   const canDelete = Boolean(onDelete) && status !== "submitted";
+  // Only a draft changes hands; a reply stays with its thread on GitHub.
+  const canMove = Boolean(onMove) && status === "draft" && !comment.inReplyTo;
+  const canPublish = Boolean(onPublish) && status === "draft" && !forAgent && !comment.inReplyTo;
   const age = comment.createdAt ? Date.now() - new Date(comment.createdAt).getTime() : NaN;
   // The lines this comment covers, for its ```suggestion blocks (drawn
   // against them) and for writing one while editing. Without the diff
@@ -100,8 +121,13 @@ export function CommentCard({
     <article
       data-testid={`comment-card-${comment.id}`}
       data-status={status}
+      data-audience={forAgent ? "agent" : "github"}
       className="group/comment rounded-md px-3 pb-2 pt-1.5"
-      style={{ background: "var(--bg-raised)", border: meta.edge }}
+      style={{
+        background: "var(--bg-raised)",
+        border: "1px solid var(--border-strong)",
+        boxShadow: `inset 3px 0 0 ${meta.edge}`,
+      }}
     >
       <header className="flex min-h-[22px] items-center gap-2 text-2xs">
         {anchor ? (
@@ -147,6 +173,26 @@ export function CommentCard({
               text={() => formatComment(comment, exportCtx)}
             />
           ) : null}
+          {canMove ? (
+            <IconAction
+              title={forAgent ? "Move to GitHub: make it part of your review" : "Move to agent: keep it as a note for a coding agent"}
+              testId={`move-${comment.id}`}
+              disabled={moving}
+              onClick={() => onMove!(comment, forAgent ? "github" : "agent")}
+            >
+              <IconSwap width={11} height={11} />
+            </IconAction>
+          ) : null}
+          {canPublish ? (
+            <IconAction
+              title="Publish now: post it on GitHub as a public comment, outside any review"
+              testId={`publish-${comment.id}`}
+              disabled={publishing}
+              onClick={() => setConfirmPublish(true)}
+            >
+              <IconSend width={11} height={11} />
+            </IconAction>
+          ) : null}
           {onEdit && !editing ? (
             <IconAction
               title={status === "submitted" ? "Edit (this comment is public)" : "Edit"}
@@ -181,6 +227,30 @@ export function CommentCard({
         suggestion={suggestion}
       />
       <AgentEditNote comment={comment} onUndo={onUndoEdit} busy={undoing} />
+      {confirmPublish ? (
+        <div
+          className="mt-1.5 flex flex-wrap items-center gap-2 rounded px-2 py-1.5 text-2xs"
+          style={{ background: "var(--accent-soft)", color: "var(--fg)" }}
+          data-testid={`confirm-publish-${comment.id}`}
+        >
+          <span className="min-w-0 flex-1">Post it on GitHub now? It is public at once, outside any review.</span>
+          <button type="button" className="btn" onClick={() => setConfirmPublish(false)}>
+            keep
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            data-testid={`publish-inline-${comment.id}`}
+            disabled={publishing}
+            onClick={() => {
+              setConfirmPublish(false);
+              onPublish?.(comment);
+            }}
+          >
+            {publishing ? "publishing…" : "publish"}
+          </button>
+        </div>
+      ) : null}
       {confirmDelete ? (
         <div
           className="mt-1.5 flex flex-wrap items-center gap-2 rounded px-2 py-1.5 text-2xs"
@@ -279,6 +349,7 @@ export const REMOTE_LOOK: Record<"remote" | "bot", { ink: string; tint: string; 
 };
 
 function markerLook(look: MarkerLook): { ink: string; tint: string } {
+  if (look === "agent") return AGENT_LOOK;
   return look === "remote" || look === "bot" ? REMOTE_LOOK[look] : COMMENT_STATUS[look];
 }
 
@@ -311,7 +382,8 @@ export function CommentPill({
 }) {
   const { look, count, resolved } = marker;
   const meta = markerLook(look);
-  const Icon = look === "draft" ? IconComment : IconCommentFilled;
+  // Outlined while it has gone nowhere (a draft, a note for an agent).
+  const Icon = look === "draft" || look === "agent" ? IconComment : IconCommentFilled;
   return (
     <button
       type="button"

@@ -93,7 +93,8 @@ export function reviewStatus(
     comments: {
       counts: commentCounts(comments),
       included: comments
-        .filter((c) => c.status !== "submitted")
+        // What a submit carries: GitHub drafts and pushed ones; agent notes never go.
+        .filter((c) => c.status !== "submitted" && c.audience !== "agent")
         // File-level comments sort ahead of the file's line comments: they are
         // about the file as a whole.
         .sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? -1) - (b.line ?? -1))

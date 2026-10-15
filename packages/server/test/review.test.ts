@@ -387,7 +387,7 @@ describe("GET/POST /api/prs/:key/review", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.draft.body).toBe("Looks good overall");
-    expect(body.comments.counts).toEqual({ draft: 1, pushed: 0, submitted: 0 });
+    expect(body.comments.counts).toEqual({ draft: 1, pushed: 0, submitted: 0, agent: 0 });
     expect(body.comments.included).toHaveLength(1);
     expect(body.pending).toMatchObject({ known: true, exists: false });
     // The fixture has one must-read unit with two unviewed hunks.

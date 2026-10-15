@@ -1230,6 +1230,18 @@ export const mockDrafts: DraftComment[] = [
     createdAt: "2026-08-12T08:31:00Z",
     status: "draft",
   },
+  // A note for a coding agent on the same line: never goes to GitHub.
+  {
+    id: "draft-agent-1",
+    file: "src/billing/charge.ts",
+    line: 24,
+    side: "RIGHT",
+    subjectType: "line",
+    body: "Add a test for the crash-between-ledger-and-gateway case before touching this.",
+    createdAt: "2026-08-12T08:35:00Z",
+    status: "draft",
+    audience: "agent",
+  },
   // Three on one line, one of each status: the bubble must paint itself with
   // the most advanced one (submitted) rather than the first one it meets.
   {

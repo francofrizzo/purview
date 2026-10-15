@@ -54,6 +54,8 @@ import type {
   SyncResult,
   ChangelogEntry,
   VersionInfo,
+  CommentAudience,
+  PublishCommentResult,
 } from "../api/types";
 import {
   mockConversation,
@@ -67,6 +69,7 @@ import {
 } from "./fixture";
 import { buildGeneratedUnit } from "./generated";
 import { loginListed } from "../lib/threads";
+import { isForAgent } from "../lib/comments";
 import { diffTotals } from "../lib/prList";
 
 /** Stand-in for the previous revision's body of the one hunk that changed. */
@@ -197,6 +200,7 @@ const globalConfig: {
   aiReviewers: string[];
   extraAuthors: string[];
   updateCheck: boolean;
+  commentAudience: CommentAudience;
 } = {
   analysisAgent: null,
   chatAgent: null,
@@ -205,6 +209,7 @@ const globalConfig: {
   // The fixture's bot-opened PR (billing #502) lands under "Your PRs" through this.
   extraAuthors: ["acme-agent[bot]"],
   updateCheck: true,
+  commentAudience: "github",
 };
 
 /**
@@ -824,6 +829,7 @@ export const mockApi = {
     if (patch.aiReviewers !== undefined) globalConfig.aiReviewers = patch.aiReviewers;
     if (patch.extraAuthors !== undefined) globalConfig.extraAuthors = patch.extraAuthors;
     if (patch.updateCheck !== undefined) globalConfig.updateCheck = patch.updateCheck;
+    if (patch.commentAudience !== undefined) globalConfig.commentAudience = patch.commentAudience;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return globalPayload();
   },
@@ -1098,9 +1104,9 @@ export const mockApi = {
 
   async sync(_key: string): Promise<SyncResult> {
     await delay(600);
-    const pushed = drafts.filter((d) => d.status === "draft").length;
+    const pushed = drafts.filter((d) => d.status === "draft" && !isForAgent(d)).length;
     for (const d of drafts) {
-      if (d.status !== "draft") continue;
+      if (d.status !== "draft" || isForAgent(d)) continue;
       d.status = "pushed";
       d.body = githubBody(d.body);
       mirrorPushed(d);
@@ -1284,10 +1290,37 @@ export const mockApi = {
       subjectType: fileLevel ? "file" : "line",
       createdAt: new Date().toISOString(),
       status: "draft",
+      audience: input.audience ?? globalConfig.commentAudience,
       ...(input.inReplyTo ? { inReplyTo: input.inReplyTo } : {}),
     };
     drafts.push(draft);
     return draft;
+  },
+
+  /** Like the server: only a draft moves between the two audiences. */
+  async setCommentAudience(_key: string, id: string, audience: CommentAudience): Promise<EditCommentResult> {
+    await delay(120);
+    const target = drafts.find((d) => d.id === id);
+    if (!target) throw new ApiError("not_found", 404, `No comment "${id}"`);
+    if ((target.status ?? "draft") !== "draft") {
+      throw new ApiError("not_draft", 400, "Only a draft can change who it is for");
+    }
+    target.audience = audience;
+    return { comment: structuredClone(target), remote: null };
+  },
+
+  /** A GitHub draft posted as a public comment at once; the mock just stamps it submitted. */
+  async publishComment(_key: string, id: string): Promise<PublishCommentResult> {
+    await delay(500);
+    const target = drafts.find((d) => d.id === id);
+    if (!target) throw new ApiError("not_found", 404, `No comment "${id}"`);
+    if ((target.status ?? "draft") !== "draft") throw new ApiError("not_draft", 400, "Only a draft can be published");
+    if (isForAgent(target)) throw new ApiError("agent_comment", 400, "This is a note for an agent; move it to GitHub first");
+    if (target.inReplyTo) throw new ApiError("reply_not_publishable", 400, "A reply is posted with its thread");
+    target.status = "submitted";
+    target.githubCommentId = nextGithubId++;
+    target.body = githubBody(target.body);
+    return { comment: structuredClone(target), url: `${detail.meta.url}#discussion_r${target.githubCommentId}` };
   },
 
   /**
@@ -1457,12 +1490,13 @@ export const mockApi = {
     return {
       body: review.body,
       counts: {
-        draft: drafts.filter((d) => d.status === "draft").length,
+        draft: drafts.filter((d) => d.status === "draft" && !isForAgent(d)).length,
         pushed: drafts.filter((d) => d.status === "pushed").length,
         submitted: drafts.filter((d) => d.status === "submitted").length,
+        agent: drafts.filter(isForAgent).length,
       },
       included: drafts
-        .filter((d) => d.status !== "submitted")
+        .filter((d) => d.status !== "submitted" && !isForAgent(d))
         .map((d) => ({
           id: d.id,
           file: d.file,

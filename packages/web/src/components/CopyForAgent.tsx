@@ -176,14 +176,11 @@ export function CopyBundleControls({
           })
         }
       />
+      {submitted === 0 ? null : (
       <label
         className="flex cursor-pointer items-center gap-1 text-2xs"
         style={{ color: "var(--fg-faint)" }}
-        title={
-          submitted === 0
-            ? "No submitted comments to include"
-            : `Also include the ${submitted} already-submitted ${submitted === 1 ? "comment" : "comments"}`
-        }
+        title={`Also include the ${submitted} already-submitted ${submitted === 1 ? "comment" : "comments"}`}
       >
         <input
           type="checkbox"
@@ -193,6 +190,7 @@ export function CopyBundleControls({
         />
         include submitted
       </label>
+      )}
       {onDeleteCopied ? (
         <CopyAndDeleteButton
           testId={testId ? `${testId}-and-delete` : undefined}

@@ -40,6 +40,7 @@ import {
   commentsUrl,
   formatCommentList,
   newCommentPayload,
+  parseAudience,
   resolveBody,
   serverBaseUrl,
   type ServerComment,
@@ -725,6 +726,10 @@ comment
   .option("--start-line <n>", "first line of a multi-line comment (covers start-line..line, same hunk)")
   .option("--side <RIGHT|LEFT>", "RIGHT = the new version (default), LEFT = the old one")
   .option("--whole-file", "comment on the file as a whole instead of a line")
+  .option(
+    "--for <github|agent>",
+    "who the comment is for: github = part of your review (default: the app's switch), agent = a note for a coding agent, never sent to GitHub",
+  )
   .option("--body <text>", "the comment text (single-quote it)")
   .option("--body-file <path>", 'file with the comment text ("-" for stdin)')
   .description("create a draft comment; prints its id")
@@ -737,6 +742,7 @@ comment
         startLine?: string;
         side?: string;
         wholeFile?: boolean;
+        for?: string;
         body?: string;
         bodyFile?: string;
       },
@@ -748,7 +754,7 @@ comment
         commentsUrl(serverBaseUrl(), key),
         payload,
       );
-      console.log(`Created draft comment ${created.id} at ${commentLocation(created)}.`);
+      console.log(`Created draft comment ${created.id} (for ${created.audience ?? "github"}) at ${commentLocation(created)}.`);
     },
   );
 
@@ -758,17 +764,23 @@ comment
   .argument("<commentId>")
   .option("--body <text>", "the new comment text (single-quote it)")
   .option("--body-file <path>", 'file with the new text ("-" for stdin)')
-  .description("replace a draft comment's text (the previous text stays undoable)")
-  .action(async (keyArg: string, id: string, opts: { body?: string; bodyFile?: string }) => {
+  .option("--for <github|agent>", "move a draft: github = part of your review, agent = a note for a coding agent")
+  .description("replace a draft comment's text (the previous text stays undoable), or move it with --for")
+  .action(async (keyArg: string, id: string, opts: { body?: string; bodyFile?: string; for?: string }) => {
     const key = parseKey(keyArg);
-    const body = resolveBody(opts, readBodyFile);
+    const audience = parseAudience(opts.for);
+    const hasBody = opts.body !== undefined || opts.bodyFile !== undefined;
+    if (!hasBody && audience === undefined) throw new Error("Pass --body, --body-file or --for");
+    const body = hasBody ? resolveBody(opts, readBodyFile) : undefined;
     const target = await findComment(key, id);
     const res = await callServer<{ comment: ServerComment; remote?: { ok: boolean; reason?: string } | null }>(
       "PATCH",
       commentsUrl(serverBaseUrl(), key, `/${encodeURIComponent(id)}`),
-      { body },
+      { ...(body !== undefined ? { body } : {}), ...(audience !== undefined ? { audience } : {}) },
     );
-    console.log(`Edited ${target.status} comment ${res.comment.id} at ${commentLocation(res.comment)}.`);
+    console.log(
+      `${hasBody ? "Edited" : "Moved"} ${target.status} comment ${res.comment.id} (for ${res.comment.audience ?? "github"}) at ${commentLocation(res.comment)}.`,
+    );
     if (res.remote && !res.remote.ok) console.log(`GitHub was not updated: ${res.remote.reason ?? "unknown error"}`);
   });
 

@@ -61,6 +61,8 @@ export interface FakeGh {
   /** parsed request bodies of the `POST .../pulls/{n}/reviews` calls, in order */
   createReviewPayloads: () => Record<string, unknown>[];
   deletedCommentIds: number[];
+  /** every `POST .../pulls/{n}/comments` (a standalone, public comment), in order */
+  published: (Record<string, unknown> & { id: number; node_id: string })[];
   /** every addPullRequestReviewThreadReply, in order */
   replies: { threadId: string; reviewId: string; body: string; id: number }[];
   /**
@@ -89,6 +91,7 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
     threadPageSize: 100,
     login: opts.login ?? "reviewer-bot",
     deletedCommentIds: [],
+    published: [],
     replies: [],
     uploads: [],
     repositoryId: 424242,
@@ -382,6 +385,23 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
     if (method === "DELETE" && delComment) {
       state.deletedCommentIds.push(Number(delComment[1]));
       return "{}";
+    }
+
+    // POST /pulls/{n}/comments — one standalone review comment, public at once.
+    if (method === "POST" && /\/pulls\/\d+\/comments$/.test(endpoint)) {
+      if (!body.commit_id || !body.path || !body.body) {
+        throw new Error(`gh ${joined} failed: HTTP 422 Unprocessable Entity: Validation Failed`);
+      }
+      if (body.subject_type !== "file" && (body.line === undefined || body.line === null)) {
+        throw new Error(`gh ${joined} failed: HTTP 422 Unprocessable Entity: Validation Failed — line is required`);
+      }
+      const id = nextCommentId++;
+      const created = { ...body, id, node_id: `PRRC_${id}` };
+      state.published.push(created);
+      return JSON.stringify({
+        ...created,
+        html_url: `https://github.com/acme/widgets/pull/7#discussion_r${id}`,
+      });
     }
 
     // POST /pulls/{n}/reviews  (create pending, or create-and-submit)

@@ -77,8 +77,12 @@ import {
   type Comment,
   isAgentActor,
   type CommentActor,
+  CommentAudienceSchema,
+  CommentNotDraftError,
+  markPublished,
+  setCommentAudience,
 } from "./comments.js";
-import { recoverCommentNodeId, syncCommentsToGithub } from "./comment-sync.js";
+import { headShaOf, recoverCommentNodeId, syncCommentsToGithub } from "./comment-sync.js";
 import {
   assertAttachmentRefsExist,
   attachmentFilePath,
@@ -99,6 +103,7 @@ import {
 } from "./review.js";
 import {
   classifyGhReviewError,
+  createStandaloneReviewComment,
   updatePullRequestReviewCommentBody,
   type SubmitEvent,
 } from "./github-review.js";
@@ -1328,11 +1333,96 @@ export function createApp(opts: AppOptions = {}): Hono {
       assertAttachmentRefsExist(key, (body as { body: string }).body, root);
     }
     try {
-      const comment = addComment(key, body, root, actor);
+      // Without an explicit audience a comment follows the reader's switch,
+      // whoever writes it: the web, the CLI, the chat.
+      const comment = addComment(key, body, root, actor, readConfig(root).commentAudience);
       return c.json({ comment }, 201);
     } catch (err) {
       throw classifyError(err);
     }
+  });
+
+  /**
+   * "Publish now": one GitHub draft goes out as a standalone review comment,
+   * public the moment GitHub accepts it — no pending review, no submit. The
+   * confirmation is the same friction as submitting a review, for the same
+   * reason: there is no taking it back. The chat never publishes anything.
+   */
+  app.post("/api/prs/:key/comments/:id/publish", async (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    const body = (await readJsonBody(c)) as { confirm?: unknown };
+    const actor = actorOf(c);
+    if (isAgentActor(actor)) {
+      throw new HttpError(409, "not_allowed", "The review chat may not publish comments; only the reader can.");
+    }
+    const target = readComments(key, root).find((c2) => c2.id === id);
+    if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    if (target.audience === "agent") {
+      throw new HttpError(400, "agent_comment", "This comment is a note for an agent; move it to GitHub first.");
+    }
+    if (target.status !== "draft") {
+      throw new HttpError(400, "not_draft", `Only a draft can be published; comment ${id} is ${target.status}`);
+    }
+    if (target.inReplyTo) {
+      throw new HttpError(400, "reply_not_publishable", "A reply goes out with the review it belongs to.");
+    }
+    if (body.confirm !== true) {
+      throw new HttpError(
+        400,
+        "confirmation_required",
+        "Publishing a comment is public and irreversible; resend with { confirm: true }",
+      );
+    }
+    const state = loadState(key, root);
+    if (target.subjectType === "line") {
+      const files = readFilesJson(key, state.currentRevision, root).files;
+      if (!findAnchoringHunk(files, target.file, target.line!, target.side!, target.startLine)) {
+        throw new HttpError(
+          422,
+          "comment_outside_diff",
+          `${target.file}:${target.line} is not part of the current diff — edit its position or use "Suggest new anchor"`,
+        );
+      }
+    }
+    const commitId = headShaOf(key, root);
+    if (!commitId) throw new HttpError(400, "no_commit_id", "No head sha on record for the current revision");
+    // Pictures go up first, exactly as at push time; the local text takes the
+    // rewritten form once GitHub has it.
+    let outgoing: string;
+    try {
+      outgoing = resolveBodyForGithub(key, target.body, root);
+    } catch (err) {
+      throw new HttpError(502, "attachment_upload_failed", err instanceof Error ? err.message : String(err));
+    }
+    const input =
+      target.subjectType === "file"
+        ? { subjectType: "file" as const, path: target.file, body: outgoing }
+        : {
+            subjectType: "line" as const,
+            path: target.file,
+            line: target.line!,
+            side: target.side!,
+            ...(target.startLine !== undefined
+              ? { startLine: target.startLine, startSide: target.startSide ?? target.side! }
+              : {}),
+            body: outgoing,
+          };
+    let created;
+    try {
+      created = createStandaloneReviewComment(key, commitId, input);
+    } catch (err) {
+      const e = classifyGhReviewError(err);
+      throw new HttpError(e.status ?? 502, e.code, e.message);
+    }
+    const comment = markPublished(
+      key,
+      id,
+      { githubCommentId: created.databaseId, githubCommentNodeId: created.nodeId, body: outgoing },
+      root,
+    );
+    clearStalenessCache(key, root);
+    return c.json({ comment, url: created.htmlUrl });
   });
 
   app.delete("/api/prs/:key/comments/:id", (c) => {
@@ -1433,13 +1523,33 @@ export function createApp(opts: AppOptions = {}): Hono {
       confirm?: boolean;
       line?: unknown;
       file?: unknown;
+      audience?: unknown;
     };
 
     const actor = actorOf(c);
     const existing = readComments(key, root);
-    const target = existing.find((c2) => c2.id === id);
+    let target = existing.find((c2) => c2.id === id);
     if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
     assertChatMayTouch(actor, target, "edit");
+
+    // Audience first: it may come alone ("move to agent") or with an edit.
+    if (body.audience !== undefined) {
+      const parsedAudience = CommentAudienceSchema.safeParse(body.audience);
+      if (!parsedAudience.success) {
+        throw new HttpError(400, "invalid_body", 'audience must be "github" or "agent"');
+      }
+      try {
+        const moved = setCommentAudience(key, id, parsedAudience.data, root);
+        if (!moved) throw new HttpError(404, "not_found", `No comment "${id}"`);
+        target = moved;
+      } catch (err) {
+        if (err instanceof CommentNotDraftError) throw new HttpError(400, "not_draft", err.message);
+        throw err;
+      }
+      if (body.body === undefined && body.line === undefined && body.file === undefined) {
+        return c.json({ comment: target, remote: null });
+      }
+    }
 
     if (body.line !== undefined || body.file !== undefined) {
       if (target.status !== "draft") {
@@ -1841,6 +1951,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       aiReviewers: config.aiReviewers,
       extraAuthors: config.extraAuthors,
       updateCheck: config.updateCheck,
+      commentAudience: config.commentAudience,
       /** what this layer resolves to on its own — the end of the inheritance chain */
       effective: {
         analysisAgent: agentView(resolveAgent("analysis", [["global", config.analysisAgent]], true)),
@@ -1868,6 +1979,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       extraAuthors: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
       /** ask origin for newer releases once a day */
       updateCheck: z.boolean().optional(),
+      /** what new comments are for: the GitHub review, or notes for an agent */
+      commentAudience: CommentAudienceSchema.optional(),
     })
     .strict();
 
@@ -1955,6 +2068,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (body.aiReviewers !== undefined) patch.aiReviewers = dedupeLogins(body.aiReviewers);
     if (body.extraAuthors !== undefined) patch.extraAuthors = dedupeLogins(body.extraAuthors);
     if (body.updateCheck !== undefined) patch.updateCheck = body.updateCheck;
+    if (body.commentAudience !== undefined) patch.commentAudience = body.commentAudience;
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
   });

@@ -42,6 +42,14 @@ export type CommentStatus = z.infer<typeof CommentStatusSchema>;
  * discriminator rather than "line is absent -> file-level" so that a malformed
  * line comment can be rejected instead of silently becoming a file comment.
  */
+/**
+ * Who a comment is for. `github`: part of the reader's review, with the
+ * draft → pushed → submitted lifecycle. `agent`: a note for a coding agent —
+ * copied out of Purview, never sent to GitHub, so it only ever stays a draft.
+ */
+export const CommentAudienceSchema = z.enum(["github", "agent"]);
+export type CommentAudience = z.infer<typeof CommentAudienceSchema>;
+
 export const CommentSubjectTypeSchema = z.enum(["line", "file"]);
 export type CommentSubjectType = z.infer<typeof CommentSubjectTypeSchema>;
 
@@ -107,6 +115,8 @@ const CommentObjectSchema = z.object({
   body: z.string().min(1),
   createdAt: z.string(),
   status: CommentStatusSchema,
+  /** Absent in files from before audiences: read as "github" (see `normalize`). */
+  audience: CommentAudienceSchema.optional(),
   /**
    * REST id (databaseId) of the review comment on GitHub. Used by the REST
    * delete endpoint (`DELETE /pulls/comments/{id}`), which takes databaseId.
@@ -272,6 +282,8 @@ export const NewCommentSchema = z
     body: z.string().min(1),
     /** reply to this GitHub thread (node id) rather than start a new one */
     inReplyTo: z.string().min(1).optional(),
+    /** omitted → the caller's default (the app's switch) */
+    audience: CommentAudienceSchema.optional(),
   })
   .transform((v) => {
     // A "range" of one line is a single-line comment; say so in the stored
@@ -305,9 +317,13 @@ function normalize(raw: z.infer<typeof StoredCommentSchema>): Comment {
   // and taking the whole file down.
   const subjectType: CommentSubjectType =
     raw.subjectType === "file" || raw.line === undefined ? "file" : "line";
+  // An agent note never reaches GitHub, so a stored status beyond "draft" is
+  // unrepresentable; "github" is what every comment was before audiences.
+  const audience: CommentAudience = raw.audience ?? "github";
+  if (audience === "agent") status = "draft";
   if (subjectType === "file") {
     const { line: _line, side: _side, startLine: _start, startSide: _startSide, ...rest } = raw;
-    return { ...rest, subjectType, status };
+    return { ...rest, subjectType, status, audience };
   }
   const side = raw.side ?? "RIGHT";
   // A range that does not precede its line is unrepresentable (GitHub rejects
@@ -321,6 +337,7 @@ function normalize(raw: z.infer<typeof StoredCommentSchema>): Comment {
     side,
     ...(startLine !== undefined ? { startLine, startSide: side } : {}),
     status,
+    audience,
   };
 }
 
@@ -342,11 +359,13 @@ export function addComment(
   input: unknown,
   root = stateRoot(),
   actor: CommentActor = "you",
+  defaultAudience: CommentAudience = "github",
 ): Comment {
   const parsed = NewCommentSchema.parse(input);
   const comment: Comment = {
     id: randomUUID(),
     ...parsed,
+    audience: parsed.audience ?? defaultAudience,
     createdAt: new Date().toISOString(),
     status: "draft",
     author: actor,
@@ -737,10 +756,69 @@ export function resetPushedToDraft(key: PrKey, root = stateRoot()): number {
 
 export function commentCounts(comments: Comment[]) {
   return {
-    draft: comments.filter((c) => c.status === "draft").length,
+    /** GitHub drafts only: what a sync would push */
+    draft: comments.filter((c) => c.status === "draft" && c.audience !== "agent").length,
     pushed: comments.filter((c) => c.status === "pushed").length,
     submitted: comments.filter((c) => c.status === "submitted").length,
+    /** notes for an agent; never leave the machine */
+    agent: comments.filter((c) => c.audience === "agent").length,
   };
+}
+
+/** Thrown by `setCommentAudience` on a comment that already left the machine. */
+export class CommentNotDraftError extends Error {
+  constructor(readonly comment: Comment) {
+    super(
+      `Only a draft can change audience; comment ${comment.id} is ${comment.status}` +
+        (comment.status === "pushed" ? " (in your pending GitHub review)." : " (public on GitHub)."),
+    );
+  }
+}
+
+/**
+ * Move a draft between "part of the review" and "note for an agent". Only a
+ * draft can move: a pushed or submitted comment already exists on GitHub.
+ * Returns the comment, or null when there is no such id.
+ */
+export function setCommentAudience(
+  key: PrKey,
+  id: string,
+  audience: CommentAudience,
+  root = stateRoot(),
+): Comment | null {
+  const comments = readComments(key, root);
+  const idx = comments.findIndex((c) => c.id === id);
+  if (idx === -1) return null;
+  const target = comments[idx];
+  if (target.audience === audience) return target;
+  if (target.status !== "draft") throw new CommentNotDraftError(target);
+  const next = [...comments];
+  next[idx] = { ...target, audience };
+  writeComments(key, next, root);
+  return next[idx];
+}
+
+/** A standalone public comment went out: the draft is submitted, with its GitHub ids. */
+export function markPublished(
+  key: PrKey,
+  id: string,
+  github: { githubCommentId?: number; githubCommentNodeId?: string; body?: string },
+  root = stateRoot(),
+): Comment | null {
+  const comments = readComments(key, root);
+  const idx = comments.findIndex((c) => c.id === id);
+  if (idx === -1) return null;
+  const next = [...comments];
+  next[idx] = {
+    ...next[idx],
+    status: "submitted",
+    submittedAt: new Date().toISOString(),
+    body: github.body ?? next[idx].body,
+    githubCommentId: github.githubCommentId ?? next[idx].githubCommentId,
+    githubCommentNodeId: github.githubCommentNodeId ?? next[idx].githubCommentNodeId,
+  };
+  writeComments(key, next, root);
+  return next[idx];
 }
 
 /*
@@ -850,6 +928,7 @@ export interface DraftCommentMove {
 export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftCommentMove[] {
   const comments = readComments(key, root);
   // Replies are anchored by their thread, not by a line (see `inReplyTo`).
+  // Both audiences: a fresh anchor helps the agent bundle as much as a push.
   const drafts = comments.filter(
     (c) => c.status === "draft" && c.subjectType === "line" && !c.inReplyTo,
   );
@@ -934,8 +1013,9 @@ export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftComm
 export function unanchoredDraftLineComments(key: PrKey, root = stateRoot()): Comment[] {
   const comments = readComments(key, root);
   // Replies are anchored by their thread, not by a line (see `inReplyTo`).
+  // Agent notes never go to GitHub: one on a slid line is the reader's business.
   const drafts = comments.filter(
-    (c) => c.status === "draft" && c.subjectType === "line" && !c.inReplyTo,
+    (c) => c.status === "draft" && c.audience !== "agent" && c.subjectType === "line" && !c.inReplyTo,
   );
   if (drafts.length === 0) return [];
   let currentFiles: FileDiff[];

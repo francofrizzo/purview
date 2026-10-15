@@ -6,7 +6,7 @@
  * what keeps that a hash lookup instead of a scan. Pure functions only.
  */
 
-import type { FilesJson } from "../api/types";
+import type { CommentAudience, FilesJson } from "../api/types";
 import {
   isFileComment,
   type CommentStatus,
@@ -194,8 +194,16 @@ export function isRangeInDiff(
 export function bubbleTitle(comments: DraftComment[]): string {
   const n = comments.length;
   const noun = n === 1 ? "comment" : "comments";
-  const counts = (["draft", "pushed", "submitted"] as const)
-    .map((st) => [st, comments.filter((c) => (c.status ?? "draft") === st).length] as const)
+  const counts = (["draft", "pushed", "submitted", "for agent"] as const)
+    .map(
+      (st) =>
+        [
+          st,
+          st === "for agent"
+            ? comments.filter(isForAgent).length
+            : comments.filter((c) => !isForAgent(c) && (c.status ?? "draft") === st).length,
+        ] as const,
+    )
     .filter(([, k]) => k > 0);
   const mix = counts.length === 1 && n > 1 ? `all ${counts[0][0]}` : counts.map(([st, k]) => (n === 1 ? st : `${k} ${st}`)).join(", ");
   return `${n} ${noun} · ${mix} — click to ${n === 1 ? "read it" : "read them"}`;
@@ -241,4 +249,13 @@ export function agentDeletedDrafts(
  */
 export function isCommentWriteTool(tool: { name?: string; kind?: string; detail?: string }): boolean {
   return tool.kind === "command" && /\bcomment\s+(add|edit|delete)\b/.test(tool.detail ?? "");
+}
+
+/** Who a comment is for; older payloads carry no field and are GitHub comments. */
+export function audienceOf(c: { audience?: CommentAudience }): CommentAudience {
+  return c.audience ?? "github";
+}
+
+export function isForAgent(c: { audience?: CommentAudience }): boolean {
+  return audienceOf(c) === "agent";
 }

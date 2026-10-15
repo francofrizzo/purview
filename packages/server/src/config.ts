@@ -91,6 +91,13 @@ export const ConfigSchema = z.object({
    * viewer login as "mine".
    */
   extraAuthors: z.array(z.string()).default([]),
+  /**
+   * The global switch for new comments: part of the GitHub review, or notes
+   * for a coding agent (see comments.ts). Read by the web, the CLI and the
+   * chat alike, so a comment written anywhere lands where the reader is
+   * currently writing for.
+   */
+  commentAudience: z.enum(["github", "agent"]).default("github"),
   /** The newest changelog version the reader has been shown; null = never. */
   lastSeenVersion: z.string().nullable().default(null),
   /**

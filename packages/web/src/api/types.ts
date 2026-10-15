@@ -626,6 +626,8 @@ export interface GlobalConfig {
   extraAuthors?: string[];
   /** ask origin once a day for a newer release and show it on the home page */
   updateCheck?: boolean;
+  /** what new comments are for, everywhere (web, CLI, chat); absent on older servers = "github" */
+  commentAudience?: CommentAudience;
   /** what this layer resolves to on its own — the end of the chain */
   effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }
@@ -637,6 +639,7 @@ export interface GlobalConfigPatch {
   aiReviewers?: string[];
   extraAuthors?: string[];
   updateCheck?: boolean;
+  commentAudience?: CommentAudience;
 }
 
 /**
@@ -733,6 +736,14 @@ export interface MigrationReport {
 export type CommentStatus = "draft" | "pushed" | "submitted";
 
 /**
+ * Who a comment is for. "github": part of your review — draft, then pushed
+ * into the pending review, then submitted. "agent": a note for a coding agent
+ * (copied or sent to the chat); it never leaves this machine and is always a
+ * draft. Absent on payloads from older servers: read as "github".
+ */
+export type CommentAudience = "github" | "agent";
+
+/**
  * What a comment is attached to. `"line"` is the historical shape (and the
  * default when the server omits the field); `"file"` comments hang off the
  * whole file and carry no line or side at all.
@@ -756,6 +767,8 @@ export interface DraftComment {
   body: string;
   createdAt?: string;
   status?: CommentStatus;
+  /** absent on older servers — treat as "github" */
+  audience?: CommentAudience;
   /** absent on older servers — treat as "line" */
   subjectType?: CommentSubject;
   /** set once the comment exists on GitHub; needed to mirror an edit remotely */
@@ -828,6 +841,8 @@ export type AddCommentInput = (
 ) & {
   /** reply to this GitHub thread (node id) rather than start a new one */
   inReplyTo?: string;
+  /** who it is for; omitted, the server applies the global switch */
+  audience?: CommentAudience;
 };
 
 /**
@@ -890,7 +905,8 @@ export interface ReviewSubmission {
 /** GET /api/prs/:key/review */
 export interface ReviewStatus {
   body: string;
-  counts: { draft: number; pushed: number; submitted: number };
+  /** `draft` counts GitHub drafts only; `agent` the notes for an agent (absent on older servers) */
+  counts: { draft: number; pushed: number; submitted: number; agent?: number };
   /** everything a submit would carry, in file order */
   included: {
     id: string;
@@ -914,6 +930,12 @@ export interface ReviewStatus {
   submittedAt?: string;
   submittedEvent?: ReviewEvent;
   submittedUrl?: string;
+}
+
+/** POST /comments/:id/publish — one GitHub draft posted as a public comment, outside any review. */
+export interface PublishCommentResult {
+  comment: DraftComment;
+  url?: string;
 }
 
 export interface SubmitReviewResult {

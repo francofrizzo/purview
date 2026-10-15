@@ -60,6 +60,8 @@ export interface ServerComment {
   startLine?: number;
   body: string;
   status: "draft" | "pushed" | "submitted";
+  /** github = part of the review; agent = a note for a coding agent, never sent to GitHub */
+  audience: "github" | "agent";
   author?: ServerCommentActor;
   lastEditedBy?: ServerCommentActor;
 }
@@ -78,7 +80,7 @@ function firstLine(body: string, max = 80): string {
   return line.length > max ? line.slice(0, max - 1) + "…" : line;
 }
 
-/** One line per comment: id, status, author, location, first line of the body. */
+/** One line per comment: id, status, audience, author, location, first line of the body. */
 export function formatCommentList(comments: ServerComment[]): string {
   if (comments.length === 0) return "No comments on this PR.\n";
   return (
@@ -88,7 +90,7 @@ export function formatCommentList(comments: ServerComment[]): string {
         const who = (a: ServerCommentActor | undefined) => (a && a !== "you" ? "agent" : "you");
         const author = who(c.author);
         const edited = c.lastEditedBy && who(c.lastEditedBy) !== author ? ` edited-by=${who(c.lastEditedBy)}` : "";
-        return `${c.id}  ${c.status.padEnd(9)} author=${author}${edited}  ${commentLocation(c)}  ${firstLine(c.body)}`;
+        return `${c.id}  ${c.status.padEnd(9)} for=${(c.audience ?? "github").padEnd(6)} author=${author}${edited}  ${commentLocation(c)}  ${firstLine(c.body)}`;
       })
       .join("\n") + "\n"
   );
@@ -101,6 +103,16 @@ export interface NewCommentArgs {
   startLine?: string;
   side?: string;
   wholeFile?: boolean;
+  /** who the comment is for: github | agent; omitted → the app's switch */
+  for?: string;
+}
+
+/** `--for` as the server's `audience`; undefined when not given. */
+export function parseAudience(raw: string | undefined): "github" | "agent" | undefined {
+  if (raw === undefined) return undefined;
+  const v = raw.trim().toLowerCase();
+  if (v === "github" || v === "agent") return v;
+  throw new Error(`--for must be github or agent, not "${raw}"`);
 }
 
 /** Validate `comment add`'s anchoring flags into the server's create body (minus `body`). */
@@ -110,26 +122,32 @@ export function newCommentPayload(args: NewCommentArgs): {
   line?: number;
   side?: "LEFT" | "RIGHT";
   startLine?: number;
+  audience?: "github" | "agent";
 } {
   const file = args.file.replace(/^\.\//, "");
   if (!file) throw new Error("--file is required");
+  const audience = parseAudience(args.for);
+  const withAudience = <T extends object>(p: T): T & { audience?: "github" | "agent" } =>
+    audience === undefined ? p : { ...p, audience };
   if (args.wholeFile) {
     if (args.line !== undefined) throw new Error("Pass either --line or --whole-file, not both");
     if (args.side !== undefined) throw new Error("--side only applies to line comments");
     if (args.startLine !== undefined) throw new Error("--start-line only applies to line comments");
-    return { file, subjectType: "file" };
+    return withAudience({ file, subjectType: "file" });
   }
   if (args.line === undefined) throw new Error("Pass --line <n> (or --whole-file for a file-level comment)");
   const line = Number(args.line);
   if (!Number.isInteger(line) || line < 1) throw new Error(`Invalid --line "${args.line}"`);
   const side = (args.side ?? "RIGHT").toUpperCase();
   if (side !== "RIGHT" && side !== "LEFT") throw new Error(`--side must be RIGHT or LEFT, not "${args.side}"`);
-  if (args.startLine === undefined) return { file, subjectType: "line", line, side };
+  if (args.startLine === undefined) return withAudience({ file, subjectType: "line", line, side });
   const startLine = Number(args.startLine);
   if (!Number.isInteger(startLine) || startLine < 1) throw new Error(`Invalid --start-line "${args.startLine}"`);
   if (startLine > line) throw new Error(`--start-line (${startLine}) must not come after --line (${line})`);
   // A one-line "range" is just a line comment.
-  return startLine === line ? { file, subjectType: "line", line, side } : { file, subjectType: "line", line, side, startLine };
+  return withAudience(
+    startLine === line ? { file, subjectType: "line", line, side } : { file, subjectType: "line", line, side, startLine },
+  );
 }
 
 /** Exactly one of --body / --body-file; the body must not be blank. */

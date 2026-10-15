@@ -35,6 +35,9 @@
 
     --accent: #7aa2f7;
     --accent-soft: rgba(122, 162, 247, 0.14);
+    /* Notes for a coding agent: the violet the moved-code tint also uses. */
+    --agent: #a371f7;
+    --agent-soft: rgba(163, 113, 247, 0.14);
 
     --add-bg: rgba(63, 185, 80, 0.1);
     --add-bg-strong: rgba(63, 185, 80, 0.26);
@@ -100,6 +103,8 @@
 
       --accent: #2f6feb;
       --accent-soft: rgba(47, 111, 235, 0.1);
+      --agent: #8250df;
+      --agent-soft: rgba(130, 80, 223, 0.1);
 
       --add-bg: rgba(34, 134, 58, 0.09);
       --add-bg-strong: rgba(34, 134, 58, 0.22);
@@ -289,6 +294,12 @@
   .btn-group > .btn + .btn {
     margin-left: -1px;
   }
+  /* The chosen option keeps its whole outline: neighbours overlap it by a pixel. */
+  .btn-group > .btn[aria-checked="true"],
+  .btn-group > .btn[aria-pressed="true"] {
+    position: relative;
+    z-index: 1;
+  }
   .btn-primary {
     background: var(--accent-soft);
     border-color: transparent;
@@ -298,6 +309,18 @@
     background: var(--accent-soft);
     color: var(--accent);
     border-color: var(--accent);
+  }
+
+  /* The violet twin of .btn-primary: saving a note for a coding agent. */
+  .btn-agent {
+    background: var(--agent-soft);
+    border-color: transparent;
+    color: var(--agent);
+  }
+  .btn-agent:hover:not(:disabled) {
+    background: var(--agent-soft);
+    color: var(--agent);
+    border-color: var(--agent);
   }
 
   .chip {

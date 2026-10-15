@@ -10,12 +10,14 @@ import type {
   ReviewEvent,
   ShareAnalysisResult,
   SubmitReviewResult,
-  SyncResult,
-} from "../api/types";
+  SyncResult, CommentAudience } from "../api/types";
 import { isGeneratedUnit, isJobLive } from "../api/types";
 import {
   qk,
   useAddComment,
+  useCommentAudience,
+  usePublishComment,
+  useSetCommentAudience,
   useAnalysisEvents,
   useAnalysisJob,
   useCancelAnalysis,
@@ -73,6 +75,7 @@ import {
   DraftsDrawer,
   targetRef,
   targetToInput,
+  commentRef,
   type CommentTarget,
   targetKey,
 } from "../components/Drafts";
@@ -170,6 +173,10 @@ export function PrView() {
   const undoCommentEdit = useUndoCommentEdit(prKey);
   const deleteComments = useDeleteComments(prKey);
   const editComment = useEditComment(prKey);
+  const setAudience = useSetCommentAudience(prKey);
+  const publishComment = usePublishComment(prKey);
+  // The global switch: who new comments are for (web, CLI and chat alike).
+  const audienceSwitch = useCommentAudience();
   const moveComment = useMoveComment(prKey);
   const proposeReanchor = useProposeReanchor(prKey);
   const saveReviewBody = useSaveReviewBody(prKey);
@@ -796,6 +803,10 @@ export function PrView() {
         e.preventDefault();
         const id = selectedUnit.id;
         setUnitViewed.mutate(id, { onSuccess: () => advanceAfterUnitViewed(id) });
+      } else if (e.key === "a") {
+        // Flip who new comments are for: GitHub review or notes for an agent.
+        e.preventDefault();
+        audienceSwitch.toggle();
       } else if (e.key === "b") {
         // `b` (as in VS Code's ⌘B), not `[`: on Spanish and other ISO layouts
         // the bracket is an Option chord, and the modifier guard above would
@@ -974,6 +985,10 @@ export function PrView() {
     exportCtx,
     onUndoEdit: (id: string) => undoCommentEdit.mutate(id),
     undoing: undoCommentEdit.isPending,
+    onMove: (c: { id: string }, audience: CommentAudience) => setAudience.mutate({ id: c.id, audience }),
+    moving: setAudience.isPending,
+    onPublish: (c: { id: string }) => publishComment.mutate(c.id),
+    publishing: publishComment.isPending,
     onReply: (thread: DisplayThread) => {
       const target = replyTarget(thread);
       if (target) openComposer(target);
@@ -1170,6 +1185,7 @@ export function PrView() {
                 [["space"], "next unviewed hunk"],
                 [["z"], "fold / unfold"],
                 [["n"], "comment (then a line number)"],
+                [["a"], "comments for GitHub / for agent"],
               ]}
             />
             <ShortcutGroup
@@ -1213,10 +1229,17 @@ export function PrView() {
         pending={addComment.isPending}
         exportCtx={exportCtx}
         onCancel={() => setCommentTarget(null)}
+        audience={audienceSwitch.audience}
+        onAudienceChange={audienceSwitch.set}
         onSubmit={(body) =>
-          addComment.mutate(targetToInput(commentTarget, body), {
-            onSuccess: () => setCommentTarget(null),
-          })
+          addComment.mutate(
+            {
+              ...targetToInput(commentTarget, body),
+              // A reply joins its GitHub thread whatever the switch says.
+              audience: commentTarget.inReplyTo ? "github" : audienceSwitch.audience,
+            },
+            { onSuccess: () => setCommentTarget(null) },
+          )
         }
         chatBusy={chat.busy}
         onSendToChat={(body) => {
@@ -1258,6 +1281,8 @@ export function PrView() {
         fullscreenActive={fullscreen.active}
         onToggleFullscreen={fullscreen.toggle}
         onToggleDrafts={() => setDraftsOpen((v) => !v)}
+        audience={audienceSwitch.audience}
+        onAudienceChange={audienceSwitch.set}
         onToggleChat={chat.toggleChat}
         onAnalyze={() => startAnalysis.mutate()}
         onCancelAnalysis={() => cancelAnalysis.mutate()}
@@ -1836,6 +1861,26 @@ export function PrView() {
             onRestore={(id) => restoreComment.mutate(id)}
             onUndoEdit={(id) => undoCommentEdit.mutate(id)}
             undoing={restoreComment.isPending || undoCommentEdit.isPending}
+            audience={audienceSwitch.audience}
+            onAudienceChange={audienceSwitch.set}
+            onMove={(d, audience) => setAudience.mutate({ id: d.id, audience })}
+            moving={setAudience.isPending}
+            onPublish={(d) => publishComment.mutate(d.id)}
+            publishing={publishComment.isPending}
+            chatBusy={chat.busy}
+            onSendToChat={(notes) => {
+              chat.send(
+                `Please act on ${notes.length === 1 ? "this note" : `these ${notes.length} notes`}.`,
+                notes.map(commentRef),
+              );
+              chat.openChat();
+            }}
+            onFinishReview={() => {
+              setSubmitResult(null);
+              submitReview.reset();
+              setReviewOpen(true);
+              chat.closeChat();
+            }}
             github={
               remoteThreads?.length
                 ? {

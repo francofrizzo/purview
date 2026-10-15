@@ -6,6 +6,10 @@ import {
   IconArrowDown as TablerArrowDown,
   IconArrowLeft as TablerArrowLeft,
   IconArrowsExchange,
+  IconArrowsRightLeft,
+  IconBrandGithub as TablerBrandGithub,
+  IconSparkles as TablerSparkles,
+  IconSend as TablerSend,
   IconBarbell,
   IconBolt as TablerBolt,
   IconCheck as TablerCheck,
@@ -218,6 +222,10 @@ export const IconFilter = wrap(TablerFilter);
 
 /** A small robot head — an AI reviewer. */
 export const IconBot = wrap(IconRobotFace);
+export const IconSend = wrap(TablerSend);
+export const IconSwap = wrap(IconArrowsRightLeft);
+export const IconGithub = wrap(TablerBrandGithub);
+export const IconSparkles = wrap(TablerSparkles);
 
 export const RISK_META: Record<
   RiskFlag,

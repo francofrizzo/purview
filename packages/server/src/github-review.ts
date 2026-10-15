@@ -238,6 +238,48 @@ export type ReviewCommentInput =
 /** REST create-review `comments[]` entries — line comments only (see below). */
 export type LineReviewCommentInput = Extract<ReviewCommentInput, { subjectType: "line" }>;
 
+export interface StandaloneComment {
+  databaseId: number;
+  nodeId: string;
+  htmlUrl?: string;
+}
+
+/**
+ * `POST /pulls/{n}/comments`: one review comment outside any review, public
+ * the moment GitHub accepts it ("publish now" on a single draft). Unlike the
+ * review-create payload this endpoint does take `subject_type`, so a
+ * whole-file comment goes through the same call.
+ */
+export function createStandaloneReviewComment(
+  key: PrKey,
+  commitId: string,
+  comment: ReviewCommentInput,
+): StandaloneComment {
+  const payload =
+    comment.subjectType === "file"
+      ? { commit_id: commitId, path: comment.path, body: comment.body, subject_type: "file" }
+      : {
+          commit_id: commitId,
+          path: comment.path,
+          body: comment.body,
+          line: comment.line,
+          side: comment.side,
+          ...(comment.startLine !== undefined
+            ? { start_line: comment.startLine, start_side: comment.startSide ?? comment.side }
+            : {}),
+        };
+  try {
+    const raw = ghJson<{ id: number; node_id: string; html_url?: string }>(
+      key,
+      ["--method", "POST", `repos/${key.owner}/${key.repo}/pulls/${key.number}/comments`, "--input", "-"],
+      JSON.stringify(payload),
+    );
+    return { databaseId: raw.id, nodeId: raw.node_id, htmlUrl: raw.html_url };
+  } catch (err) {
+    throw classifyGhReviewError(err);
+  }
+}
+
 export interface CreatedReview {
   databaseId: number;
   nodeId: string;

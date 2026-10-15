@@ -180,7 +180,8 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
   }
 
   const all = readComments(key, root);
-  const drafts = all.filter((c) => c.status === "draft");
+  // Agent notes stay on the machine whatever their status says.
+  const drafts = all.filter((c) => c.status === "draft" && c.audience !== "agent");
 
   let pending: PendingReview | undefined;
   try {
