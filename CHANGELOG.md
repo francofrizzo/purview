@@ -7,7 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **One sort direction on the home page.** PRs waiting on your review now list newest request first, like the other blocks.
+- **One sort direction on the home page.** Every block lists oldest first: the longest-waiting review request on top, then your PRs and the rest by when they were added.
 
 ## 2026.10.16.4
 

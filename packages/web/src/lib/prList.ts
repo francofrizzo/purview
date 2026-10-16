@@ -87,7 +87,7 @@ export interface RepoGroup {
   host: string;
   owner: string;
   repo: string;
-  /** unarchived PRs with a pending request for your review, newest request first */
+  /** unarchived PRs with a pending request for your review, longest-waiting first */
   needsReview: PrListEntry[];
   /** unarchived PRs you opened, most recently added first */
   mine: PrListEntry[];
@@ -106,7 +106,10 @@ const time = (iso: string | undefined) => {
   return Number.isNaN(t) ? 0 : t;
 };
 
-const byAddedAtDesc = (a: PrListEntry, b: PrListEntry) => time(b.addedAt) - time(a.addedAt);
+// Oldest first everywhere: the list is a queue, and what has waited longest
+// sits on top. Added time for the PRs you opened and the rest, request time
+// for the ones waiting on your review.
+const byAddedAtAsc = (a: PrListEntry, b: PrListEntry) => time(a.addedAt) - time(b.addedAt);
 
 export const groupKeyOf = (pr: PrListEntry): string =>
   `${pr.meta?.host ?? "github.com"}/${pr.meta?.owner ?? "?"}/${pr.meta?.repo ?? "?"}`;
@@ -120,15 +123,13 @@ const bucketOf = (group: RepoGroup, pr: PrListEntry): PrListEntry[] => {
   return pr.authoredByYou ? group.mine : group.prs;
 };
 
-// Newest request first: the other buckets read newest-added first, and one
-// direction for the whole list beats surfacing the longest wait.
-const byRequestAtDesc = (a: PrListEntry, b: PrListEntry) =>
-  time(b.reviewRequest?.at) - time(a.reviewRequest?.at) || byAddedAtDesc(a, b);
+const byRequestAtAsc = (a: PrListEntry, b: PrListEntry) =>
+  time(a.reviewRequest?.at) - time(b.reviewRequest?.at) || byAddedAtAsc(a, b);
 
 /**
  * One group per repo. Unarchived PRs still waiting on your review lead the
- * group, newest request first; then the ones you opened, then the rest, both
- * newest-added first. Repos with
+ * group, longest-waiting first; then the ones you opened, then the rest, both
+ * oldest-added first. Repos with
  * such a request come before repos without one; within each tier, the repo
  * with the newest PR floats to the top. Ties fall back to the group key so the
  * order is total (and stable in tests).
@@ -159,10 +160,10 @@ export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
   }
   const out = [...groups.values()];
   for (const g of out) {
-    g.needsReview.sort(byRequestAtDesc);
-    g.mine.sort(byAddedAtDesc);
-    g.prs.sort(byAddedAtDesc);
-    g.archived.sort(byAddedAtDesc);
+    g.needsReview.sort(byRequestAtAsc);
+    g.mine.sort(byAddedAtAsc);
+    g.prs.sort(byAddedAtAsc);
+    g.archived.sort(byAddedAtAsc);
   }
   out.sort(
     (a, b) =>

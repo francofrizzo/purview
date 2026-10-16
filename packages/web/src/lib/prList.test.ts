@@ -106,11 +106,11 @@ describe("groupPrsByRepo", () => {
     ]);
   });
 
-  it("sorts PRs newest-added first within a group", () => {
+  it("sorts PRs oldest-added first within a group", () => {
     const billing = groupPrsByRepo(prs).find((g) => g.repo === "billing")!;
     expect(billing.prs.map((p) => p.key)).toEqual([
-      "github.com/acme/billing/491",
       "github.com/acme/billing/482",
+      "github.com/acme/billing/491",
     ]);
   });
 
@@ -145,12 +145,12 @@ describe("groupPrsByRepo — pending review requests", () => {
     pr("github.com/acme/billing/499", "acme", "billing", ago(10 * MINUTE)),
   ];
 
-  it("lifts requested PRs into their own bucket, newest request first", () => {
+  it("lifts requested PRs into their own bucket, longest-waiting first", () => {
     const billing = groupPrsByRepo(prs).find((g) => g.repo === "billing")!;
     expect(billing.needsReview.map((p) => p.key)).toEqual([
-      "github.com/acme/billing/491",
-      "github.com/acme/billing/482",
       "github.com/acme/billing/475",
+      "github.com/acme/billing/482",
+      "github.com/acme/billing/491",
     ]);
     expect(billing.prs.map((p) => p.key)).toEqual(["github.com/acme/billing/499"]);
   });
