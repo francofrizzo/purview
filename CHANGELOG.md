@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **One sort direction on the home page.** PRs waiting on your review now list newest request first, like the other blocks.
+
 ## 2026.10.16.4
 
 - **Units link to each other.** A unit's summary that names another unit by id shows that unit's number and title as a link; click it to open the unit.

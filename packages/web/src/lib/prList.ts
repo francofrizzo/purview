@@ -87,7 +87,7 @@ export interface RepoGroup {
   host: string;
   owner: string;
   repo: string;
-  /** unarchived PRs with a pending request for your review, longest-waiting first */
+  /** unarchived PRs with a pending request for your review, newest request first */
   needsReview: PrListEntry[];
   /** unarchived PRs you opened, most recently added first */
   mine: PrListEntry[];
@@ -120,12 +120,14 @@ const bucketOf = (group: RepoGroup, pr: PrListEntry): PrListEntry[] => {
   return pr.authoredByYou ? group.mine : group.prs;
 };
 
-const byRequestAtAsc = (a: PrListEntry, b: PrListEntry) =>
-  time(a.reviewRequest?.at) - time(b.reviewRequest?.at) || byAddedAtDesc(a, b);
+// Newest request first: the other buckets read newest-added first, and one
+// direction for the whole list beats surfacing the longest wait.
+const byRequestAtDesc = (a: PrListEntry, b: PrListEntry) =>
+  time(b.reviewRequest?.at) - time(a.reviewRequest?.at) || byAddedAtDesc(a, b);
 
 /**
  * One group per repo. Unarchived PRs still waiting on your review lead the
- * group, longest-waiting first; then the ones you opened, then the rest, both
+ * group, newest request first; then the ones you opened, then the rest, both
  * newest-added first. Repos with
  * such a request come before repos without one; within each tier, the repo
  * with the newest PR floats to the top. Ties fall back to the group key so the
@@ -157,7 +159,7 @@ export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
   }
   const out = [...groups.values()];
   for (const g of out) {
-    g.needsReview.sort(byRequestAtAsc);
+    g.needsReview.sort(byRequestAtDesc);
     g.mine.sort(byAddedAtDesc);
     g.prs.sort(byAddedAtDesc);
     g.archived.sort(byAddedAtDesc);
