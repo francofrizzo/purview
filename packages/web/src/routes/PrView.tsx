@@ -1713,14 +1713,16 @@ export function PrView() {
           ) : null}
 
           {tab === "files" && selectedPath ? (
+            // The file's brief rests on the desk like a unit's: the header,
+            // and under it the comments on the file as a whole.
+            <div className="pane m-[7px] flex flex-none flex-col overflow-hidden">
             <div
               ref={setHeaderEl}
               data-testid="file-header"
               data-collapsed={headerCollapsed ? "true" : "false"}
-              className={`flex flex-none items-center gap-2 overflow-hidden border-b px-4 font-mono text-xs transition-[padding] duration-[140ms] motion-reduce:transition-none ${
+              className={`flex flex-none items-center gap-2 overflow-hidden px-2 font-mono text-xs transition-[padding] duration-[140ms] motion-reduce:transition-none ${
                 headerCollapsed ? "py-1" : "py-2"
               }`}
-              style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
               <MiddleTruncate text={selectedPath} tail={20} />
               <CopyPathButton path={selectedPath} />
@@ -1760,12 +1762,10 @@ export function PrView() {
                 <WrapToggle wrap={wrap} onChange={setWrap} />
               </div>
             </div>
-          ) : null}
-
           {/* The pane below is virtualized and shows no file row in this tab,
               so the file's own comments hang off the header instead. */}
-          {tab === "files" && selectedPath && fileCommentsOpen && fileComments?.length ? (
-            <div className="max-h-[38vh] flex-none overflow-y-auto">
+          {fileCommentsOpen && fileComments?.length ? (
+            <div className="max-h-[38vh] flex-none overflow-y-auto border-t" style={{ borderColor: "var(--border)" }}>
               <InlineCommentList
                 threads={fileComments}
                 showPlacement
@@ -1779,6 +1779,8 @@ export function PrView() {
                   renderReplyComposer: () => renderComposer("inline"),
                 }}
               />
+            </div>
+          ) : null}
             </div>
           ) : null}
 

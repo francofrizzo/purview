@@ -254,6 +254,9 @@
 
   .btn {
     @apply inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs font-medium;
+    /* One height whether or not there is text: an icon alone must not make
+       a shorter button than its neighbours. */
+    min-height: 1.75rem;
     border: 1px solid var(--border);
     background: var(--bg-raised);
     color: var(--fg-muted);
@@ -262,6 +265,12 @@
       border-color 120ms,
       color 120ms,
       transform 80ms;
+  }
+  /* The icons in a button, one size wherever they came from. */
+  .btn > svg {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex: none;
   }
   .btn:hover:not(:disabled) {
     background: var(--bg-hover);
