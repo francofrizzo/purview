@@ -793,7 +793,7 @@ function GlobalSelectField({
       <Field label={label}>
         <select
           data-testid={`${testId}-select`}
-          className="select px-2 py-1 text-xs"
+          className="select pl-2 py-1 text-xs"
           value={value ?? "inherit"}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}

@@ -21,13 +21,11 @@ import { Link } from "react-router-dom";
 import { api, errorText } from "../api/client";
 import { useAgents } from "../api/hooks";
 import type {
-  AgentsInfo,
   ChatHandoff,
   ChatRef,
   DraftComment,
   HarnessManifest,
   PrDetail,
-  ResolvedAgent,
 } from "../api/types";
 import { capitalized, editSelection, manifestOf, modelLabel, modelOptions } from "../lib/agentSelection";
 import { copyText, handoffDisabledReason, isLoopbackHostname } from "../lib/chatHandoff";
@@ -580,6 +578,38 @@ export function ChatPanel({
         </button>
       ) : null}
 
+      {settingsOpen ? (
+        <ChatSettings
+          prKey={prKey}
+          onClearConversation={() => {
+            setConfirmClear(true);
+            setSettingsOpen(false);
+          }}
+        />
+      ) : null}
+
+      {confirmClear ? (
+        <div
+          className="flex flex-none items-center gap-2 border-t px-3 py-2 text-2xs"
+          style={{ borderColor: "var(--border)", background: "var(--warn-soft)", color: "var(--warn)" }}
+        >
+          Clear this conversation? It cannot be recovered.
+          <button type="button" className="btn ml-auto" onClick={() => setConfirmClear(false)}>
+            cancel
+          </button>
+          <button
+            type="button"
+            className="btn"
+            data-testid="chat-clear-confirm"
+            onClick={() => {
+              setConfirmClear(false);
+              void chat.clearConversation();
+            }}
+          >
+            clear
+          </button>
+        </div>
+      ) : null}
       <div className="flex-none border-t p-2" style={{ borderColor: "var(--border)" }}>
         {chat.editingIndex !== null ? (
           <div
@@ -708,17 +738,67 @@ export function ChatPanel({
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
         />
+        {/* One row under the box: what is happening, the model for the next
+            message, then the panel's tools and send. */}
         <div className="mt-1.5 flex items-center gap-2">
-          <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-            {chat.busy ? "streaming the reply…" : `${chat.effectiveRefs.length || "no"} refs attached`}
-          </span>
-          {chat.agent ? (
-            <ActiveModel agent={chat.agent} configured={chat.configuredAgent} manifests={agents} />
+          {chat.busy ? (
+            <span className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--accent)" }}>
+              <IconSpinner width={10} height={10} />
+              thinking…
+              <button
+                type="button"
+                data-testid="chat-stop"
+                className="inline-flex items-center gap-1 rounded border px-1.5 py-px"
+                style={{ borderColor: "var(--border-strong)", color: "var(--fg-muted)", background: "var(--bg-inset)" }}
+                data-tip="Stop the reply"
+                data-tip-key="esc"
+                aria-label="Stop the reply"
+                onClick={() => void chat.stop()}
+              >
+                <IconStop width={8} height={8} />
+                stop
+              </button>
+            </span>
+          ) : (
+            <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
+              {chat.effectiveRefs.length || "no"} refs attached
+            </span>
+          )}
+          {chat.agent && chat.configuredAgent ? (
+            <ModelSelect
+              manifest={manifestOf(agents, chat.agent.harness)}
+              value={chat.agent.model}
+              configured={modelLabel(manifestOf(agents, chat.configuredAgent.harness), chat.configuredAgent.model)}
+              pinned={chat.sessionAgent?.model !== undefined}
+              onChange={(m) =>
+                void chat.setAgent(
+                  editSelection(chat.sessionAgent, "model", m, chat.agent!.harness, chat.configuredAgent!.harness),
+                )
+              }
+            />
+          ) : null}
+          <span className="ml-auto" />
+          {handoffHarness?.capabilities.handoff ? (
+            <HandoffButton
+              prKey={prKey}
+              product={handoffHarness.name}
+              messageCount={chat.messages.length}
+              busy={chat.busy}
+            />
           ) : null}
           <button
             type="button"
+            data-tip="Chat settings for this PR"
+            aria-label="Chat settings"
+            onClick={() => setSettingsOpen((v) => !v)}
+            style={{ color: settingsOpen ? "var(--fg)" : "var(--fg-faint)" }}
+          >
+            <IconSettings width={12} height={12} />
+          </button>
+          <button
+            type="button"
             data-testid="chat-send"
-            className="btn btn-primary ml-auto"
+            className="btn btn-primary"
             disabled={!draft.trim() || (chat.busy && chat.editingIndex !== null)}
             onClick={() => submit()}
           >
@@ -726,124 +806,8 @@ export function ChatPanel({
           </button>
         </div>
       </div>
-      {settingsOpen ? (
-        <ChatSettings
-          prKey={prKey}
-          onClearConversation={() => {
-            setConfirmClear(true);
-            setSettingsOpen(false);
-          }}
-        />
-      ) : null}
-
-      {confirmClear ? (
-        <div
-          className="flex flex-none items-center gap-2 border-t px-3 py-2 text-2xs"
-          style={{ borderColor: "var(--border)", background: "var(--warn-soft)", color: "var(--warn)" }}
-        >
-          Clear this conversation? It cannot be recovered.
-          <button type="button" className="btn ml-auto" onClick={() => setConfirmClear(false)}>
-            cancel
-          </button>
-          <button
-            type="button"
-            className="btn"
-            data-testid="chat-clear-confirm"
-            onClick={() => {
-              setConfirmClear(false);
-              void chat.clearConversation();
-            }}
-          >
-            clear
-          </button>
-        </div>
-      ) : null}
-      <header
-        className="flex flex-none items-center gap-2 border-t px-3 py-2"
-        style={{ borderColor: "var(--border)" }}
-      >
-        {chat.busy ? (
-          <span className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--accent)" }}>
-            <IconSpinner width={10} height={10} />
-            thinking…
-            <button
-              type="button"
-              data-testid="chat-stop"
-              className="inline-flex items-center gap-1 rounded border px-1.5 py-px"
-              style={{ borderColor: "var(--border-strong)", color: "var(--fg-muted)", background: "var(--bg-inset)" }}
-              data-tip="Stop the reply"
-              data-tip-key="esc"
-              aria-label="Stop the reply"
-              onClick={() => void chat.stop()}
-            >
-              <IconStop width={8} height={8} />
-              stop
-            </button>
-          </span>
-        ) : null}
-        {chat.agent && chat.configuredAgent ? (
-          <ModelSelect
-            className="ml-auto"
-            manifest={manifestOf(agents, chat.agent.harness)}
-            value={chat.agent.model}
-            configured={modelLabel(manifestOf(agents, chat.configuredAgent.harness), chat.configuredAgent.model)}
-            pinned={chat.sessionAgent?.model !== undefined}
-            onChange={(m) =>
-              void chat.setAgent(
-                editSelection(chat.sessionAgent, "model", m, chat.agent!.harness, chat.configuredAgent!.harness),
-              )
-            }
-          />
-        ) : (
-          <span className="ml-auto" />
-        )}
-        {handoffHarness?.capabilities.handoff ? (
-          <HandoffButton
-            prKey={prKey}
-            product={handoffHarness.name}
-            messageCount={chat.messages.length}
-            busy={chat.busy}
-          />
-        ) : null}
-        <button
-          type="button"
-          data-tip="Chat settings for this PR"
-          aria-label="Chat settings"
-          onClick={() => setSettingsOpen((v) => !v)}
-          style={{ color: settingsOpen ? "var(--fg)" : "var(--fg-faint)" }}
-        >
-          <IconSettings width={12} height={12} />
-        </button>
-      </header>
     </div>
     </CodeLinkContext.Provider>
-  );
-}
-
-/** The model the next message will use, and where that choice came from. */
-function ActiveModel({
-  agent,
-  configured,
-  manifests,
-}: {
-  agent: ResolvedAgent;
-  configured: ResolvedAgent | null;
-  manifests: AgentsInfo | undefined;
-}) {
-  const label = (a: ResolvedAgent) => modelLabel(manifestOf(manifests, a.harness), a.model);
-  return (
-    <span
-      className="font-mono text-2xs"
-      data-testid="chat-active-model"
-      data-tip={
-        agent.sources.model === "chat"
-          ? `Pinned for this conversation${configured ? `; the repo default is ${label(configured)}` : ""}`
-          : `From the ${agent.sources.model} setting`
-      }
-      style={{ color: "var(--fg-faint)" }}
-    >
-      {label(agent)}
-    </span>
   );
 }
 
@@ -878,7 +842,7 @@ function ModelSelect({
       <span className="sr-only">Model for the next message</span>
       <select
         data-testid="chat-model-select"
-        className="select px-1 py-px text-2xs font-medium"
+        className="select pl-1 py-px text-2xs font-medium"
         data-tip={`Model for the next message${pinned ? "; pinned for this conversation" : ""}`}
         value={pinned ? value : "inherit"}
         onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
