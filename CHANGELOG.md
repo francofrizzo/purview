@@ -5,11 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.16.4
 
-- **Updates show on a normal reload.** A new Purview build appears the next time you reload; no more hard reload to get past the cached copy.
-- **Units link to each other.** When a unit's summary names another unit by its id (a ripple unit naming the change it follows), the brief and sidebar show that unit's number and title as a link that opens it.
-- **One card per sent comment.** A comment you sent no longer shows twice (your local copy and the GitHub one) when GitHub reports it as a one-line range; the two are matched as the same comment.
+- **Units link to each other.** A unit's summary that names another unit by id shows that unit's number and title as a link; click it to open the unit.
+- **One card per sent comment.** A comment you sent no longer shows twice when GitHub reports it as a one-line range.
+- **Updates show on a normal reload.** A new build appears on the next reload; no hard reload needed.
 
 ## 2026.10.16.3
 
