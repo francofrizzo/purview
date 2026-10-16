@@ -5,6 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Shift+Space goes back.** `space` moves to the next hunk still to read; `shift+space` now moves to the previous one, so an overshoot is one key back.
+- **A comment opens where it sits.** Clicking a comment or thread in the dock lands on its line in the diff, in its unit on the units tab or its file on the files tab, unfolding the hunk if it was viewed.
+
 ## 2026.10.16.5
 
 - **One sort direction on the home page.** Every block lists oldest first: the longest-waiting review request on top, then your PRs and the rest by when they were added.

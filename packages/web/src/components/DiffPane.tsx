@@ -248,7 +248,16 @@ export interface DiffPaneProps {
    * index into the hunk's added lines) the jump lands on that row rather than
    * the hunk header.
    */
-  jumpToHunk?: { hunkId: string; nonce: number; line?: number; addedIndex?: number } | null;
+  /** `line` is read on `side` (new side unless "LEFT", for a removed line) */
+  jumpToHunk?: {
+    hunkId: string;
+    nonce: number;
+    line?: number;
+    side?: "LEFT" | "RIGHT";
+    addedIndex?: number;
+    /** open the comments on that line, when it has any */
+    showComments?: boolean;
+  } | null;
   /**
    * The selected unit's heart (hunk id -> why): those hunks are drawn with a
    * bar and their why on the header, the others get a muted hint of what
@@ -779,6 +788,11 @@ export function DiffPane({
 
   const { autoCollapseViewedHunks } = settings;
   const [collapsed, setCollapsedState] = useState<CollapsedMap>(EMPTY_COLLAPSED);
+  // The jump request not yet landed on (see the jumpToHunk effect further
+  // down), readable from the seed effect above it without a dependency.
+  const jumpedNonce = useRef<number | null>(null);
+  const pendingJumpRef = useRef<typeof jumpToHunk>(null);
+  pendingJumpRef.current = jumpToHunk && jumpedNonce.current !== jumpToHunk.nonce ? jumpToHunk : null;
 
   const toggleHunkCollapsed = useCallback((hunkId: string) => {
     // Keep the toggled hunk's own header where it is on screen (pinned or
@@ -1523,10 +1537,15 @@ export function DiffPane({
     // hunk, so it deliberately survives — the reader comes back to it open.
     // Hunks new to the pane start folded if already viewed (and auto-collapse
     // is on): opening a half-read unit shows what is left to read.
+    // A jump that brought the reader here (a comment in the dock, a heart
+    // in the brief) targets a hunk that may be viewed: seed it open, since
+    // the jump effect below reads the pre-seed state and would not know.
     const shownIds = entries.map((e) => e.hunk.id);
-    setCollapsedState((prev) =>
-      seedCollapsed(pruneCollapsed(prev, shownIds), shownIds, viewedNow, autoCollapseViewedHunks),
-    );
+    const jump = pendingJumpRef.current;
+    setCollapsedState((prev) => {
+      const seeded = seedCollapsed(pruneCollapsed(prev, shownIds), shownIds, viewedNow, autoCollapseViewedHunks);
+      return jump && shownIds.includes(jump.hunkId) ? setCollapsed(seeded, jump.hunkId, false) : seeded;
+    });
     setOpenedFoldRegions((prev) => pruneOpenedFoldRegions(prev, entries.map((e) => e.hunk.id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSignature]);
@@ -1779,7 +1798,6 @@ export function DiffPane({
   // is its own mechanism — it must not entangle with an active search. Keyed
   // by `nonce` so re-requesting the same hunk (e.g. clicking the "in this
   // diff" marker for a candidate the reader already jumped to) still jumps.
-  const jumpedNonce = useRef<number | null>(null);
   useEffect(() => {
     if (!jumpToHunk || jumpedNonce.current === jumpToHunk.nonce) return;
 
@@ -1798,7 +1816,8 @@ export function DiffPane({
     // folded-hunk check: bail without consuming the nonce, so this effect
     // reruns once `rows` reflects the open region.
     const { line, addedIndex } = jumpToHunk;
-    if (line !== undefined || addedIndex !== undefined) {
+    const onOld = jumpToHunk.side === "LEFT";
+    if ((line !== undefined && !onOld) || addedIndex !== undefined) {
       const entry = entries.find((e) => e.hunk.id === jumpToHunk.hunkId);
       if (entry) {
         let contentIdx: number | undefined = addedIndex;
@@ -1823,6 +1842,13 @@ export function DiffPane({
     if (idx === undefined) return; // entries haven't caught up yet; effect reruns when they do
     jumpedNonce.current = jumpToHunk.nonce;
     onFocusHunk(jumpToHunk.hunkId);
+    if (jumpToHunk.showComments && line !== undefined) {
+      const file = entries.find((e) => e.hunk.id === jumpToHunk.hunkId)?.hunk.file;
+      const anchor = file ? lineAnchor(file, line, onOld ? "LEFT" : "RIGHT") : null;
+      if (anchor && grouped.byLine.has(anchor)) {
+        setExpandedAnchors((cur) => (cur.has(anchor) ? cur : new Set(cur).add(anchor)));
+      }
+    }
     // The hunk's rows follow its header contiguously; walk them for the
     // requested line (unified rows carry it directly, split rows on their
     // right cell) and fall back to the header when nothing matches.
@@ -1834,10 +1860,17 @@ export function DiffPane({
         if (!("hunkId" in r) || r.hunkId !== jumpToHunk.hunkId) break;
         let dr: DiffRow | undefined;
         if (r.type === "line") dr = buildRows(r.entry.hunk, detail.diff)[r.lineIdx];
-        else if (r.type === "split") dr = buildSplitRows(r.entry.hunk, detail.diff)[r.rowIdx]?.right?.row;
+        else if (r.type === "split") {
+          const pair = buildSplitRows(r.entry.hunk, detail.diff)[r.rowIdx];
+          dr = onOld ? pair?.left?.row : pair?.right?.row;
+        }
         if (!dr) continue;
         const hit =
-          line !== undefined ? dr.newNumber === line : dr.type === "add" && added++ === addedIndex;
+          line !== undefined
+            ? onOld
+              ? dr.type !== "add" && dr.oldNumber === line
+              : dr.type !== "del" && dr.newNumber === line
+            : dr.type === "add" && added++ === addedIndex;
         if (hit) {
           target = i;
           break;
@@ -1860,6 +1893,7 @@ export function DiffPane({
     foldRegionsByHunk,
     isRegionFolded,
     collapsed,
+    grouped,
   ]);
 
   /** The row's comment actions, plus the reply composer when it is written in there. */
@@ -1964,7 +1998,7 @@ export function DiffPane({
     [searchMarks, activeMatch],
   );
 
-  // --- keyboard: j/k next/prev hunk, v toggle viewed (and advance), space next unviewed ---
+  // --- keyboard: j/k next/prev hunk, v toggle viewed (and advance), space / shift+space next / previous unviewed ---
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -2043,9 +2077,14 @@ export function DiffPane({
         const line = first.type === "add" ? first.newNumber! : first.oldNumber!;
         setLinePrompt({ file: entry.hunk.file, value: String(line) });
       } else if (e.key === " ") {
+        // Next hunk still to read: onward, then from the top. With shift,
+        // the previous one: backward, then from the bottom, so an overshoot
+        // is one key back instead of k over every viewed hunk between.
         e.preventDefault();
         const start = cur + 1;
-        const order = [...ids.slice(start), ...ids.slice(0, Math.max(start, 0))];
+        const order = e.shiftKey
+          ? [...ids.slice(0, Math.max(cur, 0)).reverse(), ...ids.slice(start).reverse()]
+          : [...ids.slice(start), ...ids.slice(0, Math.max(start, 0))];
         const next = order.find((id) => !detail.state.hunks[id]?.viewed);
         if (next) focusAndScroll(next);
       }

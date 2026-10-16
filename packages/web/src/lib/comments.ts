@@ -163,6 +163,17 @@ export function isCommentAnchored(files: FilesJson, comment: DraftComment): bool
     : isLineInDiff(files, comment.file, line, side);
 }
 
+/** The hunk showing this line on this side, if the diff shows it at all. */
+export function hunkForLine(files: FilesJson, path: string, line: number, side: "LEFT" | "RIGHT"): string | null {
+  const file = files.files.find((f) => f.path === path);
+  if (!file) return null;
+  const h = file.hunks.find((x) => {
+    const [from, count] = side === "RIGHT" ? [x.newStart, x.newLines] : [x.oldStart, x.oldLines];
+    return count > 0 && line >= from && line < from + count;
+  });
+  return h?.id ?? null;
+}
+
 /** Is this line, on this side, inside one of the file's hunks? */
 export function isLineInDiff(files: FilesJson, path: string, line: number, side: "LEFT" | "RIGHT"): boolean {
   return isRangeInDiff(files, path, side, line, line);

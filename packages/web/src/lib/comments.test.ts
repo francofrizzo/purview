@@ -9,6 +9,7 @@ import {
   isCommentWriteTool,
   compareCommentOrder,
   groupComments,
+  hunkForLine,
   isCommentAnchored,
   lineAnchor,
   mostAdvancedStatus,
@@ -162,6 +163,13 @@ describe("isCommentAnchored", () => {
       },
     ],
   };
+
+  it("names the hunk showing a line on either side, or none", () => {
+    expect(hunkForLine(files, "src/a.ts", 12, "RIGHT")).toBe("h1");
+    expect(hunkForLine(files, "src/a.ts", 12, "LEFT")).toBe("h1");
+    expect(hunkForLine(files, "src/a.ts", 13, "RIGHT")).toBeNull();
+    expect(hunkForLine(files, "src/b.ts", 12, "RIGHT")).toBeNull();
+  });
 
   it("is anchored when the RIGHT line falls inside a hunk's new range", () => {
     expect(isCommentAnchored(files, c({ file: "src/a.ts", line: 11, side: "RIGHT" }))).toBe(true);

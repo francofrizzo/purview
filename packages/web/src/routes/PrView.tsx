@@ -83,7 +83,7 @@ import {
   targetKey,
 } from "../components/Drafts";
 import { CommentBubble, InlineCommentList } from "../components/InlineComments";
-import { isLineInDiff } from "../lib/comments";
+import { hunkForLine, isLineInDiff } from "../lib/comments";
 import { buildThreadGroups, replyTarget, type DisplayThread } from "../lib/threads";
 import { ThreadFilterMenu } from "../components/Threads";
 import { UnitChangelog } from "../components/UnitChangelog";
@@ -371,7 +371,14 @@ export function PrView() {
   // --- go to definition ---------------------------------------------------
   // A new object (even for a repeat target) is what re-triggers DiffPane's
   // scroll effect — see its own jumpToHunk handling.
-  const [jumpToHunk, setJumpToHunk] = useState<{ hunkId: string; nonce: number } | null>(null);
+  const [jumpToHunk, setJumpToHunk] = useState<{
+    hunkId: string;
+    nonce: number;
+    line?: number;
+    side?: "LEFT" | "RIGHT";
+    addedIndex?: number;
+    showComments?: boolean;
+  } | null>(null);
 
   // --- header collapse ---------------------------------------------------
   // Once the reader is into the diff, the prose above it has done its job and
@@ -759,7 +766,11 @@ export function PrView() {
    * an "in this diff" marker in the popover's candidate list.
    */
   const jumpToDiffHunk = useCallback(
-    (hunkId: string, path: string, target?: { line?: number; addedIndex?: number }) => {
+    (
+      hunkId: string,
+      path: string,
+      target?: { line?: number; side?: "LEFT" | "RIGHT"; addedIndex?: number; showComments?: boolean },
+    ) => {
       if (tab === "units") {
         const unit = unitForHunk(units, hunkId);
         if (unit) {
@@ -777,6 +788,25 @@ export function PrView() {
       setJumpToHunk({ hunkId, nonce: Date.now(), ...target });
     },
     [tab, units, unplacedSet, selectedUnitId, selectedPath],
+  );
+
+  /**
+   * A comment or thread in the dock, clicked: land on its line in the diff,
+   * in the unit that holds the hunk (units tab) or the file (files tab),
+   * unfolding the hunk if it is viewed. A comment the diff cannot show (file
+   * level, or on a line outside every hunk) opens the file instead.
+   */
+  const jumpToComment = useCallback(
+    (c: { file: string; line?: number | null; side?: "LEFT" | "RIGHT" | null }) => {
+      const side = c.side ?? "RIGHT";
+      const hunkId = detail && c.line != null ? hunkForLine(detail.files, c.file, c.line, side) : null;
+      if (hunkId) jumpToDiffHunk(hunkId, c.file, { line: c.line!, side, showComments: true });
+      else {
+        setTab("files");
+        setSelectedPath(c.file);
+      }
+    },
+    [detail, jumpToDiffHunk],
   );
 
   /**
@@ -1303,7 +1333,7 @@ export function PrView() {
                 [["J", "K"], "next / previous unit"],
                 [["v"], "mark hunk viewed"],
                 [["V"], "mark unit viewed"],
-                [["space"], "next unviewed hunk"],
+                [["space", "⇧ space"], "next / previous unviewed hunk"],
                 [["z"], "fold / unfold"],
                 [["n"], "comment (then a line number)"],
                 [["a"], "comments for GitHub / for agent"],
@@ -2012,7 +2042,7 @@ export function PrView() {
             drafts={drafts}
             deleting={deleteComment.isPending}
             bundle={bundle}
-            onJump={(d) => jumpToFile(d.file)}
+            onJump={(d) => jumpToComment(d)}
             onDelete={(d) => deleteComment.mutate(d.id)}
             onDeleteMany={(ids) => deleteComments.mutateAsync(ids)}
             onEdit={(input) => editComment.mutateAsync(input)}
@@ -2050,7 +2080,7 @@ export function PrView() {
                     onShowResolved: threadFilters.setShowResolved,
                     onShowAiReviewers: threadFilters.setShowAiReviewers,
                     onBotHidden: threadFilters.setBotHidden,
-                    onJump: (t) => jumpToFile(t.path),
+                    onJump: (t) => jumpToComment({ file: t.path, line: t.line, side: t.side }),
                   }
                 : undefined
             }

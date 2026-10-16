@@ -105,3 +105,16 @@ test("the revision menu lights up what a revision changed", async ({ page }) => 
   await page.getByTestId("highlight-revision-3").click();
   await expect(page.getByTestId("highlight-summary")).toHaveCount(0);
 });
+
+test("space / shift+space step between the hunks still to read, skipping viewed ones", async ({ page }) => {
+  // The charge unit: 0001 is viewed in the fixture, 0003 and 0005 are not.
+  await openUnit(page, UNITS.charge);
+  await expect(hunkHeader(page, "a1b2c3d4e5f60003")).toHaveAttribute("data-focused", "true");
+  await page.keyboard.press("Space");
+  await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
+  await page.keyboard.press("Shift+Space");
+  await expect(hunkHeader(page, "a1b2c3d4e5f60003")).toHaveAttribute("data-focused", "true");
+  // From the first one still to read, backward wraps to the last.
+  await page.keyboard.press("Shift+Space");
+  await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
+});
