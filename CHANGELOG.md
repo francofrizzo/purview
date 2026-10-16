@@ -5,17 +5,12 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.16.1
 
-- The right side of a PR is one panel with three tabs: Comments, Chat and Review. One width (drag its left edge), one close, `m` / `c` / `r` to jump to a tab or close it again. "Finish review" in the comments tab and "send to chat" switch tabs. The top bar has one button for the panel (it reopens the last tab) plus "finish review".
-- Comments on your own PRs are notes for the agent by default; on anyone else's they are for your GitHub review. The switch now flips one PR, and the flip is remembered on that PR.
-- The summary strip leads with its chevron, and "description" and "reviews" on it open the panel straight onto that section.
-- Tooltips are the app's own: they open fast in the app's typeface, show the shortcut as a key, and go away as soon as you click, scroll or press Escape. Every hint in the app went through them, and the keys are split out of the text.
-- Keyboard shortcuts open as a card over the diff instead of growing the sidebar.
-- Analysis summaries, unit summaries, "why" lines and findings use inline markdown: identifiers, paths and values come as code.
-- The revision menu (click "rev N") can light up what each revision changed, the same highlight the unit's changelog offers.
-- Fixed: a new comment always carries the switch's audience and its line range to the server; before, the server's default could win and a multi-line comment landed as one line.
-- Under an inline comment thread, "add a comment" and "hide" share one slim row.
+- **One panel on the right.** Comments, chat and review are tabs in a single panel with one width (drag its left edge) and one close. `m` / `c` / `r` jump to a tab or close it again; "finish review" and "send to chat" switch tabs. The top bar keeps one button for the panel, which reopens the last tab, plus "finish review".
+- **Comments know who they are for.** On your own PRs a new comment is a note for the agent; on anyone else's it is part of your GitHub review. The switch now flips one PR and is remembered there. A new comment always carries its audience and its full line range to the server (before, a multi-line comment could land as one line in the default audience).
+- **Reading the analysis.** Summaries, "why" lines and findings use inline markdown, so identifiers, paths and values come as code. The revision menu (click "rev N") lights up what each revision changed, the same highlight the unit's changelog offers. The summary strip leads with its chevron, and "description" and "reviews" on it open the panel straight onto that section. Keyboard shortcuts open as a card over the diff instead of growing the sidebar.
+- **Tooltips are the app's own.** They open fast in the app's typeface, show the shortcut as a key, and go away as soon as you click, scroll or press Escape. Every hint in the app went through them.
 
 ## 2026.10.15.1
 

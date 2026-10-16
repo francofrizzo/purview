@@ -20,9 +20,17 @@ app.
 Do not cut a version on your own. Only when the user says to ship (or release,
 or tag) a version:
 
-1. Rename `## Unreleased` to the next version: today's date, then the next
+1. Curate `## Unreleased` into release notes. The bullets accumulated one per
+   change; the reader wants the version as a whole. Group them into a few
+   themes, one bullet each with a bold lead-in (`**One panel on the
+   right.**`), biggest change first. Fold a fix into the feature it belongs
+   to, drop what the reader would not look for, and keep the reader's
+   vocabulary (what they can do, see or configure). The parser only reads
+   flat bullets with inline markdown under a version heading: no sub-lists,
+   no sub-headings.
+2. Rename `## Unreleased` to the next version: today's date, then the next
    counter for the day (`## 2026.10.14.4`).
-2. Commit, tag it (`git tag -a v2026.10.14.4 -m 2026.10.14.4`) and push with
+3. Commit, tag it (`git tag -a v2026.10.14.4 -m 2026.10.14.4`) and push with
    `--tags`.
 
 If `## Unreleased` has bullets at the end of a turn, remind the user in one line
