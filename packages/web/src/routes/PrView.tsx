@@ -1800,12 +1800,12 @@ export function PrView() {
               <CopyPathButton path={selectedPath} />
               {selectedFile?.generated ? <GeneratedTag generated={selectedFile.generated} /> : null}
               {detail.state.files?.[selectedPath] ? (
-                <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
+                <span
+                  className="flex-none text-2xs"
+                  style={{ color: "var(--fg-faint)", fontFamily: "var(--font-ui)" }}
+                >
                   {detail.state.files[selectedPath].viewedHunks}/
                   {detail.state.files[selectedPath].totalHunks} hunks viewed
-                  {detail.state.files[selectedPath].viewed && !headerCollapsed
-                    ? " · synced when you press sync"
-                    : ""}
                 </span>
               ) : null}
               <div className="ml-auto flex flex-none items-center gap-2">
