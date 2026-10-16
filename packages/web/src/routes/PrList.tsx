@@ -7,7 +7,7 @@ import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
 import {
   EffortChip,
-  HunkProgress,
+  Progress,
   PrStateChip,
   ReviewDecisionChip,
   ReviewRequestAge,
@@ -565,7 +565,7 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
             <ReviewRequestAge request={pr.reviewRequest} state={pr.state} />
           ) : null}
           <span data-tip={formatFullTimestamp(pr.addedAt)}>added {formatAddedAt(pr.addedAt)}</span>
-          <span>{pr.unitCount ? `${pr.unitCount} units` : "not analyzed"}</span>
+          <DiffSizeStat size={pr.diffSize} files={false} />
         </div>
         <RowStatus pr={pr} className="mt-1.5 flex flex-wrap sm:hidden" />
       </Link>
@@ -601,8 +601,10 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
       <ReviewDecisionChip decision={decision} />
       <AnalysisChip job={pr.analysisJob} />
       <EffortChip effort={pr.effort} />
-      <DiffSizeStat size={pr.diffSize} files={false} />
-      {pr.totalHunks ? <HunkProgress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} /> : null}
+      <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="unit-count">
+        {pr.unitCount ? `${pr.unitCount} ${pr.unitCount === 1 ? "unit" : "units"}` : "not analyzed"}
+      </span>
+      {pr.totalHunks ? <Progress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} stacked /> : null}
     </div>
   );
 }

@@ -285,13 +285,22 @@ export function HunkProgress({ viewed, total }: { viewed: number; total: number 
   );
 }
 
-export function Progress({ viewed, total }: { viewed: number; total: number }) {
+/**
+ * How far through the hunks: a bar and the count. Inline (bar then count) in
+ * the brief and the sidebar; `stacked` puts the count under a wider bar, for
+ * the home list where the row's right edge lines up on it.
+ */
+export function Progress({ viewed, total, stacked = false }: { viewed: number; total: number; stacked?: boolean }) {
   const pct = total ? Math.round((viewed / total) * 100) : 0;
   const done = total > 0 && viewed === total;
   return (
-    <span className="inline-flex items-center gap-1.5" data-tip={`${viewed} of ${total} hunks viewed`}>
+    <span
+      className={stacked ? "inline-flex flex-col items-end gap-1" : "inline-flex items-center gap-1.5"}
+      data-tip={`${viewed} of ${total} hunks viewed`}
+      data-testid="hunk-progress"
+    >
       <span
-        className="h-1 w-8 overflow-hidden rounded-full"
+        className={`h-1 overflow-hidden rounded-full ${stacked ? "w-14" : "w-8"}`}
         style={{ background: "var(--bg-inset)" }}
       >
         <span
