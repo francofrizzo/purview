@@ -486,6 +486,27 @@ describe("analysis job lifecycle", () => {
     expect(claude.promptOf(0)).toContain("rewrite `title`, `summary` and `attentionWhy`");
   });
 
+  it("analyzes from scratch on request: the first-analysis flow although units exist", async () => {
+    buildFixture(root); // fixture ships an analysis-set event
+    const res = await app.request(`/api/prs/${encodedKey}/analyze`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fresh: true }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).job.fresh).toBe(true);
+    await analysisIdle();
+    const prompt = claude.promptOf(0);
+    expect(prompt).toContain("FIRST ANALYSIS");
+    expect(prompt).not.toContain("MIGRATION-NOTES.md");
+    expect(prompt).not.toContain("CHANGED UNITS");
+    expect(prompt).toContain(`triage ${keyToString(key)}\` first`);
+    const job = readJob(key, root)!;
+    expect(job.status).toBe("done");
+    expect(job.fresh).toBe(true);
+    expect(job.metrics?.run?.kind).toBe("fresh");
+  });
+
   it("accumulates tool/result events into job.metrics and carries them on analysis-finished", async () => {
     buildFixture(root);
     claude.restore();

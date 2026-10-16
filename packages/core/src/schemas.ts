@@ -607,7 +607,7 @@ const AnalysisRunInfoFields = z.object({
    * incremental, after a new revision; `rerun` = this revision already had
    * an analysis and is analyzed again.
    */
-  kind: z.enum(["initial", "refresh", "rerun"]).optional(),
+  kind: z.enum(["initial", "refresh", "rerun", "fresh"]).optional(),
   /** the agent harness that ran it (e.g. "claude-code") */
   harness: z.string().optional(),
   /** the harness's own version, as it reported it */
@@ -746,6 +746,8 @@ export const AnalysisJobSchema = z.object({
   finishedAt: z.string().optional(),
   error: z.string().optional(),
   progress: z.string().optional(),
+  /** asked to start over: the first-analysis flow, replacing every unit */
+  fresh: z.boolean().optional(),
   metrics: AnalysisMetricsSchema.optional(),
 });
 export type AnalysisJob = z.infer<typeof AnalysisJobSchema>;

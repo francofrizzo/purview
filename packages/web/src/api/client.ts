@@ -919,9 +919,9 @@ export const api = {
   },
 
   /** 409 when one is already queued or running — the caller surfaces that as-is. */
-  async startAnalysis(key: string): Promise<AnalysisJob> {
-    if (MOCK) return mockApi.startAnalysis(key);
-    const res = await post<{ job: AnalysisJob }>(`/prs/${encodeKey(key)}/analyze`);
+  async startAnalysis(key: string, opts: { fresh?: boolean } = {}): Promise<AnalysisJob> {
+    if (MOCK) return mockApi.startAnalysis(key, opts);
+    const res = await post<{ job: AnalysisJob }>(`/prs/${encodeKey(key)}/analyze`, opts.fresh ? { fresh: true } : {});
     return res.job;
   },
 

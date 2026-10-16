@@ -689,10 +689,13 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   // An explicit request, so it runs on an archived PR too: only the
   // *automatic* triggers (analyzeRequested) stay away from archived PRs.
-  app.post("/api/prs/:key/analyze", (c) => {
+  app.post("/api/prs/:key/analyze", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
-    return c.json({ job: startAnalysis(key, root, { timeoutMs: opts.analysisTimeoutMs }) });
+    // `{fresh: true}` starts over (first-analysis flow); the body is optional.
+    const body: { fresh?: unknown } = await c.req.json<{ fresh?: unknown }>().catch(() => ({}));
+    const fresh = body.fresh === true;
+    return c.json({ job: startAnalysis(key, root, { timeoutMs: opts.analysisTimeoutMs, fresh }) });
   });
 
   /** The reader dismissed the "archived, so not analyzed" banner. */

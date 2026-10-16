@@ -1361,6 +1361,7 @@ export function PrView() {
         audience={audienceSwitch.audience}
         onAudienceChange={audienceSwitch.set}
         onAnalyze={() => startAnalysis.mutate()}
+        onAnalyzeFresh={() => startAnalysis.mutate({ fresh: true })}
         onCancelAnalysis={() => cancelAnalysis.mutate()}
         onExportAnalysis={handleExportAnalysis}
         onImportFilePicked={handleImportFilePicked}

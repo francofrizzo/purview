@@ -566,6 +566,8 @@ interface Slot {
   root: string;
   run?: AgentRun;
   cancelled: boolean;
+  /** start over: the first-analysis flow even though units exist */
+  fresh: boolean;
 }
 
 const running = new Map<string, Slot>();
@@ -605,6 +607,13 @@ export function isBusy(key: PrKey): boolean {
 export interface AnalyzeOptions {
   /** injectable for tests; defaults to the real timeout */
   timeoutMs?: number;
+  /**
+   * Analyze from scratch: the first-analysis flow, whose `set-analysis`
+   * replaces every unit and the summary. Without it a PR that already has
+   * units gets the incremental flow, which on an unchanged revision has
+   * nothing to classify and ends at once.
+   */
+  fresh?: boolean;
 }
 
 /**
@@ -632,6 +641,7 @@ export function startAnalysis(
       revision: state.currentRevision,
       status: "queued",
       queuedAt: new Date().toISOString(),
+      ...(opts.fresh ? { fresh: true } : {}),
     },
     root,
   );
@@ -645,7 +655,7 @@ export function startAnalysis(
   } catch {
     /* ignore */
   }
-  const slot: Slot = { keyStr: keyToString(key), key, root, cancelled: false };
+  const slot: Slot = { keyStr: keyToString(key), key, root, cancelled: false, fresh: opts.fresh === true };
   pending.push(slot);
   queueMicrotask(() => void pump(opts));
   return job;
@@ -934,6 +944,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
       queuedAt: readJob(key, root)?.queuedAt,
       startedAt: new Date().toISOString(),
       progress: "starting",
+      ...(slot.fresh ? { fresh: true } : {}),
     },
     root,
   );
@@ -993,12 +1004,12 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   // Husks alone are not an analysis to build on: with no live unit left
   // the run must produce a full analysis (which drops the husks). Nor is the
   // generated unit, which Purview builds before any analysis runs.
-  const incremental = analysisUnits(state).length > 0;
+  const incremental = !slot.fresh && analysisUnits(state).length > 0;
 
   const metrics = emptyMetrics();
   // Recorded before the spawn so a run that dies early still says what it was.
   metrics.run = {
-    kind: analysisRunKind(key, root, state, incremental),
+    kind: slot.fresh ? "fresh" : analysisRunKind(key, root, state, incremental),
     harness: harness.manifest.id,
     cwd,
     checkout: checkout.path || undefined,

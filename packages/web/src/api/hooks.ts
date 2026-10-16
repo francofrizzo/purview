@@ -1079,10 +1079,12 @@ export function useAnalysisEvents(key: string) {
   }, [key, qc]);
 }
 
-export function useStartAnalysis(key: string): UseMutationResult<AnalysisJob, Error, void> {
+export function useStartAnalysis(
+  key: string,
+): UseMutationResult<AnalysisJob, Error, { fresh?: boolean } | void> {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => api.startAnalysis(key),
+    mutationFn: (opts) => api.startAnalysis(key, opts ?? {}),
     onSuccess: (job) => {
       qc.setQueryData(qk.analysisJob(key), job);
       void qc.invalidateQueries({ queryKey: qk.prs });

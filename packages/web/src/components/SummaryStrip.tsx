@@ -18,7 +18,7 @@ import type { RemoteConversationComment, RemoteReview } from "../api/types";
 import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/reviews";
 import type { ThreadFilters } from "../lib/threads";
 import { AuthorAvatar } from "./AuthorAvatar";
-import { Markdown } from "./Markdown";
+import { InlineMarkdown, Markdown } from "./Markdown";
 import { ReviewTimeline, ReviewerVerdicts } from "./Reviews";
 import { IconChevron } from "./icons";
 
@@ -42,19 +42,31 @@ export function sectionInView(tops: number[], scrollTop: number, slack = 24): nu
  * sentence is cut out of it.
  */
 export function summaryLede(text: string): string {
+  return (
+    summaryLedeMarkdown(text)
+      .replace(/[`*]/g, "")
+      // Emphasis underscores only; `get_balance` keeps its own.
+      .replace(/(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, "")
+      .trim()
+  );
+}
+
+/**
+ * The opening sentence with its inline markdown intact (code spans, emphasis),
+ * for rendering through `InlineMarkdown`: block structure still collapses.
+ */
+export function summaryLedeMarkdown(text: string): string {
   const flat = text
     .replace(/```[\s\S]*?(```|$)/g, " ")
     .replace(/^\s{0,3}#{1,6}\s+/gm, "")
     .replace(/^\s{0,3}([-*+]|\d+\.)\s+/gm, "")
     .replace(/^\s{0,3}>\s?/gm, "")
-    .replace(/[`*]/g, "")
-    // Emphasis underscores only; `get_balance` keeps its own.
-    .replace(/(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu, "")
     .replace(/\s+/g, " ")
     .trim();
-  // A sentence ends at .!? followed by whitespace (or the end of the text);
-  // anything shorter is almost certainly an abbreviation, not a sentence.
-  const m = flat.match(/^.*?[.!?](?=\s|$)/);
+  // A sentence ends at .!? (closing emphasis or code marks allowed after it)
+  // followed by whitespace or the end of the text; anything shorter is almost
+  // certainly an abbreviation, not a sentence.
+  const m = flat.match(/^.*?[.!?][`*_]*(?=\s|$)/);
   const lede = (m?.[0] ?? flat).trim();
   return lede.length >= 12 ? lede : flat;
 }
@@ -309,11 +321,11 @@ export function SummaryStrip({
           />
           <span className="min-w-0 flex-1 truncate text-xs leading-4">
             {summary ? (
-              summaryLede(summary)
+              <InlineMarkdown text={summaryLedeMarkdown(summary)} />
             ) : description ? (
               <>
                 <span style={{ color: "var(--fg-faint)" }}>Description · </span>
-                {summaryLede(description)}
+                <InlineMarkdown text={summaryLedeMarkdown(description)} />
               </>
             ) : (
               <>

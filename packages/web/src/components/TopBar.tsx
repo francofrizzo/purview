@@ -26,6 +26,7 @@ import {
   IconInbox,
   IconMore,
   IconRefresh,
+  IconRewind,
   IconSettings,
   IconShare,
   IconUpload,
@@ -62,6 +63,7 @@ export function TopBar({
   audience = "github",
   onAudienceChange,
   onAnalyze,
+  onAnalyzeFresh,
   onCancelAnalysis,
   onExportAnalysis,
   onImportFilePicked,
@@ -118,6 +120,8 @@ export function TopBar({
   onAudienceChange?: (next: CommentAudience) => void;
   onFinishReview: () => void;
   onAnalyze: () => void;
+  /** "analyze from scratch": the first-analysis flow, replacing every unit */
+  onAnalyzeFresh: () => void;
   onCancelAnalysis: () => void;
   onExportAnalysis: () => void;
   /** a file was picked from the "import analysis…" menu item */
@@ -394,22 +398,36 @@ export function TopBar({
               hint: "Push viewed files and comments to GitHub.",
               onClick: onSync,
             },
-            live
-              ? {
-                  label: analysisCancelling ? "cancelling analysis…" : "cancel analysis",
-                  icon: <IconClose width={12} height={12} />,
-                  testId: "menu-cancel-analysis",
-                  disabled: analysisCancelling,
-                  onClick: onCancelAnalysis,
-                }
-              : {
-                  label: analysisStarting ? "starting analysis…" : "analyze again",
-                  icon: <IconBolt width={12} height={12} />,
-                  testId: "menu-analyze-again",
-                  disabled: analysisStarting,
-                  hint: "Re-runs the automatic analysis for this revision.",
-                  onClick: onAnalyze,
-                },
+            ...(live
+              ? [
+                  {
+                    label: analysisCancelling ? "cancelling analysis…" : "cancel analysis",
+                    icon: <IconClose width={12} height={12} />,
+                    testId: "menu-cancel-analysis",
+                    disabled: analysisCancelling,
+                    onClick: onCancelAnalysis,
+                  },
+                ]
+              : [
+                  {
+                    label: analysisStarting ? "starting analysis…" : "analyze again",
+                    icon: <IconBolt width={12} height={12} />,
+                    testId: "menu-analyze-again",
+                    disabled: analysisStarting,
+                    hint: "Re-runs the automatic analysis for this revision; what is already classified stays.",
+                    onClick: onAnalyze,
+                  },
+                  {
+                    label: "analyze from scratch",
+                    icon: <IconRewind width={12} height={12} />,
+                    testId: "menu-analyze-fresh",
+                    disabled: analysisStarting || !hasAnalysis,
+                    hint: hasAnalysis
+                      ? "Drops every unit and the summary, then analyzes this revision again from nothing."
+                      : "No analysis yet — analyze first.",
+                    onClick: onAnalyzeFresh,
+                  },
+                ]),
             {
               label: exporting ? "exporting…" : "export analysis",
               icon: <IconDownload width={12} height={12} />,

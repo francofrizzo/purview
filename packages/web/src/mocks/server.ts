@@ -1597,13 +1597,14 @@ export const mockApi = {
     return jobs[key] ? structuredClone(jobs[key]!) : null;
   },
 
-  async startAnalysis(key: string): Promise<AnalysisJob> {
+  async startAnalysis(key: string, opts: { fresh?: boolean } = {}): Promise<AnalysisJob> {
     await delay(120);
     if (isLive(jobs[key])) {
       throw new ApiError("already_running", 409, "An analysis is already queued for this PR");
     }
     delete analysisPending[key];
     runJob(key);
+    if (opts.fresh) jobs[key] = { ...jobs[key]!, fresh: true };
     return structuredClone(jobs[key]!);
   },
 

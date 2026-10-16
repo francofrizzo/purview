@@ -5,6 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- "Analyze from scratch" in the PR's ⋯ menu drops every unit and the summary and runs the first analysis again on this revision. "Analyze again" keeps what is classified and only picks up what is new, so on an unchanged revision it has nothing to do.
+- The collapsed summary strip renders the summary's inline markdown, so identifiers and paths read as code there too.
+
 ## 2026.10.16.1
 
 - **One panel on the right.** Comments, chat and review are tabs in a single panel with one width (drag its left edge) and one close. `m` / `c` / `r` jump to a tab or close it again; "finish review" and "send to chat" switch tabs. The top bar keeps one button for the panel, which reopens the last tab, plus "finish review".

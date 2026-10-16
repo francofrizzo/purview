@@ -361,7 +361,7 @@ export interface AnalysisMetrics {
   };
   /** what the run was (see server's AnalysisRunInfoSchema); absent on older runs */
   run?: {
-    kind?: "initial" | "refresh" | "rerun";
+    kind?: "initial" | "refresh" | "rerun" | "fresh";
     /** the agent harness that ran it; the server fills in "claude-code" for older runs */
     harness?: string;
     harnessVersion?: string;
@@ -397,6 +397,8 @@ export interface AnalysisJob {
   error?: string;
   /** free-form one-liner the runner reports while working */
   progress?: string;
+  /** started over: every unit is being replaced */
+  fresh?: boolean;
   metrics?: AnalysisMetrics;
 }
 
