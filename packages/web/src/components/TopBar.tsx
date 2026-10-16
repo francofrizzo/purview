@@ -11,7 +11,6 @@ import { AudienceSwitch } from "./AudienceSwitch";
 import { UpdateAvailable } from "./UpdateAvailable";
 import { diffTotals, formatAddedAt } from "../lib/prList";
 import { stackedOnLink } from "../lib/stacked";
-import { ChatButton } from "./ChatPanel";
 import { CopyPathButton } from "./DiffPane";
 import { useModalBackground } from "./Modal";
 import {
@@ -21,7 +20,6 @@ import {
   IconCheck,
   IconClose,
   IconCollapse,
-  IconComment,
   IconDownload,
   IconExpand,
   IconFileImport,
@@ -31,17 +29,21 @@ import {
   IconSettings,
   IconShare,
   IconUpload,
+  IconDock,
+  IconSpinner,
 } from "./icons";
 
 export function TopBar({
   detail,
   draftCount,
+  dockOpen,
+  dockBusy = false,
+  onToggleDock,
   pendingReview,
   refreshing,
   stale,
   staleTooltip,
   syncing,
-  chatOpen,
   analysisJob,
   analysisStarting,
   analysisCancelling,
@@ -56,8 +58,6 @@ export function TopBar({
   onToggleFullscreen,
   onRefresh,
   onSync,
-  onToggleDrafts,
-  onToggleChat,
   onFinishReview,
   audience = "github",
   onAudienceChange,
@@ -78,6 +78,12 @@ export function TopBar({
 }: {
   detail: PrDetail;
   draftCount: number;
+  /** the right dock (comments, chat, review) is open */
+  dockOpen: boolean;
+  /** the chat is replying: the toggle shows a spinner */
+  dockBusy?: boolean;
+  /** open the dock on the last tab used, or close it */
+  onToggleDock: () => void;
   /** true when a PENDING review exists on GitHub (undefined = not checked) */
   pendingReview?: boolean;
   refreshing: boolean;
@@ -85,7 +91,6 @@ export function TopBar({
   stale?: boolean;
   staleTooltip?: string | null;
   syncing: boolean;
-  chatOpen: boolean;
   analysisJob?: AnalysisJob | null;
   analysisStarting: boolean;
   analysisCancelling: boolean;
@@ -105,11 +110,9 @@ export function TopBar({
   onToggleFullscreen?: () => void;
   onRefresh: () => void;
   onSync: () => void;
-  onToggleDrafts: () => void;
   /** the global switch: who new comments are for */
   audience?: CommentAudience;
   onAudienceChange?: (next: CommentAudience) => void;
-  onToggleChat: () => void;
   onFinishReview: () => void;
   onAnalyze: () => void;
   onCancelAnalysis: () => void;
@@ -283,19 +286,19 @@ export function TopBar({
             <AudienceSwitch value={audience} onChange={onAudienceChange} testId="topbar-audience" />
           </span>
         ) : null}
-        {/* Two pairs, icon-only (each names itself on hover): the
-            conversation about this PR, and keeping it in step with GitHub. */}
-        <div className="btn-group">
-        <ChatButton open={chatOpen} onClick={onToggleChat} />
+        {/* The right dock (comments, chat, review) has one toggle; its tabs
+            take over once it is open. The badge is the unsent comments. */}
         <button
           type="button"
           className="btn"
-          onClick={onToggleDrafts}
-          title="Comments"
-          aria-label="Comments"
+          onClick={onToggleDock}
+          title={dockOpen ? "Close the panel" : "Comments, chat and review (m, c, r)"}
+          aria-label="Comments, chat and review"
+          aria-pressed={dockOpen}
           data-testid="topbar-comments"
+          style={dockOpen ? { background: "var(--accent-soft)", color: "var(--accent)" } : undefined}
         >
-          <IconComment width={12} height={12} />
+          <IconDock width={12} height={12} />
           {draftCount ? (
             <span
               className="rounded-full px-1 text-2xs"
@@ -304,8 +307,8 @@ export function TopBar({
               {draftCount}
             </span>
           ) : null}
+          {dockBusy ? <IconSpinner width={10} height={10} style={{ color: "var(--accent)" }} /> : null}
         </button>
-        </div>
         <div className="btn-group">
         <button
           type="button"

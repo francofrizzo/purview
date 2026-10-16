@@ -97,7 +97,6 @@ export const ConfigSchema = z.object({
    * chat alike, so a comment written anywhere lands where the reader is
    * currently writing for.
    */
-  commentAudience: z.enum(["github", "agent"]).default("github"),
   /** The newest changelog version the reader has been shown; null = never. */
   lastSeenVersion: z.string().nullable().default(null),
   /**

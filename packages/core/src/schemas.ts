@@ -389,6 +389,12 @@ export const MetaSchema = z.object({
    */
   archived: z.boolean().default(false),
   /**
+   * Who new comments on this PR are for, when the reader flipped the switch:
+   * "github" (part of the review) or "agent" (notes for a coding agent).
+   * Absent, the server picks by author: your own PRs get "agent".
+   */
+  commentAudience: z.enum(["github", "agent"]).optional(),
+  /**
    * A refresh landed work an analysis should account for (new hunks, reworked
    * units) but no automatic run started, and why. Persisted — not just
    * returned by the refresh — so the PR view can say so after a reload or from

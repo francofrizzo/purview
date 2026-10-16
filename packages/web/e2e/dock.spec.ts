@@ -27,7 +27,12 @@ test("one dock on the right: comments, chat and review are its tabs, one at a ti
   // The same key on the open tab closes the dock; the X too.
   await page.keyboard.press("r");
   await expect(page.getByTestId("right-dock")).toHaveCount(0);
+  // The top bar's toggle reopens the last tab (review), then closes it.
   await page.getByTestId("topbar-comments").click();
+  await expect(dock).toHaveAttribute("data-tab", "review");
+  await page.getByTestId("topbar-comments").click();
+  await expect(page.getByTestId("right-dock")).toHaveCount(0);
+  await page.keyboard.press("m");
   await expect(dock).toHaveAttribute("data-tab", "comments");
   await page.getByTestId("dock-close").click();
   await expect(page.getByTestId("right-dock")).toHaveCount(0);

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { commentsPath, setGhRunner } from "@reviewer/core";
+import { commentsPath, githubUserCachePath, keyToString, readMeta, setGhRunner, writeMeta } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import {
   CommentNotDraftError,
@@ -13,7 +13,6 @@ import {
   unanchoredDraftLineComments,
   writeComments,
 } from "../src/comments.js";
-import { writeConfig } from "../src/config.js";
 import { buildFixture, key } from "./fixtures.js";
 import { fakeGh, type FakeGh } from "./fake-gh.js";
 
@@ -41,6 +40,8 @@ afterEach(() => {
   setGhRunner(null);
   fs.rmSync(root, { recursive: true, force: true });
 });
+
+const k = encodeURIComponent(keyToString(key));
 
 function req(method: string, url: string, body?: unknown, headers: Record<string, string> = {}) {
   return app.request(url, {
@@ -100,21 +101,44 @@ describe("comment audience (model)", () => {
 /* ------------------------------------------------------------------ routes */
 
 describe("comment audience (routes)", () => {
-  it("new comments follow the global switch unless told otherwise", async () => {
+  const setAuthor = (author: string) => writeMeta(key, { ...readMeta(key, root), author }, root);
+  const cacheViewer = (login: string) => {
+    fs.writeFileSync(
+      githubUserCachePath(root),
+      JSON.stringify({ [key.host]: { login, fetchedAt: new Date().toISOString() } }),
+    );
+  };
+  const audienceOf = async () => (await (await req("GET", `/api/prs/${k}`)).json()).commentAudience;
+
+  // One viewer per test: the login is memoized per state root, so a test
+  // that changed it mid-way would still see the first one.
+  it("new comments are for GitHub on someone else's PR", async () => {
+    setAuthor("alice");
+    cacheViewer("bob");
+    expect(await audienceOf()).toEqual({ effective: "github", override: null });
     expect((await create()).audience).toBe("github");
-    writeConfig({ commentAudience: "agent" }, root);
+    expect((await create({ audience: "agent" })).audience).toBe("agent");
+  });
+
+  it("new comments are notes for the agent on your own PR, for the chat too", async () => {
+    setAuthor("alice");
+    cacheViewer("alice");
+    expect(await audienceOf()).toEqual({ effective: "agent", override: null });
     expect((await create()).audience).toBe("agent");
     expect((await create({ audience: "github" })).audience).toBe("github");
-    // The chat follows the switch too.
     expect((await create({}, { "X-Purview-Actor": "chat" })).audience).toBe("agent");
   });
 
-  it("the switch round-trips through /api/config", async () => {
-    const put = await req("PUT", "/api/config", { commentAudience: "agent" });
-    expect((await put.json()).commentAudience).toBe("agent");
-    expect((await (await req("GET", "/api/config")).json()).commentAudience).toBe("agent");
-    const bad = await req("PUT", "/api/config", { commentAudience: "me" });
-    expect(bad.status).toBe(400);
+  it("the reader can flip a PR's switch, and clear it back to the default", async () => {
+    setAuthor("alice");
+    cacheViewer("bob");
+    const flipped = await req("POST", `/api/prs/${k}/comment-audience`, { audience: "agent" });
+    expect(await flipped.json()).toEqual({ effective: "agent", override: "agent" });
+    expect((await create()).audience).toBe("agent");
+    expect((await (await req("GET", `/api/prs/${k}`)).json()).meta.commentAudience).toBe("agent");
+    const cleared = await req("POST", `/api/prs/${k}/comment-audience`, { audience: null });
+    expect(await cleared.json()).toEqual({ effective: "github", override: null });
+    expect((await req("POST", `/api/prs/${k}/comment-audience`, { audience: "me" })).status).toBe(400);
   });
 
   it("PATCH { audience } moves a draft, alone or with a body, and refuses a pushed one", async () => {

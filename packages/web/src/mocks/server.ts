@@ -200,7 +200,6 @@ const globalConfig: {
   aiReviewers: string[];
   extraAuthors: string[];
   updateCheck: boolean;
-  commentAudience: CommentAudience;
 } = {
   analysisAgent: null,
   chatAgent: null,
@@ -209,7 +208,6 @@ const globalConfig: {
   // The fixture's bot-opened PR (billing #502) lands under "Your PRs" through this.
   extraAuthors: ["acme-agent[bot]"],
   updateCheck: true,
-  commentAudience: "github",
 };
 
 /**
@@ -443,6 +441,19 @@ const unanalyzed: PrDetail = {
 };
 
 const details: Record<string, PrDetail> = { [detail.key]: detail, [UNANALYZED_KEY]: unanalyzed };
+
+/**
+ * Who new comments are for, like the server: your own PRs (author "you" in
+ * the fixture) default to notes for an agent, anyone else's to your review;
+ * the reader's flip is kept per PR.
+ */
+const audienceOverrides = new Map<string, CommentAudience>();
+function audienceInfo(key: string): { effective: CommentAudience; override: CommentAudience | null } {
+  const override = audienceOverrides.get(key) ?? null;
+  if (override) return { effective: override, override };
+  const author = details[key]?.meta.author ?? list.find((p) => p.key === key)?.meta.author;
+  return { effective: author === "you" ? "agent" : "github", override: null };
+}
 
 const jobs: Record<string, AnalysisJob | null> = {};
 const jobTimers: Record<string, ReturnType<typeof setTimeout>[]> = {};
@@ -747,6 +758,16 @@ export const mockApi = {
   },
 
   /** Local-only, exactly as the tooltip in the UI claims. */
+  async setPrCommentAudience(
+    key: string,
+    audience: CommentAudience | null,
+  ): Promise<{ effective: CommentAudience; override: CommentAudience | null }> {
+    await delay(120);
+    if (audience) audienceOverrides.set(key, audience);
+    else audienceOverrides.delete(key);
+    return audienceInfo(key);
+  },
+
   async setArchived(key: string, archived: boolean): Promise<void> {
     await delay(120);
     const entry = list.find((p) => p.key === key);
@@ -829,7 +850,6 @@ export const mockApi = {
     if (patch.aiReviewers !== undefined) globalConfig.aiReviewers = patch.aiReviewers;
     if (patch.extraAuthors !== undefined) globalConfig.extraAuthors = patch.extraAuthors;
     if (patch.updateCheck !== undefined) globalConfig.updateCheck = patch.updateCheck;
-    if (patch.commentAudience !== undefined) globalConfig.commentAudience = patch.commentAudience;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return globalPayload();
   },
@@ -935,6 +955,7 @@ export const mockApi = {
 
   async getPr(key: string): Promise<PrDetail> {
     await delay(120);
+    const withAudience = (d: PrDetail): PrDetail => ({ ...d, commentAudience: audienceInfo(key) });
     let target = details[key];
     if (!target) {
       const entry = list.find((p) => p.key === key);
@@ -961,7 +982,7 @@ export const mockApi = {
     target.meta = { ...target.meta, archived: entry?.archived ?? false };
     target.repoArchived = archivedRepos.has(`${host}/${owner}/${repo}`);
     target.analysisPending = analysisPending[key] ?? null;
-    return structuredClone(target);
+    return withAudience(structuredClone(target));
   },
 
   /**
@@ -1290,7 +1311,7 @@ export const mockApi = {
       subjectType: fileLevel ? "file" : "line",
       createdAt: new Date().toISOString(),
       status: "draft",
-      audience: input.audience ?? globalConfig.commentAudience,
+      audience: input.audience ?? audienceInfo(_key).effective,
       ...(input.inReplyTo ? { inReplyTo: input.inReplyTo } : {}),
     };
     drafts.push(draft);

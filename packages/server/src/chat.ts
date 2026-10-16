@@ -414,7 +414,7 @@ function draftCommentLines(key: PrKey, terminal?: { harness: HarnessId }): strin
     "- Write comments the way the reader would post them: to the PR author, concise, actionable, no preamble.",
     "- Every comment is for one of two audiences: `github` (part of the reader's review, goes out with it) or " +
       "`agent` (a note for a coding agent, copied out of Purview, never sent to GitHub). Without `--for` a new " +
-      "comment follows the reader's current switch (shown as `for=` in `comment list`). When the reader says who " +
+      "comment follows the PR's switch: notes for the agent on the reader's own PRs, GitHub on anyone else's, unless the reader flipped it (shown as `for=` in `comment list`). When the reader says who " +
       "a comment is for — \"for the review\"/\"for GitHub\" vs \"notes for the agent\"/\"for me to hand off\" — " +
       "pass `--for github` or `--for agent` explicitly; `comment edit <id> --for <audience>` moves a draft.",
   ];

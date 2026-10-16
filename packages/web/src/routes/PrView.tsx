@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -178,7 +179,7 @@ export function PrView() {
   const setAudience = useSetCommentAudience(prKey);
   const publishComment = usePublishComment(prKey);
   // The global switch: who new comments are for (web, CLI and chat alike).
-  const audienceSwitch = useCommentAudience();
+  const audienceSwitch = useCommentAudience(prKey);
   const moveComment = useMoveComment(prKey);
   const proposeReanchor = useProposeReanchor(prKey);
   const saveReviewBody = useSaveReviewBody(prKey);
@@ -271,6 +272,43 @@ export function PrView() {
 
   const fullscreen = useFullscreen();
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const shortcutsRef = useRef<HTMLDivElement>(null);
+  const shortcutsPopRef = useRef<HTMLDivElement>(null);
+  // Where the card goes: above the toggle, aligned to its left edge.
+  const [shortcutsAt, setShortcutsAt] = useState<{ left: number; bottom: number } | null>(null);
+  useEffect(() => {
+    if (!showShortcuts) {
+      setShortcutsAt(null);
+      return;
+    }
+    const place = () => {
+      const r = shortcutsRef.current?.getBoundingClientRect();
+      if (r) setShortcutsAt({ left: r.left + 8, bottom: window.innerHeight - r.top + 6 });
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [showShortcuts]);
+  useEffect(() => {
+    if (!showShortcuts) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (shortcutsRef.current?.contains(t) || shortcutsPopRef.current?.contains(t)) return;
+      setShowShortcuts(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setShowShortcuts(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey, true);
+    };
+  }, [showShortcuts]);
   const [standalone] = useState(isStandalone);
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -278,6 +316,8 @@ export function PrView() {
   // open flag (lib/chat.tsx, which attachRef and the composer flip) stays the
   // source of truth for its tab; the other two live here.
   const [dockTab, setDockTab] = useState<"comments" | "review" | null>(null);
+  // The top bar's one toggle reopens whatever was on top last.
+  const [lastDockTab, setLastDockTab] = useState<DockTab>("comments");
   const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(null);
   // The text lives here, not in the composer: drawn inline, the composer is a
   // virtualized row and unmounts when scrolled away.
@@ -393,6 +433,7 @@ export function PrView() {
   const dock: DockTab | null = chat.open ? "chat" : dockTab;
   const reviewOpen = dock === "review";
   const openDock = (tab: DockTab) => {
+    setLastDockTab(tab);
     if (tab === "chat") {
       chat.openChat();
       return;
@@ -1182,7 +1223,8 @@ export function PrView() {
         )}
       </div>
       <div
-        className="flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
+        ref={shortcutsRef}
+        className="relative flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
         style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
       >
         <button
@@ -1195,8 +1237,18 @@ export function PrView() {
           <IconChevron open={showShortcuts} width={9} height={9} />
           keyboard shortcuts
         </button>
-        {showShortcuts ? (
-          <div className="mt-2 flex flex-col gap-2.5 pb-1">
+        {/* A card floating over the desk, not a strip that eats the sidebar.
+            Portaled: the sidebar pane clips its overflow. */}
+        {showShortcuts && shortcutsAt
+          ? createPortal(
+          <div
+            ref={shortcutsPopRef}
+            role="dialog"
+            aria-label="Keyboard shortcuts"
+            data-testid="shortcuts-popover"
+            className="surface elev-3 fixed z-50 grid w-[max-content] max-w-[calc(100vw-2rem)] grid-cols-1 gap-x-8 gap-y-3 rounded-lg p-3 sm:grid-cols-[repeat(3,max-content)]"
+            style={{ left: shortcutsAt.left, bottom: shortcutsAt.bottom }}
+          >
             <ShortcutGroup
               title="Reading"
               rows={[
@@ -1234,8 +1286,10 @@ export function PrView() {
                 [["⌘⇧S"], "suggest a change"],
               ]}
             />
-          </div>
-        ) : null}
+          </div>,
+          document.body,
+        )
+        : null}
       </div>
     </>
   );
@@ -1291,7 +1345,9 @@ export function PrView() {
         stale={stale}
         staleTooltip={stalenessTooltip(staleness.data)}
         syncing={sync.isPending}
-        chatOpen={chat.open}
+        dockOpen={dock !== null}
+        dockBusy={chat.busy}
+        onToggleDock={() => (dock ? closeDock() : openDock(lastDockTab))}
         analysisJob={job}
         analysisStarting={startAnalysis.isPending}
         analysisCancelling={cancelAnalysis.isPending}
@@ -1302,10 +1358,8 @@ export function PrView() {
         fullscreenVisible={fullscreen.supported && !standalone}
         fullscreenActive={fullscreen.active}
         onToggleFullscreen={fullscreen.toggle}
-        onToggleDrafts={() => toggleDock("comments")}
         audience={audienceSwitch.audience}
         onAudienceChange={audienceSwitch.set}
-        onToggleChat={() => toggleDock("chat")}
         onAnalyze={() => startAnalysis.mutate()}
         onCancelAnalysis={() => cancelAnalysis.mutate()}
         onExportAnalysis={handleExportAnalysis}
@@ -2132,7 +2186,7 @@ function ShortcutGroup({ title, rows }: { title: string; rows: [string[], string
       <div className="mb-1 text-2xs font-medium" style={{ color: "var(--fg-muted)" }}>
         {title}
       </div>
-      <dl className="grid grid-cols-[auto_1fr] items-baseline gap-x-2.5 gap-y-1">
+      <dl className="grid grid-cols-[max-content_max-content] items-baseline gap-x-2.5 gap-y-1">
         {rows.map(([keys, what]) => (
           <Fragment key={what}>
             <dt className="flex items-center gap-0.5 whitespace-nowrap">

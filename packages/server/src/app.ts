@@ -142,6 +142,7 @@ import { reviewEffort } from "./effort.js";
 import { diffSize } from "./diff-size.js";
 import { compareVersions, entriesSince, headSha, readChangelog } from "./changelog.js";
 import { createUpdateChecker, noUpdateChecker, type UpdateChecker } from "./updates.js";
+import { authoredByYou, commentAudienceFor, setCommentAudienceFor } from "./comment-audience.js";
 import {
   autoAnalyzeAllowed,
   autoAnalyzeBlocker,
@@ -205,16 +206,7 @@ const isYou = (author: string | undefined, login: string | null | undefined): bo
  * a login the reader listed in `extraAuthors` (an agent's bot account). List-
  * only — `isMine` on threads and verdicts keeps meaning the viewer login.
  */
-export const authoredByYou = (
-  author: string | undefined,
-  login: string | null | undefined,
-  extraAuthors: readonly string[],
-): boolean => {
-  if (isYou(author, login)) return true;
-  if (!author) return false;
-  const norm = normalizeLogin(author);
-  return extraAuthors.some((a) => normalizeLogin(a) === norm);
-};
+export { authoredByYou };
 
 /**
  * Who is making a request, as far as comments are concerned. The reviewer-
@@ -654,6 +646,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         : false,
       reviewRequest: meta.reviewRequest,
       analysisPending: meta.analysisPending ?? null,
+      commentAudience: commentAudienceFor(key, root),
       // Whether the PR behaves as archived because its whole repo is; the
       // header offers "unarchive repo" then rather than a per-PR unarchive.
       repoArchived: isRepoArchived(repoKeyOf(key), root),
@@ -825,6 +818,21 @@ export function createApp(opts: AppOptions = {}): Hono {
    * state and stays fully readable, it just drops out of the active list and
    * can no longer trigger an automatic (paid) analysis run.
    */
+  /**
+   * Who new comments on this PR are for. `null` goes back to the default by
+   * author (your own PRs: notes for an agent; anyone else's: your review).
+   */
+  app.post("/api/prs/:key/comment-audience", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const body = (await readJsonBody(c)) as { audience?: unknown };
+    const parsed = CommentAudienceSchema.nullable().safeParse(body.audience);
+    if (!parsed.success) {
+      throw new HttpError(400, "invalid_body", 'Body must include { audience: "github" | "agent" | null }');
+    }
+    return c.json(setCommentAudienceFor(key, parsed.data, root));
+  });
+
   app.post("/api/prs/:key/archive", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
@@ -1335,7 +1343,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     try {
       // Without an explicit audience a comment follows the reader's switch,
       // whoever writes it: the web, the CLI, the chat.
-      const comment = addComment(key, body, root, actor, readConfig(root).commentAudience);
+      const comment = addComment(key, body, root, actor, commentAudienceFor(key, root).effective);
       return c.json({ comment }, 201);
     } catch (err) {
       throw classifyError(err);
@@ -1951,7 +1959,6 @@ export function createApp(opts: AppOptions = {}): Hono {
       aiReviewers: config.aiReviewers,
       extraAuthors: config.extraAuthors,
       updateCheck: config.updateCheck,
-      commentAudience: config.commentAudience,
       /** what this layer resolves to on its own — the end of the inheritance chain */
       effective: {
         analysisAgent: agentView(resolveAgent("analysis", [["global", config.analysisAgent]], true)),
@@ -1980,7 +1987,6 @@ export function createApp(opts: AppOptions = {}): Hono {
       /** ask origin for newer releases once a day */
       updateCheck: z.boolean().optional(),
       /** what new comments are for: the GitHub review, or notes for an agent */
-      commentAudience: CommentAudienceSchema.optional(),
     })
     .strict();
 
@@ -2068,7 +2074,6 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (body.aiReviewers !== undefined) patch.aiReviewers = dedupeLogins(body.aiReviewers);
     if (body.extraAuthors !== undefined) patch.extraAuthors = dedupeLogins(body.extraAuthors);
     if (body.updateCheck !== undefined) patch.updateCheck = body.updateCheck;
-    if (body.commentAudience !== undefined) patch.commentAudience = body.commentAudience;
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
   });

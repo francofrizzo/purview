@@ -7,7 +7,10 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- The right side of a PR is one panel with three tabs: Comments, Chat and Review. One width (drag its left edge), one close, `m` / `c` / `r` to jump to a tab or close it again. "Finish review" in the comments tab and "send to chat" switch tabs.
+- The right side of a PR is one panel with three tabs: Comments, Chat and Review. One width (drag its left edge), one close, `m` / `c` / `r` to jump to a tab or close it again. "Finish review" in the comments tab and "send to chat" switch tabs. The top bar has one button for the panel (it reopens the last tab) plus "finish review".
+- Comments on your own PRs are notes for the agent by default; on anyone else's they are for your GitHub review. The switch now flips one PR, and the flip is remembered on that PR.
+- The summary strip leads with its chevron, and "description" and "reviews" on it open the panel straight onto that section.
+- Keyboard shortcuts open as a card over the diff instead of growing the sidebar.
 
 ## 2026.10.15.1
 

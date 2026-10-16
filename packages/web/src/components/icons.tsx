@@ -9,6 +9,7 @@ import {
   IconArrowsRightLeft,
   IconBrandGithub as TablerBrandGithub,
   IconSparkles as TablerSparkles,
+  IconLayoutSidebarRight,
   IconSend as TablerSend,
   IconBarbell,
   IconBolt as TablerBolt,
@@ -226,6 +227,7 @@ export const IconSend = wrap(TablerSend);
 export const IconSwap = wrap(IconArrowsRightLeft);
 export const IconGithub = wrap(TablerBrandGithub);
 export const IconSparkles = wrap(TablerSparkles);
+export const IconDock = wrap(IconLayoutSidebarRight);
 
 export const RISK_META: Record<
   RiskFlag,

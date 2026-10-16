@@ -182,6 +182,25 @@ export function SummaryStrip({
     // Underline it now; a short last section may never reach the top on its own.
     setInView(available.indexOf(t));
   };
+  // A link on the handle opens the panel straight onto a section: pinned
+  // open if it was closed, then the jump runs once the panel has mounted.
+  const pendingJump = useRef<SummaryTab | null>(null);
+  const openAt = (t: SummaryTab) => {
+    clearTimer();
+    setPeeking(false);
+    pendingJump.current = t;
+    if (!open) onToggle();
+    else jumpTo(t);
+  };
+  useEffect(() => {
+    const t = pendingJump.current;
+    if (!t || !panelRef.current) return;
+    pendingJump.current = null;
+    const el = panelRef.current.querySelector<HTMLElement>(`[data-section="${t}"]`);
+    if (!el) return;
+    panelRef.current.scrollTo({ top: el.offsetTop, behavior: "auto" });
+    setInView(available.indexOf(t));
+  });
   const what =
     [summary ? "analysis summary" : "", description ? "PR description" : "", hasReviews ? "reviews" : ""]
       .filter(Boolean)
@@ -259,50 +278,77 @@ export function SummaryStrip({
       onMouseEnter={scheduleOpen}
       onMouseLeave={scheduleClose}
     >
-      <button
-        type="button"
-        data-testid="summary-strip"
-        aria-expanded={shown}
-        data-pinned={open ? "true" : "false"}
-        title={
-          open
-            ? `Hide the ${what}`
-            : `Show the ${what} (s) — hover to peek, click to pin`
-        }
-        onClick={() => {
-          clearTimer();
-          setPeeking(false);
-          onToggle();
-        }}
-        className="flex w-full items-center gap-2 border-b px-3 py-1 text-left transition-colors"
+      {/* The handle: the chevron leads, then the one line worth reading; the
+          sections it can open straight onto sit on the right as quiet links,
+          then the review's status. */}
+      <div
+        className="flex w-full items-center gap-2 border-b px-2 py-1 text-left"
         style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
       >
-        <span
-          className="min-w-0 flex-1 truncate text-xs leading-4"
+        <button
+          type="button"
+          data-testid="summary-strip"
+          aria-expanded={shown}
+          data-pinned={open ? "true" : "false"}
+          title={
+            open
+              ? `Hide the ${what}`
+              : `Show the ${what} (s) — hover to peek, click to pin`
+          }
+          onClick={() => {
+            clearTimer();
+            setPeeking(false);
+            onToggle();
+          }}
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded px-1 text-left transition-colors hover:text-[var(--fg)]"
           style={{ color: "var(--fg-muted)" }}
         >
-          {summary ? (
-            summaryLede(summary)
-          ) : description ? (
-            <>
-              <span style={{ color: "var(--fg-faint)" }}>Description · </span>
-              {summaryLede(description)}
-            </>
-          ) : (
-            <>
-              <span style={{ color: "var(--fg-faint)" }}>Reviews · </span>
-              {timeline.entries.length} on GitHub
-            </>
-          )}
-        </span>
+          <IconChevron
+            open={shown}
+            width={11}
+            height={11}
+            className="flex-none"
+            style={{ color: "var(--fg-faint)" }}
+          />
+          <span className="min-w-0 flex-1 truncate text-xs leading-4">
+            {summary ? (
+              summaryLede(summary)
+            ) : description ? (
+              <>
+                <span style={{ color: "var(--fg-faint)" }}>Description · </span>
+                {summaryLede(description)}
+              </>
+            ) : (
+              <>
+                <span style={{ color: "var(--fg-faint)" }}>Reviews · </span>
+                {timeline.entries.length} on GitHub
+              </>
+            )}
+          </span>
+        </button>
         {summary && description ? (
-          <span
-            className="hidden flex-none text-2xs leading-4 sm:inline"
+          <button
+            type="button"
+            className="hidden flex-none rounded px-1 text-2xs leading-4 transition-colors hover:text-[var(--fg)] sm:inline"
             style={{ color: "var(--fg-faint)" }}
             data-testid="summary-strip-has-description"
+            title="Open the PR description"
+            onClick={() => openAt("description")}
           >
-            + description
-          </span>
+            description
+          </button>
+        ) : null}
+        {hasReviews && (summary || description) ? (
+          <button
+            type="button"
+            className="hidden flex-none rounded px-1 text-2xs leading-4 transition-colors hover:text-[var(--fg)] sm:inline"
+            style={{ color: "var(--fg-faint)" }}
+            data-testid="summary-strip-has-reviews"
+            title="Open the reviews on GitHub so far"
+            onClick={() => openAt("reviews")}
+          >
+            reviews
+          </button>
         ) : null}
         <ReviewerVerdicts verdicts={verdicts} />
         <span
@@ -311,12 +357,7 @@ export function SummaryStrip({
         >
           {total > 0 ? `${viewed}/${total} viewed` : ""}
         </span>
-        <IconChevron
-          width={11}
-          height={11}
-          style={{ color: "var(--fg-faint)", transform: shown ? "rotate(90deg)" : "none" }}
-        />
-      </button>
+      </div>
 
       {shown ? (
         <div

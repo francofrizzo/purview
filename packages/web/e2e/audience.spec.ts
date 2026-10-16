@@ -61,6 +61,16 @@ test("the switch decides what a new comment is for; `a` flips it", async ({ page
   await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "github");
 });
 
+test("your own PR defaults to notes for the agent; the flip sticks to the PR", async ({ page }) => {
+  await page.goto("/pr/github.com/acme/billing/491");
+  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "agent");
+  await page.getByTestId("topbar-audience-github").click();
+  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "github");
+  // Someone else's PR is untouched by that flip.
+  await page.goto("/pr/github.com/acme/billing/482");
+  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "github");
+});
+
 test("publish now posts one GitHub draft publicly, after a confirmation", async ({ page }) => {
   await page.getByTestId("topbar-comments").click();
   const github = page.getByTestId("drawer-section-github");

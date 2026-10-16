@@ -626,8 +626,6 @@ export interface GlobalConfig {
   extraAuthors?: string[];
   /** ask origin once a day for a newer release and show it on the home page */
   updateCheck?: boolean;
-  /** what new comments are for, everywhere (web, CLI, chat); absent on older servers = "github" */
-  commentAudience?: CommentAudience;
   /** what this layer resolves to on its own — the end of the chain */
   effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }
@@ -639,7 +637,6 @@ export interface GlobalConfigPatch {
   aiReviewers?: string[];
   extraAuthors?: string[];
   updateCheck?: boolean;
-  commentAudience?: CommentAudience;
 }
 
 /**
@@ -673,6 +670,12 @@ export interface PrDetail {
    * `"archived"` is recorded). `null`/absent = nothing pending.
    */
   analysisPending?: AnalysisPending | null;
+  /**
+   * Who new comments on this PR are for: your own PRs default to notes for
+   * an agent, anyone else's to your review; `override` is the reader's flip
+   * for this PR. Absent on older servers: read as GitHub.
+   */
+  commentAudience?: { effective: CommentAudience; override: CommentAudience | null };
   /** the PR's whole repo is archived, so the PR behaves as archived too */
   repoArchived?: boolean;
   /** what changed since the reader's last submitted review; null/absent: nothing to compare */

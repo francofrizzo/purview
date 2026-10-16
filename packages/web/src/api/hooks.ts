@@ -359,20 +359,8 @@ export function useGlobalConfig() {
  */
 export function useSaveGlobalConfig() {
   const qc = useQueryClient();
-  return useMutation<GlobalConfig, Error, GlobalConfigPatch, { previous?: GlobalConfig }>({
+  return useMutation<GlobalConfig, Error, GlobalConfigPatch>({
     mutationFn: (patch) => api.saveConfig(patch),
-    // The comment-audience switch is flipped and used in the same breath (flip,
-    // type, save), so it applies at once and is rolled back on refusal.
-    onMutate: async (patch) => {
-      if (patch.commentAudience === undefined) return {};
-      await qc.cancelQueries({ queryKey: qk.config });
-      const previous = qc.getQueryData<GlobalConfig>(qk.config);
-      if (previous) qc.setQueryData<GlobalConfig>(qk.config, { ...previous, commentAudience: patch.commentAudience });
-      return { previous };
-    },
-    onError: (_e, _patch, ctx) => {
-      if (ctx?.previous) qc.setQueryData(qk.config, ctx.previous);
-    },
     onSuccess: (config) => {
       qc.setQueryData(qk.config, config);
       void qc.invalidateQueries({ queryKey: ["repo-config"] });
@@ -869,21 +857,42 @@ export function usePublishComment(key: string): UseMutationResult<PublishComment
 }
 
 /**
- * The global switch: what new comments are for. Read from the server's
- * config (so the CLI and the chat follow the same switch); "github" until
- * the config has loaded or on a server that predates it.
+ * The PR's switch: who new comments are for. The server picks the default by
+ * author (your own PRs: notes for an agent) and keeps the reader's flip on
+ * the PR, so the CLI and the chat follow the same switch. Flipping applies
+ * at once: it is used in the same breath (flip, type, save).
  */
-export function useCommentAudience(): {
+export function useCommentAudience(key: string): {
   audience: CommentAudience;
   set: (audience: CommentAudience) => void;
   toggle: () => void;
   saving: boolean;
 } {
-  const config = useGlobalConfig();
-  const save = useSaveGlobalConfig();
-  const audience: CommentAudience = config.data?.commentAudience ?? "github";
+  const qc = useQueryClient();
+  const detail = useQuery<PrDetail>({ queryKey: qk.pr(key), queryFn: () => api.getPr(key), enabled: Boolean(key) });
+  const audience: CommentAudience = detail.data?.commentAudience?.effective ?? "github";
+  const save = useMutation<
+    { effective: CommentAudience; override: CommentAudience | null },
+    Error,
+    CommentAudience,
+    { previous?: PrDetail }
+  >({
+    mutationFn: (next) => api.setPrCommentAudience(key, next),
+    onMutate: async (next) => {
+      await qc.cancelQueries({ queryKey: qk.pr(key) });
+      const previous = qc.getQueryData<PrDetail>(qk.pr(key));
+      if (previous) qc.setQueryData<PrDetail>(qk.pr(key), { ...previous, commentAudience: { effective: next, override: next } });
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.previous) qc.setQueryData(qk.pr(key), ctx.previous);
+    },
+    onSuccess: (info) => {
+      qc.setQueryData<PrDetail>(qk.pr(key), (d) => (d ? { ...d, commentAudience: info } : d));
+    },
+  });
   const set = (next: CommentAudience) => {
-    if (next !== audience) save.mutate({ commentAudience: next });
+    if (next !== audience) save.mutate(next);
   };
   return { audience, set, toggle: () => set(audience === "github" ? "agent" : "github"), saving: save.isPending };
 }

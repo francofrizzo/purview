@@ -513,6 +513,15 @@ export const api = {
   },
 
   /** Local-only: nothing about the PR on GitHub changes. */
+  /** Flip who new comments on this PR are for; null goes back to the default by author. */
+  async setPrCommentAudience(
+    key: string,
+    audience: CommentAudience | null,
+  ): Promise<{ effective: CommentAudience; override: CommentAudience | null }> {
+    if (MOCK) return mockApi.setPrCommentAudience(key, audience);
+    return post(`/prs/${encodeKey(key)}/comment-audience`, { audience });
+  },
+
   async setArchived(key: string, archived: boolean): Promise<void> {
     if (MOCK) return mockApi.setArchived(key, archived);
     await post(`/prs/${encodeKey(key)}/archive`, { archived });
