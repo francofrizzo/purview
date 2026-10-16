@@ -747,7 +747,7 @@ function ReviewThreadsSection({
                     type="button"
                     className="chip"
                     style={{ background: "var(--bot-soft)", color: "var(--bot)" }}
-                    title={`Show ${b}'s threads again`}
+                    data-tip={`Show ${b}'s threads again`}
                     onClick={() => update({ hiddenBots: settings.hiddenBots.filter((x) => x !== b) })}
                   >
                     {b} ×

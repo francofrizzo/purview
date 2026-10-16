@@ -66,7 +66,7 @@ export function RightDock({
     >
       <div
         onMouseDown={startResize}
-        title="Drag to resize"
+        data-tip="Drag to resize"
         className="absolute left-0 top-0 z-20 h-full w-1 cursor-col-resize"
         data-testid="dock-resize"
         style={{ background: dragWidth === null ? "transparent" : "var(--accent)" }}
@@ -88,7 +88,8 @@ export function RightDock({
               role="tab"
               aria-selected={on}
               data-testid={`dock-tab-${t.id}`}
-              title={`${t.label} (${t.key})`}
+              data-tip={t.label}
+              data-tip-key={t.key}
               onClick={() => onSelect(t.id)}
               className="relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors hover:text-[var(--fg)]"
               style={{ color: on ? "var(--fg)" : "var(--fg-faint)" }}
@@ -120,7 +121,8 @@ export function RightDock({
           type="button"
           className="ml-auto px-3"
           onClick={onClose}
-          title="Close (esc)"
+          data-tip="Close"
+          data-tip-key="esc"
           aria-label="Close panel"
           data-testid="dock-close"
           style={{ color: "var(--fg-faint)" }}

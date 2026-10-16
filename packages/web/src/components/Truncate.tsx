@@ -24,13 +24,14 @@ export function MiddleTruncate({
   text,
   tail = 12,
   className,
-  title,
+  tip,
 }: {
   text: string;
   /** how many trailing characters to always keep */
   tail?: number;
   className?: string;
-  title?: string;
+  /** the tooltip; the full text when omitted */
+  tip?: string;
 }) {
   const keep = text.length > tail + 4 ? tailStart(text, tail) : 0;
   const head = keep ? text.slice(0, text.length - keep) : text;
@@ -40,7 +41,7 @@ export function MiddleTruncate({
     // letting it spill over whatever sits next to it
     <span
       className={`flex min-w-0 items-baseline overflow-hidden ${className ?? ""}`}
-      title={title ?? text}
+      data-tip={tip ?? text}
     >
       <span className="truncate">{head}</span>
       {rest ? <span className="flex-none whitespace-pre">{rest}</span> : null}

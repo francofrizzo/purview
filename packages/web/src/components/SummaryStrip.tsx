@@ -290,11 +290,8 @@ export function SummaryStrip({
           data-testid="summary-strip"
           aria-expanded={shown}
           data-pinned={open ? "true" : "false"}
-          title={
-            open
-              ? `Hide the ${what}`
-              : `Show the ${what} (s) — hover to peek, click to pin`
-          }
+          data-tip={open ? `Hide the ${what}` : `Show the ${what}; hover to peek, click to pin`}
+          data-tip-key="s"
           onClick={() => {
             clearTimer();
             setPeeking(false);
@@ -332,7 +329,7 @@ export function SummaryStrip({
             className="hidden flex-none rounded px-1 text-2xs leading-4 transition-colors hover:text-[var(--fg)] sm:inline"
             style={{ color: "var(--fg-faint)" }}
             data-testid="summary-strip-has-description"
-            title="Open the PR description"
+            data-tip="Open the PR description"
             onClick={() => openAt("description")}
           >
             description
@@ -344,7 +341,7 @@ export function SummaryStrip({
             className="hidden flex-none rounded px-1 text-2xs leading-4 transition-colors hover:text-[var(--fg)] sm:inline"
             style={{ color: "var(--fg-faint)" }}
             data-testid="summary-strip-has-reviews"
-            title="Open the reviews on GitHub so far"
+            data-tip="Open the reviews on GitHub so far"
             onClick={() => openAt("reviews")}
           >
             reviews

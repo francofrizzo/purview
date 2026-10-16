@@ -76,13 +76,13 @@ const KIND_GLYPH: Record<ChatRef["kind"], string> = {
 export function RefChip({
   refValue,
   label,
-  title,
+  tip,
   auto,
   onRemove,
 }: {
   refValue: ChatRef;
   label: string;
-  title?: string;
+  tip?: string;
   /** the auto-attached chip: dimmed/outline with an "auto" affix, same X */
   auto?: boolean;
   onRemove?: () => void;
@@ -91,7 +91,7 @@ export function RefChip({
     <span
       className="chip max-w-full"
       data-testid={auto ? "chat-ref-auto" : undefined}
-      title={title}
+      data-tip={tip}
       style={
         auto
           ? { background: "transparent", color: "var(--fg-faint)", border: "1px dashed var(--border)" }
@@ -105,7 +105,8 @@ export function RefChip({
         <button
           type="button"
           onClick={onRemove}
-          title="Remove this reference"
+          data-tip="Remove this reference"
+          aria-label="Remove this reference"
           className="-mr-0.5 flex-none px-0.5 leading-none"
           style={{ color: "var(--fg-faint)" }}
         >
@@ -188,7 +189,7 @@ function MessageBlock({
               <button
                 type="button"
                 data-testid={`chat-edit-${index}`}
-                title="Edit this message"
+                data-tip="Edit this message"
                 aria-label="Edit this message"
                 onClick={onEdit}
                 className="inline-flex items-center gap-0.5 hover:underline"
@@ -216,7 +217,7 @@ function MessageBlock({
               <button
                 type="button"
                 data-testid={`chat-rewind-${index}`}
-                title="Discard this message and everything after it"
+                data-tip="Discard this message and everything after it"
                 aria-label="Rewind to here"
                 onClick={onRewindClick}
                 className="inline-flex items-center gap-0.5 hover:underline"
@@ -231,7 +232,7 @@ function MessageBlock({
       {message.refs?.length ? (
         <div className="mb-1.5 flex flex-wrap gap-1">
           {message.refs.map((r) => (
-            <RefChip key={refKey(r)} refValue={r} label={labelFor(r)} title={titleFor(r)} />
+            <RefChip key={refKey(r)} refValue={r} label={labelFor(r)} tip={titleFor(r)} />
           ))}
         </div>
       ) : null}
@@ -472,7 +473,8 @@ export function ChatPanel({
               data-testid="chat-stop"
               className="inline-flex items-center gap-1 rounded border px-1.5 py-px"
               style={{ borderColor: "var(--border-strong)", color: "var(--fg-muted)", background: "var(--bg-inset)" }}
-              title="Stop the reply (Esc)"
+              data-tip="Stop the reply"
+              data-tip-key="esc"
               aria-label="Stop the reply"
               onClick={() => void chat.stop()}
             >
@@ -507,7 +509,7 @@ export function ChatPanel({
         ) : null}
         <button
           type="button"
-          title="Chat settings for this PR"
+          data-tip="Chat settings for this PR"
           aria-label="Chat settings"
           onClick={() => setSettingsOpen((v) => !v)}
           style={{ color: settingsOpen ? "var(--fg)" : "var(--fg-faint)" }}
@@ -644,7 +646,7 @@ export function ChatPanel({
                   className="btn"
                   data-testid="chat-skip-failure"
                   onClick={chat.dismissFailure}
-                  title="Leave this one unanswered and send the queued messages"
+                  data-tip="Leave this one unanswered and send the queued messages"
                 >
                   skip, send queued ({chat.queue.length})
                 </button>
@@ -717,7 +719,7 @@ export function ChatPanel({
                     type="button"
                     className="flex-none text-2xs opacity-70 hover:opacity-100"
                     style={{ color: "var(--accent)" }}
-                    title="Stop the current reply and send this message next"
+                    data-tip="Stop the current reply and send this one next"
                     data-testid="chat-queue-send-now"
                     onClick={() => chat.sendQueuedNow(q.id)}
                   >
@@ -728,7 +730,7 @@ export function ChatPanel({
                   type="button"
                   className="flex-none text-2xs opacity-70 hover:opacity-100"
                   style={{ color: "var(--fg-muted)" }}
-                  title="Take it back into the composer to edit"
+                  data-tip="Edit it in the composer"
                   onClick={() => {
                     const taken = chat.unqueue(q.id);
                     if (!taken) return;
@@ -743,7 +745,7 @@ export function ChatPanel({
                   type="button"
                   className="mt-[5px] flex-none opacity-70 hover:opacity-100"
                   style={{ color: "var(--fg-faint)" }}
-                  title="Remove from the queue"
+                  data-tip="Remove from the queue"
                   aria-label="Remove from the queue"
                   data-testid="chat-queue-remove"
                   onClick={() => chat.unqueue(q.id)}
@@ -763,7 +765,7 @@ export function ChatPanel({
                   key={refKey(r)}
                   refValue={r}
                   label={labelFor(r)}
-                  title={auto ? `${titleFor(r)} (auto-attached from the selected unit)` : titleFor(r)}
+                  tip={auto ? `${titleFor(r)}; attached from the selected unit` : titleFor(r)}
                   auto={auto}
                   onRemove={() => (auto ? chat.removeAutoRef() : chat.detachRef(refKey(r)))}
                 />
@@ -835,9 +837,9 @@ function ActiveModel({
     <span
       className="font-mono text-2xs"
       data-testid="chat-active-model"
-      title={
+      data-tip={
         agent.sources.model === "chat"
-          ? `Pinned for this conversation${configured ? ` (the repo default is ${label(configured)})` : ""}`
+          ? `Pinned for this conversation${configured ? `; the repo default is ${label(configured)}` : ""}`
           : `From the ${agent.sources.model} setting`
       }
       style={{ color: "var(--fg-faint)" }}
@@ -879,7 +881,7 @@ function ModelSelect({
       <select
         data-testid="chat-model-select"
         className="cursor-pointer rounded px-1 py-px text-2xs font-medium outline-none"
-        title={`Model for the next message${pinned ? " (pinned for this conversation)" : ""}`}
+        data-tip={`Model for the next message${pinned ? "; pinned for this conversation" : ""}`}
         value={pinned ? value : "inherit"}
         onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
         style={{
@@ -983,7 +985,7 @@ function HandoffButton({
   };
 
   return (
-    <span ref={wrapRef} className="relative inline-flex" title={reason ?? label}>
+    <span ref={wrapRef} className="relative inline-flex" data-tip={reason ?? label}>
       <button
         type="button"
         data-testid="chat-handoff"
@@ -1107,7 +1109,8 @@ export function ChatButton({ open, onClick }: { open: boolean; onClick: () => vo
       data-testid="chat-toggle"
       aria-label="Chat"
       onClick={onClick}
-      title={`Ask ${agentName} about this PR (c)`}
+      data-tip={`Ask ${agentName} about this PR`}
+      data-tip-key="c"
       style={open ? { background: "var(--accent-soft)", color: "var(--accent)" } : undefined}
     >
       <IconChat width={12} height={12} />
@@ -1131,7 +1134,7 @@ export function QuoteButton({
   return (
     <button
       type="button"
-      title={title}
+      data-tip={title}
       aria-label={title}
       data-testid="quote-button"
       onClick={(e) => {

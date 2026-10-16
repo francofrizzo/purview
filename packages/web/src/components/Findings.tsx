@@ -31,7 +31,7 @@ export function FindingsBadge({ unit }: { unit: Pick<ReviewUnit, "findings"> }) 
       className="chip flex-none tabular-nums"
       data-testid="findings-badge"
       data-severity={badge.severity}
-      title={title}
+      data-tip={title}
       // Notes-only is deliberately subtler than a warning: text-only, no fill,
       // so it reads as reassurance rather than as something to act on.
       style={
@@ -70,7 +70,7 @@ export function UnitFindings({ findings }: { findings: Finding[] | undefined }) 
             <span
               className="flex-none pt-[3px]"
               style={{ color: s.color }}
-              title={s.label}
+              data-tip={s.label}
               aria-label={s.label}
             >
               <s.icon width={10} height={10} />

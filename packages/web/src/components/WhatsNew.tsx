@@ -52,7 +52,8 @@ export function WhatsNew({
             type="button"
             className="ml-auto flex-none"
             style={{ color: "var(--fg-faint)" }}
-            title="Close (esc)"
+            data-tip="Close"
+            data-tip-key="esc"
             aria-label="Close"
             onClick={onClose}
           >

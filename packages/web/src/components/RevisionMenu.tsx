@@ -63,7 +63,7 @@ export function RevisionMenu({
         type="button"
         data-testid="revision-menu"
         aria-expanded={open}
-        title="Revision details"
+        data-tip="Revision details"
         onClick={toggle}
         className="-mx-1 rounded px-1 text-2xs transition-colors hover:bg-[var(--bg-hover)]"
         style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
@@ -91,7 +91,7 @@ export function RevisionMenu({
               ) : null}
               {info.headSha && info.addedAt ? " · " : null}
               {info.addedAt ? (
-                <span title={formatFullTimestamp(info.addedAt)}>fetched {formatAddedAt(info.addedAt)}</span>
+                <span data-tip={formatFullTimestamp(info.addedAt)}>fetched {formatAddedAt(info.addedAt)}</span>
               ) : null}
             </div>
           ) : null}
@@ -115,7 +115,7 @@ export function RevisionMenu({
                         data-testid={`highlight-revision-${r.revision}`}
                         aria-pressed={on}
                         disabled={!highlightAvailable}
-                        title={
+                        data-tip={
                           !highlightAvailable
                             ? "Shown on the review units tab"
                             : on
@@ -155,7 +155,7 @@ export function RevisionMenu({
                   className="btn"
                   data-testid="discard-revision"
                   disabled={discarding || blockedWhy !== null}
-                  title={blockedWhy ?? undefined}
+                  data-tip={blockedWhy ?? undefined}
                   style={confirming ? { color: "var(--risk)", borderColor: "var(--risk)" } : undefined}
                   onClick={() => {
                     if (!confirming) {

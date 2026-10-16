@@ -10,6 +10,7 @@ app, not for git: say what changed in the review, not which file moved.
 - The right side of a PR is one panel with three tabs: Comments, Chat and Review. One width (drag its left edge), one close, `m` / `c` / `r` to jump to a tab or close it again. "Finish review" in the comments tab and "send to chat" switch tabs. The top bar has one button for the panel (it reopens the last tab) plus "finish review".
 - Comments on your own PRs are notes for the agent by default; on anyone else's they are for your GitHub review. The switch now flips one PR, and the flip is remembered on that PR.
 - The summary strip leads with its chevron, and "description" and "reviews" on it open the panel straight onto that section.
+- Tooltips are the app's own: they open fast in the app's typeface, show the shortcut as a key, and go away as soon as you click, scroll or press Escape. Every hint in the app went through them, and the keys are split out of the text.
 - Keyboard shortcuts open as a card over the diff instead of growing the sidebar.
 - Analysis summaries, unit summaries, "why" lines and findings use inline markdown: identifiers, paths and values come as code.
 - The revision menu (click "rev N") can light up what each revision changed, the same highlight the unit's changelog offers.

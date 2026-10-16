@@ -97,9 +97,9 @@ export function WritePreviewToggle({
   onChange: (mode: ComposerMode) => void;
   testId?: string;
 }) {
-  const options: { value: ComposerMode; label: string; title: string }[] = [
-    { value: "write", label: "Write", title: "Edit the markdown (⌘⇧P)" },
-    { value: "preview", label: "Preview", title: `Preview (⌘⇧P). ${PREVIEW_LIMITS}` },
+  const options: { value: ComposerMode; label: string; tip: string }[] = [
+    { value: "write", label: "Write", tip: "Edit the markdown" },
+    { value: "preview", label: "Preview", tip: `Preview; ${PREVIEW_LIMITS}` },
   ];
   return (
     <div
@@ -108,7 +108,7 @@ export function WritePreviewToggle({
       className="inline-flex flex-none items-center rounded p-px"
       style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
     >
-      {options.map(({ value, label, title }) => {
+      {options.map(({ value, label, tip }) => {
         const active = mode === value;
         return (
           <button
@@ -116,7 +116,8 @@ export function WritePreviewToggle({
             type="button"
             data-testid={`${testId}-${value}`}
             aria-pressed={active}
-            title={title}
+            data-tip={tip}
+            data-tip-key="⌘⇧P"
             onClick={() => onChange(value)}
             className="rounded-sm px-1.5 text-2xs leading-4 transition-colors"
             style={{

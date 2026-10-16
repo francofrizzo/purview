@@ -13,11 +13,10 @@ import { IconChevron, IconEye, IconEyeOff, IconGenerated } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
 import { InlineMarkdown } from "./Markdown";
 
-const HIDE_REVIEWED_TITLE =
-  "Drop fully-viewed units out of the list. The unit you are reading stays put, so the diff pane never changes under you.";
+const HIDE_REVIEWED_TITLE = "Hide fully viewed units; the one you are reading stays";
 
 export const UNPLACED_TITLE =
-  "Hunks the analysis hasn't placed in a unit yet — usually new commits since the last analysis.";
+  "Hunks the analysis hasn't placed in a unit yet, usually new commits since the last analysis";
 
 const GROUPS: { attention: Attention; label: string; defaultOpen: boolean }[] = [
   { attention: "must-read", label: "Must read", defaultOpen: true },
@@ -119,7 +118,7 @@ export function UnitSidebar({
           type="button"
           data-testid="hide-reviewed-units"
           aria-pressed={hide}
-          title={HIDE_REVIEWED_TITLE}
+          data-tip={HIDE_REVIEWED_TITLE}
           onClick={() => update({ hideReviewedUnits: !hide })}
           className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs transition-colors"
           style={{
@@ -244,7 +243,7 @@ function UnplacedGroup({
       <button
         type="button"
         onClick={onSelect}
-        title={UNPLACED_TITLE}
+        data-tip={UNPLACED_TITLE}
         aria-current={selected ? "true" : undefined}
         className="flex w-full items-center gap-1.5 border-l-2 px-2.5 py-1.5 text-xs font-medium transition-colors"
         style={{
@@ -313,7 +312,7 @@ function RemovedRow({ unit }: { unit: ReviewUnit }) {
         type="button"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
-        title={removedTitle(unit.removedAtRevision)}
+        data-tip={removedTitle(unit.removedAtRevision)}
         data-testid={`removed-unit-${unit.id}`}
         className="sidebar-row-btn w-full border-l-2 px-2.5 py-2 text-left transition-colors"
         style={{ borderColor: "transparent", background: "transparent" }}
@@ -394,7 +393,7 @@ function UnitRow({
             <span
               className="mt-[3px] flex flex-none text-xs"
               style={{ color: "var(--fg-faint)" }}
-              title="Detected by Purview, not by the analysis"
+              data-tip="Detected by Purview, not by the analysis"
               data-testid="generated-unit-icon"
             >
               <IconGenerated width={12} height={12} />
@@ -409,7 +408,7 @@ function UnitRow({
           )}
           <span
             className="min-w-0 flex-1 break-words pr-3 text-[13px] font-medium leading-[18px]"
-            title={unit.title}
+            data-tip={unit.title}
             style={{ color: p.total > 0 && p.viewed === p.total ? "var(--fg-muted)" : "var(--fg)" }}
           >
             <InlineMarkdown text={unit.title} />
@@ -431,7 +430,8 @@ function UnitRow({
       {generated ? null : (
       <button
         type="button"
-        title="Unit actions"
+        data-tip="Unit actions"
+        aria-label="Unit actions"
         data-testid={`unit-menu-${unit.id}`}
         onClick={(e) => {
           e.stopPropagation();
@@ -466,7 +466,7 @@ export function MatchBadge({ count }: { count: number }) {
     <span
       className="chip flex-none tabular-nums"
       data-testid="match-badge"
-      title={`${count} search ${count === 1 ? "match" : "matches"}`}
+      data-tip={`${count} search ${count === 1 ? "match" : "matches"}`}
       style={{ background: "var(--search-match)", color: "var(--fg)" }}
     >
       {count}

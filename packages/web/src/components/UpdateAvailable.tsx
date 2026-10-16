@@ -57,7 +57,7 @@ function UpdateChip({ latest, compact }: { latest: string; compact: boolean }) {
         data-testid="update-available"
         aria-expanded={open}
         aria-label={`Purview ${latest} is available`}
-        title={`Purview ${latest} is available`}
+        data-tip={`Purview ${latest} is available`}
         onClick={() => setOpen((v) => !v)}
         style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
       >

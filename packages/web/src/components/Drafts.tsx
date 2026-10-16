@@ -273,7 +273,8 @@ export function CommentComposer({
           type="button"
           className="absolute right-2 top-2 rounded p-1 hover:bg-[var(--bg-hover)]"
           onClick={cancel}
-          title="Discard (esc)"
+          data-tip="Discard"
+          data-tip-key="esc"
           aria-label="Discard"
           style={{ color: "var(--fg-faint)" }}
         >
@@ -317,7 +318,7 @@ export function CommentComposer({
             <CopyForAgentButton
               iconOnly
               testId="copy-composer"
-              title="Copy this comment, with the code it points at, as markdown"
+              tip="Copy with the code it points at, as markdown"
               disabled={!body.trim()}
               text={() =>
                 formatComment(
@@ -341,11 +342,12 @@ export function CommentComposer({
               className="btn"
               data-testid="composer-send-to-chat"
               disabled={!body.trim()}
-              title={
+              data-tip={
                 chatBusy
-                  ? "The chat is still replying: this is queued and sent when it finishes, with this line attached. (⌘⇧↵)"
-                  : "Ask the review chat instead, with this line attached. Nothing is saved as a draft. (⌘⇧↵)"
+                  ? "Queued for the chat; sent when it finishes, with this line attached"
+                  : "Ask the chat instead, with this line attached; nothing is saved"
               }
+              data-tip-key="⌘⇧↵"
               onClick={() => onSendToChat(body.trim())}
             >
               <IconChat width={11} height={11} />
@@ -356,11 +358,10 @@ export function CommentComposer({
             type="button"
             className={forAgent ? "btn btn-agent" : "btn btn-primary"}
             data-testid="composer-save"
-            title={
-              forAgent
-                ? `${AUDIENCE_HINT.agent}. (⌘↵)`
-                : "Saved on this machine; it reaches GitHub when you sync or finish the review. (⌘↵)"
+            data-tip={
+              forAgent ? AUDIENCE_HINT.agent : "Saved on this machine until you sync or finish the review"
             }
+            data-tip-key="⌘↵"
             disabled={!body.trim() || pending}
             onClick={() => onSubmit(body.trim())}
           >
@@ -381,7 +382,7 @@ export function ByAgentChip({ comment }: { comment: Pick<DraftComment, "author">
       className="chip flex-none"
       data-testid="by-agent"
       style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
-      title={`Drafted by ${name} in the review chat`}
+      data-tip={`Drafted by ${name} in the review chat`}
     >
       by {name}
     </span>
@@ -413,7 +414,7 @@ export function AgentEditNote({
             style={{ color: "var(--fg-muted)" }}
             disabled={busy}
             onClick={() => onUndo(comment.id)}
-            title={`Go back to the text this draft had before ${name}'s edit`}
+            data-tip={`Go back to the text before ${name}'s edit`}
           >
             undo
           </button>
@@ -849,7 +850,7 @@ export function DraftsDrawer({
               className="flex items-center gap-1.5 px-3 py-1.5 text-2xs"
               style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
             >
-              <span className="min-w-0 flex-1 truncate" title={d.body}>
+              <span className="min-w-0 flex-1 truncate" data-tip={d.body}>
                 <AgentName actor={d.deletedBy} /> deleted a draft on{" "}
                 <span className="font-mono">{commentAnchorLabel(d)}</span>
               </span>
@@ -866,7 +867,8 @@ export function DraftsDrawer({
                 type="button"
                 className="flex-none"
                 style={{ color: "var(--fg-faint)" }}
-                title="Dismiss"
+                data-tip="Dismiss"
+                aria-label="Dismiss"
                 onClick={() => setDismissed((cur) => new Set([...cur, d.id]))}
               >
                 <IconClose width={9} height={9} />
@@ -948,10 +950,10 @@ export function DraftsDrawer({
                         type="button"
                         className="btn"
                         data-testid="drawer-send-to-chat"
-                        title={
+                        data-tip={
                           chatBusy
-                            ? "The chat is still replying: the notes are queued and sent when it finishes."
-                            : "Hand these notes to the review chat, as one message with each note attached"
+                            ? "Queued for the chat; sent when it finishes"
+                            : "Hand these notes to the chat as one message, each note attached"
                         }
                         onClick={() => onSendToChat(notes)}
                       >
@@ -1035,7 +1037,7 @@ function GithubThreadsSection({ github }: { github: DrawerThreads }) {
                   {g.label}
                 </span>
                 {g.bot ? <BotChip /> : null}
-                <span className="tabular-nums" style={{ color: "var(--fg-faint)" }} title={`${open} unresolved of ${g.threads.length}`}>
+                <span className="tabular-nums" style={{ color: "var(--fg-faint)" }} data-tip={`${open} unresolved of ${g.threads.length}`}>
                   {open}/{g.threads.length} open
                 </span>
                 {g.bot ? (
@@ -1045,12 +1047,12 @@ function GithubThreadsSection({ github }: { github: DrawerThreads }) {
                     className="ml-auto underline"
                     style={{ color: "var(--fg-faint)" }}
                     disabled={hidden && !filters.showAiReviewers}
-                    title={
+                    data-tip={
                       hidden
                         ? filters.showAiReviewers
                           ? `Show ${g.label}'s threads again`
-                          : "AI reviewers are hidden — turn them back on in the filters"
-                        : `Hide every thread ${g.label} started, in the diff and here`
+                          : "AI reviewers are hidden; turn them on in the filters"
+                        : `Hide every thread ${g.label} started`
                     }
                     onClick={() => github.onBotHidden(g.key, !hidden)}
                   >
@@ -1098,7 +1100,7 @@ function GithubThreadRow({ thread, onJump }: { thread: RemoteThread; onJump: () 
         background: "var(--bg)",
         opacity: thread.isResolved ? 0.7 : undefined,
       }}
-      title={`${thread.path}${line !== null && thread.subjectType !== "file" ? `:${lines}` : ""} — show it in the diff`}
+      data-tip={`${thread.path}${line !== null && thread.subjectType !== "file" ? `:${lines}` : ""}; show it in the diff`}
       onClick={onJump}
     >
       <span className="flex items-center gap-1.5 text-2xs">

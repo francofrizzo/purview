@@ -192,7 +192,7 @@ export function Modal({
               type="button"
               className="btn"
               data-testid="modal-close"
-              title="Close"
+              data-tip="Close"
               aria-label="Close"
               onClick={onClose}
             >

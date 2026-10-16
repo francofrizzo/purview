@@ -245,7 +245,7 @@ function CommentColumn({
             e.stopPropagation();
             onComment();
           }}
-          title={label}
+          data-tip={label}
           aria-label={label}
           // Hover-only, the same 18px rounded square as the marker: in the
           // marker's slot on a line without comments, just left of it on one
@@ -340,10 +340,10 @@ function RemovalMarkers({ removedAbove, removedBelow }: RemovalMarkerProps) {
   return (
     <>
       {removedAbove ? (
-        <span className="removed-marker" data-edge="above" title={removedAbove} aria-label={removedAbove} />
+        <span className="removed-marker" data-edge="above" data-tip={removedAbove} aria-label={removedAbove} />
       ) : null}
       {removedBelow ? (
-        <span className="removed-marker" data-edge="below" title={removedBelow} aria-label={removedBelow} />
+        <span className="removed-marker" data-edge="below" data-tip={removedBelow} aria-label={removedBelow} />
       ) : null}
     </>
   );

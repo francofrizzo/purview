@@ -213,7 +213,7 @@ export function FinishReviewPanel({
                       className="btn justify-center whitespace-nowrap px-2 font-semibold hover:brightness-110"
                       style={verdictFill(e.tone)}
                       disabled={submitting}
-                      title={e.blurb}
+                      data-tip={e.blurb}
                       onClick={() => setArming(e.event)}
                     >
                       {e.label}

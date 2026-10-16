@@ -334,6 +334,16 @@
     border-color: var(--agent);
   }
 
+  /* A tooltip (components/Tooltip.tsx): the UI face whatever it hangs off. */
+  .tip {
+    font-family: var(--font-ui);
+    color: var(--fg);
+    border-color: var(--border-strong);
+  }
+  .tip kbd {
+    font-size: 0.95em;
+  }
+
   .chip {
     @apply inline-flex flex-none items-center gap-1 whitespace-nowrap rounded px-1.5 py-px text-2xs font-medium leading-4 tracking-tight;
   }

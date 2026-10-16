@@ -96,7 +96,7 @@ export function PrList() {
         </div>
         <div className="flex flex-none items-center gap-2">
           <UpdateAvailable />
-          <Link to="/settings" state={{ background }} className="btn" title="Settings">
+          <Link to="/settings" state={{ background }} className="btn" data-tip="Settings">
             <IconSettings width={12} height={12} />
             settings
           </Link>
@@ -216,7 +216,7 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
           <span
             className="chip flex-none"
             style={{ color: "var(--fg-faint)", background: "var(--bg-hover)" }}
-            title={`Hosted on ${group.host}`}
+            data-tip={`Hosted on ${group.host}`}
           >
             {group.host}
           </span>
@@ -225,7 +225,7 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
           <span
             className="chip flex-none"
             style={{ color: "var(--fg-muted)", background: "var(--bg-hover)" }}
-            title="Archived repo: no automatic analyses or watch imports. Unarchive from the ⋯ menu."
+            data-tip="Archived repo: no automatic analyses or watch imports; unarchive from the ⋯ menu"
           >
             archived
           </span>
@@ -234,10 +234,10 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
           <span
             className="flex flex-none items-center gap-1 text-2xs"
             style={{ color: "var(--fg-faint)" }}
-            title={
+            data-tip={
               repo.watch
-                ? `Polling for review requests — last checked ${formatFullTimestamp(repo.watch.checkedAt)}`
-                : "Polling for review requests — no check yet"
+                ? `Polling for review requests; last checked ${formatFullTimestamp(repo.watch.checkedAt)}`
+                : "Polling for review requests; no check yet"
             }
           >
             <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--ok)" }} />
@@ -251,7 +251,7 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
           <button
             type="button"
             className="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
-            title={`Add a PR from ${group.owner}/${group.repo} by number`}
+            data-tip={`Add a PR from ${group.owner}/${group.repo} by number`}
             aria-label={`Add a PR from ${group.owner}/${group.repo} by number`}
             aria-expanded={addOpen}
             data-testid={`repo-add-pr-${group.key}`}
@@ -265,7 +265,7 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
           to={settingsHref}
           state={{ background }}
           className="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
-          title={`Settings for ${group.owner}/${group.repo}`}
+          data-tip={`Settings for ${group.owner}/${group.repo}`}
           aria-label={`Settings for ${group.owner}/${group.repo}`}
           data-testid={`repo-settings-${group.key}`}
           style={{ color: "var(--fg-faint)" }}
@@ -515,8 +515,7 @@ function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => voi
   );
 }
 
-const ARCHIVE_HINT =
-  "Archiving is local only — it hides the PR here and changes nothing on GitHub.";
+const ARCHIVE_HINT = "local only, nothing changes on GitHub";
 
 /**
  * One PR. The title line carries only what is out of the ordinary: "open" and
@@ -557,7 +556,7 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
           style={{ color: "var(--fg-faint)" }}
         >
           {meta?.author ? (
-            <span className="flex items-center gap-1" title={`Opened by ${meta.author}`}>
+            <span className="flex items-center gap-1" data-tip={`Opened by ${meta.author}`}>
               <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
               {meta.author}
             </span>
@@ -565,7 +564,7 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
           {visibleReviewRequest(pr.reviewRequest, pr.state) ? (
             <ReviewRequestAge request={pr.reviewRequest} state={pr.state} />
           ) : null}
-          <span title={formatFullTimestamp(pr.addedAt)}>added {formatAddedAt(pr.addedAt)}</span>
+          <span data-tip={formatFullTimestamp(pr.addedAt)}>added {formatAddedAt(pr.addedAt)}</span>
           <span>{pr.unitCount ? `${pr.unitCount} units` : "not analyzed"}</span>
         </div>
         <RowStatus pr={pr} className="mt-1.5 flex flex-wrap sm:hidden" />
@@ -578,7 +577,7 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
         className="absolute right-2 top-1/2 flex-none -translate-y-1/2 rounded p-1.5 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
         data-testid={`archive-${pr.key}`}
         disabled={setArchived.isPending}
-        title={`${archived ? "Unarchive" : "Archive"} — ${ARCHIVE_HINT}`}
+        data-tip={`${archived ? "Unarchive" : "Archive"}; ${ARCHIVE_HINT}`}
         aria-label={archived ? "Unarchive" : "Archive"}
         onClick={() => setArchived.mutate({ key: pr.key, archived: !archived })}
         style={{ color: "var(--fg-faint)", background: "var(--bg-hover)" }}

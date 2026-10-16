@@ -40,7 +40,7 @@ export function SidebarRail({
         type="button"
         className="flex-none rounded p-1"
         style={{ color: "var(--fg-faint)" }}
-        title={expandLabel}
+        data-tip={expandLabel}
         aria-label={expandLabel}
         onClick={onExpand}
       >
@@ -66,7 +66,7 @@ export function SidebarRail({
                 key={u.id}
                 type="button"
                 onClick={() => onSelect(u.id)}
-                title={label}
+                data-tip={label}
                 aria-label={label}
                 className="sidebar-rail-item relative flex flex-none items-center justify-center rounded font-mono text-2xs tabular-nums"
                 style={{
@@ -135,7 +135,7 @@ function UnplacedCell({
     <button
       type="button"
       onClick={onSelect}
-      title={label}
+      data-tip={label}
       aria-label={label}
       data-testid="rail-unplaced"
       className="sidebar-rail-item relative mt-1 flex flex-none items-center justify-center rounded font-mono text-2xs"

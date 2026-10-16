@@ -138,12 +138,12 @@ export function CommentCard({
             onClick={anchor.onJump}
             // The file's name and the line are what tell comments apart in a
             // narrow list; the directory is on hover.
-            title={`${anchor.label} — show it in the diff`}
+            data-tip={`${anchor.label}; show it in the diff`}
           >
             {anchor.label.slice(anchor.label.lastIndexOf("/") + 1)}
           </button>
         ) : null}
-        <span className="flex-none font-medium" style={{ color: meta.ink }} title={meta.hint}>
+        <span className="flex-none font-medium" style={{ color: meta.ink }} data-tip={meta.hint}>
           {meta.label}
         </span>
         {/* Inline, the covered lines light up; the words still say so (and
@@ -157,7 +157,7 @@ export function CommentCard({
         <ByAgentChip comment={comment} />
         <PendingImagesChip comment={comment} />
         {Number.isFinite(age) ? (
-          <span className="flex-none" style={{ color: "var(--fg-faint)" }} title={formatFullTimestamp(comment.createdAt!)}>
+          <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(comment.createdAt!)}>
             {formatCompactAge(age) === "just now" ? "just now" : `${formatCompactAge(age)} ago`}
           </span>
         ) : null}
@@ -169,13 +169,13 @@ export function CommentCard({
             <CopyForAgentButton
               iconOnly
               testId={`copy-comment-${comment.id}`}
-              title="Copy this comment, with its code, for an agent"
+              tip="Copy with its code, for an agent"
               text={() => formatComment(comment, exportCtx)}
             />
           ) : null}
           {canMove ? (
             <IconAction
-              title={forAgent ? "Move to GitHub: make it part of your review" : "Move to agent: keep it as a note for a coding agent"}
+              tip={forAgent ? "Move to GitHub: part of your review" : "Move to agent: a note for a coding agent"}
               testId={`move-${comment.id}`}
               disabled={moving}
               onClick={() => onMove!(comment, forAgent ? "github" : "agent")}
@@ -185,7 +185,7 @@ export function CommentCard({
           ) : null}
           {canPublish ? (
             <IconAction
-              title="Publish now: post it on GitHub as a public comment, outside any review"
+              tip="Publish now: a public comment on GitHub, outside any review"
               testId={`publish-${comment.id}`}
               disabled={publishing}
               onClick={() => setConfirmPublish(true)}
@@ -195,7 +195,7 @@ export function CommentCard({
           ) : null}
           {onEdit && !editing ? (
             <IconAction
-              title={status === "submitted" ? "Edit (this comment is public)" : "Edit"}
+              tip={status === "submitted" ? "Edit; this comment is public" : "Edit"}
               testId={`edit-${comment.id}`}
               onClick={() => setEditing(true)}
             >
@@ -204,7 +204,7 @@ export function CommentCard({
           ) : null}
           {canDelete ? (
             <IconAction
-              title={status === "pushed" ? "Delete (also from your pending review on GitHub)" : "Delete"}
+              tip={status === "pushed" ? "Delete; also from your pending review on GitHub" : "Delete"}
               testId={`delete-${comment.id}`}
               danger
               disabled={deleting}
@@ -294,7 +294,7 @@ function PendingImagesChip({ comment }: { comment: Pick<DraftComment, "body" | "
       className="chip"
       data-testid="pending-images"
       style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
-      title={`${n === 1 ? "This image is" : "These images are"} only on this machine; uploaded to GitHub when the comment is pushed`}
+      data-tip={`${n === 1 ? "This image is" : "These images are"} only on this machine; uploaded to GitHub when the comment is pushed`}
     >
       {n} {n === 1 ? "image" : "images"}
     </span>
@@ -302,14 +302,14 @@ function PendingImagesChip({ comment }: { comment: Pick<DraftComment, "body" | "
 }
 
 function IconAction({
-  title,
+  tip,
   testId,
   onClick,
   disabled,
   danger,
   children,
 }: {
-  title: string;
+  tip: string;
   testId?: string;
   onClick: () => void;
   disabled?: boolean;
@@ -319,8 +319,8 @@ function IconAction({
   return (
     <button
       type="button"
-      title={title}
-      aria-label={title}
+      data-tip={tip}
+      aria-label={tip}
       data-testid={testId}
       disabled={disabled}
       onClick={(e) => {
@@ -393,7 +393,8 @@ export function CommentPill({
       data-resolved={resolved ? "true" : undefined}
       data-expanded={expanded ? "true" : "false"}
       aria-expanded={expanded}
-      title={title}
+      data-tip={title}
+      aria-label={title}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();

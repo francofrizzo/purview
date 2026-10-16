@@ -76,7 +76,7 @@ export function AnalysisStats({ job }: { job?: AnalysisJob | null }) {
         data-testid="analysis-stats"
         aria-label="Analysis run stats"
         aria-expanded={open}
-        title="Analysis run stats"
+        data-tip="Analysis run stats"
         onClick={() => setOpen((v) => !v)}
         className="inline-flex items-center"
         style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
@@ -115,7 +115,7 @@ export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
     <span
       className="chip flex-none"
       data-testid="analysis-chip"
-      title={
+      data-tip={
         job.status === "failed"
           ? (job.error ?? "The analysis failed")
           : (job.progress ?? STATUS_TEXT[job.status])
@@ -209,7 +209,7 @@ export function ArchivedSkipBanner({
             type="button"
             className="inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs"
             data-testid="archived-skip-dismiss"
-            title="Hide this note; the hunks stay under Not in any unit"
+            data-tip="Hide this note; the hunks stay under Not in any unit"
             style={{ color: "var(--fg-muted)" }}
             disabled={working}
             onClick={onDismiss}

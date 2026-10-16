@@ -102,7 +102,7 @@ export function InlineCommentList({
             data-testid="inline-add-comment"
             className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
             style={{ color: "var(--fg-faint)" }}
-            title={`Add a comment on ${label}`}
+            data-tip={`Add a comment on ${label}`}
             onClick={onAdd}
           >
             <IconPlus width={9} height={9} /> add a comment
@@ -115,7 +115,7 @@ export function InlineCommentList({
           data-testid="inline-comments-close"
           className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
           style={{ color: "var(--fg-faint)" }}
-          title="Hide these comments (the marker in the gutter brings them back)"
+          data-tip="Hide these comments; the marker in the gutter brings them back"
           onClick={onCollapse}
         >
           hide <IconClose width={9} height={9} />

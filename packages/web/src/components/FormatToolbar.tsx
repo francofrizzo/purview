@@ -160,7 +160,8 @@ export function FormatToolbar({
           <ToolButton
             key={action}
             testId={`${testId}-${action}`}
-            title={chord ? `${label} (${chord})` : label}
+            tip={label}
+            tipKey={chord ?? undefined}
             label={label}
             disabled={disabled}
             onClick={() => fmt.apply(action)}
@@ -174,7 +175,8 @@ export function FormatToolbar({
           <span aria-hidden className="mx-1 h-3 w-px flex-none" style={{ background: "var(--border)" }} />
           <ToolButton
             testId={`${testId}-suggestion`}
-            title={suggest.reason ?? `${suggestLabel.label} (${suggestLabel.chord})`}
+            tip={suggest.reason ?? suggestLabel.label}
+            tipKey={suggest.reason ? undefined : (suggestLabel.chord ?? undefined)}
             label={suggestLabel.label}
             disabled={disabled || !suggest.lines}
             onClick={() => fmt.apply("suggestion")}
@@ -189,14 +191,16 @@ export function FormatToolbar({
 
 function ToolButton({
   testId,
-  title,
+  tip,
+  tipKey,
   label,
   disabled,
   onClick,
   children,
 }: {
   testId: string;
-  title: string;
+  tip: string;
+  tipKey?: string;
   label: string;
   disabled: boolean;
   onClick: () => void;
@@ -208,7 +212,8 @@ function ToolButton({
       data-testid={testId}
       className="flex h-5 w-5 items-center justify-center rounded transition-colors enabled:hover:bg-[var(--bg-hover)] enabled:hover:text-[var(--fg)] disabled:opacity-40"
       style={{ color: "var(--fg-faint)" }}
-      title={title}
+      data-tip={tip}
+      data-tip-key={tipKey}
       aria-label={label}
       disabled={disabled}
       // Keep the textarea's selection: a mousedown on the button would move focus.

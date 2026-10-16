@@ -102,7 +102,7 @@ export function FileTree({
             style={{ paddingLeft: 8 + depth * 10, color: "var(--fg-muted)" }}
           >
             <IconChevron open={!isCollapsed} width={9} height={9} />
-            <MiddleTruncate text={kid.name} tail={10} title={kid.path} />
+            <MiddleTruncate text={kid.name} tail={10} tip={kid.path} />
           </button>,
         );
         if (!isCollapsed) out.push(...renderNode(kid, depth + 1));
@@ -127,7 +127,7 @@ export function FileTree({
             }}
           >
             <IconFile width={10} height={10} style={{ opacity: generated ? 0.4 : 0.6, flex: "none" }} />
-            <MiddleTruncate text={kid.name} tail={13} title={kid.file.path} />
+            <MiddleTruncate text={kid.name} tail={13} tip={kid.file.path} />
             {generated ? <GeneratedTag generated={generated} /> : null}
             {matchCounts?.get(kid.file.path) ? (
               <MatchBadge count={matchCounts.get(kid.file.path)!} />
@@ -137,7 +137,7 @@ export function FileTree({
             </span>
             <span
               className="h-1.5 w-1.5 flex-none rounded-full"
-              title={viewed ? "all hunks viewed" : "not fully viewed"}
+              data-tip={viewed ? "All hunks viewed" : "Not fully viewed"}
               style={{
                 background: viewed ? "var(--ok)" : "var(--border-strong)",
               }}

@@ -53,7 +53,7 @@ export function CopyForAgentButton({
   /** Built lazily: the text depends on what is on screen at click time. */
   text,
   label,
-  title,
+  tip,
   disabled,
   iconOnly,
   className,
@@ -61,7 +61,7 @@ export function CopyForAgentButton({
 }: {
   text: () => string;
   label?: string;
-  title: string;
+  tip: string;
   disabled?: boolean;
   iconOnly?: boolean;
   className?: string;
@@ -73,8 +73,8 @@ export function CopyForAgentButton({
   const button = iconOnly ? (
     <button
       type="button"
-      title={copied ? "copied" : title}
-      aria-label={title}
+      data-tip={copied ? "Copied" : tip}
+      aria-label={tip}
       data-testid={testId}
       data-copied={copied ? "1" : undefined}
       disabled={disabled}
@@ -91,7 +91,7 @@ export function CopyForAgentButton({
     <button
       type="button"
       className={`btn ${className ?? ""}`}
-      title={title}
+      data-tip={tip}
       data-testid={testId}
       data-copied={copied ? "1" : undefined}
       disabled={disabled}
@@ -166,7 +166,7 @@ export function CopyBundleControls({
         testId={testId}
         disabled={count === 0}
         label={`copy all for agent (${count})`}
-        title="Copy every comment below as one markdown work order"
+        tip="Copy them all as one markdown work order"
         text={() =>
           formatBundle(source.comments, source.ctx, {
             repoLabel: source.repoLabel,
@@ -180,7 +180,7 @@ export function CopyBundleControls({
       <label
         className="flex cursor-pointer items-center gap-1 text-2xs"
         style={{ color: "var(--fg-faint)" }}
-        title={`Also include the ${submitted} already-submitted ${submitted === 1 ? "comment" : "comments"}`}
+        data-tip={`Also include the ${submitted} already-submitted ${submitted === 1 ? "comment" : "comments"}`}
       >
         <input
           type="checkbox"
@@ -275,10 +275,10 @@ function CopyAndDeleteButton({
         className="btn"
         data-testid={testId}
         disabled={n === 0 || phase === "working"}
-        title={
+        data-tip={
           pushed > 0
-            ? `Copy these comments for an agent, then delete the ${n} copied (${pushed} pushed ones are removed from the pending review on GitHub too)`
-            : `Copy these comments for an agent, then delete the ${n} copied`
+            ? `Copy for an agent, then delete the ${n} copied; ${pushed} pushed ${pushed === 1 ? "one leaves" : "ones leave"} the pending review on GitHub too`
+            : `Copy for an agent, then delete the ${n} copied`
         }
         style={
           phase === "confirm"

@@ -114,7 +114,7 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
                 style={{ border: "1px solid var(--border)" }}
               />
             ) : (
-              <a key={i} href={local.src} target="_blank" rel="noreferrer noopener" title={node.alt || local.name}>
+              <a key={i} href={local.src} target="_blank" rel="noreferrer noopener" data-tip={node.alt || local.name}>
                 <img
                   src={local.src}
                   alt={node.alt || local.name}
@@ -163,7 +163,7 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
               type="button"
               className="inline rounded px-1 py-px text-left font-medium transition-colors hover:bg-[var(--accent-soft)]"
               style={{ color: "var(--accent)", boxShadow: "inset 0 -1px 0 var(--accent-soft)" }}
-              title={`${link.title} (click to open)`}
+              data-tip={link.title}
               onClick={link.onOpen}
             >
               {link.label.number !== undefined ? (
@@ -187,7 +187,7 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
                 border: "1px solid var(--border)",
                 background: "var(--bg-inset)",
               }}
-              title={`${link.title} (click to open)`}
+              data-tip={link.title}
               onClick={link.onOpen}
             >
               {node.type === "code" ? node.text : null}
@@ -299,7 +299,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
           data-testid="code-wrap"
           aria-pressed={wrap}
           aria-label={wrap ? "Don't wrap lines" : "Wrap lines"}
-          title={wrap ? "Don't wrap lines" : "Wrap lines"}
+          data-tip={wrap ? "Don't wrap lines" : "Wrap lines"}
           className="ml-auto inline-flex items-center rounded p-0.5 hover:!text-[var(--fg)]"
           style={{ color: wrap ? "var(--accent)" : "var(--fg-faint)" }}
           onClick={() => setWrap((v) => !v)}
@@ -310,7 +310,7 @@ function CodeBlock({ code, lang }: { code: string; lang: string | null }) {
           type="button"
           data-testid="code-copy"
           aria-label="Copy code"
-          title={copied ? "Copied" : "Copy code"}
+          data-tip={copied ? "Copied" : "Copy code"}
           className="inline-flex items-center rounded p-0.5 hover:!text-[var(--fg)]"
           style={{ color: copied ? "var(--ok)" : "var(--fg-faint)" }}
           onClick={copy}
@@ -433,7 +433,7 @@ function MermaidBlock({ code, open }: { code: string; open: boolean }) {
       <button
         type="button"
         className="btn absolute right-1.5 top-1.5 px-1.5 py-0.5 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
-        title="Enlarge diagram"
+        data-tip="Enlarge diagram"
         aria-label="Enlarge diagram"
         data-testid="mermaid-enlarge"
         onClick={() => setEnlarged(true)}

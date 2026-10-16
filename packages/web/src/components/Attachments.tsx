@@ -210,11 +210,7 @@ export function AttachButton({
       type="button"
       className="flex-none rounded p-1 enabled:hover:bg-[var(--bg-hover)] disabled:opacity-50"
       style={{ color: "var(--fg-faint)" }}
-      title={
-        disabled
-          ? "Switch to Write to attach an image"
-          : "Attach an image (or paste / drop one). It is uploaded to GitHub when the comment is pushed."
-      }
+      data-tip={disabled ? "Switch to Write to attach an image" : "Attach an image, or paste or drop one"}
       aria-label="Attach an image"
       data-testid={testId}
       disabled={disabled}
@@ -254,7 +250,7 @@ export function AttachmentStrip({
                 key={id}
                 className="group/thumb relative h-14 w-14 flex-none overflow-hidden rounded"
                 style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
-                title={a?.name ?? "attachment"}
+                data-tip={a?.name ?? "attachment"}
                 data-testid={`attachment-thumb-${id}`}
               >
                 {video ? (
@@ -266,7 +262,7 @@ export function AttachmentStrip({
                   type="button"
                   className="absolute right-0.5 top-0.5 rounded-full p-0.5 opacity-0 transition-opacity group-hover/thumb:opacity-100 focus-visible:opacity-100"
                   style={{ background: "var(--bg-raised)", color: "var(--fg)", boxShadow: "0 0 0 1px var(--border-strong)" }}
-                  title="Remove this image from the comment"
+                  data-tip="Remove this image"
                   aria-label="Remove this image"
                   data-testid={`attachment-remove-${id}`}
                   onClick={() => editor.remove(id)}
@@ -281,7 +277,7 @@ export function AttachmentStrip({
               key={`${name}-${i}`}
               className="flex h-14 w-14 flex-none items-center justify-center rounded"
               style={{ background: "var(--bg-inset)", border: "1px dashed var(--border-strong)", color: "var(--fg-faint)" }}
-              title={`Uploading ${name}…`}
+              data-tip={`Uploading ${name}…`}
               data-testid="attachment-uploading"
             >
               <IconSpinner width={12} height={12} />

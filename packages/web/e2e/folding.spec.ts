@@ -47,7 +47,7 @@ test.describe("folding keeps the header where the reader sees it", () => {
     await expectUnderFileHeader(page, B);
     const before = await headerTop(page, B);
 
-    await clickAt(hunkHeader(page, B).getByRole("button", { name: "Mark as viewed (v)" }));
+    await clickAt(hunkHeader(page, B).getByRole("button", { name: "Mark as viewed" }));
     await expect(hunkHeader(page, B)).toHaveAttribute("data-collapsed", "true");
     await settledScrollTop(page);
     // A click never scrolls the page away: still focused, still right there.

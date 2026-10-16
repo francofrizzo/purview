@@ -2099,7 +2099,7 @@ export function DiffPane({
                 setLinePrompt(null);
               }
             }}
-            title="A line number, or a range like 12-18 · enter to comment · esc to cancel"
+            data-tip="A line number, or a range like 12-18; enter comments, esc cancels"
           />
           {linePrompt.error ? (
             <span className="text-2xs" style={{ color: "var(--risk)" }}>
@@ -2129,12 +2129,12 @@ export function DiffPane({
             className="btn"
             data-testid="comment-selection-button"
             disabled={!selectionTarget}
-            title={
+            data-tip={
               selectionTarget
                 ? selectionCount > 1
                   ? `Comment on lines ${Math.min(selection.anchor, selection.focus)}–${Math.max(selection.anchor, selection.focus)}`
                   : "Comment on this line"
-                : "A comment can only cover lines inside one hunk — shorten the selection"
+                : "A comment can only cover lines inside one hunk; shorten the selection"
             }
             onClick={commentOnSelection}
           >
@@ -2155,7 +2155,9 @@ export function DiffPane({
             className="text-2xs"
             style={{ color: "var(--fg-faint)" }}
             onClick={() => setSelection(null)}
-            title="Clear the selection (esc)"
+            data-tip="Clear the selection"
+            data-tip-key="esc"
+            aria-label="Clear the selection"
           >
             <IconClose width={10} height={10} />
           </button>
@@ -2302,7 +2304,7 @@ export function DiffPane({
         data-testid={`refold-${region.key}`}
         data-kind={region.kind}
         className="diff-refold"
-        title={`Fold ${region.label}`}
+        data-tip={`Fold ${region.label}`}
         aria-label={`Fold ${region.label}`}
         aria-expanded
         // the gutter underneath starts a quote selection on mousedown
@@ -2332,9 +2334,9 @@ export function DiffPane({
           data-testid="gap-elsewhere"
           className="flex items-center gap-2 border-y px-3 py-0.5 font-mono text-2xs"
           style={{ borderColor: "var(--border)", background: "var(--bg-inset)", color: "var(--fg-faint)" }}
-          title={
+          data-tip={
             row.where === "hidden"
-              ? "These lines changed too, in a hunk this view does not show (another unit, or filtered out)"
+              ? "These lines changed too, in a hunk this view does not show"
               : `These lines changed too; their hunk is shown ${row.where} in this view`
           }
         >
@@ -2377,7 +2379,7 @@ export function DiffPane({
             type="button"
             className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-full border px-1.5 font-sans text-2xs leading-4 opacity-0 shadow-sm transition-opacity hover:text-[var(--accent)] focus-visible:opacity-100 group-hover/ctx:opacity-100"
             style={{ background: "var(--bg-raised)", borderColor: "var(--border-strong)", color: "var(--fg-muted)" }}
-            title={label}
+            data-tip={label}
             aria-label={label}
             data-testid="ctx-hide"
             onClick={() => hideContext(row.gapKey, row.side)}
@@ -2405,7 +2407,7 @@ export function DiffPane({
         type="button"
         className="rounded px-1.5 py-px transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
         style={{ color: "var(--fg-muted)" }}
-        title={title}
+        data-tip={title}
         aria-label={title}
         data-testid={testId}
         disabled={loading}
@@ -2493,7 +2495,7 @@ export function DiffPane({
                   e.stopPropagation();
                   setFileViewed(!allViewed);
                 }}
-                title={
+                data-tip={
                   allViewed
                     ? `Mark the ${shownIds.length} hunk${shownIds.length === 1 ? "" : "s"} ${scope} as not viewed`
                     : `Mark the ${shownIds.length} hunk${shownIds.length === 1 ? "" : "s"} ${scope} as viewed`
@@ -2544,7 +2546,7 @@ export function DiffPane({
               type="button"
               data-testid={`add-file-comment-${row.path}`}
               aria-label={`Comment on ${row.path} as a whole`}
-              title={`Comment on ${row.path} as a whole`}
+              data-tip={`Comment on ${row.path} as a whole`}
               className="inline-flex items-center hover:!text-[var(--fg)]"
               style={{ color: "var(--fg-faint)" }}
               onClick={(e) => {
@@ -2632,7 +2634,7 @@ export function DiffPane({
           data-kind={row.kind}
           aria-expanded={false}
           onClick={() => toggleFoldRegion(row.regionKey)}
-          title={`${row.label} — click to expand (z toggles every block in the focused hunk)`}
+          data-tip={`${row.label}; click to expand, z toggles every block in the focused hunk`}
           className="diff-fold-row"
         >
           <span className="row-head-fixed diff-fold-row-label">
@@ -2676,7 +2678,8 @@ export function DiffPane({
             boxShadow: row.seam ? "inset 0 1px 0 var(--border-strong)" : undefined,
             color: "var(--fg-muted)",
           }}
-          title="Focus this hunk (j/k)"
+          data-tip="Focus this hunk"
+          data-tip-key="j k"
           onClick={() => onFocusHunk(row.hunkId)}
         >
           <span className="row-head-fixed flex min-w-0 items-center gap-2">
@@ -2687,7 +2690,7 @@ export function DiffPane({
               e.stopPropagation();
               toggleHunkCollapsed(row.hunkId);
             }}
-            title={folded ? "expand hunk" : "collapse hunk"}
+            data-tip={folded ? "Expand hunk" : "Collapse hunk"}
             aria-label={folded ? "expand hunk" : "collapse hunk"}
             className="flex h-5 w-5 flex-none items-center justify-center rounded-sm transition-colors hover:opacity-80"
           >
@@ -2706,7 +2709,9 @@ export function DiffPane({
               pendingScrollRef.current = { anchor: foldAnchor(row.hunkId), at: performance.now() };
               onToggleViewed(row.hunkId, !st.viewed);
             }}
-            title={st.viewed ? "Mark as not viewed (v)" : "Mark as viewed (v)"}
+            data-tip={st.viewed ? "Mark as not viewed" : "Mark as viewed"}
+            data-tip-key="v"
+            aria-label={st.viewed ? "Mark as not viewed" : "Mark as viewed"}
             className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
             style={{
               borderColor: st.viewed ? "var(--ok)" : "var(--border-strong)",
@@ -2774,7 +2779,7 @@ export function DiffPane({
                 className="changed-in-chip chip flex-none whitespace-nowrap"
                 data-testid={`hunk-changed-in-${row.hunkId}`}
                 data-exact={h.exactAtCurrent ? "true" : "false"}
-                title={label.title}
+                data-tip={label.title}
               >
                 {label.text}
               </span>
@@ -2804,7 +2809,7 @@ export function DiffPane({
                   color: "var(--moved-fg)",
                   cursor: reachable ? "pointer" : "default",
                 }}
-                title={title}
+                data-tip={title}
                 onClick={(e) => {
                   e.stopPropagation();
                   if (reachable) onFocusHunk(reachable.hunkId);
@@ -2828,7 +2833,7 @@ export function DiffPane({
                   type="button"
                   data-testid={`hunk-unit-${row.hunkId}`}
                   className="hunk-unit-label flex min-w-0 items-center gap-1.5 text-2xs"
-                  title={`${unit.title} (${unit.attention})`}
+                  data-tip={`${unit.title} (${unit.attention})`}
                   onClick={(e) => {
                     e.stopPropagation();
                     onUnitClick?.(unit.id, row.hunkId);
@@ -2993,7 +2998,8 @@ export function DiffViewToggle({
             data-testid={`view-${value}`}
             aria-pressed={active}
             aria-label={`${label} view`}
-            title={`${label} view · d`}
+            data-tip={`${label} view`}
+            data-tip-key="d"
             onClick={() => onChange(value)}
             className="inline-flex flex-none items-center justify-center rounded-sm px-1.5 py-0.5 transition-colors"
             style={{
@@ -3028,7 +3034,8 @@ export function WrapToggle({
         data-testid="toggle-wrap"
         aria-pressed={wrap}
         aria-label="wrap long lines"
-        title="wrap long lines · w"
+        data-tip="Wrap long lines"
+        data-tip-key="w"
         onClick={() => onChange(!wrap)}
         className="inline-flex flex-none items-center justify-center rounded-sm px-1.5 py-0.5 transition-colors"
         style={{
@@ -3049,7 +3056,7 @@ export function NarrowPaneNote() {
     <span
       className="flex-none text-2xs"
       style={{ color: "var(--fg-faint)" }}
-      title="The pane is too narrow for side-by-side, so this diff is shown unified. Close a panel or widen the window."
+      data-tip="Too narrow for side-by-side, shown unified; close a panel or widen the window"
     >
       too narrow — unified
     </span>
@@ -3080,7 +3087,7 @@ export function CopyPathButton({ path, what = "path" }: { path: string; what?: s
       type="button"
       data-testid={`copy-path-${path}`}
       aria-label={`Copy ${path}`}
-      title={copied ? "Copied" : `Copy ${what}`}
+      data-tip={copied ? "Copied" : `Copy ${what}`}
       className="inline-flex flex-none items-center hover:!text-[var(--fg)]"
       style={{ color: copied ? "var(--ok)" : "var(--fg-faint)" }}
       onMouseDown={(e) => e.stopPropagation()}

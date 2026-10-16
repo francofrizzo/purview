@@ -84,7 +84,7 @@ export function UnitChangelog({
                   background: active ? "var(--warn-soft)" : "var(--bg-inset)",
                   color: active ? "var(--warn)" : "var(--fg-muted)",
                 }}
-                title={`Revision ${e.revision}`}
+                data-tip={`Revision ${e.revision}`}
               >
                 r{e.revision}
               </span>
@@ -109,9 +109,9 @@ export function UnitChangelog({
                   data-testid={`changelog-row-r${e.revision}`}
                   aria-label={`Highlight changes from r${e.revision}`}
                   aria-pressed={active}
-                  title={
+                  data-tip={
                     active
-                      ? `Showing the lines r${e.revision} changed · click to take it out, esc to clear all`
+                      ? `Showing the lines r${e.revision} changed; click to take it out, esc clears all`
                       : activeRevisions.length > 0
                         ? `Also highlight the lines r${e.revision} changed`
                         : `Highlight the lines r${e.revision} changed`

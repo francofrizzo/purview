@@ -77,10 +77,10 @@ export function DiffSearchBar({
       <Toggle
         testId="search-where"
         active={search.scope === "all"}
-        title={
+        tip={
           search.scope === "all"
-            ? "Searching the whole diff — ⌘F narrows to what's shown"
-            : `Searching ${scopeLabel} only — ⌘⇧F widens to the whole diff`
+            ? "Searching the whole diff; ⌘F narrows to what's shown"
+            : `Searching ${scopeLabel} only; ⌘⇧F widens to the whole diff`
         }
         onClick={() => search.setScope(search.scope === "all" ? "visible" : "all")}
       >
@@ -89,7 +89,7 @@ export function DiffSearchBar({
       <Toggle
         testId="search-case"
         active={search.caseSensitive}
-        title={search.caseSensitive ? "Matching case" : "Ignoring case"}
+        tip={search.caseSensitive ? "Matching case" : "Ignoring case"}
         onClick={() => search.setCaseSensitive(!search.caseSensitive)}
       >
         Aa
@@ -97,9 +97,9 @@ export function DiffSearchBar({
       <Toggle
         testId="search-scope"
         active={!search.changedOnly}
-        title={
+        tip={
           search.changedOnly
-            ? "Searching added and removed lines only — click to include context"
+            ? "Searching added and removed lines only; click to include context"
             : "Searching every line, context included"
         }
         onClick={() => search.setChangedOnly(!search.changedOnly)}
@@ -110,7 +110,9 @@ export function DiffSearchBar({
         type="button"
         className="ml-auto flex-none text-2xs"
         data-testid="search-close"
-        title="Close search (esc)"
+        data-tip="Close search"
+        data-tip-key="esc"
+        aria-label="Close search"
         style={{ color: "var(--fg-faint)" }}
         onClick={search.close}
       >
@@ -136,7 +138,7 @@ function StepButton({
   return (
     <button
       type="button"
-      title={label}
+      data-tip={label}
       aria-label={label}
       data-testid={testId}
       disabled={disabled}
@@ -151,13 +153,13 @@ function StepButton({
 
 function Toggle({
   active,
-  title,
+  tip,
   testId,
   onClick,
   children,
 }: {
   active: boolean;
-  title: string;
+  tip: string;
   testId: string;
   onClick: () => void;
   children: React.ReactNode;
@@ -165,7 +167,7 @@ function Toggle({
   return (
     <button
       type="button"
-      title={title}
+      data-tip={tip}
       data-testid={testId}
       aria-pressed={active}
       onClick={onClick}

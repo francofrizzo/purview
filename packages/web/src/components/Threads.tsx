@@ -56,13 +56,13 @@ export function age(iso: string | undefined): string | null {
 }
 
 /** "AI" chip for an AI reviewer: distinct from the "by Claude" chip of the review chat. */
-export function BotChip({ title }: { title?: string }) {
+export function BotChip({ tip }: { tip?: string }) {
   return (
     <span
       className="chip flex-none"
       data-testid="bot-chip"
       style={{ background: "var(--bot-soft)", color: "var(--bot)" }}
-      title={title ?? "An AI reviewer on GitHub"}
+      data-tip={tip ?? "An AI reviewer on GitHub"}
     >
       <IconBot width={10} height={10} />
       AI
@@ -85,26 +85,26 @@ export function RemoteCommentCard({ comment }: { comment: RemoteComment }) {
     >
       <header className="flex min-h-[22px] items-center gap-1.5 text-2xs">
         <AuthorAvatar author={author.kind === "bot" ? author.name : comment.author.login} url={comment.author.avatarUrl} size={16} />
-        <span className="min-w-0 truncate font-medium" style={{ color: "var(--fg)" }} title={comment.author.login}>
+        <span className="min-w-0 truncate font-medium" style={{ color: "var(--fg)" }} data-tip={comment.author.login}>
           {author.kind === "bot" ? author.name : author.kind === "you" ? `${comment.author.login} (you)` : comment.author.login}
         </span>
-        {author.kind === "bot" ? <BotChip title={`${comment.author.login} — an AI reviewer`} /> : null}
+        {author.kind === "bot" ? <BotChip tip={`${comment.author.login}, an AI reviewer`} /> : null}
         {comment.reviewState === "PENDING" ? (
           <span
             className="flex-none font-medium"
             style={{ color: "var(--accent)" }}
-            title="In your pending review on GitHub — not public until you submit it"
+            data-tip="In your pending review on GitHub; not public until you submit"
           >
             pending
           </span>
         ) : null}
         {created ? (
-          <span className="flex-none" style={{ color: "var(--fg-faint)" }} title={formatFullTimestamp(comment.createdAt)}>
+          <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(comment.createdAt)}>
             {created}
           </span>
         ) : null}
         {edited ? (
-          <span className="flex-none" style={{ color: "var(--fg-faint)" }} title={`edited ${formatFullTimestamp(comment.updatedAt!)}`}>
+          <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={`Edited ${formatFullTimestamp(comment.updatedAt!)}`}>
             · edited
           </span>
         ) : null}
@@ -112,7 +112,7 @@ export function RemoteCommentCard({ comment }: { comment: RemoteComment }) {
           <CopyForAgentButton
             iconOnly
             testId={`copy-remote-${comment.databaseId}`}
-            title="Copy this comment's markdown"
+            tip="Copy as markdown"
             text={() => cleanRemoteBody(comment.body)}
           />
           <a
@@ -121,7 +121,7 @@ export function RemoteCommentCard({ comment }: { comment: RemoteComment }) {
             rel="noreferrer noopener"
             className="flex-none rounded px-1 opacity-60 transition-opacity hover:underline hover:opacity-100"
             style={{ color: "var(--fg-muted)" }}
-            title="Open this comment on GitHub"
+            data-tip="Open on GitHub"
             onClick={(e) => e.stopPropagation()}
           >
             ↗
@@ -146,13 +146,13 @@ export function RemoteCommentCard({ comment }: { comment: RemoteComment }) {
 
 function ThreadFooterButton({
   onClick,
-  title,
+  tip,
   testId,
   disabled,
   children,
 }: {
   onClick: () => void;
-  title: string;
+  tip: string;
   testId?: string;
   disabled?: boolean;
   children: ReactNode;
@@ -161,7 +161,7 @@ function ThreadFooterButton({
     <button
       type="button"
       data-testid={testId}
-      title={title}
+      data-tip={tip}
       disabled={disabled}
       onClick={(e) => {
         e.stopPropagation();
@@ -222,7 +222,7 @@ export function ThreadView({
         data-collapsed="true"
         className="flex w-full min-w-0 items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)]"
         style={{ border: "1px solid var(--border)", background: "var(--bg)", color: "var(--fg-muted)" }}
-        title="Resolved — click to read the thread"
+        data-tip="Resolved; click to read the thread"
         onClick={() => setOpen(true)}
       >
         <IconCheck width={11} height={11} style={{ color: "var(--ok)", flex: "none" }} />
@@ -281,7 +281,7 @@ export function ThreadView({
           {actions.onReply && t.viewerCanReply && !replying ? (
             <ThreadFooterButton
               testId={`thread-reply-${t.id}`}
-              title="Reply in this thread (saved as a draft, sent with your review)"
+              tip="Reply in this thread; a draft until you submit"
               onClick={() => actions.onReply!(thread)}
             >
               <IconReply width={11} height={11} /> Reply
@@ -290,7 +290,7 @@ export function ThreadView({
           {actions.onResolve && canResolve ? (
             <ThreadFooterButton
               testId={`thread-resolve-${t.id}`}
-              title={t.isResolved ? "Mark this thread as unresolved on GitHub" : "Resolve this thread on GitHub (right away)"}
+              tip={t.isResolved ? "Mark unresolved on GitHub" : "Resolve on GitHub, right away"}
               disabled={busy}
               onClick={() => actions.onResolve!(t, !t.isResolved)}
             >
@@ -305,7 +305,7 @@ export function ThreadView({
               rel="noreferrer noopener"
               className="inline-flex items-center rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
               style={{ color: "var(--fg-muted)" }}
-              title="Open this thread on GitHub"
+              data-tip="Open this thread on GitHub"
             >
               GitHub ↗
             </a>
@@ -315,7 +315,7 @@ export function ThreadView({
               <span className="ml-auto" style={{ color: "var(--ok)" }}>
                 resolved{t.resolvedBy ? ` by @${t.resolvedBy}` : ""}
               </span>
-              <ThreadFooterButton title="Collapse this resolved thread" onClick={() => setOpen(false)}>
+              <ThreadFooterButton tip="Collapse this resolved thread" onClick={() => setOpen(false)}>
                 collapse
               </ThreadFooterButton>
             </>
@@ -366,7 +366,7 @@ export function ThreadFilterMenu({
         type="button"
         data-testid="thread-filters"
         aria-expanded={open}
-        title={hidden ? `GitHub threads: ${hidden} hidden by your filters` : "Which GitHub threads to show"}
+        data-tip={hidden ? `GitHub threads: ${hidden} hidden by your filters` : "Which GitHub threads to show"}
         onClick={() => setOpen((v) => !v)}
         className="inline-flex h-[22px] items-center gap-1 rounded px-1.5 text-2xs transition-colors hover:bg-[var(--bg-hover)]"
         style={{
@@ -444,7 +444,7 @@ function FilterCheck({
   return (
     <label
       className={`flex items-center gap-2 rounded px-1 py-0.5 ${disabled ? "opacity-50" : "cursor-pointer hover:bg-[var(--bg-hover)]"}`}
-      title={hint}
+      data-tip={hint}
       style={{ color: "var(--fg)" }}
     >
       <input

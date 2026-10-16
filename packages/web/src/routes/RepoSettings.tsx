@@ -154,7 +154,7 @@ function RepoSettingsBody({
               <span
                 className="chip"
                 style={{ color: "var(--ok)", background: "var(--ok-soft)" }}
-                title="A .purview/ folder is committed in this repo"
+                data-tip="A .purview/ folder is committed in this repo"
               >
                 team config present in repo
               </span>

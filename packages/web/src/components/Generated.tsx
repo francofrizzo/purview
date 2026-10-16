@@ -11,7 +11,7 @@ export function GeneratedTag({ generated }: { generated: FileGenerated }) {
     <span
       className="chip"
       data-testid="generated-tag"
-      title={generatedReason(generated)}
+      data-tip={generatedReason(generated)}
       style={{ background: "var(--bg-inset)", color: "var(--fg-faint)" }}
     >
       {generatedTag(generated)}
@@ -52,7 +52,7 @@ export function GeneratedFileMenu({
         data-testid={`file-menu-${file.path}`}
         aria-expanded={open}
         aria-label={`More actions for ${file.path}`}
-        title="More actions"
+        data-tip="More actions"
         className="inline-flex items-center rounded px-0.5 hover:!text-[var(--fg)]"
         style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
         onClick={(e) => {

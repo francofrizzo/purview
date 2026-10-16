@@ -1193,7 +1193,7 @@ export function PrView() {
           type="button"
           className="flex-none px-2 pb-2"
           style={{ color: "var(--fg-faint)" }}
-          title={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
+          data-tip={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
           aria-label={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
           onClick={toggleSidebar}
         >
@@ -1644,7 +1644,8 @@ export function PrView() {
                     className="flex-none"
                     style={{ color: "var(--fg-faint)" }}
                     aria-expanded={!headerCollapsed}
-                    title={headerCollapsed ? "Show unit details" : "Hide unit details"}
+                    data-tip={headerCollapsed ? "Show unit details" : "Hide unit details"}
+                    aria-label={headerCollapsed ? "Show unit details" : "Hide unit details"}
                     onClick={() => setPeek((v) => !v)}
                   >
                     <IconChevron open={!headerCollapsed} width={11} height={11} />
@@ -1654,7 +1655,7 @@ export function PrView() {
                   className={`min-w-0 flex-1 basis-64 text-[13px] font-semibold leading-tight ${
                     headerCollapsed ? "truncate" : "line-clamp-2"
                   }`}
-                  title={selectedUnit.title}
+                  data-tip={selectedUnit.title}
                 >
                   <InlineMarkdown text={selectedUnit.title} />
                 </h2>
@@ -1674,7 +1675,8 @@ export function PrView() {
                       type="button"
                       className="changed-in-chip chip"
                       data-testid="highlight-chip"
-                      title={`Showing the lines ${revisionsLabel(highlightRevisions, " + ")} changed · click or esc to clear`}
+                      data-tip={`Showing the lines ${revisionsLabel(highlightRevisions, " + ")} changed; click to clear`}
+                      data-tip-key="esc"
                       onClick={clearHighlight}
                     >
                       {revisionsLabel(highlightRevisions, " + ")} changes · clear
@@ -1823,7 +1825,7 @@ export function PrView() {
                   type="button"
                   data-testid="add-file-comment-header"
                   className="btn"
-                  title={`Comment on ${selectedPath} as a whole`}
+                  data-tip={`Comment on ${selectedPath} as a whole`}
                   onClick={() =>
                     openComposer({ subjectType: "file", file: selectedPath })
                   }
@@ -2108,7 +2110,7 @@ function UnplacedHeader({
         </div>
       </div>
       <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
-        {UNPLACED_TITLE}
+        {UNPLACED_TITLE}.
       </p>
       {analyzeError ? (
         <p className="mt-1 text-2xs" style={{ color: "var(--risk)" }}>
@@ -2154,7 +2156,8 @@ function HighlightSummary({
         data-testid="highlight-clear"
         className="underline-offset-2 hover:underline"
         style={{ color: "var(--accent)" }}
-        title="Clear the highlight (esc)"
+        data-tip="Clear the highlight"
+        data-tip-key="esc"
         onClick={onClear}
       >
         clear

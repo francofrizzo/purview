@@ -19,10 +19,10 @@ import { IconArchive, IconInbox, IconTrash } from "./icons";
  */
 
 export const REPO_ARCHIVE_HINT =
-  "Moves the repo to Archived repos and stops automatic analyses and watch imports for it. Every PR keeps its own archived state, so unarchiving restores it exactly. Nothing changes on GitHub.";
+  "Shelve the repo: no automatic analyses or watch imports; every PR keeps its own state, nothing changes on GitHub";
 
 export const REPO_UNARCHIVE_HINT =
-  "Back in the list; each PR returns to the state it had before, and new revisions are analyzed automatically again.";
+  "Bring the repo back; each PR returns to the state it had, and new revisions are analyzed again";
 
 interface RepoRef {
   host: string;
@@ -109,7 +109,7 @@ export function AutoArchiveButton({ repo, finishedKeys }: { repo: RepoRef; finis
       type="button"
       data-testid={`repo-auto-archive-${rkey}`}
       disabled={archiveMany.isPending}
-      title={`Move the ${n} merged or closed PR${n === 1 ? "" : "s"} into this repo's archived list. Local only; unarchive any of them any time.`}
+      data-tip={`Move the ${n} merged or closed PR${n === 1 ? "" : "s"} to this repo's archived list; local only`}
       onClick={() => archiveMany.mutate(finishedKeys)}
       className="flex flex-none items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50"
       style={{ color: "var(--fg-muted)" }}
@@ -174,7 +174,7 @@ export function RepoDangerZone({
       className="btn"
       data-testid={testId}
       disabled={setRepoArchived.isPending}
-      title={archived ? REPO_UNARCHIVE_HINT : REPO_ARCHIVE_HINT}
+      data-tip={archived ? REPO_UNARCHIVE_HINT : REPO_ARCHIVE_HINT}
       onClick={() => {
         setRepoArchived.mutate({ rkey, archived: !archived });
         stopConfirming();
@@ -286,7 +286,7 @@ export function RepoDangerZone({
                 className="btn"
                 data-testid="repo-remove-confirm-button"
                 disabled={!canRemove}
-                title={blockedWhy ?? undefined}
+                data-tip={blockedWhy ?? undefined}
                 style={canRemove ? { color: "var(--risk)", borderColor: "var(--risk)" } : undefined}
                 onClick={doRemove}
               >

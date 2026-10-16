@@ -40,7 +40,6 @@ export function AudienceSwitch({
       data-testid={testId}
       data-value={value}
       className="btn-group"
-      title={`${AUDIENCE_HINT[value]} (a)`}
     >
       {options.map((o) => {
         const on = o.id === value;
@@ -55,6 +54,8 @@ export function AudienceSwitch({
             aria-label={`Comments for ${AUDIENCE_LABEL[o.id]}`}
             data-testid={`${testId}-${o.id}`}
             className="btn"
+            data-tip={AUDIENCE_HINT[o.id]}
+            data-tip-key="a"
             disabled={disabled}
             onClick={() => onChange(o.id)}
             style={on ? { color: ink, background: tint, borderColor: ink } : undefined}

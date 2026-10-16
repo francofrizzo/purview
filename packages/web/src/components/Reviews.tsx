@@ -122,7 +122,7 @@ function GithubLink({ url, what }: { url: string; what: string }) {
       rel="noreferrer noopener"
       className="ml-auto flex-none rounded px-1 opacity-60 transition-opacity hover:underline hover:opacity-100"
       style={{ color: "var(--fg-muted)" }}
-      title={`Open this ${what} on GitHub`}
+      data-tip={`Open this ${what} on GitHub`}
       onClick={(e) => e.stopPropagation()}
     >
       ↗
@@ -144,13 +144,13 @@ function TimelineItem({ entry, revisions }: { entry: TimelineEntry; revisions?: 
   const meta = (
     <>
       {when ? (
-        <span className="flex-none" style={{ color: "var(--fg-faint)" }} title={formatFullTimestamp(entry.at)}>
+        <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(entry.at)}>
           {body ? "" : "· "}
           {when}
         </span>
       ) : null}
       {edited ? (
-        <span className="flex-none" style={{ color: "var(--fg-faint)" }} title={`edited ${formatFullTimestamp(entry.comment.updatedAt!)}`}>
+        <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={`Edited ${formatFullTimestamp(entry.comment.updatedAt!)}`}>
           · edited
         </span>
       ) : null}
@@ -179,10 +179,10 @@ function TimelineItem({ entry, revisions }: { entry: TimelineEntry; revisions?: 
       </span>
       <div className="min-w-0 flex-1">
         <header className="flex min-h-[22px] flex-wrap items-center gap-x-1.5 text-2xs">
-          <span className="min-w-0 truncate font-medium" style={{ color: "var(--fg)" }} title={entry.author.login}>
+          <span className="min-w-0 truncate font-medium" style={{ color: "var(--fg)" }} data-tip={entry.author.login}>
             {who.name}
           </span>
-          {who.bot ? <BotChip title={`${entry.author.login} — an AI reviewer`} /> : null}
+          {who.bot ? <BotChip tip={`${entry.author.login}, an AI reviewer`} /> : null}
           {body ? (
             review ? <StateChip state={review.state} /> : null
           ) : (
@@ -252,7 +252,7 @@ export function ReviewerVerdicts({ verdicts }: { verdicts: ReviewerVerdict[] }) 
     <span
       className="flex flex-none items-center gap-1"
       data-testid="reviewer-verdicts"
-      title={verdictsTitle(verdicts)}
+      data-tip={verdictsTitle(verdicts)}
     >
       {verdicts.map((v) => {
         const mark = MARK[v.verdict];
@@ -314,7 +314,7 @@ export function ReviewerVerdictList({ verdicts }: { verdicts: ReviewerVerdict[] 
               {v.verdict === "CHANGES_REQUESTED" ? <IconClose width={10} height={10} /> : null}
               {verdictVerb(v.verdict)}
             </span>
-            <span className="text-2xs" style={{ color: "var(--fg-faint)" }} title={formatFullTimestamp(v.at)}>
+            <span className="text-2xs" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(v.at)}>
               {age(v.at)}
             </span>
             {revisionNote(v.revision) ? (

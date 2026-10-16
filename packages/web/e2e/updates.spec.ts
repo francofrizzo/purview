@@ -21,7 +21,7 @@ test("a newer release on origin shows an update chip, with the command; the chec
   await page.getByText("Charge retries: idempotency keys + backoff").click();
   await expect(page.getByTestId("topbar-comments")).toBeVisible();
   const compact = page.getByTestId("update-available");
-  await expect(compact).toHaveAttribute("title", "Purview 2026.10.15.1 is available");
+  await expect(compact).toHaveAttribute("data-tip", "Purview 2026.10.15.1 is available");
   await expect(compact).not.toContainText("available");
   await page.goBack();
   await expect(page.getByText("Waiting on your review").first()).toBeVisible();

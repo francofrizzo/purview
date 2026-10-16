@@ -55,7 +55,7 @@ const PR_STATE_STYLE: Record<PrGithubState, { label: string; color: string; bg: 
 export function PrStateChip({ state }: { state: PrGithubState }) {
   const s = PR_STATE_STYLE[state] ?? PR_STATE_STYLE.open;
   return (
-    <span className="chip" style={{ color: s.color, background: s.bg }} title={`GitHub state: ${state}`}>
+    <span className="chip" style={{ color: s.color, background: s.bg }} data-tip={`GitHub state: ${state}`}>
       {s.label}
     </span>
   );
@@ -92,7 +92,7 @@ export function ReviewDecisionChip({ decision }: { decision: ReviewDecision | nu
     <span
       className="chip px-0 font-normal"
       style={{ color: s.color, background: "transparent" }}
-      title={s.title}
+      data-tip={s.title}
     >
       {s.label}
       {s.check ? <IconCheck width={10} height={10} /> : null}
@@ -124,7 +124,7 @@ export function ReviewRequestAge({
     <span
       className={className}
       style={{ color: REQUEST_AGE_COLORS[requestAgeLevel(shown.at, at, settings.requestAgeDays)] }}
-      title={reviewRequestTooltip(shown)}
+      data-tip={reviewRequestTooltip(shown)}
       data-testid="review-request-age"
     >
       {formatRequestedAgo(shown.at, at, shown.via)}
@@ -141,7 +141,7 @@ export function StackedOnChip({ link }: { link: StackedOnLink | null }) {
   const cls = "chip flex-none self-center hover:underline";
   const style = { color: "var(--fg-faint)", background: "var(--bg-inset)" };
   return link.internal ? (
-    <Link to={link.href} className={cls} style={style} title={link.title} data-testid="stacked-on-chip">
+    <Link to={link.href} className={cls} style={style} data-tip={link.title} data-testid="stacked-on-chip">
       {link.label}
     </Link>
   ) : (
@@ -151,7 +151,7 @@ export function StackedOnChip({ link }: { link: StackedOnLink | null }) {
       rel="noreferrer"
       className={cls}
       style={style}
-      title={link.title}
+      data-tip={link.title}
       data-testid="stacked-on-chip"
     >
       {link.label}
@@ -162,7 +162,7 @@ export function StackedOnChip({ link }: { link: StackedOnLink | null }) {
 export function KindChip({ kind }: { kind: Kind }) {
   const s = KIND_STYLE[kind] ?? KIND_STYLE.wiring;
   return (
-    <span className="chip" style={{ color: s.color, background: s.bg }} title={kind}>
+    <span className="chip" style={{ color: s.color, background: s.bg }} data-tip={kind}>
       {s.label}
     </span>
   );
@@ -213,7 +213,7 @@ export function EffortChip({ effort }: { effort?: ReviewEffort | null }) {
     <span
       className="chip"
       data-testid="effort-chip"
-      title={`~${lines} must-read lines · ${effort.riskCount} risk ${flags}`}
+      data-tip={`~${lines} must-read lines · ${effort.riskCount} risk ${flags}`}
       style={{ color: s.color, background: s.bg }}
     >
       <Icon width={10} height={10} />
@@ -236,7 +236,7 @@ export function RiskFlags({ flags, compact }: { flags: RiskFlag[]; compact?: boo
     <span
       className="chip"
       data-testid="risk-chip"
-      title={`Risk surface${one ? "" : "s"}: ${labels.join(", ")}`}
+      data-tip={`Risk surface${one ? "" : "s"}: ${labels.join(", ")}`}
       style={{ color: "var(--risk)", background: "var(--risk-soft)" }}
     >
       {compact
@@ -252,7 +252,7 @@ export function ChangedBadge({ count, onClick }: { count?: number; onClick?: () 
   const style = { color: "var(--warn)", background: "var(--warn-soft)" };
   if (!onClick) {
     return (
-      <span className={cls} style={style} title="Changed since you viewed it">
+      <span className={cls} style={style} data-tip="Changed since you viewed it">
         {content}
       </span>
     );
@@ -274,7 +274,7 @@ export function HunkProgress({ viewed, total }: { viewed: number; total: number 
     <span
       className="text-2xs tabular-nums"
       style={{ color: "var(--fg-faint)" }}
-      title={`0 of ${total} hunks viewed`}
+      data-tip={`0 of ${total} hunks viewed`}
     >
       {total} {total === 1 ? "hunk" : "hunks"}
     </span>
@@ -285,7 +285,7 @@ export function Progress({ viewed, total }: { viewed: number; total: number }) {
   const pct = total ? Math.round((viewed / total) * 100) : 0;
   const done = total > 0 && viewed === total;
   return (
-    <span className="inline-flex items-center gap-1.5" title={`${viewed} of ${total} hunks viewed`}>
+    <span className="inline-flex items-center gap-1.5" data-tip={`${viewed} of ${total} hunks viewed`}>
       <span
         className="h-1 w-8 overflow-hidden rounded-full"
         style={{ background: "var(--bg-inset)" }}
@@ -317,7 +317,7 @@ export function DiffSizeStat({ size, files = true }: { size: DiffSize | null | u
     <span
       className="inline-flex flex-none items-center gap-1 text-2xs tabular-nums"
       data-testid="diff-size"
-      title={`${n} ${n === 1 ? "file" : "files"} changed: ${additions} ${additions === 1 ? "line" : "lines"} added, ${deletions} removed`}
+      data-tip={`${n} ${n === 1 ? "file" : "files"} changed: ${additions} ${additions === 1 ? "line" : "lines"} added, ${deletions} removed`}
     >
       {files ? (
         <span>

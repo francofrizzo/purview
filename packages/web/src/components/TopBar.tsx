@@ -162,7 +162,8 @@ export function TopBar({
         to="/"
         className="rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
         style={{ color: "var(--fg-faint)" }}
-        title="All pull requests"
+        aria-label="All pull requests"
+        data-tip="All pull requests"
       >
         <IconArrowLeft width={12} height={12} />
       </Link>
@@ -180,7 +181,7 @@ export function TopBar({
             className="min-w-0 truncate text-[13px] font-semibold leading-snug hover:underline"
             style={{ color: "var(--fg)" }}
             data-testid="topbar-title"
-            title={meta.title ? `${meta.title} (open on GitHub)` : "Open on GitHub"}
+            data-tip="Open on GitHub"
           >
             {meta.title ?? `${meta.owner}/${meta.repo}#${meta.number}`}
           </a>
@@ -190,7 +191,7 @@ export function TopBar({
             <span
               className="hidden min-w-0 max-w-[22rem] shrink-[2] items-center gap-1 text-2xs xl:flex"
               style={{ color: "var(--fg-faint)" }}
-              title={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
+              data-tip={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
               data-testid="topbar-branch"
             >
               <span className="truncate font-mono">{meta.headRef}</span>
@@ -215,7 +216,7 @@ export function TopBar({
               <span style={{ color: "var(--fg-muted)" }}>#{meta.number}</span>
             </span>
             {meta.author ? (
-              <span className="flex items-center gap-1" title={`Opened by ${meta.author}`}>
+              <span className="flex items-center gap-1" data-tip={`Opened by ${meta.author}`}>
                 <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
                 <span className="hidden sm:inline">{meta.author}</span>
               </span>
@@ -247,7 +248,7 @@ export function TopBar({
               className="chip flex-none hover:!text-[var(--fg)]"
               data-testid="topbar-archived"
               disabled={archiving}
-              title="Archived: hidden in the PR list and never analyzed automatically. Click to unarchive."
+              data-tip="Archived: hidden on the home page, never analyzed on its own. Click to unarchive"
               style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
               onClick={() => onSetArchived(false)}
             >
@@ -262,7 +263,7 @@ export function TopBar({
               className="chip flex-none hover:!text-[var(--fg)]"
               data-testid="topbar-archived"
               disabled={repoArchiving}
-              title={`The whole ${meta.owner}/${meta.repo} repo is archived, so this PR is never analyzed automatically. Click to unarchive the repo.`}
+              data-tip={`The whole ${meta.owner}/${meta.repo} repo is archived. Click to unarchive it`}
               style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
               onClick={() => onSetRepoArchived(false)}
             >
@@ -279,7 +280,7 @@ export function TopBar({
           {meta.headRef ? (
             <span
               className="hidden min-w-0 items-center gap-1 lg:flex xl:hidden"
-              title={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
+              data-tip={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
               data-testid="topbar-branch-meta"
             >
               <span className="truncate font-mono">{meta.headRef}</span>
@@ -302,7 +303,8 @@ export function TopBar({
           type="button"
           className="btn"
           onClick={onToggleDock}
-          title={dockOpen ? "Close the panel" : "Comments, chat and review (m, c, r)"}
+          data-tip={dockOpen ? "Close the panel" : "Comments, chat and review"}
+          data-tip-key="m c r"
           aria-label="Comments, chat and review"
           aria-pressed={dockOpen}
           data-testid="topbar-comments"
@@ -325,7 +327,7 @@ export function TopBar({
           className="btn relative"
           data-testid="topbar-refresh"
           data-stale={stale ? "1" : undefined}
-          title={refreshing ? "Refreshing…" : (staleTooltip ?? "Refresh from GitHub")}
+          data-tip={refreshing ? "Refreshing…" : (staleTooltip ?? "Refresh from GitHub")}
           aria-label="Refresh"
           onClick={onRefresh}
           disabled={refreshing}
@@ -345,7 +347,7 @@ export function TopBar({
           className="btn hidden sm:inline-flex"
           onClick={onSync}
           disabled={syncing}
-          title={syncing ? "Syncing…" : "Sync viewed files and comments to GitHub"}
+          data-tip={syncing ? "Syncing…" : "Sync viewed files and comments to GitHub"}
           aria-label="Sync"
         >
           <IconUpload width={12} height={12} className={syncing ? "animate-pulse" : undefined} />
@@ -357,7 +359,7 @@ export function TopBar({
             className="btn"
             data-testid="topbar-fullscreen"
             onClick={onToggleFullscreen}
-            title={fullscreenActive ? "Exit full screen" : "Full screen"}
+            data-tip={fullscreenActive ? "Exit full screen" : "Full screen"}
             aria-label={fullscreenActive ? "Exit full screen" : "Full screen"}
             aria-pressed={fullscreenActive}
           >
@@ -494,7 +496,7 @@ export function TopBar({
             <span
               className="rounded-full px-1 text-2xs"
               style={{ background: "var(--warn-soft)", color: "var(--warn)" }}
-              title="You have a pending review on GitHub"
+              data-tip="You have a pending review on GitHub"
             >
               pending
             </span>
@@ -595,7 +597,7 @@ export function OverflowMenu({
           type="button"
           data-testid={item.testId}
           disabled={item.disabled}
-          title={item.hint}
+          data-tip={item.hint}
           data-divider={item.dividerBefore ? "true" : undefined}
           className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 ${
             item.narrowOnly ? "sm:hidden" : ""
@@ -621,7 +623,7 @@ export function OverflowMenu({
         type="button"
         className={buttonClassName}
         data-testid={testId}
-        title={label}
+        data-tip={label}
         aria-label={label}
         aria-expanded={open}
         style={buttonStyle}
@@ -667,7 +669,7 @@ function SinceReviewChip({
       <span
         className="hidden flex-none self-center text-2xs md:inline"
         style={{ color: "var(--fg-faint)" }}
-        title={`No hunk changed since ${when}: the new revision only moved the base or context.`}
+        data-tip={`No hunk changed since ${when}: the new revision only moved the base or context`}
       >
         no changes since your review
       </span>
@@ -679,10 +681,10 @@ function SinceReviewChip({
       className="chip flex-none self-center transition-colors"
       data-testid="since-review-toggle"
       aria-pressed={active}
-      title={
+      data-tip={
         active
-          ? `Showing only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}. Click to show everything.`
-          : `Show only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}.`
+          ? `Showing only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}. Click to show everything`
+          : `Show only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}`
       }
       style={
         active

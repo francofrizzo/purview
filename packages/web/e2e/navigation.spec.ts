@@ -31,7 +31,7 @@ test("v marks the focused hunk viewed, folds it, and moves on to the next", asyn
 
   await page.keyboard.press("v");
   await expect(hunkHeader(page, B)).toHaveAttribute("data-collapsed", "true");
-  await expect(hunkHeader(page, B).getByRole("button", { name: "Mark as not viewed (v)" })).toBeVisible();
+  await expect(hunkHeader(page, B).getByRole("button", { name: "Mark as not viewed" })).toBeVisible();
   await expect(hunkHeader(page, B)).toContainText("lines folded");
   await expectUnderFileHeader(page, C);
   await expect(page.getByTestId("file-header-src/billing/reconcile.ts").first()).toContainText("1/4 viewed");
