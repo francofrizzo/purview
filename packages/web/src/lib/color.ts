@@ -85,3 +85,27 @@ export function readable(color: string, bg: string, min = 4.0): string {
   }
   return out;
 }
+
+/** `#rgb`, `#rrggbb`, `#rrggbbaa` or `rgba(r, g, b, a)` → channels plus alpha. */
+export function parseColor(c: string): Rgb & { a: number } {
+  const s = c.trim();
+  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(s);
+  if (m) return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+  const hex = s.replace(/^#/, "");
+  const a = hex.length === 8 ? parseInt(hex.slice(6, 8), 16) / 255 : hex.length === 4 ? parseInt(hex[3] + hex[3], 16) / 255 : 1;
+  return { ...parseHex(s), a: Number.isFinite(a) ? a : 1 };
+}
+
+/**
+ * `top` laid over `under`, as the eye sees it: an opaque hex. `under` may be
+ * translucent too (its own alpha composes), so tints can be stacked by
+ * folding this over a list of layers.
+ */
+export function composite(top: string, under: string): string {
+  const t = parseColor(top);
+  const u = parseColor(under);
+  const a = t.a + u.a * (1 - t.a);
+  if (a === 0) return "#000000";
+  const ch = (x: number, y: number) => (x * t.a + y * u.a * (1 - t.a)) / a;
+  return toHex({ r: ch(t.r, u.r), g: ch(t.g, u.g), b: ch(t.b, u.b) });
+}

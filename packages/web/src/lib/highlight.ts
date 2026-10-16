@@ -9,6 +9,12 @@ import type { RawTheme } from "./themes";
 export interface Tok {
   content: string;
   color?: string;
+  /**
+   * Painted in the theme's comment color. Set when the tokens are cached, so
+   * the diff can lift comments on tinted rows (see `.tok-comment` in
+   * index.css), where the theme's dim grey loses its contrast.
+   */
+  comment?: true;
 }
 
 /** A theme shiki can tokenize with: a bundled id, or a hand-authored object. */
@@ -91,6 +97,40 @@ export async function ensureTheme(theme: ShikiTheme): Promise<boolean> {
 }
 
 /**
+ * The color a theme paints comments in, learned by tokenizing one comment
+ * line once per theme. Known (sync) once `tokenizeLines` has run for it.
+ */
+const commentColors = new Map<string, string | undefined>();
+const COMMENT_PROBE = "// c";
+
+export function commentColorFor(theme: ShikiTheme | string): string | undefined {
+  return commentColors.get(typeof theme === "string" ? theme : theme.name);
+}
+
+async function learnCommentColor(hl: Highlighter, theme: ShikiTheme): Promise<string | undefined> {
+  if (commentColors.has(theme.name)) return commentColors.get(theme.name);
+  let color: string | undefined;
+  try {
+    if (await ensureLanguage("ts")) {
+      const [line] = hl.codeToTokensBase(COMMENT_PROBE, { lang: "ts", theme: theme.name });
+      color = line?.find((t) => t.content.includes("//"))?.color?.toLowerCase();
+    }
+  } catch {
+    color = undefined;
+  }
+  commentColors.set(theme.name, color);
+  return color;
+}
+
+/** Tag every token painted in `commentColor`; nothing else changes. */
+export function markComments(tokens: Tok[][], commentColor: string | undefined): Tok[][] {
+  if (!commentColor) return tokens;
+  return tokens.map((line) =>
+    line.map((t) => (t.color && t.color.toLowerCase() === commentColor ? { ...t, comment: true as const } : t)),
+  );
+}
+
+/**
  * Token cache, keyed by hunk + language + theme. Switching themes therefore
  * repopulates rather than reusing stale colors; the bound keeps a long session
  * of theme-hopping from growing without limit (oldest entries are evicted).
@@ -134,7 +174,8 @@ export async function tokenizeLines(
   const hl = await getHighlighter();
   if (!hl) return null;
   try {
-    const tokens = hl.codeToTokensBase(code, { lang, theme: theme.name });
+    const commentColor = await learnCommentColor(hl, theme);
+    const tokens = markComments(hl.codeToTokensBase(code, { lang, theme: theme.name }), commentColor);
     cacheSet(key, tokens);
     return tokens;
   } catch {

@@ -8,7 +8,7 @@
  * match an existing look exactly can pin individual tokens via `overrides`.
  */
 
-import { contrast, mix, readable, rgba } from "./color";
+import { composite, contrast, mix, readable, rgba } from "./color";
 
 export type ThemeMode = "dark" | "light";
 
@@ -116,6 +116,14 @@ export interface ThemeDef {
   /** Present for hand-authored themes; shiki loads the object instead of a bundle. */
   raw?: RawTheme;
   overrides?: Partial<ChromeTokens>;
+  /**
+   * Contrast allowances, checked by themes.test.ts against the surfaces in
+   * contrast.ts. `allow` holds a surface id to a lower floor than the
+   * surface asks, each one a deliberate, visible exception; `floorScale`
+   * lowers every floor for a palette that is low-contrast by design. A
+   * theme with neither must clear every floor as is.
+   */
+  contrast?: { floorScale?: number; allow?: Record<string, number> };
 }
 
 // ---------------------------------------------------------------------------
@@ -141,37 +149,85 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
   const raised = dark ? mix(bg, fg, 0.05) : bg;
   const inset = dark ? mix(bg, "#000000", 0.35) : mix(bg, fg, 0.075);
 
-  /** Fade the foreground toward the background, but not past legibility. */
-  const fade = (t: number, min: number) => {
-    let out = mix(fg, base, t);
-    while (t > 0.04 && contrast(out, base) < min) {
-      t -= 0.04;
-      out = mix(fg, base, t);
-    }
-    return out;
-  };
-
-  // Text colors: floor a little lower for large/solid chips than for body text.
-  const text = (c: string, min = 4.0) => readable(c, base, min);
+  const hover = mix(base, fg, dark ? 0.1 : 0.09);
   // Tint alphas: light backgrounds need slightly less to read as a tint.
   const tint = dark ? 0.11 : 0.1;
   const tintStrong = dark ? 0.26 : 0.22;
   const tintGutter = dark ? 0.17 : 0.14;
   const softAlpha = dark ? 0.14 : 0.12;
 
-  const accent = text(palette.blue, 3.6);
+  /**
+   * A row tint the body text still reads through: start at the wanted
+   * alpha and back off (never under `min`) until `fg` on the tinted page
+   * clears body-text contrast. A palette whose foreground is soft (Solarized)
+   * gets quieter tints rather than muddier code.
+   */
+  const tintAlpha = (hue: string, max: number, min: number, floor = 4.5, under = base) => {
+    let a = max;
+    while (a - 0.02 >= min && contrast(fg, composite(rgba(hue, a), under)) < floor) a = Math.round((a - 0.02) * 100) / 100;
+    return a;
+  };
+  /** An edge mixed from the page toward the foreground until it parts from `on`. */
+  const edge = (on: string, t: number, min: number) => {
+    let out = mix(base, fg, t);
+    while (t < 0.6 && contrast(out, on) < min) {
+      t += 0.01;
+      out = mix(base, fg, t);
+    }
+    return out;
+  };
+
+  /**
+   * Colored text is floored against the page and against the surfaces it is
+   * actually painted on: its own soft tint over a raised pane (buttons,
+   * banners, chips) and whatever else the caller names. The tint is made
+   * from the color itself, so lift, re-tint, and lift once more.
+   */
+  const text = (c: string, min = 4.0, alpha = softAlpha, ...also: string[]) => {
+    let out = readable(c, base, min);
+    for (let pass = 0; pass < 2; pass++) {
+      for (const surface of [composite(rgba(out, alpha), raised), ...also]) out = readable(out, surface, min);
+    }
+    return out;
+  };
+
+  const accent = text(palette.blue, 3.6, dark ? 0.14 : 0.1);
   const ok = text(palette.green, 3.4);
   const risk = text(palette.red, 3.6);
   // Moved-code tint: derived from purple the same way add/del derive from
   // green/red, text() gets it the same contrast floor as accent/ok/risk.
-  const moved = text(palette.purple, 3.6);
+  const moved = text(palette.purple, 3.6, dark ? 0.14 : 0.1);
   const movedOut = text(cyan, 3.6);
-  const heart = text(palette.pink ?? mix(palette.red, palette.purple, 0.45), 3.6);
+  const heart = text(palette.pink ?? mix(palette.red, palette.purple, 0.45), 3.6, dark ? 0.14 : 0.1);
   const warn = text(
     // yellow on a light background is hopeless; prefer orange there
     !dark && contrast(palette.yellow, base) < 2.4 ? palette.orange : palette.yellow,
     3.4,
   );
+
+  // The surfaces faded text sits on besides the page: the hover/header
+  // ground, a selected row (accent tint over the pane), a heart hunk header,
+  // and the add/del gutters under line numbers. Each is a step closer to the
+  // foreground than the page, so a fade legible on the page alone can
+  // disappear there.
+  const fadedSurfaces = [
+    base,
+    hover,
+    composite(rgba(accent, dark ? 0.14 : 0.1), raised),
+    composite(rgba(accent, dark ? 0.14 : 0.1), hover),
+    composite(rgba(heart, dark ? 0.14 : 0.1), hover),
+    composite(rgba(palette.green, tintGutter), base),
+    composite(rgba(palette.red, tintGutter), base),
+  ];
+  /** Fade the foreground toward the background, but not past legibility anywhere it is used. */
+  const fade = (t: number, min: number) => {
+    let out = mix(fg, base, t);
+    while (t > 0.04 && fadedSurfaces.some((s) => contrast(out, s) < min)) {
+      t -= 0.04;
+      out = mix(fg, base, t);
+    }
+    return out;
+  };
 
   // Search marks are tints laid over rows that may already carry an add/del
   // tint, so they borrow the one hue the diff never uses. A yellow that barely
@@ -179,15 +235,22 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
   const searchTint = !dark && contrast(palette.yellow, base) < 2.0 ? palette.orange : palette.yellow;
 
   const kind = (c: string) => text(c, 3.2);
-  const neutral = fade(0.42, 2.8);
+  const neutral = fade(0.42, 3.0);
+
+  const addAlpha = tintAlpha(palette.green, tint, 0.06);
+  const delAlpha = tintAlpha(palette.red, tint, 0.06);
+  const addRow = composite(rgba(palette.green, addAlpha), base);
+  const delRow = composite(rgba(palette.red, delAlpha), base);
 
   return {
     bg: base,
     "bg-raised": raised,
     "bg-inset": inset,
-    "bg-hover": mix(base, fg, dark ? 0.1 : 0.09),
-    border: mix(base, fg, 0.13),
-    "border-strong": mix(base, fg, dark ? 0.24 : 0.26),
+    "bg-hover": hover,
+    // Edges step up from their usual mix until they part from what they sit
+    // on: a divider from the page, a control outline from a raised pane.
+    border: edge(base, 0.13, 1.25),
+    "border-strong": edge(raised, dark ? 0.24 : 0.26, 1.5),
 
     fg,
     "fg-muted": fade(0.32, 3.2),
@@ -202,18 +265,19 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     heart,
     "heart-soft": rgba(heart, dark ? 0.14 : 0.1),
 
-    "add-bg": rgba(palette.green, tint),
-    "add-bg-strong": rgba(palette.green, tintStrong),
+    "add-bg": rgba(palette.green, addAlpha),
+    // The strong (word) tint stacks on the row tint; a short loud mark, so 4.0.
+    "add-bg-strong": rgba(palette.green, tintAlpha(palette.green, tintStrong, 0.12, 4.0, addRow)),
     "add-gutter": rgba(palette.green, tintGutter),
-    "del-bg": rgba(palette.red, tint),
-    "del-bg-strong": rgba(palette.red, tintStrong),
+    "del-bg": rgba(palette.red, delAlpha),
+    "del-bg-strong": rgba(palette.red, tintAlpha(palette.red, tintStrong, 0.12, 4.0, delRow)),
     "del-gutter": rgba(palette.red, tintGutter),
 
     // Two hues, git --color-moved style: violet marks where the code arrived
     // (added side), cyan where it left (removed side) — same-tint both sides
     // made direction illegible at a glance.
-    "moved-bg": rgba(palette.purple, tint),
-    "moved-bg-strong": rgba(palette.purple, tintStrong),
+    "moved-bg": rgba(palette.purple, tintAlpha(palette.purple, tint, 0.06)),
+    "moved-bg-strong": rgba(palette.purple, tintAlpha(palette.purple, tintStrong, 0.14)),
     "moved-gutter": rgba(palette.purple, tintGutter),
     "moved-out-bg": rgba(cyan, tint),
     "moved-out-bg-strong": rgba(cyan, tintStrong),
@@ -221,7 +285,8 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "moved-fg": moved,
     "moved-out-fg": movedOut,
 
-    "search-match": rgba(searchTint, dark ? 0.24 : 0.28),
+    // Laid over an add/del row, so the body text must read through both.
+    "search-match": rgba(searchTint, tintAlpha(searchTint, dark ? 0.24 : 0.28, 0.12, 4.0, addRow)),
     "search-active": rgba(palette.orange, dark ? 0.55 : 0.48),
 
     // "Changed in rN" (the changelog highlight): yellow, as a 3px gutter bar
@@ -231,7 +296,7 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     // different thing. `warn`/`searchTint` already swap yellow for orange on
     // light themes where yellow has no contrast.
     "changed-in-bar": warn,
-    "changed-in-bg": rgba(searchTint, dark ? 0.08 : 0.09),
+    "changed-in-bg": rgba(searchTint, tintAlpha(searchTint, dark ? 0.08 : 0.09, 0.04, 4.5, addRow)),
 
     risk,
     "risk-soft": rgba(risk, softAlpha),
@@ -534,10 +599,9 @@ const REVIEWER_LIGHT: ThemeDef = {
     "bg-raised": "#ffffff",
     "bg-inset": "#f3f4f6",
     "bg-hover": "#eef0f4",
-    border: "#e2e5ea",
+    border: "#d7dbe2",
     "border-strong": "#cdd2da",
     "fg-muted": "#5b6270",
-    "fg-faint": "#8b93a1",
     accent: "#2f6feb",
     "accent-soft": "rgba(47, 111, 235, 0.1)",
     agent: "#8250df",
@@ -573,10 +637,18 @@ function bundled(
   label: string,
   mode: ThemeMode,
   palette: Palette,
+  contrast?: ThemeDef["contrast"],
   shiki = id,
 ): ThemeDef {
-  return { id, label, group: "Editor themes", mode, palette, shiki };
+  return { id, label, group: "Editor themes", mode, palette, shiki, contrast };
 }
+
+/**
+ * A theme whose comment grey sits under 3.0 on plain code by the palette's
+ * own choice. Comments are still lifted on tinted rows (index.css); on a
+ * plain line they stay what the theme's author drew.
+ */
+const DIM_COMMENTS = (floor: number): ThemeDef["contrast"] => ({ allow: { "syn-comment": floor } });
 
 const BUNDLED: ThemeDef[] = [
   bundled("github-dark", "GitHub Dark", "dark", {
@@ -636,7 +708,7 @@ const BUNDLED: ThemeDef[] = [
     cyan: "#8fbcbb",
     purple: "#b48ead",
     comment: "#616e88",
-  }),
+  }, DIM_COMMENTS(2.4)),
   bundled("tokyo-night", "Tokyo Night", "dark", {
     bg: "#1a1b26",
     fg: "#a9b1d6",
@@ -648,7 +720,7 @@ const BUNDLED: ThemeDef[] = [
     cyan: "#7dcfff",
     purple: "#bb9af7",
     comment: "#565f89",
-  }),
+  }, DIM_COMMENTS(2.5)),
   bundled("catppuccin-mocha", "Catppuccin Mocha", "dark", {
     bg: "#1e1e2e",
     fg: "#cdd6f4",
@@ -672,7 +744,7 @@ const BUNDLED: ThemeDef[] = [
     cyan: "#2aa198",
     purple: "#6c71c4",
     comment: "#586e75",
-  }),
+  }, { floorScale: 0.9 }),
   bundled("solarized-light", "Solarized Light", "light", {
     bg: "#fdf6e3",
     fg: "#586e75",
@@ -684,7 +756,7 @@ const BUNDLED: ThemeDef[] = [
     cyan: "#2aa198",
     purple: "#6c71c4",
     comment: "#93a1a1",
-  }),
+  }, { floorScale: 0.85, allow: { "syn-comment": 2.3 } }),
   {
     ...bundled("monokai", "Monokai (original)", "dark", {
       bg: "#272822",
@@ -710,6 +782,8 @@ const MONOKAI_PRO: ThemeDef[] = MONOKAI_PRO_VARIANTS.map(({ id, label, palette }
   palette,
   shiki: id,
   raw: buildTextMateTheme(id, palette, "dark"),
+  // Monokai Pro's comment grey is a hair under 3.0 on the editor page.
+  contrast: DIM_COMMENTS(2.7),
 }));
 
 /** Every selectable theme, in picker order. `system` is handled separately. */

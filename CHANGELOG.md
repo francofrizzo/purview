@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Every theme reads.** Muted text, chips, tints and borders are now placed against the surfaces they actually sit on, so faint text on a hover row, a chip on its tint or a comment on a changed line stays legible in all 17 themes. Code comments on added and removed lines are lifted a step toward the text color.
 - **Lists in chat and summaries read right.** A numbered list keeps counting across blank lines, and a list nested under an item stays nested.
 - **Pick up where you left off.** A unit opens on its first hunk still to read, and `v` moves on to the next one still to read.
 

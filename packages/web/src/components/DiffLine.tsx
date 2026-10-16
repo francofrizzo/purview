@@ -50,6 +50,8 @@ const ACTIVE = 4;
 interface Seg {
   text: string;
   color?: string;
+  /** painted in the theme's comment color (see Tok.comment) */
+  comment?: true;
   /** bitmask of the overlays covering this run */
   mask: number;
 }
@@ -69,7 +71,7 @@ function segments(
   const hasIntra = Boolean(intra && intra.length);
   const hasMarks = Boolean(marks && marks.ranges.length);
   if (!hasIntra && !hasMarks) {
-    return source.map((t) => ({ text: t.content, color: t.color, mask: 0 }));
+    return source.map((t) => ({ text: t.content, color: t.color, comment: t.comment, mask: 0 }));
   }
 
   const maskAt = (pos: number) =>
@@ -85,14 +87,14 @@ function segments(
     for (const ch of t.content) {
       const mask = maskAt(pos);
       if (mask !== bufMask && buf) {
-        out.push({ text: buf, color: t.color, mask: bufMask });
+        out.push({ text: buf, color: t.color, comment: t.comment, mask: bufMask });
         buf = "";
       }
       bufMask = mask;
       buf += ch;
       pos += ch.length;
     }
-    if (buf) out.push({ text: buf, color: t.color, mask: bufMask });
+    if (buf) out.push({ text: buf, color: t.color, comment: t.comment, mask: bufMask });
   }
   return out;
 }
@@ -112,7 +114,19 @@ function overlayClass(mask: number): string | undefined {
   return undefined;
 }
 
-function renderContent(
+/**
+ * A comment token carries its color only as `--tok`; `.tok-comment` in
+ * index.css reads it back, so a tinted row's rule can mix it toward the
+ * foreground (the theme's comment grey loses its contrast on add/del tints)
+ * while plain rows show exactly what shiki painted. An inline `color` would
+ * outrank every selector, which is why it is not set here.
+ */
+function tokenStyle(s: Pick<Seg, "color" | "comment">): Record<string, string> {
+  if (!s.color) return {};
+  return s.comment ? { "--tok": s.color } : { color: s.color };
+}
+
+export function renderContent(
   content: string,
   toks: Tok[] | undefined,
   intra?: CharRange[],
@@ -145,9 +159,9 @@ function renderContent(
     out.push(
       <span
         key={i}
-        className={cls}
+        className={[s.comment ? "tok-comment" : "", cls ?? ""].filter(Boolean).join(" ") || undefined}
         style={{
-          ...(s.color ? { color: s.color } : {}),
+          ...tokenStyle(s),
           ...(bg ? { background: bg } : {}),
         }}
       >

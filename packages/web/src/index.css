@@ -428,6 +428,23 @@
   .intra {
     border-radius: 2px;
   }
+  /* Comment tokens on tinted rows (add, del, moved either way): the theme's
+     comment grey sits under the tint and loses its contrast, so mix it toward
+     the foreground; more under the strong word-diff tint, which eats the most.
+     Plain and context rows keep exactly what shiki painted (`--tok`). */
+  .tok-comment {
+    color: var(--tok);
+  }
+  [data-type="add"] .tok-comment,
+  [data-type="del"] .tok-comment {
+    color: color-mix(in srgb, var(--tok) 62%, var(--fg));
+  }
+  [data-type="add"] .tok-comment.intra,
+  [data-type="del"] .tok-comment.intra,
+  [data-type="add"] .tok-comment.search-mark,
+  [data-type="del"] .tok-comment.search-mark {
+    color: color-mix(in srgb, var(--tok) 30%, var(--fg));
+  }
 
   /* Folded moved-code placeholder. Exactly one diff line tall (the
      virtualizer estimates it as one), tinted at the moved code's strong

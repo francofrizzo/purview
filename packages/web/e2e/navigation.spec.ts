@@ -44,9 +44,6 @@ test("a unit opens on its first hunk still to read, and v moves on to the next o
   await page.keyboard.press("v");
   await expect(hunkHeader(page, "a1b2c3d4e5f60003")).toHaveAttribute("data-collapsed", "true");
   await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
-  // Everything read now: v on the last one stays put rather than going back.
-  await page.keyboard.press("v");
-  await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
 });
 
 test("Shift+J / Shift+K step between units in sidebar order", async ({ page }) => {

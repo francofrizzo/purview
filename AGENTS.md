@@ -47,6 +47,24 @@ version bump. Neither do small tweaks the reader would not look for in a
 changelog: a label's wording, a spacing or color nudge, a tooltip. An entry is
 for something the reader can do, see or configure that they could not before.
 
+## Themes and contrast
+
+`packages/web/src/lib/contrast.ts` lists every surface where one color is
+painted on another (text on each pane, chips on their tints, code on diff
+rows…) with the contrast floor that context needs. Two things read it:
+`themes.test.ts` fails any theme that falls under a floor, and
+`pnpm contrast-sheet` (in `packages/web`) renders the same list as a page to
+look at. So:
+
+- A new place where colors meet is a new entry in `contrast.ts`, nowhere
+  else; the test and the sheet pick it up together.
+- A new theme must clear every floor as is. A palette that cannot (a
+  low-contrast one by design) declares it on the theme: `contrast.allow`
+  names the surface and the floor it is held to instead, `contrast.floorScale`
+  lowers every floor. The test also fails an allowance that is no longer
+  needed, so the list stays honest.
+- Before changing a token derivation or a theme, run the sheet and look.
+
 ## Checks before pushing
 
 - `packages/core`, `packages/server`: `npx vitest run`, `npm run build`.
