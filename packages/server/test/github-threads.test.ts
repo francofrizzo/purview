@@ -7,10 +7,12 @@ import { createApp } from "../src/app.js";
 import { readComments, writeComments } from "../src/comments.js";
 import {
   classifyAuthor,
+  linkLocal,
   normalizeConversation,
   normalizeReviews,
   normalizeThreads,
   threadsPath,
+  type RemoteThread,
   type RawThread,
 } from "../src/github-threads.js";
 import { buildFixture, key } from "./fixtures.js";
@@ -248,6 +250,28 @@ describe("normalizeThreads", () => {
     expect(t.comments[0].localId).toBe("sent");
     // only the viewer's own comments can mirror a Purview one
     expect(t.comments[1].localId).toBeUndefined();
+  });
+
+  it("reads a start equal to the line as no range, and still links the local comment", () => {
+    // GitHub reports this for some single-line threads (seen on a LEFT-side
+    // comment: startLine = line, startDiffSide null, originalStartLine null).
+    const [t] = normalizeThreads(
+      [rawThread("T", [rawComment("me", { body: "idea: two tool sets?" })], { startLine: 2, diffSide: "LEFT" })],
+      {
+        viewerLogin: "me",
+        localComments: [{ id: "sent", file: "src/foo.ts", line: 2, body: "idea: two tool sets?", status: "submitted" }],
+      },
+    );
+    expect(t.startLine).toBeNull();
+    expect(t.startSide).toBeNull();
+    expect(t.comments[0].localId).toBe("sent");
+  });
+
+  it("links through a cached thread that still carries the one-line range", () => {
+    const [t] = normalizeThreads([rawThread("T", [rawComment("me", { body: "same words" })])], { viewerLogin: "me" });
+    const cached: RemoteThread = { ...t, startLine: 2, startSide: "RIGHT" };
+    const [linked] = linkLocal([cached], [{ id: "sent", file: "src/foo.ts", line: 2, body: "same words", status: "pushed" }]);
+    expect(linked.comments[0].localId).toBe("sent");
   });
 
   it("does not text-match a sent comment on another line", () => {

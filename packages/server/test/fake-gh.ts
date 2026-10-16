@@ -49,6 +49,11 @@ export interface FakeGh {
   conversation: Record<string, any>[];
   /** page size the fake uses for reviewThreads, to exercise pagination */
   threadPageSize: number;
+  /**
+   * When set, the review-comments listing reports a single-line comment with
+   * `start_line` equal to `line`, as GitHub does now and then.
+   */
+  oneLineRanges: boolean;
   login: string;
   /**
    * Register a failure for any call whose argv contains `match`. `after` runs
@@ -89,6 +94,7 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
     prReviews: [],
     conversation: [],
     threadPageSize: 100,
+    oneLineRanges: false,
     login: opts.login ?? "reviewer-bot",
     deletedCommentIds: [],
     published: [],
@@ -346,7 +352,12 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
     const listComments = endpoint.match(/\/pulls\/\d+\/reviews\/(\d+)\/comments/);
     if (method === "GET" && listComments) {
       const review = state.reviews.find((r) => r.id === Number(listComments[1]));
-      return JSON.stringify(review?.comments ?? []);
+      const listed = (review?.comments ?? []).map((c) =>
+        state.oneLineRanges && c.line !== undefined && c.start_line === undefined
+          ? { ...c, start_line: c.line, start_side: c.side }
+          : c,
+      );
+      return JSON.stringify(listed);
     }
 
     // GET /pulls/{n}/comments — PR-wide listing; only comments belonging to

@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **One card per sent comment.** A comment you sent no longer shows twice (your local copy and the GitHub one) when GitHub reports it as a one-line range; the two are matched as the same comment.
+
 ## 2026.10.16.3
 
 - **Every theme reads.** Faint text, chips, tints and borders are placed against the surfaces they sit on; code comments on changed lines are lifted a step. All 17 themes, checked by a test.

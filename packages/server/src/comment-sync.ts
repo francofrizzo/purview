@@ -22,6 +22,7 @@ import {
   type ReviewCommentInput,
 } from "./github-review.js";
 import { clearPendingReview, patchReviewDraft, readReviewDraft } from "./review-store.js";
+import { rangeStart } from "./github-threads.js";
 import { resolveBodyForGithub } from "./attachments.js";
 
 export interface CommentSyncResult {
@@ -272,7 +273,8 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
             (r) =>
               r.path === c.file &&
               (r.line ?? r.original_line) === c.line &&
-              (r.start_line ?? r.original_start_line ?? undefined) === c.startLine,
+              (rangeStart(r.start_line ?? r.original_start_line, r.line ?? r.original_line) ?? undefined) ===
+                c.startLine,
           );
           const match = idx === -1 ? undefined : remaining.splice(idx, 1)[0];
           return {

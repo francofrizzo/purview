@@ -186,6 +186,15 @@ describe("pushing a multi-line comment", () => {
     expect(stored.find((c) => c.id === single.id)!.githubCommentId).toBe(remote[1].id);
   });
 
+  it("backfills the id of a single-line draft that GitHub lists as a one-line range", async () => {
+    gh.oneLineRanges = true;
+    const single = addComment(key, { file: "src/foo.ts", line: 3, side: "RIGHT", body: "single" }, root);
+    const res = await sync();
+    expect(res.status).toBe(200);
+    const stored = readComments(key, root);
+    expect(stored.find((c) => c.id === single.id)!.githubCommentId).toBe(gh.reviews[0].comments[0].id);
+  });
+
   it("passes startLine/startSide to addPullRequestReviewThread when appending", async () => {
     addComment(key, { file: "src/foo.ts", line: 2, side: "RIGHT", body: "first" }, root);
     await sync();

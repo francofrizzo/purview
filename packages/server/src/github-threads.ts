@@ -417,16 +417,22 @@ export function normalizeThreads(raw: readonly RawThread[], opts: NormalizeOptio
     if (comments.length === 0) continue;
     comments.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     const fileLevel = t.subjectType === "FILE";
+    // GitHub sometimes reports a single-line thread with `startLine` equal
+    // to `line` (seen on a LEFT-side comment, `startDiffSide` null): a range
+    // of one line is no range, so it is dropped here rather than letting it
+    // read as multi-line everywhere downstream.
+    const startLine = rangeStart(t.startLine, t.line);
+    const originalStartLine = rangeStart(t.originalStartLine, t.originalLine);
     out.push({
       id: t.id,
       path: t.path,
       subjectType: fileLevel ? "file" : "line",
       line: t.line ?? null,
       originalLine: t.originalLine ?? null,
-      startLine: t.startLine ?? null,
-      originalStartLine: t.originalStartLine ?? null,
+      startLine,
+      originalStartLine,
       startSide:
-        t.startLine == null && t.originalStartLine == null
+        startLine == null && originalStartLine == null
           ? null
           : t.startDiffSide === "LEFT"
             ? "LEFT"
@@ -509,6 +515,16 @@ export type LocalForLink = Pick<Comment, "id" | "githubCommentId"> &
   Partial<Pick<Comment, "file" | "line" | "startLine" | "body" | "status" | "subjectType">>;
 
 /**
+ * A thread's range start, or null when it has none. A start equal to the end
+ * line is a range of one line, which GitHub reports now and then for a plain
+ * single-line comment; it counts as no range.
+ */
+export function rangeStart(start: number | null | undefined, line: number | null | undefined): number | null {
+  if (start == null) return null;
+  return line != null && start === line ? null : start;
+}
+
+/**
  * Does a local line comment sit where a thread does? The line, current or
  * original (an outdated thread keeps only the latter), and the range start
  * likewise — a one-line comment never matches a range ending on its line.
@@ -517,8 +533,10 @@ export type LocalForLink = Pick<Comment, "id" | "githubCommentId"> &
  */
 function samePlace(l: LocalForLink, t: RemoteThread): boolean {
   if (l.line !== t.line && l.line !== t.originalLine) return false;
-  const start = t.startLine ?? t.originalStartLine ?? undefined;
-  const origStart = t.originalStartLine ?? undefined;
+  // Caches written before normalizeThreads dropped it may still carry a
+  // one-line "range" (start equal to the line); it means single-line.
+  const start = rangeStart(t.startLine, t.line) ?? rangeStart(t.originalStartLine, t.originalLine) ?? undefined;
+  const origStart = rangeStart(t.originalStartLine, t.originalLine) ?? undefined;
   return l.startLine === undefined ? start === undefined : l.startLine === start || l.startLine === origStart;
 }
 
