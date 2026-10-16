@@ -16,7 +16,7 @@ import { classifyFiles, gatherGeneratedFacts, reclassifyGenerated } from "./gene
 import { parseDiff } from "./parse-diff.js";
 import { analysisJobPath, commentsPath, repoKeyOf, stateRoot, type PrKey } from "./paths.js";
 import { nextRevisionNumber, priorRevisions } from "./reducer.js";
-import { planUnitPatches, remainingWork, type RemainingWork, type UnitPatchRequest } from "./unit-patch.js";
+import { planUnitPatches, remainingWork, resolveHunkRef, type RemainingWork, type UnitPatchRequest } from "./unit-patch.js";
 import {
   appendEvent,
   appendEvents,
@@ -44,6 +44,7 @@ import type {
 } from "./schemas.js";
 import {
   AnalysisJobSchema,
+  MAX_UNIT_HEART,
   AnalysisSchema,
   CHANGELOG_TEXT_MAX,
   FINDING_EVIDENCE_MAX,
@@ -488,6 +489,22 @@ export interface DuplicateHunk {
   owners: string[];
 }
 
+/** Heart entries that point outside their own unit (short ids are resolved in place). */
+export function heartStrays(
+  units: { id: string; hunkIds: string[]; heart?: { hunkId: string }[] }[],
+): { unitId: string; hunkId: string }[] {
+  const out: { unitId: string; hunkId: string }[] = [];
+  for (const u of units) {
+    if (!u.heart) continue;
+    for (const h of u.heart) {
+      const id = resolveHunkRef(h.hunkId, u.hunkIds);
+      if (id === undefined) out.push({ unitId: u.id, hunkId: h.hunkId });
+      else h.hunkId = id;
+    }
+  }
+  return out;
+}
+
 /** Hunk ids listed more than once across units' `hunkIds` and `unassigned`. */
 export function duplicateHunks(analysis: {
   units: { id: string; hunkIds: string[] }[];
@@ -627,6 +644,13 @@ export function setAnalysis(
   // An imported analysis comes from another reader's (possibly older) CLI and
   // is re-anchored mechanically; it is taken as it is rather than refused.
   if (opts.origin !== "import") {
+    const strays = heartStrays(analysis.units);
+    if (strays.length > 0) {
+      throw new Error(
+        `A unit's heart must name hunks of that unit (one to ${MAX_UNIT_HEART} of its own hunkIds):\n  ` +
+          strays.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
+      );
+    }
     const dupes = duplicateHunks(analysis);
     if (dupes.length > 0) {
       throw new Error(

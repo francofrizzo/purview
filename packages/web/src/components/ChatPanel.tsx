@@ -460,97 +460,6 @@ export function ChatPanel({
   return (
     <CodeLinkContext.Provider value={linkUnit}>
     <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-panel">
-      <header
-        className="flex flex-none items-center gap-2 border-b px-3 py-2"
-        style={{ borderColor: "var(--border)" }}
-      >
-        {chat.busy ? (
-          <span className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--accent)" }}>
-            <IconSpinner width={10} height={10} />
-            thinking…
-            <button
-              type="button"
-              data-testid="chat-stop"
-              className="inline-flex items-center gap-1 rounded border px-1.5 py-px"
-              style={{ borderColor: "var(--border-strong)", color: "var(--fg-muted)", background: "var(--bg-inset)" }}
-              data-tip="Stop the reply"
-              data-tip-key="esc"
-              aria-label="Stop the reply"
-              onClick={() => void chat.stop()}
-            >
-              <IconStop width={8} height={8} />
-              stop
-            </button>
-          </span>
-        ) : null}
-        {chat.agent && chat.configuredAgent ? (
-          <ModelSelect
-            className="ml-auto"
-            manifest={manifestOf(agents, chat.agent.harness)}
-            value={chat.agent.model}
-            configured={modelLabel(manifestOf(agents, chat.configuredAgent.harness), chat.configuredAgent.model)}
-            pinned={chat.sessionAgent?.model !== undefined}
-            onChange={(m) =>
-              void chat.setAgent(
-                editSelection(chat.sessionAgent, "model", m, chat.agent!.harness, chat.configuredAgent!.harness),
-              )
-            }
-          />
-        ) : (
-          <span className="ml-auto" />
-        )}
-        {handoffHarness?.capabilities.handoff ? (
-          <HandoffButton
-            prKey={prKey}
-            product={handoffHarness.name}
-            messageCount={chat.messages.length}
-            busy={chat.busy}
-          />
-        ) : null}
-        <button
-          type="button"
-          data-tip="Chat settings for this PR"
-          aria-label="Chat settings"
-          onClick={() => setSettingsOpen((v) => !v)}
-          style={{ color: settingsOpen ? "var(--fg)" : "var(--fg-faint)" }}
-        >
-          <IconSettings width={12} height={12} />
-        </button>
-      </header>
-
-      {settingsOpen ? (
-        <ChatSettings
-          prKey={prKey}
-          onClearConversation={() => {
-            setConfirmClear(true);
-            setSettingsOpen(false);
-          }}
-        />
-      ) : null}
-
-      {confirmClear ? (
-        <div
-          className="flex flex-none items-center gap-2 border-b px-3 py-2 text-2xs"
-          style={{ borderColor: "var(--border)", background: "var(--warn-soft)", color: "var(--warn)" }}
-        >
-          Clear this conversation? It cannot be recovered.
-          <button type="button" className="btn ml-auto" onClick={() => setConfirmClear(false)}>
-            cancel
-          </button>
-          <button
-            type="button"
-            className="btn"
-            data-testid="chat-clear-confirm"
-            onClick={() => {
-              setConfirmClear(false);
-              void chat.clearConversation();
-            }}
-          >
-            clear
-          </button>
-        </div>
-      ) : null}
-
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -817,6 +726,95 @@ export function ChatPanel({
           </button>
         </div>
       </div>
+      {settingsOpen ? (
+        <ChatSettings
+          prKey={prKey}
+          onClearConversation={() => {
+            setConfirmClear(true);
+            setSettingsOpen(false);
+          }}
+        />
+      ) : null}
+
+      {confirmClear ? (
+        <div
+          className="flex flex-none items-center gap-2 border-t px-3 py-2 text-2xs"
+          style={{ borderColor: "var(--border)", background: "var(--warn-soft)", color: "var(--warn)" }}
+        >
+          Clear this conversation? It cannot be recovered.
+          <button type="button" className="btn ml-auto" onClick={() => setConfirmClear(false)}>
+            cancel
+          </button>
+          <button
+            type="button"
+            className="btn"
+            data-testid="chat-clear-confirm"
+            onClick={() => {
+              setConfirmClear(false);
+              void chat.clearConversation();
+            }}
+          >
+            clear
+          </button>
+        </div>
+      ) : null}
+      <header
+        className="flex flex-none items-center gap-2 border-t px-3 py-2"
+        style={{ borderColor: "var(--border)" }}
+      >
+        {chat.busy ? (
+          <span className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--accent)" }}>
+            <IconSpinner width={10} height={10} />
+            thinking…
+            <button
+              type="button"
+              data-testid="chat-stop"
+              className="inline-flex items-center gap-1 rounded border px-1.5 py-px"
+              style={{ borderColor: "var(--border-strong)", color: "var(--fg-muted)", background: "var(--bg-inset)" }}
+              data-tip="Stop the reply"
+              data-tip-key="esc"
+              aria-label="Stop the reply"
+              onClick={() => void chat.stop()}
+            >
+              <IconStop width={8} height={8} />
+              stop
+            </button>
+          </span>
+        ) : null}
+        {chat.agent && chat.configuredAgent ? (
+          <ModelSelect
+            className="ml-auto"
+            manifest={manifestOf(agents, chat.agent.harness)}
+            value={chat.agent.model}
+            configured={modelLabel(manifestOf(agents, chat.configuredAgent.harness), chat.configuredAgent.model)}
+            pinned={chat.sessionAgent?.model !== undefined}
+            onChange={(m) =>
+              void chat.setAgent(
+                editSelection(chat.sessionAgent, "model", m, chat.agent!.harness, chat.configuredAgent!.harness),
+              )
+            }
+          />
+        ) : (
+          <span className="ml-auto" />
+        )}
+        {handoffHarness?.capabilities.handoff ? (
+          <HandoffButton
+            prKey={prKey}
+            product={handoffHarness.name}
+            messageCount={chat.messages.length}
+            busy={chat.busy}
+          />
+        ) : null}
+        <button
+          type="button"
+          data-tip="Chat settings for this PR"
+          aria-label="Chat settings"
+          onClick={() => setSettingsOpen((v) => !v)}
+          style={{ color: settingsOpen ? "var(--fg)" : "var(--fg-faint)" }}
+        >
+          <IconSettings width={12} height={12} />
+        </button>
+      </header>
     </div>
     </CodeLinkContext.Provider>
   );
@@ -880,15 +878,11 @@ function ModelSelect({
       <span className="sr-only">Model for the next message</span>
       <select
         data-testid="chat-model-select"
-        className="cursor-pointer rounded px-1 py-px text-2xs font-medium outline-none"
+        className="select px-1 py-px text-2xs font-medium"
         data-tip={`Model for the next message${pinned ? "; pinned for this conversation" : ""}`}
         value={pinned ? value : "inherit"}
         onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
-        style={{
-          background: "var(--bg-inset)",
-          border: "1px solid var(--border)",
-          color: pinned ? "var(--fg)" : "var(--fg-muted)",
-        }}
+        style={{ color: pinned ? "var(--fg)" : "var(--fg-muted)" }}
       >
         <option value="inherit">{configured} (default)</option>
         {modelOptions(manifest).map((m) => (
@@ -1073,7 +1067,7 @@ function ChatSettings({
   const background = useModalBackground();
 
   return (
-    <div className="flex-none border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
+    <div className="flex-none border-t px-3 py-2" style={{ borderColor: "var(--border)" }}>
       <span className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
         local repo path
       </span>

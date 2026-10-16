@@ -112,6 +112,13 @@ export interface UnitChangelogEntry {
   text: string;
 }
 
+/** One hunk where the unit's logic lives, and why the reader should start there. */
+export interface HeartEntry {
+  hunkId: string;
+  /** one short line; inline markdown */
+  why: string;
+}
+
 export interface ReviewUnit {
   id: string;
   title: string;
@@ -122,6 +129,12 @@ export interface ReviewUnit {
   riskFlags: RiskFlag[];
   hunkIds: string[];
   order: number;
+  /**
+   * The one to three hunks the analysis names as the heart of the unit (each
+   * one of `hunkIds`). Absent on states written before it existed and on
+   * units with no heart; the rest of the unit is support, not hidden.
+   */
+  heart?: HeartEntry[];
   /** absent on units that verified nothing, and on any state predating findings */
   findings?: Finding[];
   /**

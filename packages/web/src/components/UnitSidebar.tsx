@@ -9,7 +9,7 @@ import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { ChangedBadge, HunkProgress, KindChip, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconChevron, IconEye, IconEyeOff, IconGenerated } from "./icons";
+import { IconChevron, IconEye, IconEyeOff, IconGenerated, IconHeart } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
 import { InlineMarkdown } from "./Markdown";
 
@@ -420,6 +420,17 @@ function UnitRow({
           {unit.kind !== "core-logic" && !generated ? <KindChip kind={unit.kind} /> : null}
           <RiskFlags flags={unit.riskFlags} compact />
           {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}
+          {unit.heart?.length ? (
+            <span
+              className="inline-flex items-center gap-0.5 text-2xs tabular-nums"
+              style={{ color: "var(--heart)" }}
+              data-testid={`unit-heart-${unit.id}`}
+              data-tip={`${unit.heart.length} of ${unit.hunkIds.length} hunks at the heart`}
+            >
+              <IconHeart width={11} height={11} />
+              {unit.heart.length}
+            </span>
+          ) : null}
           <FindingsBadge unit={unit} />
           {matches ? <MatchBadge count={matches} /> : null}
           <span className="ml-auto">

@@ -61,6 +61,23 @@ function applyUnitPatch(unit: ReviewUnit, patch: ReviewUnitPatch, revision: numb
   const { changelogEntry, ...fields } = patch;
   const next = { ...unit, ...fields } as ReviewUnit;
   if (changelogEntry) next.changelog = upsertChangelog(next.changelog, revision, changelogEntry);
+  return pruneHeart(next);
+}
+
+/**
+ * A heart entry only ever points at one of the unit's own hunks: whatever
+ * takes a hunk out of the unit (a patch, a migration, the generated sweep)
+ * takes its entry with it, and a unit with no entries left has no `heart` key.
+ * Returns the same object when nothing changes.
+ */
+export function pruneHeart(unit: ReviewUnit): ReviewUnit {
+  if (!unit.heart) return unit;
+  const own = new Set(unit.hunkIds);
+  const seen = new Set<string>();
+  const kept = unit.heart.filter((h) => own.has(h.hunkId) && !seen.has(h.hunkId) && seen.add(h.hunkId));
+  if (kept.length === unit.heart.length) return unit;
+  const next: ReviewUnit = { ...unit, heart: kept };
+  if (kept.length === 0) delete next.heart;
   return next;
 }
 
@@ -105,7 +122,7 @@ function applyGenerated(state: State): void {
       continue;
     }
     const hunkIds = u.hunkIds.filter((id) => !gen.has(id));
-    if (hunkIds.length > 0) others.push({ ...u, hunkIds });
+    if (hunkIds.length > 0) others.push(pruneHeart({ ...u, hunkIds }));
   }
   if (genIds.length > 0) {
     const order = others.reduce((m, u) => Math.max(m, u.order + 1), 0);
@@ -290,6 +307,15 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           const keepFindings = u.findings?.length ? findingsSurvive(u) : false;
           const next: ReviewUnit = { ...u, hunkIds: remap(u.hunkIds) };
           if (!keepFindings) delete next.findings;
+          // The heart follows its hunks: a reworked hunk is still the heart
+          // (the why may need a refresh, which the incremental run does for
+          // changed units); one that left the PR takes its entry with it.
+          if (u.heart) {
+            next.heart = u.heart.map((h) => ({ ...h, hunkId: remap([h.hunkId])[0] ?? h.hunkId }));
+            const pruned = pruneHeart(next);
+            if (pruned.heart) next.heart = pruned.heart;
+            else delete next.heart;
+          }
           // Every hunk of the unit left the PR: keep it as a visible husk for
           // this one revision (title, summary, kind, attention intact) so the
           // reader sees the decision was dropped rather than it vanishing.
@@ -330,7 +356,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       // payload (an import, a model echoing it) is dropped and rebuilt.
       state.units = event.units
         .filter((u) => !isGeneratedUnit(u))
-        .map((u) => reviveIfPopulated(fromAnalysis(u) as ReviewUnit));
+        .map((u) => pruneHeart(reviveIfPopulated(fromAnalysis(u) as ReviewUnit)));
       state.unassignedHunkIds = [...(event.unassigned ?? [])];
       state.analysisRevision = event.revision;
       state.analysisOrigin = event.origin;

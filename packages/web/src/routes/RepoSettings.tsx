@@ -778,15 +778,10 @@ export function SelectField({
       <Field label={label}>
         <select
           data-testid={`${testId}-select`}
-          className="rounded px-2 py-1 text-xs outline-none"
+          className="select px-2 py-1 text-xs"
           value={value ?? "inherit"}
           disabled={disabled}
           onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
-          style={{
-            background: "var(--bg-inset)",
-            border: "1px solid var(--border)",
-            color: "var(--fg)",
-          }}
         >
           <option value="inherit">inherit</option>
           {options.map((o) => (

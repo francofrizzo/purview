@@ -85,6 +85,9 @@ first three as "carried".
      unit that lost hunks is titled and summarized by what remains, not by what left; the
      history goes in the changelog only;
    - re-check `kind` / `attention` / `riskFlags` (a correction needs a `note`);
+   - re-check its `heart`: an entry whose hunk left the unit is already gone, and the
+     `why` of a reworked heart hunk may be stale. Resend the whole `heart` list (one to
+     three of the unit's current hunks) when it should change; leave it out to keep it;
    - send a `changelogEntry`: a short note (a sentence or two) about what *this revision* changed in
      the unit's **code** (e.g. `"rounding switched to banker's; added a .5 test"`) — not a
      restatement of the summary, and never migration bookkeeping (attached / unassigned /

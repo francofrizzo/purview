@@ -2,6 +2,8 @@ import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/rea
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Attention, ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
 import { baseName, lineRangeRef } from "../lib/chatRefs";
+import { hunkHint } from "../lib/hunkHints";
+import { InlineMarkdown } from "./Markdown";
 import { isRangeInDiff, lineAnchor } from "../lib/comments";
 import { buildThreadGroups, itemCount, threadRange, type DisplayThread, type ThreadGroups } from "../lib/threads";
 import {
@@ -80,6 +82,7 @@ import {
   IconChevron,
   IconClose,
   IconComment,
+  IconHeart,
   IconCopy,
   IconQuote,
   IconSplit,
@@ -109,6 +112,8 @@ type FlatRow =
   | { type: "file"; key: string; path: string; file: FileEntry }
   /** `seam`: not its file's first hunk here, so it draws the divider above it */
   | { type: "hunk"; key: string; hunkId: string; entry: HunkEntry; seam: boolean }
+  /** the analysis's why, under a heart hunk's header (shown folded too) */
+  | { type: "heart"; key: string; hunkId: string; why: string }
   | { type: "dod"; key: string; hunkId: string }
   | { type: "line"; key: string; hunkId: string; entry: HunkEntry; lineIdx: number }
   | { type: "split"; key: string; hunkId: string; entry: HunkEntry; rowIdx: number }
@@ -245,6 +250,12 @@ export interface DiffPaneProps {
    */
   jumpToHunk?: { hunkId: string; nonce: number; line?: number; addedIndex?: number } | null;
   /**
+   * The selected unit's heart (hunk id -> why): those hunks are drawn with a
+   * bar and their why on the header, the others get a muted hint of what
+   * kind of support they are. Omitted (or empty), nothing is marked.
+   */
+  heart?: ReadonlyMap<string, string>;
+  /**
    * Files tab only: which unit (if any) a hunk belongs to, for a quiet label
    * on its header — the units tab already groups by unit, so the host omits
    * this prop there and the label renders nothing.
@@ -324,6 +335,7 @@ export function DiffPane({
   onDefinitionClick,
   isDefinedInDiff,
   jumpToHunk,
+  heart,
   unitForHunkId,
   onUnitClick,
   highlight = null,
@@ -1046,6 +1058,8 @@ export function DiffPane({
         hunk.id,
       );
       out.push({ type: "hunk", key: `h:${hunk.id}`, hunkId: hunk.id, entry, seam });
+      const why = heart?.get(hunk.id);
+      if (why !== undefined) out.push({ type: "heart", key: `heart:${hunk.id}`, hunkId: hunk.id, why });
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
       }
@@ -1153,6 +1167,7 @@ export function DiffPane({
     codeFontSize,
     foldRegionsByHunk,
     openedFoldRegions,
+    heart,
   ]);
 
   const hunkRowIndex = useMemo(() => {
@@ -1253,6 +1268,7 @@ export function DiffPane({
       // A fold placeholder is one row, always — no wrapping content inside it.
       if (r.type === "fold") return codeLineHeight;
       if (r.type === "dod") return 170;
+      if (r.type === "heart") return 26;
       if (r.type === "compose") return 150;
       // Comment blocks are the one genuinely variable row. The estimate only
       // has to be in the right order of magnitude — measureElement's
@@ -1964,6 +1980,21 @@ export function DiffPane({
       } else if (e.key === "k") {
         e.preventDefault();
         focusAndScroll(ids[Math.max(cur - 1, 0)] ?? ids[0]);
+      } else if ((e.key === "h" || e.key === "H") && heart?.size) {
+        // Among the heart hunks only, wrapping around at either end.
+        const hearts = ids.filter((id) => heart.has(id));
+        if (!hearts.length) return;
+        e.preventDefault();
+        const at = focusedHunkId ? hearts.indexOf(focusedHunkId) : -1;
+        const next =
+          e.key === "h"
+            ? at === -1
+              ? (hearts.find((id) => ids.indexOf(id) > cur) ?? hearts[0])
+              : hearts[(at + 1) % hearts.length]
+            : at === -1
+              ? ([...hearts].reverse().find((id) => ids.indexOf(id) < cur) ?? hearts[hearts.length - 1])
+              : hearts[(at - 1 + hearts.length) % hearts.length];
+        focusAndScroll(next);
       } else if (e.key === "v") {
         if (!focusedHunkId) return;
         e.preventDefault();
@@ -2241,6 +2272,7 @@ export function DiffPane({
               data-index={vi.index}
               data-flash={vi.key === flashKey ? "true" : undefined}
               data-sticky={stickyTop !== null ? "true" : undefined}
+              data-heart={heart && "hunkId" in row && heart.has(row.hunkId) ? "true" : undefined}
               ref={virtualizer.measureElement}
               style={
                 stickyTop !== null
@@ -2646,6 +2678,21 @@ export function DiffPane({
       );
     }
 
+    if (row.type === "heart") {
+      return (
+        <div
+          data-testid={`hunk-heart-${row.hunkId}`}
+          className="px-3 py-1 font-sans text-xs leading-[18px]"
+          style={{
+            background: "linear-gradient(var(--heart-soft), var(--heart-soft)), var(--bg-hover)",
+            color: "var(--fg)",
+          }}
+        >
+          <InlineMarkdown text={row.why} />
+        </div>
+      );
+    }
+
     if (row.type === "dod") {
       const st = detail.state.hunks[row.hunkId];
       return st ? <DiffOfDiffs prKey={detail.key} hunkId={row.hunkId} state={st} /> : null;
@@ -2660,6 +2707,14 @@ export function DiffPane({
       // them up onto the header keeps them reachable — and clicking the bubble
       // unfolds, which is the only sensible place to read them.
       const inside = folded ? commentsInHunk(row.entry) : null;
+      const atHeart = heart?.has(row.hunkId) === true;
+      // Support hunks are named only once the unit has a heart to contrast with.
+      const hint = heart?.size && !atHeart ? hunkHint(row.entry.file, row.entry.hunk) : null;
+      // The heart tint is the ground; keyboard focus layers its own on top,
+      // so a focused heart header reads as both.
+      const ground = atHeart
+        ? "linear-gradient(var(--heart-soft), var(--heart-soft)), var(--bg-hover)"
+        : "var(--bg-hover)";
       return (
         <div
           data-testid={`hunk-header-${row.hunkId}`}
@@ -2670,10 +2725,11 @@ export function DiffPane({
             // A step lighter than the code, so a file's hunks read as
             // separate blocks. accent-soft is translucent; composite it over
             // that ground so a pinned focused header stays opaque.
-            background: focused
-              ? "linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg-hover)"
-              : "var(--bg-hover)",
+            background: focused ? `linear-gradient(var(--accent-soft), var(--accent-soft)), ${ground}` : ground,
+            // The focus mark sits just right of the heart bar (3px, drawn by
+            // the row wrapper), so a focused heart header shows both.
             borderLeft: `2px solid ${focused ? "var(--accent)" : "transparent"}`,
+            paddingLeft: atHeart ? "calc(0.75rem + 3px)" : undefined,
             // A drawn line, not a border: row heights stay what was measured.
             boxShadow: row.seam ? "inset 0 1px 0 var(--border-strong)" : undefined,
             color: "var(--fg-muted)",
@@ -2727,7 +2783,27 @@ export function DiffPane({
               onClick={() => onQuote({ kind: "hunk", id: row.hunkId, path: row.entry.file.path })}
             />
           ) : null}
+          {atHeart ? (
+            <IconHeart
+              width={12}
+              height={12}
+              className="flex-none"
+              style={{ color: "var(--heart)" }}
+              data-testid={`hunk-heart-icon-${row.hunkId}`}
+              aria-label="At the heart of the unit"
+            />
+          ) : null}
           <span className="truncate font-mono text-2xs">{hunkLabel(row.entry.hunk)}</span>
+          {hint ? (
+            <span
+              className="chip flex-none"
+              data-testid={`hunk-hint-${row.hunkId}`}
+              style={{ background: "var(--bg-inset)", color: "var(--fg-faint)" }}
+              data-tip="What this hunk is, from its path and lines; the heart is elsewhere in the unit"
+            >
+              {hint}
+            </span>
+          ) : null}
           {folded ? (
             <span
               className="flex-none whitespace-nowrap text-2xs"

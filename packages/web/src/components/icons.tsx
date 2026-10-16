@@ -13,6 +13,7 @@ import {
   IconSend as TablerSend,
   IconBarbell,
   IconBolt as TablerBolt,
+  IconHeartFilled as TablerHeartFilled,
   IconCheck as TablerCheck,
   IconDownload as TablerDownload,
   IconFileImport as TablerFileImport,
@@ -184,6 +185,7 @@ export const IconArchive = ({ out, ...p }: P & { out?: boolean }) =>
 
 /** Lightning bolt — the "fast" effort badge. */
 export const IconBolt = wrap(TablerBolt);
+export const IconHeart = wrap(TablerHeartFilled);
 
 /** A cog with a play mark — machine output: the generated-files & lockfiles unit. */
 export const IconGenerated = wrap(IconSettingsAutomation);

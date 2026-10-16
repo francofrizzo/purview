@@ -25,6 +25,8 @@ export interface Palette {
   comment: string;
   /** Optional teal/cyan; falls back to a blue/green blend. */
   cyan?: string;
+  /** Optional pink/magenta (the heart mark); falls back to a red/purple blend. */
+  pink?: string;
 }
 
 /** CSS custom property names (without the leading `--`) the app reads. */
@@ -42,6 +44,8 @@ export const TOKEN_NAMES = [
   "accent-soft",
   "agent",
   "agent-soft",
+  "heart",
+  "heart-soft",
   "add-bg",
   "add-bg-strong",
   "add-gutter",
@@ -162,6 +166,7 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
   // green/red, text() gets it the same contrast floor as accent/ok/risk.
   const moved = text(palette.purple, 3.6);
   const movedOut = text(cyan, 3.6);
+  const heart = text(palette.pink ?? mix(palette.red, palette.purple, 0.45), 3.6);
   const warn = text(
     // yellow on a light background is hopeless; prefer orange there
     !dark && contrast(palette.yellow, base) < 2.4 ? palette.orange : palette.yellow,
@@ -193,6 +198,9 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     // Comments for a coding agent: violet, like the moved-code tint.
     agent: moved,
     "agent-soft": rgba(moved, dark ? 0.14 : 0.1),
+    // The heart of a unit: pink, the one hue nothing else in the diff uses.
+    heart,
+    "heart-soft": rgba(heart, dark ? 0.14 : 0.1),
 
     "add-bg": rgba(palette.green, tint),
     "add-bg-strong": rgba(palette.green, tintStrong),
@@ -464,6 +472,8 @@ const REVIEWER_DARK: ThemeDef = {
     "accent-soft": "rgba(122, 162, 247, 0.14)",
     agent: "#a371f7",
     "agent-soft": "rgba(163, 113, 247, 0.14)",
+    heart: "#f778ba",
+    "heart-soft": "rgba(247, 120, 186, 0.14)",
     "add-bg": "rgba(63, 185, 80, 0.1)",
     "add-bg-strong": "rgba(63, 185, 80, 0.26)",
     "add-gutter": "rgba(63, 185, 80, 0.16)",

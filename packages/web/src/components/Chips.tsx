@@ -21,7 +21,7 @@ import {
 import { useSettings } from "../lib/settings";
 import { useNow } from "../lib/useNow";
 import type { StackedOnLink } from "../lib/stacked";
-import { IconBolt, IconCheck, IconWeight, RISK_META } from "./icons";
+import { IconArrowDown, IconBolt, IconCheck, IconEye, IconWarning, IconWeight, RISK_META } from "./icons";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
 // distinguishable — and coherent with the syntax colors — on every theme.
@@ -34,10 +34,13 @@ const KIND_STYLE: Record<Kind, { label: string; color: string; bg: string }> = {
   docs: { label: "docs", color: "var(--kind-docs)", bg: "var(--kind-docs-soft)" },
 };
 
-const ATTENTION_STYLE: Record<Attention, { label: string; color: string; bg: string }> = {
-  "must-read": { label: "must-read", color: "var(--risk)", bg: "var(--risk-soft)" },
-  skim: { label: "skim", color: "var(--warn)", bg: "var(--warn-soft)" },
-  skip: { label: "skip", color: "var(--kind-wiring)", bg: "var(--kind-wiring-soft)" },
+const ATTENTION_STYLE: Record<
+  Attention,
+  { label: string; color: string; bg: string; icon: (p: { width: number; height: number }) => JSX.Element }
+> = {
+  "must-read": { label: "must-read", color: "var(--risk)", bg: "var(--risk-soft)", icon: IconWarning },
+  skim: { label: "skim", color: "var(--warn)", bg: "var(--warn-soft)", icon: IconEye },
+  skip: { label: "skip", color: "var(--kind-wiring)", bg: "var(--kind-wiring-soft)", icon: IconArrowDown },
 };
 
 /**
@@ -171,7 +174,8 @@ export function KindChip({ kind }: { kind: Kind }) {
 export function AttentionChip({ attention }: { attention: Attention }) {
   const s = ATTENTION_STYLE[attention] ?? ATTENTION_STYLE.skim;
   return (
-    <span className="chip" style={{ color: s.color, background: s.bg }}>
+    <span className="chip" style={{ color: s.color, background: s.bg }} data-attention={attention}>
+      <s.icon width={10} height={10} />
       {s.label}
     </span>
   );

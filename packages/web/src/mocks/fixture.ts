@@ -724,6 +724,10 @@ const units: ReviewUnit[] = [
     // a1b2c3d4e5f60004 (the migration, new in revision 3) is deliberately in
     // no unit: the sidebar's "Not in any unit" group needs something to show.
     hunkIds: ["a1b2c3d4e5f60001", "a1b2c3d4e5f60003", "a1b2c3d4e5f60005"],
+    heart: [
+      { hunkId: "a1b2c3d4e5f60003", why: "`idempotencyKey()` decides what counts as the same charge" },
+      { hunkId: "a1b2c3d4e5f60001", why: "`charge()` short-circuits on the ledger row before touching the gateway" },
+    ],
     order: 1,
   },
   {
@@ -753,6 +757,7 @@ const units: ReviewUnit[] = [
       },
     ],
     hunkIds: ["a1b2c3d4e5f60002", "a1b2c3d4e5f60008"],
+    heart: [{ hunkId: "a1b2c3d4e5f60002", why: "the backoff loop: only `isTransient()` errors retry, and the delay doubles with jitter" }],
     order: 2,
   },
   {

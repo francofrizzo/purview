@@ -253,11 +253,21 @@ plus `riskFlags` and `hunkIds` (arrays; both default to `[]` if omitted, but alw
 them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy` and
 `order` are required — the schema rejects the payload if any is missing.
 
+`heart` (optional, one to three entries of `{"hunkId": "...", "why": "..."}`) names the
+hunks where the unit's logic actually lives, as opposed to the call sites, tests, imports
+and plumbing around it, and says in one line what to look for there (`"derives the
+idempotency key; every retry path goes through this"`). Give every **must-read** unit a
+heart; give a skim unit one only when one hunk clearly carries it. Each `hunkId` must be
+one of that unit's own `hunkIds` (short ids are fine). Purview marks these hunks in the
+diff; the rest of the unit stays fully visible, so the heart is a pointer, not a filter.
+Leave `heart` off entirely for a unit whose hunks are all alike (a pure rename, a batch of
+test fixtures).
+
 One more field, `findings`, is optional and is only ever filled in by the verification
 pass (step 5). Leave it off entirely here.
 
-Every prose field — the overall `summary`, each unit's `summary` and `attentionWhy`, and
-later the findings — is rendered as markdown. Use `code` spans for identifiers, paths,
+Every prose field — the overall `summary`, each unit's `summary`, `attentionWhy` and
+heart `why`, and later the findings — is rendered as markdown. Use `code` spans for identifiers, paths,
 values and commands (`charge()`, `src/billing/ledger.ts`, `max_attempts=4`), and **bold**
 or *italics* where they help. No headings, lists or fences inside the one-line fields;
 the overall `summary` may use short paragraphs, nothing else.

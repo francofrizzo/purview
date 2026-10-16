@@ -6,6 +6,7 @@ import type {
   AnalysisImportReport,
   ChatRef,
   FileEntry,
+  HeartEntry,
   MigrationReport,
   PrDetail,
   ReviewEvent,
@@ -13,6 +14,7 @@ import type {
   SubmitReviewResult,
   SyncResult, CommentAudience } from "../api/types";
 import { isGeneratedUnit, isJobLive } from "../api/types";
+import { baseName } from "../lib/chatRefs";
 import {
   qk,
   useAddComment,
@@ -90,7 +92,7 @@ import { FinishReviewPanel } from "../components/FinishReview";
 import { RightDock, type DockTab } from "../components/RightDock";
 import { isForAgent } from "../lib/comments";
 import { FileTree } from "../components/FileTree";
-import { IconChevron, IconComment } from "../components/icons";
+import { IconChevron, IconComment, IconHeart } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
 import { generatedUnitFiles, reviewProgress, workUnits } from "../lib/generated";
 import {
@@ -110,7 +112,7 @@ import { TopBar } from "../components/TopBar";
 import { UNPLACED_TITLE, UnitSidebar } from "../components/UnitSidebar";
 import { SidebarRail } from "../components/SidebarRail";
 import { DiffSearchBar } from "../components/DiffSearchBar";
-import { hunkIndex, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
+import { sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
@@ -669,11 +671,13 @@ export function PrView() {
     if (tab === "units") {
       const ids = unplacedSelected ? unplaced : selectedUnit?.hunkIds;
       if (!ids) return [];
-      const index = hunkIndex(detail.files);
+      // Diff order (file, then hunk within it), whatever order the analysis
+      // listed the ids in: the pane's gaps and file headers assume it, and a
+      // refresh appends new hunks to the end of a unit's list.
+      const wanted = new Set(ids);
       const out: HunkEntry[] = [];
-      for (const id of ids) {
-        const e = index.get(id);
-        if (e) out.push({ hunk: e.hunk, file: e.file });
+      for (const file of detail.files.files) {
+        for (const hunk of file.hunks) if (wanted.has(hunk.id)) out.push({ hunk, file });
       }
       return out;
     }
@@ -698,6 +702,11 @@ export function PrView() {
     () => (sinceChanged ? allEntries.filter((e) => sinceChanged.has(e.hunk.id)) : allEntries),
     [allEntries, sinceChanged],
   );
+  /** The selected unit's heart, by hunk id: the pane marks those hunks. */
+  const heart = useMemo<ReadonlyMap<string, string> | undefined>(() => {
+    if (tab !== "units" || !selectedUnit?.heart?.length) return undefined;
+    return new Map(selectedUnit.heart.map((h) => [h.hunkId, h.why]));
+  }, [tab, selectedUnit]);
   // Turning the filter on (or switching tabs under it) never leaves the
   // reader on a unit or file it hides: land on the first one it keeps.
   useEffect(() => {
@@ -1253,6 +1262,7 @@ export function PrView() {
               title="Reading"
               rows={[
                 [["j", "k"], "next / previous hunk"],
+                [["h", "H"], "next / previous heart hunk"],
                 [["J", "K"], "next / previous unit"],
                 [["v"], "mark hunk viewed"],
                 [["V"], "mark unit viewed"],
@@ -1759,11 +1769,30 @@ export function PrView() {
                     />
                   ) : null}
                   {selectedUnit.attentionWhy ? (
-                    <p className="mt-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                      why {selectedUnit.attention}: <InlineMarkdown text={selectedUnit.attentionWhy} />
+                    <p
+                      className="mt-1.5 flex max-w-4xl items-start gap-2 text-xs leading-5"
+                      style={{ color: "var(--fg)" }}
+                      data-testid="unit-why"
+                    >
+                      <span className="flex-none pt-px">
+                        <AttentionChip attention={selectedUnit.attention} />
+                      </span>
+                      <span className="min-w-0">
+                        <InlineMarkdown text={selectedUnit.attentionWhy} />
+                      </span>
                     </p>
                   ) : null}
-                  <UnitFindings findings={selectedUnit.findings} />
+                  {selectedUnit.heart?.length ? (
+                    <UnitHeart
+                      heart={selectedUnit.heart}
+                      files={detail.files.files}
+                      onJump={(hunkId) => {
+                        setFocusedHunkId(hunkId);
+                        setJumpToHunk({ hunkId, nonce: Date.now() });
+                      }}
+                    />
+                  ) : null}
+                  <UnitFindings unitId={selectedUnit.id} findings={selectedUnit.findings} />
                 </div>
               </div>
             </div>
@@ -1908,6 +1937,7 @@ export function PrView() {
               onDefinitionClick={handleDefinitionClick}
               isDefinedInDiff={isDefinedInDiff}
               jumpToHunk={jumpToHunk}
+              heart={heart}
               highlight={tab === "units" ? highlight : null}
               unitForHunkId={unitForHunkId}
               onUnitClick={onHunkUnitClick}
@@ -2182,6 +2212,53 @@ function ErrorBar({ message }: { message: string }) {
       style={{ background: "var(--risk-soft)", color: "var(--risk)", borderColor: "var(--border)" }}
     >
       {message}
+    </div>
+  );
+}
+
+/**
+ * The unit's heart: the hunks its logic lives in, each with the analysis's
+ * one-line why. A button per entry lands the reader on that hunk; the pane
+ * draws the same hunks with a bar, so this is the index and the diff the map.
+ */
+function UnitHeart({
+  heart,
+  files,
+  onJump,
+}: {
+  heart: HeartEntry[];
+  files: FileEntry[];
+  onJump: (hunkId: string) => void;
+}) {
+  const pathOf = (hunkId: string) => files.find((f) => f.hunks.some((h) => h.id === hunkId))?.path;
+  return (
+    <div className="mt-1.5 max-w-4xl text-xs" data-testid="unit-heart">
+      <div className="flex items-center gap-1.5" style={{ color: "var(--heart)" }}>
+        <IconHeart width={12} height={12} className="flex-none" />
+        <span>Heart</span>
+        <span style={{ color: "var(--fg-faint)" }}>· where the logic lives</span>
+      </div>
+      <ol className="mt-1 space-y-0.5 border-l pl-3" style={{ borderColor: "var(--heart)" }}>
+        {heart.map((h) => {
+          const path = pathOf(h.hunkId);
+          return (
+            <li key={h.hunkId}>
+              <button
+                type="button"
+                data-testid={`heart-jump-${h.hunkId}`}
+                className="changelog-row -mx-1.5 flex w-[calc(100%+0.75rem)] items-baseline gap-2 rounded px-1.5 text-left leading-[18px]"
+                onClick={() => onJump(h.hunkId)}
+                data-tip={path ? `Go to this hunk in ${path}` : "Go to this hunk"}
+              >
+                {path ? <span className="flex-none font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>{baseName(path)}</span> : null}
+                <span style={{ color: "var(--fg)" }}>
+                  <InlineMarkdown text={h.why} />
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

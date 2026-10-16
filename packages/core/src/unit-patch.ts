@@ -135,7 +135,31 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
       }
       hunkIds = next;
     }
-    const payload = hunkIds !== undefined ? { ...rest, hunkIds } : rest;
+    let payload: Record<string, unknown> = hunkIds !== undefined ? { ...rest, hunkIds } : rest;
+
+    // Heart entries name the unit's own hunks (short ids welcome), judged on
+    // the list the unit will hold after this patch.
+    if (Array.isArray(rest.heart)) {
+      const finalIds = hunkIds ?? base;
+      const heart: unknown[] = [];
+      for (const [i, entry] of (rest.heart as unknown[]).entries()) {
+        const e = entry as { hunkId?: unknown; why?: unknown } | null;
+        if (!e || typeof e !== "object" || typeof e.hunkId !== "string") {
+          errors.push(`unit "${unitId}": heart[${i}] must be {"hunkId": "<one of the unit's hunks>", "why": "..."}`);
+          continue;
+        }
+        const id = resolveHunkRef(e.hunkId, finalIds);
+        if (id === undefined) {
+          errors.push(
+            `unit "${unitId}": heart[${i}] "${e.hunkId}" is not a hunk this unit holds (after this patch); ` +
+              `the heart is chosen among the unit's own hunkIds`,
+          );
+          continue;
+        }
+        heart.push({ ...e, hunkId: id });
+      }
+      payload = { ...payload, heart };
+    }
 
     // A hunk the unit did not hold before must belong to this revision.
     if (hunkIds) {
@@ -308,6 +332,7 @@ export function renderUnits(
       `${husk ? "~ " : ""}${u.id}  [${u.attention}/${u.kind}]  ${u.title}` +
         `  (${u.hunkIds.length} hunk${u.hunkIds.length === 1 ? "" : "s"}` +
         (findings ? `, ${findings} finding${findings === 1 ? "" : "s"}` : "") +
+        (u.heart?.length ? `, heart: ${u.heart.map((h) => short(h.hunkId)).join(" ")}` : "") +
         (husk ? `; husk: every hunk left the PR in r${u.removedAtRevision}` : "") +
         ")",
     );

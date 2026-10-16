@@ -1,0 +1,40 @@
+import type { FileEntry, Hunk } from "../api/types";
+
+/**
+ * A mechanical one-word hint for a hunk that is not at a unit's heart: what
+ * kind of glue it is, from its path and its lines alone. Shown muted on the
+ * hunk header once a unit has a heart, so the support hunks announce
+ * themselves as support instead of leaving the reader to guess. Never a
+ * judgment of kind or attention — that stays the analysis's.
+ *
+ * The path patterns mirror core's triage (packages/core/src/triage.ts and
+ * generated.ts), which the analysis reads the same facts from.
+ */
+
+const DOCS_PATH_RE = /(\.mdx?$|\.rst$|\.txt$|(^|\/)docs\/)/i;
+const TESTS_PATH_RE =
+  /(_test\.go$|\.test\.|\.spec\.|(^|\/)__tests__\/|(^|\/)testdata\/|(^|\/)tests\/|(^|\/)fixtures\/)/;
+const SNAP_PATH_RE = /((^|\/)__snapshots__\/|\.snap$|(^|\/)golden\/)/;
+const MIG_PATH_RE = /((^|\/)migrations\/.*\.sql$|(^|\/)migrations\/)/;
+const GEN_TEXT_RE = /(Code generated|DO NOT EDIT|@generated)/;
+
+/** An import-ish line in the languages the diff is likely to show. */
+const IMPORT_LINE_RE =
+  /^\s*(import\b|from\s+\S+\s+import\b|export\s+(\*|\{[^}]*\})\s+from\b|(const|let|var)\s+[\w{}\s,*:$]+=\s*require\(|require\(|use\s+[\w:\\]+;|using\s+[\w.]+;|#include\b|\}?\s*from\s+["']|[\w./@-]+["'];?$)/;
+
+export type HunkHint = "tests" | "docs" | "snapshot" | "migration" | "generated" | "lockfile" | "imports only";
+
+export function hunkHint(file: FileEntry, hunk: Hunk): HunkHint | null {
+  const p = file.path;
+  if (file.generated?.source === "lockfile") return "lockfile";
+  if (file.generated) return "generated";
+  if (SNAP_PATH_RE.test(p)) return "snapshot";
+  if (MIG_PATH_RE.test(p)) return "migration";
+  if (TESTS_PATH_RE.test(p)) return "tests";
+  if (DOCS_PATH_RE.test(p)) return "docs";
+  const changed = [...(hunk.addedLines ?? []), ...(hunk.removedLines ?? [])];
+  if (changed.some((l) => GEN_TEXT_RE.test(l))) return "generated";
+  const content = changed.filter((l) => l.trim() !== "");
+  if (content.length > 0 && content.every((l) => IMPORT_LINE_RE.test(l))) return "imports only";
+  return null;
+}

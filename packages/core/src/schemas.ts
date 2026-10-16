@@ -158,6 +158,20 @@ export const UnitChangelogEntrySchema = z.object({
 });
 export type UnitChangelogEntry = z.infer<typeof UnitChangelogEntrySchema>;
 
+/** At most this many hunks make a unit's heart. */
+export const MAX_UNIT_HEART = 3;
+
+/**
+ * One hunk at the heart of a unit: where its logic actually lives, as opposed
+ * to the call sites, tests and plumbing around it. `why` is one line, inline
+ * markdown, saying what to look for there.
+ */
+export const HeartEntrySchema = z.object({
+  hunkId: z.string().min(1),
+  why: z.string().min(1).max(300),
+});
+export type HeartEntry = z.infer<typeof HeartEntrySchema>;
+
 export const ReviewUnitSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
@@ -174,6 +188,13 @@ export const ReviewUnitSchema = z.object({
    * so by having no `findings` key rather than an empty array.
    */
   findings: z.array(FindingSchema).max(MAX_UNIT_FINDINGS).optional(),
+  /**
+   * The one to three hunks where this unit's logic lives, each with a why.
+   * Optional like `findings`: absent on older states and on units with no
+   * single heart. Every entry names one of the unit's own hunks; the reducer
+   * drops an entry whose hunk leaves the unit or the PR.
+   */
+  heart: z.array(HeartEntrySchema).max(MAX_UNIT_HEART).optional(),
   /**
    * What each later revision changed in this unit, oldest first, one entry per
    * revision. Optional like `findings`. Grown by `changelogEntry` on a unit

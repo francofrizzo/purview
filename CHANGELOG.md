@@ -9,6 +9,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 - "Analyze from scratch" in the PR's ⋯ menu drops every unit and the summary and runs the first analysis again on this revision. "Analyze again" keeps what is classified and only picks up what is new, so on an unchanged revision it has nothing to do.
 - The collapsed summary strip renders the summary's inline markdown, so identifiers and paths read as code there too.
+- Every unit has a heart: the one to three hunks where its logic lives, named by the analysis with a line on what to look for. In the diff those hunks carry a filled heart, a tinted header, the why right under it and a bar down their left edge; the other hunks stay fully visible and say what they are (tests, docs, imports only…). `h` / `H` jump between heart hunks, the sidebar counts them, and the unit brief lists them with jumps. A unit's hunks now always follow the diff's order.
+- The unit brief leads with why the unit matters: the attention line is full size with its chip and icon, and the checks fold to one line of counts (warnings in color) until you open them.
 
 ## 2026.10.16.1
 

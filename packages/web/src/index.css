@@ -38,6 +38,9 @@
     /* Notes for a coding agent: the violet the moved-code tint also uses. */
     --agent: #a371f7;
     --agent-soft: rgba(163, 113, 247, 0.14);
+    /* The heart of a unit: the hunks its logic lives in. A hue the diff never uses. */
+    --heart: #f778ba;
+    --heart-soft: rgba(247, 120, 186, 0.14);
 
     --add-bg: rgba(63, 185, 80, 0.1);
     --add-bg-strong: rgba(63, 185, 80, 0.26);
@@ -105,6 +108,8 @@
       --accent-soft: rgba(47, 111, 235, 0.1);
       --agent: #8250df;
       --agent-soft: rgba(130, 80, 223, 0.1);
+      --heart: #bf3989;
+      --heart-soft: rgba(191, 57, 137, 0.1);
 
       --add-bg: rgba(34, 134, 58, 0.09);
       --add-bg-strong: rgba(34, 134, 58, 0.22);
@@ -346,6 +351,29 @@
 
   .chip {
     @apply inline-flex flex-none items-center gap-1 whitespace-nowrap rounded px-1.5 py-px text-2xs font-medium leading-4 tracking-tight;
+  }
+
+  /* A native select drawn by us: without appearance:none the browser keeps
+     its own inner bevel under our border, which shows as a second outline
+     in the corners. The chevron is ours too. */
+  .select {
+    @apply cursor-pointer rounded outline-none;
+    appearance: none;
+    background-color: var(--bg-inset);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%23808080' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.5rem center;
+    padding-right: 1.5rem;
+    border: 1px solid var(--border);
+    color: var(--fg);
+  }
+  .select:focus-visible {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  .select:disabled {
+    cursor: default;
+    opacity: 0.6;
   }
 
   .input {
@@ -746,4 +774,20 @@ html[data-mode="light"] .logo-for-dark {
 }
 html[data-mode="light"] .logo-for-light {
   display: block;
+}
+
+/* A heart hunk's rows carry a bar on the left, over the row's own background. */
+[data-heart="true"] {
+  position: relative;
+}
+[data-heart="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--heart);
+  z-index: 4;
+  pointer-events: none;
 }
