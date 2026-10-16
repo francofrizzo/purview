@@ -7,16 +7,16 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## 2026.10.16.2
 
-- **Every unit has a heart.** The analysis names the one to three hunks where a unit's logic lives, with a line on what to look for in each. In the diff those hunks carry a filled heart, a tinted header, the why right under it and a bar down their left edge; the other hunks stay fully visible and say what they are (tests, docs, imports only…). `h` / `H` jump between heart hunks, the sidebar counts them, and the unit brief lists them with jumps. A unit's hunks now always follow the diff's order. Existing analyses have no heart until you analyze again.
-- **The unit brief leads with the why.** The attention line is full size with its chip and icon, the heart follows, and the checks fold to one line of counts (warnings in color) until you open them. The collapsed summary strip renders inline markdown too.
-- **Analyze from scratch.** In the PR's ⋯ menu, it drops every unit and the summary and runs the first analysis again on this revision. "Analyze again" keeps what is classified and only picks up what is new, so on an unchanged revision it has nothing to do.
+- **Every unit has a heart.** The analysis marks the one to three hunks where the logic lives, each with a line on what to look for. They stand out in the diff; `h` / `H` jump between them. Re-analyze to get them on existing PRs.
+- **The unit brief leads with the why.** Full-size attention line, then the heart; the checks fold to a counts line.
+- **Analyze from scratch** in the PR's ⋯ menu redoes the whole analysis. "Analyze again" only picks up what is new.
 
 ## 2026.10.16.1
 
-- **One panel on the right.** Comments, chat and review are tabs in a single panel with one width (drag its left edge) and one close. `m` / `c` / `r` jump to a tab or close it again; "finish review" and "send to chat" switch tabs. The top bar keeps one button for the panel, which reopens the last tab, plus "finish review".
-- **Comments know who they are for.** On your own PRs a new comment is a note for the agent; on anyone else's it is part of your GitHub review. The switch now flips one PR and is remembered there. A new comment always carries its audience and its full line range to the server (before, a multi-line comment could land as one line in the default audience).
-- **Reading the analysis.** Summaries, "why" lines and findings use inline markdown, so identifiers, paths and values come as code. The revision menu (click "rev N") lights up what each revision changed, the same highlight the unit's changelog offers. The summary strip leads with its chevron, and "description" and "reviews" on it open the panel straight onto that section. Keyboard shortcuts open as a card over the diff instead of growing the sidebar.
-- **Tooltips are the app's own.** They open fast in the app's typeface, show the shortcut as a key, and go away as soon as you click, scroll or press Escape. Every hint in the app went through them.
+- **One panel on the right** holds comments, chat and review as tabs. `m` / `c` / `r` open them; one width, one close.
+- **Comments know their audience.** Your own PRs default to notes for the agent, others to your GitHub review; the switch flips one PR and is remembered. Fixed: a new comment could lose its audience and line range.
+- **Reading the analysis.** Summaries and findings render inline markdown; the revision menu can light up what a revision changed; the strip links to the description and reviews; shortcuts open as a card.
+- **Tooltips** are the app's own: fast, in the UI face, with the key shown.
 
 ## 2026.10.15.1
 

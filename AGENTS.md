@@ -21,13 +21,19 @@ Do not cut a version on your own. Only when the user says to ship (or release,
 or tag) a version:
 
 1. Curate `## Unreleased` into release notes. The bullets accumulated one per
-   change; the reader wants the version as a whole. Group them into a few
-   themes, one bullet each with a bold lead-in (`**One panel on the
-   right.**`), biggest change first. Fold a fix into the feature it belongs
-   to, drop what the reader would not look for, and keep the reader's
-   vocabulary (what they can do, see or configure). The parser only reads
+   change; the reader wants the version at a glance. Group them into a few
+   themes, one bullet each, biggest change first: a bold lead-in of two to
+   five words, then one or two short sentences, forty words at most. Name
+   what the reader can now do or see and the key that does it; leave out how
+   it looks, where each piece sits and why it was built. Fold a fix into its
+   feature, drop what the reader would not look for. The parser only reads
    flat bullets with inline markdown under a version heading: no sub-lists,
    no sub-headings.
+
+   Too long: "In the diff those hunks carry a filled heart, a tinted header,
+   the why right under it and a bar down their left edge; the other hunks
+   stay fully visible and say what they are." Right: "They stand out in the
+   diff; `h` / `H` jump between them."
 2. Rename `## Unreleased` to the next version: today's date, then the next
    counter for the day (`## 2026.10.14.4`).
 3. Commit, tag it (`git tag -a v2026.10.14.4 -m 2026.10.14.4`) and push with
