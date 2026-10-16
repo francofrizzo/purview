@@ -12,6 +12,7 @@ app, not for git: say what changed in the review, not which file moved.
 - The summary strip leads with its chevron, and "description" and "reviews" on it open the panel straight onto that section.
 - Keyboard shortcuts open as a card over the diff instead of growing the sidebar.
 - Analysis summaries, unit summaries, "why" lines and findings use inline markdown: identifiers, paths and values come as code.
+- The revision menu (click "rev N") can light up what each revision changed, the same highlight the unit's changelog offers.
 
 ## 2026.10.15.1
 

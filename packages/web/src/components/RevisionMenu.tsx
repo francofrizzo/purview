@@ -18,8 +18,17 @@ export function RevisionMenu({
   error,
   onDiscard,
   onResetError,
+  highlightRevisions = [],
+  onToggleHighlight,
+  highlightAvailable = true,
 }: {
   state: Pick<PrState, "revision" | "revisions" | "baseOnly">;
+  /** revisions whose changed lines are lit up in the diff (the changelog highlight) */
+  highlightRevisions?: readonly number[];
+  /** light up (or clear) one revision's changes; absent hides the rows */
+  onToggleHighlight?: (revision: number) => void;
+  /** the highlight shows on the review-units tab only */
+  highlightAvailable?: boolean;
   analysisLive: boolean;
   discarding: boolean;
   /** the server's refusal, shown inline */
@@ -84,6 +93,48 @@ export function RevisionMenu({
               {info.addedAt ? (
                 <span title={formatFullTimestamp(info.addedAt)}>fetched {formatAddedAt(info.addedAt)}</span>
               ) : null}
+            </div>
+          ) : null}
+
+          {onToggleHighlight && (state.revisions?.length ?? 0) > 1 ? (
+            <div className="mt-2.5 border-t pt-2" style={{ borderColor: "var(--border)" }}>
+              <div className="mb-1.5 text-2xs" style={{ color: "var(--fg-muted)" }}>
+                Show what changed in
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {[...(state.revisions ?? [])]
+                  .filter((r) => r.revision > 1)
+                  .sort((a, b) => b.revision - a.revision)
+                  .map((r) => {
+                    const on = highlightRevisions.includes(r.revision);
+                    return (
+                      <button
+                        key={r.revision}
+                        type="button"
+                        className="btn"
+                        data-testid={`highlight-revision-${r.revision}`}
+                        aria-pressed={on}
+                        disabled={!highlightAvailable}
+                        title={
+                          !highlightAvailable
+                            ? "Shown on the review units tab"
+                            : on
+                              ? `Stop showing what revision ${r.revision} changed`
+                              : `Light up the lines revision ${r.revision} changed`
+                        }
+                        style={on ? { color: "var(--accent)", borderColor: "var(--accent)", background: "var(--accent-soft)" } : undefined}
+                        onClick={() => onToggleHighlight(r.revision)}
+                      >
+                        r{r.revision}
+                      </button>
+                    );
+                  })}
+              </div>
+              <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                {highlightAvailable
+                  ? "Lines those revisions changed light up in each unit; esc clears."
+                  : "Switch to review units to see them."}
+              </p>
             </div>
           ) : null}
 

@@ -1373,6 +1373,9 @@ export function PrView() {
           discardRevision.mutate(n, { onSuccess: () => setReport(null) })
         }
         onResetDiscardRevision={() => discardRevision.reset()}
+        highlightRevisions={highlightRevisions}
+        onToggleHighlight={toggleHighlight}
+        highlightAvailable={tab === "units"}
         sinceReviewActive={sinceChanged !== null}
         onToggleSinceReview={() => {
           const turningOn = !sinceReviewOn;

@@ -81,3 +81,16 @@ test("V marks the whole unit viewed and moves on", async ({ page }) => {
   const row = page.locator("nav button", { hasText: UNITS.reconcile }).first();
   await expect(row).toContainText("5/5");
 });
+
+test("the revision menu lights up what a revision changed", async ({ page }) => {
+  await page.getByTestId("revision-menu").click();
+  const r3 = page.getByTestId("highlight-revision-3");
+  await expect(r3).toHaveAttribute("aria-pressed", "false");
+  await r3.click();
+  await expect(r3).toHaveAttribute("aria-pressed", "true");
+  // Closing the menu with Escape leaves the highlight on; the unit header says so.
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("revision-menu")).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("changelog-row-r3")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("highlight-summary")).toBeVisible();
+});

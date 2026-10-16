@@ -69,6 +69,9 @@ export function TopBar({
   onImportFromPr,
   onDiscardRevision,
   onResetDiscardRevision,
+  highlightRevisions,
+  onToggleHighlight,
+  highlightAvailable,
   sinceReviewActive = false,
   onToggleSinceReview,
   archiving = false,
@@ -125,6 +128,10 @@ export function TopBar({
   onImportFromPr: () => void;
   onDiscardRevision: (revision: number) => void;
   onResetDiscardRevision: () => void;
+  /** the changelog highlight, offered from the revision menu */
+  highlightRevisions?: readonly number[];
+  onToggleHighlight?: (revision: number) => void;
+  highlightAvailable?: boolean;
   /** the "since your last review" filter is on */
   sinceReviewActive?: boolean;
   /** toggles it; omit to hide the chip */
@@ -222,6 +229,9 @@ export function TopBar({
             error={discardRevisionError}
             onDiscard={onDiscardRevision}
             onResetError={onResetDiscardRevision}
+            highlightRevisions={highlightRevisions}
+            onToggleHighlight={onToggleHighlight}
+            highlightAvailable={highlightAvailable}
           />
           {detail.sinceReview && onToggleSinceReview ? (
             <SinceReviewChip
