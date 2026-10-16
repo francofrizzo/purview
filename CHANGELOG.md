@@ -13,6 +13,8 @@ app, not for git: say what changed in the review, not which file moved.
 - Keyboard shortcuts open as a card over the diff instead of growing the sidebar.
 - Analysis summaries, unit summaries, "why" lines and findings use inline markdown: identifiers, paths and values come as code.
 - The revision menu (click "rev N") can light up what each revision changed, the same highlight the unit's changelog offers.
+- Fixed: a new comment always carries the switch's audience and its line range to the server; before, the server's default could win and a multi-line comment landed as one line.
+- Under an inline comment thread, "add a comment" and "hide" share one slim row.
 
 ## 2026.10.15.1
 

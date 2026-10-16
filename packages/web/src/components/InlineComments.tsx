@@ -10,7 +10,7 @@
 
 import { threadMarker, threadsTitle, type DisplayThread } from "../lib/threads";
 import { CommentPill } from "./CommentCard";
-import { IconClose } from "./icons";
+import { IconClose, IconPlus } from "./icons";
 import { ThreadView, type ThreadListActions } from "./Threads";
 
 export type InlineCommentActions = ThreadListActions;
@@ -75,24 +75,12 @@ export function InlineCommentList({
     <div
       data-testid="inline-comments"
       data-count={threads.length}
-      className="py-2 pr-4"
+      className="py-1.5 pr-4"
       style={{ paddingLeft: indent, background: "var(--bg)" }}
       // The thread owns clicks inside it: a stray one must not re-focus the
       // hunk underneath or, worse, start a line selection.
       onClick={(e) => e.stopPropagation()}
     >
-      <div className="mb-1 flex max-w-[46rem] justify-end">
-        <button
-          type="button"
-          data-testid="inline-comments-close"
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
-          style={{ color: "var(--fg-faint)" }}
-          title="Hide these comments (the marker in the gutter brings them back)"
-          onClick={onCollapse}
-        >
-          hide <IconClose width={9} height={9} />
-        </button>
-      </div>
       {/* Standalone comments sit close together, as before; a GitHub thread
           gets air around it so two threads on one line read as two. */}
       <ul className="flex max-w-[46rem] flex-col gap-1.5">
@@ -106,18 +94,33 @@ export function InlineCommentList({
           </li>
         ))}
       </ul>
-      {onAdd && !composing ? (
+      {/* One slim row under the cards: add on the left, hide on the right. */}
+      <div className="mt-1 flex max-w-[46rem] items-center justify-between text-2xs">
+        {onAdd && !composing ? (
+          <button
+            type="button"
+            data-testid="inline-add-comment"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
+            style={{ color: "var(--fg-faint)" }}
+            title={`Add a comment on ${label}`}
+            onClick={onAdd}
+          >
+            <IconPlus width={9} height={9} /> add a comment
+          </button>
+        ) : (
+          <span />
+        )}
         <button
           type="button"
-          data-testid="inline-add-comment"
-          className="mt-1.5 block w-full max-w-[46rem] rounded-md px-3 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)]"
-          style={{ border: "1px dashed var(--border-strong)", color: "var(--fg-faint)" }}
-          title={`Add a comment on ${label}`}
-          onClick={onAdd}
+          data-testid="inline-comments-close"
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
+          style={{ color: "var(--fg-faint)" }}
+          title="Hide these comments (the marker in the gutter brings them back)"
+          onClick={onCollapse}
         >
-          Add a comment…
+          hide <IconClose width={9} height={9} />
         </button>
-      ) : null}
+      </div>
     </div>
   );
 }

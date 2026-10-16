@@ -718,14 +718,23 @@ export const api = {
    */
   async addComment(key: string, input: AddCommentInput): Promise<DraftComment> {
     if (MOCK) return mockApi.addComment(key, input);
+    // Everything the target carries goes over: the range (or the server sees a
+    // one-line comment) and who it is for (or the server applies the PR's switch).
     const body =
       input.subjectType === "file"
         ? { file: input.file, body: input.body, subjectType: "file" as const }
-        : { file: input.file, line: input.line, side: input.side, body: input.body };
-    const res = await post<{ comment: WireComment }>(
-      `/prs/${encodeKey(key)}/comments`,
-      input.inReplyTo ? { ...body, inReplyTo: input.inReplyTo } : body,
-    );
+        : {
+            file: input.file,
+            line: input.line,
+            side: input.side,
+            body: input.body,
+            ...(input.startLine !== undefined ? { startLine: input.startLine, startSide: input.startSide ?? input.side } : {}),
+          };
+    const res = await post<{ comment: WireComment }>(`/prs/${encodeKey(key)}/comments`, {
+      ...body,
+      ...(input.inReplyTo ? { inReplyTo: input.inReplyTo } : {}),
+      ...(input.audience ? { audience: input.audience } : {}),
+    });
     return adaptComment(res.comment);
   },
 
