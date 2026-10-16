@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Updates show on a normal reload.** A new Purview build appears the next time you reload; no more hard reload to get past the cached copy.
 - **One card per sent comment.** A comment you sent no longer shows twice (your local copy and the GitHub one) when GitHub reports it as a one-line range; the two are matched as the same comment.
 
 ## 2026.10.16.3

@@ -7,20 +7,12 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
-      // Only the built static shell (JS/CSS/fonts/icons/html) is precached.
-      // `/api/**` (including the SSE chat/events streams) is deliberately
-      // given NO runtimeCaching rule and is excluded from the precache
-      // manifest, so the generated service worker's fetch handler never
-      // matches those requests at all — they go straight to the network,
-      // completely untouched by the SW (no interception, no buffering, no
-      // risk to streaming). navigateFallbackDenylist additionally keeps the
-      // SPA navigation fallback from ever answering an /api/* navigation.
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
-        navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api\//],
-      },
+      // No service worker: it served the old build until a hard reload, and
+      // a local tool gains nothing from offline. This emits a sw.js that
+      // unregisters the one browsers still have; the plugin stays for the
+      // manifest.
+      selfDestroying: true,
+      injectRegister: false,
       manifest: {
         name: "Purview",
         short_name: "Purview",
