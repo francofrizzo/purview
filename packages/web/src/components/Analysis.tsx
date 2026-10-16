@@ -261,7 +261,9 @@ export function AnalysisBanner({
   // The harness of the last run on record; the default one before any.
   const agentName = useAgentName(job?.metrics?.run?.harness);
   const tone = failed ? "var(--risk)" : live ? "var(--accent)" : "var(--fg-muted)";
-  const bg = failed ? "var(--risk-soft)" : live ? "var(--accent-soft)" : "var(--bg-inset)";
+  // Live sits on the recessed ground like idle: an accent wash here would
+  // match the PR header's own accent band and the two bars would merge.
+  const bg = failed ? "var(--risk-soft)" : "var(--bg-inset)";
 
   return (
     <div

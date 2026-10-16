@@ -77,6 +77,7 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     ...textOn("bg-inset"),
     ...textOn("bg-hover"),
     s("accent-on-bg", "Text on surfaces", "accent text on bg", "accent", 3.6, ["bg"], "updated in r3 · set in repo settings"),
+    s("accent-on-inset", "Text on surfaces", "accent text on bg-inset", "accent", 3.6, ["bg-inset"], "Analyzing this pull request…"),
     s("accent-on-raised", "Text on surfaces", "accent text on bg-raised", "accent", 3.6, ["bg-raised"], "open the PR description"),
     s("ok-on-raised", "Text on surfaces", "ok text on bg-raised", "ok", 3.0, ["bg-raised"], "2/2 viewed"),
     s("risk-on-raised", "Text on surfaces", "risk text on bg-raised", "risk", 3.0, ["bg-raised"], "Must read (2)"),
