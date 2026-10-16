@@ -5,12 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.16.2
 
-- "Analyze from scratch" in the PR's ⋯ menu drops every unit and the summary and runs the first analysis again on this revision. "Analyze again" keeps what is classified and only picks up what is new, so on an unchanged revision it has nothing to do.
-- The collapsed summary strip renders the summary's inline markdown, so identifiers and paths read as code there too.
-- Every unit has a heart: the one to three hunks where its logic lives, named by the analysis with a line on what to look for. In the diff those hunks carry a filled heart, a tinted header, the why right under it and a bar down their left edge; the other hunks stay fully visible and say what they are (tests, docs, imports only…). `h` / `H` jump between heart hunks, the sidebar counts them, and the unit brief lists them with jumps. A unit's hunks now always follow the diff's order.
-- The unit brief leads with why the unit matters: the attention line is full size with its chip and icon, and the checks fold to one line of counts (warnings in color) until you open them.
+- **Every unit has a heart.** The analysis names the one to three hunks where a unit's logic lives, with a line on what to look for in each. In the diff those hunks carry a filled heart, a tinted header, the why right under it and a bar down their left edge; the other hunks stay fully visible and say what they are (tests, docs, imports only…). `h` / `H` jump between heart hunks, the sidebar counts them, and the unit brief lists them with jumps. A unit's hunks now always follow the diff's order. Existing analyses have no heart until you analyze again.
+- **The unit brief leads with the why.** The attention line is full size with its chip and icon, the heart follows, and the checks fold to one line of counts (warnings in color) until you open them. The collapsed summary strip renders inline markdown too.
+- **Analyze from scratch.** In the PR's ⋯ menu, it drops every unit and the summary and runs the first analysis again on this revision. "Analyze again" keeps what is classified and only picks up what is new, so on an unchanged revision it has nothing to do.
 
 ## 2026.10.16.1
 
