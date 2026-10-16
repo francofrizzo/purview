@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- The right side of a PR is one panel with three tabs: Comments, Chat and Review. One width (drag its left edge), one close, `m` / `c` / `r` to jump to a tab or close it again. "Finish review" in the comments tab and "send to chat" switch tabs.
+
 ## 2026.10.15.1
 
 - Comments now have an audience. A global switch (in the top bar, the composer and the comments panel, or press `a`) decides whether a new comment is part of your GitHub review or a note for a coding agent. Notes are violet, never reach GitHub, and have their own section in the comments panel with "copy all", "copy & delete" and "send to chat". A draft can be moved between the two at any time.

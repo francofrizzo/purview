@@ -34,10 +34,8 @@ import { copyText, handoffDisabledReason, isLoopbackHostname } from "../lib/chat
 import { refContext, refKey, refLabel, refTitle } from "../lib/chatRefs";
 import { useChat, useChatAgentName, type LocalMessage, type ToolActivity } from "../lib/chat";
 import {
-  clampChatPanelWidth,
   MAX_CHAT_PANEL_WIDTH,
   MIN_CHAT_PANEL_WIDTH,
-  useSettings,
 } from "../lib/settings";
 import { CHAT_TEXT, CodeLinkContext, Markdown, type CodeLink } from "./Markdown";
 import { unitDisplayNumbers } from "../lib/unitOrder";
@@ -334,9 +332,7 @@ export function ChatPanel({
   // Handoff continues the session in its own harness; before there is one,
   // in the harness the next message would start it on.
   const handoffHarness = manifestOf(agents, chat.sessionHarness ?? chat.agent?.harness ?? agents?.default ?? "");
-  const { settings, update } = useSettings();
   const [draft, setDraft] = useState("");
-  const [dragWidth, setDragWidth] = useState<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [pinned, setPinned] = useState(true);
@@ -349,28 +345,6 @@ export function ChatPanel({
   const ctx = useMemo(() => refContext(detail, comments), [detail, comments]);
   const labelFor = useCallback((r: ChatRef) => refLabel(r, ctx), [ctx]);
   const titleFor = useCallback((r: ChatRef) => refTitle(r, ctx), [ctx]);
-
-  const width = dragWidth ?? settings.chatPanelWidth;
-
-  /* ------------------------------------------------------------ resizing */
-
-  const startResize = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const onMove = (ev: MouseEvent) => {
-      setDragWidth(clampChatPanelWidth(window.innerWidth - ev.clientX));
-    };
-    const onUp = (ev: MouseEvent) => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      // Commit once, at the end: the store writes to localStorage on every
-      // update and a drag would otherwise produce hundreds of writes.
-      const final = clampChatPanelWidth(window.innerWidth - ev.clientX);
-      update({ chatPanelWidth: final });
-      setDragWidth(null);
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  };
 
   /* ---------------------------------------------------------- scrolling */
 
@@ -484,25 +458,11 @@ export function ChatPanel({
 
   return (
     <CodeLinkContext.Provider value={linkUnit}>
-    <aside
-      className="pane relative m-[7px] ml-0 rounded-bl-none flex flex-none flex-col overflow-hidden"
-      data-testid="chat-panel"
-      style={{ width, borderColor: "var(--border)", background: "var(--bg-raised)" }}
-    >
-      <div
-        onMouseDown={startResize}
-        title="Drag to resize"
-        className="absolute left-0 top-0 z-20 h-full w-1 cursor-col-resize"
-        data-testid="chat-resize"
-        style={{ background: dragWidth === null ? "transparent" : "var(--accent)" }}
-      />
-
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="chat-panel">
       <header
         className="flex flex-none items-center gap-2 border-b px-3 py-2"
         style={{ borderColor: "var(--border)" }}
       >
-        <IconChat width={12} height={12} />
-        <span className="text-xs font-semibold">{capitalized(agentName)}</span>
         {chat.busy ? (
           <span className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--accent)" }}>
             <IconSpinner width={10} height={10} />
@@ -553,16 +513,6 @@ export function ChatPanel({
           style={{ color: settingsOpen ? "var(--fg)" : "var(--fg-faint)" }}
         >
           <IconSettings width={12} height={12} />
-        </button>
-        <button
-          type="button"
-          className="text-xs"
-          onClick={chat.closeChat}
-          title="Close (c)"
-          aria-label="Close chat"
-          style={{ color: "var(--fg-faint)" }}
-        >
-          <IconClose width={11} height={11} />
         </button>
       </header>
 
@@ -865,7 +815,7 @@ export function ChatPanel({
           </button>
         </div>
       </div>
-    </aside>
+    </div>
     </CodeLinkContext.Provider>
   );
 }

@@ -359,8 +359,20 @@ export function useGlobalConfig() {
  */
 export function useSaveGlobalConfig() {
   const qc = useQueryClient();
-  return useMutation<GlobalConfig, Error, GlobalConfigPatch>({
+  return useMutation<GlobalConfig, Error, GlobalConfigPatch, { previous?: GlobalConfig }>({
     mutationFn: (patch) => api.saveConfig(patch),
+    // The comment-audience switch is flipped and used in the same breath (flip,
+    // type, save), so it applies at once and is rolled back on refusal.
+    onMutate: async (patch) => {
+      if (patch.commentAudience === undefined) return {};
+      await qc.cancelQueries({ queryKey: qk.config });
+      const previous = qc.getQueryData<GlobalConfig>(qk.config);
+      if (previous) qc.setQueryData<GlobalConfig>(qk.config, { ...previous, commentAudience: patch.commentAudience });
+      return { previous };
+    },
+    onError: (_e, _patch, ctx) => {
+      if (ctx?.previous) qc.setQueryData(qk.config, ctx.previous);
+    },
     onSuccess: (config) => {
       qc.setQueryData(qk.config, config);
       void qc.invalidateQueries({ queryKey: ["repo-config"] });

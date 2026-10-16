@@ -46,6 +46,7 @@ test("the switch decides what a new comment is for; `a` flips it", async ({ page
   await expect(composer).toHaveAttribute("data-audience", "github");
   await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "github");
   await page.getByTestId("composer-audience-agent").click();
+  await expect(composer).toHaveAttribute("data-audience", "agent");
 
   await page.getByTestId("composer-textarea").fill("rename this before merging");
   await page.getByTestId("composer-save").click();

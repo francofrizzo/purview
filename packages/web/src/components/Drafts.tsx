@@ -707,7 +707,6 @@ export function DraftsDrawer({
   drafts,
   deleting,
   bundle,
-  onClose,
   onJump,
   onDelete,
   onDeleteMany,
@@ -740,7 +739,6 @@ export function DraftsDrawer({
   deleting?: boolean;
   /** diff + PR identity the agent-facing markdown needs; omit to hide copying */
   bundle?: Omit<BundleSource, "comments">;
-  onClose: () => void;
   onJump: (draft: DraftComment) => void;
   onDelete?: (draft: DraftComment) => void;
   /** bulk delete, for "copy & delete" */
@@ -805,10 +803,9 @@ export function DraftsDrawer({
   );
 
   return (
-    <aside className="pane m-[7px] ml-0 rounded-bl-none flex w-[22rem] flex-none flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="comments-panel">
       <div className="flex-none border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold">Comments</span>
           {/* Only the stages that hold something; nothing at all says nothing. */}
           <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
             {[
@@ -834,9 +831,6 @@ export function DraftsDrawer({
                 onBotHidden={github.onBotHidden}
               />
             ) : null}
-            <button type="button" className="text-xs" onClick={onClose} style={{ color: "var(--fg-faint)" }}>
-              <IconClose width={10} height={10} />
-            </button>
           </span>
         </div>
         {onAudienceChange ? (
@@ -974,7 +968,7 @@ export function DraftsDrawer({
           </div>
         )}
       </div>
-    </aside>
+    </div>
   );
 }
 

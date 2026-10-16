@@ -86,6 +86,8 @@ import { ThreadFilterMenu } from "../components/Threads";
 import { UnitChangelog } from "../components/UnitChangelog";
 import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
+import { RightDock, type DockTab } from "../components/RightDock";
+import { isForAgent } from "../lib/comments";
 import { FileTree } from "../components/FileTree";
 import { IconChevron, IconComment } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
@@ -272,8 +274,10 @@ export function PrView() {
   const [standalone] = useState(isStandalone);
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
-  const [draftsOpen, setDraftsOpen] = useState(false);
-  const [reviewOpen, setReviewOpen] = useState(false);
+  // The right dock: comments, chat or review, one at a time. The chat's own
+  // open flag (lib/chat.tsx, which attachRef and the composer flip) stays the
+  // source of truth for its tab; the other two live here.
+  const [dockTab, setDockTab] = useState<"comments" | "review" | null>(null);
   const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(null);
   // The text lives here, not in the composer: drawn inline, the composer is a
   // virtualized row and unmounts when scrolled away.
@@ -386,13 +390,25 @@ export function PrView() {
   }, [peek]);
 
   // Only queried while the panel is open: it makes a live GitHub call.
+  const dock: DockTab | null = chat.open ? "chat" : dockTab;
+  const reviewOpen = dock === "review";
+  const openDock = (tab: DockTab) => {
+    if (tab === "chat") {
+      chat.openChat();
+      return;
+    }
+    chat.closeChat();
+    setDockTab(tab);
+  };
+  const closeDock = () => {
+    chat.closeChat();
+    setDockTab(null);
+  };
+  const toggleDock = (tab: DockTab) => (dock === tab ? closeDock() : openDock(tab));
   const review = useReview(prKey, reviewOpen);
 
   // Both live in the same right-hand slot, and the chat is the one the reader
   // just asked for, so it wins.
-  useEffect(() => {
-    if (chat.open) setReviewOpen(false);
-  }, [chat.open]);
 
   const units = useMemo(
     () => (detail ? [...detail.state.units].sort((a, b) => a.order - b.order) : []),
@@ -778,7 +794,13 @@ export function PrView() {
       if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "c") {
         e.preventDefault();
-        chat.toggleChat();
+        toggleDock("chat");
+      } else if (e.key === "m") {
+        e.preventDefault();
+        toggleDock("comments");
+      } else if (e.key === "r") {
+        e.preventDefault();
+        toggleDock("review");
       } else if (e.key === "s") {
         e.preventDefault();
         setSummaryOpen((v) => !v);
@@ -1194,7 +1216,7 @@ export function PrView() {
                 [["d"], viewMode === "split" ? "unified diff" : "split diff"],
                 [["w"], wrap ? "stop wrapping" : "wrap long lines"],
                 [["s"], "summary"],
-                [["c"], "chat"],
+                [["m", "c", "r"], "comments, chat, review"],
                 [["b"], "sidebar"],
                 [["/"], "search"],
                 [["⌘", "click"], "go to definition"],
@@ -1280,10 +1302,10 @@ export function PrView() {
         fullscreenVisible={fullscreen.supported && !standalone}
         fullscreenActive={fullscreen.active}
         onToggleFullscreen={fullscreen.toggle}
-        onToggleDrafts={() => setDraftsOpen((v) => !v)}
+        onToggleDrafts={() => toggleDock("comments")}
         audience={audienceSwitch.audience}
         onAudienceChange={audienceSwitch.set}
-        onToggleChat={chat.toggleChat}
+        onToggleChat={() => toggleDock("chat")}
         onAnalyze={() => startAnalysis.mutate()}
         onCancelAnalysis={() => cancelAnalysis.mutate()}
         onExportAnalysis={handleExportAnalysis}
@@ -1314,11 +1336,7 @@ export function PrView() {
         onFinishReview={() => {
           setSubmitResult(null);
           submitReview.reset();
-          const next = !reviewOpen;
-          setReviewOpen(next);
-          // Both live in the same right-hand slot: whichever was requested
-          // last wins, so opening finish-review closes the chat.
-          if (next) chat.closeChat();
+          toggleDock("review");
         }}
         onRefresh={() => refresh.mutate(undefined, { onSuccess: setReport })}
         onSync={() => sync.mutate(undefined, { onSuccess: setSyncResult })}
@@ -1849,12 +1867,22 @@ export function PrView() {
         </main>
 
 
-        {draftsOpen ? (
+        {dock ? (
+          <RightDock
+            tab={dock}
+            onSelect={openDock}
+            onClose={closeDock}
+            badges={{
+              comments: unsubmittedDrafts.length,
+              chatBusy: chat.busy,
+              review: unsubmittedDrafts.filter((d) => !isForAgent(d)).length,
+            }}
+          >
+        {dock === "comments" ? (
           <DraftsDrawer
             drafts={drafts}
             deleting={deleteComment.isPending}
             bundle={bundle}
-            onClose={() => setDraftsOpen(false)}
             onJump={(d) => jumpToFile(d.file)}
             onDelete={(d) => deleteComment.mutate(d.id)}
             onDeleteMany={(ids) => deleteComments.mutateAsync(ids)}
@@ -1881,8 +1909,7 @@ export function PrView() {
             onFinishReview={() => {
               setSubmitResult(null);
               submitReview.reset();
-              setReviewOpen(true);
-              chat.closeChat();
+              openDock("review");
             }}
             github={
               remoteThreads?.length
@@ -1901,7 +1928,7 @@ export function PrView() {
           />
         ) : null}
 
-        {chat.open ? (
+        {dock === "chat" ? (
           <ChatPanel
             prKey={prKey}
             detail={detail}
@@ -1921,7 +1948,7 @@ export function PrView() {
           />
         ) : null}
 
-        {reviewOpen && !chat.open ? (
+        {dock === "review" ? (
           <FinishReviewPanel
             review={review.data}
             verdicts={latestVerdicts(threadsQuery.data?.reviews, {
@@ -1935,7 +1962,6 @@ export function PrView() {
             discarding={discardPending.isPending}
             result={submitResult}
             submitError={submitReview.error as Error | null}
-            onClose={() => setReviewOpen(false)}
             onDeleteComments={(ids) => deleteComments.mutateAsync(ids)}
             onSaveBody={(body) => saveReviewBody.mutate(body)}
             onSubmit={(event: ReviewEvent, body: string) =>
@@ -1955,6 +1981,8 @@ export function PrView() {
               await moveComment.mutateAsync({ id, ...target });
             }}
           />
+        ) : null}
+          </RightDock>
         ) : null}
       </div>
     </div>

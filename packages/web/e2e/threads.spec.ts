@@ -22,7 +22,7 @@ test("the comment drawer opens and lists the drafts by stage", async ({ page }) 
 
 test("the finish-review panel shows the drafts going out and what is on GitHub so far", async ({ page }) => {
   await page.getByTestId("topbar-finish-review").click();
-  const panel = page.locator("aside", { hasText: "Finish review" });
+  const panel = page.getByTestId("finish-review-panel");
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("review-readiness")).toBeVisible();
 
@@ -35,6 +35,6 @@ test("the finish-review panel shows the drafts going out and what is on GitHub s
   await expect(panel.getByTestId("comment-card-draft-1")).toBeVisible();
   await expect(panel.getByTestId("comment-card-draft-11")).toContainText("Stamp the row");
 
-  await panel.getByRole("button", { name: "Close" }).click();
+  await page.getByTestId("dock-close").click();
   await expect(panel).toHaveCount(0);
 });

@@ -14,7 +14,7 @@ import { commentAnchorLabel, type EditComment } from "./Drafts";
 import { CommentCard } from "./CommentCard";
 import { ReviewerVerdictList } from "./Reviews";
 import type { ReviewerVerdict } from "../lib/reviews";
-import { IconCheck, IconClose, IconExternal, IconWarning } from "./icons";
+import { IconCheck, IconExternal, IconWarning } from "./icons";
 
 const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }[] = [
   {
@@ -54,7 +54,6 @@ export function FinishReviewPanel({
   discarding,
   result,
   submitError,
-  onClose,
   onSaveBody,
   onSubmit,
   onDiscardPending,
@@ -79,7 +78,6 @@ export function FinishReviewPanel({
   discarding: boolean;
   result?: SubmitReviewResult | null;
   submitError?: Error | null;
-  onClose: () => void;
   onSaveBody: (body: string) => void;
   onSubmit: (event: ReviewEvent, body: string) => void;
   onDiscardPending: () => void;
@@ -119,26 +117,7 @@ export function FinishReviewPanel({
   const unviewed = readiness?.mustRead.unviewed ?? 0;
 
   return (
-    <aside
-      className="pane m-[7px] ml-0 rounded-bl-none flex w-[26rem] flex-none flex-col overflow-hidden"
-      style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
-    >
-      <div
-        className="flex flex-none items-center gap-2 border-b px-4 py-2.5"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <span className="text-[13px] font-semibold">Finish review</span>
-        <button
-          type="button"
-          className="ml-auto rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
-          aria-label="Close"
-          onClick={onClose}
-          style={{ color: "var(--fg-faint)" }}
-        >
-          <IconClose width={11} height={11} />
-        </button>
-      </div>
-
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="finish-review-panel">
       {loading ? (
         <p className="p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
           Loading review state…
@@ -246,7 +225,7 @@ export function FinishReviewPanel({
           </div>
         </>
       )}
-    </aside>
+    </div>
   );
 }
 
