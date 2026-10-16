@@ -256,6 +256,12 @@ them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy` 
 One more field, `findings`, is optional and is only ever filled in by the verification
 pass (step 5). Leave it off entirely here.
 
+Every prose field — the overall `summary`, each unit's `summary` and `attentionWhy`, and
+later the findings — is rendered as markdown. Use `code` spans for identifiers, paths,
+values and commands (`charge()`, `src/billing/ledger.ts`, `max_attempts=4`), and **bold**
+or *italics* where they help. No headings, lists or fences inside the one-line fields;
+the overall `summary` may use short paragraphs, nothing else.
+
 Rules — the first three are **enforced by the CLI**, which rejects the whole payload:
 
 - **Coverage: every hunk id of the current revision — except generated files', which

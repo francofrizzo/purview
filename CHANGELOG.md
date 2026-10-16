@@ -11,6 +11,7 @@ app, not for git: say what changed in the review, not which file moved.
 - Comments on your own PRs are notes for the agent by default; on anyone else's they are for your GitHub review. The switch now flips one PR, and the flip is remembered on that PR.
 - The summary strip leads with its chevron, and "description" and "reviews" on it open the panel straight onto that section.
 - Keyboard shortcuts open as a card over the diff instead of growing the sidebar.
+- Analysis summaries, unit summaries, "why" lines and findings use inline markdown: identifiers, paths and values come as code.
 
 ## 2026.10.15.1
 
