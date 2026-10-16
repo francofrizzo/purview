@@ -21,8 +21,29 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const out = path.resolve(process.argv[2] ?? path.join(root, "contrast-sheet.html"));
 
 const server = await createServer({ root, server: { middlewareMode: true }, appType: "custom", logLevel: "error" });
-const { THEMES, tokensFor } = await server.ssrLoadModule("/src/lib/themes.ts");
+const { THEMES, tokensFor, shikiThemeFor } = await server.ssrLoadModule("/src/lib/themes.ts");
 await server.close();
+const { bundledThemes } = await import("shiki");
+
+/**
+ * The colors shiki actually paints a scope with for a theme: the first
+ * tokenColors entry whose scope list names it (the way TextMate resolves
+ * it), from the hand-built raw theme or the bundled JSON.
+ */
+async function syntaxColors(theme) {
+  const entry = shikiThemeFor(theme);
+  const raw = entry.raw ?? (await bundledThemes[entry.name]?.())?.default;
+  if (!raw) return {};
+  const pick = (scope) => {
+    for (const tc of raw.tokenColors ?? []) {
+      const scopes = Array.isArray(tc.scope) ? tc.scope : tc.scope ? [tc.scope] : [];
+      if (scopes.some((sc) => sc === scope || sc.startsWith(scope + ".") || scope.startsWith(sc + ".")) && tc.settings?.foreground)
+        return tc.settings.foreground;
+    }
+    return undefined;
+  };
+  return { comment: pick("comment"), string: pick("string"), keyword: pick("keyword") };
+}
 
 /* ------------------------------------------------------------ color math */
 
@@ -78,14 +99,14 @@ function ratio(fg, bg) {
  * stricter yardstick. Each row names the tokens; the background is composited
  * from the listed layers, innermost first.
  */
-function contexts(t) {
+function contexts(t, syn) {
   const bg = (...layers) => layers.reduce((acc, l) => over(t[l] ?? l, css(acc)), parse(t.bg));
   const row = (group, label, fgTok, floor, layers, sample, extra = {}) => ({
     group,
     label,
     fgTok,
     floor,
-    fg: parse(t[fgTok]),
+    fg: parse(extra.fgOverride ?? t[fgTok]),
     bgDesc: layers.join(" / "),
     bg: bg(...layers),
     sample,
@@ -156,6 +177,27 @@ function contexts(t) {
     row("Diff rows", "heart why row (fg on heart-soft)", "fg", 4.5, ["bg", "heart-soft"], "short-circuits on the ledger row before touching the gateway"),
     row("Diff rows", "heart mark on heart-soft", "heart", 3.0, ["bg", "heart-soft"], "♥ heart"),
     row("Diff rows", "comment marker (accent on add-bg)", "accent", 3.0, ["bg", "add-bg"], "● 3"),
+    ...(syn.comment
+      ? [
+          row("Syntax on diff rows", "code comment on a plain line", "syntax:comment", 3.0, ["bg"], "// TODO(ENG-5932): run the configured tools instead", { mono: true, fgOverride: syn.comment }),
+          row("Syntax on diff rows", "code comment on an added line", "syntax:comment", 3.0, ["bg", "add-bg"], "+// wrapped for the live test; answers every call", { mono: true, fgOverride: syn.comment }),
+          row("Syntax on diff rows", "code comment on a removed line", "syntax:comment", 3.0, ["bg", "del-bg"], "-// voiceToolNotAvailableResult answers every tool call", { mono: true, fgOverride: syn.comment }),
+          row("Syntax on diff rows", "code comment, word highlight on added", "syntax:comment", 3.0, ["bg", "add-bg", "add-bg-strong"], "answerContactlessLiveTestToolCalls", { mono: true, fgOverride: syn.comment }),
+          row("Syntax on diff rows", "code comment, word highlight on removed", "syntax:comment", 3.0, ["bg", "del-bg", "del-bg-strong"], "voiceToolNotAvailableResult", { mono: true, fgOverride: syn.comment }),
+        ]
+      : []),
+    ...(syn.string
+      ? [
+          row("Syntax on diff rows", "string on an added line", "syntax:string", 4.5, ["bg", "add-bg"], "+  \"La herramienta no está disponible.\"", { mono: true, fgOverride: syn.string }),
+          row("Syntax on diff rows", "string on a removed line", "syntax:string", 4.5, ["bg", "del-bg"], "-  \"La herramienta no está disponible.\"", { mono: true, fgOverride: syn.string }),
+        ]
+      : []),
+    ...(syn.keyword
+      ? [
+          row("Syntax on diff rows", "keyword on an added line", "syntax:keyword", 4.5, ["bg", "add-bg"], "+  return results, nil", { mono: true, fgOverride: syn.keyword }),
+          row("Syntax on diff rows", "keyword on a removed line", "syntax:keyword", 4.5, ["bg", "del-bg"], "-  func contactlessToolCallResults(", { mono: true, fgOverride: syn.keyword }),
+        ]
+      : []),
 
     row("Code and prose", "code span (fg on bg-inset)", "fg", 4.5, ["bg-raised", "bg-inset"], "charge()", { mono: true, chip: true }),
     row("Code and prose", "code span in muted prose", "fg-muted", 3.2, ["bg-raised", "bg-inset"], "src/billing/ledger.ts", { mono: true, chip: true }),
@@ -178,7 +220,7 @@ const sections = [];
 const summary = [];
 for (const theme of THEMES) {
   const t = tokensFor(theme);
-  const rows = contexts(t).map((r) => {
+  const rows = contexts(t, await syntaxColors(theme)).map((r) => {
     const ratioValue = ratio(r.fg, r.bg);
     const aa = r.swatch ? ratioValue >= 3.0 : ratioValue >= 4.5;
     const pass = ratioValue >= r.floor;
@@ -277,7 +319,7 @@ const html = `<!doctype html>
 <div class="top">
   <h1>Purview contrast sheet</h1>
   <label><input type="checkbox" id="only"> only failures</label>
-  <span style="opacity:.7">WCAG ratios, translucent tokens composited over their real backdrop. Floor = what the app's token derivation promises for that context; AA = WCAG 4.5 (3.0 for large text and UI outlines). Syntax colors come from shiki and are not here.</span>
+  <span style="opacity:.7">WCAG ratios, translucent tokens composited over their real backdrop. Floor = what the app's token derivation promises for that context; AA = WCAG 4.5 (3.0 for large text and UI outlines). Syntax rows use the colors shiki paints for the theme (comment, string, keyword scopes).</span>
   <nav style="display:flex;flex-wrap:wrap;gap:6px;width:100%">
     ${summary.map((s) => `<a href="#${esc(s.theme.id)}" data-fails="${s.fails.length}">${esc(s.theme.label)}${s.fails.length ? ` · ${s.fails.length}` : ""}</a>`).join("")}
   </nav>
