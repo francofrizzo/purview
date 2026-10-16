@@ -5,11 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.16.3
 
-- **Every theme reads.** Muted text, chips, tints and borders are now placed against the surfaces they actually sit on, so faint text on a hover row, a chip on its tint or a comment on a changed line stays legible in all 17 themes. Code comments on added and removed lines are lifted a step toward the text color.
-- **Lists in chat and summaries read right.** A numbered list keeps counting across blank lines, and a list nested under an item stays nested.
-- **Pick up where you left off.** A unit opens on its first hunk still to read, and `v` moves on to the next one still to read.
+- **Every theme reads.** Faint text, chips, tints and borders are placed against the surfaces they sit on; code comments on changed lines are lifted a step. All 17 themes, checked by a test.
+- **Pick up where you left off.** A unit opens on its first hunk still to read, and `v` moves on to the next one.
+- **Lists in chat render right.** Numbering continues across blank lines, and nested lists stay nested.
 
 ## 2026.10.16.2
 
