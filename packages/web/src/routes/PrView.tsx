@@ -87,7 +87,7 @@ import { UnitChangelog } from "../components/UnitChangelog";
 import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { FileTree } from "../components/FileTree";
-import { IconChevron } from "../components/icons";
+import { IconChevron, IconComment } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
 import { generatedUnitFiles, reviewProgress, workUnits } from "../lib/generated";
 import {
@@ -1753,7 +1753,8 @@ export function PrView() {
                     openComposer({ subjectType: "file", file: selectedPath })
                   }
                 >
-                  + file
+                  <IconComment width={13} height={13} />
+                  comment
                 </button>
                 {selectedFile ? generatedMenuFor(selectedFile) : null}
                 {showNarrowNote ? <NarrowPaneNote /> : null}

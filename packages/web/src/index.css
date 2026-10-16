@@ -257,6 +257,8 @@
     /* One height whether or not there is text: an icon alone must not make
        a shorter button than its neighbours. */
     min-height: 1.75rem;
+    /* Chrome, not code: a button inside a mono header keeps the UI face. */
+    font-family: var(--font-ui);
     border: 1px solid var(--border);
     background: var(--bg-raised);
     color: var(--fg-muted);
