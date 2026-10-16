@@ -5,10 +5,6 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
-
-- **A comment lands on the first click.** Opening a comment from the dock no longer scrolls short of its line when the hunk had to unfold or the comment open first.
-
 ## 2026.10.16.6
 
 - **A comment opens where it sits.** Click a comment or thread in the dock and the diff lands on its line, in its unit or its file depending on the tab, with the hunk unfolded and the comment open.
