@@ -255,13 +255,24 @@ them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy` 
 
 `heart` (optional, one to three entries of `{"hunkId": "...", "why": "..."}`) names the
 hunks where the unit's logic actually lives, as opposed to the call sites, tests, imports
-and plumbing around it, and says in one line what to look for there (`"derives the
-idempotency key; every retry path goes through this"`). Give every **must-read** unit a
-heart; give a skim unit one only when one hunk clearly carries it. Each `hunkId` must be
-one of that unit's own `hunkIds` (short ids are fine). Purview marks these hunks in the
-diff; the rest of the unit stays fully visible, so the heart is a pointer, not a filter.
-Leave `heart` off entirely for a unit whose hunks are all alike (a pure rename, a batch of
-test fixtures).
+and plumbing around it. `why` is **one full sentence saying what the hunk does**: the
+behavior it implements, as you would describe it to a colleague after reading it. It is
+shown as a caption right under the hunk in the diff, so it must read on its own.
+
+- Good: `"Derives the idempotency key from order id, amount and currency and stores it on
+  the charge row before the gateway is called."`
+- Good: `"Reconnects the event stream with exponential backoff and ends the turn if no
+  event arrives within the watchdog window."`
+- Bad: `"reconnect/backoff and expectTurn watchdog logic"` (a list of names, not a sentence).
+- Bad: `"the schema change; nullable, no backfill"` (notes, not what the code does).
+- Bad: `"check the lock ordering and the WG Add/Done pairing"` (what to verify belongs in
+  `attentionWhy`, not here).
+
+Give every **must-read** unit a heart; give a skim unit one only when one hunk clearly
+carries it. Each `hunkId` must be one of that unit's own `hunkIds` (short ids are fine).
+Purview marks these hunks in the diff; the rest of the unit stays fully visible, so the
+heart is a pointer, not a filter. Leave `heart` off entirely for a unit whose hunks are
+all alike (a pure rename, a batch of test fixtures).
 
 One more field, `findings`, is optional and is only ever filled in by the verification
 pass (step 5). Leave it off entirely here.
