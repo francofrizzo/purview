@@ -246,12 +246,43 @@ Produce:
 ```
 
 `ReviewUnit` fields: `id` (slug), `title`, `summary` (1-3 sentences), `kind`, `attention`,
-`attentionWhy` (always exactly one concrete line — say *what* to check, not just the kind,
-e.g. "Changes the discount rounding rule — verify it matches finance's spec" not "core
-logic"), `order` (integer, suggested reading order, starting at 0 or 1 — be consistent),
-plus `riskFlags` and `hunkIds` (arrays; both default to `[]` if omitted, but always write
-them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy` and
-`order` are required — the schema rejects the payload if any is missing.
+`attentionWhy`, `order` (integer, suggested reading order, starting at 0 or 1 — be
+consistent), plus `riskFlags` and `hunkIds` (arrays; both default to `[]` if omitted, but
+always write them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy`
+and `order` are required — the schema rejects the payload if any is missing.
+
+`title` is one short noun phrase or clause naming the change, under 50 characters. It sits
+in a narrow sidebar next to the unit's files, so no area prefix ("Runner:", "Frontend:")
+and no list of what the unit contains.
+
+- Good: `"Refuse new turns while draining"`, `"Fence session writes by lease token"`.
+- Bad: `"Runner: heartbeat from Claim and stop turn on lost lease"` (prefix, and two changes
+  stitched with "and").
+- Bad: `"Chat component: reload on reconnect, dedupe optimistic bubbles, arm watchdog"` (a
+  list; the summary holds that).
+
+`attentionWhy` is **one sentence, under 25 words, saying what is at stake**: what breaks or
+whom it affects if this unit is wrong. The attention chip already tells the reviewer to
+check, so do not open with "Check", "Verify" or "Confirm", and do not stack clauses with a
+semicolon. For a skim or skip unit, say in the same shape what the glance is for.
+
+- Good: `"Shutdown ordering decides whether in-flight turns survive a deploy."`
+- Good: `"Changes which tools the Provincia assistant can call."` (what the Flows still
+  reference is a finding, not a second clause here).
+- Bad: `"Concurrency of register vs drain, the WaitGroup lifecycle, and the grace and stop
+  timeouts that decide whether a deploy cuts a session."` (a list of topics, no stake).
+- Bad: `"Cross-tenant UPDATE with no tenant scoping by design; check the attempt-count reset
+  rule and that 90s vs 10s heartbeat can't interrupt a live slow-but-beating run."` (three
+  concerns in one line; keep the stake, move the rest to findings or drop it).
+- Bad: `"Shape check: the new 503 contract is what the frontend retry keys on."` (a label
+  prefix; just say the sentence).
+
+**A concern lives in one place.** Something you noticed — a stale description, a missing
+metric, a caller that may not handle the new path — is a `finding` on the unit that owns it
+(with a checkout) or a question in that unit's `attentionWhy` (without one). It does not
+also appear in the overall `summary`, in another unit's `attentionWhy`, or in a heart `why`.
+The summary may point at it in a clause ("the Flows are not touched, see that unit"), never
+restate it.
 
 `heart` (optional, one to three entries of `{"hunkId": "...", "why": "..."}`) names the
 hunks where the unit's logic actually lives, as opposed to the call sites, tests, imports
@@ -267,6 +298,10 @@ shown as a caption right under the hunk in the diff, so it must read on its own.
 - Bad: `"the schema change; nullable, no backfill"` (notes, not what the code does).
 - Bad: `"check the lock ordering and the WG Add/Done pairing"` (what to verify belongs in
   `attentionWhy`, not here).
+
+A heart `why` and the unit's `attentionWhy` must not overlap: the heart says what the
+code does, the attentionWhy says what is at stake. If writing one makes the other
+redundant, rewrite the attentionWhy, not the heart.
 
 Give every **must-read** unit a heart; give a skim unit one only when one hunk clearly
 carries it. Each `hunkId` must be one of that unit's own `hunkIds` (short ids are fine).
@@ -305,9 +340,10 @@ Rules — the first three are **enforced by the CLI**, which rejects the whole p
   touch the same file.
 - **Ripple fallout** (mechanical consequences of another unit's change — renamed call
   sites, signature threading, updated imports because a type moved) gets its **own**
-  `kind: "ripple"` unit. Its `summary` must name the driving unit by title so a reviewer
-  knows why these hunks exist (e.g. "Call-site updates for the `renderTotal` signature
-  change in 'Add currency parameter to renderTotal'").
+  `kind: "ripple"` unit. Its `summary` must name the driving unit so a reviewer knows why
+  these hunks exist: write the driving unit's `id` as a code span, and Purview renders it as
+  a link carrying that unit's title (e.g. "Call-site updates for the `renderTotal` signature
+  change in `render-total-currency`"). Do not quote the title; it is long and may be edited.
 - `order` should let a reviewer read core-logic and its direct dependents first, then
   connective-tissue, then wiring/ripple/tests/docs — dependency order, not file order.
 - Risk flags can push `attention` up (see RUBRIC.md attention ladder) even for a unit

@@ -116,7 +116,7 @@ import { sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
-import { hunkAtLine } from "../lib/codeLinks";
+import { codeLinker, hunkAtLine } from "../lib/codeLinks";
 import {
   buildHighlight,
   highlightSummaryText,
@@ -133,7 +133,7 @@ import { latestVerdicts } from "../lib/reviews";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
 import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
-import { AttachmentContext, InlineMarkdown } from "../components/Markdown";
+import { AttachmentContext, CodeLinkContext, InlineMarkdown } from "../components/Markdown";
 import { useAttachmentScope } from "../components/Attachments";
 
 /** No changelog highlight; one shared array, so nothing downstream sees a new one each render. */
@@ -988,6 +988,35 @@ export function PrView() {
     }
   }, [detail, analyzedUnits.length, probeJob, prKey, sharedProbe]);
 
+  // A code span naming a unit id or a diff file opens it: in a chat reply,
+  // and in the brief and sidebar where a ripple unit's summary names its
+  // driving unit by id (see lib/codeLinks.ts).
+  const openUnitFromText = useCallback(
+    (unitId: string) => {
+      setTab("units");
+      selectUnitFromSidebar(unitId);
+    },
+    [selectUnitFromSidebar],
+  );
+  const openFileFromText = useCallback(
+    (path: string, line?: number) => {
+      // A line inside the diff lands on it (in whichever tab shows it);
+      // anything else opens the file.
+      const file = detail?.files.files.find((f) => f.path === path);
+      const hunkId = file && line !== undefined ? hunkAtLine(file.hunks, line) : null;
+      if (hunkId) jumpToDiffHunk(hunkId, path, { line });
+      else {
+        setTab("files");
+        setSelectedPath(path);
+      }
+    },
+    [detail, jumpToDiffHunk],
+  );
+  const textLinks = useMemo(
+    () => codeLinker(detail, { onOpenUnit: openUnitFromText, onOpenFile: openFileFromText }),
+    [detail, openUnitFromText, openFileFromText],
+  );
+
   if (isLoading) {
     return <Centered>Loading {prKey}…</Centered>;
   }
@@ -1217,15 +1246,17 @@ export function PrView() {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         {tab === "units" ? (
-          <UnitSidebar
-            detail={detail}
-            selectedUnitId={selectedUnitId}
-            onSelect={selectUnitFromSidebar}
-            onReclassify={(unitId, patch) => patchUnit.mutate({ unitId, patch })}
-            onQuote={quote}
-            matchCounts={unitMatchCounts}
-            onlyUnitIds={sinceUnitIds}
-          />
+          <CodeLinkContext.Provider value={textLinks}>
+            <UnitSidebar
+              detail={detail}
+              selectedUnitId={selectedUnitId}
+              onSelect={selectUnitFromSidebar}
+              onReclassify={(unitId, patch) => patchUnit.mutate({ unitId, patch })}
+              onQuote={quote}
+              matchCounts={unitMatchCounts}
+              onlyUnitIds={sinceUnitIds}
+            />
+          </CodeLinkContext.Provider>
         ) : (
           <FileTree
             detail={detail}
@@ -1629,6 +1660,7 @@ export function PrView() {
 
         <main ref={mainRef} className="relative flex min-w-0 flex-1 flex-col">
           {tab === "units" && selectedUnit ? (
+            <CodeLinkContext.Provider value={textLinks}>
             <div
               ref={setHeaderEl}
               data-testid="unit-header"
@@ -1802,6 +1834,7 @@ export function PrView() {
                 </div>
               </div>
             </div>
+            </CodeLinkContext.Provider>
           ) : null}
 
           {tab === "units" && unplacedSelected ? (
@@ -2029,18 +2062,8 @@ export function PrView() {
             prKey={prKey}
             detail={detail}
             comments={drafts}
-            onOpenUnit={(unitId) => {
-              setTab("units");
-              selectUnitFromSidebar(unitId);
-            }}
-            onOpenFile={(path, line) => {
-              // A line inside the diff lands on it (in whichever tab shows it);
-              // anything else opens the file.
-              const file = detail?.files.files.find((f) => f.path === path);
-              const hunkId = file && line !== undefined ? hunkAtLine(file.hunks, line) : null;
-              if (hunkId) jumpToDiffHunk(hunkId, path, { line });
-              else jumpToFile(path);
-            }}
+            onOpenUnit={openUnitFromText}
+            onOpenFile={openFileFromText}
           />
         ) : null}
 

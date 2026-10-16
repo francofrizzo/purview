@@ -8,6 +8,7 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **Updates show on a normal reload.** A new Purview build appears the next time you reload; no more hard reload to get past the cached copy.
+- **Units link to each other.** When a unit's summary names another unit by its id (a ripple unit naming the change it follows), the brief and sidebar show that unit's number and title as a link that opens it.
 - **One card per sent comment.** A comment you sent no longer shows twice (your local copy and the GitHub one) when GitHub reports it as a one-line range; the two are matched as the same comment.
 
 ## 2026.10.16.3

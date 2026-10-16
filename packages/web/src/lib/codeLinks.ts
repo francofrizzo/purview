@@ -5,7 +5,9 @@
  * straight from what it writes rather than taught a link syntax.
  */
 
-import type { FileEntry, Hunk, ReviewUnit } from "../api/types";
+import type { FileEntry, Hunk, PrDetail, ReviewUnit } from "../api/types";
+import type { CodeLink } from "../components/Markdown";
+import { unitDisplayNumbers } from "./unitOrder";
 
 export type CodeTarget =
   | { kind: "unit"; unitId: string }
@@ -52,3 +54,40 @@ export function hunkAtLine(
 
 /** Unit ids, for the linker's exact-match lookup. */
 export const unitIdSet = (units: Pick<ReviewUnit, "id">[]) => new Set(units.map((u) => u.id));
+
+/**
+ * The CodeLinkContext provider for one PR: code spans naming a unit id open
+ * that unit and read as its number and title; spans naming a diff file (with
+ * an optional line) open the file. Used by the chat and by the brief and
+ * sidebar, where a ripple unit's summary names its driving unit by id.
+ */
+export function codeLinker(
+  detail: PrDetail | undefined,
+  open: { onOpenUnit?: (unitId: string) => void; onOpenFile?: (path: string, line?: number) => void },
+): ((text: string) => CodeLink | null) | null {
+  const { onOpenUnit, onOpenFile } = open;
+  if (!detail || (!onOpenUnit && !onOpenFile)) return null;
+  const units = new Map(detail.state.units.map((u) => [u.id, u]));
+  const numbers = unitDisplayNumbers(detail.state.units);
+  const ctx = { unitIds: onOpenUnit ? unitIdSet(detail.state.units) : new Set<string>(), files: detail.files.files };
+  return (text: string): CodeLink | null => {
+    const target = resolveCodeTarget(text, ctx);
+    if (target?.kind === "unit" && onOpenUnit) {
+      const unit = units.get(target.unitId)!;
+      const n = numbers.get(unit.id);
+      const title = unit.title.replace(/`/g, "");
+      return {
+        title: `${n !== undefined ? `Unit ${n}` : "Unit"}: ${title}`,
+        label: { number: n, text: title },
+        onOpen: () => onOpenUnit(unit.id),
+      };
+    }
+    if (target?.kind === "file" && onOpenFile) {
+      return {
+        title: target.line !== undefined ? `${target.path}, line ${target.line}` : target.path,
+        onOpen: () => onOpenFile(target.path, target.line),
+      };
+    }
+    return null;
+  };
+}

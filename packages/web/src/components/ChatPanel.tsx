@@ -35,9 +35,8 @@ import {
   MAX_CHAT_PANEL_WIDTH,
   MIN_CHAT_PANEL_WIDTH,
 } from "../lib/settings";
-import { CHAT_TEXT, CodeLinkContext, Markdown, type CodeLink } from "./Markdown";
-import { unitDisplayNumbers } from "../lib/unitOrder";
-import { resolveCodeTarget, unitIdSet } from "../lib/codeLinks";
+import { CHAT_TEXT, CodeLinkContext, Markdown } from "./Markdown";
+import { codeLinker } from "../lib/codeLinks";
 import { useModalBackground } from "./Modal";
 import {
   IconArrowDown,
@@ -300,32 +299,7 @@ export function ChatPanel({
   const chat = useChat();
   // Replies name units (`unit-id`) and places (`path/file.go:23`) in code
   // spans; the ones this PR can open become links (see lib/codeLinks.ts).
-  const linkUnit = useMemo(() => {
-    if (!detail || (!onOpenUnit && !onOpenFile)) return null;
-    const units = new Map(detail.state.units.map((u) => [u.id, u]));
-    const numbers = unitDisplayNumbers(detail.state.units);
-    const ctx = { unitIds: onOpenUnit ? unitIdSet(detail.state.units) : new Set<string>(), files: detail.files.files };
-    return (text: string): CodeLink | null => {
-      const target = resolveCodeTarget(text, ctx);
-      if (target?.kind === "unit" && onOpenUnit) {
-        const unit = units.get(target.unitId)!;
-        const n = numbers.get(unit.id);
-        const title = unit.title.replace(/`/g, "");
-        return {
-          title: `${n !== undefined ? `Unit ${n}` : "Unit"}: ${title}`,
-          label: { number: n, text: title },
-          onOpen: () => onOpenUnit(unit.id),
-        };
-      }
-      if (target?.kind === "file" && onOpenFile) {
-        return {
-          title: target.line !== undefined ? `${target.path}, line ${target.line}` : target.path,
-          onOpen: () => onOpenFile(target.path, target.line),
-        };
-      }
-      return null;
-    };
-  }, [detail, onOpenUnit, onOpenFile]);
+  const linkUnit = useMemo(() => codeLinker(detail, { onOpenUnit, onOpenFile }), [detail, onOpenUnit, onOpenFile]);
   const { data: agents } = useAgents();
   const agentName = useChatAgentName();
   // Handoff continues the session in its own harness; before there is one,

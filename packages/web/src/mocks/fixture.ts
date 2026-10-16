@@ -764,7 +764,7 @@ const units: ReviewUnit[] = [
     id: "wiring-and-docs",
     title: "Container wiring, call-site threading and docs",
     summary:
-      "ChargeLedger is constructed in the container and injected; the pay route threads a requestId through. Docs describe the new key derivation.",
+      "ChargeLedger is constructed in the container and injected; the pay route threads the `requestId` that `idempotent-charge-path` reads. Docs describe the new key derivation.",
     kind: "wiring",
     attention: "skip",
     attentionWhy: "Mechanical: registration, one signature threading, prose.",
