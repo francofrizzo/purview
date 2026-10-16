@@ -476,13 +476,22 @@ const ALERTS: Record<string, { label: string; color: string }> = {
   CAUTION: { label: "Caution", color: "var(--risk)" },
 };
 
-/** A list item; `[ ]` / `[x]` at its start is a (read-only) task checkbox. */
+/**
+ * A list item: its first line inline, then whatever nested content the
+ * parser kept under it (a sub-list, another paragraph) as blocks. `[ ]` /
+ * `[x]` at its start is a (read-only) task checkbox.
+ */
 function ListItem({ item }: { item: string }) {
-  const task = /^\[([ xX])\]\s+/.exec(item);
+  const nl = item.indexOf("\n");
+  const head = nl === -1 ? item : item.slice(0, nl);
+  const rest = nl === -1 ? "" : item.slice(nl + 1);
+  const nested = rest.trim() ? <BlockList blocks={parseMarkdown(rest)} /> : null;
+  const task = /^\[([ xX])\]\s+/.exec(head);
   if (!task) {
     return (
       <li>
-        <Inline nodes={parseInline(item)} />
+        <Inline nodes={parseInline(head)} />
+        {nested}
       </li>
     );
   }
@@ -499,7 +508,8 @@ function ListItem({ item }: { item: string }) {
         style={{ accentColor: "var(--accent)" }}
       />
       <span>
-        <Inline nodes={parseInline(item.slice(task[0].length))} />
+        <Inline nodes={parseInline(head.slice(task[0].length))} />
+        {nested}
       </span>
     </li>
   );
@@ -575,7 +585,7 @@ function BlockList({ blocks }: { blocks: MdBlock[] }) {
             );
           case "list":
             return block.ordered ? (
-              <ol key={i} className="my-1 list-decimal space-y-0.5 pl-4">
+              <ol key={i} className="my-1 list-decimal space-y-0.5 pl-4" start={block.start}>
                 {block.items.map((item, j) => (
                   <ListItem key={j} item={item} />
                 ))}

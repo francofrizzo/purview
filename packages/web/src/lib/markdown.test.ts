@@ -38,6 +38,31 @@ describe("parseMarkdown", () => {
     ]);
   });
 
+  it("keeps a loose list (blank lines between items) as one list, numbered on", () => {
+    expect(parseMarkdown("1. a\n\n2. b\n\n3. c")).toEqual([
+      { type: "list", ordered: true, items: ["a", "b", "c"] },
+    ]);
+    expect(parseMarkdown("3. c\n4. d")).toEqual([{ type: "list", ordered: true, items: ["c", "d"], start: 3 }]);
+    // A blank line followed by something else still ends it.
+    expect(parseMarkdown("- a\n\nAfter.")).toEqual([
+      { type: "list", ordered: false, items: ["a"] },
+      { type: "paragraph", text: "After." },
+    ]);
+  });
+
+  it("keeps nested lists and extra paragraphs under their item, dedented", () => {
+    expect(parseMarkdown("1. How it rolls out. Two things:\n   - custom tenants\n   - the first deploy\n2. Monitoring")).toEqual([
+      {
+        type: "list",
+        ordered: true,
+        items: ["How it rolls out. Two things:\n- custom tenants\n- the first deploy", "Monitoring"],
+      },
+    ]);
+    expect(parseMarkdown("- a\n\n  second paragraph\n- b")).toEqual([
+      { type: "list", ordered: false, items: ["a\n\nsecond paragraph", "b"] },
+    ]);
+  });
+
   it("parses blockquotes and thematic breaks", () => {
     expect(parseMarkdown("> quoted")).toEqual([
       { type: "quote", text: "quoted", blocks: [{ type: "paragraph", text: "quoted" }] },

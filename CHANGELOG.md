@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Lists in chat and summaries read right.** A numbered list keeps counting across blank lines, and a list nested under an item stays nested.
 - **Pick up where you left off.** A unit opens on its first hunk still to read, and `v` moves on to the next one still to read.
 
 ## 2026.10.16.2

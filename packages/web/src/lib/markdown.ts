@@ -13,7 +13,12 @@ export type MdBlock =
   | { type: "paragraph"; text: string }
   | { type: "heading"; level: number; text: string }
   | { type: "code"; lang: string | null; code: string; open: boolean }
-  | { type: "list"; ordered: boolean; items: string[] }
+  /**
+   * Each item is its first line, then (after a newline) any nested content,
+   * dedented, to be parsed as blocks of its own. `start` is the first
+   * ordered marker's number when it is not 1.
+   */
+  | { type: "list"; ordered: boolean; items: string[]; start?: number }
   /** `text` is the quote's source, flattened; `blocks` is it parsed as markdown. */
   | { type: "quote"; text: string; blocks: MdBlock[] }
   | { type: "hr" }
@@ -103,6 +108,8 @@ function readDetails(lines: string[], start: number): { summary: string; body: s
   return { summary, body: inner, open, next: lastLine + 1 };
 }
 
+const indentOf = (line: string) => line.length - line.trimStart().length;
+
 export function parseMarkdown(src: string): MdBlock[] {
   const lines = src.replace(/\r\n?/g, "\n").split("\n");
   const blocks: MdBlock[] = [];
@@ -183,25 +190,54 @@ export function parseMarkdown(src: string): MdBlock[] {
 
     if (BULLET.test(line) || ORDERED.test(line)) {
       const ordered = !BULLET.test(line);
+      const marker = ordered ? ORDERED : BULLET;
+      const baseIndent = indentOf(line);
+      const start = ordered ? Number(ORDERED.exec(line)![1]) : 1;
       const items: string[] = [];
+      // Where an item's own content starts: lines indented at least this far
+      // belong to the item (a nested list, a second paragraph), dedented.
+      let contentIndent = baseIndent + 2;
+      const last = () => items.length - 1;
       while (i < lines.length) {
-        const b = BULLET.exec(lines[i]);
-        const o = ORDERED.exec(lines[i]);
-        const isItem = ordered ? Boolean(o) : Boolean(b);
-        if (isItem) {
-          items.push((ordered ? o![2] : b![1]).trim());
+        const cur = lines[i];
+        if (!cur.trim()) {
+          // A blank line ends the list unless what follows is another item of
+          // it (a "loose" list) or more of the current item's content.
+          let j = i + 1;
+          while (j < lines.length && !lines[j].trim()) j++;
+          if (j >= lines.length || !items.length) break;
+          const ind = indentOf(lines[j]);
+          if (ind === baseIndent && marker.test(lines[j])) {
+            i = j;
+            continue;
+          }
+          if (ind >= contentIndent && !FENCE.test(lines[j])) {
+            items[last()] += "\n";
+            i = j;
+            continue;
+          }
+          break;
+        }
+        const ind = indentOf(cur);
+        if (ind <= baseIndent) {
+          const m = marker.exec(cur);
+          if (!m || ind !== baseIndent) break;
+          const text = m[ordered ? 2 : 1];
+          items.push(text.trim());
+          // The marker's text group runs to the end of the line, so the
+          // content column is what precedes it.
+          contentIndent = cur.length - text.length;
           i++;
           continue;
         }
-        // A plain indented line continues the previous item.
-        if (items.length && lines[i].trim() && /^\s{2,}/.test(lines[i]) && !FENCE.test(lines[i])) {
-          items[items.length - 1] += ` ${lines[i].trim()}`;
-          i++;
-          continue;
-        }
-        break;
+        if (!items.length || FENCE.test(cur)) break;
+        // Indented under the item: a nested list (or any block) keeps its
+        // line; a plain line lazily continues the item's text.
+        const nested = items[last()].includes("\n") || BULLET.test(cur) || ORDERED.test(cur);
+        items[last()] += nested ? `\n${cur.slice(Math.min(ind, contentIndent))}` : ` ${cur.trim()}`;
+        i++;
       }
-      blocks.push({ type: "list", ordered, items });
+      blocks.push({ type: "list", ordered, items, ...(ordered && start !== 1 ? { start } : {}) });
       continue;
     }
 
