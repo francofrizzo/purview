@@ -1840,15 +1840,20 @@ export function DiffPane({
 
     const idx = hunkRowIndex.get(jumpToHunk.hunkId);
     if (idx === undefined) return; // entries haven't caught up yet; effect reruns when they do
-    jumpedNonce.current = jumpToHunk.nonce;
-    onFocusHunk(jumpToHunk.hunkId);
+    // The comments on that line open before the scroll, not with it: the
+    // rows they add sit right under the target, and a scroll measured
+    // without them lands off by their height. Bail without consuming the
+    // nonce; `rows` carries them on the rerun.
     if (jumpToHunk.showComments && line !== undefined) {
       const file = entries.find((e) => e.hunk.id === jumpToHunk.hunkId)?.hunk.file;
       const anchor = file ? lineAnchor(file, line, onOld ? "LEFT" : "RIGHT") : null;
-      if (anchor && grouped.byLine.has(anchor)) {
-        setExpandedAnchors((cur) => (cur.has(anchor) ? cur : new Set(cur).add(anchor)));
+      if (anchor && grouped.byLine.has(anchor) && !expandedAnchors.has(anchor)) {
+        setExpandedAnchors((cur) => new Set(cur).add(anchor));
+        return;
       }
     }
+    jumpedNonce.current = jumpToHunk.nonce;
+    onFocusHunk(jumpToHunk.hunkId);
     // The hunk's rows follow its header contiguously; walk them for the
     // requested line (unified rows carry it directly, split rows on their
     // right cell) and fall back to the header when nothing matches.
@@ -1878,10 +1883,18 @@ export function DiffPane({
       }
     }
     setFlashKey(rows[target].key);
-    const frame = requestAnimationFrame(() =>
-      virtualizer.scrollToIndex(target, { align: "center" }),
-    );
-    return () => cancelAnimationFrame(frame);
+    // Twice: the first scroll mounts the rows around the target (an unfolded
+    // hunk's lines, the opened comments) at their estimated heights; the
+    // second, once they are measured, settles the target where it belongs.
+    let again: number | null = null;
+    const frame = requestAnimationFrame(() => {
+      virtualizer.scrollToIndex(target, { align: "center" });
+      again = requestAnimationFrame(() => virtualizer.scrollToIndex(target, { align: "center" }));
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (again !== null) cancelAnimationFrame(again);
+    };
   }, [
     jumpToHunk,
     hunkRowIndex,
@@ -1894,6 +1907,7 @@ export function DiffPane({
     isRegionFolded,
     collapsed,
     grouped,
+    expandedAnchors,
   ]);
 
   /** The row's comment actions, plus the reply composer when it is written in there. */

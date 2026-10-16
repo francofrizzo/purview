@@ -13,5 +13,10 @@ test("a comment in the dock opens its unit, unfolds the hunk and shows the comme
   const header = hunkHeader(page, "a1b2c3d4e5f60001");
   await expect(header).toHaveAttribute("data-focused", "true");
   await expect(header).not.toHaveAttribute("data-collapsed", "true");
-  await expect(page.locator("[data-diff-scroller]").getByTestId("comment-card-draft-1")).toBeVisible();
+  // One click is enough: the card is on screen, not just rendered somewhere
+  // below the fold of the scroller.
+  const card = page.locator("[data-diff-scroller]").getByTestId("comment-card-draft-1");
+  await expect(card).toBeVisible();
+  await expect(card).toBeInViewport({ ratio: 1 });
+  await expect(header).toBeInViewport({ ratio: 1 });
 });
