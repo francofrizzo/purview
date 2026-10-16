@@ -23,26 +23,24 @@ const out = path.resolve(process.argv[2] ?? path.join(root, "contrast-sheet.html
 const server = await createServer({ root, server: { middlewareMode: true }, appType: "custom", logLevel: "error" });
 const { THEMES, tokensFor, shikiThemeFor } = await server.ssrLoadModule("/src/lib/themes.ts");
 await server.close();
-const { bundledThemes } = await import("shiki");
+const { createHighlighter } = await import("shiki");
 
 /**
- * The colors shiki actually paints a scope with for a theme: the first
- * tokenColors entry whose scope list names it (the way TextMate resolves
- * it), from the hand-built raw theme or the bundled JSON.
+ * The colors shiki actually paints for a theme, read off a highlighted
+ * snippet (the diff does the same), not guessed from scope rules: TextMate
+ * resolves scopes by specificity, so the first matching rule is often wrong.
  */
+const SNIPPET = "// note\nconst s = \"text\";\nreturn s;";
+const highlighter = await createHighlighter({ langs: ["ts"], themes: [] });
 async function syntaxColors(theme) {
   const entry = shikiThemeFor(theme);
-  const raw = entry.raw ?? (await bundledThemes[entry.name]?.())?.default;
+  const raw = entry.raw ?? (await import("shiki")).bundledThemes[entry.name];
   if (!raw) return {};
-  const pick = (scope) => {
-    for (const tc of raw.tokenColors ?? []) {
-      const scopes = Array.isArray(tc.scope) ? tc.scope : tc.scope ? [tc.scope] : [];
-      if (scopes.some((sc) => sc === scope || sc.startsWith(scope + ".") || scope.startsWith(sc + ".")) && tc.settings?.foreground)
-        return tc.settings.foreground;
-    }
-    return undefined;
-  };
-  return { comment: pick("comment"), string: pick("string"), keyword: pick("keyword") };
+  await highlighter.loadTheme(raw);
+  const name = entry.raw ? entry.raw.name : entry.name;
+  const { tokens } = highlighter.codeToTokens(SNIPPET, { lang: "ts", theme: name });
+  const find = (text) => tokens.flat().find((tk) => tk.content.trim() === text)?.color;
+  return { comment: find("// note"), string: find('"text"'), keyword: find("return") ?? find("const") };
 }
 
 /* ------------------------------------------------------------ color math */
