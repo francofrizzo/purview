@@ -37,6 +37,18 @@ test("v marks the focused hunk viewed, folds it, and moves on to the next", asyn
   await expect(page.getByTestId("file-header-src/billing/reconcile.ts").first()).toContainText("1/4 viewed");
 });
 
+test("a unit opens on its first hunk still to read, and v moves on to the next one still to read", async ({ page }) => {
+  // The charge unit: 0001 is viewed in the fixture, 0003 and 0005 are not.
+  await openUnit(page, UNITS.charge);
+  await expect(hunkHeader(page, "a1b2c3d4e5f60003")).toHaveAttribute("data-focused", "true");
+  await page.keyboard.press("v");
+  await expect(hunkHeader(page, "a1b2c3d4e5f60003")).toHaveAttribute("data-collapsed", "true");
+  await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
+  // Everything read now: v on the last one stays put rather than going back.
+  await page.keyboard.press("v");
+  await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
+});
+
 test("Shift+J / Shift+K step between units in sidebar order", async ({ page }) => {
   await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile);
   // The reconciliation unit is "skim" and sits after the two must-reads.
@@ -46,8 +58,9 @@ test("Shift+J / Shift+K step between units in sidebar order", async ({ page }) =
   await expect(page.getByTestId("unit-header")).toContainText(UNITS.charge);
   await page.keyboard.press("Shift+KeyJ");
   await expect(page.getByTestId("unit-header")).toContainText(UNITS.retry);
-  // The diff follows the unit: its first hunk is focused.
-  await expect(hunkHeader(page, "a1b2c3d4e5f60002")).toHaveAttribute("data-focused", "true");
+  // The diff follows the unit: its first hunk still to read is focused
+  // (0002 is already viewed in the fixture).
+  await expect(hunkHeader(page, "a1b2c3d4e5f60008")).toHaveAttribute("data-focused", "true");
 });
 
 test("s toggles the summary strip", async ({ page }) => {

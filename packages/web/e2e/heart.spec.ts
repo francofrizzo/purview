@@ -19,15 +19,17 @@ test("heart hunks are marked, counted in the sidebar, and h/H walk them", async 
   await expect(page.getByTestId("unit-heart-transient-retry-backoff")).toHaveText("1");
   await expect(page.getByTestId("unit-heart-wiring-and-docs")).toHaveCount(0);
 
-  // The first hunk (a heart one) is focused on open; h goes to the next
-  // heart hunk, wraps around at the end, and H walks back.
+  // The unit opens on its first unviewed hunk (0001 is viewed, so 0003: a
+  // heart one); h goes to the next heart hunk, wrapping around at the end,
+  // and H walks back.
+  await expect(page.getByTestId(`hunk-header-${HEART[1]}`)).toHaveAttribute("data-focused", "true");
+  await page.keyboard.press("h");
   await expect(page.getByTestId(`hunk-header-${HEART[0]}`)).toHaveAttribute("data-focused", "true");
   await page.keyboard.press("h");
   await expect(page.getByTestId(`hunk-header-${HEART[1]}`)).toHaveAttribute("data-focused", "true");
-  await page.keyboard.press("h");
+  await page.keyboard.press("H");
   await expect(page.getByTestId(`hunk-header-${HEART[0]}`)).toHaveAttribute("data-focused", "true");
   await page.keyboard.press("H");
-  await expect(page.getByTestId(`hunk-header-${HEART[1]}`)).toHaveAttribute("data-focused", "true");
   // From a support hunk, h picks the next heart hunk after it (wrapping).
   await page.keyboard.press("j");
   await expect(page.getByTestId(`hunk-header-${SUPPORT}`)).toHaveAttribute("data-focused", "true");

@@ -512,8 +512,10 @@ export function TopBar({
           </span>
           {pendingReview ? (
             <span
-              className="rounded-full px-1 text-2xs"
-              style={{ background: "var(--warn-soft)", color: "var(--warn)" }}
+              className="rounded-full px-1.5 text-2xs"
+              // On the solid accent button the warn pair has nothing to stand
+              // on; the badge borrows the button's own ink, inverted.
+              style={{ background: "var(--bg)", color: "var(--accent)" }}
               data-tip="You have a pending review on GitHub"
             >
               pending

@@ -1999,10 +1999,12 @@ export function DiffPane({
         if (!focusedHunkId) return;
         e.preventDefault();
         const marking = !detail.state.hunks[focusedHunkId]?.viewed;
-        // Marking one read moves on to the next, like j; unmarking stays put.
+        // Marking one read moves on to the next hunk still to read (like
+        // space: onward first, then from the top); unmarking stays put.
         // Focus now, scroll after the marked hunk's fold (see pendingScrollRef).
         const anchor = foldAnchor(focusedHunkId);
-        const target = marking && cur < ids.length - 1 ? ids[cur + 1] : undefined;
+        const onward = [...ids.slice(cur + 1), ...ids.slice(0, cur)];
+        const target = marking ? onward.find((id) => !detail.state.hunks[id]?.viewed) : undefined;
         if (target) onFocusHunk(target);
         pendingScrollRef.current = { anchor, target, at: performance.now() };
         onToggleViewed(focusedHunkId, marking);

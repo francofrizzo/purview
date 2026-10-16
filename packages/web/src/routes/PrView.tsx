@@ -928,11 +928,17 @@ export function PrView() {
     commentTarget,
   ]);
 
-  // Keep the focused hunk inside the currently shown set.
+  // Keep the focused hunk inside the currently shown set. Entering a unit (or
+  // a file) lands on its first hunk still to read, so the reader picks up
+  // where they left off; with everything viewed, the first hunk.
+  const hunkStates = useRef(detail?.state.hunks);
+  hunkStates.current = detail?.state.hunks;
   useEffect(() => {
-    setFocusedHunkId((cur) =>
-      cur && entries.some((e) => e.hunk.id === cur) ? cur : (entries[0]?.hunk.id ?? null),
-    );
+    setFocusedHunkId((cur) => {
+      if (cur && entries.some((e) => e.hunk.id === cur)) return cur;
+      const first = entries.find((e) => !hunkStates.current?.[e.hunk.id]?.viewed) ?? entries[0];
+      return first?.hunk.id ?? null;
+    });
   }, [entries]);
 
   // Visiting a search match may mean leaving the unit or file on screen. Only

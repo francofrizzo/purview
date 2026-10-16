@@ -114,6 +114,7 @@ function contexts(t) {
     row("Buttons", "primary button (accent on accent-soft)", "accent", 3.6, ["bg-raised", "accent-soft"], "finish review", { chip: true }),
     row("Buttons", "agent button (agent on agent-soft)", "agent", 3.6, ["bg-raised", "agent-soft"], "save note", { chip: true }),
     row("Buttons", "solid accent button (bg on accent)", "bg", 3.6, ["accent"], "finish review", { chip: true }),
+    row("Buttons", "pending badge on the solid button (accent on bg)", "accent", 3.6, ["accent", "bg"], "pending", { chip: true }),
     row("Buttons", "plain button text (fg on bg-inset)", "fg", 4.5, ["bg-raised", "bg-inset"], "mark unit viewed", { chip: true }),
     row("Buttons", "selected row (fg on accent-soft)", "fg", 4.5, ["bg-raised", "accent-soft"], "1  Idempotent charge path"),
     row("Buttons", "selected row, muted (fg-muted on accent-soft)", "fg-muted", 3.2, ["bg-raised", "accent-soft"], "2 risks · changed · 1/3"),
