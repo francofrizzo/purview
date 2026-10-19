@@ -7,8 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **A few words on every hunk.** The analysis can label any hunk of a unit, three to six words saying what it is, shown on the hunk header where the derived "tests" or "docs" hint used to be.
-- **A heart in several places.** One hunk can carry more than one heart segment, each with its own sentence and bar; the brief lists every segment, and `h` / `H` walk them one by one.
+- **Finer notes from the analysis.** Hunk headers carry a few words on what each hunk is, and a heart can mark more than one place in a hunk.
 
 ## 2026.10.19.1
 
