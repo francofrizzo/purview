@@ -1,11 +1,42 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { configDefaults } from "vitest/config";
 import { VitePWA } from "vite-plugin-pwa";
+
+/**
+ * In mock mode (`VITE_MOCK=1`) there is no backend behind `/api`, but the
+ * page still asks `/api/prs/:key/image?url=…` for GitHub-hosted pictures (see
+ * src/api/client.ts `remoteImageSrc`). This answers with a stand-in SVG so the
+ * mock app, and the e2e suite, show a picture there.
+ */
+function mockRemoteImages(): Plugin {
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120" viewBox="0 0 240 120">',
+    '<rect width="240" height="120" rx="8" fill="#dbeafe"/>',
+    '<rect x="24" y="24" width="72" height="32" rx="4" fill="#3b82f6"/>',
+    '<rect x="144" y="64" width="72" height="32" rx="4" fill="#3b82f6"/>',
+    '<path d="M96 40 H120 V80 H144" fill="none" stroke="#1e3a8a" stroke-width="3"/>',
+    "</svg>",
+  ].join("");
+  return {
+    name: "purview:mock-remote-images",
+    apply: () => process.env.VITE_MOCK === "1",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!/^\/api\/prs\/[^/]+\/image\?/.test(req.url ?? "")) return next();
+        res.statusCode = 200;
+        res.setHeader("content-type", "image/svg+xml");
+        res.setHeader("content-security-policy", "sandbox");
+        res.end(svg);
+      });
+    },
+  };
+}
 
 export default defineConfig({
   plugins: [
     react(),
+    mockRemoteImages(),
     VitePWA({
       // No service worker: it served the old build until a hard reload, and
       // a local tool gains nothing from offline. This emits a sw.js that
