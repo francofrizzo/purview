@@ -279,9 +279,9 @@ describe("unit changelog through the reducer", () => {
     expect(husk.changelog).toEqual([{ revision: 2, text: "r2 change" }]);
   });
 
-  it("starts fresh on analysis-set unless the payload carries it", () => {
+  it("survives an analysis-set, inherited by the unit that holds the same hunks", () => {
     const s = fold([...base, rev2([fuzzyH1]), entryPatch("r2 change"), base[1]]);
-    expect(s.units.find((u) => u.id === "core")!.changelog).toBeUndefined();
+    expect(s.units.find((u) => u.id === "core")!.changelog).toEqual([{ revision: 2, text: "r2 change" }]);
   });
 
   it("validates: set-analysis accepts changelog; the patch caps changelogEntry at the sanity limit", () => {
