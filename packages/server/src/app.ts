@@ -95,6 +95,11 @@ import {
   resolveBodyForGithub,
   storeAttachment,
 } from "./attachments.js";
+import {
+  REMOTE_IMAGE_CACHE_CONTROL,
+  fetchRemoteImage,
+  remoteImageFilePath,
+} from "./remote-images.js";
 import { proposeCommentReanchor } from "./comment-reanchor.js";
 import {
   SUBMIT_EVENTS,
@@ -1728,6 +1733,31 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw new HttpError(409, "attachment_in_use", "A comment still refers to this attachment");
     }
     return c.json({ ok: true });
+  });
+
+  /**
+   * Someone else's picture — the description's screenshots, an image in a
+   * review or a comment — fetched once from GitHub with the reader's token and
+   * kept under the PR (see remote-images.ts). The page only ever talks to
+   * this server; GitHub's image hosts are the only ones proxied.
+   */
+  app.get("/api/prs/:key/image", async (c) => {
+    const key = keyParam(c);
+    if (!prExists(key, root)) throw new HttpError(404, "not_found", `${keyToString(key)} is not tracked`);
+    const url = c.req.query("url")?.trim();
+    if (!url) throw new HttpError(400, "missing_url", "`?url=<picture URL>` is required");
+    const image = await fetchRemoteImage(key, url, root);
+    return new Response(fs.readFileSync(remoteImageFilePath(key, image, root)), {
+      headers: {
+        "content-type": image.mime,
+        "content-disposition": "inline",
+        "cache-control": REMOTE_IMAGE_CACHE_CONTROL,
+        "x-content-type-options": "nosniff",
+        // An SVG is a document: sandboxed, it draws inside an <img> but runs
+        // nothing on this origin.
+        ...(image.mime === "image/svg+xml" ? { "content-security-policy": "sandbox" } : {}),
+      },
+    });
   });
 
   /* ------------------------------------------------------ review threads */

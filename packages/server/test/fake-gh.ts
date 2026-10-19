@@ -147,6 +147,9 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
       throw new Error(`gh ${joined} failed: ${failure.message}`);
     }
 
+    // `gh auth token [--hostname h]`: what remote-images.ts sends as Bearer.
+    if (/^auth token( --hostname \S+)?$/.test(joined)) return "gho_fake_token\n";
+
     if (joined === "api user" || /\bapi (--hostname \S+ )?user$/.test(joined)) {
       return JSON.stringify({ login: state.login, id: 1 });
     }
