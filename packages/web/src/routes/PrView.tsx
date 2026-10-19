@@ -118,6 +118,7 @@ import { orderUnitHunks, sortUnitsForDisplay, unitProgress } from "../lib/diffMo
 import { heartOf, heartSegments, hunkIdsOf, skipOf } from "../lib/units";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
+import { rollbackMessage } from "../lib/rollback";
 import { unitForHunk } from "../lib/diffSearch";
 import { codeLinker, hunkAtLine } from "../lib/codeLinks";
 import {
@@ -1137,6 +1138,16 @@ export function PrView() {
     revision: detail.state.revision,
   };
 
+  // The optimistic actions: the diff or the header already moved when one of
+  // these is refused and rolled back, so the page says what happened.
+  const rollbackError = rollbackMessage([
+    { label: "marking the hunk viewed", error: setHunkViewed.error },
+    { label: "marking the hunks viewed", error: setHunksViewed.error },
+    { label: "marking the unit viewed", error: setUnitViewed.error },
+    { label: "reclassifying the unit", error: patchUnit.error },
+    { label: "archiving the PR", error: setArchived.error },
+  ]);
+
   // The last refusal from the server on one comment, pinned to that card by
   // the id the mutation was called with; a new attempt on any card clears it.
   const commentError: CommentActionError | null =
@@ -1545,9 +1556,7 @@ export function PrView() {
       {exportAnalysis.error ? (
         <ErrorBar message={`export failed: ${(exportAnalysis.error as Error).message}`} />
       ) : null}
-      {setUnitViewed.error ? (
-        <ErrorBar message={`Unit not marked viewed: ${errorText(setUnitViewed.error)}. Its hunks are back as they were.`} />
-      ) : null}
+      {rollbackError ? <ErrorBar message={rollbackError} testId="rollback-error" /> : null}
       {importParseError ? <ErrorBar message={importParseError} /> : null}
       {importAnalysis.error ? (
         <ErrorBar message={`import failed: ${(importAnalysis.error as Error).message}`} />
@@ -2334,10 +2343,11 @@ function Centered({ children }: { children: ReactNode }) {
   );
 }
 
-function ErrorBar({ message }: { message: string }) {
+function ErrorBar({ message, testId }: { message: string; testId?: string }) {
   return (
     <div
       className="flex-none border-b px-3 py-1.5 text-xs"
+      data-testid={testId}
       style={{ background: "var(--risk-soft)", color: "var(--risk)", borderColor: "var(--border)" }}
     >
       {message}

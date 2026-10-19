@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK } from "../api/client";
 import { useAddPr, useImportReviews, useMarkVersionSeen, usePrs, useRepos, useSetArchived, useVersion } from "../api/hooks";
@@ -18,6 +18,7 @@ import { UpdateAvailable } from "../components/UpdateAvailable";
 import { WhatsNew } from "../components/WhatsNew";
 import { IconArchive, IconChevron, IconPlus, IconSettings, IconSpinner } from "../components/icons";
 import { errorText } from "../api/errors";
+import { rollbackMessage } from "../lib/rollback";
 import { formatImportResult } from "../lib/reviewImport";
 import { visibleReviewRequest } from "../lib/reviewRequest";
 import {
@@ -33,11 +34,20 @@ import { AutoArchiveButton, RepoMenu } from "../components/RepoActions";
 import logoDark from "../assets/logo-dark.png";
 import logoLight from "../assets/logo-light.png";
 
+/**
+ * One archive mutation for the whole list, so a refusal (the row already
+ * jumped and jumped back) can be reported once at the top rather than lost
+ * in the row it happened on.
+ */
+const ArchiveContext = createContext<ReturnType<typeof useSetArchived> | null>(null);
+
 export function PrList() {
   const { data: prs = [], isLoading, error } = usePrs();
   const { data: repos = [] } = useRepos();
   const background = useModalBackground();
   const addPr = useAddPr();
+  const setArchived = useSetArchived();
+  const archiveError = rollbackMessage([{ label: "archiving the PR", error: setArchived.error }]);
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
   // First open after an update: the unseen changelog entries float over the
@@ -73,6 +83,7 @@ export function PrList() {
   };
 
   return (
+    <ArchiveContext.Provider value={setArchived}>
     <div className="mx-auto flex h-full max-w-3xl flex-col px-6 py-10">
       {unseen.length && version.data?.version && !markSeen.isPending ? (
         <WhatsNew
@@ -121,6 +132,15 @@ export function PrList() {
           style={{ background: "var(--risk-soft)", color: "var(--risk)" }}
         >
           {(addPr.error as Error).message}
+        </div>
+      ) : null}
+      {archiveError ? (
+        <div
+          className="mb-4 rounded px-3 py-2 text-xs"
+          data-testid="rollback-error"
+          style={{ background: "var(--risk-soft)", color: "var(--risk)" }}
+        >
+          {archiveError}
         </div>
       ) : null}
 
@@ -179,6 +199,7 @@ export function PrList() {
         )}
       </div>
     </div>
+    </ArchiveContext.Provider>
   );
 }
 
@@ -526,7 +547,7 @@ const ARCHIVE_HINT = "local only, nothing changes on GitHub";
  * a row of the "waiting on your review" block with the warm left rule.
  */
 function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) {
-  const setArchived = useSetArchived();
+  const setArchived = useContext(ArchiveContext)!;
   const archived = pr.archived;
   const meta = pr.meta;
 
