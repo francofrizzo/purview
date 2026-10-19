@@ -49,6 +49,12 @@ export interface EnsurePrCheckoutOptions {
   mergeBase?: string;
   baseSha?: string;
   root?: string;
+  /**
+   * Called right before a slow git step (fetching the PR head, moving the
+   * tree, creating it) with a sentence naming it. Never called when the tree
+   * is already at the head: that path is a few git reads.
+   */
+  onStep?: (detail: string) => void;
 }
 
 /* ------------------------------------------------------------ git (async) */
@@ -199,6 +205,7 @@ async function ensureUnlocked(key: PrKey, opts: EnsurePrCheckoutOptions): Promis
     if (!(await hasCommit(repoPath, headSha))) {
       // refs/pull/<n>/head exists for every PR — forks and stacked PRs
       // included — and the merge base, an ancestor, arrives with it.
+      opts.onStep?.("fetching the PR head");
       const fetched = await gitAsync(
         ["-C", repoPath, "fetch", "--no-tags", "--quiet", remote, `+refs/pull/${key.number}/head`],
         repoPath,
@@ -220,6 +227,7 @@ async function ensureUnlocked(key: PrKey, opts: EnsurePrCheckoutOptions): Promis
     if (registered) {
       if (registered.head !== headSha) {
         // Purview owns this tree and nothing edits it, so --force is safe.
+        opts.onStep?.("moving the checkout to the new head");
         const moved = await gitAsync(
           ["-C", target, "checkout", "--quiet", "--detach", "--force", headSha],
           target,
@@ -239,6 +247,7 @@ async function ensureUnlocked(key: PrKey, opts: EnsurePrCheckoutOptions): Promis
       fs.rmSync(target, { recursive: true, force: true });
     }
     fs.mkdirSync(path.dirname(target), { recursive: true });
+    opts.onStep?.("creating the checkout");
     // `--force` only overrides the "path is registered but missing" safeguard
     // here (with --detach the "branch checked out elsewhere" rule never
     // applies), so a stale entry for *this* path is reused. Never a global
@@ -273,8 +282,8 @@ export async function resolveRunCheckout(
     meta?: Meta | null;
     revision?: RevisionInfo;
     label: string;
-    /** called right before the (possibly slow) managed checkout starts */
-    onPreparing?: () => void;
+    /** called before each slow git step of the managed checkout, with a sentence naming it */
+    onStep?: (detail: string) => void;
   },
 ): Promise<CheckoutResolution> {
   const { meta, revision, label } = input;
@@ -290,13 +299,13 @@ export async function resolveRunCheckout(
   }
   if (!managed || !repoPath) return fallback();
 
-  input.onPreparing?.();
   const result = await ensurePrCheckout(key, {
     repoPath,
     headSha,
     mergeBase: revision?.mergeBase,
     baseSha: revision?.baseSha,
     root,
+    onStep: input.onStep,
   });
   if ("error" in result) {
     console.warn(`[${label}] ${keyToString(key)}: managed checkout unavailable (${result.error}); falling back`);

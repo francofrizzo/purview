@@ -130,7 +130,7 @@ export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
 }
 
 /**
- * A live job's progress is either a phase ("preparing checkout") or the tool
+ * A live job's progress is either a phase ("fetching the PR head") or the tool
  * call running right now ("Bash grep -rn …", "Read /path/…"). Tool calls are
  * code, so they get the code font; phases stay prose.
  */

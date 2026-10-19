@@ -985,9 +985,9 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     meta: meta ?? null,
     revision: revisionInfo,
     label: "analysis",
-    onPreparing: () => {
+    onStep: (detail) => {
       const latest = readJob(key, root);
-      if (latest) writeJob(key, { ...latest, progress: "preparing checkout" }, root);
+      if (latest) writeJob(key, { ...latest, progress: detail }, root);
     },
   });
   if (slot.cancelled) {

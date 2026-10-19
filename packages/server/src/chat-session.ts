@@ -198,7 +198,7 @@ export function startChatTurn(
         meta: meta ?? null,
         revision: revisionInfo,
         label: "chat",
-        onPreparing: () => emit({ type: "tool", name: "checkout", detail: "preparing checkout" }),
+        onStep: (detail) => emit({ type: "tool", name: "checkout", detail }),
       });
       if (checkout.error) {
         console.warn(`[chat] ${keyStr}: ${checkout.error}; running without a checkout`);

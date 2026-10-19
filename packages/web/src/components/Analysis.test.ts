@@ -82,7 +82,7 @@ describe("isToolProgress", () => {
   it("tells a running tool call from a phase", () => {
     expect(isToolProgress("Bash grep -rn foo internal/")).toBe(true);
     expect(isToolProgress("Read /tmp/x.txt")).toBe(true);
-    expect(isToolProgress("preparing checkout")).toBe(false);
+    expect(isToolProgress("fetching the PR head")).toBe(false);
     expect(isToolProgress("starting")).toBe(false);
     expect(isToolProgress("cancelling")).toBe(false);
   });
