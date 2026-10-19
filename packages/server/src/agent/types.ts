@@ -93,6 +93,7 @@ export const REVIEWER_COMMANDS = [
   "set-analysis",
   "set-unit",
   "set-units",
+  "set-revision-summary",
   "units",
   "view",
   "sync",

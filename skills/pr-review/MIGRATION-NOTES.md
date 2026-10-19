@@ -146,12 +146,21 @@ first three as "carried".
    when the `id` already exists does the JSON act as a partial patch of just the fields you
    send.
 
-4. **Husks.** Units listed under "Removed units" in `report` (marked `~` in `units`;
+4. **Summarize the revision.** Once the batch lands, record what *this revision* changed
+   across the PR as a whole, once:
+   `reviewer-state set-revision-summary <key> --text "<one or two sentences>"`.
+   Write it for the reader: the behavior that moved, not the bookkeeping, and no file paths
+   unless they are the point (`"stop timeout constant moved to shared.go; queue mapping
+   failure model moved to models/communication.go"`). It replaces an earlier summary of the
+   same revision; `changes` and `report` say when the revision has none. Revision 1 takes
+   none (the PR summary covers it).
+
+5. **Husks.** Units listed under "Removed units" in `report` (marked `~` in `units`;
    `removedAtRevision` in state) are husks of decisions the PR dropped: don't patch them,
    except to revive one (give it hunks) when new hunks genuinely belong to that same
    decision.
 
-5. **Never regenerate the whole analysis.** Do not re-run the full two-pass process from
+6. **Never regenerate the whole analysis.** Do not re-run the full two-pass process from
    SKILL.md step 3 over the entire diff on a refresh, and never `set-analysis` — that would
    silently discard accumulated viewed-state semantics and reviewer trust in the existing
    structure (a unit's `changelog` survives: the new units inherit the notes of the old

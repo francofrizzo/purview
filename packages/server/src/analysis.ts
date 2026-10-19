@@ -263,6 +263,10 @@ export function changesBlock(cmd: string, keyStr: string): string {
     `Send EVERY patch in ONE \`${cmd} set-units ${keyStr} --file <scratch>/patches.json\` call`,
     "(`addHunks`/`removeHunkIds` attach, move or re-label a hunk without resending the unit's list). It prints",
     "what is left; there is no need to run `report` afterwards.",
+    `REVISION SUMMARY: after the patches land, run \`${cmd} set-revision-summary ${keyStr} --text "<summary>"\` once`,
+    "(MIGRATION-NOTES.md step 4): one or two sentences on what this revision changed across the PR as a whole,",
+    "in the reader's language — the behavior that moved, not the bookkeeping; file paths only when they are the",
+    "point (\"the stop timeout moved to shared.go\"). Then stop.",
   ].join("\n");
 }
 
@@ -532,7 +536,7 @@ export function analysisPrompt(
     "Turn count is what this run costs — every extra turn re-sends the whole accumulated context. See SKILL.md's 'Batching' section; the HARD RULES in the system prompt are not optional.",
     "",
     opts.incremental
-      ? "Do not pre-verify coverage yourself: `set-units` validates the whole batch and prints what is left. When it succeeds and reports nothing left to classify or patch, you are done: stop immediately."
+      ? "Do not pre-verify coverage yourself: `set-units` validates the whole batch and prints what is left. When it succeeds and reports nothing left to classify or patch, write the revision summary (one `set-revision-summary` call) and you are done: stop immediately."
       : "Do not pre-verify hunk coverage yourself (no scripts, no manual cross-checks): `set-analysis` validates it and lists the exact missing ids on failure, which is cheaper than checking first. When `set-analysis` succeeds you are done: stop immediately.",
   ]
     .filter((line) => line !== "")
@@ -559,6 +563,7 @@ export const ANALYSIS_CLI_SUBCOMMANDS: readonly ReviewerCommand[] = [
   "set-analysis",
   "set-unit",
   "set-units",
+  "set-revision-summary",
 ];
 
 /* ------------------------------------------------------------------- queue */

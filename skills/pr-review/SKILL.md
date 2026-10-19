@@ -41,8 +41,9 @@ set in your environment, the state root is that directory instead, and all paths
 relative to it.
 
 Subcommands that exist: `init`, `refresh`, `report`, `units`, `triage`, `show`, `changes`,
-`base-file`, `history`, `description`, `set-analysis`, `set-unit`, `set-units`, `view`, `sync`, `list`,
-`discard-revision`, `remove-repo`, `comment`. There are no others.
+`base-file`, `history`, `description`, `set-analysis`, `set-unit`, `set-units`,
+`set-revision-summary`, `view`, `sync`, `list`, `discard-revision`, `remove-repo`, `comment`.
+There are no others.
 
 ## 1. Determine state: init, refresh, or report (interactive only)
 
@@ -535,10 +536,11 @@ required field such as `attentionWhy` or `order`.
 ## 8. On refresh of an already-analyzed PR
 
 `MIGRATION-NOTES.md` is the one statement of the refresh flow — which hunks to classify,
-which units to patch and with what, how to write the patches (`set-units`, one batch), and
-what never to touch. Follow it; this skill's other steps apply to the hunks and units it
-names. This is the flow the ~40-turn budget in "Batching" is sized for — an incremental run
-touches a handful of units, so batch its reads and its re-verification the same way.
+which units to patch and with what, how to write the patches (`set-units`, one batch), the
+revision summary that follows them (`set-revision-summary`, once), and what never to touch.
+Follow it; this skill's other steps apply to the hunks and units it names. This is the flow
+the ~40-turn budget in "Batching" is sized for — an incremental run touches a handful of
+units, so batch its reads and its re-verification the same way.
 
 <!-- interactive-only:start -->
 ## 9. Other commands (interactive only; rarely yours to run)

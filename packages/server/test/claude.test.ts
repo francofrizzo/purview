@@ -190,9 +190,11 @@ describe("analysis tool allowlist", () => {
     }
     // The CLI is one executable path; every subcommand the run uses is allowed.
     const cliCmd = path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "reviewer-state");
-    for (const sub of ["report", "units", "triage", "show", "changes", "base-file", "set-analysis", "set-unit", "set-units"]) {
+    for (const sub of ["report", "units", "triage", "show", "changes", "base-file", "set-analysis", "set-unit", "set-units", "set-revision-summary"]) {
       expect(allowedTools).toContain(`Bash(${cliCmd} ${sub}:*)`);
     }
+    // The chat reads; it never writes a revision summary.
+    expect(chatToolFlags().disallowedTools).toContain(`Bash(${cliCmd} set-revision-summary:*)`);
     expect(chatToolFlags().allowedTools).toContain(`Bash(${cliCmd} changes:*)`);
     expect(chatToolFlags().allowedTools).toContain(`Bash(${cliCmd} units:*)`);
     // `set-unit:*` does not cover `set-units`: the chat denies both.
@@ -273,6 +275,9 @@ describe("headless skill text", () => {
     // The refresh flow is stated once (MIGRATION-NOTES), not restated in SKILL.md §8.
     expect(refresh.split("send a `changelogEntry`").length - 1).toBe(1);
     expect(refresh).toContain("set-units <key> --file");
+    // The summary step rides with MIGRATION-NOTES (SKILL.md only names the subcommand).
+    expect(refresh).toContain("set-revision-summary <key> --text");
+    expect(initial).not.toContain("set-revision-summary <key> --text");
     // It is a pure function of the skill files: nothing PR- or machine-specific.
     expect(refresh).not.toContain(process.execPath);
     expect(refresh).not.toMatch(/github\.com\/[^\s]+\/\d+/);
@@ -484,6 +489,10 @@ describe("analysis job lifecycle", () => {
     expect(analysisPrompt(key, root, { incremental: false })).not.toContain("CHANGED UNITS");
     // Changed units get their title rewritten too, from what they hold now.
     expect(claude.promptOf(0)).toContain("rewrite `title`, `summary` and `attentionWhy`");
+    // One whole-revision summary per refresh, written after the patches, before stopping.
+    expect(claude.promptOf(0)).toContain(`REVISION SUMMARY: after the patches land, run \`${cliCmd} set-revision-summary ${keyToString(key)} --text "<summary>"\` once`);
+    expect(claude.promptOf(0)).toContain("write the revision summary (one `set-revision-summary` call) and you are done");
+    expect(analysisPrompt(key, root, { incremental: false })).not.toContain("set-revision-summary");
   });
 
   it("analyzes from scratch on request: the first-analysis flow although units exist", async () => {
