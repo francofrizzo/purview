@@ -745,7 +745,8 @@ export function DraftsDrawer({
   onUndoEdit?: (id: string) => void;
   /** a restore or undo is in flight */
   undoing?: boolean;
-  deleting?: boolean;
+  /** the id of the draft whose delete is in flight */
+  deleting?: string | null;
   /** diff + PR identity the agent-facing markdown needs; omit to hide copying */
   bundle?: Omit<BundleSource, "comments">;
   onJump: (draft: DraftComment) => void;

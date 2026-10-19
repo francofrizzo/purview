@@ -64,7 +64,8 @@ export const AGENT_LOOK = {
 export interface CommentActions {
   onEdit?: EditComment;
   onDelete?: (comment: DraftComment) => void;
-  deleting?: boolean;
+  /** the id of the comment whose delete is in flight */
+  deleting?: string | null;
   onQuote?: (ref: ChatRef) => void;
   /** the diff to slice a snippet out of, for copy-for-agent */
   exportCtx?: DiffContext;
@@ -98,8 +99,8 @@ export function CommentCard({
   const status: CommentStatus = comment.status ?? "draft";
   const forAgent = isForAgent(comment);
   const meta = forAgent ? AGENT_LOOK : COMMENT_STATUS[status];
-  const { onEdit, onDelete, deleting, onQuote, exportCtx, onUndoEdit, undoing, onMove, moving, onPublish, publishing } =
-    actions;
+  const { onEdit, onDelete, onQuote, exportCtx, onUndoEdit, undoing, onMove, moving, onPublish, publishing } = actions;
+  const deleting = actions.deleting === comment.id;
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);

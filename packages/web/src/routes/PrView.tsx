@@ -1135,7 +1135,7 @@ export function PrView() {
     onEdit: (input: { id: string; body: string; confirm?: boolean }) =>
       editComment.mutateAsync(input),
     onDelete: (c: { id: string }) => deleteComment.mutate(c.id),
-    deleting: deleteComment.isPending,
+    deleting: deleteComment.isPending ? (deleteComment.variables ?? null) : null,
     onQuote: quote,
     exportCtx,
     onUndoEdit: (id: string) => undoCommentEdit.mutate(id),
@@ -2071,7 +2071,7 @@ export function PrView() {
         {dock === "comments" ? (
           <DraftsDrawer
             drafts={drafts}
-            deleting={deleteComment.isPending}
+            deleting={deleteComment.isPending ? (deleteComment.variables ?? null) : null}
             bundle={bundle}
             onJump={(d) => jumpToComment(d)}
             onDelete={(d) => deleteComment.mutate(d.id)}
