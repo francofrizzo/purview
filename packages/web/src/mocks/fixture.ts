@@ -82,6 +82,20 @@ function h(
   return { id, file, header, oldStart, oldLines, newStart, newLines, lines };
 }
 
+/** A hunk whose content lines are spelled out too, the way core's files.json
+ *  carries them — what move detection (lib/moveDetection.ts) reads. Only the
+ *  moved-code pair below needs them; the rest of the fixture predates the
+ *  field, like a state written before bodies were kept. */
+function hm(...args: Parameters<typeof h>): Hunk {
+  const hunk = h(...args);
+  const lines = hunk.lines ?? [];
+  return {
+    ...hunk,
+    addedLines: lines.filter((l) => l.startsWith("+")).map((l) => l.slice(1)),
+    removedLines: lines.filter((l) => l.startsWith("-")).map((l) => l.slice(1)),
+  };
+}
+
 const hunks: Hunk[] = [
   h(
     "a1b2c3d4e5f60001",
@@ -594,6 +608,56 @@ const hunks: Hunk[] = [
       " }",
     ],
   ),
+  // A code move across two files, for the moved-code tint, its fold band and
+  // the band's jump (e2e/moved.spec.ts). The formatting helpers leave
+  // reconcileReport.ts for a new report.ts verbatim; the blank line between
+  // them stays behind as context, so the moved block reads as two halves in
+  // the old file and the fold has to bridge it. The re-export that replaces
+  // the block sits right under its second half: in split view that pairs a
+  // moved line with a real one, so the block can't fold there.
+  hm(
+    "a1b2c3d4e5f60013",
+    "src/billing/reconcileReport.ts",
+    "@@ -1,10 +1,4 @@",
+    1,
+    10,
+    1,
+    4,
+    [
+      " import type { ReconcileRow, Report } from \"./reconcile\";",
+      " ",
+      "-function formatMismatch(row: ReconcileRow): string {",
+      "-  const amount = row.ledger?.amount ?? row.gateway?.amount;",
+      "-  return `${row.key}: ${row.verdict} (${amount})`;",
+      "-}",
+      " ",
+      "-export function formatReport(report: Report): string[] {",
+      "-  return report.mismatches.map(formatMismatch);",
+      "-}",
+      "+export { formatReport } from \"./report\";",
+    ],
+  ),
+  hm(
+    "a1b2c3d4e5f60014",
+    "src/billing/report.ts",
+    "@@ -0,0 +1,10 @@",
+    0,
+    0,
+    1,
+    10,
+    [
+      "+import type { ReconcileRow, Report } from \"./reconcile\";",
+      "+",
+      "+function formatMismatch(row: ReconcileRow): string {",
+      "+  const amount = row.ledger?.amount ?? row.gateway?.amount;",
+      "+  return `${row.key}: ${row.verdict} (${amount})`;",
+      "+}",
+      "+",
+      "+export function formatReport(report: Report): string[] {",
+      "+  return report.mismatches.map(formatMismatch);",
+      "+}",
+    ],
+  ),
 ];
 
 const files: FilesJson = {
@@ -667,6 +731,20 @@ const files: FilesJson = {
       additions: 23,
       deletions: 6,
       hunks: [hunks[16], hunks[17]],
+    },
+    {
+      path: "src/billing/reconcileReport.ts",
+      status: "modified",
+      additions: 1,
+      deletions: 7,
+      hunks: [hunks[18]],
+    },
+    {
+      path: "src/billing/report.ts",
+      status: "added",
+      additions: 10,
+      deletions: 0,
+      hunks: [hunks[19]],
     },
     {
       path: "pnpm-lock.yaml",
@@ -810,8 +888,20 @@ const units: ReviewUnit[] = [
     ],
     order: 4,
   },
+  {
+    id: "report-module",
+    title: "Report formatting moved into its own module",
+    summary:
+      "formatMismatch() and formatReport() leave reconcileReport.ts for a new report.ts unchanged; the old module re-exports formatReport so callers keep working.",
+    kind: "wiring",
+    attention: "skim",
+    attentionWhy: "A verbatim move plus a re-export; nothing changes in what the code does.",
+    riskFlags: [],
+    hunks: [{ id: "a1b2c3d4e5f60013" }, { id: "a1b2c3d4e5f60014" }],
+    order: 5,
+  },
   // Purview's own unit, built from the files' classification (not the analysis's).
-  buildGeneratedUnit(files.files, 5)!,
+  buildGeneratedUnit(files.files, 6)!,
 ];
 
 /** A husk: every hunk of it left the PR in revision 3 (see ReviewUnit.removedAtRevision). */
@@ -863,6 +953,8 @@ const state: PrState = {
     a1b2c3d4e5f60010: { viewed: false, changedSinceViewed: false, migration: "new" },
     a1b2c3d4e5f60011: { viewed: false, changedSinceViewed: false, migration: "new" },
     a1b2c3d4e5f60012: { viewed: false, changedSinceViewed: false, migration: "new" },
+    a1b2c3d4e5f60013: { viewed: false, changedSinceViewed: false, migration: "new" },
+    a1b2c3d4e5f60014: { viewed: false, changedSinceViewed: false, migration: "new" },
   },
   files: {
     "src/billing/charge.ts": { viewed: true, viewedHunks: 2, totalHunks: 2, syncedToGitHub: true },
@@ -879,6 +971,8 @@ const state: PrState = {
     "src/billing/reconcile.ts": { viewed: false, viewedHunks: 0, totalHunks: 4 },
     // Hunk 0011 is skippable per the analysis, so it is not counted (see the unit's `skip`).
     "src/jobs/reconcileNightly.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
+    "src/billing/reconcileReport.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
+    "src/billing/report.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
   },
 };
 
