@@ -9,7 +9,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 - **The analysis can fold the hunks you need not read.** Import changes, re-exports and renamed call sites inside a unit that otherwise matters start folded with a short label; they count toward nothing and Space passes over them. Open one like any other hunk.
 - **A heart can be a few lines, not a whole hunk.** When the logic is a small part of a large hunk, the bar marks just those lines and the brief names them; the rest of the hunk stays as support.
-- **A unit opens on its heart.** The files that hold the heart come first, in heart order; the rest follow in diff order.
+- **A unit's files in reading order.** The analysis can say which files of a unit to read first; without that, the files that hold the heart come first. The rest follow in diff order.
 
 - **Progress at a glance on the home page.** Every PR row shows its progress bar, empty until you start, with the viewed count under it; the unit count sits beside it and the diff size moved into the row's details.
 

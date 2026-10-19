@@ -680,7 +680,12 @@ export function PrView() {
       const ids = unplacedSelected ? unplaced : selectedUnit?.hunkIds;
       if (!ids) return [];
       // The heart's files first, then diff order: see orderUnitHunks.
-      return orderUnitHunks(detail.files.files, ids, unplacedSelected ? undefined : selectedUnit?.heart);
+      return orderUnitHunks(
+        detail.files.files,
+        ids,
+        unplacedSelected ? undefined : selectedUnit?.heart,
+        unplacedSelected ? undefined : selectedUnit?.fileOrder,
+      );
     }
     const file = detail.files.files.find((f) => f.path === selectedPath);
     return file ? file.hunks.map((h) => ({ hunk: h, file })) : [];

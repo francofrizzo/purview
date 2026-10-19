@@ -231,6 +231,15 @@ export const ReviewUnitSchema = z.object({
    */
   fold: z.array(FoldEntrySchema).optional(),
   /**
+   * The unit's files in the order to read them, as paths. Optional: absent,
+   * Purview orders them itself (heart files first, then diff order). Files
+   * the list leaves out follow the listed ones in diff order. The reducer
+   * drops a path none of the unit's hunks touch (a file that left the unit,
+   * a rename, a typo) rather than rejecting it, and removes the key when
+   * nothing is left; a re-analysis or a unit patch sends the whole list.
+   */
+  fileOrder: z.array(z.string().min(1)).optional(),
+  /**
    * What each later revision changed in this unit, oldest first, one entry per
    * revision. Optional like `findings`. Grown by `changelogEntry` on a unit
    * patch (see ReviewUnitPatchSchema); carried through migration and kept on

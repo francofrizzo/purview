@@ -338,16 +338,18 @@ export function unitProgress(detail: PrDetail, unit: ReviewUnit) {
 }
 
 /**
- * A unit's hunks in reading order: the files that hold its heart first, in
- * heart order, then the rest in diff order; hunks within a file always keep
- * diff order. No heart, plain diff order. The order the analysis listed the
- * ids in is never used: a refresh appends new hunks to the end of the list,
- * and the pane's gaps and file headers assume hunks of a file sit together.
+ * A unit's hunks in reading order. The analysis's `fileOrder` goes first
+ * when it has one; otherwise the files that hold its heart, in heart order.
+ * The rest follow in diff order, and hunks within a file always keep diff
+ * order. The order the analysis listed the ids in is never used: a refresh
+ * appends new hunks to the end of the list, and the pane's gaps and file
+ * headers assume hunks of a file sit together.
  */
 export function orderUnitHunks(
   files: FileEntry[],
   hunkIds: Iterable<string>,
   heart: Pick<HeartEntry, "hunkId">[] | undefined,
+  fileOrder?: string[],
 ): { hunk: Hunk; file: FileEntry }[] {
   const wanted = new Set(hunkIds);
   const byFile = new Map<string, { hunk: Hunk; file: FileEntry }[]>();
@@ -356,7 +358,8 @@ export function orderUnitHunks(
     if (own.length) byFile.set(file.path, own);
   }
   const first: string[] = [];
-  for (const h of heart ?? []) {
+  for (const path of fileOrder ?? []) if (byFile.has(path) && !first.includes(path)) first.push(path);
+  for (const h of first.length ? [] : (heart ?? [])) {
     const path = files.find((f) => f.hunks.some((x) => x.id === h.hunkId))?.path;
     if (path !== undefined && byFile.has(path) && !first.includes(path)) first.push(path);
   }

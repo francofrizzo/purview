@@ -770,6 +770,9 @@ const units: ReviewUnit[] = [
     attentionWhy: "Mechanical: registration, one signature threading, prose.",
     riskFlags: [],
     hunkIds: ["a1b2c3d4e5f60006", "a1b2c3d4e5f60007", "a1b2c3d4e5f60009", "a1b2c3d4e5f60010"],
+    // The analysis's reading order: the route that threads the id, then the
+    // container that builds the ledger; docs and the reconcile stub follow.
+    fileOrder: ["src/api/routes/orders.ts", "src/container.ts"],
     order: 3,
   },
   {

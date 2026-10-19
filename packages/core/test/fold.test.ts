@@ -382,3 +382,48 @@ describe("fold through the CLI-facing service", () => {
     expect(state.units[0].fold).toEqual([{ hunkId: a2, why: "imports" }]);
   });
 });
+
+describe("fileOrder through the reducer", () => {
+  const rev = (revision: number): ReviewerEvent =>
+    ({
+      ts,
+      type: "revision-added",
+      revision,
+      baseSha: `b${revision}`,
+      headSha: `h${revision}`,
+      mergeBase: `m${revision}`,
+      baseOnly: false,
+      files: [
+        { path: "a.ts", hunkIds: ["h1"] },
+        { path: "b.ts", hunkIds: ["h2"] },
+        { path: "c.ts", hunkIds: ["h3"] },
+      ],
+    }) as ReviewerEvent;
+  const analysis = (fileOrder?: string[]): ReviewerEvent => ({
+    ts,
+    type: "analysis-set",
+    revision: 1,
+    summary: "s",
+    units: [unit({ fileOrder })],
+    unassigned: [],
+  });
+
+  it("keeps the listed paths the unit touches, in order, and drops the rest", () => {
+    const state = fold([rev(1), analysis(["c.ts", "zzz.ts", "a.ts", "c.ts"])]);
+    expect(state.units[0].fileOrder).toEqual(["c.ts", "a.ts"]);
+  });
+
+  it("removes the key when no listed path is touched, and stays absent when never sent", () => {
+    expect(fold([rev(1), analysis(["zzz.ts"])]).units[0].fileOrder).toBeUndefined();
+    expect(fold([rev(1), analysis()]).units[0].fileOrder).toBeUndefined();
+  });
+
+  it("follows a unit patch that drops a file", () => {
+    const state = fold([
+      rev(1),
+      analysis(["c.ts", "a.ts"]),
+      { ts, type: "unit-updated", unitId: "u1", patch: { hunkIds: ["h1", "h2"] } } as ReviewerEvent,
+    ]);
+    expect(state.units[0].fileOrder).toEqual(["a.ts"]);
+  });
+});

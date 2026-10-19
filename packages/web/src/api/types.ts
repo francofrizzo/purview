@@ -153,6 +153,11 @@ export interface ReviewUnit {
    * older states and on units with nothing to skip.
    */
   fold?: FoldEntry[];
+  /**
+   * The unit's files in the analysis's reading order (paths). Files it
+   * leaves out follow in diff order; absent, the heart's files come first.
+   */
+  fileOrder?: string[];
   /** absent on units that verified nothing, and on any state predating findings */
   findings?: Finding[];
   /**

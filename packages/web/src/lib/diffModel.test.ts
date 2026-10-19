@@ -155,6 +155,15 @@ describe("orderUnitHunks", () => {
     expect(ids(out)).toEqual(["c1", "c2", "b1", "a1", "a2"]);
   });
 
+  it("takes the analysis's file order first, dropping paths the unit does not touch, then diff order", () => {
+    const out = orderUnitHunks(files, ["a1", "a2", "b1", "c1"], [{ hunkId: "a1" }], ["c.ts", "nope.ts", "b.ts"]);
+    expect(ids(out)).toEqual(["c1", "b1", "a1", "a2"]);
+  });
+
+  it("falls back to the heart when the file order names nothing it holds", () => {
+    expect(ids(orderUnitHunks(files, ["a1", "b1"], [{ hunkId: "b1" }], ["nope.ts"]))).toEqual(["b1", "a1"]);
+  });
+
   it("ignores a heart whose hunk is not in the unit", () => {
     expect(ids(orderUnitHunks(files, ["a1", "b1"], [{ hunkId: "c1" }]))).toEqual(["a1", "b1"]);
   });

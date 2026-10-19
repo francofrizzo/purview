@@ -364,6 +364,12 @@ Rules — the first three are **enforced by the CLI**, which rejects the whole p
   change in `render-total-currency`"). Do not quote the title; it is long and may be edited.
 - `order` should let a reviewer read core-logic and its direct dependents first, then
   connective-tissue, then wiring/ripple/tests/docs — dependency order, not file order.
+- `fileOrder` (optional, a list of the unit's file paths) does the same *inside* a unit:
+  the files in the order to read them, the thing being changed before the things that
+  react to it (a contract or schema, then the logic, then its callers, then tests and
+  docs). Send it only when that differs from alphabetical order for a reason; files you
+  leave out follow the listed ones in diff order, and a path the unit's hunks do not
+  touch is dropped. Without it, Purview shows the heart's files first.
 - Risk flags can push `attention` up (see RUBRIC.md attention ladder) even for a unit
   that would otherwise be skim/skip — e.g. a one-line change to an auth check is
   must-read regardless of its size.

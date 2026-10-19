@@ -530,7 +530,28 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
   }
 
   recomputeRollups(state);
+  pruneFileOrders(state);
   return state;
+}
+
+/**
+ * A unit's `fileOrder` only ever names files its hunks touch: after any
+ * event, drop the paths that no longer do (the file left the unit, was
+ * renamed, or was never there), dedupe, and remove an emptied key. Units are
+ * replaced only when something changes, so untouched state keeps its identity.
+ */
+export function pruneFileOrders(state: State): void {
+  const owners = new Map<string, string>();
+  for (const f of state.files) for (const id of f.hunkIds) owners.set(id, f.path);
+  state.units = state.units.map((u) => {
+    if (!u.fileOrder) return u;
+    const touched = new Set(u.hunkIds.map((id) => owners.get(id)).filter((p): p is string => p !== undefined));
+    const kept = u.fileOrder.filter((p, i) => touched.has(p) && u.fileOrder!.indexOf(p) === i);
+    if (kept.length === u.fileOrder.length && kept.length > 0) return u;
+    const next: ReviewUnit = { ...u, fileOrder: kept };
+    if (kept.length === 0) delete next.fileOrder;
+    return next;
+  });
 }
 
 /**
