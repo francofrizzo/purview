@@ -68,6 +68,14 @@ function isSignificant(normalized: string): boolean {
   return normalized.length >= MIN_SIGNIFICANT_LENGTH || WORD_RUN.test(normalized);
 }
 
+/** The same notion of a line that carries no content of its own — blank, or
+ *  punctuation only (`}`, `);`, `],`) — on a raw line, for callers that want
+ *  to treat such a line as filler the way the run detection above does (the
+ *  fold bridging in foldRegions.ts). Not part of the mirrored algorithm. */
+export function isSignificantLine(line: string): boolean {
+  return isSignificant(normalize(line));
+}
+
 interface Entry {
   hunk: Hunk;
   path: string;

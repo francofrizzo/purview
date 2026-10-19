@@ -7,7 +7,7 @@
  * predicates.
  */
 
-import type { MoveCounterpart } from "./moveDetection";
+import { isSignificantLine, type MoveCounterpart } from "./moveDetection";
 
 /** One row's standing for a particular fold kind, in row-space order (a
  *  hunk's unified line index, or its split pair index — whichever the
@@ -19,7 +19,17 @@ export interface FoldSlot {
    *  search hit, the active match? Poisons the whole run it falls in: that
    *  run is reported but never folds. */
   exempt: boolean;
+  /** a non-candidate row with nothing of its own on it (blank, `}`, `);`…)
+   *  that a run may step over — see {@link MAX_BRIDGE_ROWS}. Ignored on a
+   *  candidate row. */
+  bridge?: boolean;
 }
+
+/** A run steps over at most this many consecutive `bridge` rows between two
+ *  of its candidates; the bridged rows fold with it. Two covers the shapes a
+ *  real move leaves behind — a closing brace plus a blank line — without
+ *  swallowing anything a reader would want to see. */
+export const MAX_BRIDGE_ROWS = 2;
 
 export interface FoldRun {
   /** inclusive row-space start */
@@ -31,29 +41,49 @@ export interface FoldRun {
 }
 
 /**
- * Maximal runs of adjacent `candidate` rows, at least `minLength` long. A
- * non-candidate row — context, an unrelated change, anything outside this
- * fold kind — always breaks a run; there is no bridging over it.
+ * Maximal runs of `candidate` rows, at least `minLength` long (bridged rows
+ * included). A non-candidate row breaks a run — context, an unrelated change,
+ * anything outside this fold kind — unless it is a `bridge` row and at most
+ * `maxBridge` of them sit between two candidates: then the run steps over
+ * them and they fold with it, so one moved block whose halves a `}` or a
+ * blank line separates reads as one block. A gap that is not closed by a
+ * further candidate is never part of the run: a run starts and ends on a
+ * candidate.
  */
-export function computeFoldRuns(slots: FoldSlot[], minLength: number): FoldRun[] {
+export function computeFoldRuns(slots: FoldSlot[], minLength: number, maxBridge = MAX_BRIDGE_ROWS): FoldRun[] {
   const runs: FoldRun[] = [];
   let start: number | null = null;
+  /** exclusive end: one past the run's last candidate */
+  let end = 0;
   let exempt = false;
-  const flush = (end: number) => {
+  // the open gap since the last candidate, and whether it holds an exemption
+  let gap = 0;
+  let gapExempt = false;
+  const flush = () => {
     if (start !== null && end - start >= minLength) runs.push({ from: start, to: end, exempt });
     start = null;
     exempt = false;
+    gap = 0;
+    gapExempt = false;
   };
   for (let i = 0; i < slots.length; i++) {
     const slot = slots[i];
     if (slot.candidate) {
       if (start === null) start = i;
+      // closing a gap pulls its rows (and anything exempt on them) into the run
+      if (gap > 0 && gapExempt) exempt = true;
+      gap = 0;
+      gapExempt = false;
       if (slot.exempt) exempt = true;
+      end = i + 1;
+    } else if (start !== null && slot.bridge && gap < maxBridge) {
+      gap++;
+      if (slot.exempt) gapExempt = true;
     } else {
-      flush(i);
+      flush();
     }
   }
-  flush(slots.length);
+  flush();
   return runs;
 }
 
@@ -75,33 +105,51 @@ export interface HunkMovesLike {
 export interface MoveCandidate {
   candidate: boolean;
   contentIdx?: number;
+  /** a non-candidate row a run may step over (see FoldSlot.bridge): blank
+   *  or punctuation only, by lib/moveDetection.ts's own notion of a line
+   *  that carries nothing */
+  bridge?: boolean;
+}
+
+/** A unified row, reduced to what candidacy needs. */
+export interface UnifiedRowShape {
+  type: string;
+  content: string;
+}
+
+/** The non-candidate slot for a row: bridgeable when nothing on it is worth
+ *  keeping in view (blank, `}`, `);`…); a real line always breaks a run. */
+function nonCandidate(...contents: (string | undefined)[]): MoveCandidate {
+  const bridge = contents.every((c) => c === undefined || !isSignificantLine(c));
+  return bridge ? { candidate: false, bridge: true } : { candidate: false };
 }
 
 /**
  * Unified mode: one slot per unified row. A row is an "out" candidate when
  * it's a removed line in `movedOut`, an "in" candidate when it's an added
- * line in `movedIn` — context and unrelated add/del rows are never
- * candidates, so they break a run exactly like the design calls for.
+ * line in `movedIn`. Context and unrelated add/del rows are never
+ * candidates: a significant one breaks a run, a blank or punctuation-only
+ * one can be bridged over (see {@link computeFoldRuns}).
  */
 export function unifiedMoveCandidates(
-  rowTypes: readonly string[],
+  rows: readonly UnifiedRowShape[],
   moveIndex: MoveIndexLike,
   moves: HunkMovesLike,
   kind: "in" | "out",
 ): MoveCandidate[] {
-  return rowTypes.map((type, i) => {
+  return rows.map((row, i) => {
     if (kind === "out") {
-      if (type !== "del") return { candidate: false };
+      if (row.type !== "del") return nonCandidate(row.content);
       const idx = moveIndex.removedIdx[i];
       return idx !== undefined && moves.movedOut.has(idx)
         ? { candidate: true, contentIdx: idx }
-        : { candidate: false };
+        : nonCandidate(row.content);
     }
-    if (type !== "add") return { candidate: false };
+    if (row.type !== "add") return nonCandidate(row.content);
     const idx = moveIndex.addedIdx[i];
     return idx !== undefined && moves.movedIn.has(idx)
       ? { candidate: true, contentIdx: idx }
-      : { candidate: false };
+      : nonCandidate(row.content);
   });
 }
 
@@ -112,8 +160,10 @@ export function unifiedMoveCandidates(
 export interface SplitPairShape {
   leftType?: string;
   leftUnifiedIndex?: number;
+  leftContent?: string;
   rightType?: string;
   rightUnifiedIndex?: number;
+  rightContent?: string;
 }
 
 /**
@@ -129,10 +179,12 @@ export function splitMoveCandidates(
   kind: "in" | "out",
 ): MoveCandidate[] {
   return pairs.map((p) => {
+    // a pair with nothing of note on either half can be bridged over
+    const gap = () => nonCandidate(p.leftContent, p.rightContent);
     if (kind === "out") {
-      if (p.leftType !== "del" || p.leftUnifiedIndex === undefined) return { candidate: false };
+      if (p.leftType !== "del" || p.leftUnifiedIndex === undefined) return gap();
       const idx = moveIndex.removedIdx[p.leftUnifiedIndex];
-      if (idx === undefined || !moves.movedOut.has(idx)) return { candidate: false };
+      if (idx === undefined || !moves.movedOut.has(idx)) return gap();
       if (p.rightType === "add" && p.rightUnifiedIndex !== undefined) {
         const rIdx = moveIndex.addedIdx[p.rightUnifiedIndex];
         const rightMoved = rIdx !== undefined && moves.movedIn.has(rIdx);
@@ -140,9 +192,9 @@ export function splitMoveCandidates(
       }
       return { candidate: true, contentIdx: idx };
     }
-    if (p.rightType !== "add" || p.rightUnifiedIndex === undefined) return { candidate: false };
+    if (p.rightType !== "add" || p.rightUnifiedIndex === undefined) return gap();
     const idx = moveIndex.addedIdx[p.rightUnifiedIndex];
-    if (idx === undefined || !moves.movedIn.has(idx)) return { candidate: false };
+    if (idx === undefined || !moves.movedIn.has(idx)) return gap();
     if (p.leftType === "del" && p.leftUnifiedIndex !== undefined) {
       const lIdx = moveIndex.removedIdx[p.leftUnifiedIndex];
       const leftMoved = lIdx !== undefined && moves.movedOut.has(lIdx);
@@ -199,6 +251,7 @@ export function moveFoldRegions(params: {
   const slots: FoldSlot[] = candidates.map((c, i) => ({
     candidate: c.candidate,
     exempt: exempt[i] === true,
+    bridge: c.bridge,
   }));
   const runs = computeFoldRuns(slots, minLength);
   return runs.map((run) => {

@@ -9,6 +9,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 - **Moved code in one color.** Both ends of a move tint violet now; the fold band's "moved from / to" and the badge's arrow say which way it went.
 - **Jump from a fold band.** A folded "N lines moved from / to …" band now carries a "go to" at its right edge that lands on the other end of the move when it is in the same unit; the band itself still expands on click or Enter.
+- **One move, one band.** A moved block that a blank line or a closing brace split in two now folds behind a single band, the gap with it; a real edit inside the block still keeps the halves apart.
 - **Small hunks skipped more reliably.** The analysis now sees the body of every hunk of four changed lines or fewer up front, so import blocks, re-exports and renamed call sites get marked skippable instead of left as reading.
 
 ## 2026.10.19.2

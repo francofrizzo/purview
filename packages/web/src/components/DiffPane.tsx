@@ -713,8 +713,10 @@ export function DiffPane({
         const shapes = pairs.map((p) => ({
           leftType: p.left?.row.type,
           leftUnifiedIndex: p.left?.index,
+          leftContent: p.left?.row.content,
           rightType: p.right?.row.type,
           rightUnifiedIndex: p.right?.index,
+          rightContent: p.right?.row.content,
         }));
         for (const kind of ["out", "in"] as const) {
           const candidates = splitMoveCandidates(shapes, moveIndex, hunkMoves, kind);
@@ -733,9 +735,8 @@ export function DiffPane({
           );
         }
       } else {
-        const rowTypes = unifiedRows.map((r) => r.type);
         for (const kind of ["out", "in"] as const) {
-          const candidates = unifiedMoveCandidates(rowTypes, moveIndex, hunkMoves, kind);
+          const candidates = unifiedMoveCandidates(unifiedRows, moveIndex, hunkMoves, kind);
           const exempt = unifiedRows.map((_, i) => exemptAt(i));
           regions.push(
             ...moveFoldRegions({

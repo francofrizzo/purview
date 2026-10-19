@@ -19,6 +19,8 @@ import {
 
 const candidate = (exempt = false): FoldSlot => ({ candidate: true, exempt });
 const gap: FoldSlot = { candidate: false, exempt: false };
+/** a blank or `}` row between two halves of a run */
+const filler = (exempt = false): FoldSlot => ({ candidate: false, exempt, bridge: true });
 
 describe("computeFoldRuns", () => {
   it("finds one run spanning every candidate row", () => {
@@ -57,6 +59,68 @@ describe("computeFoldRuns", () => {
   it("returns nothing for an empty input", () => {
     expect(computeFoldRuns([], 4)).toEqual([]);
   });
+
+  describe("bridging", () => {
+    it("steps over one blank row between two halves: one run, the blank folded with it", () => {
+      const slots = [candidate(), candidate(), candidate(), filler(), candidate(), candidate(), candidate()];
+      expect(computeFoldRuns(slots, 4)).toEqual([{ from: 0, to: 7, exempt: false }]);
+    });
+
+    it("steps over a `)` and a blank line (two rows), the most it will bridge", () => {
+      const slots = [candidate(), candidate(), candidate(), filler(), filler(), candidate(), candidate(), candidate()];
+      expect(computeFoldRuns(slots, 4)).toEqual([{ from: 0, to: 8, exempt: false }]);
+    });
+
+    it("a gap of three filler rows is not bridged: two runs, the gap stays out", () => {
+      const slots = [
+        candidate(), candidate(), candidate(), candidate(),
+        filler(), filler(), filler(),
+        candidate(), candidate(), candidate(), candidate(),
+      ];
+      expect(computeFoldRuns(slots, 4)).toEqual([
+        { from: 0, to: 4, exempt: false },
+        { from: 7, to: 11, exempt: false },
+      ]);
+    });
+
+    it("a real changed line in the gap still breaks the run, however short the gap", () => {
+      const slots = [candidate(), candidate(), candidate(), candidate(), gap, candidate(), candidate(), candidate(), candidate()];
+      expect(computeFoldRuns(slots, 4)).toEqual([
+        { from: 0, to: 4, exempt: false },
+        { from: 5, to: 9, exempt: false },
+      ]);
+    });
+
+    it("a blank next to a real line is no bridge either", () => {
+      const slots = [candidate(), candidate(), candidate(), candidate(), filler(), gap, candidate(), candidate(), candidate(), candidate()];
+      expect(computeFoldRuns(slots, 4)).toEqual([
+        { from: 0, to: 4, exempt: false },
+        { from: 6, to: 10, exempt: false },
+      ]);
+    });
+
+    it("never starts or ends on filler: leading and trailing blanks stay out of the run", () => {
+      const slots = [filler(), candidate(), candidate(), candidate(), candidate(), filler()];
+      expect(computeFoldRuns(slots, 4)).toEqual([{ from: 1, to: 5, exempt: false }]);
+    });
+
+    it("a comment on a bridged row keeps the whole run open", () => {
+      const slots = [candidate(), candidate(), candidate(), filler(true), candidate(), candidate(), candidate()];
+      expect(computeFoldRuns(slots, 4)).toEqual([{ from: 0, to: 7, exempt: true }]);
+    });
+
+    it("a comment on filler that is not bridged exempts nothing", () => {
+      const slots = [candidate(), candidate(), candidate(), candidate(), filler(true)];
+      expect(computeFoldRuns(slots, 4)).toEqual([{ from: 0, to: 4, exempt: false }]);
+    });
+
+    it("counts bridged rows toward the minimum length", () => {
+      // three moved lines, a brace, three more: seven rows, one band
+      const slots = [candidate(), candidate(), candidate(), filler(), candidate(), candidate(), candidate()];
+      expect(computeFoldRuns(slots, 7)).toHaveLength(1);
+      expect(computeFoldRuns(slots, 8)).toHaveLength(0);
+    });
+  });
 });
 
 describe("unifiedMoveCandidates", () => {
@@ -65,8 +129,10 @@ describe("unifiedMoveCandidates", () => {
     addedIdx: [undefined, 0, undefined, 1, 2],
   };
 
+  const real = (type: string) => ({ type, content: "const total = order.total;" });
+  const rows = [real("del"), real("add"), real("del"), real("add"), real("add")];
+
   it("flags removed rows that are in movedOut for kind 'out'", () => {
-    const rows = ["del", "add", "del", "add", "add"] as const;
     const out = unifiedMoveCandidates(rows, moveIndex, { movedOut: new Set([0, 1]), movedIn: new Set() }, "out");
     expect(out.map((c) => c.candidate)).toEqual([true, false, true, false, false]);
     expect(out[0].contentIdx).toBe(0);
@@ -74,17 +140,33 @@ describe("unifiedMoveCandidates", () => {
   });
 
   it("flags added rows that are in movedIn for kind 'in'", () => {
-    const rows = ["del", "add", "del", "add", "add"] as const;
     const inRows = unifiedMoveCandidates(rows, moveIndex, { movedOut: new Set(), movedIn: new Set([0, 2]) }, "in");
     expect(inRows.map((c) => c.candidate)).toEqual([false, true, false, false, true]);
   });
 
   it("context rows are never candidates for either kind", () => {
-    const rows = ["context"] as const;
+    const ctx = [real("context")];
     const idx = { removedIdx: [0], addedIdx: [0] };
     const moves = { movedOut: new Set([0]), movedIn: new Set([0]) };
-    expect(unifiedMoveCandidates(rows, idx, moves, "out")[0].candidate).toBe(false);
-    expect(unifiedMoveCandidates(rows, idx, moves, "in")[0].candidate).toBe(false);
+    expect(unifiedMoveCandidates(ctx, idx, moves, "out")[0].candidate).toBe(false);
+    expect(unifiedMoveCandidates(ctx, idx, moves, "in")[0].candidate).toBe(false);
+  });
+
+  it("a blank or punctuation-only non-candidate row is bridgeable, a real one is not", () => {
+    const idx = { removedIdx: [undefined, undefined, undefined, undefined], addedIdx: [undefined, undefined, undefined, undefined] };
+    const moves = { movedOut: new Set<number>(), movedIn: new Set<number>() };
+    const mixed = [
+      { type: "context", content: "" },
+      { type: "del", content: "  );" },
+      { type: "context", content: "}" },
+      { type: "add", content: "  return total;" },
+    ];
+    expect(unifiedMoveCandidates(mixed, idx, moves, "in")).toEqual([
+      { candidate: false, bridge: true },
+      { candidate: false, bridge: true },
+      { candidate: false, bridge: true },
+      { candidate: false },
+    ]);
   });
 });
 
@@ -127,6 +209,19 @@ describe("splitMoveCandidates", () => {
     const pairs = [{ rightType: "add" as const, rightUnifiedIndex: 0 }];
     const out = splitMoveCandidates(pairs, idx, { movedOut: new Set(), movedIn: new Set([0]) }, "in");
     expect(out[0].candidate).toBe(true);
+  });
+
+  it("a non-candidate pair is bridgeable only when both halves are blank or punctuation", () => {
+    const idx = { removedIdx: [undefined], addedIdx: [undefined] };
+    const moves = { movedOut: new Set<number>(), movedIn: new Set<number>() };
+    const brace = { leftType: "context", leftUnifiedIndex: 0, leftContent: "}", rightType: "context", rightUnifiedIndex: 0, rightContent: "}" };
+    const halfReal = { leftType: "del", leftUnifiedIndex: 0, leftContent: ")", rightType: "add", rightUnifiedIndex: 0, rightContent: "  return total;" };
+    const blankOnly = { rightType: "add", rightUnifiedIndex: 0, rightContent: "" };
+    expect(splitMoveCandidates([brace, halfReal, blankOnly], idx, moves, "out")).toEqual([
+      { candidate: false, bridge: true },
+      { candidate: false },
+      { candidate: false, bridge: true },
+    ]);
   });
 });
 
