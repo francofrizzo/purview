@@ -131,3 +131,22 @@ test("a save the server refuses says why under the box and keeps the text", asyn
   await expect(page.getByTestId("composer-textarea")).toHaveValue("this will fail");
   await expect(page.getByTestId("composer-save")).toHaveText("save draft");
 });
+
+test("a delete the server refuses says so under that card", async ({ page }) => {
+  await openComposerOnLine(page, 10);
+  // "keep" makes the mock refuse to delete the draft.
+  await page.getByTestId("composer-textarea").fill("keep this draft");
+  await page.getByTestId("composer-save").click();
+  await expect(page.getByTestId("comment-composer")).toHaveCount(0);
+
+  await page.getByTestId("topbar-comments").click();
+  const drafts = page.getByTestId("drawer-group-drafts");
+  const card = drafts.locator("[data-testid^=comment-card-]", { hasText: "keep this draft" });
+  await expect(card).toBeVisible();
+  const id = (await card.getAttribute("data-testid"))!.replace("comment-card-", "");
+  // The card is also inline in the diff; act on the drawer's copy.
+  await card.getByTestId(`delete-${id}`).click({ force: true });
+  await card.getByTestId(`delete-inline-${id}`).click();
+  await expect(card.getByTestId(`comment-error-${id}`)).toContainText("Not deleted: comments.json is read-only");
+  await expect(card).toBeVisible();
+});

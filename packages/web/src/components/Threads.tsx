@@ -39,6 +39,8 @@ export interface ThreadActions {
   onResolve?: (thread: RemoteThread, resolved: boolean) => void;
   /** the id of the thread whose resolve/unresolve is in flight */
   resolving?: string | null;
+  /** the thread whose last resolve/unresolve the server refused, and why */
+  resolveError?: { id: string; message: string } | null;
   /** the thread being replied to: its composer renders at the end of it */
   replyingTo?: string | null;
   renderReplyComposer?: () => ReactNode;
@@ -253,6 +255,7 @@ export function ThreadView({
       <RemoteCommentCard comment={item.comment} />
     );
   const busy = actions.resolving === t.id;
+  const resolveError = actions.resolveError?.id === t.id ? actions.resolveError.message : null;
   const canResolve = t.isResolved ? t.viewerCanUnresolve : t.viewerCanResolve;
 
   return (
@@ -321,6 +324,16 @@ export function ThreadView({
             </>
           ) : null}
         </div>
+        {resolveError ? (
+          <p
+            className="text-2xs leading-4"
+            role="alert"
+            data-testid={`thread-error-${t.id}`}
+            style={{ color: "var(--risk)" }}
+          >
+            {resolveError}
+          </p>
+        ) : null}
       </div>
     </div>
     </SuggestionContext.Provider>

@@ -78,6 +78,13 @@ export interface CommentActions {
   /** post a GitHub draft publicly right now, outside any review */
   onPublish?: (comment: DraftComment) => void;
   publishing?: boolean;
+  /** the last action on one comment the server refused, shown under that card */
+  error?: CommentActionError | null;
+}
+
+export interface CommentActionError {
+  id: string;
+  message: string;
 }
 
 export function CommentCard({
@@ -101,6 +108,7 @@ export function CommentCard({
   const meta = forAgent ? AGENT_LOOK : COMMENT_STATUS[status];
   const { onEdit, onDelete, onQuote, exportCtx, onUndoEdit, undoing, onMove, moving, onPublish, publishing } = actions;
   const deleting = actions.deleting === comment.id;
+  const actionError = actions.error?.id === comment.id ? actions.error.message : null;
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
@@ -280,6 +288,16 @@ export function CommentCard({
             {deleting ? "deleting…" : "delete"}
           </button>
         </div>
+      ) : null}
+      {actionError ? (
+        <p
+          className="mt-1.5 text-2xs leading-4"
+          role="alert"
+          data-testid={`comment-error-${comment.id}`}
+          style={{ color: "var(--risk)" }}
+        >
+          {actionError}
+        </p>
       ) : null}
     </article>
     </SuggestionContext.Provider>

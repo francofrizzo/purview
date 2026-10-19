@@ -87,6 +87,7 @@ import { CommentBubble, InlineCommentList } from "../components/InlineComments";
 import { hunkForLine, isLineInDiff } from "../lib/comments";
 import { buildThreadGroups, replyTarget, type DisplayThread } from "../lib/threads";
 import { ThreadFilterMenu } from "../components/Threads";
+import type { CommentActionError } from "../components/CommentCard";
 import { UnitChangelog } from "../components/UnitChangelog";
 import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
@@ -1129,6 +1130,26 @@ export function PrView() {
     revision: detail.state.revision,
   };
 
+  // The last refusal from the server on one comment, pinned to that card by
+  // the id the mutation was called with; a new attempt on any card clears it.
+  const commentError: CommentActionError | null =
+    deleteComment.error && deleteComment.variables
+      ? { id: deleteComment.variables, message: `Not deleted: ${errorText(deleteComment.error)}` }
+      : publishComment.error && publishComment.variables
+        ? { id: publishComment.variables, message: `Not published: ${errorText(publishComment.error)}` }
+        : setAudience.error && setAudience.variables
+          ? { id: setAudience.variables.id, message: `Not moved: ${errorText(setAudience.error)}` }
+          : undoCommentEdit.error && undoCommentEdit.variables
+            ? { id: undoCommentEdit.variables, message: `Edit not undone: ${errorText(undoCommentEdit.error)}` }
+            : null;
+  const resolveError =
+    resolveThread.error && resolveThread.variables
+      ? {
+          id: resolveThread.variables.id,
+          message: `${resolveThread.variables.resolved ? "Not resolved" : "Not unresolved"}: ${errorText(resolveThread.error)}`,
+        }
+      : null;
+
   // Everything an inline comment can do, assembled once: the same handlers the
   // drawer and the finish-review panel already use.
   const commentActions = {
@@ -1144,12 +1165,14 @@ export function PrView() {
     moving: setAudience.isPending,
     onPublish: (c: { id: string }) => publishComment.mutate(c.id),
     publishing: publishComment.isPending,
+    error: commentError,
     onReply: (thread: DisplayThread) => {
       const target = replyTarget(thread);
       if (target) openComposer(target);
     },
     onResolve: (thread: { id: string }, resolved: boolean) => resolveThread.mutate({ id: thread.id, resolved }),
     resolving: resolveThread.isPending ? (resolveThread.variables?.id ?? null) : null,
+    resolveError,
   };
 
   // The file header's "Not generated" / "Treat as generated". `done` closes
@@ -2088,6 +2111,7 @@ export function PrView() {
             moving={setAudience.isPending}
             onPublish={(d) => publishComment.mutate(d.id)}
             publishing={publishComment.isPending}
+            error={commentError}
             chatBusy={chat.busy}
             onSendToChat={(notes) => {
               chat.send(

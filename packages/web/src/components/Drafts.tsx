@@ -42,7 +42,7 @@ import { suggestionSource, type SuggestionSource } from "../lib/suggestion";
 import { AttachButton, AttachmentStrip, DropHint, useAttachmentEditor } from "./Attachments";
 import { ComposerPreview, useWritePreview, WritePreviewToggle } from "./WritePreview";
 import { FormatToolbar, useComposerFormat } from "./FormatToolbar";
-import { CommentCard } from "./CommentCard";
+import { CommentCard, type CommentActionError } from "./CommentCard";
 
 /**
  * What the composer is pointed at. A file-level target carries no line and no
@@ -732,6 +732,7 @@ export function DraftsDrawer({
   moving,
   onPublish,
   publishing,
+  error,
   onSendToChat,
   chatBusy,
   onFinishReview,
@@ -764,6 +765,8 @@ export function DraftsDrawer({
   /** post one GitHub draft publicly, now */
   onPublish?: (draft: DraftComment) => void;
   publishing?: boolean;
+  /** the last action on one draft the server refused, shown under its card */
+  error?: CommentActionError | null;
   /** hand the notes for the agent to the review chat, as one message */
   onSendToChat?: (notes: DraftComment[]) => void;
   chatBusy?: boolean;
@@ -797,6 +800,7 @@ export function DraftsDrawer({
     moving,
     onPublish,
     publishing,
+    error,
   };
   const cards = (list: DraftComment[]) => (
     <ul className="flex flex-col gap-1.5">

@@ -1401,9 +1401,13 @@ export const mockApi = {
     return { comment, remote: { ok: true } };
   },
 
+  /** A draft with the word "keep" in it refuses to go, so a card's error row is reachable. */
   async deleteComment(_key: string, id: string): Promise<void> {
     await delay(80);
     const i = drafts.findIndex((d) => d.id === id);
+    if (i >= 0 && /\bkeep\b/i.test(drafts[i].body)) {
+      throw new ApiError("write_failed", 500, { error: "write_failed", detail: "comments.json is read-only (mock failure)" });
+    }
     if (i >= 0) {
       const [gone] = drafts.splice(i, 1);
       if ((gone.status ?? "draft") === "draft") {
