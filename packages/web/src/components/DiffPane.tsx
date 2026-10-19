@@ -2811,6 +2811,14 @@ export function DiffPane({
             color: "var(--fg)",
           }}
         >
+          <IconHeart
+            width={12}
+            height={12}
+            className="mr-1.5 inline-block flex-none align-[-2px]"
+            style={{ color: "var(--heart)" }}
+            data-testid={`hunk-heart-icon-${row.hunkId}`}
+            aria-label="At the heart of the unit"
+          />
           <InlineMarkdown text={row.why} />
         </div>
       );
@@ -2906,16 +2914,6 @@ export function DiffPane({
             <QuoteButton
               about="this hunk"
               onClick={() => onQuote({ kind: "hunk", id: row.hunkId, path: row.entry.file.path })}
-            />
-          ) : null}
-          {atHeart ? (
-            <IconHeart
-              width={12}
-              height={12}
-              className="flex-none"
-              style={{ color: "var(--heart)" }}
-              data-testid={`hunk-heart-icon-${row.hunkId}`}
-              aria-label="At the heart of the unit"
             />
           ) : null}
           <span className="truncate font-mono text-2xs">{hunkLabel(row.entry.hunk)}</span>
