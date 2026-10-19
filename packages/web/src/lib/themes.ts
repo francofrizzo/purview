@@ -55,11 +55,7 @@ export const TOKEN_NAMES = [
   "moved-bg",
   "moved-bg-strong",
   "moved-gutter",
-  "moved-out-bg",
-  "moved-out-bg-strong",
-  "moved-out-gutter",
   "moved-fg",
-  "moved-out-fg",
   "search-match",
   "search-active",
   "changed-in-bar",
@@ -197,7 +193,6 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
   // Moved-code tint: derived from purple the same way add/del derive from
   // green/red, text() gets it the same contrast floor as accent/ok/risk.
   const moved = text(palette.purple, 3.6, dark ? 0.14 : 0.1);
-  const movedOut = text(cyan, 3.6);
   const heart = text(palette.pink ?? mix(palette.red, palette.purple, 0.45), 3.6, dark ? 0.14 : 0.1);
   const warn = text(
     // yellow on a light background is hopeless; prefer orange there
@@ -273,17 +268,13 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "del-bg-strong": rgba(palette.red, tintAlpha(palette.red, tintStrong, 0.12, 4.0, delRow)),
     "del-gutter": rgba(palette.red, tintGutter),
 
-    // Two hues, git --color-moved style: violet marks where the code arrived
-    // (added side), cyan where it left (removed side) — same-tint both sides
-    // made direction illegible at a glance.
+    // One hue for both sides of a move: the rows only say "this code is a
+    // move"; the fold band's words and the header badge's arrow say which
+    // way it went.
     "moved-bg": rgba(palette.purple, tintAlpha(palette.purple, tint, 0.06)),
     "moved-bg-strong": rgba(palette.purple, tintAlpha(palette.purple, tintStrong, 0.14)),
     "moved-gutter": rgba(palette.purple, tintGutter),
-    "moved-out-bg": rgba(cyan, tint),
-    "moved-out-bg-strong": rgba(cyan, tintStrong),
-    "moved-out-gutter": rgba(cyan, tintGutter),
     "moved-fg": moved,
-    "moved-out-fg": movedOut,
 
     // Laid over an add/del row, so the body text must read through both.
     "search-match": rgba(searchTint, tintAlpha(searchTint, dark ? 0.24 : 0.28, 0.12, 4.0, addRow)),
@@ -548,11 +539,7 @@ const REVIEWER_DARK: ThemeDef = {
     "moved-bg": "rgba(163, 113, 247, 0.1)",
     "moved-bg-strong": "rgba(163, 113, 247, 0.26)",
     "moved-gutter": "rgba(163, 113, 247, 0.16)",
-    "moved-out-bg": "rgba(57, 197, 207, 0.1)",
-    "moved-out-bg-strong": "rgba(57, 197, 207, 0.26)",
-    "moved-out-gutter": "rgba(57, 197, 207, 0.16)",
     "moved-fg": "#c4a7ff",
-    "moved-out-fg": "#6fd6de",
     "search-match": "rgba(227, 179, 65, 0.22)",
     "search-active": "rgba(255, 166, 87, 0.55)",
     "changed-in-bar": "#e3b341",
@@ -615,11 +602,7 @@ const REVIEWER_LIGHT: ThemeDef = {
     "moved-bg": "rgba(130, 80, 223, 0.09)",
     "moved-bg-strong": "rgba(130, 80, 223, 0.22)",
     "moved-gutter": "rgba(130, 80, 223, 0.13)",
-    "moved-out-bg": "rgba(11, 125, 140, 0.09)",
-    "moved-out-bg-strong": "rgba(11, 125, 140, 0.22)",
-    "moved-out-gutter": "rgba(11, 125, 140, 0.13)",
     "moved-fg": "#6b3fd4",
-    "moved-out-fg": "#0b6f7c",
     "search-match": "rgba(226, 168, 22, 0.3)",
     "search-active": "rgba(247, 148, 30, 0.6)",
     "changed-in-bar": "#a06a08",

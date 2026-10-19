@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Moved code in one color.** Both ends of a move tint violet now; the fold band's "moved from / to" and the badge's arrow say which way it went.
 - **Small hunks skipped more reliably.** The analysis now sees the body of every hunk of four changed lines or fewer up front, so import blocks, re-exports and renamed call sites get marked skippable instead of left as reading.
 
 ## 2026.10.19.2

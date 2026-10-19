@@ -178,9 +178,10 @@ export function renderContent(
  * applies to context lines, which are shared, unmoved code either way.
  */
 function bgFor(type: DiffRow["type"], moved?: boolean) {
-  // Direction is a hue: violet where the code arrived, cyan where it left.
+  // One hue either way: the fold band's words and the badge's arrow carry
+  // the direction, so a removed moved row tints the same as an added one.
   if (type === "add") return moved ? "var(--moved-bg)" : "var(--add-bg)";
-  if (type === "del") return moved ? "var(--moved-out-bg)" : "var(--del-bg)";
+  if (type === "del") return moved ? "var(--moved-bg)" : "var(--del-bg)";
   return "transparent";
 }
 /** Row background, with the "changed in rN" tint layered over it when marked. */
@@ -190,7 +191,7 @@ function rowBackground(type: DiffRow["type"], moved?: boolean, changed?: boolean
 }
 function gutterBgFor(type: DiffRow["type"], moved?: boolean) {
   if (type === "add") return moved ? "var(--moved-gutter)" : "var(--add-gutter)";
-  if (type === "del") return moved ? "var(--moved-out-gutter)" : "var(--del-gutter)";
+  if (type === "del") return moved ? "var(--moved-gutter)" : "var(--del-gutter)";
   return "transparent";
 }
 function markerColor(type: DiffRow["type"]) {
@@ -404,14 +405,11 @@ export const DiffLine = memo(function DiffLine({
   onDefinitionClick,
   isDefinedInDiff,
 }: DiffLineProps) {
-  const intraBg =
-    row.type === "add"
-      ? moved
-        ? "var(--moved-bg-strong)"
-        : "var(--add-bg-strong)"
-      : moved
-        ? "var(--moved-out-bg-strong)"
-        : "var(--del-bg-strong)";
+  const intraBg = moved
+    ? "var(--moved-bg-strong)"
+    : row.type === "add"
+      ? "var(--add-bg-strong)"
+      : "var(--del-bg-strong)";
   const marker = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
   const gutterBg = gutterBgFor(row.type, moved);
   const selected = Boolean(selectedOld || selectedNew);
@@ -530,14 +528,11 @@ function SplitHalf({
       </div>
     );
   }
-  const intraBg =
-    row.type === "add"
-      ? moved
-        ? "var(--moved-bg-strong)"
-        : "var(--add-bg-strong)"
-      : moved
-        ? "var(--moved-out-bg-strong)"
-        : "var(--del-bg-strong)";
+  const intraBg = moved
+    ? "var(--moved-bg-strong)"
+    : row.type === "add"
+      ? "var(--add-bg-strong)"
+      : "var(--del-bg-strong)";
   const marker = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
   return (
     <div

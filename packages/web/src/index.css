@@ -52,11 +52,7 @@
     --moved-bg: rgba(163, 113, 247, 0.1);
     --moved-bg-strong: rgba(163, 113, 247, 0.26);
     --moved-gutter: rgba(163, 113, 247, 0.16);
-    --moved-out-bg: rgba(57, 197, 207, 0.1);
-    --moved-out-bg-strong: rgba(57, 197, 207, 0.26);
-    --moved-out-gutter: rgba(57, 197, 207, 0.16);
     --moved-fg: #c4a7ff;
-    --moved-out-fg: #6fd6de;
 
     /* "changed in rN" — the unit changelog's line highlight (see lib/themes.ts) */
     --changed-in-bar: #e3b341;
@@ -121,11 +117,7 @@
       --moved-bg: rgba(130, 80, 223, 0.09);
       --moved-bg-strong: rgba(130, 80, 223, 0.22);
       --moved-gutter: rgba(130, 80, 223, 0.13);
-      --moved-out-bg: rgba(11, 125, 140, 0.09);
-      --moved-out-bg-strong: rgba(11, 125, 140, 0.22);
-      --moved-out-gutter: rgba(11, 125, 140, 0.13);
       --moved-fg: #6b3fd4;
-      --moved-out-fg: #0b6f7c;
 
       --changed-in-bar: #a06a08;
       --changed-in-bg: rgba(191, 135, 0, 0.09);
@@ -448,8 +440,8 @@
 
   /* Folded moved-code placeholder. Exactly one diff line tall (the
      virtualizer estimates it as one), tinted at the moved code's strong
-     strength with a solid edge in the move's own hue, so it reads as part of
-     the block it hides rather than as chrome. */
+     strength with a solid edge in the moved hue, so it reads as part of the
+     block it hides rather than as chrome. */
   .diff-fold-row {
     --fold-tint: var(--moved-bg-strong);
     --fold-edge: var(--moved-fg);
@@ -462,10 +454,6 @@
     cursor: pointer;
     background: var(--fold-tint);
     box-shadow: inset 3px 0 0 var(--fold-edge);
-  }
-  .diff-fold-row[data-kind="out"] {
-    --fold-tint: var(--moved-out-bg-strong);
-    --fold-edge: var(--moved-out-fg);
   }
   .diff-fold-row:focus-visible {
     outline: 2px solid var(--accent);
@@ -511,10 +499,6 @@
     cursor: pointer;
     color: var(--moved-fg);
     background: var(--moved-bg-strong);
-  }
-  .diff-refold[data-kind="out"] {
-    color: var(--moved-out-fg);
-    background: var(--moved-out-bg-strong);
   }
   .diff-refold:hover,
   .diff-refold:focus-visible {
@@ -656,12 +640,12 @@
   .diff-nowrap [data-type="del"] > .diff-fixed {
     background-image: linear-gradient(var(--del-bg), var(--del-bg));
   }
-  /* Moved add/del rows: same fixed-column pinning, violet tint instead. */
-  .diff-nowrap [data-type="add"][data-moved="true"] > .diff-fixed {
-    background-image: linear-gradient(var(--moved-bg), var(--moved-bg));
-  }
+  /* Moved add/del rows: same fixed-column pinning, violet tint instead —
+     one hue either way; the fold band's words and the badge's arrow carry
+     the direction. */
+  .diff-nowrap [data-type="add"][data-moved="true"] > .diff-fixed,
   .diff-nowrap [data-type="del"][data-moved="true"] > .diff-fixed {
-    background-image: linear-gradient(var(--moved-out-bg), var(--moved-out-bg));
+    background-image: linear-gradient(var(--moved-bg), var(--moved-bg));
   }
   /* file / hunk header rows span the whole scroll width when wrap is off, so
      pin their left half — otherwise the viewed checkbox scrolls out of reach */
