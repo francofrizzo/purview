@@ -5,23 +5,12 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.19.3
 
-- **Pictures in the description and the comments.** Screenshots and clips hosted on GitHub now show in the PR description, in the reviews and in other people's comments, fetched through your local Purview with your own GitHub login (private ones included); images from anywhere else stay links.
-- **Fold the skippable hunks away.** `Z`, the "N skippable" count in the unit header, or a setting folds every hunk the analysis says you can skip shut, in this unit and the next; `Z` again shows them muted.
-- **What each revision changed, in a line.** A refresh now writes one short note per revision; the rev menu shows it under each revision, and the "since review rN" chip's tip lists the ones that landed after your review.
-- **Reading passes over skippable hunks.** Opening a unit lands on its first hunk worth reading, and `v` moves on to the next one that is not skippable, as Space already did.
-- **Stopping a chat reply says so.** The stop button reads "stopping…" until the reply winds down, and a stop that does not land shows up in the chat's failure row. Rewinding, clearing the conversation and switching the agent say when they are in flight, and a failure there is reported the same way instead of silently undone.
-- **A failed comment action now says what failed.** A save the server refuses shows why under the comment box and keeps your text; a delete, publish, move or undo that fails says so under that card, and a resolve that fails under its thread.
-- **Submitting a review shows a spinner.** The confirm step stays up, saying "submitting…", until GitHub answers; before, it vanished the moment you clicked yes.
-- **The review summary says "saved".** Clicking away from the summary box flashes a check once it is on disk, and shows the error if it is not.
-- **A rolled-back change says so.** When marking hunks or a unit viewed, reclassifying a unit or archiving a PR is refused, the page says what failed and that the change was put back, instead of quietly snapping back.
-- **A unit's revision notes survive a fresh analysis.** Re-analysing a PR from scratch used to drop every unit's "what changed in rN" notes; they now carry over to the new units that hold the same hunks, and notes lost that way come back.
-- **Moved code in one color.** Both ends of a move tint violet now; the fold band's "moved from / to" and the badge's arrow say which way it went.
-- **Jump from a fold band.** A folded "N lines moved from / to …" band now carries a "go to" at its right edge that lands on the other end of the move when it is in the same unit; the band itself still expands on click or Enter.
-- **One move, one band.** A moved block that a blank line or a closing brace split in two now folds behind a single band, the gap with it; a real edit inside the block still keeps the halves apart.
-- **Split view folds a move whole or not at all.** When a moved block sits across from a real change in split view, no band appears mid-block any more; the rows stay tinted and visible until the whole block can fold.
-- **Small hunks skipped more reliably.** The analysis now sees the body of every hunk of four changed lines or fewer up front, so import blocks, re-exports and renamed call sites get marked skippable instead of left as reading.
+- **Skippable hunks, out of the way.** Small hunks like imports and renamed call sites now get marked skippable; opening a unit and `v` skip past them, and `Z` folds them all shut.
+- **Pictures in the description and comments.** Images hosted on GitHub now show in the PR description, the reviews and other people's comments, fetched through Purview with your own access.
+- **What each revision changed.** A refresh writes one line per revision, shown in the rev menu and on the "since review" chip. Moved code is tidier: one colour, one band per block, a jump to the other end.
+- **The app tells you what it is doing.** Chat stop, review submit and the summary save show their state, and a refused action says what failed instead of snapping back silently.
 
 ## 2026.10.19.2
 
