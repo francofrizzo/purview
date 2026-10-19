@@ -731,7 +731,7 @@ export function ChatPanel({
           {chat.busy ? (
             <span className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--accent)" }}>
               <IconSpinner width={10} height={10} />
-              {chat.stopping ? "stopping…" : "thinking…"}
+              {chat.stopping ? null : "thinking…"}
               <button
                 type="button"
                 data-testid="chat-stop"
