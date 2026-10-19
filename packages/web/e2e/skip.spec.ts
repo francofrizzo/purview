@@ -57,3 +57,22 @@ test("v passes over a skippable hunk, and entering a unit never lands on one", a
   await openUnit(page, UNITS.reconcile);
   await expect(page.getByTestId(`hunk-header-${LAST}`)).toHaveAttribute("data-focused", "true");
 });
+
+test("the skippable count folds every skippable hunk shut, and the choice sticks across units", async ({ page }) => {
+  await openPr(page);
+  await openUnit(page, UNITS.reconcile);
+  for (let i = 0; i < 3; i++) await page.keyboard.press("j");
+  const header = page.getByTestId(`hunk-header-${SKIPPED}`);
+  await expect(header).toHaveAttribute("data-collapsed", "false");
+  await page.getByTestId("unit-skipped-count").click();
+  await expect(page.getByTestId("unit-skipped-count")).toHaveAttribute("data-folded", "true");
+  await expect(header).toHaveAttribute("data-collapsed", "true");
+  // Another unit and back: the skippable hunk opens folded.
+  await openUnit(page, UNITS.charge);
+  await openUnit(page, UNITS.reconcile);
+  for (let i = 0; i < 3; i++) await page.keyboard.press("j");
+  await expect(page.getByTestId(`hunk-header-${SKIPPED}`)).toHaveAttribute("data-collapsed", "true");
+  // Off again, by key this time: it unfolds in place.
+  await page.keyboard.press("Z");
+  await expect(page.getByTestId(`hunk-header-${SKIPPED}`)).toHaveAttribute("data-collapsed", "false");
+});

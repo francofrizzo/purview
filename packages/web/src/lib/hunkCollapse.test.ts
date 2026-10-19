@@ -3,6 +3,7 @@ import {
   EMPTY_COLLAPSED,
   isCollapsed,
   pruneCollapsed,
+  applySkippableFold,
   seedCollapsed,
   reconcileViewed,
   setCollapsed,
@@ -118,5 +119,20 @@ describe("seedCollapsed", () => {
     const state = {};
     expect(seedCollapsed(state, ["a"], viewed, false)).toBe(state);
     expect(seedCollapsed(state, ["b"], viewed, true)).toBe(state);
+  });
+  it("folds skippable hunks on arrival when asked, even with auto-collapse off", () => {
+    expect(seedCollapsed({}, ["a", "b", "c"], viewed, false, new Set(["b"]))).toEqual({ b: true });
+    expect(seedCollapsed({ b: false }, ["b"], viewed, true, new Set(["b"]))).toEqual({ b: false });
+  });
+});
+
+describe("applySkippableFold", () => {
+  it("folds or unfolds every skippable hunk, overriding manual choices", () => {
+    expect(applySkippableFold({ a: false, c: true }, ["a", "b"], true)).toEqual({ a: true, b: true, c: true });
+    expect(applySkippableFold({ a: true, b: true }, ["a", "b"], false)).toEqual({ a: false, b: false });
+  });
+  it("returns the same object when nothing changes", () => {
+    const state = { a: true };
+    expect(applySkippableFold(state, ["a"], true)).toBe(state);
   });
 });

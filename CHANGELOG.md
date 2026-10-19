@@ -7,6 +7,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Fold the skippable hunks away.** `Z`, the "N skippable" count in the unit header, or a setting folds every hunk the analysis says you can skip shut, in this unit and the next; `Z` again shows them muted.
+- **What each revision changed, in a line.** A refresh now writes one short note per revision; the rev menu shows it under each revision, and the "since review rN" chip's tip lists the ones that landed after your review.
 - **Reading passes over skippable hunks.** Opening a unit lands on its first hunk worth reading, and `v` moves on to the next one that is not skippable, as Space already did.
 - **Stopping a chat reply says so.** The stop button reads "stopping…" until the reply winds down, and a stop that does not land shows up in the chat's failure row. Rewinding, clearing the conversation and switching the agent say when they are in flight, and a failure there is reported the same way instead of silently undone.
 - **A failed comment action now says what failed.** A save the server refuses shows why under the comment box and keeps your text; a delete, publish, move or undo that fails says so under that card, and a resolve that fails under its thread.

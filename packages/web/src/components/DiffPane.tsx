@@ -51,6 +51,7 @@ import {
 } from "../lib/stickyHeaders";
 import {
   EMPTY_COLLAPSED,
+  applySkippableFold,
   isCollapsed,
   pruneCollapsed,
   seedCollapsed,
@@ -812,7 +813,9 @@ export function DiffPane({
 
   /* ------------------------------------------------------- hunk collapsing */
 
-  const { autoCollapseViewedHunks } = settings;
+  const { autoCollapseViewedHunks, foldSkippableHunks } = settings;
+  const skipIdsRef = useRef<ReadonlySet<string>>(new Set());
+  skipIdsRef.current = useMemo(() => new Set(skip?.keys() ?? []), [skip]);
   const [collapsed, setCollapsedState] = useState<CollapsedMap>(EMPTY_COLLAPSED);
   // The jump request not yet landed on (see the jumpToHunk effect further
   // down), readable from the seed effect above it without a dependency.
@@ -1673,12 +1676,29 @@ export function DiffPane({
     const shownIds = entries.map((e) => e.hunk.id);
     const jump = pendingJumpRef.current;
     setCollapsedState((prev) => {
-      const seeded = seedCollapsed(pruneCollapsed(prev, shownIds), shownIds, viewedNow, autoCollapseViewedHunks);
+      const seeded = seedCollapsed(
+        pruneCollapsed(prev, shownIds),
+        shownIds,
+        viewedNow,
+        autoCollapseViewedHunks,
+        foldSkippableHunks ? skipIdsRef.current : undefined,
+      );
       return jump && shownIds.includes(jump.hunkId) ? setCollapsed(seeded, jump.hunkId, false) : seeded;
     });
     setOpenedFoldRegions((prev) => pruneOpenedFoldRegions(prev, entries.map((e) => e.hunk.id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setSignature]);
+
+  // The preference flipped while reading: fold or unfold every skippable hunk
+  // on screen now. The first render is the seed's job, not this effect's.
+  const foldSkippableSeen = useRef(foldSkippableHunks);
+  useEffect(() => {
+    if (foldSkippableSeen.current === foldSkippableHunks) return;
+    foldSkippableSeen.current = foldSkippableHunks;
+    pendingScrollRef.current = { anchor: foldAnchorRef.current(focusedHunkId ?? ""), at: performance.now() };
+    setCollapsedState((prev) => applySkippableFold(prev, skipIdsRef.current, foldSkippableHunks));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foldSkippableHunks]);
 
   // Row heights change wholesale on a mode switch, so pixel scroll position is
   // meaningless afterwards: re-anchor on the focused hunk instead.

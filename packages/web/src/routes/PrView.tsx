@@ -925,6 +925,11 @@ export function PrView() {
         e.preventDefault();
         const id = selectedUnit.id;
         setUnitViewed.mutate(id, { onSuccess: () => advanceAfterUnitViewed(id) });
+      } else if (e.key === "Z" && tab === "units") {
+        // Shift+z: fold every skippable hunk shut (or show them muted again),
+        // next to z for one hunk's moved-code folds.
+        e.preventDefault();
+        updateSettings({ foldSkippableHunks: !settings.foldSkippableHunks });
       } else if (e.key === "a") {
         // Flip who new comments are for: GitHub review or notes for an agent.
         e.preventDefault();
@@ -976,6 +981,8 @@ export function PrView() {
     clearHighlight,
     summaryOpen,
     commentTarget,
+    settings.foldSkippableHunks,
+    updateSettings,
   ]);
 
   // Keep the focused hunk inside the currently shown set. Entering a unit (or
@@ -1403,6 +1410,7 @@ export function PrView() {
                 [["V"], "mark unit viewed"],
                 [["space", "⇧ space"], "next / previous unviewed hunk"],
                 [["z"], "fold / unfold"],
+                [["Z"], "fold / show skippable hunks"],
                 [["n"], "comment (then a line number)"],
                 [["a"], "comments for GitHub / for agent"],
               ]}
@@ -1838,14 +1846,21 @@ export function PrView() {
                   <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                   <WrapToggle wrap={wrap} onChange={setWrap} />
                   {progress?.skipped ? (
-                    <span
+                    <button
+                      type="button"
                       className="text-2xs tabular-nums"
-                      style={{ color: "var(--fg-faint)" }}
+                      style={{ color: "var(--fg-faint)", textDecoration: settings.foldSkippableHunks ? "line-through" : undefined }}
                       data-testid="unit-skipped-count"
-                      data-tip="Hunks the analysis says you can skip; shown muted, they count toward nothing"
+                      data-folded={settings.foldSkippableHunks ? "true" : "false"}
+                      data-tip={
+                        settings.foldSkippableHunks
+                          ? "Skippable hunks are folded shut; click or Z shows them muted instead"
+                          : "Hunks the analysis says you can skip; shown muted, they count toward nothing. Click or Z folds them shut"
+                      }
+                      onClick={() => updateSettings({ foldSkippableHunks: !settings.foldSkippableHunks })}
                     >
                       {progress.skipped} skippable
-                    </span>
+                    </button>
                   ) : null}
                   {progress ? <Progress viewed={progress.viewed} total={progress.total} /> : null}
                   <button

@@ -95,13 +95,35 @@ export function seedCollapsed(
   shownIds: Iterable<string>,
   viewed: ViewedMap,
   autoCollapse: boolean,
+  /** hunks the analysis marks skippable, folded on arrival when that preference is on */
+  foldSkippable?: ReadonlySet<string>,
 ): CollapsedMap {
-  if (!autoCollapse) return state;
   let out: Record<string, boolean> | null = null;
   for (const id of shownIds) {
-    if (id in state || viewed[id] !== true) continue;
+    if (id in state) continue;
+    const fold = (autoCollapse && viewed[id] === true) || foldSkippable?.has(id) === true;
+    if (!fold) continue;
     if (!out) out = { ...state };
     out[id] = true;
+  }
+  return out ?? state;
+}
+
+/**
+ * The "fold skippable hunks" preference flipped mid-sitting: fold (or unfold)
+ * every skippable hunk on screen, overriding manual choices, since the reader
+ * just asked for exactly that. Same object back when nothing changes.
+ */
+export function applySkippableFold(
+  state: CollapsedMap,
+  skippableIds: Iterable<string>,
+  fold: boolean,
+): CollapsedMap {
+  let out: Record<string, boolean> | null = null;
+  for (const id of skippableIds) {
+    if (isCollapsed(state, id) === fold) continue;
+    if (!out) out = { ...state };
+    out[id] = fold;
   }
   return out ?? state;
 }

@@ -44,6 +44,8 @@ export interface Settings {
   diffWrap: boolean;
   /** Marking a hunk viewed folds it shut (and un-viewing unfolds it). */
   autoCollapseViewedHunks: boolean;
+  /** Hunks the analysis marks skippable open folded shut. */
+  foldSkippableHunks: boolean;
   /** Drop fully-viewed units out of the sidebar (except the selected one). */
   hideReviewedUnits: boolean;
   /** Width of the review chat panel in px (clamped to the range below). */
@@ -92,6 +94,7 @@ export const DEFAULT_SETTINGS: Settings = {
   diffViewMode: "unified",
   diffWrap: true,
   autoCollapseViewedHunks: true,
+  foldSkippableHunks: false,
   hideReviewedUnits: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
   sidebarCollapsed: false,
@@ -134,6 +137,7 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   if (typeof r.autoCollapseViewedHunks === "boolean") {
     out.autoCollapseViewedHunks = r.autoCollapseViewedHunks;
   }
+  if (typeof r.foldSkippableHunks === "boolean") out.foldSkippableHunks = r.foldSkippableHunks;
   if (typeof r.hideReviewedUnits === "boolean") out.hideReviewedUnits = r.hideReviewedUnits;
   if (typeof r.chatPanelWidth === "number" && Number.isFinite(r.chatPanelWidth)) {
     out.chatPanelWidth = clampChatPanelWidth(r.chatPanelWidth);
