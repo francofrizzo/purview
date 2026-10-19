@@ -169,8 +169,34 @@ export const MAX_UNIT_HEART = 3;
 export const HeartEntrySchema = z.object({
   hunkId: z.string().min(1),
   why: z.string().min(1).max(300),
+  /**
+   * Optional: the heart is this line range of the hunk rather than the whole
+   * hunk, as `[from, to]` new-side line numbers (the hunk's added and context
+   * lines), inclusive, `from <= to`. For a large hunk where the logic is a
+   * small part of it. Not checked against the hunk's extent here; the web
+   * clamps. Dropped by migration when the hunk's code moved (anything but an
+   * `identical` match), since the numbering may have moved with it.
+   */
+  lines: z
+    .tuple([z.number().int().positive(), z.number().int().positive()])
+    .refine(([from, to]) => from <= to, { message: "lines must be [from, to] with from <= to" })
+    .optional(),
 });
 export type HeartEntry = z.infer<typeof HeartEntrySchema>;
+
+/** Longest `why` label on a fold entry: it is shown as a chip on the folded hunk. */
+export const FOLD_WHY_MAX = 80;
+
+/**
+ * One hunk of a unit a reader need not read: an import change, a re-export,
+ * a renamed call site inside a unit that otherwise matters. `why` is a short
+ * label ("adds imports", "renamed call site") shown on the folded hunk.
+ */
+export const FoldEntrySchema = z.object({
+  hunkId: z.string().min(1),
+  why: z.string().min(1).max(FOLD_WHY_MAX),
+});
+export type FoldEntry = z.infer<typeof FoldEntrySchema>;
 
 export const ReviewUnitSchema = z.object({
   id: z.string().min(1),
@@ -195,6 +221,15 @@ export const ReviewUnitSchema = z.object({
    * drops an entry whose hunk leaves the unit or the PR.
    */
   heart: z.array(HeartEntrySchema).max(MAX_UNIT_HEART).optional(),
+  /**
+   * Hunks of this unit the analysis says a reader can skip (imports,
+   * re-exports, renamed call sites inside an otherwise important unit).
+   * Optional like `heart`. Every entry names one of the unit's own hunks,
+   * never a heart hunk; the reducer drops an entry whose hunk leaves the unit
+   * or the PR, or whose code a revision reworked. Folded hunks keep their own
+   * `viewed` flag but count toward no progress total (unit, file, readiness).
+   */
+  fold: z.array(FoldEntrySchema).optional(),
   /**
    * What each later revision changed in this unit, oldest first, one entry per
    * revision. Optional like `findings`. Grown by `changelogEntry` on a unit

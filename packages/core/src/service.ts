@@ -489,18 +489,51 @@ export interface DuplicateHunk {
   owners: string[];
 }
 
-/** Heart entries that point outside their own unit (short ids are resolved in place). */
-export function heartStrays(
-  units: { id: string; hunkIds: string[]; heart?: { hunkId: string }[] }[],
-): { unitId: string; hunkId: string }[] {
+type HunkPointerUnit = {
+  id: string;
+  hunkIds: string[];
+  heart?: { hunkId: string }[];
+  fold?: { hunkId: string }[];
+};
+
+/**
+ * Entries of `field` that point outside their own unit (short ids are
+ * resolved in place to full ids).
+ */
+function pointerStrays(units: HunkPointerUnit[], field: "heart" | "fold"): { unitId: string; hunkId: string }[] {
   const out: { unitId: string; hunkId: string }[] = [];
   for (const u of units) {
-    if (!u.heart) continue;
-    for (const h of u.heart) {
+    const list = u[field];
+    if (!list) continue;
+    for (const h of list) {
       const id = resolveHunkRef(h.hunkId, u.hunkIds);
       if (id === undefined) out.push({ unitId: u.id, hunkId: h.hunkId });
       else h.hunkId = id;
     }
+  }
+  return out;
+}
+
+/** Heart entries that point outside their own unit (short ids are resolved in place). */
+export function heartStrays(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
+  return pointerStrays(units, "heart");
+}
+
+/** Fold entries that point outside their own unit (short ids are resolved in place). */
+export function foldStrays(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
+  return pointerStrays(units, "fold");
+}
+
+/**
+ * Hunks a unit lists both as heart and as fold. Run after the strays checks,
+ * so both lists hold full ids.
+ */
+export function heartFoldOverlap(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
+  const out: { unitId: string; hunkId: string }[] = [];
+  for (const u of units) {
+    if (!u.heart || !u.fold) continue;
+    const heart = new Set(u.heart.map((h) => h.hunkId));
+    for (const f of u.fold) if (heart.has(f.hunkId)) out.push({ unitId: u.id, hunkId: f.hunkId });
   }
   return out;
 }
@@ -649,6 +682,20 @@ export function setAnalysis(
       throw new Error(
         `A unit's heart must name hunks of that unit (one to ${MAX_UNIT_HEART} of its own hunkIds):\n  ` +
           strays.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
+      );
+    }
+    const foldStray = foldStrays(analysis.units);
+    if (foldStray.length > 0) {
+      throw new Error(
+        `A unit's fold must name hunks of that unit (its own hunkIds a reader can skip):\n  ` +
+          foldStray.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
+      );
+    }
+    const overlap = heartFoldOverlap(analysis.units);
+    if (overlap.length > 0) {
+      throw new Error(
+        `A hunk cannot be both heart and fold; drop it from one list:\n  ` +
+          overlap.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
       );
     }
     const dupes = duplicateHunks(analysis);

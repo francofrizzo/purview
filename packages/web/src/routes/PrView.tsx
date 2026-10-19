@@ -71,6 +71,7 @@ import {
   DiffViewToggle,
   NarrowPaneNote,
   WrapToggle,
+  type HeartMark,
   type HunkEntry,
 } from "../components/DiffPane";
 import {
@@ -112,7 +113,7 @@ import { TopBar } from "../components/TopBar";
 import { UNPLACED_TITLE, UnitSidebar } from "../components/UnitSidebar";
 import { SidebarRail } from "../components/SidebarRail";
 import { DiffSearchBar } from "../components/DiffSearchBar";
-import { sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
+import { orderUnitHunks, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
@@ -678,15 +679,8 @@ export function PrView() {
     if (tab === "units") {
       const ids = unplacedSelected ? unplaced : selectedUnit?.hunkIds;
       if (!ids) return [];
-      // Diff order (file, then hunk within it), whatever order the analysis
-      // listed the ids in: the pane's gaps and file headers assume it, and a
-      // refresh appends new hunks to the end of a unit's list.
-      const wanted = new Set(ids);
-      const out: HunkEntry[] = [];
-      for (const file of detail.files.files) {
-        for (const hunk of file.hunks) if (wanted.has(hunk.id)) out.push({ hunk, file });
-      }
-      return out;
+      // The heart's files first, then diff order: see orderUnitHunks.
+      return orderUnitHunks(detail.files.files, ids, unplacedSelected ? undefined : selectedUnit?.heart);
     }
     const file = detail.files.files.find((f) => f.path === selectedPath);
     return file ? file.hunks.map((h) => ({ hunk: h, file })) : [];
@@ -709,10 +703,15 @@ export function PrView() {
     () => (sinceChanged ? allEntries.filter((e) => sinceChanged.has(e.hunk.id)) : allEntries),
     [allEntries, sinceChanged],
   );
-  /** The selected unit's heart, by hunk id: the pane marks those hunks. */
-  const heart = useMemo<ReadonlyMap<string, string> | undefined>(() => {
+  /** The selected unit's heart, by hunk id: the pane marks those hunks (or lines). */
+  const heart = useMemo<ReadonlyMap<string, HeartMark> | undefined>(() => {
     if (tab !== "units" || !selectedUnit?.heart?.length) return undefined;
-    return new Map(selectedUnit.heart.map((h) => [h.hunkId, h.why]));
+    return new Map(selectedUnit.heart.map((h) => [h.hunkId, { why: h.why, lines: h.lines }]));
+  }, [tab, selectedUnit]);
+  /** The selected unit's folded hunks, by hunk id: the pane starts them shut. */
+  const fold = useMemo<ReadonlyMap<string, string> | undefined>(() => {
+    if (tab !== "units" || !selectedUnit?.fold?.length) return undefined;
+    return new Map(selectedUnit.fold.map((f) => [f.hunkId, f.why]));
   }, [tab, selectedUnit]);
   // Turning the filter on (or switching tabs under it) never leaves the
   // reader on a unit or file it hides: land on the first one it keeps.
@@ -1767,6 +1766,16 @@ export function PrView() {
                   {threadFilterMenu}
                   <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                   <WrapToggle wrap={wrap} onChange={setWrap} />
+                  {progress?.folded ? (
+                    <span
+                      className="text-2xs tabular-nums"
+                      style={{ color: "var(--fg-faint)" }}
+                      data-testid="unit-folded-count"
+                      data-tip="Hunks the analysis folded as skippable; they count toward nothing"
+                    >
+                      {progress.folded} folded
+                    </span>
+                  ) : null}
                   {progress ? <Progress viewed={progress.viewed} total={progress.total} /> : null}
                   <button
                     type="button"
@@ -1854,9 +1863,9 @@ export function PrView() {
                     <UnitHeart
                       heart={selectedUnit.heart}
                       files={detail.files.files}
-                      onJump={(hunkId) => {
+                      onJump={(hunkId, line) => {
                         setFocusedHunkId(hunkId);
-                        setJumpToHunk({ hunkId, nonce: Date.now() });
+                        setJumpToHunk({ hunkId, nonce: Date.now(), line, side: "RIGHT" });
                       }}
                     />
                   ) : null}
@@ -2007,6 +2016,7 @@ export function PrView() {
               isDefinedInDiff={isDefinedInDiff}
               jumpToHunk={jumpToHunk}
               heart={heart}
+              fold={fold}
               highlight={tab === "units" ? highlight : null}
               unitForHunkId={unitForHunkId}
               onUnitClick={onHunkUnitClick}
@@ -2287,7 +2297,7 @@ function UnitHeart({
 }: {
   heart: HeartEntry[];
   files: FileEntry[];
-  onJump: (hunkId: string) => void;
+  onJump: (hunkId: string, line?: number) => void;
 }) {
   const pathOf = (hunkId: string) => files.find((f) => f.hunks.some((h) => h.id === hunkId))?.path;
   return (
@@ -2306,10 +2316,15 @@ function UnitHeart({
                 type="button"
                 data-testid={`heart-jump-${h.hunkId}`}
                 className="changelog-row -mx-1.5 flex w-[calc(100%+0.75rem)] items-baseline gap-2 rounded px-1.5 text-left leading-[18px]"
-                onClick={() => onJump(h.hunkId)}
+                onClick={() => onJump(h.hunkId, h.lines?.[0])}
                 data-tip={path ? `Go to this hunk in ${path}` : "Go to this hunk"}
               >
-                {path ? <span className="flex-none font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>{baseName(path)}</span> : null}
+                {path ? (
+                  <span className="flex-none font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
+                    {baseName(path)}
+                    {h.lines ? `:${h.lines[0]}-${h.lines[1]}` : ""}
+                  </span>
+                ) : null}
                 <span style={{ color: "var(--fg)" }}>
                   <InlineMarkdown text={h.why} />
                 </span>

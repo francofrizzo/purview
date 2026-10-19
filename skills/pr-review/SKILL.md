@@ -309,6 +309,24 @@ Purview marks these hunks in the diff; the rest of the unit stays fully visible,
 heart is a pointer, not a filter. Leave `heart` off entirely for a unit whose hunks are
 all alike (a pure rename, a batch of test fixtures).
 
+A heart entry may add `"lines": [from, to]` when the logic is a small part of a large
+hunk (a 200-line hunk where 20 lines matter). The numbers are new-side line numbers (the
+hunk's added and context lines), inclusive, `from <= to`. Purview highlights that range
+and leaves the rest of the hunk as support. Leave `lines` off when the whole hunk is the
+heart.
+
+`fold` (optional, a list of `{"hunkId": "...", "why": "..."}`) names the unit's hunks a
+reader can skip: import changes, re-exports, renamed call sites, moved boilerplate, inside
+a unit that otherwise matters. `why` is two to five words, shown as a label on the folded
+hunk: `"adds imports"`, `"renamed call site"`, `"re-export only"`. Rules:
+
+- Fold only a hunk whose body you actually read. The claim is "there is nothing here",
+  and you can only make it after looking.
+- Never a heart hunk (the payload is rejected), and never the majority of a must-read
+  unit: if most of a unit is skippable, the unit is skim, not must-read with folds.
+- Purview folds these hunks shut, leaves them out of every progress count, and Space skips
+  them, so a wrong fold hides code from the reviewer. When in doubt, leave it visible.
+
 One more field, `findings`, is optional and is only ever filled in by the verification
 pass (step 5). Leave it off entirely here.
 
@@ -515,7 +533,8 @@ touches a handful of units, so batch its reads and its re-verification the same 
 Finish every run (init or refresh) by printing, in the user's working language:
 
 - The overall summary.
-- A units table: `title | kind | attention | hunk count`, ordered by `order`.
+- A units table: `title | kind | attention | hunk count`, ordered by `order`; a unit with
+  folds shows `N hunks, M folded`.
 
 Keep it scannable — this is the reviewer's map of the PR, not a restatement of the diff.
 <!-- interactive-only:end -->

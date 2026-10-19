@@ -126,6 +126,26 @@ describe("reviewEffort", () => {
     });
   });
 
+  it("leaves the lines of folded hunks out of the must-read count", () => {
+    build(
+      root,
+      [hunk("h1", 60), hunk("h2", 1600)],
+      [
+        unit({
+          id: "u1",
+          attention: "must-read",
+          riskFlags: [],
+          hunkIds: ["h1", "h2"],
+          fold: [{ hunkId: "h2", why: "re-export only" }],
+        }),
+      ],
+    );
+    const effort = reviewEffort(key, root);
+    expect(effort?.mustReadLines).toBe(60);
+    expect(effort?.weightedMustReadLines).toBe(60);
+    expect(effort?.badge).toBe("fast");
+  });
+
   it("badges heavy purely on line count", () => {
     build(
       root,

@@ -726,7 +726,7 @@ const units: ReviewUnit[] = [
     hunkIds: ["a1b2c3d4e5f60001", "a1b2c3d4e5f60003", "a1b2c3d4e5f60005"],
     heart: [
       { hunkId: "a1b2c3d4e5f60003", why: "`idempotencyKey()` decides what counts as the same charge" },
-      { hunkId: "a1b2c3d4e5f60001", why: "`charge()` short-circuits on the ledger row before touching the gateway" },
+      { hunkId: "a1b2c3d4e5f60001", why: "`charge()` short-circuits on the ledger row before touching the gateway", lines: [21, 23] },
     ],
     order: 1,
   },
@@ -789,6 +789,8 @@ const units: ReviewUnit[] = [
       },
     ],
     hunkIds: ["a1b2c3d4e5f6000d", "a1b2c3d4e5f6000e", "a1b2c3d4e5f6000f", "a1b2c3d4e5f60011", "a1b2c3d4e5f60012"],
+    // The job file's first hunk is the call site of the new builder: skippable here.
+    fold: [{ hunkId: "a1b2c3d4e5f60011", why: "renamed call site" }],
     order: 4,
   },
   // Purview's own unit, built from the files' classification (not the analysis's).
@@ -858,7 +860,8 @@ const state: PrState = {
     "gen/proto/billing/v1/charge.pb.go": { viewed: false, viewedHunks: 0, totalHunks: 1 },
     "src/api/openapi.d.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
     "src/billing/reconcile.ts": { viewed: false, viewedHunks: 0, totalHunks: 4 },
-    "src/jobs/reconcileNightly.ts": { viewed: false, viewedHunks: 0, totalHunks: 2 },
+    // Hunk 0011 is folded by the analysis, so it is not counted (see the unit's `fold`).
+    "src/jobs/reconcileNightly.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
   },
 };
 

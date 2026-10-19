@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRows, buildSplitRows, hunkLabel } from "./diffModel";
+import { buildRows, buildSplitRows, heartRowIndices, hunkLabel, orderUnitHunks, unitProgress } from "./diffModel";
 import type { Hunk } from "../api/types";
 
 let seq = 0;
@@ -100,5 +100,62 @@ describe("buildSplitRows", () => {
     expect(right.intra?.length).toBeGreaterThan(0);
     expect(left.content.slice(left.intra![0].start, left.intra![0].end)).toBe("1");
     expect(right.content.slice(right.intra![0].start, right.intra![0].end)).toBe("2");
+  });
+});
+
+describe("heartRowIndices", () => {
+  it("marks the rows whose new-side number is in range, and the deletions they replace", () => {
+    const rows = buildRows(
+      { ...hunk(["-old a", "-old b", "+new 1", "+new 2", " ctx 3", "+new 4", "-old c", " ctx 5"]), newStart: 1 },
+      "",
+    );
+    // new numbers: new 1 → 1, new 2 → 2, ctx 3 → 3, new 4 → 4, ctx 5 → 5
+    const set = heartRowIndices(rows, [2, 3]);
+    expect([...set].sort()).toEqual([3, 4]);
+    const fromStart = heartRowIndices(rows, [1, 1]);
+    expect([...fromStart].sort()).toEqual([0, 1, 2]);
+    // a deletion right before a line outside the range stays unmarked
+    expect([...heartRowIndices(rows, [4, 4])]).toEqual([5]);
+  });
+});
+
+describe("unitProgress with folded hunks", () => {
+  const detail = {
+    state: { hunks: { a: { viewed: true }, b: { viewed: false }, c: { viewed: false, changedSinceViewed: true } } },
+  } as unknown as import("../api/types").PrDetail;
+  const unit = (fold?: { hunkId: string; why: string }[]) =>
+    ({ hunkIds: ["a", "b", "c"], fold }) as unknown as import("../api/types").ReviewUnit;
+
+  it("counts every hunk without a fold list", () => {
+    expect(unitProgress(detail, unit())).toEqual({ viewed: 1, total: 3, changed: 1, folded: 0 });
+  });
+
+  it("leaves folded hunks out of viewed, total and changed", () => {
+    expect(unitProgress(detail, unit([{ hunkId: "c", why: "adds imports" }]))).toEqual({
+      viewed: 1,
+      total: 2,
+      changed: 0,
+      folded: 1,
+    });
+  });
+});
+
+describe("orderUnitHunks", () => {
+  const file = (path: string, ids: string[]) =>
+    ({ path, hunks: ids.map((id) => ({ id })) }) as unknown as import("../api/types").FileEntry;
+  const files = [file("a.ts", ["a1", "a2"]), file("b.ts", ["b1"]), file("c.ts", ["c1", "c2"])];
+  const ids = (out: { hunk: { id: string } }[]) => out.map((e) => e.hunk.id);
+
+  it("is diff order without a heart, whatever order the ids came in", () => {
+    expect(ids(orderUnitHunks(files, ["c2", "a2", "b1", "a1"], undefined))).toEqual(["a1", "a2", "b1", "c2"]);
+  });
+
+  it("puts the heart's files first, in heart order, keeping diff order inside a file", () => {
+    const out = orderUnitHunks(files, ["a1", "a2", "b1", "c1", "c2"], [{ hunkId: "c2" }, { hunkId: "b1" }]);
+    expect(ids(out)).toEqual(["c1", "c2", "b1", "a1", "a2"]);
+  });
+
+  it("ignores a heart whose hunk is not in the unit", () => {
+    expect(ids(orderUnitHunks(files, ["a1", "b1"], [{ hunkId: "c1" }]))).toEqual(["a1", "b1"]);
   });
 });

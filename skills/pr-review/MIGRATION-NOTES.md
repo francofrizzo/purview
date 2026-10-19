@@ -88,6 +88,10 @@ first three as "carried".
    - re-check its `heart`: an entry whose hunk left the unit is already gone, and the
      `why` of a reworked heart hunk may be stale. Resend the whole `heart` list (one to
      three of the unit's current hunks) when it should change; leave it out to keep it;
+   - re-check its `fold`: a reworked or archived hunk's entry is already gone (the "skip
+     it" claim was about the old body), so a reworked hunk is visible again. Resend the
+     whole `fold` list to fold it again, only after reading its new body; leave it out to
+     keep the list as it is;
    - send a `changelogEntry`: a short note (a sentence or two) about what *this revision* changed in
      the unit's **code** (e.g. `"rounding switched to banker's; added a .5 test"`) — not a
      restatement of the summary, and never migration bookkeeping (attached / unassigned /

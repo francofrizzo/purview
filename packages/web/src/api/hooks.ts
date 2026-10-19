@@ -7,6 +7,7 @@ import {
   type UseMutationResult,
 } from "@tanstack/react-query";
 import { api } from "./client";
+import { foldedHunkIds } from "../lib/diffModel";
 import { applyArchive, applyRepoArchive } from "../lib/prList";
 import { stalenessPollInterval } from "../lib/staleness";
 import type {
@@ -423,12 +424,15 @@ export function usePr(key: string) {
 
 function recomputeRollups(detail: PrDetail): PrDetail {
   const files: NonNullable<PrDetail["state"]["files"]> = {};
+  // As the server: hunks the analysis folded are not reading work.
+  const skip = foldedHunkIds(detail.state.units);
   for (const f of detail.files.files) {
-    const viewedHunks = f.hunks.filter((h) => detail.state.hunks[h.id]?.viewed).length;
+    const counted = f.hunks.filter((h) => !skip.has(h.id));
+    const viewedHunks = counted.filter((h) => detail.state.hunks[h.id]?.viewed).length;
     files[f.path] = {
-      viewed: f.hunks.length > 0 && viewedHunks === f.hunks.length,
+      viewed: counted.length > 0 && viewedHunks === counted.length,
       viewedHunks,
-      totalHunks: f.hunks.length,
+      totalHunks: counted.length,
       syncedToGitHub: detail.state.files?.[f.path]?.syncedToGitHub,
     };
   }

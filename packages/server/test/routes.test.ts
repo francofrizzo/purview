@@ -8,6 +8,7 @@ import {
   refreshPr,
   setGhRunner,
   setHunkViewed,
+  setUnit,
   updateMeta,
 } from "@reviewer/core";
 import { createApp } from "../src/app.js";
@@ -41,6 +42,19 @@ describe("GET /api/prs", () => {
     expect(pr.progress.hunks.total).toBe(2);
     expect(pr.progress.hunks.viewed).toBe(0);
     expect(pr.progress.units.total).toBe(1);
+  });
+
+  it("leaves folded hunks out of the progress rollup", async () => {
+    const [first, second] = loadState(key, root).files.flatMap((f) => f.hunkIds);
+    setUnit(key, "unit-1", { fold: [{ hunkId: second, why: "adds imports" }] }, {}, root);
+    setHunkViewed(key, second, true, root);
+    let pr = ((await (await app.request("/api/prs")).json()) as any).prs[0];
+    expect(pr.progress.hunks).toEqual({ viewed: 0, total: 1 });
+    expect(pr.progress.files.viewed).toBe(0);
+    setHunkViewed(key, first, true, root);
+    pr = ((await (await app.request("/api/prs")).json()) as any).prs[0];
+    expect(pr.progress.hunks).toEqual({ viewed: 1, total: 1 });
+    expect(pr.progress.units.complete).toBe(1);
   });
 
   it("marks the PRs the cached gh user opened, and never asks gh itself", async () => {

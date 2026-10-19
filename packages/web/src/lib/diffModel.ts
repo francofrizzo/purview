@@ -1,6 +1,6 @@
 import { diffWordsWithSpace } from "diff";
 import { unitDisplayOrder } from "./unitOrder";
-import { type FileEntry, type FilesJson, type Hunk, type PrDetail, type ReviewUnit } from "../api/types";
+import { type FileEntry, type FilesJson, type HeartEntry, type Hunk, type PrDetail, type ReviewUnit } from "../api/types";
 
 export type LineType = "add" | "del" | "context" | "meta";
 
@@ -305,15 +305,63 @@ export function sortUnitsForDisplay(units: ReviewUnit[]): ReviewUnit[] {
   return unitDisplayOrder(units);
 }
 
+/** The hunk ids a unit's `fold` marks as skippable, for membership checks. */
+export function foldedIds(unit: Pick<ReviewUnit, "fold">): Set<string> {
+  return new Set(unit.fold?.map((f) => f.hunkId) ?? []);
+}
+
+/** Every folded hunk across the analysis's units, as the server counts them. */
+export function foldedHunkIds(units: Pick<ReviewUnit, "fold">[]): Set<string> {
+  return new Set(units.flatMap((u) => u.fold?.map((f) => f.hunkId) ?? []));
+}
+
+/**
+ * A unit's reading progress. Hunks the analysis folded are not reading work:
+ * they count toward nothing here (the server's readiness and the home list
+ * leave them out the same way), so a unit whose remaining hunks are all
+ * viewed is complete even with a folded hunk never opened. `folded` says how
+ * many were left out, for the brief to mention.
+ */
 export function unitProgress(detail: PrDetail, unit: ReviewUnit) {
+  const skip = foldedIds(unit);
   let viewed = 0;
   let changed = 0;
+  let total = 0;
   for (const id of unit.hunkIds) {
+    if (skip.has(id)) continue;
+    total++;
     const st = detail.state.hunks[id];
     if (st?.viewed) viewed++;
     if (st?.changedSinceViewed) changed++;
   }
-  return { viewed, total: unit.hunkIds.length, changed };
+  return { viewed, total, changed, folded: unit.hunkIds.length - total };
+}
+
+/**
+ * A unit's hunks in reading order: the files that hold its heart first, in
+ * heart order, then the rest in diff order; hunks within a file always keep
+ * diff order. No heart, plain diff order. The order the analysis listed the
+ * ids in is never used: a refresh appends new hunks to the end of the list,
+ * and the pane's gaps and file headers assume hunks of a file sit together.
+ */
+export function orderUnitHunks(
+  files: FileEntry[],
+  hunkIds: Iterable<string>,
+  heart: Pick<HeartEntry, "hunkId">[] | undefined,
+): { hunk: Hunk; file: FileEntry }[] {
+  const wanted = new Set(hunkIds);
+  const byFile = new Map<string, { hunk: Hunk; file: FileEntry }[]>();
+  for (const file of files) {
+    const own = file.hunks.filter((h) => wanted.has(h.id)).map((hunk) => ({ hunk, file }));
+    if (own.length) byFile.set(file.path, own);
+  }
+  const first: string[] = [];
+  for (const h of heart ?? []) {
+    const path = files.find((f) => f.hunks.some((x) => x.id === h.hunkId))?.path;
+    if (path !== undefined && byFile.has(path) && !first.includes(path)) first.push(path);
+  }
+  const paths = [...first, ...[...byFile.keys()].filter((p) => !first.includes(p))];
+  return paths.flatMap((p) => byFile.get(p) ?? []);
 }
 
 /**
@@ -389,4 +437,28 @@ export function languageFor(path: string): string | null {
   const base = path.split("/").pop() ?? path;
   const ext = base.includes(".") ? base.split(".").pop()!.toLowerCase() : "";
   return LANG_BY_EXT[ext] ?? null;
+}
+
+/**
+ * The unified row indices a heart's line range covers: rows whose new-side
+ * number falls in `[from, to]`, plus the deleted rows that sit right before
+ * one of them (a replacement is both its old and new lines).
+ */
+export function heartRowIndices(rows: DiffRow[], [from, to]: [number, number]): ReadonlySet<number> {
+  const out = new Set<number>();
+  let pendingDels: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.type === "del") {
+      pendingDels.push(i);
+      continue;
+    }
+    const n = r.newNumber;
+    if (n !== undefined && n >= from && n <= to) {
+      for (const d of pendingDels) out.add(d);
+      out.add(i);
+    }
+    pendingDels = [];
+  }
+  return out;
 }

@@ -89,7 +89,7 @@ test("V marks the whole unit viewed and moves on", async ({ page }) => {
   await expect(page.getByTestId("unit-header")).not.toContainText(UNITS.reconcile.slice(0, 30));
   // The sidebar row is the button that holds the title; its progress reads full.
   const row = page.locator("nav button", { hasText: UNITS.reconcile }).first();
-  await expect(row).toContainText("5/5");
+  await expect(row).toContainText("4/4");
 });
 
 test("the revision menu lights up what a revision changed", async ({ page }) => {

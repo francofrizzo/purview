@@ -7,6 +7,7 @@ import type {
   State,
   HunkState,
   FileRollup,
+  HeartEntry,
   UnitChangelogEntry,
 } from "./schemas.js";
 
@@ -65,31 +66,41 @@ function applyUnitPatch(unit: ReviewUnit, patch: ReviewUnitPatch, revision: numb
 }
 
 /**
- * A heart entry only ever points at one of the unit's own hunks: whatever
- * takes a hunk out of the unit (a patch, a migration, the generated sweep)
- * takes its entry with it, and a unit with no entries left has no `heart` key.
- * Returns the same object when nothing changes.
+ * `heart` and `fold` entries only ever point at one of the unit's own hunks:
+ * whatever takes a hunk out of the unit (a patch, a migration, the generated
+ * sweep) takes its entries with it, and a unit with no entries left in a list
+ * (or sent an empty one) has no key for it. Duplicates are dropped. Returns
+ * the same object when nothing changes.
  */
 export function pruneHeart(unit: ReviewUnit): ReviewUnit {
-  if (!unit.heart) return unit;
   const own = new Set(unit.hunkIds);
-  const seen = new Set<string>();
-  const kept = unit.heart.filter((h) => own.has(h.hunkId) && !seen.has(h.hunkId) && seen.add(h.hunkId));
-  if (kept.length === unit.heart.length) return unit;
-  const next: ReviewUnit = { ...unit, heart: kept };
-  if (kept.length === 0) delete next.heart;
-  return next;
+  let next: ReviewUnit | undefined;
+  for (const field of ["heart", "fold"] as const) {
+    const list = unit[field];
+    if (!list) continue;
+    const seen = new Set<string>();
+    const kept = list.filter((h) => own.has(h.hunkId) && !seen.has(h.hunkId) && seen.add(h.hunkId));
+    if (kept.length === list.length && list.length > 0) continue;
+    next ??= { ...unit };
+    if (kept.length === 0) delete next[field];
+    else (next as Record<string, unknown>)[field] = kept;
+  }
+  return next ?? unit;
 }
 
 function recomputeRollups(state: State): void {
+  // Folded hunks (see ReviewUnit.fold) are not reading work: a file whose
+  // hunks are all folded has nothing to view.
+  const folded = foldedHunkIds(state);
   state.files = state.files.map((f): FileRollup => {
-    const states = f.hunkIds.map((id) => state.hunks[id] ?? freshHunkState());
+    const counted = f.hunkIds.filter((id) => !folded.has(id));
+    const states = counted.map((id) => state.hunks[id] ?? freshHunkState());
     const viewedCount = states.filter((s) => s.viewed).length;
     return {
       ...f,
-      total: f.hunkIds.length,
+      total: counted.length,
       viewedCount,
-      viewed: f.hunkIds.length > 0 && viewedCount === f.hunkIds.length,
+      viewed: counted.length > 0 && viewedCount === counted.length,
       changedSinceViewed: states.some((s) => s.changedSinceViewed),
     };
   });
@@ -309,12 +320,31 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           if (!keepFindings) delete next.findings;
           // The heart follows its hunks: a reworked hunk is still the heart
           // (the why may need a refresh, which the incremental run does for
-          // changed units); one that left the PR takes its entry with it.
+          // changed units); one that left the PR takes its entry with it. A
+          // heart's line range is dropped unless the hunk is byte-for-byte
+          // the same: anything else may have moved the numbering.
           if (u.heart) {
-            next.heart = u.heart.map((h) => ({ ...h, hunkId: remap([h.hunkId])[0] ?? h.hunkId }));
+            next.heart = u.heart.map((h) => {
+              const entry: HeartEntry = { ...h, hunkId: remap([h.hunkId])[0] ?? h.hunkId };
+              if (entry.lines && statusByOldId.get(h.hunkId) !== "identical") delete entry.lines;
+              return entry;
+            });
+          }
+          // A fold is a claim about a hunk's body ("nothing to read here"),
+          // so like findings it only survives an `identical` match; a
+          // reworked hunk comes back into view until the re-analysis folds
+          // it again.
+          if (u.fold) {
+            next.fold = u.fold
+              .filter((f) => statusByOldId.get(f.hunkId) === "identical")
+              .map((f) => ({ ...f, hunkId: remap([f.hunkId])[0] ?? f.hunkId }));
+          }
+          if (u.heart || u.fold) {
             const pruned = pruneHeart(next);
             if (pruned.heart) next.heart = pruned.heart;
             else delete next.heart;
+            if (pruned.fold) next.fold = pruned.fold;
+            else delete next.fold;
           }
           // Every hunk of the unit left the PR: keep it as a visible husk for
           // this one revision (title, summary, kind, attention intact) so the
@@ -612,15 +642,28 @@ export function generatedHunkIds(state: Pick<State, "units">): Set<string> {
 }
 
 /**
+ * Hunk ids the analysis folded (see ReviewUnit.fold) across live units: the
+ * reader need not read them, so no progress total counts them. They keep
+ * their own `viewed` flag.
+ */
+export function foldedHunkIds(state: Pick<State, "units">): Set<string> {
+  return new Set(liveUnits(state).flatMap((u) => (u.fold ?? []).map((f) => f.hunkId)));
+}
+
+/**
  * Per-unit progress over the analysis's units; husks count toward nothing,
  * and neither does the generated unit (it is not reading work, and a PR
- * whose only unit it is has not been analyzed).
+ * whose only unit it is has not been analyzed). Folded hunks are left out of
+ * every unit's total: one whose hunks are all folded has total 0 and is not
+ * complete, like an empty unit.
  */
 export function unitProgress(state: State): UnitProgress[] {
   return analysisUnits(state)
     .sort((a, b) => a.order - b.order)
     .map((u) => {
-      const states = u.hunkIds.map((id) => state.hunks[id]).filter(Boolean);
+      const folded = new Set((u.fold ?? []).map((f) => f.hunkId));
+      const counted = u.hunkIds.filter((id) => !folded.has(id));
+      const states = counted.map((id) => state.hunks[id]).filter(Boolean);
       const viewed = states.filter((s) => s!.viewed).length;
       return {
         unitId: u.id,
@@ -628,8 +671,8 @@ export function unitProgress(state: State): UnitProgress[] {
         attention: u.attention,
         kind: u.kind,
         viewed,
-        total: u.hunkIds.length,
-        complete: u.hunkIds.length > 0 && viewed === u.hunkIds.length,
+        total: counted.length,
+        complete: counted.length > 0 && viewed === counted.length,
         changed: states.some((s) => s!.changedSinceViewed),
       };
     });
@@ -656,10 +699,12 @@ export interface ReadinessSummary {
 export function readiness(state: State): ReadinessSummary {
   const progress = unitProgress(state);
   const mustRead = progress.filter((u) => u.attention === "must-read");
-  // Generated files and lockfiles are not part of the read.
+  // Generated files and lockfiles are not part of the read; neither are the
+  // hunks the analysis folded.
   const generated = generatedHunkIds(state);
+  const folded = foldedHunkIds(state);
   const hunkStates = Object.entries(state.hunks)
-    .filter(([id]) => !generated.has(id))
+    .filter(([id]) => !generated.has(id) && !folded.has(id))
     .map(([, h]) => h);
   const mustReadUnviewed = mustRead.filter((u) => !u.complete).length;
   return {

@@ -42,6 +42,14 @@ describe("heart schema", () => {
     ).toThrow();
     expect(() => unit({ heart: [{ hunkId: "h1", why: "" }] as never })).toThrow();
   });
+
+  it("takes an optional [from, to] line range of positive ints with from <= to", () => {
+    expect(unit({ heart: [{ hunkId: "h1", why: "w", lines: [12, 30] }] }).heart?.[0].lines).toEqual([12, 30]);
+    expect(unit({ heart: [{ hunkId: "h1", why: "w", lines: [7, 7] }] }).heart?.[0].lines).toEqual([7, 7]);
+    for (const lines of [[30, 12], [0, 3], [1.5, 3], [1], [1, 2, 3], "1-3", [-1, 2]]) {
+      expect(() => unit({ heart: [{ hunkId: "h1", why: "w", lines }] as never }), JSON.stringify(lines)).toThrow();
+    }
+  });
 });
 
 describe("pruneHeart", () => {
@@ -121,6 +129,43 @@ describe("heart through the reducer", () => {
     ]);
     expect(state.units[0].hunkIds).toEqual(["h1b"]);
     expect(state.units[0].heart).toEqual([{ hunkId: "h1b", why: "the rule" }]);
+  });
+
+  it("keeps a heart's line range through an identical match and drops it when the hunk was reworked", () => {
+    const withLines: ReviewerEvent = {
+      ts,
+      type: "analysis-set",
+      revision: 1,
+      summary: "s",
+      units: [
+        unit({
+          heart: [
+            { hunkId: "h1", why: "the rule", lines: [3, 9] },
+            { hunkId: "h2", why: "its guard", lines: [1, 2] },
+          ],
+        }),
+      ],
+      unassigned: [],
+    };
+    const migration = {
+      revision: 2,
+      previousRevision: 1,
+      baseOnly: false,
+      counts: { identical: 1, fuzzy: 1, renamed: 0, archived: 0, new: 0 },
+      entries: [
+        { status: "fuzzy", hunkId: "h1b", previousHunkId: "h1", file: "a.ts", score: 0.8 },
+        { status: "identical", hunkId: "h2", previousHunkId: "h2", file: "a.ts" },
+      ],
+    };
+    const state = fold([
+      rev(1),
+      withLines,
+      { ...(rev(2, ["h1b", "h2"]) as Record<string, unknown>), migration } as unknown as ReviewerEvent,
+    ]);
+    expect(state.units[0].heart).toEqual([
+      { hunkId: "h1b", why: "the rule" },
+      { hunkId: "h2", why: "its guard", lines: [1, 2] },
+    ]);
   });
 
   it("has no heart key once every heart hunk left the PR", () => {
@@ -237,6 +282,17 @@ describe("heart through the CLI-facing service", () => {
       tmp,
     );
     expect(state.units[0].heart).toEqual([{ hunkId: b1, why: "moved in" }]);
+  });
+
+  it("set-analysis and set-unit carry a heart's line range and refuse a backwards one", () => {
+    const { state } = setAnalysis(key, payload([{ hunkId: a1, why: "the rule", lines: [4, 20] }]), {}, tmp);
+    expect(state.units[0].heart).toEqual([{ hunkId: a1, why: "the rule", lines: [4, 20] }]);
+    expect(() => setAnalysis(key, payload([{ hunkId: a1, why: "the rule", lines: [20, 4] }]), {}, tmp)).toThrow();
+    expect(() => setUnit(key, "alpha", { heart: [{ hunkId: a1, why: "x", lines: [20, 4] }] }, {}, tmp)).toThrow(
+      /lines/,
+    );
+    const patched = setUnit(key, "alpha", { heart: [{ hunkId: a2, why: "x", lines: [1, 1] }] }, {}, tmp);
+    expect(patched.units[0].heart).toEqual([{ hunkId: a2, why: "x", lines: [1, 1] }]);
   });
 
   it("set-unit refuses a heart hunk the unit does not hold", () => {

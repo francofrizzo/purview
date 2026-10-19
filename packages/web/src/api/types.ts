@@ -117,6 +117,17 @@ export interface HeartEntry {
   hunkId: string;
   /** one short line; inline markdown */
   why: string;
+  /**
+   * The lines (new side, inclusive) the heart really is, when it is a small
+   * part of a large hunk. Absent: the whole hunk.
+   */
+  lines?: [number, number];
+}
+
+/** One hunk the analysis marks as skippable, and the two-to-five-word why. */
+export interface FoldEntry {
+  hunkId: string;
+  why: string;
 }
 
 export interface ReviewUnit {
@@ -135,6 +146,13 @@ export interface ReviewUnit {
    * units with no heart; the rest of the unit is support, not hidden.
    */
   heart?: HeartEntry[];
+  /**
+   * Hunks of this unit the analysis says a reader can skip (import changes,
+   * re-exports, renamed call sites) with a two-to-five-word label. They start
+   * folded, Space passes over them and no count includes them. Absent on
+   * older states and on units with nothing to skip.
+   */
+  fold?: FoldEntry[];
   /** absent on units that verified nothing, and on any state predating findings */
   findings?: Finding[];
   /**

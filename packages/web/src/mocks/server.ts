@@ -1,6 +1,7 @@
 import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import { isFileComment, isGeneratedUnit } from "../api/types";
+import { foldedHunkIds } from "../lib/diffModel";
 import type {
   AgentSelection,
   AgentsInfo,
@@ -536,7 +537,7 @@ function applyAnalysisResult(key: string) {
   const entry = list.find((p) => p.key === key);
   if (entry) {
     entry.unitCount = target.state.units.length;
-    entry.totalHunks = Object.keys(target.state.hunks).length;
+    entry.totalHunks = Object.keys(target.state.hunks).filter((id) => !foldedHunkIds(target.state.units).has(id)).length;
     entry.viewedHunks = 0;
     entry.summary = target.state.summary;
   }
@@ -581,12 +582,15 @@ const review: {
 
 function recomputeFileRollups() {
   const rollups: PrDetail["state"]["files"] = {};
+  // As the server: hunks the analysis folded are not reading work.
+  const skip = foldedHunkIds(detail.state.units);
   for (const f of detail.files.files) {
-    const viewedHunks = f.hunks.filter((h) => detail.state.hunks[h.id]?.viewed).length;
+    const counted = f.hunks.filter((h) => !skip.has(h.id));
+    const viewedHunks = counted.filter((h) => detail.state.hunks[h.id]?.viewed).length;
     rollups[f.path] = {
-      viewed: viewedHunks === f.hunks.length && f.hunks.length > 0,
+      viewed: viewedHunks === counted.length && counted.length > 0,
       viewedHunks,
-      totalHunks: f.hunks.length,
+      totalHunks: counted.length,
       syncedToGitHub: detail.state.files?.[f.path]?.syncedToGitHub,
     };
   }
@@ -1503,10 +1507,16 @@ export const mockApi = {
   async getReview(_key: string): Promise<ReviewStatus> {
     await delay(80);
     const units = detail.state.units;
-    const complete = (u: (typeof units)[number]) =>
-      u.hunkIds.length > 0 && u.hunkIds.every((id) => detail.state.hunks[id]?.viewed);
+    // As the server: hunks the analysis folded count toward nothing.
+    const skip = foldedHunkIds(units);
+    const complete = (u: (typeof units)[number]) => {
+      const counted = u.hunkIds.filter((id) => !skip.has(id));
+      return counted.length > 0 && counted.every((id) => detail.state.hunks[id]?.viewed);
+    };
     const mustRead = units.filter((u) => u.attention === "must-read");
-    const hunks = Object.values(detail.state.hunks);
+    const hunks = Object.entries(detail.state.hunks)
+      .filter(([id]) => !skip.has(id))
+      .map(([, h]) => h);
     const mustReadUnviewed = mustRead.filter((u) => !complete(u)).length;
     return {
       body: review.body,

@@ -4,6 +4,7 @@ import {
   isCollapsed,
   pruneCollapsed,
   seedCollapsed,
+  seedFolded,
   reconcileViewed,
   setCollapsed,
   toggleCollapsed,
@@ -118,5 +119,25 @@ describe("seedCollapsed", () => {
     const state = {};
     expect(seedCollapsed(state, ["a"], viewed, false)).toBe(state);
     expect(seedCollapsed(state, ["b"], viewed, true)).toBe(state);
+  });
+});
+
+describe("seedFolded", () => {
+  it("starts an analysis-folded hunk shut the first time it is shown", () => {
+    const out = seedFolded(EMPTY_COLLAPSED, ["h1", "h2"], new Set(["h2"]));
+    expect(isCollapsed(out, "h1")).toBe(false);
+    expect(isCollapsed(out, "h2")).toBe(true);
+  });
+
+  it("keeps a fold the reader already opened by hand", () => {
+    const opened = toggleCollapsed(toggleCollapsed(EMPTY_COLLAPSED, "h2"), "h2");
+    const out = seedFolded(opened, ["h1", "h2"], new Set(["h2"]));
+    expect(out).toBe(opened);
+    expect(isCollapsed(out, "h2")).toBe(false);
+  });
+
+  it("is the same object back with nothing folded or nothing shown", () => {
+    expect(seedFolded(EMPTY_COLLAPSED, ["h1"], undefined)).toBe(EMPTY_COLLAPSED);
+    expect(seedFolded(EMPTY_COLLAPSED, ["h1"], new Set(["h9"]))).toBe(EMPTY_COLLAPSED);
   });
 });
