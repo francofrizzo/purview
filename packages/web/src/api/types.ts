@@ -340,6 +340,8 @@ export interface RevisionInfo {
   /** ISO timestamp of the refresh that recorded it */
   addedAt?: string;
   baseOnly?: boolean;
+  /** what this revision changed across the PR, written by the refresh analysis; absent until it is */
+  summary?: string;
 }
 
 /** POST /api/prs/:key/revisions/:n/discard. */

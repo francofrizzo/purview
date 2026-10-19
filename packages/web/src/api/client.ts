@@ -341,11 +341,12 @@ function adaptState(s: WireState): PrState {
     hunks: s.hunks ?? {},
     files,
     baseOnly: s.revisions?.find((r) => r.revision === s.currentRevision)?.baseOnly ?? false,
-    revisions: (s.revisions ?? []).map(({ revision, headSha, addedAt, baseOnly }) => ({
+    revisions: (s.revisions ?? []).map(({ revision, headSha, addedAt, baseOnly, summary }) => ({
       revision,
       headSha,
       addedAt,
       baseOnly,
+      summary,
     })),
   };
 }

@@ -3,6 +3,7 @@ import { FloatingPanel } from "./FloatingPanel";
 import type { PrState } from "../api/types";
 import { formatAddedAt, formatFullTimestamp } from "../lib/prList";
 import { discardAvailability, discardConfirmText } from "../lib/revisionDiscard";
+import { formatRevisionSummary, revisionSummaryLines } from "../lib/revisionSummary";
 
 /**
  * The header's "rev N": opens a small popover saying which head the revision
@@ -41,6 +42,11 @@ export function RevisionMenu({
   const wrapRef = useRef<HTMLSpanElement>(null);
   const info = state.revisions?.find((r) => r.revision === state.revision);
   const { previous, blockedWhy } = discardAvailability(state, analysisLive);
+  // Every revision past the first, newest first: a highlight button each
+  // (when the caller offers it) and, under it, what the revision changed.
+  const later = [...(state.revisions ?? [])].filter((r) => r.revision > 1).sort((a, b) => b.revision - a.revision);
+  const summaryOf = (revision: number) =>
+    revisionSummaryLines(state.revisions).find((l) => l.revision === revision)?.summary;
 
   // Opening (or closing) starts over; so does landing on another revision,
   // which is also how a successful discard closes the popover.
@@ -96,45 +102,63 @@ export function RevisionMenu({
             </div>
           ) : null}
 
-          {onToggleHighlight && (state.revisions?.length ?? 0) > 1 ? (
+          {later.length > 0 && (onToggleHighlight || later.some((r) => summaryOf(r.revision))) ? (
             <div className="mt-2.5 border-t pt-2" style={{ borderColor: "var(--border)" }}>
               <div className="mb-1.5 text-2xs" style={{ color: "var(--fg-muted)" }}>
-                Show what changed in
+                {onToggleHighlight ? "Show what changed in" : "What each revision changed"}
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[...(state.revisions ?? [])]
-                  .filter((r) => r.revision > 1)
-                  .sort((a, b) => b.revision - a.revision)
-                  .map((r) => {
-                    const on = highlightRevisions.includes(r.revision);
-                    return (
-                      <button
-                        key={r.revision}
-                        type="button"
-                        className="btn"
-                        data-testid={`highlight-revision-${r.revision}`}
-                        aria-pressed={on}
-                        disabled={!highlightAvailable}
-                        data-tip={
-                          !highlightAvailable
-                            ? "Shown on the review units tab"
-                            : on
-                              ? `Stop showing what revision ${r.revision} changed`
-                              : `Light up the lines revision ${r.revision} changed`
-                        }
-                        style={on ? { color: "var(--accent)", borderColor: "var(--accent)", background: "var(--accent-soft)" } : undefined}
-                        onClick={() => onToggleHighlight(r.revision)}
-                      >
-                        r{r.revision}
-                      </button>
-                    );
-                  })}
-              </div>
-              <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                {highlightAvailable
-                  ? "Lines those revisions changed light up in each unit; esc clears."
-                  : "Switch to review units to see them."}
-              </p>
+              <ul className="space-y-1.5">
+                {later.map((r) => {
+                  const on = highlightRevisions.includes(r.revision);
+                  const summary = summaryOf(r.revision);
+                  return (
+                    <li key={r.revision} data-testid={`revision-row-${r.revision}`}>
+                      {onToggleHighlight ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          data-testid={`highlight-revision-${r.revision}`}
+                          aria-pressed={on}
+                          disabled={!highlightAvailable}
+                          data-tip={
+                            !highlightAvailable
+                              ? "Shown on the review units tab"
+                              : on
+                                ? `Stop showing what revision ${r.revision} changed`
+                                : `Light up the lines revision ${r.revision} changed`
+                          }
+                          style={on ? { color: "var(--accent)", borderColor: "var(--accent)", background: "var(--accent-soft)" } : undefined}
+                          onClick={() => onToggleHighlight(r.revision)}
+                        >
+                          r{r.revision}
+                        </button>
+                      ) : (
+                        <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+                          r{r.revision}
+                        </span>
+                      )}
+                      {summary ? (
+                        // One muted line under the revision: what it changed across the PR.
+                        <div
+                          className="mt-0.5 text-2xs leading-4"
+                          style={{ color: "var(--fg-muted)" }}
+                          data-testid={`revision-summary-${r.revision}`}
+                          aria-label={formatRevisionSummary({ revision: r.revision, summary })}
+                        >
+                          {summary}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+              {onToggleHighlight ? (
+                <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  {highlightAvailable
+                    ? "Lines those revisions changed light up in each unit; esc clears."
+                    : "Switch to review units to see them."}
+                </p>
+              ) : null}
             </div>
           ) : null}
 

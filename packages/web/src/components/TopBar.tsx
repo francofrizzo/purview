@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Link, useNavigate } from "react-router-dom";
-import type { AnalysisJob, CommentAudience, PrDetail } from "../api/types";
+import type { AnalysisJob, CommentAudience, PrDetail, RevisionInfo } from "../api/types";
 import { isJobLive } from "../api/types";
 import { AnalysisChip, AnalysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
@@ -10,6 +10,7 @@ import { RevisionMenu } from "./RevisionMenu";
 import { AudienceSwitch } from "./AudienceSwitch";
 import { UpdateAvailable } from "./UpdateAvailable";
 import { diffTotals, formatAddedAt } from "../lib/prList";
+import { formatRevisionSummary, revisionSummaryLines } from "../lib/revisionSummary";
 import { stackedOnLink } from "../lib/stacked";
 import { CopyPathButton } from "./DiffPane";
 import { useModalBackground } from "./Modal";
@@ -241,6 +242,7 @@ export function TopBar({
           {detail.sinceReview && onToggleSinceReview ? (
             <SinceReviewChip
               since={detail.sinceReview}
+              revisions={state.revisions}
               active={sinceReviewActive}
               onToggle={onToggleSinceReview}
             />
@@ -675,21 +677,28 @@ const VERDICT_WORD: Record<string, string> = {
  */
 function SinceReviewChip({
   since,
+  revisions,
   active,
   onToggle,
 }: {
   since: NonNullable<PrDetail["sinceReview"]>;
+  /** the PR's revisions: the ones after the review say in the tip what they changed */
+  revisions?: readonly RevisionInfo[];
   active: boolean;
   onToggle: () => void;
 }) {
   const n = since.changedHunkIds.length;
   const when = `your review on r${since.revision} (${VERDICT_WORD[since.event] ?? since.event.toLowerCase()}, ${formatAddedAt(since.ts)})`;
+  // What landed since, newest first ("r3 · …"), so the chip says what the
+  // reader missed, not only how many hunks moved.
+  const sinceThen = revisionSummaryLines(revisions, since.revision).map(formatRevisionSummary);
+  const sinceNote = sinceThen.length > 0 ? ` Since then: ${sinceThen.join("; ")}` : "";
   if (n === 0) {
     return (
       <span
         className="hidden flex-none self-center text-2xs md:inline"
         style={{ color: "var(--fg-faint)" }}
-        data-tip={`No hunk changed since ${when}: the new revision only moved the base or context`}
+        data-tip={`No hunk changed since ${when}: the new revision only moved the base or context.${sinceNote}`}
       >
         no changes since your review
       </span>
@@ -703,8 +712,8 @@ function SinceReviewChip({
       aria-pressed={active}
       data-tip={
         active
-          ? `Showing only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}. Click to show everything`
-          : `Show only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}`
+          ? `Showing only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}. Click to show everything.${sinceNote}`
+          : `Show only the ${n} hunk${n === 1 ? "" : "s"} changed since ${when}.${sinceNote}`
       }
       style={
         active
