@@ -109,6 +109,11 @@ export interface MoveCandidate {
    *  or punctuation only, by lib/moveDetection.ts's own notion of a line
    *  that carries nothing */
   bridge?: boolean;
+  /** a candidate whose row cannot be hidden — in split mode, the other half
+   *  of its pair is a real, unmoved line. It still belongs to its run, so
+   *  the run is found whole; but a run holding one never folds (see
+   *  {@link moveFoldRegions}). */
+  blocked?: boolean;
 }
 
 /** A unified row, reduced to what candidacy needs. */
@@ -168,9 +173,14 @@ export interface SplitPairShape {
 
 /**
  * Split mode: one slot per pair, computed over the side that carries the
- * move (left/removed for "out", right/added for "in"). A pair still counts
- * when the *other* side is empty or itself moved — only a real, non-moved
- * line on the other side breaks the run, per the design.
+ * move (left/removed for "out", right/added for "in"). A pair counts as
+ * long as the *other* side is empty or itself moved. When the other side is
+ * a real, non-moved line, the pair is still a candidate — the run must be
+ * found whole — but a `blocked` one: hiding that pair would hide a real
+ * change, so {@link moveFoldRegions} drops the whole run instead of folding
+ * around the pair. All or nothing: a moved block in split mode gets one
+ * band or none, never a band for half of it with the other half showing.
+ * Its rows keep their moved tint either way.
  */
 export function splitMoveCandidates(
   pairs: readonly SplitPairShape[],
@@ -188,7 +198,7 @@ export function splitMoveCandidates(
       if (p.rightType === "add" && p.rightUnifiedIndex !== undefined) {
         const rIdx = moveIndex.addedIdx[p.rightUnifiedIndex];
         const rightMoved = rIdx !== undefined && moves.movedIn.has(rIdx);
-        if (!rightMoved) return { candidate: false }; // a real line on the other side
+        if (!rightMoved) return { candidate: true, contentIdx: idx, blocked: true }; // a real line on the other side
       }
       return { candidate: true, contentIdx: idx };
     }
@@ -198,7 +208,7 @@ export function splitMoveCandidates(
     if (p.leftType === "del" && p.leftUnifiedIndex !== undefined) {
       const lIdx = moveIndex.removedIdx[p.leftUnifiedIndex];
       const leftMoved = lIdx !== undefined && moves.movedOut.has(lIdx);
-      if (!leftMoved) return { candidate: false }; // a real line on the other side
+      if (!leftMoved) return { candidate: true, contentIdx: idx, blocked: true }; // a real line on the other side
     }
     return { candidate: true, contentIdx: idx };
   });
@@ -236,7 +246,9 @@ export function foldLabel(kind: "in" | "out", hidden: number, counterparts: Move
 /**
  * Candidates (from {@link unifiedMoveCandidates} or {@link splitMoveCandidates})
  * plus a parallel exemption flag per row, folded down into the regions the
- * diff pane renders a placeholder for.
+ * diff pane renders a placeholder for. A run with a `blocked` candidate in
+ * it (split mode: a pair whose other half is a real line) yields no region
+ * at all — the block can't fold whole, so it doesn't fold in part either.
  */
 export function moveFoldRegions(params: {
   hunkId: string;
@@ -253,7 +265,9 @@ export function moveFoldRegions(params: {
     exempt: exempt[i] === true,
     bridge: c.bridge,
   }));
-  const runs = computeFoldRuns(slots, minLength);
+  const runs = computeFoldRuns(slots, minLength).filter(
+    (run) => !candidates.slice(run.from, run.to).some((c) => c.blocked),
+  );
   return runs.map((run) => {
     const hidden = run.to - run.from;
     const contentFrom = candidates[run.from].contentIdx ?? run.from;

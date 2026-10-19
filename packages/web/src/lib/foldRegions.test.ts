@@ -189,19 +189,19 @@ describe("splitMoveCandidates", () => {
     expect(out[0].candidate).toBe(true);
   });
 
-  it("a real, non-moved line on the other side breaks the pairing", () => {
+  it("a real, non-moved line on the other side blocks the pair: still in the run, never hidden", () => {
     const idx = { removedIdx: [0], addedIdx: [undefined, 1] };
     const pairs = [{ leftType: "del" as const, leftUnifiedIndex: 0, rightType: "add" as const, rightUnifiedIndex: 1 }];
     // right side is an add row, but NOT in movedIn — a genuinely new line.
     const out = splitMoveCandidates(pairs, idx, { movedOut: new Set([0]), movedIn: new Set() }, "out");
-    expect(out[0].candidate).toBe(false);
+    expect(out[0]).toEqual({ candidate: true, contentIdx: 0, blocked: true });
   });
 
-  it("symmetric check for kind 'in': a real line on the left breaks it", () => {
+  it("symmetric check for kind 'in': a real line on the left blocks it", () => {
     const idx = { removedIdx: [0], addedIdx: [undefined, 1] };
     const pairs = [{ leftType: "del" as const, leftUnifiedIndex: 0, rightType: "add" as const, rightUnifiedIndex: 1 }];
     const out = splitMoveCandidates(pairs, idx, { movedOut: new Set(), movedIn: new Set([1]) }, "in");
-    expect(out[0].candidate).toBe(false);
+    expect(out[0]).toEqual({ candidate: true, contentIdx: 1, blocked: true });
   });
 
   it("a filler (null) cell on the left never breaks an 'in' pairing", () => {
@@ -331,6 +331,48 @@ describe("moveFoldRegions", () => {
       counterparts: [],
     });
     expect(region.exempt).toBe(true);
+  });
+
+  it("split mode: a run with one blocked pair gets no band at all, not two half bands", () => {
+    // Six moved-out rows; the third pairs with a real added line on the right.
+    // Before, that pair broke the run into 2 + 3 (neither long enough here,
+    // but with a longer block: a band above the pair, rows, a band below).
+    const candidates: MoveCandidate[] = [
+      { candidate: true, contentIdx: 0 },
+      { candidate: true, contentIdx: 1 },
+      { candidate: true, contentIdx: 2, blocked: true },
+      { candidate: true, contentIdx: 3 },
+      { candidate: true, contentIdx: 4 },
+      { candidate: true, contentIdx: 5 },
+      { candidate: true, contentIdx: 6 },
+      { candidate: true, contentIdx: 7 },
+    ];
+    const regions = moveFoldRegions({
+      hunkId: "h1",
+      kind: "out",
+      candidates,
+      exempt: candidates.map(() => false),
+      counterparts: [],
+    });
+    expect(regions).toEqual([]);
+  });
+
+  it("split mode: a blocked pair in one run leaves a separate, whole run foldable", () => {
+    const run = (from: number, blocked = false): MoveCandidate[] =>
+      [0, 1, 2, 3].map((i) => ({ candidate: true, contentIdx: from + i, ...(blocked && i === 1 ? { blocked: true } : {}) }));
+    const candidates: MoveCandidate[] = [
+      ...run(0, true),
+      { candidate: false, contentIdx: undefined },
+      ...run(10),
+    ];
+    const regions = moveFoldRegions({
+      hunkId: "h1",
+      kind: "in",
+      candidates,
+      exempt: candidates.map(() => false),
+      counterparts: [],
+    });
+    expect(regions.map((r) => r.key)).toEqual(["h1:in:10"]);
   });
 
   it("drops a run shorter than the minimum fold length", () => {
