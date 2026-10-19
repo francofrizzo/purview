@@ -2206,7 +2206,10 @@ export function DiffPane({
         // Focus now, scroll after the marked hunk's fold (see pendingScrollRef).
         const anchor = foldAnchor(focusedHunkId);
         const onward = [...ids.slice(cur + 1), ...ids.slice(0, cur)];
-        const target = marking ? onward.find((id) => !detail.state.hunks[id]?.viewed) : undefined;
+        // Skippable hunks are passed over, as space does: the next thing to read.
+        const target = marking
+          ? onward.find((id) => !detail.state.hunks[id]?.viewed && !skip?.has(id))
+          : undefined;
         if (target) onFocusHunk(target);
         pendingScrollRef.current = { anchor, target, at: performance.now() };
         onToggleViewed(focusedHunkId, marking);

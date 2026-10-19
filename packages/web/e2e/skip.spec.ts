@@ -4,7 +4,7 @@ import { openPr, openUnit, RECONCILE_HUNKS, UNITS } from "./helpers";
 // The fixture's reconciliation unit marks its fourth hunk (…0011, "renamed
 // call site") skippable: it shows muted with that label, counts toward
 // nothing, and Space passes over it.
-const [, , THIRD, SKIPPED, LAST] = RECONCILE_HUNKS;
+const [FIRST, SECOND, THIRD, SKIPPED, LAST] = RECONCILE_HUNKS;
 
 test("a skippable hunk is muted, labelled, uncounted, and Space passes over it", async ({ page }) => {
   await openPr(page);
@@ -36,4 +36,24 @@ test("the files tab leaves skippable hunks out of a file's count", async ({ page
   await page.getByRole("tab", { name: /files/i }).click();
   await page.getByText("reconcileNightly.ts").first().click();
   await expect(page.getByText("0/1 hunks viewed")).toBeVisible();
+});
+
+test("v passes over a skippable hunk, and entering a unit never lands on one", async ({ page }) => {
+  await openPr(page);
+  await openUnit(page, UNITS.reconcile);
+  await expect(page.getByTestId(`hunk-header-${FIRST}`)).toHaveAttribute("data-focused", "true");
+  // Marking the first three read, one v each: the third's v lands on the
+  // last hunk, past the skippable one.
+  await page.keyboard.press("v");
+  await expect(page.getByTestId(`hunk-header-${SECOND}`)).toHaveAttribute("data-focused", "true");
+  await page.keyboard.press("v");
+  await expect(page.getByTestId(`hunk-header-${THIRD}`)).toHaveAttribute("data-focused", "true");
+  await page.keyboard.press("v");
+  await expect(page.getByTestId(`hunk-header-${LAST}`)).toHaveAttribute("data-focused", "true");
+  await expect(page.getByTestId("unit-header").getByTestId("hunk-progress")).toContainText("3/4");
+  // Leave and come back: the first hunk still to read is the skippable one,
+  // so the unit opens on the one after it.
+  await openUnit(page, UNITS.charge);
+  await openUnit(page, UNITS.reconcile);
+  await expect(page.getByTestId(`hunk-header-${LAST}`)).toHaveAttribute("data-focused", "true");
 });

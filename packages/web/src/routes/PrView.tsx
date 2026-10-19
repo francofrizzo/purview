@@ -979,14 +979,23 @@ export function PrView() {
   ]);
 
   // Keep the focused hunk inside the currently shown set. Entering a unit (or
-  // a file) lands on its first hunk still to read, so the reader picks up
-  // where they left off; with everything viewed, the first hunk.
+  // a file) lands on its first hunk still to read that the analysis did not
+  // mark skippable, so the reader picks up where they left off; failing that
+  // the first hunk still to read, then the first hunk worth reading at all.
   const hunkStates = useRef(detail?.state.hunks);
   hunkStates.current = detail?.state.hunks;
+  const skipRef = useRef(skip);
+  skipRef.current = skip;
   useEffect(() => {
     setFocusedHunkId((cur) => {
       if (cur && entries.some((e) => e.hunk.id === cur)) return cur;
-      const first = entries.find((e) => !hunkStates.current?.[e.hunk.id]?.viewed) ?? entries[0];
+      const unread = (e: (typeof entries)[number]) => !hunkStates.current?.[e.hunk.id]?.viewed;
+      const readable = (e: (typeof entries)[number]) => !skipRef.current?.has(e.hunk.id);
+      const first =
+        entries.find((e) => unread(e) && readable(e)) ??
+        entries.find(unread) ??
+        entries.find(readable) ??
+        entries[0];
       return first?.hunk.id ?? null;
     });
   }, [entries]);

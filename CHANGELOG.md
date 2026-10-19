@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Reading passes over skippable hunks.** Opening a unit lands on its first hunk worth reading, and `v` moves on to the next one that is not skippable, as Space already did.
 - **Stopping a chat reply says so.** The stop button reads "stopping…" until the reply winds down, and a stop that does not land shows up in the chat's failure row. Rewinding, clearing the conversation and switching the agent say when they are in flight, and a failure there is reported the same way instead of silently undone.
 - **A failed comment action now says what failed.** A save the server refuses shows why under the comment box and keeps your text; a delete, publish, move or undo that fails says so under that card, and a resolve that fails under its thread.
 - **The review summary says "saved".** Clicking away from the summary box flashes a check once it is on disk, and shows the error if it is not.
