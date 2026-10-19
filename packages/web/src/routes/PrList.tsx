@@ -16,7 +16,7 @@ import {
 import { useModalBackground } from "../components/Modal";
 import { UpdateAvailable } from "../components/UpdateAvailable";
 import { WhatsNew } from "../components/WhatsNew";
-import { IconArchive, IconChevron, IconPlus, IconSettings } from "../components/icons";
+import { IconArchive, IconChevron, IconPlus, IconSettings, IconSpinner } from "../components/icons";
 import { errorText } from "../api/errors";
 import { formatImportResult } from "../lib/reviewImport";
 import { visibleReviewRequest } from "../lib/reviewRequest";
@@ -126,7 +126,8 @@ export function PrList() {
 
       <div className="min-h-0 flex-1 overflow-auto">
         {isLoading ? (
-          <p className="surface rounded-md p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
+          <p className="surface inline-flex items-center gap-2 rounded-md p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
+            <IconSpinner width={12} height={12} />
             Loading…
           </p>
         ) : error ? (

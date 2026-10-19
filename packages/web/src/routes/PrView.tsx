@@ -94,7 +94,7 @@ import { FinishReviewPanel } from "../components/FinishReview";
 import { RightDock, type DockTab } from "../components/RightDock";
 import { isForAgent } from "../lib/comments";
 import { FileTree } from "../components/FileTree";
-import { IconChevron, IconComment, IconHeart } from "../components/icons";
+import { IconChevron, IconComment, IconHeart, IconSpinner } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
 import { generatedUnitFiles, reviewProgress, workUnits } from "../lib/generated";
 import {
@@ -1067,7 +1067,14 @@ export function PrView() {
   );
 
   if (isLoading) {
-    return <Centered>Loading {prKey}…</Centered>;
+    return (
+      <Centered>
+        <span className="inline-flex items-center gap-2">
+          <IconSpinner width={12} height={12} />
+          Loading {prKey}…
+        </span>
+      </Centered>
+    );
   }
   if (error || !detail) {
     return (
