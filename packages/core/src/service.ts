@@ -493,14 +493,25 @@ type HunkPointerUnit = {
   id: string;
   hunkIds: string[];
   heart?: { hunkId: string }[];
+  skip?: { hunkId: string }[];
+  /** @deprecated the first name of `skip`; folded into it before validation */
   fold?: { hunkId: string }[];
 };
+
+/** An analysis or patch still sent with `fold` is read as `skip` (in place). */
+export function adoptFoldAsSkip<T extends { skip?: unknown; fold?: unknown }>(u: T): T {
+  if ("fold" in u) {
+    if (u.skip === undefined && u.fold !== undefined) u.skip = u.fold;
+    delete u.fold;
+  }
+  return u;
+}
 
 /**
  * Entries of `field` that point outside their own unit (short ids are
  * resolved in place to full ids).
  */
-function pointerStrays(units: HunkPointerUnit[], field: "heart" | "fold"): { unitId: string; hunkId: string }[] {
+function pointerStrays(units: HunkPointerUnit[], field: "heart" | "skip"): { unitId: string; hunkId: string }[] {
   const out: { unitId: string; hunkId: string }[] = [];
   for (const u of units) {
     const list = u[field];
@@ -519,21 +530,21 @@ export function heartStrays(units: HunkPointerUnit[]): { unitId: string; hunkId:
   return pointerStrays(units, "heart");
 }
 
-/** Fold entries that point outside their own unit (short ids are resolved in place). */
-export function foldStrays(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
-  return pointerStrays(units, "fold");
+/** Skip entries that point outside their own unit (short ids are resolved in place). */
+export function skipStrays(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
+  return pointerStrays(units, "skip");
 }
 
 /**
- * Hunks a unit lists both as heart and as fold. Run after the strays checks,
+ * Hunks a unit lists both as heart and as skip. Run after the strays checks,
  * so both lists hold full ids.
  */
-export function heartFoldOverlap(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
+export function heartSkipOverlap(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
   const out: { unitId: string; hunkId: string }[] = [];
   for (const u of units) {
-    if (!u.heart || !u.fold) continue;
+    if (!u.heart || !u.skip) continue;
     const heart = new Set(u.heart.map((h) => h.hunkId));
-    for (const f of u.fold) if (heart.has(f.hunkId)) out.push({ unitId: u.id, hunkId: f.hunkId });
+    for (const f of u.skip) if (heart.has(f.hunkId)) out.push({ unitId: u.id, hunkId: f.hunkId });
   }
   return out;
 }
@@ -684,17 +695,18 @@ export function setAnalysis(
           strays.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
       );
     }
-    const foldStray = foldStrays(analysis.units);
-    if (foldStray.length > 0) {
+    for (const u of analysis.units) adoptFoldAsSkip(u);
+    const skipStray = skipStrays(analysis.units);
+    if (skipStray.length > 0) {
       throw new Error(
-        `A unit's fold must name hunks of that unit (its own hunkIds a reader can skip):\n  ` +
-          foldStray.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
+        `A unit's skip must name hunks of that unit (its own hunkIds a reader can skip):\n  ` +
+          skipStray.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
       );
     }
-    const overlap = heartFoldOverlap(analysis.units);
+    const overlap = heartSkipOverlap(analysis.units);
     if (overlap.length > 0) {
       throw new Error(
-        `A hunk cannot be both heart and fold; drop it from one list:\n  ` +
+        `A hunk cannot be both heart and skip; drop it from one list:\n  ` +
           overlap.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
       );
     }

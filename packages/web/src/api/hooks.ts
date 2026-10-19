@@ -7,7 +7,7 @@ import {
   type UseMutationResult,
 } from "@tanstack/react-query";
 import { api } from "./client";
-import { foldedHunkIds } from "../lib/diffModel";
+import { skippedHunkIds } from "../lib/diffModel";
 import { applyArchive, applyRepoArchive } from "../lib/prList";
 import { stalenessPollInterval } from "../lib/staleness";
 import type {
@@ -424,8 +424,8 @@ export function usePr(key: string) {
 
 function recomputeRollups(detail: PrDetail): PrDetail {
   const files: NonNullable<PrDetail["state"]["files"]> = {};
-  // As the server: hunks the analysis folded are not reading work.
-  const skip = foldedHunkIds(detail.state.units);
+  // As the server: hunks the analysis marked skippable are not reading work.
+  const skip = skippedHunkIds(detail.state.units);
   for (const f of detail.files.files) {
     const counted = f.hunks.filter((h) => !skip.has(h.id));
     const viewedHunks = counted.filter((h) => detail.state.hunks[h.id]?.viewed).length;

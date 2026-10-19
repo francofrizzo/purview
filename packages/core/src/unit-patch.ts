@@ -135,12 +135,17 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
       }
       hunkIds = next;
     }
+    // `fold` is the first name of `skip`: read it as such.
+    if ("fold" in rest) {
+      if (rest.skip === undefined && rest.fold !== undefined) (rest as Record<string, unknown>).skip = rest.fold;
+      delete (rest as Record<string, unknown>).fold;
+    }
     let payload: Record<string, unknown> = hunkIds !== undefined ? { ...rest, hunkIds } : rest;
 
-    // Heart and fold entries name the unit's own hunks (short ids welcome),
+    // Heart and skip entries name the unit's own hunks (short ids welcome),
     // judged on the list the unit will hold after this patch.
     const finalIds = hunkIds ?? base;
-    const resolveEntries = (field: "heart" | "fold"): { hunkId: string }[] | undefined => {
+    const resolveEntries = (field: "heart" | "skip"): { hunkId: string }[] | undefined => {
       if (!Array.isArray(rest[field])) return undefined;
       const out: { hunkId: string }[] = [];
       for (const [i, entry] of (rest[field] as unknown[]).entries()) {
@@ -162,21 +167,21 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
       return out;
     };
     const heart = resolveEntries("heart");
-    const fold = resolveEntries("fold");
+    const skip = resolveEntries("skip");
     if (heart) payload = { ...payload, heart };
-    if (fold) payload = { ...payload, fold };
+    if (skip) payload = { ...payload, skip };
 
     // A hunk is never both: judged on the lists the unit will have after the
     // patch (a list the patch does not send is the existing one, less the
     // hunks leaving the unit).
     const keep = (list: { hunkId: string }[] | undefined) => (list ?? []).filter((e) => finalIds.includes(e.hunkId));
     const heartAfter = new Set(keep(heart ?? existing?.heart).map((e) => e.hunkId));
-    const both = keep(fold ?? existing?.fold)
+    const both = keep(skip ?? existing?.skip)
       .map((e) => e.hunkId)
       .filter((id) => heartAfter.has(id));
     if (both.length > 0) {
       errors.push(
-        `unit "${unitId}": a hunk cannot be both heart and fold; drop it from one list: ${both.join(", ")}`,
+        `unit "${unitId}": a hunk cannot be both heart and skip; drop it from one list: ${both.join(", ")}`,
       );
     }
 
@@ -350,10 +355,10 @@ export function renderUnits(
     out.push(
       `${husk ? "~ " : ""}${u.id}  [${u.attention}/${u.kind}]  ${u.title}` +
         `  (${u.hunkIds.length} hunk${u.hunkIds.length === 1 ? "" : "s"}` +
-        (u.fold?.length ? `, ${u.fold.length} folded` : "") +
+        (u.skip?.length ? `, ${u.skip.length} skippable` : "") +
         (findings ? `, ${findings} finding${findings === 1 ? "" : "s"}` : "") +
         (u.heart?.length ? `, heart: ${u.heart.map((h) => short(h.hunkId)).join(" ")}` : "") +
-        (u.fold?.length ? `, fold: ${u.fold.map((f) => short(f.hunkId)).join(" ")}` : "") +
+        (u.skip?.length ? `, skip: ${u.skip.map((f) => short(f.hunkId)).join(" ")}` : "") +
         (husk ? `; husk: every hunk left the PR in r${u.removedAtRevision}` : "") +
         ")",
     );

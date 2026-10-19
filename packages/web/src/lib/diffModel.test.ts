@@ -119,23 +119,23 @@ describe("heartRowIndices", () => {
   });
 });
 
-describe("unitProgress with folded hunks", () => {
+describe("unitProgress with skipped hunks", () => {
   const detail = {
     state: { hunks: { a: { viewed: true }, b: { viewed: false }, c: { viewed: false, changedSinceViewed: true } } },
   } as unknown as import("../api/types").PrDetail;
-  const unit = (fold?: { hunkId: string; why: string }[]) =>
-    ({ hunkIds: ["a", "b", "c"], fold }) as unknown as import("../api/types").ReviewUnit;
+  const unit = (skip?: { hunkId: string; why: string }[]) =>
+    ({ hunkIds: ["a", "b", "c"], skip }) as unknown as import("../api/types").ReviewUnit;
 
-  it("counts every hunk without a fold list", () => {
-    expect(unitProgress(detail, unit())).toEqual({ viewed: 1, total: 3, changed: 1, folded: 0 });
+  it("counts every hunk without a skip list", () => {
+    expect(unitProgress(detail, unit())).toEqual({ viewed: 1, total: 3, changed: 1, skipped: 0 });
   });
 
-  it("leaves folded hunks out of viewed, total and changed", () => {
+  it("leaves skipped hunks out of viewed, total and changed", () => {
     expect(unitProgress(detail, unit([{ hunkId: "c", why: "adds imports" }]))).toEqual({
       viewed: 1,
       total: 2,
       changed: 0,
-      folded: 1,
+      skipped: 1,
     });
   });
 });

@@ -793,7 +793,7 @@ const units: ReviewUnit[] = [
     ],
     hunkIds: ["a1b2c3d4e5f6000d", "a1b2c3d4e5f6000e", "a1b2c3d4e5f6000f", "a1b2c3d4e5f60011", "a1b2c3d4e5f60012"],
     // The job file's first hunk is the call site of the new builder: skippable here.
-    fold: [{ hunkId: "a1b2c3d4e5f60011", why: "renamed call site" }],
+    skip: [{ hunkId: "a1b2c3d4e5f60011", why: "renamed call site" }],
     order: 4,
   },
   // Purview's own unit, built from the files' classification (not the analysis's).
@@ -863,7 +863,7 @@ const state: PrState = {
     "gen/proto/billing/v1/charge.pb.go": { viewed: false, viewedHunks: 0, totalHunks: 1 },
     "src/api/openapi.d.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
     "src/billing/reconcile.ts": { viewed: false, viewedHunks: 0, totalHunks: 4 },
-    // Hunk 0011 is folded by the analysis, so it is not counted (see the unit's `fold`).
+    // Hunk 0011 is skippable per the analysis, so it is not counted (see the unit's `skip`).
     "src/jobs/reconcileNightly.ts": { viewed: false, viewedHunks: 0, totalHunks: 1 },
   },
 };

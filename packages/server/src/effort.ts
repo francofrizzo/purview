@@ -115,7 +115,7 @@ export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | nul
     .map(
       (u) =>
         `${u.id}:${u.kind}:${u.attention}:${u.riskFlags.length}:${u.hunkIds.join(",")}` +
-        (u.fold?.length ? `:fold=${u.fold.map((f) => f.hunkId).join(",")}` : ""),
+        (u.skip?.length ? `:skip=${u.skip.map((f) => f.hunkId).join(",")}` : ""),
     )
     .join("|");
   const cacheKey = `${root}#${keyToString(key)}#${revision}#${state.currentRevision}#${unitsSig}`;
@@ -137,9 +137,9 @@ export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | nul
 
   // Folded hunks (imports, re-exports, renamed call sites the analysis says
   // need no read) are not reading work, so their lines do not count.
-  const folded = new Set(units.flatMap((u) => (u.fold ?? []).map((f) => f.hunkId)));
+  const skipped = new Set(units.flatMap((u) => (u.skip ?? []).map((f) => f.hunkId)));
   const mustReadUnitList = units.filter((u) => u.attention === "must-read");
-  const mustReadHunkIds = new Set(mustReadUnitList.flatMap((u) => u.hunkIds).filter((id) => !folded.has(id)));
+  const mustReadHunkIds = new Set(mustReadUnitList.flatMap((u) => u.hunkIds).filter((id) => !skipped.has(id)));
   let mustReadLines = 0;
   for (const id of mustReadHunkIds) mustReadLines += hunkLines.get(id) ?? 0;
 
@@ -150,7 +150,7 @@ export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | nul
   for (const u of mustReadUnitList) {
     const w = KIND_WEIGHTS[u.kind] ?? DEFAULT_KIND_WEIGHT;
     for (const id of u.hunkIds) {
-      if (folded.has(id)) continue;
+      if (skipped.has(id)) continue;
       hunkWeight.set(id, Math.max(hunkWeight.get(id) ?? 0, w));
     }
   }

@@ -305,25 +305,25 @@ export function sortUnitsForDisplay(units: ReviewUnit[]): ReviewUnit[] {
   return unitDisplayOrder(units);
 }
 
-/** The hunk ids a unit's `fold` marks as skippable, for membership checks. */
-export function foldedIds(unit: Pick<ReviewUnit, "fold">): Set<string> {
-  return new Set(unit.fold?.map((f) => f.hunkId) ?? []);
+/** The hunk ids a unit's `skip` marks as skippable, for membership checks. */
+export function skippedIds(unit: Pick<ReviewUnit, "skip">): Set<string> {
+  return new Set(unit.skip?.map((f) => f.hunkId) ?? []);
 }
 
-/** Every folded hunk across the analysis's units, as the server counts them. */
-export function foldedHunkIds(units: Pick<ReviewUnit, "fold">[]): Set<string> {
-  return new Set(units.flatMap((u) => u.fold?.map((f) => f.hunkId) ?? []));
+/** Every skipped hunk across the analysis's units, as the server counts them. */
+export function skippedHunkIds(units: Pick<ReviewUnit, "skip">[]): Set<string> {
+  return new Set(units.flatMap((u) => u.skip?.map((f) => f.hunkId) ?? []));
 }
 
 /**
- * A unit's reading progress. Hunks the analysis folded are not reading work:
- * they count toward nothing here (the server's readiness and the home list
- * leave them out the same way), so a unit whose remaining hunks are all
- * viewed is complete even with a folded hunk never opened. `folded` says how
- * many were left out, for the brief to mention.
+ * A unit's reading progress. Hunks the analysis marked skippable are not
+ * reading work: they count toward nothing here (the server's readiness and
+ * the home list leave them out the same way), so a unit whose remaining hunks
+ * are all viewed is complete even with a skipped hunk never read. `skipped`
+ * says how many were left out, for the brief to mention.
  */
 export function unitProgress(detail: PrDetail, unit: ReviewUnit) {
-  const skip = foldedIds(unit);
+  const skip = skippedIds(unit);
   let viewed = 0;
   let changed = 0;
   let total = 0;
@@ -334,7 +334,7 @@ export function unitProgress(detail: PrDetail, unit: ReviewUnit) {
     if (st?.viewed) viewed++;
     if (st?.changedSinceViewed) changed++;
   }
-  return { viewed, total, changed, folded: unit.hunkIds.length - total };
+  return { viewed, total, changed, skipped: unit.hunkIds.length - total };
 }
 
 /**

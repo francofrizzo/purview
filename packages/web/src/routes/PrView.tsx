@@ -713,10 +713,10 @@ export function PrView() {
     if (tab !== "units" || !selectedUnit?.heart?.length) return undefined;
     return new Map(selectedUnit.heart.map((h) => [h.hunkId, { why: h.why, lines: h.lines }]));
   }, [tab, selectedUnit]);
-  /** The selected unit's folded hunks, by hunk id: the pane starts them shut. */
-  const fold = useMemo<ReadonlyMap<string, string> | undefined>(() => {
-    if (tab !== "units" || !selectedUnit?.fold?.length) return undefined;
-    return new Map(selectedUnit.fold.map((f) => [f.hunkId, f.why]));
+  /** The selected unit's skippable hunks, by hunk id: the pane mutes them. */
+  const skip = useMemo<ReadonlyMap<string, string> | undefined>(() => {
+    if (tab !== "units" || !selectedUnit?.skip?.length) return undefined;
+    return new Map(selectedUnit.skip.map((f) => [f.hunkId, f.why]));
   }, [tab, selectedUnit]);
   // Turning the filter on (or switching tabs under it) never leaves the
   // reader on a unit or file it hides: land on the first one it keeps.
@@ -1771,14 +1771,14 @@ export function PrView() {
                   {threadFilterMenu}
                   <DiffViewToggle mode={viewMode} onChange={setViewMode} />
                   <WrapToggle wrap={wrap} onChange={setWrap} />
-                  {progress?.folded ? (
+                  {progress?.skipped ? (
                     <span
                       className="text-2xs tabular-nums"
                       style={{ color: "var(--fg-faint)" }}
-                      data-testid="unit-folded-count"
-                      data-tip="Hunks the analysis folded as skippable; they count toward nothing"
+                      data-testid="unit-skipped-count"
+                      data-tip="Hunks the analysis says you can skip; shown muted, they count toward nothing"
                     >
-                      {progress.folded} folded
+                      {progress.skipped} skippable
                     </span>
                   ) : null}
                   {progress ? <Progress viewed={progress.viewed} total={progress.total} /> : null}
@@ -2021,7 +2021,7 @@ export function PrView() {
               isDefinedInDiff={isDefinedInDiff}
               jumpToHunk={jumpToHunk}
               heart={heart}
-              fold={fold}
+              skip={skip}
               highlight={tab === "units" ? highlight : null}
               unitForHunkId={unitForHunkId}
               onUnitClick={onHunkUnitClick}

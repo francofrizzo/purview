@@ -125,7 +125,7 @@ export interface HeartEntry {
 }
 
 /** One hunk the analysis marks as skippable, and the two-to-five-word why. */
-export interface FoldEntry {
+export interface SkipEntry {
   hunkId: string;
   why: string;
 }
@@ -148,11 +148,11 @@ export interface ReviewUnit {
   heart?: HeartEntry[];
   /**
    * Hunks of this unit the analysis says a reader can skip (import changes,
-   * re-exports, renamed call sites) with a two-to-five-word label. They start
-   * folded, Space passes over them and no count includes them. Absent on
+   * re-exports, renamed call sites) with a two-to-five-word label. They show
+   * muted, Space passes over them and no count includes them. Absent on
    * older states and on units with nothing to skip.
    */
-  fold?: FoldEntry[];
+  skip?: SkipEntry[];
   /**
    * The unit's files in the analysis's reading order (paths). Files it
    * leaves out follow in diff order; absent, the heart's files come first.

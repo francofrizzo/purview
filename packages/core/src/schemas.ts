@@ -184,19 +184,19 @@ export const HeartEntrySchema = z.object({
 });
 export type HeartEntry = z.infer<typeof HeartEntrySchema>;
 
-/** Longest `why` label on a fold entry: it is shown as a chip on the folded hunk. */
-export const FOLD_WHY_MAX = 80;
+/** Longest `why` label on a skip entry: it is shown as a chip on the hunk. */
+export const SKIP_WHY_MAX = 80;
 
 /**
  * One hunk of a unit a reader need not read: an import change, a re-export,
  * a renamed call site inside a unit that otherwise matters. `why` is a short
- * label ("adds imports", "renamed call site") shown on the folded hunk.
+ * label ("adds imports", "renamed call site") shown on the muted hunk.
  */
-export const FoldEntrySchema = z.object({
+export const SkipEntrySchema = z.object({
   hunkId: z.string().min(1),
-  why: z.string().min(1).max(FOLD_WHY_MAX),
+  why: z.string().min(1).max(SKIP_WHY_MAX),
 });
-export type FoldEntry = z.infer<typeof FoldEntrySchema>;
+export type SkipEntry = z.infer<typeof SkipEntrySchema>;
 
 export const ReviewUnitSchema = z.object({
   id: z.string().min(1),
@@ -226,10 +226,17 @@ export const ReviewUnitSchema = z.object({
    * re-exports, renamed call sites inside an otherwise important unit).
    * Optional like `heart`. Every entry names one of the unit's own hunks,
    * never a heart hunk; the reducer drops an entry whose hunk leaves the unit
-   * or the PR, or whose code a revision reworked. Folded hunks keep their own
-   * `viewed` flag but count toward no progress total (unit, file, readiness).
+   * or the PR, or whose code a revision reworked. Skipped hunks keep their
+   * own `viewed` flag but count toward no progress total (unit, file,
+   * readiness); Purview shows them muted, and Space passes over them.
    */
-  fold: z.array(FoldEntrySchema).optional(),
+  skip: z.array(SkipEntrySchema).optional(),
+  /**
+   * The first name of `skip` (one shipped day of event logs carry it). The
+   * reducer moves it into `skip` and drops it; nothing else reads it.
+   * @deprecated write `skip`
+   */
+  fold: z.array(SkipEntrySchema).optional(),
   /**
    * The unit's files in the order to read them, as paths. Optional: absent,
    * Purview orders them itself (heart files first, then diff order). Files
@@ -1115,7 +1122,7 @@ export type ArchivedHunk = z.infer<typeof ArchivedHunkSchema>;
  * written under an older version, so stored PRs pick the change up on their
  * next read instead of only on their next appended event.
  */
-export const STATE_SHAPE_VERSION = 4;
+export const STATE_SHAPE_VERSION = 5;
 
 export const StateSchema = z.object({
   /** see STATE_SHAPE_VERSION; absent on every state.json written before it existed */

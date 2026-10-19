@@ -324,17 +324,18 @@ few lines are the point; leave it off only when the whole hunk is the heart.
 - Bad: the same hunk with no `lines` (the reader starts at the package clause), or with
   `"lines": [1, 785]` (the whole hunk restated).
 
-`fold` (optional, a list of `{"hunkId": "...", "why": "..."}`) names the unit's hunks a
+`skip` (optional, a list of `{"hunkId": "...", "why": "..."}`) names the unit's hunks a
 reader can skip: import changes, re-exports, renamed call sites, moved boilerplate, inside
-a unit that otherwise matters. `why` is two to five words, shown as a label on the folded
-hunk: `"adds imports"`, `"renamed call site"`, `"re-export only"`. Rules:
+a unit that otherwise matters. `why` is two to five words, shown as a label on the hunk:
+`"adds imports"`, `"renamed call site"`, `"re-export only"`. Rules:
 
-- Fold only a hunk whose body you actually read. The claim is "there is nothing here",
+- Skip only a hunk whose body you actually read. The claim is "there is nothing here",
   and you can only make it after looking.
 - Never a heart hunk (the payload is rejected), and never the majority of a must-read
-  unit: if most of a unit is skippable, the unit is skim, not must-read with folds.
-- Purview folds these hunks shut, leaves them out of every progress count, and Space skips
-  them, so a wrong fold hides code from the reviewer. When in doubt, leave it visible.
+  unit: if most of a unit is skippable, the unit is skim, not must-read with skips.
+- Purview shows these hunks muted, leaves them out of every progress count, and Space
+  passes over them, so a wrong skip steers the reviewer past code. When in doubt, leave
+  it out.
 
 One more field, `findings`, is optional and is only ever filled in by the verification
 pass (step 5). Leave it off entirely here.
@@ -549,7 +550,7 @@ Finish every run (init or refresh) by printing, in the user's working language:
 
 - The overall summary.
 - A units table: `title | kind | attention | hunk count`, ordered by `order`; a unit with
-  folds shows `N hunks, M folded`.
+  skips shows `N hunks, M skippable`.
 
 Keep it scannable — this is the reviewer's map of the PR, not a restatement of the diff.
 <!-- interactive-only:end -->

@@ -793,6 +793,16 @@ html[data-mode="light"] .logo-for-light {
   display: block;
 }
 
+/* A skippable hunk's code rows (the analysis says there is nothing to read)
+   sit muted; the row comes back to full strength under the pointer. */
+[data-skippable="true"] {
+  opacity: 0.45;
+  transition: opacity 120ms ease-out;
+}
+[data-skippable="true"]:hover {
+  opacity: 1;
+}
+
 /* A heart hunk's rows carry a bar on the left, over the row's own background. */
 [data-heart="true"] {
   position: relative;

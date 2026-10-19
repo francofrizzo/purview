@@ -105,25 +105,3 @@ export function seedCollapsed(
   }
   return out ?? state;
 }
-
-/**
- * Hunks the analysis folded (a unit's `fold` list) start shut the first time
- * they appear in the pane, whatever the auto-collapse setting: the fold is
- * the analysis saying "skip this", not a viewed-state echo. A hunk the reader
- * already opened or closed by hand this sitting keeps that. Same object back
- * when nothing changes.
- */
-export function seedFolded(
-  state: CollapsedMap,
-  shownIds: Iterable<string>,
-  folded: ReadonlySet<string> | undefined,
-): CollapsedMap {
-  if (!folded?.size) return state;
-  let out: Record<string, boolean> | null = null;
-  for (const id of shownIds) {
-    if (id in state || !folded.has(id)) continue;
-    if (!out) out = { ...state };
-    out[id] = true;
-  }
-  return out ?? state;
-}

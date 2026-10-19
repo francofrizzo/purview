@@ -126,7 +126,7 @@ describe("reviewEffort", () => {
     });
   });
 
-  it("leaves the lines of folded hunks out of the must-read count", () => {
+  it("leaves the lines of skipped hunks out of the must-read count", () => {
     build(
       root,
       [hunk("h1", 60), hunk("h2", 1600)],
@@ -136,7 +136,7 @@ describe("reviewEffort", () => {
           attention: "must-read",
           riskFlags: [],
           hunkIds: ["h1", "h2"],
-          fold: [{ hunkId: "h2", why: "re-export only" }],
+          skip: [{ hunkId: "h2", why: "re-export only" }],
         }),
       ],
     );

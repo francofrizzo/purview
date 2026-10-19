@@ -1,7 +1,7 @@
 import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import { isFileComment, isGeneratedUnit } from "../api/types";
-import { foldedHunkIds } from "../lib/diffModel";
+import { skippedHunkIds } from "../lib/diffModel";
 import type {
   AgentSelection,
   AgentsInfo,
@@ -537,7 +537,7 @@ function applyAnalysisResult(key: string) {
   const entry = list.find((p) => p.key === key);
   if (entry) {
     entry.unitCount = target.state.units.length;
-    entry.totalHunks = Object.keys(target.state.hunks).filter((id) => !foldedHunkIds(target.state.units).has(id)).length;
+    entry.totalHunks = Object.keys(target.state.hunks).filter((id) => !skippedHunkIds(target.state.units).has(id)).length;
     entry.viewedHunks = 0;
     entry.summary = target.state.summary;
   }
@@ -582,8 +582,8 @@ const review: {
 
 function recomputeFileRollups() {
   const rollups: PrDetail["state"]["files"] = {};
-  // As the server: hunks the analysis folded are not reading work.
-  const skip = foldedHunkIds(detail.state.units);
+  // As the server: hunks the analysis marked skippable are not reading work.
+  const skip = skippedHunkIds(detail.state.units);
   for (const f of detail.files.files) {
     const counted = f.hunks.filter((h) => !skip.has(h.id));
     const viewedHunks = counted.filter((h) => detail.state.hunks[h.id]?.viewed).length;
@@ -1507,8 +1507,8 @@ export const mockApi = {
   async getReview(_key: string): Promise<ReviewStatus> {
     await delay(80);
     const units = detail.state.units;
-    // As the server: hunks the analysis folded count toward nothing.
-    const skip = foldedHunkIds(units);
+    // As the server: hunks the analysis marked skippable count toward nothing.
+    const skip = skippedHunkIds(units);
     const complete = (u: (typeof units)[number]) => {
       const counted = u.hunkIds.filter((id) => !skip.has(id));
       return counted.length > 0 && counted.every((id) => detail.state.hunks[id]?.viewed);

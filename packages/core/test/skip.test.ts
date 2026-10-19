@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fold, foldedHunkIds, pruneHeart, readiness, unitProgress } from "../src/reducer.js";
+import { fold, skippedHunkIds, pruneHeart, readiness, unitProgress } from "../src/reducer.js";
 import { setAnalysis, setUnit, setUnits } from "../src/service.js";
 import { appendEvent, writeMeta, writeRevision } from "../src/store.js";
 import { computeHunkId } from "../src/hunk-id.js";
@@ -12,9 +12,9 @@ import type { FileDiff, PrKey } from "../src/index.js";
 import { ReviewUnitSchema, type ReviewerEvent, type ReviewUnit } from "../src/schemas.js";
 
 /**
- * A unit's fold: hunks the analysis says a reader can skip. Each names one of
- * the unit's own hunks, never a heart hunk; folded hunks count toward no
- * progress total, and a fold entry only survives a migration whose hunk came
+ * A unit's skip: hunks the analysis says a reader can skip. Each names one of
+ * the unit's own hunks, never a heart hunk; skipped hunks count toward no
+ * progress total, and a skip entry only survives a migration whose hunk came
  * through byte-for-byte.
  */
 
@@ -35,43 +35,43 @@ function unit(over: Partial<ReviewUnit> = {}): ReviewUnit {
   });
 }
 
-describe("fold schema", () => {
+describe("skip schema", () => {
   it("is optional and each entry needs a hunk and a short why", () => {
-    expect(unit().fold).toBeUndefined();
-    expect(unit({ fold: [{ hunkId: "h2", why: "adds imports" }] }).fold).toHaveLength(1);
-    expect(() => unit({ fold: [{ hunkId: "h2", why: "" }] })).toThrow();
-    expect(() => unit({ fold: [{ hunkId: "h2", why: "x".repeat(81) }] })).toThrow();
-    expect(() => unit({ fold: [{ hunkId: "h2" }] as never })).toThrow();
+    expect(unit().skip).toBeUndefined();
+    expect(unit({ skip: [{ hunkId: "h2", why: "adds imports" }] }).skip).toHaveLength(1);
+    expect(() => unit({ skip: [{ hunkId: "h2", why: "" }] })).toThrow();
+    expect(() => unit({ skip: [{ hunkId: "h2", why: "x".repeat(81) }] })).toThrow();
+    expect(() => unit({ skip: [{ hunkId: "h2" }] as never })).toThrow();
   });
 });
 
-describe("pruneHeart on the fold", () => {
+describe("pruneHeart on the skip list", () => {
   it("drops entries that point outside the unit, dedupes, and removes the key when empty", () => {
     const u = unit({
-      fold: [
+      skip: [
         { hunkId: "h2", why: "a" },
         { hunkId: "h9", why: "gone" },
         { hunkId: "h2", why: "twice" },
       ],
     });
-    expect(pruneHeart(u).fold).toEqual([{ hunkId: "h2", why: "a" }]);
-    expect(pruneHeart(unit({ fold: [{ hunkId: "h9", why: "gone" }] })).fold).toBeUndefined();
-    const same = unit({ fold: [{ hunkId: "h2", why: "b" }] });
+    expect(pruneHeart(u).skip).toEqual([{ hunkId: "h2", why: "a" }]);
+    expect(pruneHeart(unit({ skip: [{ hunkId: "h9", why: "gone" }] })).skip).toBeUndefined();
+    const same = unit({ skip: [{ hunkId: "h2", why: "b" }] });
     expect(pruneHeart(same)).toBe(same);
   });
 
-  it("prunes heart and fold together", () => {
+  it("prunes heart and skip together", () => {
     const u = unit({
       heart: [{ hunkId: "h9", why: "gone" }],
-      fold: [{ hunkId: "h2", why: "imports" }],
+      skip: [{ hunkId: "h2", why: "imports" }],
     });
     const next = pruneHeart(u);
     expect(next.heart).toBeUndefined();
-    expect(next.fold).toEqual([{ hunkId: "h2", why: "imports" }]);
+    expect(next.skip).toEqual([{ hunkId: "h2", why: "imports" }]);
   });
 });
 
-describe("fold through the reducer", () => {
+describe("skip through the reducer", () => {
   const rev = (revision: number, hunkIds = ["h1", "h2", "h3"]) =>
     ({
       ts,
@@ -92,7 +92,7 @@ describe("fold through the reducer", () => {
     units: [
       unit({
         heart: [{ hunkId: "h1", why: "the rule" }],
-        fold: [
+        skip: [
           { hunkId: "h2", why: "adds imports" },
           { hunkId: "h3", why: "re-export only" },
         ],
@@ -104,10 +104,10 @@ describe("fold through the reducer", () => {
 
   const view = (hunkId: string): ReviewerEvent => ({ ts, type: "hunk-viewed", hunkId, revision: 1 });
 
-  it("folds through analysis-set and lists the folded ids", () => {
+  it("folds through analysis-set and lists the skipped ids", () => {
     const state = fold([rev(1), analysis()]);
-    expect(state.units[0].fold).toHaveLength(2);
-    expect([...foldedHunkIds(state)].sort()).toEqual(["h2", "h3"]);
+    expect(state.units[0].skip).toHaveLength(2);
+    expect([...skippedHunkIds(state)].sort()).toEqual(["h2", "h3"]);
   });
 
   it("loses the entry of a hunk a patch takes out of the unit", () => {
@@ -116,10 +116,10 @@ describe("fold through the reducer", () => {
       analysis(),
       { ts, type: "unit-updated", unitId: "u1", patch: { hunkIds: ["h1", "h2"] } },
     ]);
-    expect(state.units[0].fold).toEqual([{ hunkId: "h2", why: "adds imports" }]);
+    expect(state.units[0].skip).toEqual([{ hunkId: "h2", why: "adds imports" }]);
   });
 
-  it("ignores folds of husks", () => {
+  it("ignores skips of husks", () => {
     const migration = {
       revision: 2,
       previousRevision: 1,
@@ -137,11 +137,11 @@ describe("fold through the reducer", () => {
       analysis(),
       { ...(rev(2, ["h4"]) as Record<string, unknown>), migration } as unknown as ReviewerEvent,
     ]);
-    expect(state.units[0].fold).toBeUndefined();
-    expect(foldedHunkIds(state).size).toBe(0);
+    expect(state.units[0].skip).toBeUndefined();
+    expect(skippedHunkIds(state).size).toBe(0);
   });
 
-  it("keeps the fold of an identical hunk and drops the fold of a reworked one", () => {
+  it("keeps the skip of an identical hunk and drops the skip of a reworked one", () => {
     const migration = {
       revision: 2,
       previousRevision: 1,
@@ -159,10 +159,10 @@ describe("fold through the reducer", () => {
       { ...(rev(2, ["h1", "h2", "h3b"]) as Record<string, unknown>), migration } as unknown as ReviewerEvent,
     ]);
     expect(state.units[0].hunkIds).toEqual(["h1", "h2", "h3b"]);
-    expect(state.units[0].fold).toEqual([{ hunkId: "h2", why: "adds imports" }]);
+    expect(state.units[0].skip).toEqual([{ hunkId: "h2", why: "adds imports" }]);
   });
 
-  it("drops the fold of a renamed hunk, following the heart to its successor", () => {
+  it("drops the skip of a renamed hunk, following the heart to its successor", () => {
     const migration = {
       revision: 2,
       previousRevision: 1,
@@ -180,10 +180,10 @@ describe("fold through the reducer", () => {
       { ...(rev(2, ["h1b", "h2b", "h3b"]) as Record<string, unknown>), migration } as unknown as ReviewerEvent,
     ]);
     expect(state.units[0].heart).toEqual([{ hunkId: "h1b", why: "the rule" }]);
-    expect(state.units[0].fold).toBeUndefined();
+    expect(state.units[0].skip).toBeUndefined();
   });
 
-  it("leaves folded hunks out of unit progress", () => {
+  it("leaves skipped hunks out of unit progress", () => {
     const [p] = unitProgress(fold([rev(1), analysis()]));
     expect(p.total).toBe(1);
     expect(p.viewed).toBe(0);
@@ -192,10 +192,10 @@ describe("fold through the reducer", () => {
     expect(done).toMatchObject({ viewed: 1, total: 1, complete: true });
   });
 
-  it("a unit whose hunks are all folded is never complete", () => {
+  it("a unit whose hunks are all skipped is never complete", () => {
     const all = analysis({
       heart: undefined,
-      fold: [
+      skip: [
         { hunkId: "h1", why: "a" },
         { hunkId: "h2", why: "b" },
         { hunkId: "h3", why: "c" },
@@ -205,7 +205,7 @@ describe("fold through the reducer", () => {
     expect(p).toMatchObject({ viewed: 0, total: 0, complete: false });
   });
 
-  it("leaves folded hunks out of readiness, even when they were viewed", () => {
+  it("leaves skipped hunks out of readiness, even when they were viewed", () => {
     const state = fold([rev(1), analysis(), view("h2")]);
     const r = readiness(state);
     expect(r.hunks).toEqual({ viewed: 0, total: 1 });
@@ -215,7 +215,7 @@ describe("fold through the reducer", () => {
     expect(after.ready).toBe(true);
   });
 
-  it("leaves folded hunks out of the file rollups, and a file of only folds has nothing to view", () => {
+  it("leaves skipped hunks out of the file rollups, and a file of only skips has nothing to view", () => {
     const state = fold([rev(1), analysis(), view("h1")]);
     expect(state.files[0]).toMatchObject({ total: 1, viewedCount: 1, viewed: true });
     expect(state.hunks.h2.viewed).toBe(false);
@@ -232,18 +232,18 @@ describe("fold through the reducer", () => {
       view("h3"),
     ]);
     expect(split.files[1]).toMatchObject({ total: 0, viewedCount: 0, viewed: false });
-    // The reader's own mark on a folded hunk is kept.
+    // The reader's own mark on a skipped hunk is kept.
     expect(split.hunks.h2.viewed).toBe(true);
   });
 
-  it("the units listing counts the folds and prints their ids", () => {
+  it("the units listing counts the skips and prints their ids", () => {
     const state = fold([rev(1), analysis()]);
     const { text } = renderUnits(state);
-    expect(text).toContain("(3 hunks, 2 folded, heart: h1, fold: h2 h3)");
+    expect(text).toContain("(3 hunks, 2 skippable, heart: h1, skip: h2 h3)");
   });
 });
 
-describe("fold through the CLI-facing service", () => {
+describe("skip through the CLI-facing service", () => {
   const key: PrKey = { host: "github.com", owner: "acme", repo: "widgets", number: 44 };
   let tmp: string;
   let a1: string;
@@ -307,7 +307,7 @@ describe("fold through the CLI-facing service", () => {
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 
-  const payload = (over: { heart?: unknown; fold?: unknown } = {}) => ({
+  const payload = (over: { heart?: unknown; skip?: unknown } = {}) => ({
     summary: "s",
     units: [
       { ...unit({ id: "alpha", hunkIds: [a1, a2] }), ...over },
@@ -317,28 +317,28 @@ describe("fold through the CLI-facing service", () => {
   });
 
   it("set-analysis accepts a fold of the unit's own hunks, resolving short ids", () => {
-    const { state } = setAnalysis(key, payload({ fold: [{ hunkId: a2.slice(0, 8), why: "adds imports" }] }), {}, tmp);
-    expect(state.units[0].fold).toEqual([{ hunkId: a2, why: "adds imports" }]);
+    const { state } = setAnalysis(key, payload({ skip: [{ hunkId: a2.slice(0, 8), why: "adds imports" }] }), {}, tmp);
+    expect(state.units[0].skip).toEqual([{ hunkId: a2, why: "adds imports" }]);
   });
 
   it("set-analysis rejects a fold hunk that belongs to another unit, naming it", () => {
-    expect(() => setAnalysis(key, payload({ fold: [{ hunkId: b1, why: "wrong unit" }] }), {}, tmp)).toThrow(
-      /A unit's fold must name hunks of that unit[\s\S]*alpha: /,
+    expect(() => setAnalysis(key, payload({ skip: [{ hunkId: b1, why: "wrong unit" }] }), {}, tmp)).toThrow(
+      /A unit's skip must name hunks of that unit[\s\S]*alpha: /,
     );
   });
 
-  it("set-analysis rejects a hunk that is both heart and fold, naming it", () => {
+  it("set-analysis rejects a hunk that is both heart and skip, naming it", () => {
     expect(() =>
       setAnalysis(
         key,
         payload({
           heart: [{ hunkId: a1, why: "the rule" }],
-          fold: [{ hunkId: a1.slice(0, 8), why: "imports" }],
+          skip: [{ hunkId: a1.slice(0, 8), why: "imports" }],
         }),
         {},
         tmp,
       ),
-    ).toThrow(new RegExp(`both heart and fold[\\s\\S]*alpha: ${a1}`));
+    ).toThrow(new RegExp(`both heart and skip[\\s\\S]*alpha: ${a1}`));
   });
 
   it("set-unit patches a fold with short ids judged on the list after the patch", () => {
@@ -347,39 +347,39 @@ describe("fold through the CLI-facing service", () => {
       key,
       [
         { unitId: "beta", payload: { removeHunkIds: [b1] } },
-        { unitId: "alpha", payload: { addHunkIds: [b1], fold: [{ hunkId: b1.slice(0, 8), why: "moved in" }] } },
+        { unitId: "alpha", payload: { addHunkIds: [b1], skip: [{ hunkId: b1.slice(0, 8), why: "moved in" }] } },
       ],
       tmp,
     );
-    expect(state.units[0].fold).toEqual([{ hunkId: b1, why: "moved in" }]);
+    expect(state.units[0].skip).toEqual([{ hunkId: b1, why: "moved in" }]);
   });
 
   it("set-unit refuses a fold hunk the unit does not hold", () => {
     setAnalysis(key, payload(), {}, tmp);
-    expect(() => setUnit(key, "alpha", { fold: [{ hunkId: b1, why: "x" }] }, {}, tmp)).toThrow(
-      /fold\[0\] .* is not a hunk this unit holds/,
+    expect(() => setUnit(key, "alpha", { skip: [{ hunkId: b1, why: "x" }] }, {}, tmp)).toThrow(
+      /skip\[0\] .* is not a hunk this unit holds/,
     );
   });
 
   it("set-unit refuses a fold of the existing heart, and a heart of the existing fold", () => {
     setAnalysis(key, payload({ heart: [{ hunkId: a1, why: "the rule" }] }), {}, tmp);
-    expect(() => setUnit(key, "alpha", { fold: [{ hunkId: a1, why: "x" }] }, {}, tmp)).toThrow(
-      new RegExp(`both heart and fold.*${a1}`),
+    expect(() => setUnit(key, "alpha", { skip: [{ hunkId: a1, why: "x" }] }, {}, tmp)).toThrow(
+      new RegExp(`both heart and skip.*${a1}`),
     );
-    setUnit(key, "alpha", { fold: [{ hunkId: a2, why: "imports" }] }, {}, tmp);
+    setUnit(key, "alpha", { skip: [{ hunkId: a2, why: "imports" }] }, {}, tmp);
     expect(() => setUnit(key, "alpha", { heart: [{ hunkId: a2, why: "x" }] }, {}, tmp)).toThrow(
-      new RegExp(`both heart and fold.*${a2}`),
+      new RegExp(`both heart and skip.*${a2}`),
     );
     // Moving the hunk out of the heart in the same patch is fine.
     const state = setUnit(
       key,
       "alpha",
-      { heart: [{ hunkId: a1, why: "the rule" }], fold: [{ hunkId: a2, why: "imports" }] },
+      { heart: [{ hunkId: a1, why: "the rule" }], skip: [{ hunkId: a2, why: "imports" }] },
       {},
       tmp,
     );
     expect(state.units[0].heart).toEqual([{ hunkId: a1, why: "the rule" }]);
-    expect(state.units[0].fold).toEqual([{ hunkId: a2, why: "imports" }]);
+    expect(state.units[0].skip).toEqual([{ hunkId: a2, why: "imports" }]);
   });
 });
 
@@ -425,5 +425,31 @@ describe("fileOrder through the reducer", () => {
       { ts, type: "unit-updated", unitId: "u1", patch: { hunkIds: ["h1", "h2"] } } as ReviewerEvent,
     ]);
     expect(state.units[0].fileOrder).toEqual(["a.ts"]);
+  });
+});
+
+describe("`fold`, the field's first name", () => {
+  const rev = {
+    ts, type: "revision-added", revision: 1, baseSha: "b", headSha: "h", mergeBase: "m", baseOnly: false,
+    files: [{ path: "a.ts", hunkIds: ["h1", "h2", "h3"] }],
+  } as ReviewerEvent;
+  const raw = (over: Record<string, unknown>) =>
+    ({ id: "u1", title: "Unit", summary: "s", kind: "core-logic", attention: "must-read", attentionWhy: "w", riskFlags: [], hunkIds: ["h1", "h2", "h3"], order: 1, ...over }) as unknown as ReviewUnit;
+
+  it("lands as skip through analysis-set, and the state carries no fold key", () => {
+    const state = fold([rev, { ts, type: "analysis-set", revision: 1, summary: "s", units: [raw({ fold: [{ hunkId: "h2", why: "adds imports" }] })], unassigned: [] } as ReviewerEvent]);
+    expect(state.units[0].skip).toEqual([{ hunkId: "h2", why: "adds imports" }]);
+    expect("fold" in state.units[0]).toBe(false);
+    expect([...skippedHunkIds(state)]).toEqual(["h2"]);
+  });
+
+  it("a patch sent as fold replaces the skip list", () => {
+    const state = fold([
+      rev,
+      { ts, type: "analysis-set", revision: 1, summary: "s", units: [raw({ skip: [{ hunkId: "h2", why: "a" }] })], unassigned: [] } as ReviewerEvent,
+      { ts, type: "unit-updated", unitId: "u1", patch: { fold: [{ hunkId: "h3", why: "b" }] } } as ReviewerEvent,
+    ]);
+    expect(state.units[0].skip).toEqual([{ hunkId: "h3", why: "b" }]);
+    expect("fold" in state.units[0]).toBe(false);
   });
 });

@@ -53,7 +53,6 @@ import {
   isCollapsed,
   pruneCollapsed,
   seedCollapsed,
-  seedFolded,
   reconcileViewed,
   setCollapsed,
   toggleCollapsed,
@@ -275,10 +274,11 @@ export interface DiffPaneProps {
    */
   heart?: ReadonlyMap<string, HeartMark>;
   /**
-   * The selected unit's folded hunks (hunk id -> two-to-five-word why): they
-   * start shut with the why on their header, and Space passes over them.
+   * The selected unit's skippable hunks (hunk id -> two-to-five-word why):
+   * their rows are muted, the why sits on their header, and Space passes
+   * over them.
    */
-  fold?: ReadonlyMap<string, string>;
+  skip?: ReadonlyMap<string, string>;
   /**
    * Files tab only: which unit (if any) a hunk belongs to, for a quiet label
    * on its header — the units tab already groups by unit, so the host omits
@@ -360,7 +360,7 @@ export function DiffPane({
   isDefinedInDiff,
   jumpToHunk,
   heart,
-  fold,
+  skip,
   unitForHunkId,
   onUnitClick,
   highlight = null,
@@ -822,7 +822,6 @@ export function DiffPane({
   // Comparing against the previous snapshot (rather than reacting to the flag
   // itself) is what lets a manual unfold survive until the state next moves.
   const viewedNow = useMemo(() => viewedSnapshot(detail.state.hunks), [detail.state.hunks]);
-  const foldedIds = useMemo(() => (fold ? new Set(fold.keys()) : undefined), [fold]);
   /** Per heart hunk, the unified row indices its range covers; `null` is the whole hunk. */
   const heartRows = useMemo(() => {
     const out = new Map<string, ReadonlySet<number> | null>();
@@ -1586,11 +1585,7 @@ export function DiffPane({
     const shownIds = entries.map((e) => e.hunk.id);
     const jump = pendingJumpRef.current;
     setCollapsedState((prev) => {
-      const seeded = seedFolded(
-        seedCollapsed(pruneCollapsed(prev, shownIds), shownIds, viewedNow, autoCollapseViewedHunks),
-        shownIds,
-        foldedIds,
-      );
+      const seeded = seedCollapsed(pruneCollapsed(prev, shownIds), shownIds, viewedNow, autoCollapseViewedHunks);
       return jump && shownIds.includes(jump.hunkId) ? setCollapsed(seeded, jump.hunkId, false) : seeded;
     });
     setOpenedFoldRegions((prev) => pruneOpenedFoldRegions(prev, entries.map((e) => e.hunk.id)));
@@ -2146,7 +2141,7 @@ export function DiffPane({
         const order = e.shiftKey
           ? [...ids.slice(0, Math.max(cur, 0)).reverse(), ...ids.slice(start).reverse()]
           : [...ids.slice(start), ...ids.slice(0, Math.max(start, 0))];
-        const next = order.find((id) => !detail.state.hunks[id]?.viewed && !fold?.has(id));
+        const next = order.find((id) => !detail.state.hunks[id]?.viewed && !skip?.has(id));
         if (next) focusAndScroll(next);
       }
     };
@@ -2165,7 +2160,7 @@ export function DiffPane({
     detail.diff,
     detail.state.hunks,
     toggleHunkFoldRegions,
-    fold,
+    skip,
   ]);
 
   if (!entries.length) {
@@ -2376,6 +2371,9 @@ export function DiffPane({
               data-flash={vi.key === flashKey ? "true" : undefined}
               data-sticky={stickyTop !== null ? "true" : undefined}
               data-heart={heartMarks(row) ? "true" : undefined}
+              data-skippable={
+                skip && (row.type === "line" || row.type === "split") && skip.has(row.hunkId) ? "true" : undefined
+              }
               ref={virtualizer.measureElement}
               style={
                 stickyTop !== null
@@ -2811,10 +2809,10 @@ export function DiffPane({
       // unfolds, which is the only sensible place to read them.
       const inside = folded ? commentsInHunk(row.entry) : null;
       const atHeart = heart?.has(row.hunkId) === true;
-      const foldWhy = fold?.get(row.hunkId);
+      const skipWhy = skip?.get(row.hunkId);
       // Support hunks are named only once the unit has a heart to contrast
-      // with; a folded hunk carries the analysis's own label instead.
-      const hint = heart?.size && !atHeart && foldWhy === undefined ? hunkHint(row.entry.file, row.entry.hunk) : null;
+      // with; a skippable hunk carries the analysis's own label instead.
+      const hint = heart?.size && !atHeart && skipWhy === undefined ? hunkHint(row.entry.file, row.entry.hunk) : null;
       // The heart tint is the ground; keyboard focus layers its own on top,
       // so a focused heart header reads as both.
       const ground = atHeart
@@ -2899,14 +2897,14 @@ export function DiffPane({
             />
           ) : null}
           <span className="truncate font-mono text-2xs">{hunkLabel(row.entry.hunk)}</span>
-          {foldWhy !== undefined ? (
+          {skipWhy !== undefined ? (
             <span
               className="chip flex-none"
-              data-testid={`hunk-fold-${row.hunkId}`}
-              style={{ background: "var(--bg-inset)", color: "var(--fg-faint)", fontStyle: "italic" }}
-              data-tip="The analysis folded this hunk as skippable; it counts toward nothing. Open it if in doubt"
+              data-testid={`hunk-skip-${row.hunkId}`}
+              style={{ background: "var(--bg-inset)", color: "var(--fg-faint)" }}
+              data-tip="The analysis says a reader can skip this hunk; it counts toward nothing and Space passes over it"
             >
-              {foldWhy}
+              skippable · {skipWhy}
             </span>
           ) : null}
           {hint ? (
