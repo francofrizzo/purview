@@ -7,6 +7,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Stopping a chat reply says so.** The stop button reads "stopping…" until the reply winds down, and a stop that does not land shows up in the chat's failure row.
+- **A unit's revision notes survive a fresh analysis.** Re-analysing a PR from scratch used to drop every unit's "what changed in rN" notes; they now carry over to the new units that hold the same hunks, and notes lost that way come back.
 - **Moved code in one color.** Both ends of a move tint violet now; the fold band's "moved from / to" and the badge's arrow say which way it went.
 - **Jump from a fold band.** A folded "N lines moved from / to …" band now carries a "go to" at its right edge that lands on the other end of the move when it is in the same unit; the band itself still expands on click or Enter.
 - **One move, one band.** A moved block that a blank line or a closing brace split in two now folds behind a single band, the gap with it; a real edit inside the block still keeps the halves apart.

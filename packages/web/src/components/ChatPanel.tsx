@@ -518,9 +518,15 @@ export function ChatPanel({
           >
             {chat.failure.message}
             <div className="mt-1.5 flex gap-1.5">
-              <button type="button" className="btn" onClick={chat.retry} disabled={chat.busy}>
-                retry
-              </button>
+              {chat.failure.retry ? (
+                <button type="button" className="btn" onClick={chat.retry} disabled={chat.busy}>
+                  retry
+                </button>
+              ) : (
+                <button type="button" className="btn" data-testid="chat-dismiss-failure" onClick={chat.dismissFailure}>
+                  dismiss
+                </button>
+              )}
               {chat.queue.length ? (
                 <button
                   type="button"
@@ -718,19 +724,20 @@ export function ChatPanel({
           {chat.busy ? (
             <span className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--accent)" }}>
               <IconSpinner width={10} height={10} />
-              thinking…
+              {chat.stopping ? "stopping…" : "thinking…"}
               <button
                 type="button"
                 data-testid="chat-stop"
-                className="inline-flex items-center gap-1 rounded border px-1.5 py-px"
+                className="inline-flex items-center gap-1 rounded border px-1.5 py-px disabled:opacity-60"
                 style={{ borderColor: "var(--border-strong)", color: "var(--fg-muted)", background: "var(--bg-inset)" }}
                 data-tip="Stop the reply"
                 data-tip-key="esc"
                 aria-label="Stop the reply"
+                disabled={chat.stopping}
                 onClick={() => void chat.stop()}
               >
                 <IconStop width={8} height={8} />
-                stop
+                {chat.stopping ? "stopping…" : "stop"}
               </button>
             </span>
           ) : (

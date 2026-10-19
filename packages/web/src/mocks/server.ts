@@ -1952,8 +1952,13 @@ export const mockApi = {
           cancelled = true;
         });
         let text = "";
-        /** A stop lands like the server's: the text so far, marked, persisted, and `done`. */
-        const interrupt = () => {
+        /**
+         * A stop lands like the server's: the text so far, marked, persisted,
+         * and `done` — after the moment the child takes to exit, so "stopping…"
+         * is a state the reader (and a test) can see.
+         */
+        const interrupt = async () => {
+          await delay(400);
           const message: ChatMessage = { role: "assistant", text, ts: new Date().toISOString(), interrupted: true };
           store.push(message);
           controller.enqueue(frame("done", { message }));

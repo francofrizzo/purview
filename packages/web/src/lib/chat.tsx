@@ -26,7 +26,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { qk, useAgentName } from "../api/hooks";
-import { errorText } from "../api/errors";
+import { ApiError, errorText } from "../api/errors";
 import type { ChatAgentSelection, ChatMessage, ChatRef, ChatStreamEvent, ResolvedAgent, ToolKind } from "../api/types";
 import {
   autoRefReducer,
@@ -56,8 +56,11 @@ export interface QueuedMessage {
 
 export interface ChatFailure {
   message: string;
-  /** exactly what was sent, so "retry" is a re-send and not a re-compose */
-  retry: { text: string; refs: ChatRef[] };
+  /**
+   * exactly what was sent, so "retry" is a re-send and not a re-compose;
+   * absent when nothing was sent (a stop that did not land)
+   */
+  retry?: { text: string; refs: ChatRef[] };
 }
 
 interface ChatContextValue {
@@ -73,6 +76,8 @@ interface ChatContextValue {
   /** the reply being streamed right now, or null */
   streaming: { text: string; tools: ToolActivity[] } | null;
   busy: boolean;
+  /** a stop was asked for and the turn has not wound down yet */
+  stopping: boolean;
   failure: ChatFailure | null;
 
   /** the agent the next message will use; null until the transcript loads */
@@ -168,6 +173,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState<{ text: string; tools: ToolActivity[] } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [failure, setFailure] = useState<ChatFailure | null>(null);
   const [refs, setRefs] = useState<ChatRef[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -198,6 +204,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setMessages([]);
       setStreaming(null);
       setBusy(false);
+      setStopping(false);
       setFailure(null);
       setRefs([]);
       setEditingIndex(null);
@@ -358,6 +365,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       abortRef.current = null;
       setStreaming(null);
       setBusy(false);
+      setStopping(false);
       if (outcome.failed) {
         setFailure({ message: outcome.failed, retry: { text, refs: sent } });
         return;
@@ -414,11 +422,21 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Only a request: the running stream sees the server's `done` (marked
   // interrupted) and winds the turn down itself, exactly as a natural end
   // would, so there is no second code path for the transcript to get out of
-  // step on. A refusal (the turn ended on its own first) is nothing to show.
+  // step on. `stopping` holds from the click until that end so the button can
+  // say so. A refusal (the turn ended on its own first) is nothing to show;
+  // any other failure goes in the failure row, with nothing to retry.
   const stop = useCallback(async () => {
     const key = keyRef.current;
     if (!key || !abortRef.current) return;
-    await api.stopChat(key).catch(() => {});
+    setStopping(true);
+    try {
+      await api.stopChat(key);
+    } catch (err) {
+      if (keyRef.current !== key) return;
+      setStopping(false);
+      if (err instanceof ApiError && err.message === "chat_idle") return;
+      setFailure({ message: `The reply could not be stopped: ${errorText(err)}` });
+    }
   }, []);
 
   const sendQueuedNow = useCallback(
@@ -453,7 +471,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   /** Re-send the message that failed, dropping the transcript entry it left. */
   const retry = useCallback(() => {
     const key = keyRef.current;
-    if (!key || !failure || busy) return;
+    if (!key || !failure?.retry || busy) return;
     const { text, refs: sent } = failure.retry;
     setFailure(null);
     setMessages((cur) => {
@@ -568,6 +586,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setMessages([]);
     setStreaming(null);
     setBusy(false);
+    setStopping(false);
     setFailure(null);
     setEditingIndex(null);
     setPreEditRefs(null);
@@ -589,6 +608,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       loading,
       streaming,
       busy,
+      stopping,
       failure,
       ...agentState,
       setAgent,
@@ -625,6 +645,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       loading,
       streaming,
       busy,
+      stopping,
       failure,
       refs,
       attachRef,
