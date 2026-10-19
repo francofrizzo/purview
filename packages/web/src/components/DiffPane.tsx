@@ -1114,8 +1114,22 @@ export function DiffPane({
         hunk.id,
       );
       out.push({ type: "hunk", key: `h:${hunk.id}`, hunkId: hunk.id, entry, seam });
+      // The heart's why sits under the header, except for a ranged heart in
+      // an open hunk: there it sits right above the first marked row, where
+      // the lines it describes are, not hundreds of lines up. If the rows
+      // below never reach that index (it fell inside a folded moved-code
+      // region), it goes under the header after all.
       const mark = heart?.get(hunk.id);
-      if (mark !== undefined) out.push({ type: "heart", key: `heart:${hunk.id}`, hunkId: hunk.id, why: mark.why });
+      const ranged = mark !== undefined ? heartRows.get(hunk.id) : undefined;
+      const captionAt = ranged && !isCollapsed(collapsed, hunk.id) ? Math.min(...ranged) : undefined;
+      const headerIdx = out.length;
+      let captionPushed = false;
+      const pushHeart = () => {
+        if (mark === undefined || captionPushed) return;
+        captionPushed = true;
+        out.push({ type: "heart", key: `heart:${hunk.id}`, hunkId: hunk.id, why: mark.why });
+      };
+      if (captionAt === undefined) pushHeart();
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
       }
@@ -1162,6 +1176,9 @@ export function DiffPane({
             i = region.to - 1;
             continue;
           }
+          if (captionAt !== undefined && (pairs[i].left?.index === captionAt || pairs[i].right?.index === captionAt)) {
+            pushHeart();
+          }
           out.push({
             type: "split",
             key: `${w}s:${hunk.id}:${i}`,
@@ -1187,6 +1204,7 @@ export function DiffPane({
             i = region.to - 1;
             continue;
           }
+          if (i === captionAt) pushHeart();
           out.push({
             type: "line",
             key: `${w}l:${hunk.id}:${i}`,
@@ -1202,6 +1220,9 @@ export function DiffPane({
             composeAt(file.path, no, side, hunk.id);
           }
         }
+      }
+      if (mark !== undefined && !captionPushed) {
+        out.splice(headerIdx, 0, { type: "heart", key: `heart:${hunk.id}`, hunkId: hunk.id, why: mark.why });
       }
       pushGapAfter();
     }
@@ -1224,6 +1245,7 @@ export function DiffPane({
     foldRegionsByHunk,
     openedFoldRegions,
     heart,
+    heartRows,
   ]);
 
   const hunkRowIndex = useMemo(() => {

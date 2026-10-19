@@ -49,6 +49,16 @@ test("a heart with a line range bars only those rows, and its brief entry names 
   await expect(row("await this.ledger.record(key, result)")).not.toHaveAttribute("data-heart", "true");
   await expect(page.getByTestId(`hunk-header-${HEART[1]}`).locator("xpath=..")).toHaveAttribute("data-heart", "true");
   await expect(page.getByTestId(`heart-jump-${HEART[1]}`)).toContainText("charge.ts:21-23");
+  // The why sits right above the first marked row (the deleted line the
+  // range replaces), not under the header 3 rows up.
+  const captionIdx = Number(await page.getByTestId(`hunk-heart-${HEART[1]}`).locator("xpath=..").getAttribute("data-index"));
+  const firstMarked = Number(await row("const res = await this.gateway.charge(order.total, order.currency);").getAttribute("data-index"));
+  expect(firstMarked).toBe(captionIdx + 1);
+  const headerIdx = Number(await page.getByTestId(`hunk-header-${HEART[1]}`).locator("xpath=..").getAttribute("data-index"));
+  expect(captionIdx).toBeGreaterThan(headerIdx + 1);
+  // A whole-hunk heart keeps its why under the header.
+  const h0 = Number(await page.getByTestId(`hunk-header-${HEART[0]}`).locator("xpath=..").getAttribute("data-index"));
+  expect(Number(await page.getByTestId(`hunk-heart-${HEART[0]}`).locator("xpath=..").getAttribute("data-index"))).toBe(h0 + 1);
 });
 
 test("the unit brief lists the heart, and a jump focuses that hunk", async ({ page }) => {
