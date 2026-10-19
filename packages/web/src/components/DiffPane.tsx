@@ -833,10 +833,12 @@ export function DiffPane({
    * whole hunk), and where each segment's caption goes: the first row of its
    * range, in row order.
    */
-  const { heartRows, heartCaptions } = useMemo(() => {
+  const { heartRows, heartCaptions, heartEnds } = useMemo(() => {
     const heartRows = new Map<string, ReadonlySet<number> | null>();
     const heartCaptions = new Map<string, { at: number; seg: number; why: string }[]>();
-    if (!heart) return { heartRows, heartCaptions };
+    /** Per ranged heart hunk, the last unified row of each segment: a rule closes the segment there. */
+    const heartEnds = new Map<string, ReadonlySet<number>>();
+    if (!heart) return { heartRows, heartCaptions, heartEnds };
     for (const e of entries) {
       const marks = heart.get(e.hunk.id);
       if (!marks?.length) continue;
@@ -847,19 +849,38 @@ export function DiffPane({
       const rows = buildRows(e.hunk, detail.diff);
       const all = new Set<number>();
       const captions: { at: number; seg: number; why: string }[] = [];
+      const ends = new Set<number>();
       marks.forEach((m, seg) => {
         const set = heartRowIndices(rows, m.lines!);
         for (const i of set) all.add(i);
-        if (set.size) captions.push({ at: Math.min(...set), seg, why: m.why });
+        if (set.size) {
+          captions.push({ at: Math.min(...set), seg, why: m.why });
+          ends.add(Math.max(...set));
+        }
       });
       heartRows.set(e.hunk.id, all);
+      heartEnds.set(e.hunk.id, ends);
       heartCaptions.set(
         e.hunk.id,
         captions.sort((a, b) => a.at - b.at),
       );
     }
-    return { heartRows, heartCaptions };
+    return { heartRows, heartCaptions, heartEnds };
   }, [heart, entries, detail.diff]);
+  /** Whether a row is the last of a heart segment, where the segment's closing rule sits. */
+  const heartEndsAt = (row: FlatRow): boolean => {
+    if (!("hunkId" in row)) return false;
+    const ends = heartEnds.get(row.hunkId);
+    if (!ends) return false;
+    if (row.type === "line") return ends.has(row.lineIdx);
+    if (row.type === "split") {
+      const pair = buildSplitRows(row.entry.hunk, detail.diff)[row.rowIdx];
+      return Boolean(
+        pair && ((pair.right && ends.has(pair.right.index)) || (pair.left && ends.has(pair.left.index))),
+      );
+    }
+    return false;
+  };
   /** Whether a row carries the heart bar: every row of a whole-hunk heart, only the ranged rows otherwise. */
   const heartMarks = (row: FlatRow): boolean => {
     if (!("hunkId" in row) || !heartRows.has(row.hunkId)) return false;
@@ -2462,6 +2483,7 @@ export function DiffPane({
               data-flash={vi.key === flashKey ? "true" : undefined}
               data-sticky={stickyTop !== null ? "true" : undefined}
               data-heart={heartMarks(row) ? "true" : undefined}
+              data-heart-end={heartEndsAt(row) ? "true" : undefined}
               data-skippable={
                 skip && (row.type === "line" || row.type === "split") && skip.has(row.hunkId) ? "true" : undefined
               }

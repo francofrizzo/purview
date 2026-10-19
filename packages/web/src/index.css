@@ -818,3 +818,15 @@ html[data-mode="light"] .logo-for-light {
   z-index: 4;
   pointer-events: none;
 }
+/* The last row of a heart segment closes it with a rule along its bottom edge. */
+[data-heart-end="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--heart);
+  z-index: 4;
+  pointer-events: none;
+}

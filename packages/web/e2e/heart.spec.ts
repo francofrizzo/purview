@@ -62,6 +62,12 @@ test("a heart with a line range bars only those rows, and its brief entry names 
   // lines between the two segments are not.
   await expect(row("await this.ledger.recordFailure(key, res.code)")).toHaveAttribute("data-heart", "true");
   await expect(row("const res = await this.retry(() =>")).not.toHaveAttribute("data-heart", "true");
+  // Each segment closes with a rule on its last row, and nowhere else.
+  await expect(row("if (existing) return existing.result")).toHaveAttribute("data-heart-end", "true");
+  // Line 30 is the second row with this text; the first is the deleted line 22, outside the segment.
+  await expect(page.locator("[data-index]", { hasText: "throw new ChargeFailed(res.code);" }).nth(1)).toHaveAttribute("data-heart-end", "true");
+  await expect(row("const res = await this.gateway.charge(order.total, order.currency);")).not.toHaveAttribute("data-heart-end", "true");
+  await expect(row("await this.ledger.recordFailure(key, res.code)")).not.toHaveAttribute("data-heart-end", "true");
   await expect(page.getByTestId(`heart-jump-${HEART[1]}`).first()).toContainText("charge.ts:21-23");
   await expect(page.getByTestId(`heart-jump-${HEART[1]}`).nth(1)).toContainText("charge.ts:29-30");
   // Each why sits right above its segment's first marked row (for the first,
