@@ -1205,7 +1205,7 @@ export type ArchivedHunk = z.infer<typeof ArchivedHunkSchema>;
  * written under an older version, so stored PRs pick the change up on their
  * next read instead of only on their next appended event.
  */
-export const STATE_SHAPE_VERSION = 7;
+export const STATE_SHAPE_VERSION = 8;
 
 export const StateSchema = z.object({
   /** see STATE_SHAPE_VERSION; absent on every state.json written before it existed */

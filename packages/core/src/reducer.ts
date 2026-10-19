@@ -1,4 +1,4 @@
-import { STATE_SHAPE_VERSION, isRemovedUnit } from "./schemas.js";
+import { CHANGELOG_TEXT_MAX, STATE_SHAPE_VERSION, isRemovedUnit } from "./schemas.js";
 import { GENERATED_UNIT_ID, buildGeneratedUnit, isGeneratedUnit } from "./generated.js";
 import { hunkIdsOf, normalizeHunks, skipOf, toHunkEntry, upsertHunks } from "./units.js";
 import { upcastEvent } from "./upcast.js";
@@ -42,6 +42,42 @@ function reviveIfPopulated(unit: ReviewUnit): ReviewUnit {
   delete next.removedAtRevision;
   delete next.readBeforeRemoval;
   return next;
+}
+
+/**
+ * A fresh analysis replaces the units, but the per-revision changelog is
+ * history the reader cannot get back: each new unit inherits the entries of
+ * the old units that held its hunks (largest overlap first). An entry the
+ * payload itself carries for a revision wins; when two old units contributed
+ * different notes for one revision, both are kept, joined.
+ */
+export function carryChangelogs(prev: readonly ReviewUnit[], next: ReviewUnit[]): ReviewUnit[] {
+  const byHunk = new Map<string, ReviewUnit>();
+  for (const u of prev) for (const id of hunkIdsOf(u)) byHunk.set(id, u);
+  if (byHunk.size === 0) return next;
+  return next.map((unit) => {
+    const overlap = new Map<ReviewUnit, number>();
+    for (const id of hunkIdsOf(unit)) {
+      const old = byHunk.get(id);
+      if (old?.changelog?.length) overlap.set(old, (overlap.get(old) ?? 0) + 1);
+    }
+    if (overlap.size === 0) return unit;
+    const sources = [...overlap.entries()].sort((a, b) => b[1] - a[1]).map(([u]) => u);
+    const texts = new Map<number, string[]>();
+    for (const src of sources) {
+      for (const e of src.changelog ?? []) {
+        const list = texts.get(e.revision) ?? [];
+        if (!list.includes(e.text)) list.push(e.text);
+        texts.set(e.revision, list);
+      }
+    }
+    let changelog = unit.changelog ?? [];
+    for (const [revision, list] of texts) {
+      if (changelog.some((e) => e.revision === revision)) continue;
+      changelog = upsertChangelog(changelog, revision, list.join("; ").slice(0, CHANGELOG_TEXT_MAX));
+    }
+    return { ...unit, changelog };
+  });
 }
 
 /**
@@ -375,9 +411,12 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       // one re-sent with hunks is a live unit again.
       // The generated unit is Purview's, not the analysis's: one in the
       // payload (an import, a model echoing it) is dropped and rebuilt.
-      state.units = event.units
-        .filter((u) => !isGeneratedUnit(u))
-        .map((u) => normalizeHunks(reviveIfPopulated(fromAnalysis(u) as ReviewUnit)));
+      state.units = carryChangelogs(
+        state.units,
+        event.units
+          .filter((u) => !isGeneratedUnit(u))
+          .map((u) => normalizeHunks(reviveIfPopulated(fromAnalysis(u) as ReviewUnit))),
+      );
       state.unassignedHunkIds = [...(event.unassigned ?? [])];
       state.analysisRevision = event.revision;
       state.analysisOrigin = event.origin;

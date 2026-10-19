@@ -154,7 +154,8 @@ first three as "carried".
 5. **Never regenerate the whole analysis.** Do not re-run the full two-pass process from
    SKILL.md step 3 over the entire diff on a refresh, and never `set-analysis` — that would
    silently discard accumulated viewed-state semantics and reviewer trust in the existing
-   structure, and it starts every unit's `changelog` fresh unless the payload carries it.
+   structure (a unit's `changelog` survives: the new units inherit the notes of the old
+   units that held their hunks, but everything else about the old units is gone).
    `set-analysis` is only for the very first analysis of a PR that has none.
 
 ## What happens to findings

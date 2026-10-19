@@ -519,8 +519,8 @@ and each rejected attempt wastes a full turn re-sending your whole context. A fi
 line.
 
 This **replaces** the whole analysis for the current revision. Units are replaced
-wholesale, so a unit's `changelog` (the per-revision "what changed" lines written on
-refresh, see step 8) starts fresh unless the payload carries it.
+wholesale; only a unit's `changelog` (the per-revision "what changed" lines written on
+refresh, see step 8) carries over, to the new units that hold the same hunks.
 
 On success it prints `Analysis set for revision <n>: <u> units covering <h> hunks`, then
 what is left (hunks still needing classification, or "All hunks assigned") — no follow-up

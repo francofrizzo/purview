@@ -446,6 +446,45 @@ describe("husks: units whose every hunk left the PR", () => {
     expect(resent.units.find((u) => u.id === "core")!.removedAtRevision).toBeUndefined();
   });
 
+  it("carries a unit's changelog across a fresh analysis to the units holding its hunks", () => {
+    const noted: ReviewerEvent[] = [
+      ...events,
+      { ts, type: "unit-updated", unitId: "core", patch: { changelogEntry: "pricing rounded" } },
+      { ts, type: "unit-updated", unitId: "wire", patch: { changelogEntry: "wiring moved" } },
+    ];
+    const before = fold(noted);
+    expect(before.units.find((u) => u.id === "core")!.changelog).toEqual([{ revision: 1, text: "pricing rounded" }]);
+
+    const base = { title: "t", summary: "s", kind: "wiring" as const, attention: "skim" as const, attentionWhy: "w", riskFlags: [], order: 0 };
+    const refreshed = fold([
+      ...noted,
+      {
+        ts,
+        type: "analysis-set",
+        revision: 1,
+        summary: "",
+        unassigned: [],
+        units: [
+          // h1 came from core, h3 from wire: both notes, largest overlap first
+          { ...base, id: "merged", hunks: ["h1", "h2", "h3"] },
+          // its own entry for the revision wins over the inherited one
+          { ...base, id: "own", hunks: [], changelog: [{ revision: 1, text: "mine" }] },
+        ],
+      },
+    ]);
+    expect(refreshed.units.find((u) => u.id === "merged")!.changelog).toEqual([
+      { revision: 1, text: "pricing rounded; wiring moved" },
+    ]);
+    expect(refreshed.units.find((u) => u.id === "own")!.changelog).toEqual([{ revision: 1, text: "mine" }]);
+
+    // A unit sharing no hunk with a noted one inherits nothing.
+    const fresh = fold([
+      ...noted,
+      { ts, type: "analysis-set", revision: 1, summary: "", unassigned: ["h1", "h2", "h3"], units: [{ ...base, id: "new", hunks: [] }] },
+    ]);
+    expect(fresh.units.find((u) => u.id === "new")!.changelog).toBeUndefined();
+  });
+
   it("leaves husks out of progress, completion and readiness", () => {
     const s = fold([...events, dropCore]);
     expect(unitProgress(s).map((p) => p.unitId)).toEqual(["wire"]);
