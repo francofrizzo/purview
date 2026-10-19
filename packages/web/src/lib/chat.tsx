@@ -54,6 +54,9 @@ export interface QueuedMessage {
   refs: ChatRef[];
 }
 
+/** The transcript-level requests that take a moment and can fail. */
+export type ChatPendingAction = "rewind" | "clear" | "agent";
+
 export interface ChatFailure {
   message: string;
   /**
@@ -78,6 +81,8 @@ interface ChatContextValue {
   busy: boolean;
   /** a stop was asked for and the turn has not wound down yet */
   stopping: boolean;
+  /** the transcript-level request in flight, if any; its button says so and is disabled */
+  pending: ChatPendingAction | null;
   failure: ChatFailure | null;
 
   /** the agent the next message will use; null until the transcript loads */
@@ -174,6 +179,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [streaming, setStreaming] = useState<{ text: string; tools: ToolActivity[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [pending, setPending] = useState<ChatPendingAction | null>(null);
   const [failure, setFailure] = useState<ChatFailure | null>(null);
   const [refs, setRefs] = useState<ChatRef[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -205,6 +211,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setStreaming(null);
       setBusy(false);
       setStopping(false);
+      setPending(null);
       setFailure(null);
       setRefs([]);
       setEditingIndex(null);
@@ -530,20 +537,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [busy, editingIndex, effectiveRefs, run],
   );
 
-  /** Discard the message at `index` and everything after it; unrecoverable. */
+  /**
+   * Discard the message at `index` and everything after it; unrecoverable.
+   * A failure leaves the transcript as it was and says so in the failure
+   * row; nothing is thrown past here.
+   */
   const rewindTo = useCallback(
     async (index: number) => {
       const key = keyRef.current;
-      if (!key || busy) return;
-      const result = await api.rewindChat(key, index);
-      if (keyRef.current !== key) return;
-      setMessages(result.messages);
-      setFailure(null);
-      setSessionReset(true);
-      // The message being edited may itself have just been discarded.
-      setEditingIndex((cur) => (cur !== null && cur >= index ? null : cur));
+      if (!key || busy || pending) return;
+      setPending("rewind");
+      try {
+        const result = await api.rewindChat(key, index);
+        if (keyRef.current !== key) return;
+        setMessages(result.messages);
+        setFailure(null);
+        setSessionReset(true);
+        // The message being edited may itself have just been discarded.
+        setEditingIndex((cur) => (cur !== null && cur >= index ? null : cur));
+      } catch (err) {
+        if (keyRef.current !== key) return;
+        setFailure({ message: `The rewind did not go through: ${errorText(err)}` });
+      } finally {
+        if (keyRef.current === key) setPending(null);
+      }
     },
-    [busy],
+    [busy, pending],
   );
 
   /**
@@ -556,6 +575,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       const key = keyRef.current;
       if (!key) return;
       const previous = agentStateRef.current;
+      setPending("agent");
       setAgentState((cur) => ({
         ...cur,
         sessionAgent: agent,
@@ -570,19 +590,37 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           sessionAgent: result.sessionAgent,
           sessionHarness: result.restartedSession ? null : cur.sessionHarness,
         }));
-      } catch {
-        if (keyRef.current === key) setAgentState(previous);
+      } catch (err) {
+        if (keyRef.current !== key) return;
+        setAgentState(previous);
+        setFailure({ message: `The agent was not switched: ${errorText(err)}` });
+      } finally {
+        if (keyRef.current === key) setPending(null);
       }
     },
     [],
   );
 
+  /**
+   * The server owns the transcript, so a failed clear leaves it on screen
+   * (the failure row says why) rather than hiding what is still there.
+   */
   const clearConversation = useCallback(async () => {
     const key = keyRef.current;
     if (!key) return;
+    setPending("clear");
+    try {
+      await api.clearChat(key);
+    } catch (err) {
+      if (keyRef.current !== key) return;
+      setPending(null);
+      setFailure({ message: `The conversation was not cleared: ${errorText(err)}` });
+      return;
+    }
+    if (keyRef.current !== key) return;
+    setPending(null);
     abortRef.current?.abort();
     abortRef.current = null;
-    await api.clearChat(key).catch(() => {});
     setMessages([]);
     setStreaming(null);
     setBusy(false);
@@ -609,6 +647,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       streaming,
       busy,
       stopping,
+      pending,
       failure,
       ...agentState,
       setAgent,
@@ -646,6 +685,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       streaming,
       busy,
       stopping,
+      pending,
       failure,
       refs,
       attachRef,

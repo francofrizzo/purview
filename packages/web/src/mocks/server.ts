@@ -603,6 +603,16 @@ function recomputeFileRollups() {
 
 const chats: Record<string, ChatMessage[]> = {};
 
+/** See `clearChat`: a transcript with "keep" in it cannot be cleared or rewound. */
+function refuseIfKept(messages: ChatMessage[]) {
+  if (messages.some((m) => /\bkeep\b/i.test(m.text))) {
+    throw new ApiError("transcript_locked", 409, {
+      error: "transcript_locked",
+      detail: "the transcript is being written by another process (mock failure)",
+    });
+  }
+}
+
 /**
  * The turn streaming for a PR, while there is one: `stopChat` flags it and
  * waits for the stream to finalize, the way the server's stop waits for the
@@ -1904,8 +1914,14 @@ export const mockApi = {
     };
   },
 
+  /**
+   * A transcript holding a message with the word "keep" refuses to be
+   * cleared or rewound (a stand-in for the server losing the file lock), so
+   * the panel's failure row is reachable for those actions too.
+   */
   async clearChat(key: string): Promise<void> {
     await delay(90);
+    refuseIfKept(chats[key] ?? []);
     chats[key] = [];
     chatAgents[key] = null;
   },
@@ -2058,6 +2074,7 @@ export const mockApi = {
     if (!Number.isInteger(index) || index < 0 || index >= store.length) {
       throw new ApiError("invalid_index", 400, `index must be an integer in [0, ${store.length})`);
     }
+    refuseIfKept(store);
     const removed = store.length - index;
     chats[key] = store.slice(0, index);
     return { messages: structuredClone(chats[key]), sessionId: null, removed };

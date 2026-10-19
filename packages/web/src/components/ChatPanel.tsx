@@ -143,6 +143,7 @@ function MessageBlock({
   busy,
   isEditing,
   rewindConfirming,
+  rewinding,
   discardCount,
   onEdit,
   onRewindClick,
@@ -156,6 +157,8 @@ function MessageBlock({
   busy: boolean;
   isEditing: boolean;
   rewindConfirming: boolean;
+  /** the confirmed rewind is in flight */
+  rewinding: boolean;
   /** messages this row and everything after it, i.e. what a rewind here removes */
   discardCount: number;
   onEdit: () => void;
@@ -201,12 +204,13 @@ function MessageBlock({
                   type="button"
                   data-testid={`chat-rewind-confirm-${index}`}
                   onClick={onRewindConfirm}
-                  className="hover:underline"
+                  disabled={rewinding}
+                  className="hover:underline disabled:opacity-60"
                   style={{ color: "var(--risk)" }}
                 >
-                  discard {discardCount} message{discardCount === 1 ? "" : "s"}?
+                  {rewinding ? "discarding…" : `discard ${discardCount} message${discardCount === 1 ? "" : "s"}?`}
                 </button>
-                <button type="button" onClick={onRewindCancel} className="hover:underline">
+                <button type="button" onClick={onRewindCancel} className="hover:underline" disabled={rewinding}>
                   cancel
                 </button>
               </span>
@@ -414,11 +418,8 @@ export function ChatPanel({
 
   /** Two-step confirm lives in the row itself; this just fires the request once confirmed. */
   const confirmRewind = async (index: number) => {
-    try {
-      await chat.rewindTo(index);
-    } finally {
-      setRewindConfirmIndex(null);
-    }
+    await chat.rewindTo(index);
+    setRewindConfirmIndex(null);
   };
 
   // A rewind or an edit's resend changes what "later" means; a stale confirm
@@ -480,6 +481,7 @@ export function ChatPanel({
             busy={chat.busy}
             isEditing={chat.editingIndex === i}
             rewindConfirming={rewindConfirmIndex === i}
+            rewinding={rewindConfirmIndex === i && chat.pending === "rewind"}
             discardCount={chat.messages.length - i}
             onEdit={() => beginEdit(i, m.text)}
             onRewindClick={() => setRewindConfirmIndex(i)}
@@ -574,19 +576,24 @@ export function ChatPanel({
           style={{ borderColor: "var(--border)", background: "var(--warn-soft)", color: "var(--warn)" }}
         >
           Clear this conversation? It cannot be recovered.
-          <button type="button" className="btn ml-auto" onClick={() => setConfirmClear(false)}>
+          <button
+            type="button"
+            className="btn ml-auto"
+            disabled={chat.pending === "clear"}
+            onClick={() => setConfirmClear(false)}
+          >
             cancel
           </button>
           <button
             type="button"
             className="btn"
             data-testid="chat-clear-confirm"
+            disabled={chat.pending === "clear"}
             onClick={() => {
-              setConfirmClear(false);
-              void chat.clearConversation();
+              void chat.clearConversation().then(() => setConfirmClear(false));
             }}
           >
-            clear
+            {chat.pending === "clear" ? "clearing…" : "clear"}
           </button>
         </div>
       ) : null}
@@ -751,6 +758,7 @@ export function ChatPanel({
               value={chat.agent.model}
               configured={modelLabel(manifestOf(agents, chat.configuredAgent.harness), chat.configuredAgent.model)}
               pinned={chat.sessionAgent?.model !== undefined}
+              disabled={chat.pending === "agent"}
               onChange={(m) =>
                 void chat.setAgent(
                   editSelection(chat.sessionAgent, "model", m, chat.agent!.harness, chat.configuredAgent!.harness),
@@ -807,6 +815,7 @@ function ModelSelect({
   value,
   configured,
   pinned,
+  disabled,
   onChange,
   className,
 }: {
@@ -815,6 +824,8 @@ function ModelSelect({
   /** what "inherit" resolves to, as shown */
   configured: string;
   pinned: boolean;
+  /** the switch is in flight */
+  disabled?: boolean;
   onChange: (model: string | null) => void;
   className?: string;
 }) {
@@ -826,6 +837,7 @@ function ModelSelect({
         className="select pl-1 py-px text-2xs font-medium"
         data-tip={`Model for the next message${pinned ? "; pinned for this conversation" : ""}`}
         value={pinned ? value : "inherit"}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
         style={{ color: pinned ? "var(--fg)" : "var(--fg-muted)" }}
       >

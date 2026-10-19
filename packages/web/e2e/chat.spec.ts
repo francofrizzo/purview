@@ -23,3 +23,27 @@ test("stopping a reply says so until the turn winds down", async ({ page }) => {
   await expect(page.getByTestId("chat-stop")).toHaveCount(0);
   await expect(page.getByTestId("chat-error")).toHaveCount(0);
 });
+
+test("a clear or rewind that fails says so and leaves the transcript alone", async ({ page }) => {
+  // "keep" makes the mock refuse to clear or rewind this transcript.
+  await page.getByTestId("chat-input").fill("keep this one");
+  await page.getByTestId("chat-send").click();
+  await expect(page.getByTestId("chat-stop")).toBeVisible();
+  await page.getByTestId("chat-stop").click();
+  await expect(page.getByTestId("chat-stopped")).toBeVisible();
+
+  await page.getByTestId("chat-rewind-0").click({ force: true });
+  await page.getByTestId("chat-rewind-confirm-0").click();
+  const error = page.getByTestId("chat-error");
+  await expect(error).toContainText("The rewind did not go through");
+  await expect(error).toContainText("mock failure");
+  await expect(page.getByTestId("chat-panel")).toContainText("keep this one");
+  await page.getByTestId("chat-dismiss-failure").click();
+  await expect(error).toHaveCount(0);
+
+  await page.getByLabel("Chat settings").click();
+  await page.getByRole("button", { name: "clear conversation" }).click();
+  await page.getByTestId("chat-clear-confirm").click();
+  await expect(error).toContainText("The conversation was not cleared");
+  await expect(page.getByTestId("chat-panel")).toContainText("keep this one");
+});
