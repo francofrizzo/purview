@@ -309,11 +309,20 @@ Purview marks these hunks in the diff; the rest of the unit stays fully visible,
 heart is a pointer, not a filter. Leave `heart` off entirely for a unit whose hunks are
 all alike (a pure rename, a batch of test fixtures).
 
-A heart entry may add `"lines": [from, to]` when the logic is a small part of a large
-hunk (a 200-line hunk where 20 lines matter). The numbers are new-side line numbers (the
-hunk's added and context lines), inclusive, `from <= to`. Purview highlights that range
-and leaves the rest of the hunk as support. Leave `lines` off when the whole hunk is the
-heart.
+**A heart hunk longer than 80 lines must carry `"lines": [from, to]`**: the lines where
+the logic the `why` describes actually sits, so the reader lands on it instead of at the
+top of a 500-line file. A whole new file is the usual case: its hunk is the entire file,
+and the heart is one function or one table in it, not the imports, the type declarations
+and the helpers around it. The numbers are new-side line numbers (the hunk's added and
+context lines), inclusive, `from <= to`, read off the file at `show <id>`; keep the range
+tight (a function, a block, a table), at most about 60 lines. Purview bars that range
+and leaves the rest of the hunk as support. A shorter hunk may carry `lines` too when a
+few lines are the point; leave it off only when the whole hunk is the heart.
+
+- Good: a 785-line new `dataset.go` whose heart `why` is about `Enqueue` → `"lines":
+  [214, 261]`, the `Enqueue` function.
+- Bad: the same hunk with no `lines` (the reader starts at the package clause), or with
+  `"lines": [1, 785]` (the whole hunk restated).
 
 `fold` (optional, a list of `{"hunkId": "...", "why": "..."}`) names the unit's hunks a
 reader can skip: import changes, re-exports, renamed call sites, moved boilerplate, inside
