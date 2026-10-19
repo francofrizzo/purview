@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.19.2
 
 - **Finer notes from the analysis.** Hunk headers carry a few words on what each hunk is, and a heart can mark more than one place in a hunk.
 
