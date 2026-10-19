@@ -1538,6 +1538,9 @@ export function PrView() {
       {exportAnalysis.error ? (
         <ErrorBar message={`export failed: ${(exportAnalysis.error as Error).message}`} />
       ) : null}
+      {setUnitViewed.error ? (
+        <ErrorBar message={`Unit not marked viewed: ${errorText(setUnitViewed.error)}. Its hunks are back as they were.`} />
+      ) : null}
       {importParseError ? <ErrorBar message={importParseError} /> : null}
       {importAnalysis.error ? (
         <ErrorBar message={`import failed: ${(importAnalysis.error as Error).message}`} />
@@ -1831,7 +1834,11 @@ export function PrView() {
                     }
                   >
                     {/* Same action; for the generated unit it is the one-click way through. */}
-                    {isGeneratedUnit(selectedUnit) ? "mark all viewed" : "mark unit viewed"}
+                    {setUnitViewed.isPending
+                      ? "marking…"
+                      : isGeneratedUnit(selectedUnit)
+                        ? "mark all viewed"
+                        : "mark unit viewed"}
                   </button>
                   {allUnitsViewed ? (
                     <span
