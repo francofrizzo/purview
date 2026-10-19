@@ -119,3 +119,15 @@ test("`n` opens the composer: on the gutter range, else on the focused hunk's fi
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("line-prompt")).toHaveCount(0);
 });
+
+test("a save the server refuses says why under the box and keeps the text", async ({ page }) => {
+  await openComposerOnLine(page, 10);
+  const composer = page.getByTestId("comment-composer");
+  // "fail" makes the mock refuse the save.
+  await page.getByTestId("composer-textarea").fill("this will fail");
+  await page.getByTestId("composer-save").click();
+  await expect(page.getByTestId("composer-error")).toContainText("mock failure");
+  await expect(composer).toBeVisible();
+  await expect(page.getByTestId("composer-textarea")).toHaveValue("this will fail");
+  await expect(page.getByTestId("composer-save")).toHaveText("save draft");
+});

@@ -1309,9 +1309,13 @@ export const mockApi = {
    * file-level comment, and file-level comments carry a null line *and* a null
    * side so nothing downstream can mistake them for line 0.
    */
+  /** A body with the word "fail" is refused, the way the chat's is, so the composer's error row is reachable. */
   async addComment(_key: string, input: AddCommentInput): Promise<DraftComment> {
     await delay(120);
     if (!input.body.trim()) throw new ApiError("invalid_body", 400, "Body must be non-empty");
+    if (/\bfail\b/i.test(input.body)) {
+      throw new ApiError("write_failed", 500, { error: "write_failed", detail: "comments.json is read-only (mock failure)" });
+    }
     const fileLevel = input.subjectType === "file";
     // Like the server: a range starts before its line, on the same side.
     const startLine = !fileLevel && input.startLine !== undefined && input.startLine < input.line ? input.startLine : undefined;

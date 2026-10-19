@@ -332,10 +332,15 @@ export function PrView() {
     setComposerBody("");
   }, [commentTargetKey]);
   /** Open the composer, assuming it goes inline; the diff says otherwise before paint. */
-  const openComposer = useCallback((target: CommentTarget | null) => {
-    setComposerPlaced(true);
-    setCommentTarget(target);
-  }, []);
+  const openComposer = useCallback(
+    (target: CommentTarget | null) => {
+      setComposerPlaced(true);
+      setCommentTarget(target);
+      // A refusal belongs to the box it came from, not to the next one opened.
+      addComment.reset();
+    },
+    [addComment.reset],
+  );
   // The files tab names the file in its own header rather than in the pane, so
   // that header is where its file-level comments live too.
   const [fileCommentsOpen, setFileCommentsOpen] = useState(false);
@@ -1393,6 +1398,7 @@ export function PrView() {
         value={composerBody}
         onChange={setComposerBody}
         pending={addComment.isPending}
+        error={addComment.error ? errorText(addComment.error) : null}
         exportCtx={exportCtx}
         onCancel={() => setCommentTarget(null)}
         audience={audienceSwitch.audience}

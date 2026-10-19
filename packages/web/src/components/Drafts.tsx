@@ -121,6 +121,7 @@ export function commentAnchorLabel(c: {
 export function CommentComposer({
   target,
   pending,
+  error,
   exportCtx,
   onCancel,
   onSubmit,
@@ -134,6 +135,8 @@ export function CommentComposer({
 }: {
   target: CommentTarget;
   pending: boolean;
+  /** why the last save was refused; shown under the box until the next try */
+  error?: string | null;
   /** who the comment is for (the global switch); a reply is always for GitHub */
   audience?: CommentAudience;
   onAudienceChange?: (next: CommentAudience) => void;
@@ -307,6 +310,11 @@ export function CommentComposer({
           <DropHint active={attach.dragging} />
           {attach.input}
         </>
+      ) : null}
+      {error ? (
+        <p className="px-3 py-1 text-2xs leading-4" data-testid="composer-error" style={{ color: "var(--risk)" }}>
+          {error}
+        </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
         <span className="hidden text-2xs sm:inline" style={{ color: "var(--fg-faint)" }}>
