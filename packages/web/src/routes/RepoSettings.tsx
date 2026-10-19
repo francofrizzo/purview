@@ -25,8 +25,9 @@ import { parsePatternLines } from "../lib/generated";
 import { Markdown } from "../components/Markdown";
 import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
 import { RepoDangerZone } from "../components/RepoActions";
+import { SavedFlash, useFlash } from "../components/SavedFlash";
 import { Section, SettingsLayout, type SettingsNavGroup } from "../components/SettingsSections";
-import { IconCheck, IconChevron, IconFile, IconSettings } from "../components/icons";
+import { IconChevron, IconFile, IconSettings } from "../components/icons";
 
 /** Long committed rubrics start collapsed; short ones are shown whole. */
 const COLLAPSE_OVER_CHARS = 600;
@@ -680,42 +681,6 @@ function Autosize({
 }
 
 /* ------------------------------------------------------- small shared bits */
-
-/** A "saved ✓" that shows for a beat and then fades out on its own. */
-function useFlash(): [boolean, () => void] {
-  const [shown, setShown] = useState(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => () => clearTimeout(timer.current), []);
-  return [
-    shown,
-    () => {
-      setShown(true);
-      clearTimeout(timer.current);
-      timer.current = setTimeout(() => setShown(false), 1800);
-    },
-  ];
-}
-
-function SavedFlash({ shown, error }: { shown: boolean; error: unknown }) {
-  if (error) {
-    return (
-      <span className="text-2xs" style={{ color: "var(--risk)" }} role="alert">
-        {errorText(error)}
-      </span>
-    );
-  }
-  if (!shown) return null;
-  return (
-    <span
-      className="inline-flex items-center gap-1 text-2xs"
-      style={{ color: "var(--ok)" }}
-      data-testid="saved-flash"
-    >
-      <IconCheck width={10} height={10} />
-      saved
-    </span>
-  );
-}
 
 
 function PaneLabel({ children }: { children: React.ReactNode }) {

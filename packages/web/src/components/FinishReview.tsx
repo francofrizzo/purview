@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   FilesJson,
   ReanchorProposal,
@@ -13,6 +13,7 @@ import { CopyBundleControls } from "./CopyForAgent";
 import { commentAnchorLabel, type EditComment } from "./Drafts";
 import { CommentCard } from "./CommentCard";
 import { ReviewerVerdictList } from "./Reviews";
+import { SavedFlash, useFlash } from "./SavedFlash";
 import type { ReviewerVerdict } from "../lib/reviews";
 import { IconCheck, IconExternal, IconWarning } from "./icons";
 
@@ -55,6 +56,7 @@ export function FinishReviewPanel({
   result,
   submitError,
   onSaveBody,
+  saveBodyError,
   onSubmit,
   onDiscardPending,
   onJumpToComment,
@@ -78,7 +80,9 @@ export function FinishReviewPanel({
   discarding: boolean;
   result?: SubmitReviewResult | null;
   submitError?: Error | null;
-  onSaveBody: (body: string) => void;
+  /** save the summary; resolves when it is on disk, rejects when refused */
+  onSaveBody: (body: string) => Promise<unknown>;
+  saveBodyError?: unknown;
   onSubmit: (event: ReviewEvent, body: string) => void;
   onDiscardPending: () => void;
   onJumpToComment: (file: string, line: number | null) => void;
@@ -95,6 +99,9 @@ export function FinishReviewPanel({
   onApplyReanchor?: (id: string, target: { file: string; line: number }) => Promise<void>;
 }) {
   const [body, setBody] = useState("");
+  // What the server last took, so a blur without an edit saves (and flashes) nothing.
+  const savedBody = useRef<string | null>(null);
+  const [savedFlash, flashSaved] = useFlash();
   const [arming, setArming] = useState<ReviewEvent | null>(null);
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
@@ -103,6 +110,7 @@ export function FinishReviewPanel({
   useEffect(() => {
     if (!seeded && review) {
       setBody(review.body ?? "");
+      savedBody.current = review.body ?? "";
       setSeeded(true);
     }
   }, [review, seeded]);
@@ -163,10 +171,21 @@ export function FinishReviewPanel({
                   placeholder="What should the author take away? (optional)"
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
-                  onBlur={() => onSaveBody(body)}
+                  onBlur={() => {
+                    if (body === savedBody.current) return;
+                    onSaveBody(body).then(
+                      () => {
+                        savedBody.current = body;
+                        flashSaved();
+                      },
+                      // Reported through `saveBodyError`; nothing to throw past the blur.
+                      () => {},
+                    );
+                  }}
                 />
-                <p className="mt-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  Saved locally when you click away.
+                <p className="mt-1 flex items-center gap-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  <span>Saved locally when you click away.</span>
+                  <SavedFlash shown={savedFlash} error={saveBodyError} />
                 </p>
               </section>
 

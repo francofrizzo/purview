@@ -1,0 +1,20 @@
+import { expect, test } from "@playwright/test";
+import { openPr } from "./helpers";
+
+test("the summary says \"saved\" when a blur puts it on disk, and only after an edit", async ({ page }) => {
+  await openPr(page);
+  await page.getByTestId("topbar-finish-review").click();
+  const panel = page.getByTestId("finish-review-panel");
+  const summary = panel.getByPlaceholder("What should the author take away? (optional)");
+  await expect(summary).toBeVisible();
+
+  // No edit: a blur saves nothing and says nothing.
+  await summary.focus();
+  await summary.blur();
+  await expect(panel.getByTestId("saved-flash")).toHaveCount(0);
+
+  await summary.fill("Looks good once the ledger write is ordered.");
+  await summary.blur();
+  await expect(panel.getByTestId("saved-flash")).toHaveText(/saved/);
+  await expect(panel.getByTestId("saved-flash")).toHaveCount(0, { timeout: 5_000 });
+});
