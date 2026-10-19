@@ -2997,10 +2997,12 @@ export function DiffPane({
             </span>
           ) : null}
           {label !== undefined ? (
+            // Plain text, not a chip: a label says what the hunk is, like the
+            // header's own text; the chip treatment is for a hunk set aside.
             <span
-              className="chip flex-none"
+              className="flex-none truncate font-sans text-2xs"
               data-testid={`hunk-label-${row.hunkId}`}
-              style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+              style={{ color: "var(--fg-muted)" }}
               data-tip="What this hunk is, in the analysis's words"
             >
               {label}
