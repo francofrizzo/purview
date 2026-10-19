@@ -387,7 +387,10 @@ export function SummaryStrip({
               {available.map((t) => (
                 <SummaryTabButton key={t} id={t} active={t === current} onPick={jumpTo}>
                   {t === "summary" ? (
-                    "Summary"
+                    <>
+                      Summary
+                      <span style={{ color: "var(--fg-faint)" }}>Purview</span>
+                    </>
                   ) : t === "description" ? (
                     <>
                       {author ? <AuthorAvatar author={author} url={authorAvatarUrl} size={14} /> : null}
