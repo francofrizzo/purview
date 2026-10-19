@@ -15,7 +15,7 @@ import { CommentCard } from "./CommentCard";
 import { ReviewerVerdictList } from "./Reviews";
 import { SavedFlash, useFlash } from "./SavedFlash";
 import type { ReviewerVerdict } from "../lib/reviews";
-import { IconCheck, IconExternal, IconWarning } from "./icons";
+import { IconCheck, IconExternal, IconSpinner, IconWarning } from "./icons";
 
 const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }[] = [
   {
@@ -118,7 +118,10 @@ export function FinishReviewPanel({
   // A submitted review took its summary with it (the server clears the
   // saved copy too), so the box starts empty for the next one.
   useEffect(() => {
-    if (result) setBody("");
+    if (result) {
+      setBody("");
+      setArming(null);
+    }
   }, [result]);
 
   const readiness = review?.readiness;
@@ -215,11 +218,9 @@ export function FinishReviewPanel({
                 unviewed={unviewed}
                 submitting={submitting}
                 onCancel={() => setArming(null)}
-                onConfirm={() => {
-                  const chosen = arming;
-                  setArming(null);
-                  onSubmit(chosen, body);
-                }}
+                // The step stays up while the request runs, so "submitting…"
+                // has somewhere to show; it leaves once the result is in.
+                onConfirm={() => onSubmit(arming, body)}
               />
             ) : (
               <>
@@ -380,7 +381,14 @@ function ConfirmStep({
           onClick={onConfirm}
           disabled={submitting}
         >
-          {submitting ? "submitting…" : `yes, ${labelFor(event).toLowerCase()}`}
+          {submitting ? (
+            <span className="inline-flex items-center gap-1.5" data-testid="finish-review-submitting">
+              <IconSpinner width={11} height={11} />
+              submitting…
+            </span>
+          ) : (
+            `yes, ${labelFor(event).toLowerCase()}`
+          )}
         </button>
       </div>
     </div>
