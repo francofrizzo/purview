@@ -445,17 +445,36 @@
   .diff-fold-row {
     --fold-tint: var(--moved-bg-strong);
     --fold-edge: var(--moved-fg);
-    @apply flex w-full items-center text-left font-mono;
+    @apply flex w-full items-stretch font-mono;
     height: var(--code-line-height);
     font-size: var(--code-font-size);
     line-height: var(--code-line-height);
     white-space: nowrap;
     color: var(--fg);
-    cursor: pointer;
     background: var(--fold-tint);
     box-shadow: inset 3px 0 0 var(--fold-edge);
   }
-  .diff-fold-row:focus-visible {
+  /* The band proper: expands on click, takes every pixel the jump leaves. */
+  .diff-fold-row-expand {
+    @apply flex min-w-0 flex-1 items-center text-left;
+    cursor: pointer;
+  }
+  /* The trailing "go to": its own control at the band's right edge, in the
+     moved hue like the header badge; a hover underlines it like a link. */
+  .diff-fold-row-jump {
+    @apply flex flex-none items-center;
+    padding: 0 0.75rem;
+    color: var(--moved-fg);
+    cursor: pointer;
+    text-decoration-color: transparent;
+    text-underline-offset: 2px;
+  }
+  .diff-fold-row-jump:hover {
+    text-decoration: underline;
+    text-decoration-color: currentColor;
+  }
+  .diff-fold-row-expand:focus-visible,
+  .diff-fold-row-jump:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
@@ -477,10 +496,10 @@
   }
   @media (hover: hover) {
     /* the tint laid twice: a clearly darker band, same hue */
-    .diff-fold-row:hover {
+    .diff-fold-row:has(.diff-fold-row-expand:hover) {
       background-image: linear-gradient(var(--fold-tint), var(--fold-tint));
     }
-    .diff-fold-row:hover .diff-fold-row-hint {
+    .diff-fold-row-expand:hover .diff-fold-row-hint {
       opacity: 1;
     }
   }

@@ -26,6 +26,7 @@ import {
   isFoldRegionFolded,
   moveFoldRegions,
   pruneOpenedFoldRegions,
+  reachableCounterpart,
   toggleOpenedFoldRegion,
   splitMoveCandidates,
   unifiedMoveCandidates,
@@ -561,6 +562,8 @@ export function DiffPane({
   // Moves are detected over every file of the revision (a move can cross
   // file boundaries), not just the entries currently shown in this pane.
   const moves = useMemo(() => detectMoves(detail.files.files), [detail.files]);
+  /** The hunks this pane shows, for "can I jump there?" checks. */
+  const liveHunkIds = useMemo(() => new Set(entries.map((en) => en.hunk.id)), [entries]);
 
   /** Whether one unified row (identified by its index into `buildRows`) is
    *  part of a moved run, per lib/moveDetection.ts's per-line granularity. */
@@ -2873,22 +2876,49 @@ export function DiffPane({
     }
 
     if (row.type === "fold") {
+      // The band is two controls, not one: the band itself expands, and a
+      // small trailing "go to" jumps to the other end of the move — same
+      // reachability rule as the header badge (the counterpart has to be in
+      // this pane's entries; otherwise there is nothing to jump to and no
+      // affordance). Separate buttons, so Enter on the focused band still
+      // expands and the jump never steals the band's click.
+      const counterpart = reachableCounterpart(
+        moves.get(row.hunkId)?.counterparts ?? [],
+        row.kind,
+        liveHunkIds,
+      );
       return (
-        <button
-          type="button"
-          data-testid={`fold-${row.key}`}
-          data-kind={row.kind}
-          aria-expanded={false}
-          onClick={() => toggleFoldRegion(row.regionKey)}
-          data-tip={`${row.label}; click to expand, z toggles every block in the focused hunk`}
-          className="diff-fold-row"
-        >
-          <span className="row-head-fixed diff-fold-row-label">
-            <IconChevron width={12} height={12} className="diff-fold-row-chevron" />
-            <span className="min-w-0 truncate">{row.label}</span>
-            <span className="diff-fold-row-hint">expand</span>
-          </span>
-        </button>
+        <div className="diff-fold-row" data-kind={row.kind}>
+          <button
+            type="button"
+            data-testid={`fold-${row.key}`}
+            aria-expanded={false}
+            onClick={() => toggleFoldRegion(row.regionKey)}
+            data-tip={`${row.label}; click to expand, z toggles every block in the focused hunk`}
+            className="diff-fold-row-expand"
+          >
+            <span className="row-head-fixed diff-fold-row-label">
+              <IconChevron width={12} height={12} className="diff-fold-row-chevron" />
+              <span className="min-w-0 truncate">{row.label}</span>
+              <span className="diff-fold-row-hint">expand</span>
+            </span>
+          </button>
+          {counterpart ? (
+            <button
+              type="button"
+              data-testid={`fold-jump-${row.key}`}
+              className="diff-fold-row-jump"
+              data-tip={`Go to the other end of the move, in ${counterpart.path}`}
+              aria-label={`Go to the other end of the move, in ${counterpart.path}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onFocusHunk(counterpart.hunkId);
+              }}
+            >
+              go to {baseName(counterpart.path)} {row.kind === "in" ? "←" : "→"}
+            </button>
+          ) : null}
+        </div>
       );
     }
 
@@ -3117,9 +3147,7 @@ export function DiffPane({
             const arrow = hasOut && hasIn ? "↔" : hasOut ? "→" : "←";
             // First-occurrence counterpart names the badge; the title lists all of them.
             const label = baseName(hunkMoves.counterparts[0].path);
-            const reachable = hunkMoves.counterparts.find((c) =>
-              entries.some((en) => en.hunk.id === c.hunkId),
-            );
+            const reachable = hunkMoves.counterparts.find((c) => liveHunkIds.has(c.hunkId));
             const title = hunkMoves.counterparts
               .map((c) => `${c.direction === "out" ? "moved to" : "moved from"} ${c.path}`)
               .join("; ");

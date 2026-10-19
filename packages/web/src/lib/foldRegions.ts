@@ -217,6 +217,18 @@ export function moveFoldRegions(params: {
   });
 }
 
+/** The counterpart a fold band of this `kind` can jump to: the first one in
+ *  the move's direction whose hunk is in the pane right now (`liveHunkIds`).
+ *  Same reachability rule as the hunk header's "moved" badge — a counterpart
+ *  shown in another unit is named in the label but offers no jump. */
+export function reachableCounterpart(
+  counterparts: readonly MoveCounterpart[],
+  kind: "in" | "out",
+  liveHunkIds: ReadonlySet<string>,
+): MoveCounterpart | undefined {
+  return counterparts.find((c) => c.direction === kind && liveHunkIds.has(c.hunkId));
+}
+
 /* ------------------------------------------------ open / folded state */
 
 /** The hunk id a region key (`${hunkId}:${kind}:${contentFrom}`) belongs to.

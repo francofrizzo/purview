@@ -10,6 +10,7 @@ import {
   toggleOpenedFoldRegion,
   moveFoldRegions,
   pruneOpenedFoldRegions,
+  reachableCounterpart,
   splitMoveCandidates,
   unifiedMoveCandidates,
   type FoldSlot,
@@ -317,5 +318,27 @@ describe("foldRegionHunkId", () => {
     expect(foldRegionHunkId("h1:in:5")).toBe("h1");
     expect(foldRegionHunkId("a:b:out:12")).toBe("a:b");
     expect(pruneOpenedFoldRegions(new Set(["a:b:out:12"]), ["a:b"])).toEqual(new Set(["a:b:out:12"]));
+  });
+});
+
+describe("reachableCounterpart", () => {
+  const counterparts: MoveCounterpart[] = [
+    { path: "src/a.ts", hunkId: "hA", direction: "in" },
+    { path: "src/b.ts", hunkId: "hB", direction: "in" },
+    { path: "src/c.ts", hunkId: "hC", direction: "out" },
+  ];
+
+  it("names the first counterpart in the band's direction that the pane shows", () => {
+    expect(reachableCounterpart(counterparts, "in", new Set(["hB", "hC"]))?.hunkId).toBe("hB");
+    expect(reachableCounterpart(counterparts, "out", new Set(["hB", "hC"]))?.hunkId).toBe("hC");
+  });
+
+  it("offers nothing when every counterpart of that direction is out of the pane", () => {
+    expect(reachableCounterpart(counterparts, "out", new Set(["hA", "hB"]))).toBeUndefined();
+    expect(reachableCounterpart([], "in", new Set(["hA"]))).toBeUndefined();
+  });
+
+  it("never crosses directions: a moved-in band does not jump to where other code went", () => {
+    expect(reachableCounterpart(counterparts, "in", new Set(["hC"]))).toBeUndefined();
   });
 });
