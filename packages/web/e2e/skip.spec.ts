@@ -19,7 +19,8 @@ test("a skippable hunk is muted, labelled, uncounted, and Space passes over it",
   await expect(header).toHaveAttribute("data-focused", "true");
   // Open, not folded: its rows are there, muted.
   await expect(header).toHaveAttribute("data-collapsed", "false");
-  await expect(page.getByTestId(`hunk-skip-${SKIPPED}`)).toHaveText("skippable · renamed call site");
+  await expect(page.getByTestId(`hunk-label-${SKIPPED}`)).toHaveText("renamed call site");
+  await expect(page.getByTestId(`hunk-skip-${SKIPPED}`)).toHaveText("skippable");
   await expect(page.locator('[data-skippable="true"]').first()).toBeVisible();
   await expect(page.getByTestId(`hunk-header-${SKIPPED}`).locator("xpath=..")).not.toHaveAttribute("data-skippable", "true");
 

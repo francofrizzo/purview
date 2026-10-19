@@ -2910,6 +2910,7 @@ export function DiffPane({
       const atHeart = heart?.has(row.hunkId) === true;
       const skipWhy = skip?.get(row.hunkId);
       const label = labels?.get(row.hunkId);
+      const title = label ?? skipWhy;
       // Support hunks are named only once the unit has a heart to contrast
       // with, and only when the analysis did not label them itself; a
       // skippable hunk carries its own label too.
@@ -2985,27 +2986,38 @@ export function DiffPane({
               onClick={() => onQuote({ kind: "hunk", id: row.hunkId, path: row.entry.file.path })}
             />
           ) : null}
-          <span className="truncate font-mono text-2xs">{hunkLabel(row.entry.hunk)}</span>
+          {title !== undefined ? (
+            // The analysis's words lead the line as the hunk's title; the
+            // machine header follows, faint. A label after a long `@@`
+            // header reads as more of the same string. A skippable hunk's
+            // title is its reason, faint like its rows.
+            <span
+              className="min-w-0 truncate font-sans text-xs"
+              data-testid={`hunk-label-${row.hunkId}`}
+              style={{ color: skipWhy !== undefined ? "var(--fg-faint)" : "var(--fg)" }}
+              data-tip={
+                skipWhy !== undefined
+                  ? "The analysis says a reader can skip this hunk; it counts toward nothing and Space passes over it"
+                  : "What this hunk is, in the analysis's words"
+              }
+            >
+              {title}
+            </span>
+          ) : null}
+          <span
+            className="truncate font-mono text-2xs"
+            style={title !== undefined ? { color: "var(--fg-faint)", flex: "1 1 0" } : undefined}
+          >
+            {hunkLabel(row.entry.hunk)}
+          </span>
           {skipWhy !== undefined ? (
             <span
               className="chip flex-none"
               data-testid={`hunk-skip-${row.hunkId}`}
               style={{ background: "var(--bg-inset)", color: "var(--fg-faint)" }}
-              data-tip="The analysis says a reader can skip this hunk; it counts toward nothing and Space passes over it"
+              data-tip="Counts toward nothing; Space passes over it"
             >
-              skippable · {skipWhy}
-            </span>
-          ) : null}
-          {label !== undefined ? (
-            // Plain text, not a chip: a label says what the hunk is, like the
-            // header's own text; the chip treatment is for a hunk set aside.
-            <span
-              className="flex-none truncate font-sans text-2xs font-semibold"
-              data-testid={`hunk-label-${row.hunkId}`}
-              style={{ color: "var(--fg-muted)" }}
-              data-tip="What this hunk is, in the analysis's words"
-            >
-              {label}
+              skippable
             </span>
           ) : null}
           {hint ? (
