@@ -141,7 +141,7 @@ export function countsByUnit(matches: SearchMatch[], units: ReviewUnit[]): Map<s
   const map = new Map<string, number>();
   for (const unit of units) {
     let total = 0;
-    for (const id of unit.hunkIds) total += perHunk.get(id) ?? 0;
+    for (const { id } of unit.hunks) total += perHunk.get(id) ?? 0;
     if (total) map.set(unit.id, total);
   }
   return map;
@@ -149,6 +149,6 @@ export function countsByUnit(matches: SearchMatch[], units: ReviewUnit[]): Map<s
 
 /** The first unit (in the given order) that contains `hunkId`. */
 export function unitForHunk(units: ReviewUnit[], hunkId: string): ReviewUnit | null {
-  for (const unit of units) if (unit.hunkIds.includes(hunkId)) return unit;
+  for (const unit of units) if (unit.hunks.some((h) => h.id === hunkId)) return unit;
   return null;
 }

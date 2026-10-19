@@ -14,7 +14,7 @@ import {
 
 const ts = "2026-01-01T00:00:00.000Z";
 
-function unit(id: string, hunkIds: string[], order: number) {
+function unit(id: string, hunks: string[], order: number) {
   return {
     id,
     title: id.toUpperCase(),
@@ -23,7 +23,7 @@ function unit(id: string, hunkIds: string[], order: number) {
     attention: "must-read" as const,
     attentionWhy: `${id} why`,
     riskFlags: [],
-    hunkIds,
+    hunks,
     order,
   };
 }
@@ -187,7 +187,7 @@ describe("changedUnits", () => {
     const after = fold([
       ...base,
       ev,
-      { ts, type: "unit-updated", unitId: "wire", patch: { hunkIds: ["h3", "h5"] } },
+      { ts, type: "unit-updated", unitId: "wire", patch: { hunks: ["h3", "h5"] } },
     ]);
     const changes = changedUnits(after, reportOf(ev));
     expect(changes.map((c) => c.unit.id)).toEqual(["wire"]);

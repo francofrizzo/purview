@@ -5,6 +5,8 @@ import {
   stateRoot,
   type PrKey,
   analysisUnits,
+  hunkIdsOf,
+  skipOf,
 } from "@reviewer/core";
 
 /**
@@ -114,8 +116,8 @@ export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | nul
   const unitsSig = units
     .map(
       (u) =>
-        `${u.id}:${u.kind}:${u.attention}:${u.riskFlags.length}:${u.hunkIds.join(",")}` +
-        (u.skip?.length ? `:skip=${u.skip.map((f) => f.hunkId).join(",")}` : ""),
+        `${u.id}:${u.kind}:${u.attention}:${u.riskFlags.length}:` +
+        u.hunks.map((h) => `${h.id}${h.skip ? "/skip" : ""}${h.heart ? "/heart" : ""}`).join(","),
     )
     .join("|");
   const cacheKey = `${root}#${keyToString(key)}#${revision}#${state.currentRevision}#${unitsSig}`;
@@ -135,11 +137,12 @@ export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | nul
     // contributes 0 lines rather than failing the whole computation.
   }
 
-  // Folded hunks (imports, re-exports, renamed call sites the analysis says
-  // need no read) are not reading work, so their lines do not count.
-  const skipped = new Set(units.flatMap((u) => (u.skip ?? []).map((f) => f.hunkId)));
+  // Skippable hunks (`skip: true`: imports, re-exports, renamed call sites
+  // the analysis says need no read) are not reading work, so their lines do
+  // not count.
+  const skipped = new Set(units.flatMap((u) => skipOf(u).map((h) => h.id)));
   const mustReadUnitList = units.filter((u) => u.attention === "must-read");
-  const mustReadHunkIds = new Set(mustReadUnitList.flatMap((u) => u.hunkIds).filter((id) => !skipped.has(id)));
+  const mustReadHunkIds = new Set(mustReadUnitList.flatMap(hunkIdsOf).filter((id) => !skipped.has(id)));
   let mustReadLines = 0;
   for (const id of mustReadHunkIds) mustReadLines += hunkLines.get(id) ?? 0;
 
@@ -149,7 +152,7 @@ export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | nul
   const hunkWeight = new Map<string, number>();
   for (const u of mustReadUnitList) {
     const w = KIND_WEIGHTS[u.kind] ?? DEFAULT_KIND_WEIGHT;
-    for (const id of u.hunkIds) {
+    for (const id of hunkIdsOf(u)) {
       if (skipped.has(id)) continue;
       hunkWeight.set(id, Math.max(hunkWeight.get(id) ?? 0, w));
     }

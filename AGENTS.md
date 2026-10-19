@@ -65,6 +65,22 @@ look at. So:
   needed, so the list stays honest.
 - Before changing a token derivation or a theme, run the sheet and look.
 
+## Schema changes
+
+`packages/core/src/upcast.ts` brings every persisted event (`events.jsonl`) and
+every incoming analysis or unit-patch payload to the current shape before the
+schema sees it, so the schema, the reducer, the service and the web only ever
+describe the shape of today. So:
+
+- A schema change is one new upcast step plus a `STATE_SHAPE_VERSION` bump,
+  never an alias or a fallback in the schema, the reducer or the service.
+- Each step rewrites one old shape to the next, carries a test with a literal
+  event from its era (`test/upcast.test.ts`), and is frozen once shipped: a
+  later change is a later step.
+- The event log is append-only and never rewritten. `state.json` is a derived
+  snapshot: when the version goes up it is rebuilt from the log through the
+  upcaster.
+
 ## Checks before pushing
 
 - `packages/core`, `packages/server`: `npx vitest run`, `npm run build`.

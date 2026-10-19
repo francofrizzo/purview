@@ -1,3 +1,4 @@
+import { hunkIdsOf } from "../src/units.js";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -38,7 +39,7 @@ function unit(over: Partial<ReviewUnit> = {}): ReviewUnit {
     attention: "must-read",
     attentionWhy: "why",
     riskFlags: [],
-    hunkIds: ["h1"],
+    hunks: ["h1"],
     order: 1,
     ...over,
   });
@@ -101,8 +102,8 @@ describe("findings through the reducer", () => {
     revision: 1,
     summary: "s",
     units: [
-      unit({ id: "u1", hunkIds: ["h1"], findings }),
-      unit({ id: "u2", hunkIds: ["h2"], order: 2, findings: [note] }),
+      unit({ id: "u1", hunks: ["h1"], findings }),
+      unit({ id: "u2", hunks: ["h2"], order: 2, findings: [note] }),
     ],
     unassigned: [],
   });
@@ -147,9 +148,9 @@ describe("findings through the reducer", () => {
       } as unknown as ReviewerEvent,
     ]);
     const [u1, u2] = state.units;
-    expect(u1.hunkIds).toEqual(["h1"]);
+    expect(hunkIdsOf(u1)).toEqual(["h1"]);
     expect(u1.findings).toEqual([warning, note]);
-    expect(u2.hunkIds).toEqual(["h2b"]);
+    expect(hunkIdsOf(u2)).toEqual(["h2b"]);
     expect(u2.findings).toBeUndefined();
   });
 
@@ -195,7 +196,7 @@ describe("findings through the reducer", () => {
         type: "analysis-set",
         revision: 1,
         summary: "s",
-        units: [unit({ id: "u1", hunkIds: ["h1"] })],
+        units: [unit({ id: "u1", hunks: ["h1"] })],
         unassigned: ["h2"],
       },
       {
@@ -205,7 +206,7 @@ describe("findings through the reducer", () => {
       } as unknown as ReviewerEvent,
     ]);
     expect(state.units[0].findings).toBeUndefined();
-    expect(state.units[0].hunkIds).toEqual(["h1b"]);
+    expect(hunkIdsOf(state.units[0])).toEqual(["h1b"]);
   });
 });
 
@@ -273,7 +274,7 @@ describe("findings through the CLI-facing service", () => {
 
   const payload = (findings?: unknown) => ({
     summary: "s",
-    units: [{ ...unit({ hunkIds: [hunkId], findings: undefined }), findings }],
+    units: [{ ...unit({ hunks: [hunkId], findings: undefined }), findings }],
     unassigned: [],
   });
 
@@ -291,7 +292,7 @@ describe("findings through the CLI-facing service", () => {
     const state = setUnit(key, "u1", { findings: [warning] }, {}, tmp);
     expect(state.units[0].findings).toEqual([warning]);
     expect(state.units[0].attention).toBe("must-read");
-    expect(state.units[0].hunkIds).toEqual([hunkId]);
+    expect(hunkIdsOf(state.units[0])).toEqual([hunkId]);
   });
 });
 

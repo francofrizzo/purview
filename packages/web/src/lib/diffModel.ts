@@ -1,6 +1,7 @@
 import { diffWordsWithSpace } from "diff";
 import { unitDisplayOrder } from "./unitOrder";
-import { type FileEntry, type FilesJson, type HeartEntry, type Hunk, type PrDetail, type ReviewUnit } from "../api/types";
+import { type FileEntry, type FilesJson, type Hunk, type HunkEntry, type PrDetail, type ReviewUnit } from "../api/types";
+import { hunkIdsOf, skipOf } from "./units";
 
 export type LineType = "add" | "del" | "context" | "meta";
 
@@ -288,7 +289,7 @@ export function hunkIndex(files: FilesJson): Map<string, { hunk: Hunk; file: Fil
 export function unitHunks(detail: PrDetail, unit: ReviewUnit): { hunk: Hunk; file: FileEntry }[] {
   const index = hunkIndex(detail.files);
   const out: { hunk: Hunk; file: FileEntry }[] = [];
-  for (const id of unit.hunkIds) {
+  for (const id of hunkIdsOf(unit)) {
     const entry = index.get(id);
     if (entry) out.push(entry);
   }
@@ -305,14 +306,14 @@ export function sortUnitsForDisplay(units: ReviewUnit[]): ReviewUnit[] {
   return unitDisplayOrder(units);
 }
 
-/** The hunk ids a unit's `skip` marks as skippable, for membership checks. */
-export function skippedIds(unit: Pick<ReviewUnit, "skip">): Set<string> {
-  return new Set(unit.skip?.map((f) => f.hunkId) ?? []);
+/** The hunk ids a unit marks `role: "skip"`, for membership checks. */
+export function skippedIds(unit: Pick<ReviewUnit, "hunks">): Set<string> {
+  return new Set(skipOf(unit).map((h) => h.id));
 }
 
 /** Every skipped hunk across the analysis's units, as the server counts them. */
-export function skippedHunkIds(units: Pick<ReviewUnit, "skip">[]): Set<string> {
-  return new Set(units.flatMap((u) => u.skip?.map((f) => f.hunkId) ?? []));
+export function skippedHunkIds(units: Pick<ReviewUnit, "hunks">[]): Set<string> {
+  return new Set(units.flatMap((u) => skipOf(u).map((h) => h.id)));
 }
 
 /**
@@ -327,14 +328,14 @@ export function unitProgress(detail: PrDetail, unit: ReviewUnit) {
   let viewed = 0;
   let changed = 0;
   let total = 0;
-  for (const id of unit.hunkIds) {
+  for (const { id } of unit.hunks) {
     if (skip.has(id)) continue;
     total++;
     const st = detail.state.hunks[id];
     if (st?.viewed) viewed++;
     if (st?.changedSinceViewed) changed++;
   }
-  return { viewed, total, changed, skipped: unit.hunkIds.length - total };
+  return { viewed, total, changed, skipped: unit.hunks.length - total };
 }
 
 /**
@@ -348,7 +349,7 @@ export function unitProgress(detail: PrDetail, unit: ReviewUnit) {
 export function orderUnitHunks(
   files: FileEntry[],
   hunkIds: Iterable<string>,
-  heart: Pick<HeartEntry, "hunkId">[] | undefined,
+  heart: Pick<HunkEntry, "id">[] | undefined,
   fileOrder?: string[],
 ): { hunk: Hunk; file: FileEntry }[] {
   const wanted = new Set(hunkIds);
@@ -360,7 +361,7 @@ export function orderUnitHunks(
   const first: string[] = [];
   for (const path of fileOrder ?? []) if (byFile.has(path) && !first.includes(path)) first.push(path);
   for (const h of first.length ? [] : (heart ?? [])) {
-    const path = files.find((f) => f.hunks.some((x) => x.id === h.hunkId))?.path;
+    const path = files.find((f) => f.hunks.some((x) => x.id === h.id))?.path;
     if (path !== undefined && byFile.has(path) && !first.includes(path)) first.push(path);
   }
   const paths = [...first, ...[...byFile.keys()].filter((p) => !first.includes(p))];

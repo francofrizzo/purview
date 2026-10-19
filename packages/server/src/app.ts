@@ -44,6 +44,7 @@ import {
   syncPr,
   unitProgress,
   generatedHunkIds,
+  hunkIdsOf,
   skippedHunkIds,
   updateMeta,
   writeLocalChatInstructions,
@@ -269,7 +270,7 @@ async function readJsonBody(c: { req: { json(): Promise<unknown> } }): Promise<u
 function progressOf(state: State) {
   // The generated unit and its hunks are left out: they are not reading
   // work, and a PR whose only unit is that one is still "not analyzed".
-  // Neither are the hunks the analysis marked skippable (see ReviewUnit.skip).
+  // Neither are the hunks the analysis marked skippable (`skip: true`).
   const units = unitProgress(state);
   const generated = generatedHunkIds(state);
   const skipped = skippedHunkIds(state);
@@ -309,7 +310,7 @@ export function refreshLeavesWork(
   const state = loadState(key, root);
   // New hunks — not the ones Purview already put in its generated unit: a
   // lockfile-only push costs nothing.
-  const generated = new Set(state.units.filter(isGeneratedUnit).flatMap((u) => u.hunkIds));
+  const generated = new Set(state.units.filter(isGeneratedUnit).flatMap(hunkIdsOf));
   const newWork = report.entries.some((e) => e.status === "new" && !generated.has(e.hunkId));
   if (newWork || state.unassignedHunkIds.length > 0) return true;
   if (analysisUnits(state).length === 0) return false;

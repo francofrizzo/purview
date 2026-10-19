@@ -1,3 +1,4 @@
+import { hunkIdsOf } from "../src/units.js";
 import { describe, expect, it } from "vitest";
 import { renderChanges } from "../src/changes.js";
 import { computeHunkId } from "../src/hunk-id.js";
@@ -212,7 +213,7 @@ function revisionEvent(n: number, files: FileDiff[], migration?: ReturnType<type
   };
 }
 
-function unit(id: string, hunkIds: string[], order: number) {
+function unit(id: string, hunks: string[], order: number) {
   return {
     id,
     title: id,
@@ -221,7 +222,7 @@ function unit(id: string, hunkIds: string[], order: number) {
     attention: "must-read" as const,
     attentionWhy: "why",
     riskFlags: [],
-    hunkIds,
+    hunks,
     order,
     findings: [{ severity: "note" as const, text: `${id} finding`, evidence: "a.ts:1" }],
   };
@@ -265,7 +266,7 @@ describe("reducer: containment successors", () => {
       [mkFile("a.ts", [bottom, other, top])],
       [unit("core", [old.id, other.id], 0)],
     );
-    expect(state.units[0].hunkIds).toEqual([bottom.id, top.id, other.id]);
+    expect(hunkIdsOf(state.units[0])).toEqual([bottom.id, top.id, other.id]);
     expect(state.archived).toEqual([]);
     expect(state.hunks[top.id]).toMatchObject({ predecessorId: old.id, migration: "fuzzy" });
     expect(state.hunks[bottom.id]).toMatchObject({ predecessorId: old.id, migration: "fuzzy" });
@@ -293,7 +294,7 @@ describe("reducer: containment successors", () => {
       [unit("core", [old.id], 0)],
     );
     expect(entryOf(report, copy.id)).toMatchObject({ previousHunkId: old.id, match: "containment" });
-    expect(state.units[0].hunkIds).toEqual([old.id, copy.id]);
+    expect(hunkIdsOf(state.units[0])).toEqual([old.id, copy.id]);
     expect(state.units[0].findings).toBeUndefined();
   });
 
@@ -307,10 +308,10 @@ describe("reducer: containment successors", () => {
       [mkFile("a.ts", [merged]), mkFile("b.ts", [keep])],
       [unit("big", [p.id], 0), unit("small", [q.id], 1), unit("side", [keep.id], 2)],
     );
-    const holders = state.units.filter((u) => u.hunkIds.includes(merged.id)).map((u) => u.id);
+    const holders = state.units.filter((u) => hunkIdsOf(u).includes(merged.id)).map((u) => u.id);
     expect(holders).toEqual(["big"]);
     const small = state.units.find((u) => u.id === "small")!;
-    expect(small.hunkIds).toEqual([]);
+    expect(hunkIdsOf(small)).toEqual([]);
     expect(small.removedAtRevision).toBe(2); // a husk, per the existing rules
     expect(state.archived.map((a) => [a.hunkId, a.unitId])).toEqual([[q.id, "small"]]);
   });

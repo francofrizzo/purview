@@ -161,7 +161,7 @@ export function buildFixture(
             attention: "must-read",
             attentionWhy: "New behavior",
             riskFlags: [],
-            hunkIds,
+            hunks: hunkIds.map((id) => ({ id })),
             order: 1,
           },
         ],

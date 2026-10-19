@@ -34,6 +34,7 @@ import { allSelectedHunks, renderShowHunk, selectHunks } from "./hunk-select.js"
 import { renderChanges } from "./changes.js";
 import { showInlineLimit } from "./inline-limit.js";
 import { formatRemaining, needsClassification, renderUnits, type UnitPatchRequest } from "./unit-patch.js";
+import { hunkIdsOf } from "./units.js";
 import {
   callServer,
   commentLocation,
@@ -299,7 +300,7 @@ program
         unknownUnits.push(sel);
         return [];
       }
-      return unit.hunkIds;
+      return hunkIdsOf(unit);
     });
     if (opts.needs) expanded.push(...needsClassification(state).map((h) => h.id));
 
@@ -539,7 +540,7 @@ program
   .option("--id <unitId>", "unit id (required when the JSON has no id)")
   .option("--note <text>", "note recorded with any classification correction")
   .description(
-    "create or patch a single review unit (hunkIds replaces the list; addHunkIds/removeHunkIds edit it)",
+    "create or patch a single review unit (hunks replaces the list; addHunks/removeHunkIds edit it)",
   )
   .action((keyArg: string, opts: { file: string; id?: string; note?: string }) => {
     const key = requireExistingKey(keyArg);
@@ -555,7 +556,7 @@ program
     const unit = res.state.units.find((u) => u.id === unitId)!;
     console.log(
       `Unit ${unit.id} saved: [${unit.attention}/${unit.kind}] ${unit.title} ` +
-        `(${unit.hunkIds.length} hunks)`,
+        `(${unit.hunks.length} hunks)`,
     );
     console.log(formatRemaining(remainingWorkFor(key)));
   });
@@ -586,7 +587,7 @@ program
     for (const w of [...warnings, ...res.warnings]) console.log(w);
     for (const id of res.unitIds) {
       const unit = res.state.units.find((u) => u.id === id)!;
-      console.log(`Unit ${unit.id} saved: [${unit.attention}/${unit.kind}] ${unit.title} (${unit.hunkIds.length} hunks)`);
+      console.log(`Unit ${unit.id} saved: [${unit.attention}/${unit.kind}] ${unit.title} (${unit.hunks.length} hunks)`);
     }
     console.log(formatRemaining(remainingWorkFor(key)));
   });
@@ -621,7 +622,7 @@ program
       const state = setUnitViewed(key, unitId, viewed);
       const unit = state.units.find((u) => u.id === unitId)!;
       console.log(
-        `Unit ${unitId}: ${unit.hunkIds.length} hunks marked ${viewed ? "viewed" : "unviewed"}.`,
+        `Unit ${unitId}: ${unit.hunks.length} hunks marked ${viewed ? "viewed" : "unviewed"}.`,
       );
     } else {
       const before = loadState(key);

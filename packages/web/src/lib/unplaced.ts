@@ -4,7 +4,7 @@
  * unassigned, or (far more common) a refresh landed new hunks and no analysis
  * has placed them yet, e.g. because the PR is archived and auto-analysis
  * skipped it. Either way the hunk exists in `files` and in no unit's
- * `hunkIds`, so one set difference covers both.
+ * `hunks`, so one set difference covers both.
  *
  * Husks (`state.removedUnits`) never cover anything: their hunks left the PR.
  */
@@ -24,7 +24,7 @@ export function unplacedHunkIds(detail: Pick<PrDetail, "files" | "state">): stri
   // the filter is the backstop, same as unitDisplayOrder's.
   for (const u of detail.state.units) {
     if (isRemovedUnit(u)) continue;
-    for (const id of u.hunkIds) covered.add(id);
+    for (const { id } of u.hunks) covered.add(id);
   }
   const out: string[] = [];
   for (const f of detail.files.files) {

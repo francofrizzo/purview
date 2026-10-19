@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   GENERATED_UNIT_ID,
+  hunkIdsOf,
   keyToString,
   loadState,
   readFilesJson,
@@ -64,7 +65,7 @@ describe("generated files on the server", () => {
     expect(body).toEqual({ ok: true, generated: ["pnpm-lock.yaml"] });
     const state = loadState(key, root);
     expect(state.units.map((u) => u.id)).toEqual(["unit-1", GENERATED_UNIT_ID]);
-    expect(state.units[0].hunkIds).not.toContain(lockHunk());
+    expect(hunkIdsOf(state.units[0])).not.toContain(lockHunk());
   });
 
   it("POST /generated moves a file in and out, remembered for the repo", async () => {
@@ -74,7 +75,7 @@ describe("generated files on the server", () => {
     let state = loadState(key, root);
     expect(state.units.some((u) => u.id === GENERATED_UNIT_ID)).toBe(false);
     // the lockfile hunk now waits for the incremental analysis: in no unit
-    expect(state.units.flatMap((u) => u.hunkIds)).not.toContain(lockHunk());
+    expect(state.units.flatMap(hunkIdsOf)).not.toContain(lockHunk());
     expect(readRepoConfig(repoKeyOf(key), root).generated.exclude).toContain("pnpm-lock.yaml");
 
     body = await (await post({ path: "src/foo.ts", generated: true })).json();

@@ -5,6 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **A few words on every hunk.** The analysis can label any hunk of a unit, three to six words saying what it is, shown on the hunk header where the derived "tests" or "docs" hint used to be.
+- **A heart in several places.** One hunk can carry more than one heart segment, each with its own sentence and bar; the brief lists every segment, and `h` / `H` walk them one by one.
+
 ## 2026.10.19.1
 
 - **Skippable hunks.** The analysis marks the hunks you need not read, such as import changes, re-exports and renamed call sites inside a unit that matters. They show muted with a short label, count toward nothing, and Space passes over them. Hover to read one at full strength.

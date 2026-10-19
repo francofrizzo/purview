@@ -2,6 +2,7 @@
  * Mock mode must build and rebuild the generated unit the way the server is
  * specified to, or the override round trip in the UI tests nothing real.
  */
+import { hunkIdsOf } from "../lib/units";
 import { describe, expect, it } from "vitest";
 import { GENERATED_UNIT_ID, type FileEntry } from "../api/types";
 import { MOCK_KEY } from "./fixture";
@@ -29,7 +30,7 @@ describe("buildGeneratedUnit", () => {
       origin: "generated",
       attention: "skip",
       title: "Generated & lockfiles",
-      hunkIds: ["l1", "l2", "g", "h"],
+      hunks: [{ id: "l1" }, { id: "l2" }, { id: "g" }, { id: "h" }],
       summary: "1 lockfile, 2 generated files · +1,800 −450",
     });
     expect(unit!.attentionWhy).toContain("lockfile names, path conventions");
@@ -50,16 +51,16 @@ describe("mock POST /generated", () => {
 
     const off = await mockApi.setGenerated(MOCK_KEY, "pnpm-lock.yaml", false);
     expect(off.generated).not.toContain("pnpm-lock.yaml");
-    expect((await generatedUnit())!.hunkIds).not.toContain(lockHunk);
+    expect(hunkIdsOf((await generatedUnit())!)).not.toContain(lockHunk);
     const pr = await mockApi.getPr(MOCK_KEY);
-    expect(pr.state.units.some((u) => u.hunkIds.includes(lockHunk))).toBe(false);
+    expect(pr.state.units.some((u) => u.hunks.some((h) => h.id === lockHunk))).toBe(false);
     expect((await mockApi.getRepoConfig("github.com/acme/billing")).local.generated?.exclude).toContain(
       "pnpm-lock.yaml",
     );
 
     const on = await mockApi.setGenerated(MOCK_KEY, "pnpm-lock.yaml", true);
     expect(on.generated).toContain("pnpm-lock.yaml");
-    expect((await generatedUnit())!.hunkIds).toContain(lockHunk);
+    expect(hunkIdsOf((await generatedUnit())!)).toContain(lockHunk);
     const generated = (await mockApi.getRepoConfig("github.com/acme/billing")).local.generated!;
     expect(generated.include).toContain("pnpm-lock.yaml");
     expect(generated.exclude).not.toContain("pnpm-lock.yaml");
@@ -69,7 +70,7 @@ describe("mock POST /generated", () => {
     const docs = (await mockApi.getPr(MOCK_KEY)).files.files.find((f) => f.path === "docs/billing.md")!;
     await mockApi.setGenerated(MOCK_KEY, "docs/billing.md", true);
     const pr = await mockApi.getPr(MOCK_KEY);
-    const holders = pr.state.units.filter((u) => u.hunkIds.includes(docs.hunks[0].id));
+    const holders = pr.state.units.filter((u) => u.hunks.some((h) => h.id === docs.hunks[0].id));
     expect(holders.map((u) => u.id)).toEqual([GENERATED_UNIT_ID]);
     await mockApi.setGenerated(MOCK_KEY, "docs/billing.md", false);
   });

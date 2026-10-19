@@ -1,3 +1,4 @@
+import { hunkIdsOf } from "../src/units.js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -60,7 +61,7 @@ function eventLines(): number {
   return readEvents(key, tmp).length;
 }
 
-const unit = (id: string, hunkIds: string[], extra: Record<string, unknown> = {}) => ({
+const unit = (id: string, hunks: string[], extra: Record<string, unknown> = {}) => ({
   id,
   title: `Title ${id}`,
   summary: "s",
@@ -68,7 +69,7 @@ const unit = (id: string, hunkIds: string[], extra: Record<string, unknown> = {}
   attention: "must-read" as const,
   attentionWhy: "why",
   riskFlags: [],
-  hunkIds,
+  hunks,
   order: 0,
   ...extra,
 });
@@ -141,15 +142,15 @@ afterAll(() => {
 
 const unitOf = (id: string) => loadState(key, tmp).units.find((u) => u.id === id)!;
 
-describe("set-unit addHunkIds / removeHunkIds", () => {
+describe("set-unit addHunks / removeHunkIds", () => {
   it("adds and removes in place, accepting short ids, and prints what remains", () => {
     const { a1, a2, c1 } = seed();
     const res = run([
       "set-unit", K, "--id", "alpha",
-      "--file", writeJson("p.json", { addHunkIds: [c1.id.slice(0, 8)], removeHunkIds: [a2.id] }),
+      "--file", writeJson("p.json", { addHunks: [c1.id.slice(0, 8)], removeHunkIds: [a2.id] }),
     ]);
     expect(res.status).toBe(0);
-    expect(unitOf("alpha").hunkIds).toEqual([a1.id, c1.id]);
+    expect(hunkIdsOf(unitOf("alpha"))).toEqual([a1.id, c1.id]);
     // a2 left alpha and is in no unit now: it is what remains.
     expect(res.stdout).toContain("Still needs classification (1):");
     expect(res.stdout).toContain(`${a2.id.slice(0, 8)} src/a.ts`);
@@ -157,24 +158,24 @@ describe("set-unit addHunkIds / removeHunkIds", () => {
 
   it("says all hunks are assigned once nothing is left", () => {
     const { c1 } = seed();
-    const res = run(["set-unit", K, "--id", "beta", "--file", writeJson("p.json", { addHunkIds: [c1.id] })]);
+    const res = run(["set-unit", K, "--id", "beta", "--file", writeJson("p.json", { addHunks: [c1.id] })]);
     expect(res.status).toBe(0);
     expect(res.stdout).toContain("All hunks assigned");
   });
 
-  it("rejects hunkIds together with add/remove, and unknown or too-short ids, writing nothing", () => {
+  it("rejects hunks together with add/remove, and unknown or too-short ids, writing nothing", () => {
     const { a1, c1 } = seed();
     const before = eventLines();
     const both = run([
       "set-unit", K, "--id", "alpha",
-      "--file", writeJson("p.json", { hunkIds: [a1.id], addHunkIds: [c1.id] }),
+      "--file", writeJson("p.json", { hunks: [a1.id], addHunks: [c1.id] }),
     ]);
     expect(both.status).toBe(1);
     expect(both.stderr).toContain("not both");
-    const unknown = run(["set-unit", K, "--id", "alpha", "--file", writeJson("q.json", { addHunkIds: ["ffffffffffff"] })]);
+    const unknown = run(["set-unit", K, "--id", "alpha", "--file", writeJson("q.json", { addHunks: ["ffffffffffff"] })]);
     expect(unknown.status).toBe(1);
-    expect(unknown.stderr).toContain('addHunkIds entry "ffffffffffff" is not a hunk of revision 1');
-    const short = run(["set-unit", K, "--id", "alpha", "--file", writeJson("r.json", { addHunkIds: ["abc"] })]);
+    expect(unknown.stderr).toContain('addHunks entry "ffffffffffff" is not a hunk of revision 1');
+    const short = run(["set-unit", K, "--id", "alpha", "--file", writeJson("r.json", { addHunks: ["abc"] })]);
     expect(short.status).toBe(1);
     expect(short.stderr).toContain("at least 6 chars");
     expect(eventLines()).toBe(before);
@@ -183,7 +184,7 @@ describe("set-unit addHunkIds / removeHunkIds", () => {
   it("refuses to add a hunk another unit owns", () => {
     const { b1 } = seed();
     const before = eventLines();
-    const res = run(["set-unit", K, "--id", "alpha", "--file", writeJson("p.json", { addHunkIds: [b1.id] })]);
+    const res = run(["set-unit", K, "--id", "alpha", "--file", writeJson("p.json", { addHunks: [b1.id] })]);
     expect(res.status).toBe(1);
     expect(res.stderr).toContain(`${b1.id}: alpha, beta`);
     expect(eventLines()).toBe(before);
@@ -206,7 +207,7 @@ describe("set-units", () => {
       writeJson("batch.json", {
         units: [
           // added first, removed second: ownership is judged on the batch's result
-          { id: "beta", addHunkIds: [a2.id], attention: "skim", note: "plumbing only" },
+          { id: "beta", addHunks: [a2.id], attention: "skim", note: "plumbing only" },
           { id: "alpha", removeHunkIds: [a2.id], changelogEntry: "split out the helper" },
         ],
       }),
@@ -214,8 +215,8 @@ describe("set-units", () => {
     expect(res.status, res.stderr).toBe(0);
     expect(res.stdout).toContain("Unit beta saved: [skim/core-logic]");
     expect(res.stdout).toContain("Unit alpha saved:");
-    expect(unitOf("alpha").hunkIds).toEqual([a1.id]);
-    expect(unitOf("beta").hunkIds).toEqual([b1.id, a2.id]);
+    expect(hunkIdsOf(unitOf("alpha"))).toEqual([a1.id]);
+    expect(hunkIdsOf(unitOf("beta"))).toEqual([b1.id, a2.id]);
     expect(unitOf("alpha").changelog).toEqual([{ revision: 1, text: "split out the helper" }]);
     const corrected = loadState(key, tmp).corrections;
     // beta's pre-batch hunk gets the correction, with the patch's own note
@@ -231,8 +232,8 @@ describe("set-units", () => {
       writeJson("batch.json", {
         units: [
           { id: "alpha", summary: "fine on its own" },
-          { id: "beta", addHunkIds: [a2.id] }, // a2 still owned by alpha
-          { id: "gamma", addHunkIds: [c1.id] }, // create without the full schema
+          { id: "beta", addHunks: [a2.id] }, // a2 still owned by alpha
+          { id: "gamma", addHunks: [c1.id] }, // create without the full schema
         ],
       }),
     ]);
@@ -245,7 +246,7 @@ describe("set-units", () => {
     // Clash on its own (valid schema everywhere) is also caught before writing.
     const clash = run([
       "set-units", K,
-      "--file", writeJson("clash.json", { units: [{ id: "alpha", summary: "x" }, { id: "beta", addHunkIds: [a2.id] }] }),
+      "--file", writeJson("clash.json", { units: [{ id: "alpha", summary: "x" }, { id: "beta", addHunks: [a2.id] }] }),
     ]);
     expect(clash.status).toBe(1);
     expect(clash.stderr).toContain(`${a2.id}: alpha, beta`);
@@ -260,7 +261,7 @@ describe("set-units", () => {
       "--file", writeJson("ok.json", { units: [unit("gamma", [c1.id], { kind: "tests", attention: "skim", order: 2 })] }),
     ]);
     expect(ok.status, ok.stderr).toBe(0);
-    expect(unitOf("gamma").hunkIds).toEqual([c1.id]);
+    expect(hunkIdsOf(unitOf("gamma"))).toEqual([c1.id]);
     expect(ok.stdout).toContain("All hunks assigned");
 
     const twice = run([
@@ -344,7 +345,7 @@ describe("show --needs and unit:<id>", () => {
 
   it("--needs with nothing to classify says so", () => {
     const { c1 } = seed();
-    run(["set-unit", K, "--id", "beta", "--file", writeJson("p.json", { addHunkIds: [c1.id] })]);
+    run(["set-unit", K, "--id", "beta", "--file", writeJson("p.json", { addHunks: [c1.id] })]);
     const res = run(["show", K, "--needs"]);
     expect(res.status).toBe(0);
     expect(res.stdout).toContain("nothing needs classification");

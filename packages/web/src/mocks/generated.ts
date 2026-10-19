@@ -39,7 +39,7 @@ export function buildGeneratedUnit(files: FileEntry[], order = 999): ReviewUnit 
     attention: "skip",
     attentionWhy: `Generated or lock files: detected by Purview (${signals.join(", ")}), not read by the analysis.`,
     riskFlags: [],
-    hunkIds: generated.flatMap((f) => f.hunks.map((h) => h.id)),
+    hunks: generated.flatMap((f) => f.hunks.map((h) => ({ id: h.id }))),
     order,
   };
 }

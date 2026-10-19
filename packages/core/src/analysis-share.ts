@@ -4,6 +4,7 @@ import { setAnalysis } from "./service.js";
 import { analysisUnits } from "./reducer.js";
 import { isGeneratedUnit } from "./generated.js";
 import { AnalysisExportSchema, type AnalysisExport, type State } from "./schemas.js";
+import { upcastAnalysisPayload } from "./upcast.js";
 
 /**
  * Purview-to-Purview analysis sharing: one reviewer exports the analysis they
@@ -100,7 +101,8 @@ export function extractAnalysisFromComment(body: string): AnalysisExport | null 
   const match = body.match(/```json\s*([\s\S]*?)```/);
   if (!match) return null;
   try {
-    const parsed = JSON.parse(match[1]);
+    // A comment posted by an older Purview carries units in an older shape.
+    const parsed = upcastAnalysisPayload(JSON.parse(match[1]));
     const result = AnalysisExportSchema.safeParse(parsed);
     return result.success ? result.data : null;
   } catch {
@@ -154,7 +156,8 @@ export function applyAnalysisImport(
   input: unknown,
   root: string,
 ): { state: State; report: AnalysisImportReport } {
-  const envelope = AnalysisExportSchema.parse(input);
+  // An export from an older Purview carries units in an older shape.
+  const envelope = AnalysisExportSchema.parse(upcastAnalysisPayload(input));
   if (
     envelope.pr.host !== key.host ||
     envelope.pr.owner !== key.owner ||
@@ -181,13 +184,13 @@ export function applyAnalysisImport(
   const units = [];
   for (const unit of envelope.units) {
     if (isGeneratedUnit(unit)) continue;
-    const hunkIds = unit.hunkIds.filter((id) => currentIds.has(id));
-    if (hunkIds.length === 0) {
+    const hunks = unit.hunks.filter((h) => currentIds.has(h.id));
+    if (hunks.length === 0) {
       unitsDropped++;
       continue;
     }
-    for (const id of hunkIds) matched.add(id);
-    units.push({ ...unit, hunkIds });
+    for (const h of hunks) matched.add(h.id);
+    units.push({ ...unit, hunks });
   }
 
   const unassigned = [...currentIds].filter((id) => !matched.has(id));

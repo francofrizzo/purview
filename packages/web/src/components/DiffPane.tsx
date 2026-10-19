@@ -114,7 +114,7 @@ type FlatRow =
   /** `seam`: not its file's first hunk here, so it draws the divider above it */
   | { type: "hunk"; key: string; hunkId: string; entry: HunkEntry; seam: boolean }
   /** the analysis's why, under a heart hunk's header (shown folded too) */
-  | { type: "heart"; key: string; hunkId: string; why: string }
+  | { type: "heart"; key: string; hunkId: string; seg: number; why: string }
   | { type: "dod"; key: string; hunkId: string }
   | { type: "line"; key: string; hunkId: string; entry: HunkEntry; lineIdx: number }
   | { type: "split"; key: string; hunkId: string; entry: HunkEntry; rowIdx: number }
@@ -178,7 +178,7 @@ type ContextFile =
   | { status: "missing" }
   | { status: "error"; message: string };
 
-/** What the pane draws for one heart hunk: the why, and the rows it is, if not all. */
+/** One heart segment as the pane draws it: the why, and the rows it is, if not the whole hunk. */
 export interface HeartMark {
   why: string;
   lines?: [number, number];
@@ -266,19 +266,24 @@ export interface DiffPaneProps {
     showComments?: boolean;
   } | null;
   /**
-   * The selected unit's heart (hunk id -> mark): those hunks are drawn with a
-   * bar and their why on the header, the others get a muted hint of what
-   * kind of support they are. A mark with `lines` bars only those rows (new
-   * side); the header and why still carry it. Omitted (or empty), nothing is
-   * marked.
+   * The selected unit's heart (hunk id -> its segments): those hunks are
+   * drawn with a bar and each segment's why as a caption, the others get a
+   * muted hint of what kind of support they are. A segment with `lines`
+   * bars only those rows (new side) and sits its caption right above them;
+   * one without is the whole hunk. Omitted (or empty), nothing is marked.
    */
-  heart?: ReadonlyMap<string, HeartMark>;
+  heart?: ReadonlyMap<string, readonly HeartMark[]>;
   /**
    * The selected unit's skippable hunks (hunk id -> two-to-five-word why):
    * their rows are muted, the why sits on their header, and Space passes
    * over them.
    */
   skip?: ReadonlyMap<string, string>;
+  /**
+   * The analysis's labels on the unit's ordinary hunks (hunk id -> a few
+   * words): shown as the header chip in place of the derived hint.
+   */
+  labels?: ReadonlyMap<string, string>;
   /**
    * Files tab only: which unit (if any) a hunk belongs to, for a quiet label
    * on its header — the units tab already groups by unit, so the host omits
@@ -361,6 +366,7 @@ export function DiffPane({
   jumpToHunk,
   heart,
   skip,
+  labels,
   unitForHunkId,
   onUnitClick,
   highlight = null,
@@ -822,20 +828,44 @@ export function DiffPane({
   // Comparing against the previous snapshot (rather than reacting to the flag
   // itself) is what lets a manual unfold survive until the state next moves.
   const viewedNow = useMemo(() => viewedSnapshot(detail.state.hunks), [detail.state.hunks]);
-  /** Per heart hunk, the unified row indices its range covers; `null` is the whole hunk. */
-  const heartRows = useMemo(() => {
-    const out = new Map<string, ReadonlySet<number> | null>();
-    if (!heart) return out;
+  /**
+   * Per heart hunk, the unified row indices its segments cover (`null`: the
+   * whole hunk), and where each segment's caption goes: the first row of its
+   * range, in row order.
+   */
+  const { heartRows, heartCaptions } = useMemo(() => {
+    const heartRows = new Map<string, ReadonlySet<number> | null>();
+    const heartCaptions = new Map<string, { at: number; seg: number; why: string }[]>();
+    if (!heart) return { heartRows, heartCaptions };
     for (const e of entries) {
-      const mark = heart.get(e.hunk.id);
-      if (!mark) continue;
-      out.set(e.hunk.id, mark.lines ? heartRowIndices(buildRows(e.hunk, detail.diff), mark.lines) : null);
+      const marks = heart.get(e.hunk.id);
+      if (!marks?.length) continue;
+      if (marks.some((m) => !m.lines)) {
+        heartRows.set(e.hunk.id, null);
+        continue;
+      }
+      const rows = buildRows(e.hunk, detail.diff);
+      const all = new Set<number>();
+      const captions: { at: number; seg: number; why: string }[] = [];
+      marks.forEach((m, seg) => {
+        const set = heartRowIndices(rows, m.lines!);
+        for (const i of set) all.add(i);
+        if (set.size) captions.push({ at: Math.min(...set), seg, why: m.why });
+      });
+      heartRows.set(e.hunk.id, all);
+      heartCaptions.set(
+        e.hunk.id,
+        captions.sort((a, b) => a.at - b.at),
+      );
     }
-    return out;
+    return { heartRows, heartCaptions };
   }, [heart, entries, detail.diff]);
   /** Whether a row carries the heart bar: every row of a whole-hunk heart, only the ranged rows otherwise. */
   const heartMarks = (row: FlatRow): boolean => {
     if (!("hunkId" in row) || !heartRows.has(row.hunkId)) return false;
+    // The header itself carries no mark: the bar and tint belong to the
+    // segments (and their captions), not to the hunk as a whole.
+    if (row.type === "hunk") return false;
     const set = heartRows.get(row.hunkId);
     if (set === null) return true;
     if (!set) return false;
@@ -846,7 +876,7 @@ export function DiffPane({
         pair && ((pair.right && set.has(pair.right.index)) || (pair.left && set.has(pair.left.index))),
       );
     }
-    return row.type === "hunk" || row.type === "heart";
+    return row.type === "heart";
   };
   const prevViewed = useRef(viewedNow);
   const collapsedRef = useRef(collapsed);
@@ -1114,22 +1144,32 @@ export function DiffPane({
         hunk.id,
       );
       out.push({ type: "hunk", key: `h:${hunk.id}`, hunkId: hunk.id, entry, seam });
-      // The heart's why sits under the header, except for a ranged heart in
-      // an open hunk: there it sits right above the first marked row, where
-      // the lines it describes are, not hundreds of lines up. If the rows
-      // below never reach that index (it fell inside a folded moved-code
-      // region), it goes under the header after all.
-      const mark = heart?.get(hunk.id);
-      const ranged = mark !== undefined ? heartRows.get(hunk.id) : undefined;
-      const captionAt = ranged && !isCollapsed(collapsed, hunk.id) ? Math.min(...ranged) : undefined;
+      // A heart's why sits under the header, except for a ranged segment in
+      // an open hunk: there it sits right above the segment's first marked
+      // row, where the lines it describes are, not hundreds of lines up. A
+      // caption the rows never reach (its row fell inside a folded moved-code
+      // region) goes under the header after all.
+      const marks = heart?.get(hunk.id);
+      const open = !isCollapsed(collapsed, hunk.id);
+      const captions = marks?.length && heartRows.get(hunk.id) !== null && open ? (heartCaptions.get(hunk.id) ?? []) : null;
       const headerIdx = out.length;
-      let captionPushed = false;
-      const pushHeart = () => {
-        if (mark === undefined || captionPushed) return;
-        captionPushed = true;
-        out.push({ type: "heart", key: `heart:${hunk.id}`, hunkId: hunk.id, why: mark.why });
+      let nextCaption = 0;
+      const heartRow = (seg: number, why: string): FlatRow => ({
+        type: "heart",
+        key: `heart:${hunk.id}:${seg}`,
+        hunkId: hunk.id,
+        seg,
+        why,
+      });
+      /** Captions whose row is `unifiedIdx`, in order. */
+      const pushCaptionsAt = (unifiedIdx: number) => {
+        if (!captions) return;
+        while (nextCaption < captions.length && captions[nextCaption].at === unifiedIdx) {
+          out.push(heartRow(captions[nextCaption].seg, captions[nextCaption].why));
+          nextCaption++;
+        }
       };
-      if (captionAt === undefined) pushHeart();
+      if (marks?.length && captions === null) marks.forEach((m, seg) => out.push(heartRow(seg, m.why)));
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
       }
@@ -1176,9 +1216,8 @@ export function DiffPane({
             i = region.to - 1;
             continue;
           }
-          if (captionAt !== undefined && (pairs[i].left?.index === captionAt || pairs[i].right?.index === captionAt)) {
-            pushHeart();
-          }
+          if (pairs[i].left) pushCaptionsAt(pairs[i].left!.index);
+          if (pairs[i].right) pushCaptionsAt(pairs[i].right!.index);
           out.push({
             type: "split",
             key: `${w}s:${hunk.id}:${i}`,
@@ -1204,7 +1243,7 @@ export function DiffPane({
             i = region.to - 1;
             continue;
           }
-          if (i === captionAt) pushHeart();
+          pushCaptionsAt(i);
           out.push({
             type: "line",
             key: `${w}l:${hunk.id}:${i}`,
@@ -1221,8 +1260,9 @@ export function DiffPane({
           }
         }
       }
-      if (mark !== undefined && !captionPushed) {
-        out.splice(headerIdx, 0, { type: "heart", key: `heart:${hunk.id}`, hunkId: hunk.id, why: mark.why });
+      if (captions && nextCaption < captions.length) {
+        const left = captions.slice(nextCaption).map((c) => heartRow(c.seg, c.why));
+        out.splice(headerIdx, 0, ...left);
       }
       pushGapAfter();
     }
@@ -1246,6 +1286,7 @@ export function DiffPane({
     openedFoldRegions,
     heart,
     heartRows,
+    heartCaptions,
   ]);
 
   const hunkRowIndex = useMemo(() => {
@@ -1783,6 +1824,8 @@ export function DiffPane({
     line !== undefined && coveredLines.has(lineAnchor(path, line, side));
 
   /** Keyboard navigation moves focus AND the viewport; clicks only focus. */
+  /** The heart stop (index into the h/H stop list) the reader last landed on. */
+  const heartStopRef = useRef<number | null>(null);
   const focusAndScroll = useCallback(
     (id: string) => {
       onFocusHunk(id);
@@ -2093,20 +2136,42 @@ export function DiffPane({
         e.preventDefault();
         focusAndScroll(ids[Math.max(cur - 1, 0)] ?? ids[0]);
       } else if ((e.key === "h" || e.key === "H") && heart?.size) {
-        // Among the heart hunks only, wrapping around at either end.
-        const hearts = ids.filter((id) => heart.has(id));
-        if (!hearts.length) return;
+        // Among the heart segments only, in pane order, wrapping around at
+        // either end. Two segments of one hunk are two stops; which one the
+        // reader is on is remembered, since focus is per hunk.
+        const stops = ids.flatMap((id) => (heart.get(id) ?? []).map((_, seg) => ({ id, seg })));
+        if (!stops.length) return;
         e.preventDefault();
-        const at = focusedHunkId ? hearts.indexOf(focusedHunkId) : -1;
-        const next =
+        const remembered = heartStopRef.current;
+        const at =
+          remembered !== null && stops[remembered]?.id === focusedHunkId
+            ? remembered
+            : focusedHunkId
+              ? stops.findIndex((s) => s.id === focusedHunkId)
+              : -1;
+        const nextIdx =
           e.key === "h"
             ? at === -1
-              ? (hearts.find((id) => ids.indexOf(id) > cur) ?? hearts[0])
-              : hearts[(at + 1) % hearts.length]
+              ? Math.max(
+                  0,
+                  stops.findIndex((s) => ids.indexOf(s.id) > cur),
+                )
+              : (at + 1) % stops.length
             : at === -1
-              ? ([...hearts].reverse().find((id) => ids.indexOf(id) < cur) ?? hearts[hearts.length - 1])
-              : hearts[(at - 1 + hearts.length) % hearts.length];
-        focusAndScroll(next);
+              ? (() => {
+                  const back = [...stops.keys()].reverse().find((i) => ids.indexOf(stops[i].id) < cur);
+                  return back ?? stops.length - 1;
+                })()
+              : (at - 1 + stops.length) % stops.length;
+        const stop = stops[nextIdx];
+        heartStopRef.current = nextIdx;
+        onFocusHunk(stop.id);
+        // A ranged segment's caption row is the target; a whole-hunk heart
+        // (or a folded hunk) glides to the header like any hunk.
+        const captionIdx = rows.findIndex((r) => r.type === "heart" && r.hunkId === stop.id && r.seg === stop.seg);
+        const underHeader = captionIdx !== -1 && rows[captionIdx - 1]?.type === "hunk";
+        if (captionIdx === -1 || underHeader) glideToHunk(stop.id);
+        else virtualizer.scrollToIndex(captionIdx, { align: "start" });
       } else if (e.key === "v") {
         if (!focusedHunkId) return;
         e.preventDefault();
@@ -2183,6 +2248,10 @@ export function DiffPane({
     detail.state.hunks,
     toggleHunkFoldRegions,
     skip,
+    heart,
+    rows,
+    glideToHunk,
+    virtualizer,
   ]);
 
   if (!entries.length) {
@@ -2840,14 +2909,17 @@ export function DiffPane({
       const inside = folded ? commentsInHunk(row.entry) : null;
       const atHeart = heart?.has(row.hunkId) === true;
       const skipWhy = skip?.get(row.hunkId);
+      const label = labels?.get(row.hunkId);
       // Support hunks are named only once the unit has a heart to contrast
-      // with; a skippable hunk carries the analysis's own label instead.
-      const hint = heart?.size && !atHeart && skipWhy === undefined ? hunkHint(row.entry.file, row.entry.hunk) : null;
-      // The heart tint is the ground; keyboard focus layers its own on top,
-      // so a focused heart header reads as both.
-      const ground = atHeart
-        ? "linear-gradient(var(--heart-soft), var(--heart-soft)), var(--bg-hover)"
-        : "var(--bg-hover)";
+      // with, and only when the analysis did not label them itself; a
+      // skippable hunk carries its own label too.
+      const hint =
+        heart?.size && !atHeart && skipWhy === undefined && label === undefined
+          ? hunkHint(row.entry.file, row.entry.hunk)
+          : null;
+      // The header stays untinted even on a heart hunk: the tint and bar mark
+      // the segments below, which may be a few lines of a long hunk.
+      const ground = "var(--bg-hover)";
       return (
         <div
           data-testid={`hunk-header-${row.hunkId}`}
@@ -2859,10 +2931,7 @@ export function DiffPane({
             // separate blocks. accent-soft is translucent; composite it over
             // that ground so a pinned focused header stays opaque.
             background: focused ? `linear-gradient(var(--accent-soft), var(--accent-soft)), ${ground}` : ground,
-            // The focus mark sits just right of the heart bar (3px, drawn by
-            // the row wrapper), so a focused heart header shows both.
             borderLeft: `2px solid ${focused ? "var(--accent)" : "transparent"}`,
-            paddingLeft: atHeart ? "calc(0.75rem + 3px)" : undefined,
             // A drawn line, not a border: row heights stay what was measured.
             boxShadow: row.seam ? "inset 0 1px 0 var(--border-strong)" : undefined,
             color: "var(--fg-muted)",
@@ -2925,6 +2994,16 @@ export function DiffPane({
               data-tip="The analysis says a reader can skip this hunk; it counts toward nothing and Space passes over it"
             >
               skippable · {skipWhy}
+            </span>
+          ) : null}
+          {label !== undefined ? (
+            <span
+              className="chip flex-none"
+              data-testid={`hunk-label-${row.hunkId}`}
+              style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+              data-tip="What this hunk is, in the analysis's words"
+            >
+              {label}
             </span>
           ) : null}
           {hint ? (

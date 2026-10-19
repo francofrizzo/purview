@@ -1,3 +1,4 @@
+import { hunkIdsOf } from "../src/units.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -191,7 +192,7 @@ function analyzeAll(state: State) {
     {
       summary: "s",
       units: [
-        { id: "core", title: "Core", summary: "s", kind: "core-logic", attention: "must-read", attentionWhy: "w", riskFlags: [], hunkIds: ids, order: 0 },
+        { id: "core", title: "Core", summary: "s", kind: "core-logic", attention: "must-read", attentionWhy: "w", riskFlags: [], hunks: ids, order: 0 },
       ],
     },
     {},
@@ -238,7 +239,7 @@ describe("generated unit across the PR's life", () => {
     expect(selectHunks(fj, ["pnpm-lock.yaml"]).hunks).toHaveLength(1);
     // A full analysis covering only the non-generated hunks is accepted.
     lastState = analyzeAll(lastState);
-    expect(genUnit(lastState)!.hunkIds).toHaveLength(5);
+    expect(hunkIdsOf(genUnit(lastState)!)).toHaveLength(5);
     expect(lastState.units.map((u) => u.id)).toEqual(["core", GENERATED_UNIT_ID]);
   });
 
@@ -247,22 +248,22 @@ describe("generated unit across the PR's life", () => {
     const lock = hunksOf("pnpm-lock.yaml");
     const src = hunksOf("src/app.ts");
     expect(() =>
-      setAnalysis(key, { summary: "s", units: [{ id: GENERATED_UNIT_ID, title: "x", summary: "", kind: "wiring", attention: "skip", attentionWhy: "", hunkIds: src, order: 0 }] }, {}, root),
+      setAnalysis(key, { summary: "s", units: [{ id: GENERATED_UNIT_ID, title: "x", summary: "", kind: "wiring", attention: "skip", attentionWhy: "", hunks: src, order: 0 }] }, {}, root),
     ).toThrow(/reserved/);
     lastState = setAnalysis(
       key,
-      { summary: "s", units: [{ id: "deps", title: "Deps", summary: "", kind: "wiring", attention: "skim", attentionWhy: "", hunkIds: [...src, ...lock], order: 0 }] },
+      { summary: "s", units: [{ id: "deps", title: "Deps", summary: "", kind: "wiring", attention: "skim", attentionWhy: "", hunks: [...src, ...lock], order: 0 }] },
       {},
       root,
     ).state;
-    expect(lastState.units.find((u) => u.id === "deps")!.hunkIds).toEqual(src);
-    expect(genUnit(lastState)!.hunkIds).toContain(lock[0]);
+    expect(hunkIdsOf(lastState.units.find((u) => u.id === "deps")!)).toEqual(src);
+    expect(hunkIdsOf(genUnit(lastState)!)).toContain(lock[0]);
   });
 
   it("refuses patches to it, or that take its hunks", () => {
     lastState = analyzeAll(initPr(key, root).state);
     expect(() => setUnits(key, [{ unitId: GENERATED_UNIT_ID, payload: { title: "x" } }], root)).toThrow(/cannot be patched/);
-    expect(() => setUnits(key, [{ unitId: "core", payload: { addHunkIds: hunksOf("pnpm-lock.yaml") } }], root)).toThrow(
+    expect(() => setUnits(key, [{ unitId: "core", payload: { addHunks: hunksOf("pnpm-lock.yaml") } }], root)).toThrow(
       /belong to generated files/,
     );
   });
@@ -306,7 +307,7 @@ describe("generated unit across the PR's life", () => {
       include: [],
       exclude: ["pnpm-lock.yaml"],
     });
-    expect(genUnit(lastState)!.hunkIds).not.toContain(lock[0]);
+    expect(hunkIdsOf(genUnit(lastState)!)).not.toContain(lock[0]);
     expect(needsClassification(lastState).map((h) => h.id)).toEqual(lock);
     expect(readFilesJson(key, 1, root).files.find((f) => f.path === "pnpm-lock.yaml")?.generated).toBeUndefined();
 
@@ -314,7 +315,7 @@ describe("generated unit across the PR's life", () => {
     lastState = res.state;
     // "core" held only src/app.ts: it goes rather than staying empty
     expect(lastState.units.find((u) => u.id === "core")).toBeUndefined();
-    expect(genUnit(lastState)!.hunkIds).toContain(hunksOf("src/app.ts")[0]);
+    expect(hunkIdsOf(genUnit(lastState)!)).toContain(hunksOf("src/app.ts")[0]);
     expect(readFilesJson(key, 1, root).files.find((f) => f.path === "src/app.ts")?.generated).toEqual({
       source: "repo",
       detail: "src/app.ts",
@@ -333,7 +334,7 @@ describe("generated unit across the PR's life", () => {
     lastState = discardRevision(key, 2, root).state;
     expect(lastState.currentRevision).toBe(1);
     expect(pathsOf(lastState)).not.toContain("pnpm-lock.yaml");
-    expect(genUnit(lastState)!.hunkIds).not.toContain(hunksOf("pnpm-lock.yaml")[0]);
+    expect(hunkIdsOf(genUnit(lastState)!)).not.toContain(hunksOf("pnpm-lock.yaml")[0]);
   });
 
   it("backfills a revision recorded before classification existed, on a no-op refresh", () => {

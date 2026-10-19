@@ -43,7 +43,7 @@ first three as "carried".
   above.
 - **archived** — an old hunk with no match in the new revision (removed/superseded).
   Kept in `events.jsonl` for history, automatically dropped from every unit's active
-  `hunkIds` (and from `unassignedHunkIds`) when the revision is folded into state, listed
+  `hunks` (and from `unassignedHunkIds`) when the revision is folded into state, listed
   in the migration report and in `state.archived`. Don't reference an archived hunk id when
   patching units — `set-analysis` rejects unknown ids outright.
 - **new** — a new-revision hunk with no old counterpart. `changes` still says when part of it
@@ -85,13 +85,13 @@ first three as "carried".
      unit that lost hunks is titled and summarized by what remains, not by what left; the
      history goes in the changelog only;
    - re-check `kind` / `attention` / `riskFlags` (a correction needs a `note`);
-   - re-check its `heart`: an entry whose hunk left the unit is already gone, and the
-     `why` of a reworked heart hunk may be stale. Resend the whole `heart` list (one to
-     three of the unit's current hunks) when it should change; leave it out to keep it;
-   - re-check its `skip`: a reworked or archived hunk's entry is already gone (the "skip
-     it" claim was about the old body), so a reworked hunk counts again. Resend the whole
-     `skip` list to skip it again, only after reading its new body; leave it out to keep
-     the list as it is;
+   - re-check each hunk entry's `label`, `skip` and `heart`: a hunk that left the unit
+     took its entry with it; a reworked hunk's `skip`, `label` and heart `lines` are
+     already gone (each was a claim about the old body), so a reworked hunk counts again
+     and a reworked heart is one whole-hunk segment whose `why` may be stale. Set them
+     again only after reading the new body, as an `addHunks` upsert of just those entries
+     (`{"id": ..., "label": ..., "skip": true, "heart": [...]}`; the entry sent replaces
+     the old one whole, so a bare id clears everything); leave the rest out to keep them;
    - send a `changelogEntry`: a short note (a sentence or two) about what *this revision* changed in
      the unit's **code** (e.g. `"rounding switched to banker's; added a .5 test"`) — not a
      restatement of the summary, and never migration bookkeeping (attached / unassigned /
@@ -109,19 +109,24 @@ first three as "carried".
 
    ```json
    {"units": [
-     {"id": "rounding", "addHunkIds": ["3f9c2a1b"], "summary": "...", "attentionWhy": "...",
-      "changelogEntry": "rounding switched to banker's; added a .5 test"},
+     {"id": "rounding", "addHunks": ["3f9c2a1b", {"id": "7b1e4c9d", "heart": [{"why":
+      "Rounds half-even before the ledger write."}]}], "summary": "...",
+      "attentionWhy": "...", "changelogEntry": "rounding switched to banker's; added a .5 test"},
      {"id": "old-home", "removeHunkIds": ["5e6f7a8b"]},
-     {"id": "new-home", "addHunkIds": ["5e6f7a8b"], "kind": "wiring", "attention": "skim",
+     {"id": "new-home", "addHunks": ["5e6f7a8b"], "kind": "wiring", "attention": "skim",
       "note": "config plumbing, not logic"},
      {"id": "brand-new", "title": "...", "summary": "...", "kind": "tests", "attention": "skim",
-      "attentionWhy": "...", "order": 12, "riskFlags": [], "hunkIds": ["9c0d1e2f"]}
+      "attentionWhy": "...", "order": 12, "riskFlags": [], "hunks": ["9c0d1e2f"]}
    ]}
    ```
 
-   - `addHunkIds` / `removeHunkIds` edit a unit's hunk list in place — no need to know or
-     resend the rest of it. `hunkIds` still replaces the whole list; don't combine it with
-     add/remove in one patch. Hunk ids may be the 8-char short ids `units`/`changes` print.
+   - `addHunks` / `removeHunkIds` edit a unit's hunk list in place — no need to know or
+     resend the rest of it. `addHunks` upserts by id: a new id is appended, an id the unit
+     already holds has its entry replaced by the one sent (so an entry with a label, skip
+     or heart sets them, and a bare id clears them). `hunks` still replaces the whole
+     list, labels, skips and hearts included; don't combine it with add/remove in one
+     patch. Hunk ids
+     may be the 8-char short ids `units`/`changes` print.
    - A hunk belongs to one unit only, checked on the result of the whole batch: to move one,
      remove it from its current unit and add it to the new one **in the same batch** (either
      order).

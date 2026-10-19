@@ -247,7 +247,7 @@ Produce:
 
 `ReviewUnit` fields: `id` (slug), `title`, `summary` (1-3 sentences), `kind`, `attention`,
 `attentionWhy`, `order` (integer, suggested reading order, starting at 0 or 1 — be
-consistent), plus `riskFlags` and `hunkIds` (arrays; both default to `[]` if omitted, but
+consistent), plus `riskFlags` and `hunks` (arrays; both default to `[]` if omitted, but
 always write them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy`
 and `order` are required — the schema rejects the payload if any is missing.
 
@@ -280,15 +280,43 @@ semicolon. For a skim or skip unit, say in the same shape what the glance is for
 **A concern lives in one place.** Something you noticed — a stale description, a missing
 metric, a caller that may not handle the new path — is a `finding` on the unit that owns it
 (with a checkout) or a question in that unit's `attentionWhy` (without one). It does not
-also appear in the overall `summary`, in another unit's `attentionWhy`, or in a heart `why`.
-The summary may point at it in a clause ("the Flows are not touched, see that unit"), never
-restate it.
+also appear in the overall `summary`, in another unit's `attentionWhy`, or in a heart
+`why`. The summary may point at it in a clause ("the Flows are not touched, see that
+unit"), never restate it.
 
-`heart` (optional, one to three entries of `{"hunkId": "...", "why": "..."}`) names the
-hunks where the unit's logic actually lives, as opposed to the call sites, tests, imports
-and plumbing around it. `why` is **one full sentence saying what the hunk does**: the
-behavior it implements, as you would describe it to a colleague after reading it. It is
-shown as a caption right under the hunk in the diff, so it must read on its own.
+`hunks` is the unit's hunk ids (short ids are fine), in reading order. An entry may be
+a bare id or an object `{"id": "...", "label": "...", "skip": true, "heart": [...]}`
+saying what that hunk is to the unit. Three fields, each optional:
+
+**`label`** — three to six words saying what the hunk *is*, sentence case, no period:
+`"The retry table"`, `"Fixture for the drained case"`, `"Old handler, kept for the flag"`.
+**Label every hunk of a must-read or skim unit**, hearts and skips included: the reader
+scans a unit by these before reading a line. The one exception is a hunk whose `@@`
+header already names the thing and nothing else is in it (`@@ ... @@ func Enqueue` on a
+hunk that is only `Enqueue`); then leave it off rather than restate the header. Say what
+the hunk is, not what the unit is: a label that would fit every hunk of the unit is wrong.
+Skip and ripple units need no labels.
+
+**`skip: true`** — a hunk a reader can skip: import changes, re-exports, renamed call
+sites, moved boilerplate, inside a unit that otherwise matters. A skip requires a `label`,
+two to five words giving the reason, shown on the muted hunk: `"adds imports"`,
+`"renamed call site"`, `"re-export only"`. Rules:
+
+- Skip only a hunk whose body you actually read. The claim is "there is nothing here",
+  and you can only make it after looking.
+- A hunk is never both skip and heart (the payload is rejected), and never make skips
+  the majority of a must-read unit: if most of a unit is skippable, the unit is skim,
+  not must-read with skips.
+- Purview shows these hunks muted, leaves them out of every progress count, and Space
+  passes over them, so a wrong skip steers the reviewer past code. When in doubt, leave
+  it out.
+
+**`heart`** — one to three segments `{"why": "...", "lines": [from, to]}` on a hunk
+where the unit's logic actually lives, as opposed to the call sites, tests, imports and
+plumbing around it. At most three hunks of a unit carry a heart. Each segment's `why` is
+**one full sentence saying what the code there does**: the behavior it implements, as
+you would describe it to a colleague after reading it. It is shown as a caption right
+under the segment in the diff, so it must read on its own.
 
 - Good: `"Derives the idempotency key from order id, amount and currency and stores it on
   the charge row before the gateway is called."`
@@ -304,44 +332,36 @@ code does, the attentionWhy says what is at stake. If writing one makes the othe
 redundant, rewrite the attentionWhy, not the heart.
 
 Give every **must-read** unit a heart; give a skim unit one only when one hunk clearly
-carries it. Each `hunkId` must be one of that unit's own `hunkIds` (short ids are fine).
-Purview marks these hunks in the diff; the rest of the unit stays fully visible, so the
-heart is a pointer, not a filter. Leave `heart` off entirely for a unit whose hunks are
+carries it. Purview marks these segments in the diff; the rest of the unit stays fully
+visible, so the heart is a pointer, not a filter. Give no heart to a unit whose hunks are
 all alike (a pure rename, a batch of test fixtures).
 
-**A heart hunk longer than 80 lines must carry `"lines": [from, to]`**: the lines where
-the logic the `why` describes actually sits, so the reader lands on it instead of at the
-top of a 500-line file. A whole new file is the usual case: its hunk is the entire file,
-and the heart is one function or one table in it, not the imports, the type declarations
-and the helpers around it. The numbers are new-side line numbers (the hunk's added and
-context lines), inclusive, `from <= to`, read off the file at `show <id>`; keep the range
-tight (a function, a block, a table), at most about 60 lines. Purview bars that range
-and leaves the rest of the hunk as support. A shorter hunk may carry `lines` too when a
-few lines are the point; leave it off only when the whole hunk is the heart.
+**A heart hunk longer than 80 lines must carry `lines` on every segment**: the lines
+where the logic the `why` describes actually sits, so the reader lands on it instead of
+at the top of a 500-line file. A whole new file is the usual case: its hunk is the entire
+file, and the heart is one function or one table in it, not the imports, the type
+declarations and the helpers around it. The numbers are new-side line numbers (the
+hunk's added and context lines), inclusive, `from <= to`, read off the file at `show
+<id>`; keep each range tight (a function, a block, a table), at most about 60 lines.
+Purview bars that range and leaves the rest of the hunk as support. A segment without
+`lines` is the whole hunk and must then be the hunk's only segment; a shorter hunk may
+carry `lines` too when a few lines are the point. Two or three segments on one hunk are
+for two or three distinct places that each matter (two functions in one new file), each
+with its own `why`; they must not overlap.
 
-- Good: a 785-line new `dataset.go` whose heart `why` is about `Enqueue` → `"lines":
-  [214, 261]`, the `Enqueue` function.
+- Good: a 785-line new `dataset.go` where `Enqueue` and `Process` both matter →
+  `"heart": [{"why": "Enqueue ...", "lines": [214, 261]}, {"why": "Process ...",
+  "lines": [402, 455]}]`, the two functions.
 - Bad: the same hunk with no `lines` (the reader starts at the package clause), or with
   `"lines": [1, 785]` (the whole hunk restated).
 
-`skip` (optional, a list of `{"hunkId": "...", "why": "..."}`) names the unit's hunks a
-reader can skip: import changes, re-exports, renamed call sites, moved boilerplate, inside
-a unit that otherwise matters. `why` is two to five words, shown as a label on the hunk:
-`"adds imports"`, `"renamed call site"`, `"re-export only"`. Rules:
-
-- Skip only a hunk whose body you actually read. The claim is "there is nothing here",
-  and you can only make it after looking.
-- Never a heart hunk (the payload is rejected), and never the majority of a must-read
-  unit: if most of a unit is skippable, the unit is skim, not must-read with skips.
-- Purview shows these hunks muted, leaves them out of every progress count, and Space
-  passes over them, so a wrong skip steers the reviewer past code. When in doubt, leave
-  it out.
+An id listed twice is rejected.
 
 One more field, `findings`, is optional and is only ever filled in by the verification
 pass (step 5). Leave it off entirely here.
 
-Every prose field — the overall `summary`, each unit's `summary`, `attentionWhy` and
-heart `why`, and later the findings — is rendered as markdown. Use `code` spans for identifiers, paths,
+Every prose field — the overall `summary`, each unit's `summary`, `attentionWhy`, a
+hunk's `label` and heart `why`, and later the findings — is rendered as markdown. Use `code` spans for identifiers, paths,
 values and commands (`charge()`, `src/billing/ledger.ts`, `max_attempts=4`), and **bold**
 or *italics* where they help. No headings, lists or fences inside the one-line fields;
 the overall `summary` may use short paragraphs, nothing else.
@@ -349,15 +369,15 @@ the overall `summary` may use short paragraphs, nothing else.
 Rules — the first three are **enforced by the CLI**, which rejects the whole payload:
 
 - **Coverage: every hunk id of the current revision — except generated files', which
-  are Purview's — must appear either in some unit's `hunkIds` or in the top-level
+  are Purview's — must appear either in some unit's `hunks` or in the top-level
   `"unassigned"` array.** `set-analysis` throws and writes
   nothing if any hunk is unaccounted for, listing the missing ids. Use `"unassigned"` for
   hunks you deliberately refuse to put in a unit; do not invent a junk-drawer unit.
 - **No unknown ids**: every id you reference must belong to the current revision.
   Referencing an archived or stale id is a hard error.
-- **Exactly one unit per hunk**: a hunk id may appear in only one unit's `hunkIds` (and not
+- **Exactly one unit per hunk**: a hunk id may appear in only one unit's `hunks` (and not
   also in `"unassigned"`). `set-analysis` rejects a duplicate, listing each id and the units
-  it appears in. `set-unit` rejects a `hunkIds` patch that takes a hunk another unit already
+  it appears in. `set-unit` rejects a `hunks` patch that takes a hunk another unit already
   owns — to move a hunk, remove it from its current unit and add it to the new one in the
   same `set-units` batch (see MIGRATION-NOTES.md).
 - Units are **logical changes**, not files. A unit may span multiple files (e.g. a
@@ -498,7 +518,7 @@ what is left (hunks still needing classification, or "All hunks assigned") — n
 CLI reports validation errors, fix the file with the **edit tool** — a targeted edit, not
 a rewrite — and re-run the same command. Do not hand-wave past a validation failure.
 Common causes: a hunk id of the current revision missing from every unit's
-`hunkIds` *and* from `"unassigned"` (the error lists the exact ids), a hunk id listed in
+`hunks` *and* from `"unassigned"` (the error lists the exact ids), a hunk id listed in
 two units (the error names the units), a referenced id that isn't in this revision, an invalid `kind`/`attention`/`riskFlags` enum value, or a missing
 required field such as `attentionWhy` or `order`.
 
@@ -550,7 +570,7 @@ Finish every run (init or refresh) by printing, in the user's working language:
 
 - The overall summary.
 - A units table: `title | kind | attention | hunk count`, ordered by `order`; a unit with
-  skips shows `N hunks, M skippable`.
+  skips shows `N hunks, M skippable`, one with a heart adds `heart: <short ids>`.
 
 Keep it scannable — this is the reviewer's map of the PR, not a restatement of the diff.
 <!-- interactive-only:end -->

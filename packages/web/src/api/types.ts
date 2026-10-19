@@ -112,22 +112,30 @@ export interface UnitChangelogEntry {
   text: string;
 }
 
-/** One hunk where the unit's logic lives, and why the reader should start there. */
-export interface HeartEntry {
-  hunkId: string;
-  /** one short line; inline markdown */
+/**
+ * One stretch of a hunk where a unit's logic lives: one sentence saying what
+ * the code does, and the lines (new side, inclusive) it is. No `lines`: the
+ * whole hunk, and then it is the hunk's only segment.
+ */
+export interface HeartSegment {
+  /** inline markdown */
   why: string;
-  /**
-   * The lines (new side, inclusive) the heart really is, when it is a small
-   * part of a large hunk. Absent: the whole hunk.
-   */
   lines?: [number, number];
 }
 
-/** One hunk the analysis marks as skippable, and the two-to-five-word why. */
-export interface SkipEntry {
-  hunkId: string;
-  why: string;
+/**
+ * One hunk of a unit, as the analysis lists it. A bare membership is `{ id }`.
+ * `label` is a few words saying what the hunk is, allowed on any hunk;
+ * `skip` says there is nothing to read (the label says why); `heart` marks
+ * the one to three segments the unit's logic lives in. A hunk is never both
+ * skip and heart.
+ */
+export interface HunkEntry {
+  id: string;
+  /** inline markdown */
+  label?: string;
+  skip?: true;
+  heart?: HeartSegment[];
 }
 
 export interface ReviewUnit {
@@ -138,21 +146,15 @@ export interface ReviewUnit {
   attention: Attention;
   attentionWhy: string;
   riskFlags: RiskFlag[];
-  hunkIds: string[];
+  /**
+   * The unit's hunks, in the order the analysis listed them (the pane does
+   * not use that order; see orderUnitHunks). One to three carry a `heart`,
+   * the segments the logic lives in; any number carry `skip`, hunks a
+   * reader need not read (shown muted, out of every count, passed over by
+   * Space); any may carry a `label`. See lib/units.ts for the accessors.
+   */
+  hunks: HunkEntry[];
   order: number;
-  /**
-   * The one to three hunks the analysis names as the heart of the unit (each
-   * one of `hunkIds`). Absent on states written before it existed and on
-   * units with no heart; the rest of the unit is support, not hidden.
-   */
-  heart?: HeartEntry[];
-  /**
-   * Hunks of this unit the analysis says a reader can skip (import changes,
-   * re-exports, renamed call sites) with a two-to-five-word label. They show
-   * muted, Space passes over them and no count includes them. Absent on
-   * older states and on units with nothing to skip.
-   */
-  skip?: SkipEntry[];
   /**
    * The unit's files in the analysis's reading order (paths). Files it
    * leaves out follow in diff order; absent, the heart's files come first.

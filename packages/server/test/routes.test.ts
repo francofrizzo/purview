@@ -46,7 +46,7 @@ describe("GET /api/prs", () => {
 
   it("leaves skipped hunks out of the progress rollup", async () => {
     const [first, second] = loadState(key, root).files.flatMap((f) => f.hunkIds);
-    setUnit(key, "unit-1", { skip: [{ hunkId: second, why: "adds imports" }] }, {}, root);
+    setUnit(key, "unit-1", { addHunks: [{ id: second, skip: true, label: "adds imports" }] }, {}, root);
     setHunkViewed(key, second, true, root);
     let pr = ((await (await app.request("/api/prs")).json()) as any).prs[0];
     expect(pr.progress.hunks).toEqual({ viewed: 0, total: 1 });

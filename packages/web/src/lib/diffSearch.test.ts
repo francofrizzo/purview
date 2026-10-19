@@ -126,9 +126,9 @@ describe("grouping helpers", () => {
       ["b.ts", 1],
     ]);
     const units: ReviewUnit[] = [
-      { id: "u1", hunkIds: [h1.id] } as ReviewUnit,
-      { id: "u2", hunkIds: [h2.id] } as ReviewUnit,
-      { id: "u3", hunkIds: [] } as unknown as ReviewUnit,
+      { id: "u1", hunks: [{ id: h1.id }] } as ReviewUnit,
+      { id: "u2", hunks: [{ id: h2.id }] } as ReviewUnit,
+      { id: "u3", hunks: [] } as unknown as ReviewUnit,
     ];
     const perUnit = countsByUnit(matches, units);
     expect(perUnit.get("u1")).toBe(3);

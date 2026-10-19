@@ -15,6 +15,7 @@ import {
   type ChatAgentSelection,
   type Hunk,
   type PrKey,
+  hunkIdsOf,
   liveUnits,
 } from "@reviewer/core";
 import { commentPosition, readComments } from "./comments.js";
@@ -192,7 +193,7 @@ export function resolveRefs(key: PrKey, refs: ChatRef[], root = stateRoot()): st
         if (!ref.id) fail("no unit id given");
         const unit = state.units.find((u) => u.id === ref.id);
         if (!unit) fail(`no unit "${ref.id}" in the current analysis`);
-        const hunks = unit!.hunkIds
+        const hunks = hunkIdsOf(unit!)
           .map((id) => allHunks.find((h) => h.id === id))
           .filter((h): h is Hunk => !!h);
         blocks.push(
@@ -444,7 +445,7 @@ function prOverviewLines(key: PrKey, root: string, checkout?: ChatCheckout): str
     .sort((a, b) => a.order - b.order)
     .map(
       (u) =>
-        `  - ${u.id} [${u.attention}/${u.kind}] ${u.title} (${u.hunkIds.length} hunks)${
+        `  - ${u.id} [${u.attention}/${u.kind}] ${u.title} (${u.hunks.length} hunks)${
           u.riskFlags.length ? ` risk: ${u.riskFlags.join(",")}` : ""
         }${latestChangelogNote(u)}`,
     );

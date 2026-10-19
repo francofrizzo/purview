@@ -7,7 +7,7 @@ const file = (path: string, ids: string[]): FileEntry =>
   ({ path, status: "modified", hunks: ids.map((id) => ({ id, file: path })) }) as unknown as FileEntry;
 
 const unit = (id: string, hunkIds: string[], extra: Partial<ReviewUnit> = {}): ReviewUnit =>
-  ({ id, hunkIds, ...extra }) as ReviewUnit;
+  ({ id, hunks: hunkIds.map((hid) => ({ id: hid })), ...extra }) as ReviewUnit;
 
 function detailOf(
   files: FileEntry[],

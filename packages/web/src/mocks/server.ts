@@ -1018,9 +1018,9 @@ export const mockApi = {
     const previous = target.state.units.find(isGeneratedUnit);
     const rest = target.state.units
       .filter((u) => !isGeneratedUnit(u))
-      .map((u) => (generated ? { ...u, hunkIds: u.hunkIds.filter((id) => !ids.has(id)) } : u))
+      .map((u) => (generated ? { ...u, hunks: u.hunks.filter((h) => !ids.has(h.id)) } : u))
       // A unit the move emptied would be a confusing shell; the mock drops it.
-      .filter((u) => u.hunkIds.length > 0);
+      .filter((u) => u.hunks.length > 0);
     const unit = buildGeneratedUnit(target.files.files, previous?.order);
     target.state.units = unit ? [...rest, unit] : rest;
     if (target === detail) recomputeFileRollups();
@@ -1057,7 +1057,7 @@ export const mockApi = {
     await delay(90);
     const unit = detail.state.units.find((u) => u.id === unitId);
     if (!unit) return;
-    for (const id of unit.hunkIds) {
+    for (const { id } of unit.hunks) {
       const prev = detail.state.hunks[id] ?? { viewed: false, changedSinceViewed: false };
       detail.state.hunks[id] = { ...prev, viewed: true, viewedAtRevision: detail.state.revision };
     }
@@ -1510,7 +1510,7 @@ export const mockApi = {
     // As the server: hunks the analysis marked skippable count toward nothing.
     const skip = skippedHunkIds(units);
     const complete = (u: (typeof units)[number]) => {
-      const counted = u.hunkIds.filter((id) => !skip.has(id));
+      const counted = u.hunks.map((h) => h.id).filter((id) => !skip.has(id));
       return counted.length > 0 && counted.every((id) => detail.state.hunks[id]?.viewed);
     };
     const mustRead = units.filter((u) => u.attention === "must-read");
@@ -1730,13 +1730,13 @@ export const mockApi = {
     const matched = new Set<string>();
     const units: ReviewUnit[] = [];
     for (const unit of envelope.units ?? []) {
-      const hunkIds = unit.hunkIds.filter((id) => currentIds.has(id));
-      if (hunkIds.length === 0) {
+      const hunks = unit.hunks.filter((h) => currentIds.has(h.id));
+      if (hunks.length === 0) {
         unitsDropped++;
         continue;
       }
-      for (const id of hunkIds) matched.add(id);
-      units.push({ ...unit, hunkIds });
+      for (const { id } of hunks) matched.add(id);
+      units.push({ ...unit, hunks });
     }
     const unassigned = [...currentIds].filter((id) => !matched.has(id));
 
@@ -1809,13 +1809,13 @@ export const mockApi = {
     const matched = new Set<string>();
     const units: ReviewUnit[] = [];
     for (const unit of shared.envelope.units) {
-      const hunkIds = unit.hunkIds.filter((id) => currentIds.has(id));
-      if (hunkIds.length === 0) {
+      const hunks = unit.hunks.filter((h) => currentIds.has(h.id));
+      if (hunks.length === 0) {
         unitsDropped++;
         continue;
       }
-      for (const id of hunkIds) matched.add(id);
-      units.push({ ...unit, hunkIds });
+      for (const { id } of hunks) matched.add(id);
+      units.push({ ...unit, hunks });
     }
     const unassigned = [...currentIds].filter((id) => !matched.has(id));
 

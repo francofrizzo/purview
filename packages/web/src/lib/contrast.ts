@@ -125,7 +125,6 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("changed-in-on-add", "Diff rows", "changed-in row wash over add", "fg", 4.5, ["bg", "add-bg", "changed-in-bg"], "+  currency: string,", mono),
     s("hunk-header", "Diff rows", "hunk header (fg-muted on bg-hover)", "fg-muted", 3.2, ["bg", "bg-hover"], "@@ -18,10 +18,26 @@ export class ChargeService", mono),
     s("hunk-header-focused", "Diff rows", "focused hunk header (fg-muted on accent-soft)", "fg-muted", 3.2, ["bg", "bg-hover", "accent-soft"], "@@ -0,0 +1,14 @@", mono),
-    s("hunk-header-heart", "Diff rows", "heart hunk header (fg-muted on heart-soft)", "fg-muted", 3.2, ["bg", "bg-hover", "heart-soft"], "@@ -499,20 +506,80 @@", mono),
     s("heart-why", "Diff rows", "heart why row (fg on heart-soft)", "fg", 4.5, ["bg", "heart-soft"], "short-circuits on the ledger row before touching the gateway"),
     s("heart-mark", "Diff rows", "heart mark on heart-soft", "heart", 3.0, ["bg", "heart-soft"], "♥ heart"),
     s("comment-marker-add", "Diff rows", "comment marker (accent on add-bg)", "accent", 3.0, ["bg", "add-bg"], "● 3"),

@@ -1,5 +1,7 @@
 import { STATE_SHAPE_VERSION, isRemovedUnit } from "./schemas.js";
 import { GENERATED_UNIT_ID, buildGeneratedUnit, isGeneratedUnit } from "./generated.js";
+import { hunkIdsOf, normalizeHunks, skipOf, toHunkEntry, upsertHunks } from "./units.js";
+import { upcastEvent } from "./upcast.js";
 import type {
   ReviewUnit,
   ReviewUnitPatch,
@@ -7,7 +9,7 @@ import type {
   State,
   HunkState,
   FileRollup,
-  HeartEntry,
+  HunkEntry,
   UnitChangelogEntry,
 } from "./schemas.js";
 
@@ -34,7 +36,7 @@ function freshHunkState(): HunkState {
 
 /** A unit given hunks again is no longer a husk. */
 function reviveIfPopulated(unit: ReviewUnit): ReviewUnit {
-  if (unit.hunkIds.length === 0) return unit;
+  if (unit.hunks.length === 0) return unit;
   if (!isRemovedUnit(unit) && unit.readBeforeRemoval === undefined) return unit;
   const next = { ...unit };
   delete next.removedAtRevision;
@@ -57,48 +59,29 @@ export function upsertChangelog(
   );
 }
 
-/** Merge a unit patch; the patch-only `changelogEntry` lands in `changelog`. */
-function applyUnitPatch(unit: ReviewUnit, patch: ReviewUnitPatch, revision: number): ReviewUnit {
-  const { changelogEntry, ...fields } = patch;
-  const next = { ...unit, ...fields } as ReviewUnit;
-  if (changelogEntry) next.changelog = upsertChangelog(next.changelog, revision, changelogEntry);
-  return pruneHeart(next);
-}
-
 /**
- * `heart` and `skip` entries only ever point at one of the unit's own hunks:
- * whatever takes a hunk out of the unit (a patch, a migration, the generated
- * sweep) takes its entries with it, and a unit with no entries left in a list
- * (or sent an empty one) has no key for it. Duplicates are dropped. A unit
- * still carrying `fold`, the field's first name, has it moved into `skip`
- * here (a patch that sends `fold` replaces `skip`, as a whole-list resend).
- * Returns the same object when nothing changes.
+ * Merge a unit patch. `hunks` replaces the list; otherwise `removeHunkIds`
+ * then `addHunks` (an upsert by id, see ReviewUnitPatchSchema) edit it in
+ * place. The patch-only `changelogEntry` lands in `changelog`.
  */
-export function pruneHeart(input: ReviewUnit): ReviewUnit {
-  let unit = input;
-  if ("fold" in unit) {
-    unit = { ...unit };
-    if (unit.fold) unit.skip = unit.fold;
-    delete unit.fold;
+function applyUnitPatch(unit: ReviewUnit, patch: ReviewUnitPatch, revision: number): ReviewUnit {
+  const { changelogEntry, hunks, addHunks, removeHunkIds, ...fields } = patch;
+  // Bare ids only reach here from an event built by hand (tests), never a parsed one.
+  const entries = (list: readonly (string | HunkEntry)[]) => list.map(toHunkEntry);
+  let list = hunks ? entries(hunks) : entries(unit.hunks);
+  if (removeHunkIds) {
+    const gone = new Set(removeHunkIds);
+    list = list.filter((h) => !gone.has(h.id));
   }
-  const own = new Set(unit.hunkIds);
-  let next: ReviewUnit | undefined = unit === input ? undefined : unit;
-  for (const field of ["heart", "skip"] as const) {
-    const list = unit[field];
-    if (!list) continue;
-    const seen = new Set<string>();
-    const kept = list.filter((h) => own.has(h.hunkId) && !seen.has(h.hunkId) && seen.add(h.hunkId));
-    if (kept.length === list.length && list.length > 0) continue;
-    next ??= { ...unit };
-    if (kept.length === 0) delete next[field];
-    else (next as Record<string, unknown>)[field] = kept;
-  }
-  return next ?? unit;
+  if (addHunks) list = upsertHunks(list, entries(addHunks));
+  const next = { ...unit, ...fields, hunks: list } as ReviewUnit;
+  if (changelogEntry) next.changelog = upsertChangelog(next.changelog, revision, changelogEntry);
+  return normalizeHunks(next);
 }
 
 function recomputeRollups(state: State): void {
-  // Skipped hunks (see ReviewUnit.skip) are not reading work: a file whose
-  // hunks are all skipped has nothing to view.
+  // Skipped hunks (`skip: true`, see HunkEntrySchema) are not reading work:
+  // a file whose hunks are all skipped has nothing to view.
   const skipped = skippedHunkIds(state);
   state.files = state.files.map((f): FileRollup => {
     const counted = f.hunkIds.filter((id) => !skipped.has(id));
@@ -136,12 +119,12 @@ function applyGenerated(state: State): void {
   const others: ReviewUnit[] = [];
   for (const u of state.units) {
     if (isGeneratedUnit(u)) continue;
-    if (isRemovedUnit(u) || !u.hunkIds.some((id) => gen.has(id))) {
+    if (isRemovedUnit(u) || !u.hunks.some((h) => gen.has(h.id))) {
       others.push(u);
       continue;
     }
-    const hunkIds = u.hunkIds.filter((id) => !gen.has(id));
-    if (hunkIds.length > 0) others.push(pruneHeart({ ...u, hunkIds }));
+    const hunks = u.hunks.filter((h) => !gen.has(h.id));
+    if (hunks.length > 0) others.push({ ...u, hunks });
   }
   if (genIds.length > 0) {
     const order = others.reduce((m, u) => Math.max(m, u.order + 1), 0);
@@ -197,7 +180,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       // Re-adding the *same* revision keeps it, so a replayed event is a no-op.
       state.units = state.units.filter(
         (u) =>
-          !(isRemovedUnit(u) && u.hunkIds.length === 0 && u.removedAtRevision !== event.revision),
+          !(isRemovedUnit(u) && u.hunks.length === 0 && u.removedAtRevision !== event.revision),
       );
 
       const previousHunks = state.hunks;
@@ -224,7 +207,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       const unitOfOldHunk = new Map<string, string>();
       for (const u of state.units) {
         if (isRemovedUnit(u)) continue;
-        for (const id of u.hunkIds) unitOfOldHunk.set(id, u.id);
+        for (const h of u.hunks) unitOfOldHunk.set(h.id, u.id);
       }
 
       if (event.migration) {
@@ -321,48 +304,47 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
         // holds. Simplest rule that can never leave a stale claim on screen.
         const findingsSurvive = (unit: ReviewUnit): boolean =>
           event.migration !== undefined &&
-          unit.hunkIds.every((id) => statusByOldId.get(id) === "identical");
+          unit.hunks.every((h) => statusByOldId.get(h.id) === "identical");
+        // An entry follows its hunk to the successor (the first of several
+        // keeps the entry; the rest are ordinary hunks); one whose hunk left
+        // the PR goes with it. What it says survives only as far as the code
+        // it was said about did: a heart stays the heart (its why may need a
+        // refresh, which the incremental run does for changed units) but a
+        // segment's line range is dropped unless the hunk is byte-for-byte
+        // the same, since anything else may have moved the numbering; `skip`
+        // and a label are claims about the body ("nothing to read here",
+        // "what this is"), so like findings they survive only an `identical`
+        // match.
+        const remapEntry = (e: HunkEntry): HunkEntry[] => {
+          const successors = (idRemap.get(e.id) ?? [e.id]).filter((id) => live.has(id));
+          const identical = statusByOldId.get(e.id) === "identical";
+          return successors.map((id, i) => {
+            if (i > 0) return { id };
+            const entry: HunkEntry = { id };
+            if (identical) {
+              if (e.label) entry.label = e.label;
+              if (e.skip) entry.skip = true;
+              if (e.heart) entry.heart = e.heart;
+            } else if (e.heart) {
+              // Ranges gone, the segments collapse to one whole-hunk segment
+              // carrying the first why.
+              entry.heart = [{ why: e.heart[0].why }];
+            }
+            return entry;
+          });
+        };
         state.units = state.units.map((u) => {
           const keepFindings = u.findings?.length ? findingsSurvive(u) : false;
-          const next: ReviewUnit = { ...u, hunkIds: remap(u.hunkIds) };
+          const next: ReviewUnit = normalizeHunks({ ...u, hunks: u.hunks.flatMap(remapEntry) });
           if (!keepFindings) delete next.findings;
-          // The heart follows its hunks: a reworked hunk is still the heart
-          // (the why may need a refresh, which the incremental run does for
-          // changed units); one that left the PR takes its entry with it. A
-          // heart's line range is dropped unless the hunk is byte-for-byte
-          // the same: anything else may have moved the numbering.
-          if (u.heart) {
-            next.heart = u.heart.map((h) => {
-              const entry: HeartEntry = { ...h, hunkId: remap([h.hunkId])[0] ?? h.hunkId };
-              if (entry.lines && statusByOldId.get(h.hunkId) !== "identical") delete entry.lines;
-              return entry;
-            });
-          }
-          // A skip is a claim about a hunk's body ("nothing to read here"),
-          // so like findings it only survives an `identical` match; a
-          // reworked hunk counts again until the re-analysis skips it again.
-          const skip = u.skip ?? u.fold;
-          if (skip) {
-            next.skip = skip
-              .filter((f) => statusByOldId.get(f.hunkId) === "identical")
-              .map((f) => ({ ...f, hunkId: remap([f.hunkId])[0] ?? f.hunkId }));
-            delete next.fold;
-          }
-          if (u.heart || skip) {
-            const pruned = pruneHeart(next);
-            if (pruned.heart) next.heart = pruned.heart;
-            else delete next.heart;
-            if (pruned.skip) next.skip = pruned.skip;
-            else delete next.skip;
-          }
           // Every hunk of the unit left the PR: keep it as a visible husk for
           // this one revision (title, summary, kind, attention intact) so the
           // reader sees the decision was dropped rather than it vanishing.
           // `readBeforeRemoval` is judged on the hunk states *before* this
           // revision — afterwards those hunks no longer exist.
-          if (u.hunkIds.length > 0 && next.hunkIds.length === 0) {
+          if (u.hunks.length > 0 && next.hunks.length === 0) {
             next.removedAtRevision = event.revision;
-            next.readBeforeRemoval = u.hunkIds.every((id) => previousHunks[id]?.viewed === true);
+            next.readBeforeRemoval = u.hunks.every((h) => previousHunks[h.id]?.viewed === true);
           }
           return next;
         });
@@ -395,7 +377,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       // payload (an import, a model echoing it) is dropped and rebuilt.
       state.units = event.units
         .filter((u) => !isGeneratedUnit(u))
-        .map((u) => pruneHeart(reviveIfPopulated(fromAnalysis(u) as ReviewUnit)));
+        .map((u) => normalizeHunks(reviveIfPopulated(fromAnalysis(u) as ReviewUnit)));
       state.unassignedHunkIds = [...(event.unassigned ?? [])];
       state.analysisRevision = event.revision;
       state.analysisOrigin = event.origin;
@@ -418,7 +400,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
           attention: "skim",
           attentionWhy: "",
           riskFlags: [],
-          hunkIds: [],
+          hunks: [],
           order: state.units.length,
         };
         state.units.push(reviveIfPopulated(applyUnitPatch(blank, patch, state.currentRevision)));
@@ -456,7 +438,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
     case "unit-viewed": {
       const unit = state.units.find((u) => u.id === event.unitId);
       if (unit) {
-        for (const id of unit.hunkIds) {
+        for (const id of hunkIdsOf(unit)) {
           const s = state.hunks[id] ?? freshHunkState();
           state.hunks[id] = {
             ...s,
@@ -554,7 +536,7 @@ export function pruneFileOrders(state: State): void {
   for (const f of state.files) for (const id of f.hunkIds) owners.set(id, f.path);
   state.units = state.units.map((u) => {
     if (!u.fileOrder) return u;
-    const touched = new Set(u.hunkIds.map((id) => owners.get(id)).filter((p): p is string => p !== undefined));
+    const touched = new Set(u.hunks.map((h) => owners.get(h.id)).filter((p): p is string => p !== undefined));
     const kept = u.fileOrder.filter((p, i) => touched.has(p) && u.fileOrder!.indexOf(p) === i);
     if (kept.length === u.fileOrder.length && kept.length > 0) return u;
     const next: ReviewUnit = { ...u, fileOrder: kept };
@@ -617,9 +599,14 @@ export function nextRevisionNumber(events: ReviewerEvent[]): number {
   return max + 1;
 }
 
-/** Pure fold: events -> state.json. state.json is always rebuildable from this. */
+/**
+ * Pure fold: events -> state.json. state.json is always rebuildable from
+ * this. Every event goes through the upcaster first (cheap, idempotent), so
+ * a literal event in an older shape folds like one read from the log.
+ */
 export function fold(events: ReviewerEvent[]): State {
-  return withoutDiscarded(events).reduce(applyEvent, initialState());
+  const current = events.map((e) => upcastEvent(e) as ReviewerEvent);
+  return withoutDiscarded(current).reduce(applyEvent, initialState());
 }
 
 /**
@@ -668,16 +655,16 @@ export function removedUnits(state: Pick<State, "units">): ReviewUnit[] {
 
 /** Hunk ids in Purview's generated unit (generated files and lockfiles). */
 export function generatedHunkIds(state: Pick<State, "units">): Set<string> {
-  return new Set(state.units.filter((u) => !isRemovedUnit(u) && isGeneratedUnit(u)).flatMap((u) => u.hunkIds));
+  return new Set(state.units.filter((u) => !isRemovedUnit(u) && isGeneratedUnit(u)).flatMap(hunkIdsOf));
 }
 
 /**
- * Hunk ids the analysis marked skippable (see ReviewUnit.skip) across live
- * units: the reader need not read them, so no progress total counts them.
- * They keep their own `viewed` flag.
+ * Hunk ids the analysis marked skippable (`skip: true`) across live units:
+ * the reader need not read them, so no progress total counts them. They keep
+ * their own `viewed` flag.
  */
 export function skippedHunkIds(state: Pick<State, "units">): Set<string> {
-  return new Set(liveUnits(state).flatMap((u) => (u.skip ?? []).map((f) => f.hunkId)));
+  return new Set(liveUnits(state).flatMap((u) => skipOf(u).map((h) => h.id)));
 }
 
 /**
@@ -691,8 +678,7 @@ export function unitProgress(state: State): UnitProgress[] {
   return analysisUnits(state)
     .sort((a, b) => a.order - b.order)
     .map((u) => {
-      const skipped = new Set((u.skip ?? []).map((f) => f.hunkId));
-      const counted = u.hunkIds.filter((id) => !skipped.has(id));
+      const counted = u.hunks.filter((h) => !h.skip).map((h) => h.id);
       const states = counted.map((id) => state.hunks[id]).filter(Boolean);
       const viewed = states.filter((s) => s!.viewed).length;
       return {

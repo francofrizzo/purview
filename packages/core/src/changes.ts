@@ -2,6 +2,7 @@ import { diffOfDiffs, type DiffOfDiffsLine } from "./diff-of-diffs.js";
 import { renderShowHunk } from "./hunk-select.js";
 import { containment } from "./migration.js";
 import { analysisUnits, liveUnits } from "./reducer.js";
+import { hunkIdsOf } from "./units.js";
 import { hunkIdsByFile, shortIds } from "./unit-patch.js";
 import type {
   FileDiff,
@@ -97,7 +98,7 @@ export function changedUnits(
   for (const unit of analysisUnits(state).sort((a, b) => a.order - b.order)) {
     const reworked: MigrationEntry[] = [];
     const gained: MigrationEntry[] = [];
-    for (const id of unit.hunkIds) {
+    for (const id of hunkIdsOf(unit)) {
       const e = byNewId.get(id);
       if (reworkedEntry(e)) reworked.push(e!);
       else if (e?.status === "new") gained.push(e);
@@ -283,7 +284,7 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
   }
 
   // Hints: hunks nobody owns yet that are new this revision or unassigned.
-  const owned = new Set(liveUnits(state).flatMap((u) => u.hunkIds));
+  const owned = new Set(liveUnits(state).flatMap(hunkIdsOf));
   const loose = new Set([
     ...(report?.entries ?? []).filter((e) => e.status === "new").map((e) => e.hunkId),
     ...state.unassignedHunkIds,
@@ -318,7 +319,7 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
     // its title and summary must describe exactly these hunks. Grouped by
     // file with short ids (accepted by `show` and the patch commands), so an
     // add/remove patch needs no other lookup.
-    const holding = u.hunkIds.map((id) => cur.get(id)).filter((h) => h !== undefined);
+    const holding = hunkIdsOf(u).map((id) => cur.get(id)).filter((h) => h !== undefined);
     const byFile = new Map<string, { add: number; del: number }>();
     for (const h of holding) {
       const f = byFile.get(h!.file.path) ?? { add: 0, del: 0 };
@@ -327,8 +328,8 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
       byFile.set(h!.file.path, f);
     }
     const files = [...(input.currentFiles ?? [])].map((f) => ({ path: f.path, hunkIds: f.hunks.map((h) => h.id) }));
-    lines.push(`now holds ${u.hunkIds.length} hunk${u.hunkIds.length === 1 ? "" : "s"}:`);
-    for (const g of hunkIdsByFile(u.hunkIds, files, shortId)) {
+    lines.push(`now holds ${u.hunks.length} hunk${u.hunks.length === 1 ? "" : "s"}:`);
+    for (const g of hunkIdsByFile(hunkIdsOf(u), files, shortId)) {
       const f = byFile.get(g.path);
       lines.push(`    ${g.path}${f ? ` +${f.add} -${f.del}` : ""}: ${g.ids.join(" ")}`);
     }
@@ -402,7 +403,7 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
     }
 
     const unitFiles = new Set([
-      ...u.hunkIds.flatMap((id) => cur.get(id)?.file.path ?? []),
+      ...hunkIdsOf(u).flatMap((id) => cur.get(id)?.file.path ?? []),
       ...c.archived.map((e) => e.file),
     ]);
     const hints = looseHunks.filter((l) => unitFiles.has(l.file.path));

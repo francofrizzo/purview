@@ -37,6 +37,7 @@ import type {
   Analysis,
   AnalysisJob,
   BasePr,
+  HunkEntry,
   Meta,
   MigrationReport,
   NewEvent,
@@ -44,12 +45,14 @@ import type {
 } from "./schemas.js";
 import {
   AnalysisJobSchema,
-  MAX_UNIT_HEART,
   AnalysisSchema,
   CHANGELOG_TEXT_MAX,
   FINDING_EVIDENCE_MAX,
   FINDING_TEXT_MAX,
+  hunkListIssues,
 } from "./schemas.js";
+import { hunkIdsOf } from "./units.js";
+import { upcastAnalysisPayload } from "./upcast.js";
 
 /**
  * A locally tracked, still-open PR of the same repo whose head is `branch` —
@@ -470,10 +473,10 @@ export function analysisCoverage(
 ): AnalysisCoverage {
   // Generated files' hunks are Purview's (the `generated` unit), never the
   // analysis's to cover; one listed anyway is moved there by the reducer.
-  const generated = new Set(state.units.filter(isGeneratedUnit).flatMap((u) => u.hunkIds));
+  const generated = new Set(state.units.filter(isGeneratedUnit).flatMap(hunkIdsOf));
   const all = new Set(state.files.flatMap((f) => f.hunkIds).filter((id) => !generated.has(id)));
   const claimed = new Set([
-    ...analysis.units.flatMap((u) => u.hunkIds),
+    ...analysis.units.flatMap(hunkIdsOf),
     ...(analysis.unassigned ?? []),
   ]);
   return {
@@ -489,69 +492,32 @@ export interface DuplicateHunk {
   owners: string[];
 }
 
-type HunkPointerUnit = {
-  id: string;
-  hunkIds: string[];
-  heart?: { hunkId: string }[];
-  skip?: { hunkId: string }[];
-  /** @deprecated the first name of `skip`; folded into it before validation */
-  fold?: { hunkId: string }[];
-};
-
-/** An analysis or patch still sent with `fold` is read as `skip` (in place). */
-export function adoptFoldAsSkip<T extends { skip?: unknown; fold?: unknown }>(u: T): T {
-  if ("fold" in u) {
-    if (u.skip === undefined && u.fold !== undefined) u.skip = u.fold;
-    delete u.fold;
-  }
-  return u;
-}
-
 /**
- * Entries of `field` that point outside their own unit (short ids are
- * resolved in place to full ids).
+ * Resolve the short ids in every unit's hunk entries (in place) against
+ * `pool`, the current revision's hunk ids, and return what is wrong with the
+ * lists afterwards: an id that resolves to nothing is left as sent (coverage
+ * reports it as unknown), one that names a hunk twice once resolved (a short
+ * and a full form of the same id) is a problem here.
  */
-function pointerStrays(units: HunkPointerUnit[], field: "heart" | "skip"): { unitId: string; hunkId: string }[] {
-  const out: { unitId: string; hunkId: string }[] = [];
+export function hunkEntryProblems(
+  units: { id: string; hunks: { id: string }[] }[],
+  pool: Iterable<string>,
+): { unitId: string; problem: string }[] {
+  const ids = [...pool];
+  const out: { unitId: string; problem: string }[] = [];
   for (const u of units) {
-    const list = u[field];
-    if (!list) continue;
-    for (const h of list) {
-      const id = resolveHunkRef(h.hunkId, u.hunkIds);
-      if (id === undefined) out.push({ unitId: u.id, hunkId: h.hunkId });
-      else h.hunkId = id;
+    for (const h of u.hunks) {
+      const id = resolveHunkRef(h.id, ids);
+      if (id !== undefined) h.id = id;
     }
+    for (const message of hunkListIssues(u.hunks as HunkEntry[])) out.push({ unitId: u.id, problem: message });
   }
   return out;
 }
 
-/** Heart entries that point outside their own unit (short ids are resolved in place). */
-export function heartStrays(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
-  return pointerStrays(units, "heart");
-}
-
-/** Skip entries that point outside their own unit (short ids are resolved in place). */
-export function skipStrays(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
-  return pointerStrays(units, "skip");
-}
-
-/**
- * Hunks a unit lists both as heart and as skip. Run after the strays checks,
- * so both lists hold full ids.
- */
-export function heartSkipOverlap(units: HunkPointerUnit[]): { unitId: string; hunkId: string }[] {
-  const out: { unitId: string; hunkId: string }[] = [];
-  for (const u of units) {
-    if (!u.heart || !u.skip) continue;
-    const heart = new Set(u.heart.map((h) => h.hunkId));
-    for (const f of u.skip) if (heart.has(f.hunkId)) out.push({ unitId: u.id, hunkId: f.hunkId });
-  }
-  return out;
-}
-
-/** Hunk ids listed more than once across units' `hunkIds` and `unassigned`. */
+/** Hunk ids listed more than once across units' `hunks` and `unassigned`. */
 export function duplicateHunks(analysis: {
-  units: { id: string; hunkIds: string[] }[];
+  units: { id: string; hunks: { id: string }[] }[];
   unassigned?: string[];
 }): DuplicateHunk[] {
   const owners = new Map<string, string[]>();
@@ -560,7 +526,7 @@ export function duplicateHunks(analysis: {
     if (list) list.push(owner);
     else owners.set(id, [owner]);
   };
-  for (const u of analysis.units) for (const id of u.hunkIds) add(id, u.id);
+  for (const u of analysis.units) for (const h of u.hunks) add(h.id, u.id);
   for (const id of analysis.unassigned ?? []) add(id, "unassigned");
   return [...owners]
     .filter(([, list]) => list.length > 1)
@@ -663,8 +629,20 @@ export function setAnalysis(
   opts: SetAnalysisOptions = {},
   root = stateRoot(),
 ): { state: State; coverage: AnalysisCoverage } {
-  const analysis = AnalysisSchema.parse(input);
+  const analysis = AnalysisSchema.parse(upcastAnalysisPayload(input));
   const state = loadState(key, root);
+  // Short ids in the entries are resolved against the revision before
+  // coverage looks at them; an imported analysis (another reader's, possibly
+  // older, CLI; re-anchored mechanically) is taken as it is otherwise.
+  const problems = hunkEntryProblems(
+    analysis.units,
+    state.files.flatMap((f) => f.hunkIds),
+  );
+  if (opts.origin !== "import" && problems.length > 0) {
+    throw new Error(
+      `A unit's hunks list is invalid:\n  ` + problems.map((p) => `${p.unitId}: ${p.problem}`).join("\n  "),
+    );
+  }
   const coverage = analysisCoverage(state, analysis);
   if (coverage.missing.length > 0) {
     throw new Error(
@@ -688,28 +666,6 @@ export function setAnalysis(
   // An imported analysis comes from another reader's (possibly older) CLI and
   // is re-anchored mechanically; it is taken as it is rather than refused.
   if (opts.origin !== "import") {
-    const strays = heartStrays(analysis.units);
-    if (strays.length > 0) {
-      throw new Error(
-        `A unit's heart must name hunks of that unit (one to ${MAX_UNIT_HEART} of its own hunkIds):\n  ` +
-          strays.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
-      );
-    }
-    for (const u of analysis.units) adoptFoldAsSkip(u);
-    const skipStray = skipStrays(analysis.units);
-    if (skipStray.length > 0) {
-      throw new Error(
-        `A unit's skip must name hunks of that unit (its own hunkIds a reader can skip):\n  ` +
-          skipStray.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
-      );
-    }
-    const overlap = heartSkipOverlap(analysis.units);
-    if (overlap.length > 0) {
-      throw new Error(
-        `A hunk cannot be both heart and skip; drop it from one list:\n  ` +
-          overlap.map((s) => `${s.unitId}: ${s.hunkId}`).join("\n  "),
-      );
-    }
     const dupes = duplicateHunks(analysis);
     if (dupes.length > 0) {
       throw new Error(
@@ -764,7 +720,7 @@ export function setUnit(
  * first — schema, hunk ids, one-owner-per-hunk on the state the whole batch
  * produces — and only then are all events appended in a single write, so an
  * invalid patch anywhere means nothing is written. Each patch may use
- * `addHunkIds`/`removeHunkIds` instead of a full `hunkIds` (see unit-patch.ts).
+ * `addHunks`/`removeHunkIds` instead of a full `hunks` list (see unit-patch.ts).
  */
 export function setUnits(
   key: PrKey,
@@ -867,7 +823,7 @@ export function setUnitViewed(
   }
   return appendEvents(
     key,
-    unit.hunkIds.map((hunkId) => ({
+    hunkIdsOf(unit).map((hunkId) => ({
       type: "hunk-unviewed" as const,
       hunkId,
       revision: state.currentRevision,

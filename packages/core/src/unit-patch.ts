@@ -1,18 +1,22 @@
 import { changedUnits } from "./changes.js";
 import { MIN_PREFIX_LEN } from "./hunk-select.js";
 import { GENERATED_UNIT_ID, isGeneratedUnit } from "./generated.js";
-import { isRemovedUnit } from "./schemas.js";
-import type { FileDiff, NewEvent, ReviewUnit, ReviewUnitPatch, ReviewerEvent, State } from "./schemas.js";
+import { hunkListIssues, isRemovedUnit } from "./schemas.js";
+import type { FileDiff, HunkEntry, NewEvent, ReviewUnit, ReviewUnitPatch, ReviewerEvent, State } from "./schemas.js";
 import { NewReviewUnitSchema, ReviewUnitPatchSchema } from "./schemas.js";
+import { heartOf, hunkIdsOf, skipOf, upsertHunks } from "./units.js";
+import { upcastUnitPatch } from "./upcast.js";
 
 /**
  * Unit patching without state reconstruction.
  *
- * A patch may replace a unit's hunk list (`hunkIds`) or edit it in place
- * (`addHunkIds` / `removeHunkIds`), so an incremental run never has to rebuild
- * a unit's full list just to attach one new hunk. Several patches can go in one
- * batch (`set-units`); the batch is validated as a whole against the state it
- * would produce and written as one append, so it lands entirely or not at all.
+ * A patch may replace a unit's hunk list (`hunks`) or edit it in place
+ * (`addHunks`, an upsert by id, and `removeHunkIds`), so an incremental run
+ * never has to rebuild a unit's full list just to attach one new hunk or mark
+ * one as the heart. Several patches can go in one batch (`set-units`); the
+ * batch is validated as a whole against the state it would produce and written
+ * as one append, so it lands entirely or not at all. The event written always
+ * carries the full `hunks` list the unit ends up with.
  *
  * Pure: takes the current state, returns the events to append (or throws with
  * every problem found, so one retry can fix them all).
@@ -55,13 +59,32 @@ function asStringArray(v: unknown, field: string, unitId: string, errors: string
   return v as string[];
 }
 
+/** A raw entry list (ids or `{id, ...}` objects) as entries; shape errors are reported per item. */
+function asEntryList(v: unknown, field: string, unitId: string, errors: string[]): HunkEntry[] | undefined {
+  if (v === undefined) return undefined;
+  if (!Array.isArray(v)) {
+    errors.push(`unit "${unitId}": \`${field}\` must be an array of hunk ids or {"id": ..., "label": ..., "skip": true, "heart": [...]} entries`);
+    return undefined;
+  }
+  const out: HunkEntry[] = [];
+  for (const [i, item] of v.entries()) {
+    if (typeof item === "string") out.push({ id: item });
+    else if (item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string") {
+      out.push(item as HunkEntry);
+    } else {
+      errors.push(`unit "${unitId}": ${field}[${i}] must be a hunk id or {"id": "<hunk id>", ...}`);
+    }
+  }
+  return out;
+}
+
 export function planUnitPatches(state: State, requests: UnitPatchRequest[]): PlannedUnitPatches {
   const errors: string[] = [];
   const warnings: string[] = [];
   const revisionIds = new Set(Object.keys(state.hunks));
-  const generatedIds = new Set(state.units.filter(isGeneratedUnit).flatMap((u) => u.hunkIds));
+  const generatedIds = new Set(state.units.filter(isGeneratedUnit).flatMap(hunkIdsOf));
   const seen = new Set<string>();
-  // unitId -> the hunk list it will hold after the batch (patched units only)
+  // unitId -> the hunk ids it will hold after the batch (patched units only)
   const finalHunks = new Map<string, string[]>();
   const planned: { unitId: string; patch: ReviewUnitPatch; existing?: ReviewUnit; note?: string }[] = [];
 
@@ -83,123 +106,88 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
       errors.push(`unit "${unitId}": the patch must be a JSON object`);
       continue;
     }
-    const { addHunkIds: addRaw, removeHunkIds: removeRaw, note: _note, ...rest } = req.payload as Record<
-      string,
-      unknown
-    >;
+    const existing = state.units.find((u) => u.id === unitId);
+    // A patch in an older shape is brought to the current one first (see upcast.ts).
+    const { addHunks: addRaw, removeHunkIds: removeRaw, note: _note, ...rest } = upcastUnitPatch(
+      req.payload,
+      existing,
+    ) as Record<string, unknown>;
     void _note;
-    const add = asStringArray(addRaw, "addHunkIds", unitId, errors);
+    const add = asEntryList(addRaw, "addHunks", unitId, errors);
     const remove = asStringArray(removeRaw, "removeHunkIds", unitId, errors);
-    if (rest.hunkIds !== undefined && (add !== undefined || remove !== undefined)) {
+    if (rest.hunks !== undefined && (add !== undefined || remove !== undefined)) {
       errors.push(
-        `unit "${unitId}": send either \`hunkIds\` (replaces the list) or \`addHunkIds\`/\`removeHunkIds\` (edit it), not both`,
+        `unit "${unitId}": send either \`hunks\` (replaces the list) or \`addHunks\`/\`removeHunkIds\` (edit it), not both`,
       );
       continue;
     }
-    const existing = state.units.find((u) => u.id === unitId);
-    const base = existing?.hunkIds ?? [];
+    const base = existing?.hunks ?? [];
+    const baseIds = hunkIdsOf({ hunks: base });
 
     // Every reference is resolved to a full id before anything is stored:
     // the short ids `units`/`changes` print are accepted everywhere.
-    const resolveList = (refs: string[], field: string, pool: Iterable<string>): string[] => {
-      const out: string[] = [];
+    const resolveList = <T extends { id: string }>(refs: T[], field: string, pool: Iterable<string>): T[] => {
+      const out: T[] = [];
       for (const ref of refs) {
-        const id = resolveHunkRef(ref, pool);
+        const id = resolveHunkRef(ref.id, pool);
         if (id === undefined) {
           errors.push(
-            `unit "${unitId}": ${field} "${ref}" is not a hunk of revision ${state.currentRevision}` +
-              (ref.length < MIN_PREFIX_LEN ? ` (a short id needs at least ${MIN_PREFIX_LEN} chars)` : " (or the prefix is ambiguous)"),
+            `unit "${unitId}": ${field} "${ref.id}" is not a hunk of revision ${state.currentRevision}` +
+              (ref.id.length < MIN_PREFIX_LEN ? ` (a short id needs at least ${MIN_PREFIX_LEN} chars)` : " (or the prefix is ambiguous)"),
           );
-        } else out.push(id);
+        } else out.push({ ...ref, id });
       }
       return out;
     };
 
-    let hunkIds: string[] | undefined;
-    if (Array.isArray(rest.hunkIds) && rest.hunkIds.every((x) => typeof x === "string")) {
-      hunkIds = resolveList(rest.hunkIds as string[], "hunkIds entry", new Set([...revisionIds, ...base]));
+    let hunks: HunkEntry[] | undefined;
+    const sent = asEntryList(rest.hunks, "hunks", unitId, errors);
+    if (sent !== undefined) {
+      hunks = resolveList(sent, "hunks entry", new Set([...revisionIds, ...baseIds]));
     }
     if (add !== undefined || remove !== undefined) {
       let next = [...base];
       if (remove) {
-        for (const id of resolveList(remove, "removeHunkIds entry", new Set([...base, ...revisionIds]))) {
-          if (!next.includes(id)) warnings.push(`warning: unit ${unitId} did not hold ${id}; nothing to remove`);
-          next = next.filter((h) => h !== id);
+        const refs = remove.map((id) => ({ id }));
+        for (const { id } of resolveList(refs, "removeHunkIds entry", new Set([...baseIds, ...revisionIds]))) {
+          if (!next.some((h) => h.id === id)) warnings.push(`warning: unit ${unitId} did not hold ${id}; nothing to remove`);
+          next = next.filter((h) => h.id !== id);
         }
       }
       if (add) {
-        for (const id of resolveList(add, "addHunkIds entry", revisionIds)) {
-          if (next.includes(id)) warnings.push(`warning: unit ${unitId} already holds ${id}`);
-          else next.push(id);
+        const entries = resolveList(add, "addHunks entry", revisionIds);
+        for (const e of entries) {
+          const had = next.find((h) => h.id === e.id);
+          const bare = !e.label && !e.skip && !e.heart;
+          if (had && bare && (had.label || had.skip || had.heart)) {
+            warnings.push(`warning: unit ${unitId} already held ${e.id}; its label, skip and heart were cleared`);
+          } else if (had && bare) warnings.push(`warning: unit ${unitId} already holds ${e.id}`);
         }
+        next = upsertHunks(next, entries);
       }
-      hunkIds = next;
+      hunks = next;
     }
-    // `fold` is the first name of `skip`: read it as such.
-    if ("fold" in rest) {
-      if (rest.skip === undefined && rest.fold !== undefined) (rest as Record<string, unknown>).skip = rest.fold;
-      delete (rest as Record<string, unknown>).fold;
-    }
-    let payload: Record<string, unknown> = hunkIds !== undefined ? { ...rest, hunkIds } : rest;
+    const payload: Record<string, unknown> = hunks !== undefined ? { ...rest, hunks } : rest;
 
-    // Heart and skip entries name the unit's own hunks (short ids welcome),
-    // judged on the list the unit will hold after this patch.
-    const finalIds = hunkIds ?? base;
-    const resolveEntries = (field: "heart" | "skip"): { hunkId: string }[] | undefined => {
-      if (!Array.isArray(rest[field])) return undefined;
-      const out: { hunkId: string }[] = [];
-      for (const [i, entry] of (rest[field] as unknown[]).entries()) {
-        const e = entry as { hunkId?: unknown; why?: unknown } | null;
-        if (!e || typeof e !== "object" || typeof e.hunkId !== "string") {
-          errors.push(`unit "${unitId}": ${field}[${i}] must be {"hunkId": "<one of the unit's hunks>", "why": "..."}`);
-          continue;
-        }
-        const id = resolveHunkRef(e.hunkId, finalIds);
-        if (id === undefined) {
-          errors.push(
-            `unit "${unitId}": ${field}[${i}] "${e.hunkId}" is not a hunk this unit holds (after this patch); ` +
-              `the ${field} is chosen among the unit's own hunkIds`,
-          );
-          continue;
-        }
-        out.push({ ...e, hunkId: id });
-      }
-      return out;
-    };
-    const heart = resolveEntries("heart");
-    const skip = resolveEntries("skip");
-    if (heart) payload = { ...payload, heart };
-    if (skip) payload = { ...payload, skip };
-
-    // A hunk is never both: judged on the lists the unit will have after the
-    // patch (a list the patch does not send is the existing one, less the
-    // hunks leaving the unit).
-    const keep = (list: { hunkId: string }[] | undefined) => (list ?? []).filter((e) => finalIds.includes(e.hunkId));
-    const heartAfter = new Set(keep(heart ?? existing?.heart).map((e) => e.hunkId));
-    const both = keep(skip ?? existing?.skip)
-      .map((e) => e.hunkId)
-      .filter((id) => heartAfter.has(id));
-    if (both.length > 0) {
-      errors.push(
-        `unit "${unitId}": a hunk cannot be both heart and skip; drop it from one list: ${both.join(", ")}`,
-      );
-    }
-
-    // A hunk the unit did not hold before must belong to this revision.
-    if (hunkIds) {
-      const gen = hunkIds.filter((id) => generatedIds.has(id));
+    if (hunks) {
+      const ids = hunkIdsOf({ hunks });
+      // A hunk the unit did not hold before must belong to this revision.
+      const gen = ids.filter((id) => generatedIds.has(id));
       if (gen.length > 0) {
         errors.push(
           `unit "${unitId}": ${gen.length} hunk id(s) belong to generated files, which Purview keeps in ` +
             `its "${GENERATED_UNIT_ID}" unit (leave them out): ${gen.join(", ")}`,
         );
       }
-      const unknown = hunkIds.filter((id) => !base.includes(id) && !revisionIds.has(id));
+      const unknown = ids.filter((id) => !baseIds.includes(id) && !revisionIds.has(id));
       if (unknown.length > 0) {
         errors.push(
           `unit "${unitId}": ${unknown.length} hunk id(s) not in revision ${state.currentRevision}: ${unknown.join(", ")}`,
         );
       }
+      // The list's own rules (see `hunkListIssues`) are judged on the list
+      // the unit will hold.
+      for (const issue of hunkListIssues(hunks)) errors.push(`unit "${unitId}": ${issue}`);
     }
 
     let patch: ReviewUnitPatch;
@@ -225,7 +213,7 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
       }
       patch = result.data;
     }
-    if (patch.hunkIds) finalHunks.set(unitId, patch.hunkIds);
+    if (patch.hunks) finalHunks.set(unitId, hunkIdsOf({ hunks: patch.hunks }));
     planned.push({ unitId, patch, existing, note: req.note });
   }
 
@@ -235,7 +223,7 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
   if (errors.length === 0 && finalHunks.size > 0) {
     const owners = new Map<string, string[]>();
     const units = [
-      ...state.units.map((u) => ({ id: u.id, hunkIds: finalHunks.get(u.id) ?? u.hunkIds })),
+      ...state.units.map((u) => ({ id: u.id, hunkIds: finalHunks.get(u.id) ?? hunkIdsOf(u) })),
       ...[...finalHunks].filter(([id]) => !state.units.some((u) => u.id === id)).map(([id, hunkIds]) => ({ id, hunkIds })),
     ];
     for (const u of units) {
@@ -264,12 +252,12 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
   for (const { unitId, patch, existing, note } of planned) {
     events.push({ type: "unit-updated", unitId, patch });
     if (existing && patch.kind && patch.kind !== existing.kind) {
-      for (const hunkId of existing.hunkIds) {
+      for (const hunkId of hunkIdsOf(existing)) {
         events.push({ type: "classification-corrected", hunkId, from: existing.kind, to: patch.kind, note: note ?? "" });
       }
     }
     if (existing && patch.attention && patch.attention !== existing.attention) {
-      for (const hunkId of existing.hunkIds) {
+      for (const hunkId of hunkIdsOf(existing)) {
         events.push({
           type: "classification-corrected",
           hunkId,
@@ -341,28 +329,37 @@ export function renderUnits(
   if (units.length === 0) return { text: unitIds.length ? "" : "No units yet.\n", unknown };
   const out: string[] = [];
   for (const u of units) {
+    const ids = hunkIdsOf(u);
     if (isGeneratedUnit(u)) {
       // Purview's own: listed so the hunks read as owned, never to be patched.
-      const files = hunkIdsByFile(u.hunkIds, state.files, short).map((g) => g.path);
+      const files = hunkIdsByFile(ids, state.files, short).map((g) => g.path);
       out.push(
-        `${u.id}  [${u.attention}]  ${u.title}  (${u.hunkIds.length} hunks; Purview's, not patchable)`,
+        `${u.id}  [${u.attention}]  ${u.title}  (${ids.length} hunks; Purview's, not patchable)`,
         `    ${files.join(", ")}`,
       );
       continue;
     }
-    const husk = isRemovedUnit(u) && u.hunkIds.length === 0;
+    const husk = isRemovedUnit(u) && ids.length === 0;
     const findings = u.findings?.length ?? 0;
+    const heart = heartOf(u);
+    const skip = skipOf(u);
+    const labelled = u.hunks.filter((h) => h.label && !h.skip).length;
+    const heartIds = heart.map(
+      (h) => short(h.id) + (h.segments.some((s) => s.lines) ? `:${h.segments.map((s) => (s.lines ? `${s.lines[0]}-${s.lines[1]}` : "all")).join(",")}` : ""),
+    );
     out.push(
       `${husk ? "~ " : ""}${u.id}  [${u.attention}/${u.kind}]  ${u.title}` +
-        `  (${u.hunkIds.length} hunk${u.hunkIds.length === 1 ? "" : "s"}` +
-        (u.skip?.length ? `, ${u.skip.length} skippable` : "") +
+        `  (${ids.length} hunk${ids.length === 1 ? "" : "s"}` +
+        (heart.length ? `, ${heart.length} heart` : "") +
+        (skip.length ? `, ${skip.length} skippable` : "") +
+        (labelled ? `, ${labelled} labelled` : "") +
         (findings ? `, ${findings} finding${findings === 1 ? "" : "s"}` : "") +
-        (u.heart?.length ? `, heart: ${u.heart.map((h) => short(h.hunkId)).join(" ")}` : "") +
-        (u.skip?.length ? `, skip: ${u.skip.map((f) => short(f.hunkId)).join(" ")}` : "") +
+        (heart.length ? `, heart: ${heartIds.join(" ")}` : "") +
+        (skip.length ? `, skip: ${skip.map((h) => short(h.id)).join(" ")}` : "") +
         (husk ? `; husk: every hunk left the PR in r${u.removedAtRevision}` : "") +
         ")",
     );
-    for (const g of hunkIdsByFile(u.hunkIds, state.files, short)) {
+    for (const g of hunkIdsByFile(ids, state.files, short)) {
       out.push(`    ${g.path}: ${g.ids.join(" ")}`);
     }
   }
@@ -384,7 +381,7 @@ export function needsClassification(state: Pick<State, "units" | "unassignedHunk
   id: string;
   file: string;
 }[] {
-  const assigned = new Set([...state.units.flatMap((u) => u.hunkIds), ...state.unassignedHunkIds]);
+  const assigned = new Set([...state.units.flatMap(hunkIdsOf), ...state.unassignedHunkIds]);
   return state.files.flatMap((f) => f.hunkIds.filter((id) => !assigned.has(id)).map((id) => ({ id, file: f.path })));
 }
 

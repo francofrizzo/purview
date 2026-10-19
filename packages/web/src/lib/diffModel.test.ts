@@ -123,15 +123,17 @@ describe("unitProgress with skipped hunks", () => {
   const detail = {
     state: { hunks: { a: { viewed: true }, b: { viewed: false }, c: { viewed: false, changedSinceViewed: true } } },
   } as unknown as import("../api/types").PrDetail;
-  const unit = (skip?: { hunkId: string; why: string }[]) =>
-    ({ hunkIds: ["a", "b", "c"], skip }) as unknown as import("../api/types").ReviewUnit;
+  const unit = (skip: string[] = []) =>
+    ({
+      hunks: ["a", "b", "c"].map((id) => (skip.includes(id) ? { id, skip: true, label: "adds imports" } : { id })),
+    }) as unknown as import("../api/types").ReviewUnit;
 
   it("counts every hunk without a skip list", () => {
     expect(unitProgress(detail, unit())).toEqual({ viewed: 1, total: 3, changed: 1, skipped: 0 });
   });
 
   it("leaves skipped hunks out of viewed, total and changed", () => {
-    expect(unitProgress(detail, unit([{ hunkId: "c", why: "adds imports" }]))).toEqual({
+    expect(unitProgress(detail, unit(["c"]))).toEqual({
       viewed: 1,
       total: 2,
       changed: 0,
@@ -151,20 +153,20 @@ describe("orderUnitHunks", () => {
   });
 
   it("puts the heart's files first, in heart order, keeping diff order inside a file", () => {
-    const out = orderUnitHunks(files, ["a1", "a2", "b1", "c1", "c2"], [{ hunkId: "c2" }, { hunkId: "b1" }]);
+    const out = orderUnitHunks(files, ["a1", "a2", "b1", "c1", "c2"], [{ id: "c2" }, { id: "b1" }]);
     expect(ids(out)).toEqual(["c1", "c2", "b1", "a1", "a2"]);
   });
 
   it("takes the analysis's file order first, dropping paths the unit does not touch, then diff order", () => {
-    const out = orderUnitHunks(files, ["a1", "a2", "b1", "c1"], [{ hunkId: "a1" }], ["c.ts", "nope.ts", "b.ts"]);
+    const out = orderUnitHunks(files, ["a1", "a2", "b1", "c1"], [{ id: "a1" }], ["c.ts", "nope.ts", "b.ts"]);
     expect(ids(out)).toEqual(["c1", "b1", "a1", "a2"]);
   });
 
   it("falls back to the heart when the file order names nothing it holds", () => {
-    expect(ids(orderUnitHunks(files, ["a1", "b1"], [{ hunkId: "b1" }], ["nope.ts"]))).toEqual(["b1", "a1"]);
+    expect(ids(orderUnitHunks(files, ["a1", "b1"], [{ id: "b1" }], ["nope.ts"]))).toEqual(["b1", "a1"]);
   });
 
   it("ignores a heart whose hunk is not in the unit", () => {
-    expect(ids(orderUnitHunks(files, ["a1", "b1"], [{ hunkId: "c1" }]))).toEqual(["a1", "b1"]);
+    expect(ids(orderUnitHunks(files, ["a1", "b1"], [{ id: "c1" }]))).toEqual(["a1", "b1"]);
   });
 });

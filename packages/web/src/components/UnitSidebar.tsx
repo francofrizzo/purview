@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { isGeneratedUnit, type Attention, type ChatRef, type PrDetail, type ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
+import { heartOf } from "../lib/units";
 import { useSettings } from "../lib/settings";
 import { filterUnits, hiddenHint } from "../lib/unitFilter";
 import { workUnits } from "../lib/generated";
@@ -420,15 +421,15 @@ function UnitRow({
           {unit.kind !== "core-logic" && !generated ? <KindChip kind={unit.kind} /> : null}
           <RiskFlags flags={unit.riskFlags} compact />
           {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}
-          {unit.heart?.length ? (
+          {heartOf(unit).length ? (
             <span
               className="inline-flex items-center gap-0.5 text-2xs tabular-nums"
               style={{ color: "var(--heart)" }}
               data-testid={`unit-heart-${unit.id}`}
-              data-tip={`${unit.heart.length} of ${unit.hunkIds.length} hunks at the heart`}
+              data-tip={`${heartOf(unit).length} of ${unit.hunks.length} hunks at the heart`}
             >
               <IconHeart width={11} height={11} />
-              {unit.heart.length}
+              {heartOf(unit).length}
             </span>
           ) : null}
           <FindingsBadge unit={unit} />

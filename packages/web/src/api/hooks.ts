@@ -521,7 +521,7 @@ export function useSetUnitViewed(key: string) {
         const unit = previous.state.units.find((u) => u.id === unitId);
         if (unit) {
           const hunks = { ...previous.state.hunks };
-          for (const id of unit.hunkIds) {
+          for (const { id } of unit.hunks) {
             hunks[id] = {
               ...(hunks[id] ?? { viewed: false, changedSinceViewed: false }),
               viewed: true,

@@ -90,9 +90,9 @@ export interface GeneratedUnitFile {
  */
 export function generatedUnitFiles(
   files: FileEntry[],
-  unit: Pick<ReviewUnit, "hunkIds">,
+  unit: Pick<ReviewUnit, "hunks">,
 ): GeneratedUnitFile[] {
-  const ids = new Set(unit.hunkIds);
+  const ids = new Set(unit.hunks.map((h) => h.id));
   const out: GeneratedUnitFile[] = [];
   for (const f of files) {
     if (!f.hunks.some((h) => ids.has(h.id))) continue;

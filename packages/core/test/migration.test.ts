@@ -1,3 +1,4 @@
+import { hunkIdsOf } from "../src/units.js";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -113,7 +114,7 @@ describe("full migration scenario", () => {
         attention: "must-read" as const,
         attentionWhy: "auth path",
         riskFlags: ["auth" as const],
-        hunkIds: [ids.login, ids.logout],
+        hunks: [ids.login, ids.logout],
         order: 0,
       },
       {
@@ -124,7 +125,7 @@ describe("full migration scenario", () => {
         attention: "skim" as const,
         attentionWhy: "shape only",
         riskFlags: [],
-        hunkIds: [ids.dup1, ids.dup2, ids.feature],
+        hunks: [ids.dup1, ids.dup2, ids.feature],
         order: 1,
       },
       {
@@ -135,7 +136,7 @@ describe("full migration scenario", () => {
         attention: "skip" as const,
         attentionWhy: "mechanical",
         riskFlags: [],
-        hunkIds: [ids.legacy, ids.docs],
+        hunks: [ids.legacy, ids.docs],
         order: 2,
       },
     ];
@@ -262,14 +263,14 @@ describe("full migration scenario", () => {
   it("revision 2: units are remapped onto the new hunk ids", () => {
     const auth = state.units.find((u) => u.id === "auth")!;
     const r2 = readFilesJson(key, 2).files;
-    expect(auth.hunkIds).toContain(hunkIdBy(r2, "src/auth.ts", "clock.now()"));
-    expect(auth.hunkIds).not.toContain(ids.logout);
+    expect(hunkIdsOf(auth)).toContain(hunkIdBy(r2, "src/auth.ts", "clock.now()"));
+    expect(hunkIdsOf(auth)).not.toContain(ids.logout);
     // the archived hunk is dropped from its unit
     const cleanup = state.units.find((u) => u.id === "cleanup")!;
-    expect(cleanup.hunkIds).not.toContain(ids.legacy);
-    expect(cleanup.hunkIds).toContain(hunkIdBy(r2, "docs/guide.md", "intro"));
+    expect(hunkIdsOf(cleanup)).not.toContain(ids.legacy);
+    expect(hunkIdsOf(cleanup)).toContain(hunkIdBy(r2, "docs/guide.md", "intro"));
     // the brand-new hunk belongs to no unit yet — the skill must classify it
-    const assigned = new Set(state.units.flatMap((u) => u.hunkIds));
+    const assigned = new Set(state.units.flatMap(hunkIdsOf));
     expect(assigned.has(hunkIdBy(r2, "src/auth.ts", "isExpired"))).toBe(false);
   });
 

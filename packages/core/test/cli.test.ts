@@ -99,7 +99,7 @@ function seed(added: string[] = ["  return a + b;"]): { hunk: Hunk } {
         attention: "must-read",
         attentionWhy: "why",
         riskFlags: [],
-        hunkIds: [hunk.id],
+        hunks: [hunk.id],
         order: 0,
       },
     ],
@@ -388,7 +388,7 @@ describe("cli changes", () => {
         attention: "skim" as const,
         attentionWhy: "w",
         riskFlags: [],
-        hunkIds: [files[i].hunks[0].id],
+        hunks: [files[i].hunks[0].id],
         order: i,
       })),
     });
@@ -496,7 +496,7 @@ describe("cli set-unit", () => {
         attention: "skim",
         attentionWhy: "why",
         riskFlags: [],
-        hunkIds: [],
+        hunks: [],
         order: 1,
       }),
     );
@@ -527,7 +527,7 @@ describe("cli set-unit", () => {
         attention: "skim",
         attentionWhy: "why",
         riskFlags: [],
-        hunkIds: [],
+        hunks: [],
         order: 1,
       }),
     );
@@ -569,7 +569,7 @@ function writeJson(name: string, value: unknown): string {
   return file;
 }
 
-const unitJson = (id: string, hunkIds: string[], extra: Record<string, unknown> = {}) => ({
+const unitJson = (id: string, hunks: string[], extra: Record<string, unknown> = {}) => ({
   id,
   title: id,
   summary: "s",
@@ -577,7 +577,7 @@ const unitJson = (id: string, hunkIds: string[], extra: Record<string, unknown> 
   attention: "must-read",
   attentionWhy: "why",
   riskFlags: [],
-  hunkIds,
+  hunks,
   order: 0,
   ...extra,
 });
@@ -621,10 +621,10 @@ describe("cli hunk ownership", () => {
     expect(eventCount()).toBe(before);
 
     // Re-sending a unit's own hunk list is not a clash with itself.
-    const same = run(["set-unit", keyToString(key), "--id", "core", "--file", writeJson("same.json", { hunkIds: [hunk.id] })]);
+    const same = run(["set-unit", keyToString(key), "--id", "core", "--file", writeJson("same.json", { hunks: [hunk.id] })]);
     expect(same.status).toBe(0);
 
-    const drop = run(["set-unit", keyToString(key), "--id", "core", "--file", writeJson("drop.json", { hunkIds: [] })]);
+    const drop = run(["set-unit", keyToString(key), "--id", "core", "--file", writeJson("drop.json", { hunks: [] })]);
     expect(drop.status).toBe(0);
     const add = run(["set-unit", keyToString(key), "--id", "other", "--file", writeJson("add.json", unitJson("other", [hunk.id]))]);
     expect(add.status).toBe(0);

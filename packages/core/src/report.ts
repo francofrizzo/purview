@@ -1,5 +1,6 @@
 import { formatMigrationReport } from "./migration.js";
 import { removedUnits, unitProgress } from "./reducer.js";
+import { hunkIdsOf } from "./units.js";
 import type { MigrationReport, State } from "./schemas.js";
 
 function bar(viewed: number, total: number): string {
@@ -89,7 +90,7 @@ export function formatReport(
   }
 
   const assigned = new Set([
-    ...state.units.flatMap((u) => u.hunkIds),
+    ...state.units.flatMap(hunkIdsOf),
     ...state.unassignedHunkIds,
   ]);
   const unclassified = Object.keys(state.hunks).filter((id) => !assigned.has(id));

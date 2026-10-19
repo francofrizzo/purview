@@ -11,7 +11,7 @@ function unit(id: string, attention: ReviewUnit["attention"], order: number): Re
     order,
     kind: "wiring",
     riskFlags: [],
-    hunkIds: [],
+    hunks: [],
     findings: [],
   } as unknown as ReviewUnit;
 }

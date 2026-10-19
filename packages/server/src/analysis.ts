@@ -255,12 +255,13 @@ export function changesBlock(cmd: string, keyStr: string): string {
     "the hunk ids each holds now, a compact before->after of its reworked hunks, and related new hunks as hints.",
     "For each unit it lists, and each unit you attach a new hunk to, do what MIGRATION-NOTES.md",
     "'What the skill must do on refresh' step 2 says: rewrite `title`, `summary` and `attentionWhy` to what",
-    "the unit holds NOW, re-check kind/attention/riskFlags, the `heart` and the `skip` list (a reworked hunk's skip entry",
-    "is already gone; skip it again only after reading its new body), add a `changelogEntry` about this revision's code",
+    "the unit holds NOW, re-check kind/attention/riskFlags and each hunk entry's label, skip and heart (a reworked",
+    "hunk's skip, label and heart line ranges are already gone, and a reworked heart's why may be stale; set them",
+    "again only after reading its new body), add a `changelogEntry` about this revision's code",
     "change, and re-verify its findings. Don't re-group a listed unit's hunks, and don't patch a unit that",
     "is neither listed nor taking a new hunk.",
     `Send EVERY patch in ONE \`${cmd} set-units ${keyStr} --file <scratch>/patches.json\` call`,
-    "(`addHunkIds`/`removeHunkIds` attach or move a hunk without resending the unit's list). It prints",
+    "(`addHunks`/`removeHunkIds` attach, move or re-label a hunk without resending the unit's list). It prints",
     "what is left; there is no need to run `report` afterwards.",
   ].join("\n");
 }

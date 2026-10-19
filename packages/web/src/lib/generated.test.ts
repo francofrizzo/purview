@@ -1,3 +1,4 @@
+import { hunkEntries } from "./units";
 import { describe, expect, it } from "vitest";
 import type { FileEntry, ReviewUnit } from "../api/types";
 import {
@@ -73,7 +74,7 @@ describe("generatedUnitFiles", () => {
   ];
 
   it("lists the unit's files once each, in file order, with their stats", () => {
-    const unit = { hunkIds: ["h4", "h3", "h2"] } as Pick<ReviewUnit, "hunkIds">;
+    const unit = { hunks: hunkEntries(["h4", "h3", "h2"]) } as Pick<ReviewUnit, "hunks">;
     expect(generatedUnitFiles(files, unit)).toEqual([
       { path: "pnpm-lock.yaml", additions: 120, deletions: 40, generated: { source: "lockfile" } },
       { path: "gen/x.pb.go", additions: 3, deletions: 1, generated: { source: "path", detail: "*.pb.go" } },
@@ -81,7 +82,7 @@ describe("generatedUnitFiles", () => {
   });
 
   it("is empty for a unit holding nothing in this revision", () => {
-    expect(generatedUnitFiles(files, { hunkIds: ["gone"] })).toEqual([]);
+    expect(generatedUnitFiles(files, { hunks: hunkEntries(["gone"]) })).toEqual([]);
   });
 });
 

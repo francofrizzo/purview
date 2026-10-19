@@ -27,6 +27,7 @@ import type {
   TeamConfigCache,
 } from "./schemas.js";
 import { fold } from "./reducer.js";
+import { upcastEvent } from "./upcast.js";
 import {
   CHECKOUTS_DIR_NAME,
   diffPath,
@@ -95,7 +96,8 @@ export function readEvents(key: PrKey, root = stateRoot()): ReviewerEvent[] {
     .filter((l) => l.trim().length > 0)
     .map((l, i) => {
       try {
-        return EventSchema.parse(JSON.parse(l));
+        // Older lines are brought to the current shape first (see upcast.ts).
+        return EventSchema.parse(upcastEvent(JSON.parse(l)));
       } catch (err) {
         throw new Error(
           `events.jsonl line ${i + 1} is invalid: ${(err as Error).message}`,

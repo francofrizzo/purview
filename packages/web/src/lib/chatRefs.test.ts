@@ -21,7 +21,7 @@ const detail = {
   diff: "",
   state: {
     revision: 1,
-    units: [{ id: "idempotent-charge-path", title: "Idempotent charge path", hunkIds: [] }],
+    units: [{ id: "idempotent-charge-path", title: "Idempotent charge path", hunks: [] }],
     hunks: {},
   },
   files: {

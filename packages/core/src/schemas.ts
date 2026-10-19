@@ -158,47 +158,125 @@ export const UnitChangelogEntrySchema = z.object({
 });
 export type UnitChangelogEntry = z.infer<typeof UnitChangelogEntrySchema>;
 
-/** At most this many hunks make a unit's heart. */
+/** At most this many hunks of a unit carry a `heart`. */
 export const MAX_UNIT_HEART = 3;
 
-/**
- * One hunk at the heart of a unit: where its logic actually lives, as opposed
- * to the call sites, tests and plumbing around it. `why` is one line, inline
- * markdown, saying what to look for there.
- */
-export const HeartEntrySchema = z.object({
-  hunkId: z.string().min(1),
-  why: z.string().min(1).max(300),
-  /**
-   * Optional: the heart is this line range of the hunk rather than the whole
-   * hunk, as `[from, to]` new-side line numbers (the hunk's added and context
-   * lines), inclusive, `from <= to`. For a large hunk where the logic is a
-   * small part of it. Not checked against the hunk's extent here; the web
-   * clamps. Dropped by migration when the hunk's code moved (anything but an
-   * `identical` match), since the numbering may have moved with it.
-   */
-  lines: z
-    .tuple([z.number().int().positive(), z.number().int().positive()])
-    .refine(([from, to]) => from <= to, { message: "lines must be [from, to] with from <= to" })
-    .optional(),
-});
-export type HeartEntry = z.infer<typeof HeartEntrySchema>;
+/** At most this many heart segments on one hunk. */
+export const MAX_HEART_SEGMENTS = 3;
 
-/** Longest `why` label on a skip entry: it is shown as a chip on the hunk. */
-export const SKIP_WHY_MAX = 80;
+/** Longest `why` of a heart segment: one sentence saying what the code does. */
+export const HEART_WHY_MAX = 300;
+
+/** Longest `label` on a hunk entry: a few words saying what the hunk is. */
+export const HUNK_LABEL_MAX = 120;
 
 /**
- * One hunk of a unit a reader need not read: an import change, a re-export,
- * a renamed call site inside a unit that otherwise matters. `why` is a short
- * label ("adds imports", "renamed call site") shown on the muted hunk.
+ * A line range of a hunk as `[from, to]` new-side line numbers (the hunk's
+ * added and context lines), inclusive, `from <= to`. Not checked against the
+ * hunk's extent here; the web clamps.
  */
-export const SkipEntrySchema = z.object({
-  hunkId: z.string().min(1),
-  why: z.string().min(1).max(SKIP_WHY_MAX),
-});
-export type SkipEntry = z.infer<typeof SkipEntrySchema>;
+export const HunkLinesSchema = z
+  .tuple([z.number().int().positive(), z.number().int().positive()])
+  .refine(([from, to]) => from <= to, { message: "lines must be [from, to] with from <= to" });
+export type HunkLines = z.infer<typeof HunkLinesSchema>;
 
-export const ReviewUnitSchema = z.object({
+/**
+ * One place in a heart hunk where the unit's logic lives. `why` is one
+ * sentence saying what the code there does, shown as a caption under it.
+ * `lines` narrows it to a range of the hunk (for a large hunk: one function,
+ * one table); absent, the segment is the whole hunk and must be the hunk's
+ * only one. Migration drops `lines` unless the hunk came through `identical`,
+ * since anything else may have moved the numbering.
+ */
+export const HeartSegmentSchema = z.object({
+  why: z.string().min(1).max(HEART_WHY_MAX),
+  lines: HunkLinesSchema.optional(),
+});
+export type HeartSegment = z.infer<typeof HeartSegmentSchema>;
+
+/**
+ * One hunk of a unit. The unit's `hunks` list is its membership: every hunk
+ * it holds is an entry here, and an entry says what the hunk is to the unit.
+ * `label`, on any hunk, is a few words of inline markdown saying what the
+ * hunk is when its header and path do not (on a skip, why there is nothing
+ * to read). `skip` marks a hunk a reader need not read (an import change, a
+ * re-export, a renamed call site inside a unit that otherwise matters): it
+ * keeps its own `viewed` flag but counts toward no progress total, Purview
+ * shows it muted and Space passes over it; it needs a label. `heart` is one
+ * to MAX_HEART_SEGMENTS segments where the unit's logic lives, as opposed to
+ * the call sites, tests and plumbing around it; a hunk is not both skip and
+ * heart. Migration drops `skip` and a plain `label` unless the hunk came
+ * through `identical`: each is a claim about the old body.
+ */
+export const HunkEntrySchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1).max(HUNK_LABEL_MAX).optional(),
+  skip: z.literal(true).optional(),
+  heart: z.array(HeartSegmentSchema).min(1).max(MAX_HEART_SEGMENTS).optional(),
+});
+export type HunkEntry = z.infer<typeof HunkEntrySchema>;
+
+const toHunkEntry = (entry: string | HunkEntry): HunkEntry => (typeof entry === "string" ? { id: entry } : entry);
+
+const HunkEntryInputSchema = z.union([z.string().min(1), HunkEntrySchema]);
+export type HunkEntryInput = z.input<typeof HunkEntryInputSchema>;
+
+/** A list of hunk entries as sent: ids or entries, normalized to entries. */
+export const HunkListSchema = z
+  .array(HunkEntryInputSchema)
+  .transform((list) => list.map(toHunkEntry));
+
+/**
+ * What is wrong with a unit's hunk list, as messages (empty when nothing):
+ * duplicate ids, more than MAX_UNIT_HEART heart hunks, a hunk both skip and
+ * heart, a skip without a label, a whole-hunk segment beside another, two
+ * segments of one hunk overlapping. `partial` skips the duplicate check and
+ * the heart cap (for an `addHunks` list judged on its own, before it is
+ * merged into the unit's).
+ */
+export function hunkListIssues(hunks: readonly HunkEntry[], opts: { partial?: boolean } = {}): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const dupes: string[] = [];
+  let hearts = 0;
+  for (const h of hunks) {
+    if (seen.has(h.id)) dupes.push(h.id);
+    seen.add(h.id);
+    if (h.skip && !h.label) out.push(`hunk ${h.id}: a skip needs a label saying why`);
+    if (h.skip && h.heart) out.push(`hunk ${h.id}: a hunk is not both skip and heart`);
+    if (!h.heart) continue;
+    hearts++;
+    if (h.heart.length > 1 && h.heart.some((seg) => !seg.lines)) {
+      out.push(`hunk ${h.id}: a heart segment without \`lines\` is the whole hunk and must be its only segment`);
+    }
+    const ranges = h.heart.flatMap((seg) => (seg.lines ? [seg.lines] : []));
+    for (let i = 0; i < ranges.length; i++) {
+      for (let j = i + 1; j < ranges.length; j++) {
+        const [aFrom, aTo] = ranges[i];
+        const [bFrom, bTo] = ranges[j];
+        if (aFrom <= bTo && bFrom <= aTo) {
+          out.push(`hunk ${h.id}: heart segments ${aFrom}-${aTo} and ${bFrom}-${bTo} overlap`);
+        }
+      }
+    }
+  }
+  if (!opts.partial) {
+    if (dupes.length > 0) out.push(`hunk id(s) listed twice: ${[...new Set(dupes)].join(", ")}`);
+    if (hearts > MAX_UNIT_HEART) out.push(`${hearts} heart hunks; a unit has at most ${MAX_UNIT_HEART}`);
+  }
+  return out;
+}
+
+function refineHunkList(partial: boolean): (hunks: readonly HunkEntry[] | undefined, ctx: z.RefinementCtx) => void {
+  return (hunks, ctx) => {
+    if (!hunks) return;
+    for (const message of hunkListIssues(hunks, { partial })) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+    }
+  };
+}
+
+export const ReviewUnitBaseSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
   summary: z.string(),
@@ -206,7 +284,14 @@ export const ReviewUnitSchema = z.object({
   attention: AttentionSchema,
   attentionWhy: z.string(),
   riskFlags: z.array(RiskFlagSchema).default([]),
-  hunkIds: z.array(z.string()).default([]),
+  /**
+   * The unit's hunks, in reading order, each saying what it is to the unit
+   * (see HunkEntrySchema): ids or entries on input, always entries in state.
+   * The rules on the list (see `hunkListIssues`) are checked by
+   * ReviewUnitSchema. Whatever takes a hunk out of the unit (a patch, a
+   * migration, the generated sweep) takes its entry with it.
+   */
+  hunks: HunkListSchema.default([]),
   order: z.number().int(),
   /**
    * Optional, and stays optional: every event and state file written before
@@ -214,29 +299,6 @@ export const ReviewUnitSchema = z.object({
    * so by having no `findings` key rather than an empty array.
    */
   findings: z.array(FindingSchema).max(MAX_UNIT_FINDINGS).optional(),
-  /**
-   * The one to three hunks where this unit's logic lives, each with a why.
-   * Optional like `findings`: absent on older states and on units with no
-   * single heart. Every entry names one of the unit's own hunks; the reducer
-   * drops an entry whose hunk leaves the unit or the PR.
-   */
-  heart: z.array(HeartEntrySchema).max(MAX_UNIT_HEART).optional(),
-  /**
-   * Hunks of this unit the analysis says a reader can skip (imports,
-   * re-exports, renamed call sites inside an otherwise important unit).
-   * Optional like `heart`. Every entry names one of the unit's own hunks,
-   * never a heart hunk; the reducer drops an entry whose hunk leaves the unit
-   * or the PR, or whose code a revision reworked. Skipped hunks keep their
-   * own `viewed` flag but count toward no progress total (unit, file,
-   * readiness); Purview shows them muted, and Space passes over them.
-   */
-  skip: z.array(SkipEntrySchema).optional(),
-  /**
-   * The first name of `skip` (one shipped day of event logs carry it). The
-   * reducer moves it into `skip` and drops it; nothing else reads it.
-   * @deprecated write `skip`
-   */
-  fold: z.array(SkipEntrySchema).optional(),
   /**
    * The unit's files in the order to read them, as paths. Optional: absent,
    * Purview orders them itself (heart files first, then diff order). Files
@@ -273,7 +335,12 @@ export const ReviewUnitSchema = z.object({
    */
   origin: z.literal("generated").optional(),
 });
+
+/** A unit as stored and as `set-analysis` takes it: the base shape plus the hunk-list rules. */
+export const ReviewUnitSchema = ReviewUnitBaseSchema.superRefine((u, ctx) => refineHunkList(false)(u.hunks, ctx));
 export type ReviewUnit = z.infer<typeof ReviewUnitSchema>;
+/** The same unit as it may be sent (bare hunk ids, defaults left out). */
+export type ReviewUnitInput = z.input<typeof ReviewUnitSchema>;
 
 /** A unit whose hunks all left the PR (see `removedAtRevision`). */
 export function isRemovedUnit(u: { removedAtRevision?: number }): boolean {
@@ -287,14 +354,30 @@ export function isRemovedUnit(u: { removedAtRevision?: number }): boolean {
  */
 const changelogEntryField = z.string().min(1).max(CHANGELOG_TEXT_MAX).optional();
 
-export const ReviewUnitPatchSchema = ReviewUnitSchema.partial().extend({
-  changelogEntry: changelogEntryField,
-});
+/**
+ * A patch edits the hunk list one of two ways: `hunks` replaces it whole
+ * (ids or entries), or `removeHunkIds` then `addHunks` edit it in place.
+ * `addHunks` upserts by id: a new id is appended, an existing id has its
+ * entry replaced by the one given, so `{id, heart: [...]}` on an ordinary
+ * hunk makes it a heart and a bare `{id}` (or the id as a string) clears its
+ * label, skip and heart. `set-unit`/`set-units` resolve short ids
+ * and write the list the unit ends up with; the reducer applies all three.
+ */
+export const ReviewUnitPatchSchema = ReviewUnitBaseSchema.partial()
+  .extend({
+    changelogEntry: changelogEntryField,
+    addHunks: HunkListSchema.optional(),
+    removeHunkIds: z.array(z.string().min(1)).optional(),
+  })
+  .superRefine((p, ctx) => {
+    refineHunkList(false)(p.hunks, ctx);
+    refineHunkList(true)(p.addHunks, ctx);
+  });
 
 /** A brand-new unit sent through `set-unit`: the full unit, plus the patch-only field. */
-export const NewReviewUnitSchema = ReviewUnitSchema.extend({
+export const NewReviewUnitSchema = ReviewUnitBaseSchema.extend({
   changelogEntry: changelogEntryField,
-});
+}).superRefine((u, ctx) => refineHunkList(false)(u.hunks, ctx));
 export type ReviewUnitPatch = z.infer<typeof ReviewUnitPatchSchema>;
 
 /** Payload accepted by `reviewer-state set-analysis --file <json>`. */
@@ -1122,7 +1205,7 @@ export type ArchivedHunk = z.infer<typeof ArchivedHunkSchema>;
  * written under an older version, so stored PRs pick the change up on their
  * next read instead of only on their next appended event.
  */
-export const STATE_SHAPE_VERSION = 5;
+export const STATE_SHAPE_VERSION = 7;
 
 export const StateSchema = z.object({
   /** see STATE_SHAPE_VERSION; absent on every state.json written before it existed */

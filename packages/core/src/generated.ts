@@ -388,7 +388,7 @@ export function buildGeneratedUnit(
     attention: "skip",
     attentionWhy: `Generated or lock files: detected by Purview (${sources.join(", ")}), not read by the analysis`,
     riskFlags: [],
-    hunkIds,
+    hunks: hunkIds.map((id) => ({ id })),
     order,
   };
 }

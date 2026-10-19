@@ -6,7 +6,7 @@ import type {
   AnalysisImportReport,
   ChatRef,
   FileEntry,
-  HeartEntry,
+  HeartSegment,
   MigrationReport,
   PrDetail,
   ReviewEvent,
@@ -114,6 +114,7 @@ import { UNPLACED_TITLE, UnitSidebar } from "../components/UnitSidebar";
 import { SidebarRail } from "../components/SidebarRail";
 import { DiffSearchBar } from "../components/DiffSearchBar";
 import { orderUnitHunks, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
+import { heartOf, heartSegments, hunkIdsOf, skipOf } from "../lib/units";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { unitForHunk } from "../lib/diffSearch";
@@ -493,7 +494,7 @@ export function PrView() {
   }, [sinceReviewOn, detail?.sinceReview]);
   const sinceUnitIds = useMemo(() => {
     if (!sinceChanged) return undefined;
-    const ids = new Set(units.filter((u) => u.hunkIds.some((h) => sinceChanged.has(h))).map((u) => u.id));
+    const ids = new Set(units.filter((u) => u.hunks.some((h) => sinceChanged.has(h.id))).map((u) => u.id));
     if (unplaced.some((h) => sinceChanged.has(h))) ids.add(UNPLACED_ID);
     return ids;
   }, [sinceChanged, units, unplaced]);
@@ -663,7 +664,7 @@ export function PrView() {
   const lineChanges = useRevisionsLineChanges(prKey, highlightRevisions, currentRevision);
   const highlight = useMemo(() => {
     if (!highlightActive || !selectedUnit || !lineChanges.data) return null;
-    return buildHighlight(lineChanges.data, { hunkIds: selectedUnit.hunkIds, unitId: selectedUnit.id });
+    return buildHighlight(lineChanges.data, { hunkIds: hunkIdsOf(selectedUnit), unitId: selectedUnit.id });
   }, [highlightActive, selectedUnit, lineChanges.data]);
 
   // The composer's auto-attach chip follows whatever unit is in context; the
@@ -677,13 +678,13 @@ export function PrView() {
   const allEntries = useMemo<HunkEntry[]>(() => {
     if (!detail) return [];
     if (tab === "units") {
-      const ids = unplacedSelected ? unplaced : selectedUnit?.hunkIds;
+      const ids = unplacedSelected ? unplaced : selectedUnit ? hunkIdsOf(selectedUnit) : undefined;
       if (!ids) return [];
-      // The heart's files first, then diff order: see orderUnitHunks.
+      // The analysis's file order, else the heart's files first, then diff order: see orderUnitHunks.
       return orderUnitHunks(
         detail.files.files,
         ids,
-        unplacedSelected ? undefined : selectedUnit?.heart,
+        unplacedSelected || !selectedUnit ? undefined : heartOf(selectedUnit),
         unplacedSelected ? undefined : selectedUnit?.fileOrder,
       );
     }
@@ -708,15 +709,23 @@ export function PrView() {
     () => (sinceChanged ? allEntries.filter((e) => sinceChanged.has(e.hunk.id)) : allEntries),
     [allEntries, sinceChanged],
   );
-  /** The selected unit's heart, by hunk id: the pane marks those hunks (or lines). */
-  const heart = useMemo<ReadonlyMap<string, HeartMark> | undefined>(() => {
-    if (tab !== "units" || !selectedUnit?.heart?.length) return undefined;
-    return new Map(selectedUnit.heart.map((h) => [h.hunkId, { why: h.why, lines: h.lines }]));
+  /** The selected unit's heart, by hunk id: the segments the pane marks in each hunk. */
+  const heart = useMemo<ReadonlyMap<string, readonly HeartMark[]> | undefined>(() => {
+    if (tab !== "units" || !selectedUnit) return undefined;
+    const entries = heartOf(selectedUnit);
+    return entries.length ? new Map(entries.map((h) => [h.id, h.heart])) : undefined;
   }, [tab, selectedUnit]);
   /** The selected unit's skippable hunks, by hunk id: the pane mutes them. */
   const skip = useMemo<ReadonlyMap<string, string> | undefined>(() => {
-    if (tab !== "units" || !selectedUnit?.skip?.length) return undefined;
-    return new Map(selectedUnit.skip.map((f) => [f.hunkId, f.why]));
+    if (tab !== "units" || !selectedUnit) return undefined;
+    const entries = skipOf(selectedUnit);
+    return entries.length ? new Map(entries.map((h) => [h.id, h.label ?? ""])) : undefined;
+  }, [tab, selectedUnit]);
+  /** The analysis's labels, by hunk id: a chip on the header (a skip hunk's label is its skip chip). */
+  const labels = useMemo<ReadonlyMap<string, string> | undefined>(() => {
+    if (tab !== "units" || !selectedUnit) return undefined;
+    const entries = selectedUnit.hunks.filter((h) => !h.skip && h.label);
+    return entries.length ? new Map(entries.map((h) => [h.id, h.label!])) : undefined;
   }, [tab, selectedUnit]);
   // Turning the filter on (or switching tabs under it) never leaves the
   // reader on a unit or file it hides: land on the first one it keeps.
@@ -1831,7 +1840,7 @@ export function PrView() {
                       onOpen={(path) => {
                         const first = detail.files.files
                           .find((f) => f.path === path)
-                          ?.hunks.find((h) => selectedUnit.hunkIds.includes(h.id));
+                          ?.hunks.find((h) => selectedUnit.hunks.some((x) => x.id === h.id));
                         if (first) setJumpToHunk({ hunkId: first.id, nonce: Date.now() });
                       }}
                     />
@@ -1864,9 +1873,9 @@ export function PrView() {
                       </span>
                     </p>
                   ) : null}
-                  {selectedUnit.heart?.length ? (
+                  {heartOf(selectedUnit).length ? (
                     <UnitHeart
-                      heart={selectedUnit.heart}
+                      segments={heartSegments(selectedUnit)}
                       files={detail.files.files}
                       onJump={(hunkId, line) => {
                         setFocusedHunkId(hunkId);
@@ -2022,6 +2031,7 @@ export function PrView() {
               jumpToHunk={jumpToHunk}
               heart={heart}
               skip={skip}
+              labels={labels}
               highlight={tab === "units" ? highlight : null}
               unitForHunkId={unitForHunkId}
               onUnitClick={onHunkUnitClick}
@@ -2291,16 +2301,17 @@ function ErrorBar({ message }: { message: string }) {
 }
 
 /**
- * The unit's heart: the hunks its logic lives in, each with the analysis's
- * one-line why. A button per entry lands the reader on that hunk; the pane
- * draws the same hunks with a bar, so this is the index and the diff the map.
+ * The unit's heart: the segments its logic lives in, each with the
+ * analysis's one-sentence why. A button per segment lands the reader on its
+ * first line; the pane draws the same rows with a bar, so this is the index
+ * and the diff the map.
  */
 function UnitHeart({
-  heart,
+  segments,
   files,
   onJump,
 }: {
-  heart: HeartEntry[];
+  segments: (HeartSegment & { id: string })[];
   files: FileEntry[];
   onJump: (hunkId: string, line?: number) => void;
 }) {
@@ -2313,15 +2324,16 @@ function UnitHeart({
         <span style={{ color: "var(--fg-faint)" }}>· where the logic lives</span>
       </div>
       <ol className="mt-1 space-y-0.5 border-l pl-3" style={{ borderColor: "var(--heart)" }}>
-        {heart.map((h) => {
-          const path = pathOf(h.hunkId);
+        {segments.map((h, i) => {
+          const path = pathOf(h.id);
           return (
-            <li key={h.hunkId}>
+            <li key={`${h.id}:${i}`}>
               <button
                 type="button"
-                data-testid={`heart-jump-${h.hunkId}`}
+                data-testid={`heart-jump-${h.id}`}
+                data-segment={i}
                 className="changelog-row -mx-1.5 flex w-[calc(100%+0.75rem)] items-baseline gap-2 rounded px-1.5 text-left leading-[18px]"
-                onClick={() => onJump(h.hunkId, h.lines?.[0])}
+                onClick={() => onJump(h.id, h.lines?.[0])}
                 data-tip={path ? `Go to this hunk in ${path}` : "Go to this hunk"}
               >
                 {path ? (

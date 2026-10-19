@@ -1,3 +1,4 @@
+import { hunkIdsOf } from "../src/units.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
@@ -126,7 +127,7 @@ function mkUnit(over: Partial<ReviewUnit> = {}): ReviewUnit {
     attention: "must-read",
     attentionWhy: "auth path",
     riskFlags: [],
-    hunkIds: [],
+    hunks: [],
     order: 0,
     ...over,
   };
@@ -142,7 +143,7 @@ describe("buildAnalysisExport", () => {
   it("builds a versioned envelope from the current state", () => {
     const h = mkHunk("src/a.ts", ["+a"], []);
     seedPr(key, [h], tmp);
-    setAnalysis(key, { summary: "Adds a.", units: [mkUnit({ hunkIds: [h.id] })] }, {}, tmp);
+    setAnalysis(key, { summary: "Adds a.", units: [mkUnit({ hunks: [h.id] })] }, {}, tmp);
 
     const envelope = buildAnalysisExport(key, tmp);
     expect(envelope.format).toBe("purview-analysis");
@@ -162,7 +163,7 @@ describe("applyAnalysisImport", () => {
     seedPr(key, [h1, h2], tmp);
     setAnalysis(
       key,
-      { summary: "Adds a and b.", units: [mkUnit({ hunkIds: [h1.id, h2.id] })] },
+      { summary: "Adds a and b.", units: [mkUnit({ hunks: [h1.id, h2.id] })] },
       {},
       tmp,
     );
@@ -195,7 +196,7 @@ describe("applyAnalysisImport", () => {
       key,
       {
         summary: "Adds a and b.",
-        units: [mkUnit({ id: "u1", hunkIds: [h1.id] }), mkUnit({ id: "u2", hunkIds: [h2.id], order: 1 })],
+        units: [mkUnit({ id: "u1", hunks: [h1.id] }), mkUnit({ id: "u2", hunks: [h2.id], order: 1 })],
       },
       {},
       tmp,
@@ -217,7 +218,7 @@ describe("applyAnalysisImport", () => {
       expect(report.sameRevision).toBe(false);
 
       expect(state.units.map((u) => u.id)).toEqual(["u1"]);
-      expect(state.units[0].hunkIds).toEqual([h1.id]);
+      expect(hunkIdsOf(state.units[0])).toEqual([h1.id]);
       expect(state.unassignedHunkIds).toEqual([h3.id]);
     } finally {
       fs.rmSync(otherRoot, { recursive: true, force: true });
@@ -227,7 +228,7 @@ describe("applyAnalysisImport", () => {
   it("rejects an envelope for a different PR", () => {
     const h = mkHunk("src/a.ts", ["+a"], []);
     seedPr(key, [h], tmp);
-    setAnalysis(key, { summary: "s", units: [mkUnit({ hunkIds: [h.id] })] }, {}, tmp);
+    setAnalysis(key, { summary: "s", units: [mkUnit({ hunks: [h.id] })] }, {}, tmp);
     const envelope = buildAnalysisExport(key, tmp);
 
     const otherRoot = fs.mkdtempSync(path.join(os.tmpdir(), "purview-analysis-share-wrongpr-"));
@@ -249,7 +250,7 @@ describe("applyAnalysisImport", () => {
   it("strips machine-local fields: nothing about viewed state rides along", () => {
     const h1 = mkHunk("src/a.ts", ["+a"], []);
     seedPr(key, [h1], tmp);
-    setAnalysis(key, { summary: "s", units: [mkUnit({ hunkIds: [h1.id] })] }, {}, tmp);
+    setAnalysis(key, { summary: "s", units: [mkUnit({ hunks: [h1.id] })] }, {}, tmp);
     const envelope = buildAnalysisExport(key, tmp) as AnalysisExport & Record<string, unknown>;
     // The wire shape has no "hunks"/"viewed" projection at all — only units.
     expect(Object.keys(envelope).sort()).toEqual(
@@ -262,7 +263,7 @@ describe("renderAnalysisComment / extractAnalysisFromComment", () => {
   it("round-trips an envelope through the rendered comment", () => {
     const h = mkHunk("src/a.ts", ["+a"], []);
     seedPr(key, [h], tmp);
-    setAnalysis(key, { summary: "Adds a.", units: [mkUnit({ hunkIds: [h.id] })] }, {}, tmp);
+    setAnalysis(key, { summary: "Adds a.", units: [mkUnit({ hunks: [h.id] })] }, {}, tmp);
     const envelope = buildAnalysisExport(key, tmp);
 
     const body = renderAnalysisComment(envelope);
@@ -284,7 +285,7 @@ describe("renderAnalysisComment / extractAnalysisFromComment", () => {
       key,
       {
         summary: "s",
-        units: [mkUnit({ id: "u1", hunkIds: [h1.id] }), mkUnit({ id: "u2", hunkIds: [h2.id], order: 1 })],
+        units: [mkUnit({ id: "u1", hunks: [h1.id] }), mkUnit({ id: "u2", hunks: [h2.id], order: 1 })],
       },
       {},
       tmp,
@@ -300,7 +301,7 @@ describe("renderAnalysisComment / extractAnalysisFromComment", () => {
       mkUnit({
         id: `u${i}`,
         order: i,
-        hunkIds: [h.id],
+        hunks: [h.id],
         summary: "x".repeat(2000),
         attentionWhy: "y".repeat(500),
       }),

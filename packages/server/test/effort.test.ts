@@ -8,6 +8,7 @@ import {
   writeRevision,
   type Hunk,
   type PrKey,
+  type HunkEntry,
   type ReviewUnit,
 } from "@reviewer/core";
 import { createApp } from "../src/app.js";
@@ -31,7 +32,9 @@ function hunk(id: string, lines: number): Hunk {
   };
 }
 
-function unit(patch: Partial<ReviewUnit> & { id: string; hunkIds: string[] }): ReviewUnit {
+function unit(
+  patch: Partial<Omit<ReviewUnit, "hunks">> & { id: string; hunks: (string | HunkEntry)[] },
+): ReviewUnit {
   return {
     title: "unit",
     summary: "",
@@ -41,6 +44,7 @@ function unit(patch: Partial<ReviewUnit> & { id: string; hunkIds: string[] }): R
     riskFlags: [],
     order: 0,
     ...patch,
+    hunks: patch.hunks.map((h) => (typeof h === "string" ? { id: h } : h)),
   };
 }
 
@@ -114,7 +118,7 @@ describe("reviewEffort", () => {
     build(
       root,
       [hunk("h1", 60), hunk("h2", 40)],
-      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunkIds: ["h1", "h2"] })],
+      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunks: ["h1", "h2"] })],
     );
     const effort = reviewEffort(key, root);
     expect(effort).toEqual({
@@ -135,8 +139,7 @@ describe("reviewEffort", () => {
           id: "u1",
           attention: "must-read",
           riskFlags: [],
-          hunkIds: ["h1", "h2"],
-          skip: [{ hunkId: "h2", why: "re-export only" }],
+          hunks: ["h1", { id: "h2", skip: true, label: "re-export only" }],
         }),
       ],
     );
@@ -150,7 +153,7 @@ describe("reviewEffort", () => {
     build(
       root,
       [hunk("h1", 1600)],
-      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunkIds: ["h1"] })],
+      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunks: ["h1"] })],
     );
     const effort = reviewEffort(key, root);
     expect(effort?.badge).toBe("heavy");
@@ -166,7 +169,7 @@ describe("reviewEffort", () => {
           id: "u1",
           attention: "must-read",
           riskFlags: ["auth", "migration", "money", "security"],
-          hunkIds: ["h1"],
+          hunks: ["h1"],
         }),
       ],
     );
@@ -184,7 +187,7 @@ describe("reviewEffort", () => {
           id: "u1",
           attention: "must-read",
           riskFlags: ["auth"],
-          hunkIds: ["h1"],
+          hunks: ["h1"],
         }),
       ],
     );
@@ -195,7 +198,7 @@ describe("reviewEffort", () => {
     build(
       root,
       [hunk("h1", 700)],
-      [unit({ id: "u1", attention: "must-read", riskFlags: ["auth"], hunkIds: ["h1"] })],
+      [unit({ id: "u1", attention: "must-read", riskFlags: ["auth"], hunks: ["h1"] })],
     );
     expect(reviewEffort(key, root)?.badge).toBeNull();
   });
@@ -205,10 +208,10 @@ describe("reviewEffort", () => {
       root,
       [hunk("h1", 50), hunk("h2", 20), hunk("h3", 500)],
       [
-        unit({ id: "u1", attention: "must-read", riskFlags: [], hunkIds: ["h1", "h2"] }),
+        unit({ id: "u1", attention: "must-read", riskFlags: [], hunks: ["h1", "h2"] }),
         // shares h2 with u1 — must not be double-counted
-        unit({ id: "u2", attention: "must-read", riskFlags: [], hunkIds: ["h2"] }),
-        unit({ id: "u3", attention: "skim", riskFlags: [], hunkIds: ["h3"] }),
+        unit({ id: "u2", attention: "must-read", riskFlags: [], hunks: ["h2"] }),
+        unit({ id: "u3", attention: "skim", riskFlags: [], hunks: ["h3"] }),
       ],
     );
     const effort = reviewEffort(key, root);
@@ -224,13 +227,13 @@ describe("reviewEffort", () => {
       root,
       [hunk("h1", 900), hunk("h2", 700)],
       [
-        unit({ id: "u1", attention: "must-read", riskFlags: [], hunkIds: ["h1"] }),
+        unit({ id: "u1", attention: "must-read", riskFlags: [], hunks: ["h1"] }),
         unit({
           id: "u2",
           kind: "connective-tissue",
           attention: "must-read",
           riskFlags: [],
-          hunkIds: ["h2"],
+          hunks: ["h2"],
         }),
       ],
     );
@@ -245,8 +248,8 @@ describe("reviewEffort", () => {
       root,
       [hunk("h1", 100)],
       [
-        unit({ id: "u1", kind: "connective-tissue", attention: "must-read", riskFlags: [], hunkIds: ["h1"] }),
-        unit({ id: "u2", attention: "must-read", riskFlags: [], hunkIds: ["h1"] }),
+        unit({ id: "u1", kind: "connective-tissue", attention: "must-read", riskFlags: [], hunks: ["h1"] }),
+        unit({ id: "u2", attention: "must-read", riskFlags: [], hunks: ["h1"] }),
       ],
     );
     expect(reviewEffort(key, root)?.weightedMustReadLines).toBe(100);
@@ -257,8 +260,8 @@ describe("reviewEffort", () => {
       root,
       [hunk("h1", 50), hunk("h2", 10)],
       [
-        unit({ id: "u1", attention: "must-read", riskFlags: ["auth"], hunkIds: ["h1"] }),
-        unit({ id: "u2", attention: "skip", riskFlags: ["auth", "money"], hunkIds: ["h2"] }),
+        unit({ id: "u1", attention: "must-read", riskFlags: ["auth"], hunks: ["h1"] }),
+        unit({ id: "u2", attention: "skip", riskFlags: ["auth", "money"], hunks: ["h2"] }),
       ],
     );
     expect(reviewEffort(key, root)?.riskCount).toBe(2);
@@ -269,12 +272,12 @@ describe("reviewEffort", () => {
       root,
       [hunk("h1", 50)],
       [
-        unit({ id: "u1", attention: "must-read", riskFlags: ["auth"], hunkIds: ["h1"] }),
+        unit({ id: "u1", attention: "must-read", riskFlags: ["auth"], hunks: ["h1"] }),
         unit({
           id: "gone",
           attention: "must-read",
           riskFlags: ["money", "security"],
-          hunkIds: [],
+          hunks: [],
           removedAtRevision: 1,
         }),
       ],
@@ -288,7 +291,7 @@ describe("reviewEffort", () => {
     build(
       root,
       [hunk("h1", 50)],
-      [unit({ id: "gone", attention: "must-read", riskFlags: [], hunkIds: [], removedAtRevision: 1 })],
+      [unit({ id: "gone", attention: "must-read", riskFlags: [], hunks: [], removedAtRevision: 1 })],
     );
     expect(reviewEffort(key, root)).toBeNull();
   });
@@ -297,7 +300,7 @@ describe("reviewEffort", () => {
     build(
       root,
       [hunk("h1", 50)],
-      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunkIds: ["h1", "ghost"] })],
+      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunks: ["h1", "ghost"] })],
     );
     expect(() => reviewEffort(key, root)).not.toThrow();
     expect(reviewEffort(key, root)?.mustReadLines).toBe(50);
@@ -307,7 +310,7 @@ describe("reviewEffort", () => {
     build(
       root,
       [hunk("h1", 50)],
-      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunkIds: ["h1"] })],
+      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunks: ["h1"] })],
     );
     const first = reviewEffort(key, root);
     const second = reviewEffort(key, root);
@@ -322,7 +325,7 @@ describe("GET /api/prs effort field", () => {
     build(
       root,
       [hunk("h1", 50)],
-      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunkIds: ["h1"] })],
+      [unit({ id: "u1", attention: "must-read", riskFlags: [], hunks: ["h1"] })],
     );
     const app = createApp({
       stateDir: root,

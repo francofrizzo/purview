@@ -723,10 +723,17 @@ const units: ReviewUnit[] = [
     ],
     // a1b2c3d4e5f60004 (the migration, new in revision 3) is deliberately in
     // no unit: the sidebar's "Not in any unit" group needs something to show.
-    hunkIds: ["a1b2c3d4e5f60001", "a1b2c3d4e5f60003", "a1b2c3d4e5f60005"],
-    heart: [
-      { hunkId: "a1b2c3d4e5f60003", why: "`idempotencyKey()` decides what counts as the same charge" },
-      { hunkId: "a1b2c3d4e5f60001", why: "`charge()` short-circuits on the ledger row before touching the gateway", lines: [21, 23] },
+    hunks: [
+      { id: "a1b2c3d4e5f60003", heart: [{ why: "`idempotencyKey()` decides what counts as the same charge" }] },
+      {
+        id: "a1b2c3d4e5f60001",
+        label: "charge() rewired around the ledger",
+        heart: [
+          { why: "`charge()` short-circuits on the ledger row before touching the gateway", lines: [21, 23] },
+          { why: "A failed charge is recorded in the ledger before the error propagates", lines: [29, 30] },
+        ],
+      },
+      { id: "a1b2c3d4e5f60005", label: "ledger table and its writes" },
     ],
     order: 1,
   },
@@ -756,8 +763,10 @@ const units: ReviewUnit[] = [
         evidence: "src/payments/legacy.ts:14, test/payments/legacy.test.ts:3",
       },
     ],
-    hunkIds: ["a1b2c3d4e5f60002", "a1b2c3d4e5f60008"],
-    heart: [{ hunkId: "a1b2c3d4e5f60002", why: "the backoff loop: only `isTransient()` errors retry, and the delay doubles with jitter" }],
+    hunks: [
+      { id: "a1b2c3d4e5f60002", heart: [{ why: "the backoff loop: only `isTransient()` errors retry, and the delay doubles with jitter" }] },
+      { id: "a1b2c3d4e5f60008" },
+    ],
     order: 2,
   },
   {
@@ -769,7 +778,7 @@ const units: ReviewUnit[] = [
     attention: "skip",
     attentionWhy: "Mechanical: registration, one signature threading, prose.",
     riskFlags: [],
-    hunkIds: ["a1b2c3d4e5f60006", "a1b2c3d4e5f60007", "a1b2c3d4e5f60009", "a1b2c3d4e5f60010"],
+    hunks: [{ id: "a1b2c3d4e5f60006" }, { id: "a1b2c3d4e5f60007" }, { id: "a1b2c3d4e5f60009" }, { id: "a1b2c3d4e5f60010" }],
     // The analysis's reading order: the route that threads the id, then the
     // container that builds the ledger; docs and the reconcile stub follow.
     fileOrder: ["src/api/routes/orders.ts", "src/container.ts"],
@@ -791,9 +800,14 @@ const units: ReviewUnit[] = [
         evidence: "src/billing/reconcile.ts:27",
       },
     ],
-    hunkIds: ["a1b2c3d4e5f6000d", "a1b2c3d4e5f6000e", "a1b2c3d4e5f6000f", "a1b2c3d4e5f60011", "a1b2c3d4e5f60012"],
-    // The job file's first hunk is the call site of the new builder: skippable here.
-    skip: [{ hunkId: "a1b2c3d4e5f60011", why: "renamed call site" }],
+    hunks: [
+      { id: "a1b2c3d4e5f6000d", label: "row types and the verdict rule" },
+      { id: "a1b2c3d4e5f6000e" },
+      { id: "a1b2c3d4e5f6000f" },
+      // The job file's first hunk is the call site of the new builder: skippable here.
+      { id: "a1b2c3d4e5f60011", skip: true, label: "renamed call site" },
+      { id: "a1b2c3d4e5f60012" },
+    ],
     order: 4,
   },
   // Purview's own unit, built from the files' classification (not the analysis's).
@@ -811,7 +825,7 @@ const removedUnits: ReviewUnit[] = [
     attention: "skim",
     attentionWhy: "Deletes money records; worth a look while it existed.",
     riskFlags: ["money"],
-    hunkIds: [],
+    hunks: [],
     order: 4,
     removedAtRevision: 3,
     readBeforeRemoval: true,
