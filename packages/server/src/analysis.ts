@@ -466,7 +466,8 @@ export function analysisPrompt(
         [
           `Run \`${cmd} triage ${keyStr}\` first (one ${tools.shell} call): it prints a compact one-line-per-file,`,
           "one-line-per-hunk overview (path, status, hunk ids, headers, +/- sizes, mechanical hints,",
-          "moved-code marks) built to be read whole even for a large PR. Bucket every hunk from it (Pass 1).",
+          "moved-code marks, and under each hunk of at most four changed lines its -/+ body, which counts",
+          "as read) built to be read whole even for a large PR. Bucket every hunk from it (Pass 1).",
         ].join("\n"),
     `Fetch the hunk bodies you actually need with \`${cmd} show ${keyStr} <selectors>\`,`,
     "batched into as few calls as possible — one call with every must-read/ambiguous/risk-surface",

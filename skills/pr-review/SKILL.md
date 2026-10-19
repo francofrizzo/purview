@@ -199,6 +199,11 @@ hunk into a *likely* kind and a *likely* attention. This pass should not require
 full hunk bodies for hunks that are obviously wiring/docs/tests/generated/lockfile — a
 hint on the triage line is often enough on its own.
 
+A hunk with at most four changed lines has its body printed right under its triage line
+(`-`/`+` prefixed, indented past the id). That body counts as read: bucket such a hunk
+from it, and when it is only imports, a re-export, a renamed call site or a one-line
+constant tweak, mark it `skip` (see section 4) without a `show` call.
+
 **Generated files and lockfiles are not yours.** Purview detects them itself (lockfile
 names, generated-output paths, `.gitattributes` `linguist-generated`, "Code generated"
 markers, the reader's repo settings) and puts every hunk of them in its own fixed unit,
@@ -214,7 +219,10 @@ body, plus surrounding function/file context from the patch) for:
 - every hunk whose kind or attention is ambiguous after pass 1,
 - every hunk that pass 1 flags as touching a risk-flag surface (auth, migrations,
   concurrency, money, external calls, secrets/crypto — see RUBRIC.md trigger list),
-  regardless of its likely kind.
+  regardless of its likely kind,
+- every hunk you intend to mark `skip` whose body triage did not inline (more than four
+  changed lines): a skip is a claim about the body, so put it in the same call; it costs
+  nothing.
 
 For very large PRs where a must-read hunk's correctness depends on code not shown in the
 diff (e.g. a call site's full function, a type definition), read that surrounding context
@@ -303,7 +311,9 @@ two to five words giving the reason, shown on the muted hunk: `"adds imports"`,
 `"renamed call site"`, `"re-export only"`. Rules:
 
 - Skip only a hunk whose body you actually read. The claim is "there is nothing here",
-  and you can only make it after looking.
+  and you can only make it after looking. The body triage inlines under a small hunk
+  counts; a larger one goes in the pass 2 `show` call first. The canonical skip is a
+  small hunk whose inlined body is only import lines, labelled `"adds imports"`.
 - A hunk is never both skip and heart (the payload is rejected), and never make skips
   the majority of a must-read unit: if most of a unit is skippable, the unit is skim,
   not must-read with skips.

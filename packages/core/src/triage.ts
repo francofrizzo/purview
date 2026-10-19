@@ -12,6 +12,12 @@ import type { FileDiff, FilesJson, Hunk } from "./schemas.js";
  */
 
 const HEADER_MAX = 60;
+/** A hunk with at most this many changed lines (added + removed) gets its body
+ *  printed under its triage line, so the reader sees an import, a re-export, a
+ *  renamed call site or a one-line constant tweak without a `show` call. */
+export const INLINE_BODY_MAX_LINES = 4;
+/** Longest inlined body line, after which it is cut with an ellipsis. */
+const INLINE_LINE_MAX = 100;
 
 const DOCS_PATH_RE = /(\.mdx?$|\.rst$|\.txt$|(^|\/)docs\/)/i;
 const TESTS_PATH_RE = /(_test\.go$|\.test\.|\.spec\.|(^|\/)__tests__\/|(^|\/)testdata\/|(^|\/)tests\/|(^|\/)fixtures\/)/;
@@ -42,6 +48,23 @@ function truncateHeader(header: string): string {
   const h = header.trim();
   if (h.length <= HEADER_MAX) return h;
   return h.slice(0, HEADER_MAX - 1) + "…";
+}
+
+function truncateBodyLine(line: string): string {
+  if (line.length <= INLINE_LINE_MAX) return line;
+  return line.slice(0, INLINE_LINE_MAX - 1) + "…";
+}
+
+/** The `-`/`+` lines of a hunk small enough to inline, removed first; `[]`
+ *  for a larger hunk. Each is indented past the hunk id so the id/size/header
+ *  line stays the only thing that starts at two spaces. */
+export function inlineBodyLines(hunk: Hunk): string[] {
+  const changed = hunk.addedLines.length + hunk.removedLines.length;
+  if (changed === 0 || changed > INLINE_BODY_MAX_LINES) return [];
+  return [
+    ...hunk.removedLines.map((l) => `      -${truncateBodyLine(l)}`),
+    ...hunk.addedLines.map((l) => `      +${truncateBodyLine(l)}`),
+  ];
 }
 
 /** `+a -r` size shape for a hunk. */
@@ -122,6 +145,10 @@ export function renderTriage(filesJson: FilesJson, opts: RenderTriageOptions = {
       "mig=db migration  mv-in/mv-out=moved code (see MOVED)",
   );
   out.push(
+    `bodies of hunks with <=${INLINE_BODY_MAX_LINES} changed lines are printed under their line ` +
+      "(-/+ prefixed); that counts as having read them",
+  );
+  out.push(
     `bodies: ${cmd} show ${keyPlaceholder} <hunk-id|path|'glob'>...   ` +
       "(one call, several selectors; single-quote globs, e.g. 'internal/**/*_test.go')",
   );
@@ -167,6 +194,7 @@ export function renderTriage(filesJson: FilesJson, opts: RenderTriageOptions = {
           extras ? "   " + extras : ""
         }`,
       );
+      out.push(...inlineBodyLines(hunk));
     }
   }
 

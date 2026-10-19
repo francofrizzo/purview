@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Small hunks skipped more reliably.** The analysis now sees the body of every hunk of four changed lines or fewer up front, so import blocks, re-exports and renamed call sites get marked skippable instead of left as reading.
+
 ## 2026.10.19.2
 
 - **Finer notes from the analysis.** Hunk headers carry a few words on what each hunk is, and a heart can mark more than one place in a hunk.

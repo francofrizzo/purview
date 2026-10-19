@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeHunkId } from "../src/hunk-id.js";
-import { renderTriage } from "../src/triage.js";
+import { INLINE_BODY_MAX_LINES, inlineBodyLines, renderTriage } from "../src/triage.js";
 import type { FileDiff, FilesJson, Hunk } from "../src/schemas.js";
 
 function mkHunk(
@@ -153,6 +153,51 @@ describe("renderTriage", () => {
         const line = out.split("\n").find((l) => l.startsWith(p))!;
         expect(line, `${p} should carry hint ${hint}`).toContain(hint);
       }
+    });
+  });
+
+  describe("inlined small bodies", () => {
+    const file = (h: Hunk): FileDiff => ({ path: h.file, status: "modified", binary: false, hunks: [h] });
+
+    it("prints the -/+ lines of a hunk at the threshold right under its line, removed first", () => {
+      expect(INLINE_BODY_MAX_LINES).toBe(4);
+      const h = mkHunk("internal/models/x.go", ['\t"slices"', '\t"time"'], ['\t"fmt"', '\t"os"']);
+      const out = renderTriage(filesJson([file(h)]));
+      const lines = out.split("\n");
+      const at = lines.findIndex((l) => l.includes(h.id));
+      expect(lines.slice(at, at + 5)).toEqual([
+        `  ${h.id}   +2 -2   @@ func example()`,
+        '      -\t"fmt"',
+        '      -\t"os"',
+        '      +\t"slices"',
+        '      +\t"time"',
+      ]);
+    });
+
+    it("keeps the one-line form for a hunk one line over the threshold", () => {
+      const h = mkHunk("src/a.ts", ["a", "b", "c"], ["d", "e"]);
+      const out = renderTriage(filesJson([file(h)]));
+      const lines = out.split("\n");
+      const at = lines.findIndex((l) => l.includes(h.id));
+      expect(lines[at]).toContain("+3 -2");
+      expect(lines[at + 1]).toBe("");
+      expect(out).not.toContain("      +a");
+    });
+
+    it("inlines a hunk with only removed lines", () => {
+      const h = mkHunk("src/a.ts", [], ["gone"]);
+      expect(inlineBodyLines(h)).toEqual(["      -gone"]);
+    });
+
+    it("truncates a long body line to about 100 chars with an ellipsis", () => {
+      const long = "x".repeat(150);
+      const h = mkHunk("src/a.ts", [long], []);
+      const [line] = inlineBodyLines(h);
+      expect(line).toBe("      +" + "x".repeat(99) + "…");
+    });
+
+    it("explains the inlined bodies in the header", () => {
+      expect(renderTriage(filesJson([]))).toContain("bodies of hunks with <=4 changed lines");
     });
   });
 
