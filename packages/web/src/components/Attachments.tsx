@@ -8,7 +8,7 @@ import {
   type ReactElement,
   type RefObject,
 } from "react";
-import { attachmentSrc } from "../api/client";
+import { attachmentSrc, remoteImageSrc } from "../api/client";
 import { errorText } from "../api/errors";
 import { useAttachments, useDeleteAttachment, useUploadAttachment } from "../api/hooks";
 import type { Attachment } from "../api/types";
@@ -20,7 +20,10 @@ import {
   attachmentRefs,
   insertAtSelection,
   isGithubAssetUrl,
+  isGithubImageUrl,
   mediaFiles,
+  mediaKindOf,
+  mediaNameOf,
   removeAttachmentRef,
 } from "../lib/attachments";
 import { IconClose, IconPaperclip, IconSpinner } from "./icons";
@@ -311,7 +314,9 @@ export function DropHint({ active }: { active: boolean }) {
 /**
  * The `AttachmentContext` value for one PR: a `purview-attachment:` reference
  * is served from the local store; a GitHub asset URL is too, when one of this
- * PR's attachments became it on push.
+ * PR's attachments became it on push. Any other picture GitHub hosts (the
+ * description's screenshots, an image in someone's comment) comes through the
+ * local server's proxy, which fetches it with the reader's token.
  */
 export function useAttachmentScope(prKey: string): AttachmentScope {
   const { data: all = [] } = useAttachments(prKey);
@@ -331,7 +336,10 @@ export function useAttachmentScope(prKey: string): AttachmentScope {
       }
       if (isGithubAssetUrl(href)) {
         const a = byUrl.get(href);
-        return a ? media(a) : null;
+        if (a) return media(a);
+      }
+      if (isGithubImageUrl(href)) {
+        return { src: remoteImageSrc(prKey, href), kind: mediaKindOf(href), name: mediaNameOf(href), remote: true };
       }
       return null;
     };

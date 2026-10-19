@@ -62,18 +62,26 @@ export interface CodeLink {
  */
 export const CodeLinkContext = createContext<((text: string) => CodeLink | null) | null>(null);
 
-/** A picture the page may draw itself: the local copy of a comment attachment. */
+/**
+ * A picture the page may draw itself: the local copy of a comment attachment,
+ * or a GitHub-hosted picture the local server proxies.
+ */
 export interface LocalMedia {
   src: string;
   kind: "image" | "video";
   name: string;
+  /** fetched through the server's proxy: when that answers an error, the picture turns back into a link */
+  remote?: boolean;
 }
 
 /**
- * Lets a surface draw images from the local attachment store (lib/attachments.ts):
- * a `purview-attachment:` reference, or the GitHub asset URL it became when the
- * comment was pushed, when a local copy exists. Everything else keeps the rule
- * below — images stay links, no remote content loads into the review page.
+ * Lets a surface draw images through the local server (lib/attachments.ts): a
+ * `purview-attachment:` reference or the GitHub asset URL it became when the
+ * comment was pushed, served from the local store; and any picture GitHub
+ * hosts (a description's screenshots, an image in someone's comment), which
+ * the server fetches with the reader's token (`/api/prs/:key/image`). The
+ * rule below still holds: the page only ever talks to localhost, no remote
+ * content loads into the review page. Everything else stays a link.
  */
 export interface AttachmentScope {
   /** the PR whose attachment store editors upload into */
@@ -91,6 +99,54 @@ export const AttachmentContext = createContext<AttachmentScope | null>(null);
  */
 export const SuggestionContext = createContext<string[] | null>(null);
 
+/**
+ * One `![alt](href)`. A picture the local server can serve (a comment's own
+ * attachment, or a GitHub-hosted one it proxies) is drawn; when the proxy
+ * answers an error the picture falls back to the link. Other images stay
+ * links: they open on GitHub rather than loading remote content into the
+ * review page.
+ */
+function MediaNode({ href, alt, local }: { href?: string; alt?: string; local: LocalMedia | null }) {
+  const [failed, setFailed] = useState(false);
+  if (local && !failed) {
+    const onError = local.remote ? () => setFailed(true) : undefined;
+    const link = local.remote && href ? href : local.src;
+    return local.kind === "video" ? (
+      <video
+        src={local.src}
+        controls
+        preload="metadata"
+        onError={onError}
+        data-testid="attachment-media"
+        className="my-1 block max-h-80 max-w-full rounded"
+        style={{ border: "1px solid var(--border)" }}
+      />
+    ) : (
+      <a href={link} target="_blank" rel="noreferrer noopener" data-tip={alt || local.name}>
+        <img
+          src={local.src}
+          alt={alt || local.name}
+          onError={onError}
+          data-testid="attachment-media"
+          className="my-1 block max-h-80 max-w-full rounded"
+          style={{ border: "1px solid var(--border)" }}
+        />
+      </a>
+    );
+  }
+  return href ? (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer noopener"
+      className="underline underline-offset-2"
+      style={{ color: "var(--accent)" }}
+    >
+      🖼 {alt || "image"}
+    </a>
+  ) : null;
+}
+
 function Inline({ nodes }: { nodes: MdInline[] }) {
   const linkFor = useContext(CodeLinkContext);
   const mediaFor = useContext(AttachmentContext)?.resolve;
@@ -101,44 +157,7 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
         if (node.type === "br") return <br key={i} />;
         if (node.type === "image") {
           const local = node.href ? mediaFor?.(node.href) : null;
-          if (local) {
-            // A comment's own picture, served by the local server.
-            return local.kind === "video" ? (
-              <video
-                key={i}
-                src={local.src}
-                controls
-                preload="metadata"
-                data-testid="attachment-media"
-                className="my-1 block max-h-80 max-w-full rounded"
-                style={{ border: "1px solid var(--border)" }}
-              />
-            ) : (
-              <a key={i} href={local.src} target="_blank" rel="noreferrer noopener" data-tip={node.alt || local.name}>
-                <img
-                  src={local.src}
-                  alt={node.alt || local.name}
-                  data-testid="attachment-media"
-                  className="my-1 block max-h-80 max-w-full rounded"
-                  style={{ border: "1px solid var(--border)" }}
-                />
-              </a>
-            );
-          }
-          // Other images stay links: a PR description's screenshots open on
-          // GitHub rather than loading remote content into the review page.
-          return node.href ? (
-            <a
-              key={i}
-              href={node.href}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="underline underline-offset-2"
-              style={{ color: "var(--accent)" }}
-            >
-              🖼 {node.alt || "image"}
-            </a>
-          ) : null;
+          return <MediaNode key={i} href={node.href} alt={node.alt} local={local ?? null} />;
         }
         if (node.type === "kbd") {
           return (

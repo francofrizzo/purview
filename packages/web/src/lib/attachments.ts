@@ -44,6 +44,37 @@ export function isGithubAssetUrl(href: string): boolean {
 }
 
 /**
+ * A picture GitHub hosts — a user-attachments asset, a repo's `assets/`
+ * upload, the `githubusercontent.com` image hosts and its camo proxy. These
+ * the local server fetches with the reader's token (`/api/prs/:key/image`),
+ * so the page can draw them without talking to GitHub itself; the server
+ * holds the same list and refuses anything else.
+ */
+export function isGithubImageUrl(href: string): boolean {
+  return (
+    isGithubAssetUrl(href) ||
+    /^https:\/\/github\.com\/[^/?#]+\/[^/?#]+\/assets\/./.test(href) ||
+    /^https:\/\/(private-user-images|user-images|camo)\.githubusercontent\.com\/./.test(href)
+  );
+}
+
+/** Whether a URL names a video, by its extension; a bare asset id is taken for an image. */
+export function mediaKindOf(href: string): "image" | "video" {
+  const pathname = href.replace(/[?#].*$/, "");
+  return /\.(mp4|mov|webm)$/i.test(pathname) ? "video" : "image";
+}
+
+/** The file name a URL ends in, for a picture's alt text when markdown gave none. */
+export function mediaNameOf(href: string): string {
+  const pathname = href.replace(/[?#].*$/, "");
+  try {
+    return decodeURIComponent(pathname.slice(pathname.lastIndexOf("/") + 1)) || "image";
+  } catch {
+    return "image";
+  }
+}
+
+/**
  * Take every reference to one attachment out of a body, along with the
  * whitespace that was only there to separate it.
  */

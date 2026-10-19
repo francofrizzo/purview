@@ -121,6 +121,16 @@ export function attachmentSrc(key: string, id: string): string {
   return `/api/prs/${encodeKey(key)}/attachments/${encodeURIComponent(id)}`;
 }
 
+/**
+ * Where a GitHub-hosted picture (someone else's screenshot in the description
+ * or a comment) is served from: the local server fetches it once with the
+ * reader's token — see the server's remote-images.ts. Same shape in mock mode;
+ * the mock dev server answers it with a stand-in (vite.config.ts).
+ */
+export function remoteImageSrc(key: string, url: string): string {
+  return `/api/prs/${encodeKey(key)}/image?url=${encodeURIComponent(url)}`;
+}
+
 /** `:rkey` on the repo routes is a URL-encoded `host/owner/repo`. */
 export const repoKey = (r: { host: string; owner: string; repo: string }) =>
   `${r.host}/${r.owner}/${r.repo}`;

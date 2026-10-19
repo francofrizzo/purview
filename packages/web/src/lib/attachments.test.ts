@@ -6,6 +6,9 @@ import {
   attachmentRefs,
   insertAtSelection,
   isGithubAssetUrl,
+  isGithubImageUrl,
+  mediaKindOf,
+  mediaNameOf,
   pendingAttachmentCount,
   removeAttachmentRef,
 } from "./attachments";
@@ -30,6 +33,22 @@ describe("attachment references", () => {
     expect(attachmentIdOf("https://github.com/user-attachments/assets/x")).toBeNull();
     expect(isGithubAssetUrl("https://github.com/user-attachments/assets/abc")).toBe(true);
     expect(isGithubAssetUrl("https://example.com/user-attachments/assets/abc")).toBe(false);
+  });
+
+  it("knows GitHub's image hosts, and what the URL's extension says", () => {
+    for (const u of [
+      "https://github.com/user-attachments/assets/abc",
+      "https://github.com/acme/billing/assets/12/ab-cd.png",
+      "https://private-user-images.githubusercontent.com/1/2.png?jwt=x",
+      "https://user-images.githubusercontent.com/1/2.png",
+      "https://camo.githubusercontent.com/abc/def",
+    ]) expect(isGithubImageUrl(u), u).toBe(true);
+    for (const u of ["https://example.com/a.png", "https://github.com/acme/billing/pull/1", "purview-attachment:x"]) {
+      expect(isGithubImageUrl(u), u).toBe(false);
+    }
+    expect(mediaKindOf("https://github.com/user-attachments/assets/abc")).toBe("image");
+    expect(mediaKindOf("https://github.com/acme/billing/assets/1/clip.MOV?x=1")).toBe("video");
+    expect(mediaNameOf("https://github.com/acme/billing/assets/1/my%20shot.png?x=1")).toBe("my shot.png");
   });
 
   it("removes a reference with the whitespace that only separated it", () => {

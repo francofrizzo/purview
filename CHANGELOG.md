@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Pictures in the description and the comments.** Screenshots and clips hosted on GitHub now show in the PR description, in the reviews and in other people's comments, fetched through your local Purview with your own GitHub login (private ones included); images from anywhere else stay links.
 - **Fold the skippable hunks away.** `Z`, the "N skippable" count in the unit header, or a setting folds every hunk the analysis says you can skip shut, in this unit and the next; `Z` again shows them muted.
 - **What each revision changed, in a line.** A refresh now writes one short note per revision; the rev menu shows it under each revision, and the "since review rN" chip's tip lists the ones that landed after your review.
 - **Reading passes over skippable hunks.** Opening a unit lands on its first hunk worth reading, and `v` moves on to the next one that is not skippable, as Space already did.
