@@ -47,6 +47,7 @@ import {
   AnalysisJobSchema,
   AnalysisSchema,
   CHANGELOG_TEXT_MAX,
+  REVISION_SUMMARY_MAX,
   FINDING_EVIDENCE_MAX,
   FINDING_TEXT_MAX,
   hunkListIssues,
@@ -731,6 +732,42 @@ export function setUnits(
   const planned = planUnitPatches(state, requests);
   const next = appendEvents(key, planned.events, root);
   return { state: next, warnings: planned.warnings, unitIds: planned.unitIds };
+}
+
+/**
+ * Record what `revision` (default: the current one) changed across the PR
+ * (`set-revision-summary`). Replaces an earlier summary of the same revision.
+ * Refused for revision 1 — the PR summary already describes it — and for a
+ * revision the state does not hold; an over-long text is clipped at a word
+ * with a warning rather than refused, like a changelog note.
+ */
+export function setRevisionSummary(
+  key: PrKey,
+  text: unknown,
+  revision?: number,
+  root = stateRoot(),
+): { state: State; revision: number; text: string; warnings: string[] } {
+  const state = loadState(key, root);
+  const rev = revision ?? state.currentRevision;
+  if (typeof text !== "string" || text.trim().length === 0) {
+    throw new Error("A revision summary must be a non-empty string; nothing was recorded.");
+  }
+  if (!Number.isInteger(rev) || !state.revisions.some((r) => r.revision === rev)) {
+    throw new Error(
+      `No revision ${rev} on this PR (it has ${state.revisions.map((r) => `r${r.revision}`).join(", ") || "none"}); nothing was recorded.`,
+    );
+  }
+  if (rev === 1) {
+    throw new Error("Revision 1 takes no summary: the PR summary already describes it; nothing was recorded.");
+  }
+  const warnings: string[] = [];
+  let clean = text.trim();
+  if (clean.length > REVISION_SUMMARY_MAX) {
+    clean = truncateAtWord(clean, REVISION_SUMMARY_MAX);
+    warnings.push(`warning: revision ${rev} summary truncated (${text.trim().length}->${REVISION_SUMMARY_MAX} chars)`);
+  }
+  const next = appendEvent(key, { type: "revision-summarized", revision: rev, text: clean }, root);
+  return { state: next, revision: rev, text: clean, warnings };
 }
 
 /** What is left to do on the current revision (printed after every write). */

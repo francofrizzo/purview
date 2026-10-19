@@ -550,6 +550,14 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       // Consumed by `withoutDiscarded` before the fold reaches the reducer.
       break;
 
+    case "revision-summarized": {
+      // A summary for a revision the (filtered) log never added is dropped:
+      // there is no entry to hang it on.
+      const rev = state.revisions.find((r) => r.revision === event.revision);
+      if (rev) rev.summary = event.text;
+      break;
+    }
+
     case "generated-classified": {
       if (event.revision !== state.currentRevision) break;
       state.generated = event.files;

@@ -158,6 +158,12 @@ export const UnitChangelogEntrySchema = z.object({
 });
 export type UnitChangelogEntry = z.infer<typeof UnitChangelogEntrySchema>;
 
+/**
+ * Longest revision summary (see `RevisionInfo.summary`): one or two
+ * sentences, held to the same sanity cap as a unit's changelog note.
+ */
+export const REVISION_SUMMARY_MAX = CHANGELOG_TEXT_MAX;
+
 /** At most this many hunks of a unit carry a `heart`. */
 export const MAX_UNIT_HEART = 3;
 
@@ -1127,6 +1133,20 @@ export const GeneratedClassifiedEventSchema = z.object({
   files: z.array(GeneratedFileSchema),
 });
 
+/**
+ * One short note about what a revision changed across the whole PR ("stop
+ * timeout constant moved to shared.go; queue mapping failure model moved to
+ * models/communication.go"). Written by the refresh analysis after its unit
+ * patches, through `set-revision-summary`; the newest one for a revision
+ * wins. Never for revision 1: the PR summary already describes it.
+ */
+export const RevisionSummarizedEventSchema = z.object({
+  ...base,
+  type: z.literal("revision-summarized"),
+  revision: z.number().int(),
+  text: z.string().min(1).max(REVISION_SUMMARY_MAX),
+});
+
 export const EventSchema = z.discriminatedUnion("type", [
   PrInitializedEventSchema,
   RevisionAddedEventSchema,
@@ -1142,6 +1162,7 @@ export const EventSchema = z.discriminatedUnion("type", [
   AnalysisFinishedEventSchema,
   RevisionDiscardedEventSchema,
   GeneratedClassifiedEventSchema,
+  RevisionSummarizedEventSchema,
 ]);
 export type ReviewerEvent = z.infer<typeof EventSchema>;
 export type EventType = ReviewerEvent["type"];
@@ -1164,6 +1185,8 @@ export const RevisionInfoSchema = z.object({
   mergeBase: z.string(),
   baseOnly: z.boolean().default(false),
   addedAt: z.string(),
+  /** what this revision changed across the PR, from `revision-summarized`; absent until written */
+  summary: z.string().optional(),
 });
 export type RevisionInfo = z.infer<typeof RevisionInfoSchema>;
 

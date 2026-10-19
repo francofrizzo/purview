@@ -38,6 +38,17 @@ export function formatReport(
     out.push("");
   }
 
+  // One line per revision past the first: what it changed across the PR, or
+  // the gap, so a reader (or the chat) sees which refresh never wrote one.
+  if (state.revisions.length > 1) {
+    out.push("Revisions");
+    for (const r of state.revisions) {
+      if (r.revision === 1) continue;
+      out.push(`  r${r.revision}  ${r.summary ?? "(no summary yet)"}`);
+    }
+    out.push("");
+  }
+
   const mig = migration ?? state.lastMigration;
   if (mig) {
     out.push(formatMigrationReport(mig));

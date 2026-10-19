@@ -318,7 +318,10 @@ describe("cli changes", () => {
     expect(r1.status).toBe(0);
     expect(r1.stdout).toBe("No units changed in revision 1.\n");
     seedRev2(["  return a + b;"]);
-    expect(run(["changes", keyToString(key)]).stdout).toBe("No units changed in revision 2.\n");
+    // r2 has no summary yet: the gap is named so the refresh run writes one.
+    expect(run(["changes", keyToString(key)]).stdout).toBe(
+      "No units changed in revision 2.\n\nRevision 2 has no summary yet: after the patches, record one with `set-revision-summary` (one or two sentences on what r2 changed across the PR).\n",
+    );
   });
 
   it("prints the changed unit's description and a compact before->after", () => {

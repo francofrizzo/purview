@@ -20,6 +20,7 @@ import {
   setAnalysis,
   setHunkViewed,
   setUnits,
+  setRevisionSummary,
   setUnitViewed,
   remainingWorkFor,
   syncPr,
@@ -590,6 +591,27 @@ program
       console.log(`Unit ${unit.id} saved: [${unit.attention}/${unit.kind}] ${unit.title} (${unit.hunks.length} hunks)`);
     }
     console.log(formatRemaining(remainingWorkFor(key)));
+  });
+
+program
+  .command("set-revision-summary")
+  .argument("<key>")
+  .option("--text <text>", "the summary: one or two sentences on what the revision changed across the PR")
+  .option("--file <json>", 'JSON file with {"text": "..."} instead of --text')
+  .option("--rev <n>", "revision to summarize (defaults to the current one; never 1)")
+  .description(
+    "record what a revision changed across the whole PR, in the reader's language (replaces an earlier summary of that revision)",
+  )
+  .action((keyArg: string, opts: { text?: string; file?: string; rev?: string }) => {
+    const key = requireExistingKey(keyArg);
+    if ((opts.text === undefined) === (opts.file === undefined)) {
+      throw new Error("Pass exactly one of --text <text> or --file <json>");
+    }
+    const text = opts.text ?? (readJsonFile(opts.file!) as { text?: unknown })?.text;
+    const rev = opts.rev === undefined ? undefined : resolveRevision(loadState(key), opts.rev);
+    const res = setRevisionSummary(key, text, rev);
+    for (const w of res.warnings) console.log(w);
+    console.log(`Revision ${res.revision} summary saved: ${res.text}`);
   });
 
 program

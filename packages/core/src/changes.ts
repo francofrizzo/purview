@@ -235,7 +235,8 @@ function bodyKeys(hunks: readonly Hunk[]): Set<string> {
 }
 
 export interface RenderChangesInput {
-  state: Pick<State, "units" | "archived" | "unassignedHunkIds">;
+  /** with `revisions`, the output also says when the revision has no summary yet */
+  state: Pick<State, "units" | "archived" | "unassignedHunkIds"> & Partial<Pick<State, "revisions">>;
   report: MigrationReport | undefined;
   revision: number;
   previousFiles?: FileDiff[];
@@ -278,9 +279,23 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
   };
   const printedNew = new Set<string>();
 
+  // The whole-revision summary (`set-revision-summary`) is written after the
+  // unit patches; its absence is named so the run sees the gap. Only with a
+  // state that carries `revisions`, and never for r1 (it takes none).
+  const info = state.revisions?.find((r) => r.revision === revision);
+  const missingSummary =
+    state.revisions && revision > 1 && !info?.summary
+      ? `Revision ${revision} has no summary yet: after the patches, record one with \`set-revision-summary\` (one or two sentences on what r${revision} changed across the PR).`
+      : undefined;
+
   if (changes.length === 0 && priorShare.size === 0) {
     const line = `No units changed in revision ${revision}.`;
-    return { body: line + "\n", summary: line, count: 0, toc: [] };
+    return {
+      body: [line, ...(missingSummary ? ["", missingSummary] : [])].join("\n") + "\n",
+      summary: line,
+      count: 0,
+      toc: [],
+    };
   }
 
   // Hints: hunks nobody owns yet that are new this revision or unassigned.
@@ -435,6 +450,8 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
       "",
     );
   }
+
+  if (missingSummary) blocks.push(missingSummary, "");
 
   const summary =
     `-- ${changes.length} changed unit${changes.length === 1 ? "" : "s"}: ` +
