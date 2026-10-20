@@ -67,22 +67,48 @@ export function PrStateChip({ state }: { state: PrGithubState }) {
   );
 }
 
+function ciSummary(ci: Ci) {
+  const token = ci.state === "success" ? "ok" : ci.state === "failure" ? "risk" : "warn";
+  const label = ci.state === "success" ? "passing" : ci.state === "failure" ? "failing" : "pending";
+  const count = ci.checks.filter((c) => c.state === ci.state).length;
+  const mixed = new Set(ci.checks.map((c) => c.state)).size > 1;
+  const Icon = ci.state === "success" ? IconCheck : ci.state === "failure" ? IconWarning : IconBolt;
+  return { token, label, count, mixed, Icon, firstFailure: ci.checks.find((c) => c.state === "failure")?.name };
+}
+
+/**
+ * The row's CI mark: the icon in the state's color, the count only when the
+ * checks disagree. Sits with the line counts, so it costs the row no chip.
+ */
+export function CiMark({ ci }: { ci?: Ci }) {
+  if (!ci || ci.state === "none") return null;
+  const { token, label, count, mixed, Icon, firstFailure } = ciSummary(ci);
+  const tip = `CI ${label}${mixed ? ` (${count} of ${ci.checks.length})` : ""}${firstFailure ? `: ${firstFailure}` : ""}`;
+  return (
+    <span
+      className="inline-flex flex-none items-center gap-0.5 text-2xs tabular-nums"
+      style={{ color: `var(--${token})` }}
+      data-tip={tip}
+      data-testid="ci-mark"
+    >
+      <Icon width={10} height={10} />
+      {mixed ? `${count}/${ci.checks.length}` : null}
+    </span>
+  );
+}
+
 /** CI counts refer to checks in the aggregate state (e.g. one failing of five). */
 export function CiChip({ ci, interactive = false }: { ci?: Ci; interactive?: boolean }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   if (!ci || ci.state === "none") return null;
-  const token = ci.state === "success" ? "ok" : ci.state === "failure" ? "risk" : "warn";
-  const label = ci.state === "success" ? "passing" : ci.state === "failure" ? "failing" : "pending";
-  const count = ci.checks.filter(c => c.state === ci.state).length;
-  const mixed = new Set(ci.checks.map(c => c.state)).size > 1;
-  const Icon = ci.state === "success" ? IconCheck : ci.state === "failure" ? IconWarning : IconBolt;
+  const { token, label, count, mixed, Icon, firstFailure } = ciSummary(ci);
   const content = <><Icon width={10} height={10} />{label}{mixed ? ` · ${count} of ${ci.checks.length}` : ""}</>;
   const props = {
     className: "chip",
     style: { color: `var(--${token})`, background: `var(--${token}-soft)` },
-    title: ci.checks.find(c => c.state === "failure")?.name,
+    title: firstFailure,
     "data-testid": "ci-chip",
   };
   if (!interactive) return <span {...props}>{content}</span>;

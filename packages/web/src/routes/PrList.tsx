@@ -9,7 +9,7 @@ import {
   EffortChip,
   Progress,
   PrStateChip,
-  CiChip,
+  CiMark,
   ReviewDecisionChip,
   ReviewRequestAge,
   DiffSizeStat,
@@ -589,6 +589,7 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
           ) : null}
           <span data-tip={formatFullTimestamp(pr.addedAt)}>added {formatAddedAt(pr.addedAt)}</span>
           <DiffSizeStat size={pr.diffSize} files={false} />
+          <CiMark ci={pr.ci} />
         </div>
         <RowStatus pr={pr} className="mt-1.5 flex flex-wrap sm:hidden" />
       </Link>
@@ -622,7 +623,6 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
     <div className={`items-center gap-2 ${className}`}>
       {pr.state !== "open" ? <PrStateChip state={pr.state} /> : null}
       <ReviewDecisionChip decision={decision} />
-      <CiChip ci={pr.ci} />
       <AnalysisChip job={pr.analysisJob} />
       <EffortChip effort={pr.effort} />
       <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="unit-count">

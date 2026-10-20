@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CiChip } from "./Chips";
+import { CiChip, CiMark } from "./Chips";
 import type { Ci } from "../api/types";
 
 const ci: Ci = {
@@ -28,5 +28,15 @@ describe("CiChip", () => {
     expect(html).not.toContain(" of ");
     expect(html).toContain(`var(--${token}-soft)`);
     expect(html).toContain('aria-expanded="false"');
+  });
+  it("marks a row with the icon and a count only when checks disagree", () => {
+    const mixed = renderToStaticMarkup(<CiMark ci={ci} />);
+    expect(mixed).toContain("1/3");
+    expect(mixed).toContain('data-tip="CI failing (1 of 3): Unit tests"');
+    expect(mixed).not.toContain("failing ·");
+    const uniform = renderToStaticMarkup(<CiMark ci={{ ...ci, state: "success", checks: [{ name: "Build", state: "success", url: null }] }} />);
+    expect(uniform).toContain('data-tip="CI passing"');
+    expect(uniform).not.toMatch(/\d\/\d/);
+    expect(renderToStaticMarkup(<CiMark />)).toBe("");
   });
 });
