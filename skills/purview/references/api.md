@@ -134,3 +134,20 @@ hasLocalConfig, watchReviews }] }`.
 ## `GET /version`
 
 `{ version, sha, latest, ... }`. The cheapest liveness check.
+
+## Notes for the coding agent
+
+`GET /api/prs/<key>/agent-notes` returns `{pending: Comment[], markdown: string}`.
+This is a read-only peek at agent-audience notes without a pickup mark. No notes
+means an empty array and empty markdown. GitHub-audience comments are excluded.
+
+`POST /api/prs/<key>/agent-notes/pickup` takes `{"agent":"<your name>","wait":30}`.
+`wait` is optional (default 0 seconds, capped at 30). It waits for pending notes,
+marks them delivered, then returns `{notes: Comment[], markdown: string, revision: number}`.
+On timeout it returns 200 with `notes: []`, `markdown: ""` and the current revision.
+Loop until notes arrive, or use `purview notes <key> --wait`. Both routes return 404
+for an untracked PR. The CLI takes the key or the PR URL.
+
+Each delivered comment carries `pickedUp: {at: "<ISO timestamp>", by: "<agent name>"}`.
+Editing its body clears that mark, making it pending again; moving it to GitHub
+also clears the mark. `purview notes <key> --peek` reads without marking.

@@ -12,6 +12,7 @@ test("the drawer files comments by audience; a draft moves between the two", asy
   await expect(github).toBeVisible();
   await expect(agent).toBeVisible();
   await expect(agent.getByTestId("comment-card-draft-agent-1")).toBeVisible();
+  await expect(agent.getByTestId("comment-card-draft-agent-1")).toContainText("Picked up by Claude Code · 5m ago");
   await expect(github.getByTestId("drawer-group-drafts").getByTestId("comment-card-draft-1")).toBeVisible();
   // The review's footer leads to the finish-review panel.
   await expect(page.getByTestId("drawer-finish-review")).toBeVisible();

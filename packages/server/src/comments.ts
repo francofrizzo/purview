@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { EventEmitter } from "node:events";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -93,6 +94,11 @@ export const COMMENT_HISTORY_CAP = 5;
  * stay available (a refined schema is a ZodEffects and loses them). Everything
  * that validates rather than merely types goes through `subjectInvariant`.
  */
+export const PickedUpSchema = z.object({ at: z.string().datetime(), by: z.string().min(1) });
+export type PickedUp = z.infer<typeof PickedUpSchema>;
+export const commentEvents = new EventEmitter();
+commentEvents.setMaxListeners(0);
+
 const CommentObjectSchema = z.object({
   id: z.string(),
   file: z.string(),
@@ -117,6 +123,7 @@ const CommentObjectSchema = z.object({
   status: CommentStatusSchema,
   /** Absent in files from before audiences: read as "github" (see `normalize`). */
   audience: CommentAudienceSchema.optional(),
+  pickedUp: PickedUpSchema.optional(),
   /**
    * REST id (databaseId) of the review comment on GitHub. Used by the REST
    * delete endpoint (`DELETE /pulls/comments/{id}`), which takes databaseId.
@@ -352,6 +359,7 @@ export function writeComments(key: PrKey, comments: Comment[], root = stateRoot(
   const file = commentsPath(key, root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(comments, null, 2) + "\n", "utf8");
+  commentEvents.emit("comments", { key });
 }
 
 export function addComment(
@@ -557,7 +565,7 @@ export function updateCommentBody(
     ...(target.history ?? []),
     { body: target.body, replacedAt: now, replacedBy: actor },
   ].slice(-COMMENT_HISTORY_CAP);
-  const updated: Comment = { ...target, body, updatedAt: now, lastEditedBy: actor, history };
+  const updated: Comment = { ...target, pickedUp: undefined, body, updatedAt: now, lastEditedBy: actor, history };
   const next = [...comments];
   next[idx] = updated;
   writeComments(key, next, root);
@@ -584,7 +592,7 @@ export function undoCommentEdit(key: PrKey, id: string, root = stateRoot()): Und
   if (!last) return { ok: false, reason: "no_history" };
   const rest = history.slice(0, -1);
   const prev = rest[rest.length - 1];
-  const { history: _h, lastEditedBy: _l, ...base } = target;
+  const { history: _h, lastEditedBy: _l, pickedUp: _pickup, ...base } = target;
   const updated: Comment = {
     ...base,
     body: last.body,
@@ -793,7 +801,7 @@ export function setCommentAudience(
   if (target.audience === audience) return target;
   if (target.status !== "draft") throw new CommentNotDraftError(target);
   const next = [...comments];
-  next[idx] = { ...target, audience };
+  next[idx] = { ...target, audience, pickedUp: audience === "github" ? undefined : target.pickedUp };
   writeComments(key, next, root);
   return next[idx];
 }
@@ -1026,4 +1034,25 @@ export function unanchoredDraftLineComments(key: PrKey, root = stateRoot()): Com
     return [];
   }
   return drafts.filter((c) => !anchoringHunkOf(currentFiles, c));
+}
+
+export function pendingAgentNotes(comments: Comment[]): Comment[] {
+  return comments.filter((c) => c.audience === "agent" && !c.pickedUp).sort((a, b) =>
+    a.file.localeCompare(b.file) ||
+    Number(a.subjectType !== "file") - Number(b.subjectType !== "file") ||
+    (a.line ?? 0) - (b.line ?? 0) || (a.side ?? "").localeCompare(b.side ?? ""));
+}
+
+export function markPickedUp(key: PrKey, ids: string[], by: string, root = stateRoot()): Comment[] {
+  const selected = new Set(ids);
+  const pickedUp = PickedUpSchema.parse({ at: new Date().toISOString(), by });
+  const notes: Comment[] = [];
+  const comments = readComments(key, root).map((c) => {
+    if (c.audience !== "agent" || c.pickedUp || !selected.has(c.id)) return c;
+    const note = { ...c, pickedUp };
+    notes.push(note);
+    return note;
+  });
+  if (notes.length) writeComments(key, comments, root);
+  return notes;
 }

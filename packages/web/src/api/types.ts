@@ -814,6 +814,7 @@ export interface DraftComment {
   status?: CommentStatus;
   /** absent on older servers — treat as "github" */
   audience?: CommentAudience;
+  pickedUp?: PickedUp;
   /** absent on older servers — treat as "line" */
   subjectType?: CommentSubject;
   /** set once the comment exists on GitHub; needed to mirror an edit remotely */
@@ -1380,3 +1381,5 @@ export interface SkillManifest {
   files: string[];
   installPrompt: string;
 }
+
+export interface PickedUp { at: string; by: string }

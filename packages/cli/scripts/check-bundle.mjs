@@ -52,11 +52,20 @@ if (!failed) {
     const env = { ...process.env, PURVIEW_STATE_DIR: stateDir, PURVIEW_PORT: "4880" };
     const prompt = execFileSync(process.execPath, [server, "skill", "prompt"], { encoding: "utf8", env });
     if (!prompt.includes("http://localhost:4880/api/skill/manifest.json")) fail("skill prompt missing configured port");
+    const notesHelp = execFileSync(process.execPath, [server, "notes", "--help"], { encoding: "utf8", env });
+    if (!notesHelp.includes("Usage: purview notes <pr>")) fail("notes command missing from bundle");
     execFileSync(process.execPath, [server, "skill", "install", "--dir", stateDir], { env });
     const shipped = path.join(distDir, "agent-skill");
     for (const file of fs.readdirSync(shipped, { recursive: true })) {
       if (!fs.statSync(path.join(shipped, file)).isFile()) continue;
-      if (!fs.readFileSync(path.join(shipped, file)).equals(fs.readFileSync(path.join(stateDir, "purview", file)))) {
+      const source = fs.readFileSync(path.join(shipped, file));
+      const installed = fs.readFileSync(path.join(stateDir, "purview", file));
+      // Installation intentionally adds the skill revision to its frontmatter.
+      if (file === "SKILL.md") {
+        const text = installed.toString("utf8");
+        if (!/^---\n[\s\S]*?\nrevision: [a-f0-9]{12}\n---/.test(text)) fail("installed skill missing revision stamp");
+        if (text.replace(/^revision: [a-f0-9]{12}\n/m, "") !== source.toString("utf8")) fail(`installed skill differs: ${file}`);
+      } else if (!source.equals(installed)) {
         fail(`installed skill differs: ${file}`);
       }
     }

@@ -172,6 +172,11 @@ GitHub changes).
 
 ## Using Purview from your coding agent
 
+Leave notes for the agent on your PR, then have your coding agent run
+`purview notes <pr> --wait` in the background. It returns as soon as new notes
+arrive so the agent can make the changes and wait again. Each note shows who
+picked it up and when; `--peek` reads notes without marking them delivered.
+
 The Purview skill lets your coding agent track, list, refresh, and archive PRs,
 start or check an analysis, and read the analysis. It never writes the review.
 Install it in any of three ways:

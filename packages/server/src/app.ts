@@ -69,6 +69,9 @@ import {
   NewCommentSchema,
   reanchorDraftComments,
   readComments,
+  commentEvents,
+  pendingAgentNotes,
+  markPickedUp,
   readDeletedComments,
   restoreDeletedComment,
   setCommentBody,
@@ -84,6 +87,7 @@ import {
   markPublished,
   setCommentAudience,
 } from "./comments.js";
+import { formatAgentNotes, waitForAgentNotes } from "./agent-notes.js";
 import { headShaOf, recoverCommentNodeId, syncCommentsToGithub } from "./comment-sync.js";
 import {
   assertAttachmentRefsExist,
@@ -877,24 +881,32 @@ export function createApp(opts: AppOptions = {}): Hono {
       let closed = false;
       stream.onAbort(() => {
         closed = true;
+        wake?.();
       });
-      const queue: string[] = [];
+      const queue: { event: string; data: string }[] = [];
       let wake: (() => void) | null = null;
       const onJob = (payload: { key: PrKey; job: unknown }) => {
         if (keyToString(payload.key) !== keyStr) return;
-        queue.push(JSON.stringify({ type: "analysis-job", job: payload.job }));
+        queue.push({ event: "analysis-job", data: JSON.stringify({ type: "analysis-job", job: payload.job }) });
         wake?.();
         wake = null;
       };
       // Subscribe before the first write: a transition landing during that
       // write would otherwise fall in the gap and never reach the client.
+      const onComments = (payload: { key: PrKey }) => {
+        if (keyToString(payload.key) !== keyStr) return;
+        queue.push({ event: "comments", data: JSON.stringify({ type: "comments" }) });
+        wake?.();
+        wake = null;
+      };
+      commentEvents.on("comments", onComments);
       jobEvents.on("job", onJob);
-      await stream.writeSSE({
-        event: "analysis-job",
-        data: JSON.stringify({ type: "analysis-job", job: readJob(key, root) }),
-      });
-
       try {
+        await stream.writeSSE({
+          event: "analysis-job",
+          data: JSON.stringify({ type: "analysis-job", job: readJob(key, root) }),
+        });
+
         while (!closed) {
           if (queue.length === 0) {
             // Heartbeat doubles as the "is anyone still there" probe: writing
@@ -911,10 +923,11 @@ export function createApp(opts: AppOptions = {}): Hono {
               continue;
             }
           }
-          await stream.writeSSE({ event: "analysis-job", data: queue.shift()! });
+          await stream.writeSSE(queue.shift()!);
         }
       } finally {
         jobEvents.off("job", onJob);
+        commentEvents.off("comments", onComments);
       }
     });
   });
@@ -1305,6 +1318,34 @@ export function createApp(opts: AppOptions = {}): Hono {
       );
     }
     return c.json({ ...hunkDiffOfDiffs(previousHunk, currentHunk), baselineRevision: baseline });
+  });
+
+  app.get("/api/prs/:key/agent-notes", (c) => {
+    const key = keyParam(c);
+    const meta = readMeta(key, root);
+    const revision = loadState(key, root).currentRevision;
+    const pending = pendingAgentNotes(readComments(key, root));
+    const files = readFilesJson(key, revision, root).files;
+    return c.json({ pending, markdown: formatAgentNotes(pending, { meta, revision, files }) });
+  });
+
+  app.post("/api/prs/:key/agent-notes/pickup", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const { agent, wait } = z.object({
+      agent: z.string().trim().min(1),
+      wait: z.number().finite().min(0).default(0).transform((n) => Math.min(n, 30)),
+    }).parse(await readJsonBody(c));
+    await waitForAgentNotes(key, root, wait, c.req.raw.signal);
+    if (c.req.raw.signal.aborted) throw new HttpError(499, "request_aborted");
+    const meta = readMeta(key, root);
+    const revision = loadState(key, root).currentRevision;
+    const pending = pendingAgentNotes(readComments(key, root));
+    const files = readFilesJson(key, revision, root).files;
+    const markdown = formatAgentNotes(pending, { meta, revision, files });
+    const marked = markPickedUp(key, pending.map((n) => n.id), agent, root);
+    const notes = pending.map((n) => marked.find((m) => m.id === n.id)!);
+    return c.json({ notes, markdown, revision });
   });
 
   /* ------------------------------------------------------------ comments */

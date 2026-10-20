@@ -225,6 +225,14 @@ export function CommentCard({
         </span>
       </header>
       {notice}
+      {forAgent && comment.pickedUp ? (
+        <div className="text-[11px]" style={{ color: "var(--fg-muted)" }} title={formatFullTimestamp(comment.pickedUp.at)}>
+          Picked up by {comment.pickedUp.by} · {(() => {
+            const age = formatCompactAge(Math.max(0, Date.now() - Date.parse(comment.pickedUp.at)));
+            return age === "just now" ? age : `${age} ago`;
+          })()}
+        </div>
+      ) : null}
       <CommentBody
         comment={comment}
         edit={onEdit}

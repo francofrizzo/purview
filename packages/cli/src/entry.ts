@@ -1,3 +1,4 @@
+import { runNotesCommand } from "../../server/src/notes-command.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runSkillCommand } from "../../server/src/skill-command.js";
@@ -27,6 +28,8 @@ if (process.argv[2] === "skill") {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   }
+} else if (process.argv[2] === "notes") {
+  process.exitCode = await runNotesCommand(process.argv.slice(3), { port: Number(process.env.PURVIEW_PORT ?? DEFAULT_PORT) });
 } else {
   void main({ webDist });
 }

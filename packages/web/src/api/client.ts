@@ -959,7 +959,7 @@ export const api = {
    * Reconnection is the browser's job for EventSource; the mock re-emits from
    * its own in-memory job runner.
    */
-  subscribeAnalysis(key: string, onJob: (job: AnalysisJob) => void): () => void {
+  subscribeAnalysis(key: string, onJob: (job: AnalysisJob) => void, onComments?: () => void): () => void {
     if (MOCK) return mockApi.subscribeAnalysis(key, onJob);
     if (typeof EventSource === "undefined") return () => {};
     const source = new EventSource(`/api/prs/${encodeKey(key)}/events`);
@@ -972,8 +972,11 @@ export const api = {
         /* a malformed frame is not worth breaking the subscription over */
       }
     };
+    const commentsHandler = () => onComments?.();
+    source.addEventListener("comments", commentsHandler);
     source.addEventListener("analysis-job", handler as EventListener);
     return () => {
+      source.removeEventListener("comments", commentsHandler);
       source.removeEventListener("analysis-job", handler as EventListener);
       source.close();
     };

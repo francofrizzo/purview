@@ -1084,7 +1084,7 @@ export function useAnalysisEvents(key: string) {
         void qc.invalidateQueries({ queryKey: qk.pr(key) });
         void qc.invalidateQueries({ queryKey: qk.prs });
       }
-    });
+    }, () => { void qc.invalidateQueries({ queryKey: qk.comments(key) }); });
     return unsubscribe;
   }, [key, qc]);
 }

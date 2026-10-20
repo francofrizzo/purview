@@ -97,6 +97,8 @@ const MOCK_DOD_AFTER: Record<string, string[]> = {
 const detail: PrDetail = structuredClone(mockDetail);
 const list: PrListEntry[] = structuredClone(mockList);
 const drafts: DraftComment[] = structuredClone(mockDrafts);
+const pickedUpNote = drafts.find((c) => c.id === "draft-agent-1");
+if (pickedUpNote) pickedUpNote.pickedUp = { at: new Date(Date.now() - 5 * 60_000).toISOString(), by: "Claude Code" };
 const deletedDrafts: DeletedComment[] = [];
 const threads: RemoteThread[] = structuredClone(mockThreads);
 let nextGithubId = 95000;
@@ -1356,6 +1358,7 @@ export const mockApi = {
       throw new ApiError("not_draft", 400, "Only a draft can change who it is for");
     }
     target.audience = audience;
+    if (audience === "github") delete target.pickedUp;
     return { comment: structuredClone(target), remote: null };
   },
 
@@ -1395,6 +1398,7 @@ export const mockApi = {
       );
     }
     target.body = input.body;
+    delete target.pickedUp;
     const comment = structuredClone(target);
     if (target.status === "draft") return { comment, remote: null };
     // Mock GitHub: comments we never got an id back for cannot be mirrored.
@@ -1487,6 +1491,7 @@ export const mockApi = {
     const last = target.history?.pop();
     if (!last) throw new ApiError("no_history", 409, "This comment has no earlier body to go back to");
     target.body = last.body;
+    delete target.pickedUp;
     target.lastEditedBy = target.history?.[target.history.length - 1]?.replacedBy;
     return structuredClone(target);
   },
