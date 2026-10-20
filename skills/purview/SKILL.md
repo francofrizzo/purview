@@ -30,6 +30,13 @@ stop there. Do not try other ports.
 The API answers only loopback requests without a token, which is exactly your case.
 Send JSON bodies with `-H 'content-type: application/json'`.
 
+**Is this copy of the skill current?** The frontmatter at the top of this file carries a
+`revision` (written when the skill was installed; absent only in Purview's own source
+checkout, where there is nothing to check). Fetch `/api/skill/manifest.json` and compare
+its `revision`. If they differ, tell the user once that the installed Purview skill is
+older than their Purview and that `purview skill install` (or the install prompt in
+Purview's Settings) updates it; then carry on with this copy.
+
 ## PR keys
 
 Every PR route takes the PR's key as one path segment: `host/owner/repo/number`, URL

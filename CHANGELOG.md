@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **The coding-agent skill knows when it is stale.** Installed copies carry a revision; the skill checks it against your Purview and tells you to reinstall when the skill changed. `purview skill install` says whether it updated anything.
+
 ## 2026.10.20.2
 
 - **Fix:** adding a PR through the coding-agent skill now starts its analysis, like adding it in the app. Say "without analysis" to just track it.

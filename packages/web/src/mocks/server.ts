@@ -729,6 +729,7 @@ export const mockApi = {
     return {
       name: "purview",
       version: "2026.10.20.1",
+      revision: "0f3c9a1b7e2d",
       files: ["SKILL.md", "references/api.md"],
       installPrompt: "Install the Purview skill for your coding agent. Fetch http://localhost:4779/api/skill/manifest.json, then download each file listed in the manifest from http://localhost:4779/api/skill/<path>. Save them under a purview directory in your own skills folder, preserving relative paths. Read SKILL.md and use the skill to track, list, refresh and re-analyze PRs in Purview and read the analysis findings; never write my review.",
     };

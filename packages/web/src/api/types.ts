@@ -1376,6 +1376,7 @@ export interface VersionInfo {
 export interface SkillManifest {
   name: "purview";
   version: string | null;
+  revision: string;
   files: string[];
   installPrompt: string;
 }

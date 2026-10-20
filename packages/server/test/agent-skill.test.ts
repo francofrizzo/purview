@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { agentSkillRoutes, installPrompt, skillFilePath } from "../src/agent-skill.js";
+import { agentSkillRoutes, installPrompt, skillFilePath, skillRevision, stampSkill, stampedRevision } from "../src/agent-skill.js";
 import { readChangelog } from "../src/changelog.js";
 import { classifyError } from "../src/http-error.js";
 import { createApp } from "../src/app.js";
@@ -15,7 +15,7 @@ beforeEach(() => {
   temp = fs.mkdtempSync(path.join(os.tmpdir(), "purview-skill-test-"));
   source = path.join(temp, "source");
   fs.mkdirSync(path.join(source, "references"), { recursive: true });
-  fs.writeFileSync(path.join(source, "SKILL.md"), "# Purview\n");
+  fs.writeFileSync(path.join(source, "SKILL.md"), "---\nname: purview\ndescription: d\n---\n# Purview\n");
   fs.writeFileSync(path.join(source, "references", "api.md"), "# API\n");
   fs.writeFileSync(path.join(source, "notes.txt"), "notes");
 });
@@ -33,7 +33,24 @@ describe("agent skill API", () => {
     fs.symlinkSync(path.join(temp, "outside"), path.join(source, "link"));
     const res = await app().request("/api/skill/manifest.json");
     expect(await res.json()).toEqual({ name: "purview", version: readChangelog()[0]?.version ?? null,
-      files: ["SKILL.md", "notes.txt", "references/api.md"], installPrompt: installPrompt(4880) });
+      revision: skillRevision(source), files: ["SKILL.md", "notes.txt", "references/api.md"], installPrompt: installPrompt(4880) });
+  });
+  it("derives the revision from the files, so it moves only when the skill does", () => {
+    const before = skillRevision(source);
+    expect(before).toMatch(/^[0-9a-f]{12}$/);
+    expect(skillRevision(source)).toBe(before);
+    fs.writeFileSync(path.join(source, "references", "api.md"), "# API v2\n");
+    expect(skillRevision(source)).not.toBe(before);
+  });
+  it("serves SKILL.md with the revision stamped into its frontmatter", async () => {
+    const text = await (await app().request("/api/skill/SKILL.md")).text();
+    expect(text).toBe(`---\nname: purview\ndescription: d\nrevision: ${skillRevision(source)}\n---\n# Purview\n`);
+    expect(stampedRevision(text)).toBe(skillRevision(source));
+  });
+  it("stamps idempotently and copes with a file that has no frontmatter", () => {
+    expect(stampSkill(stampSkill("---\nname: x\n---\nbody", "aaa"), "bbb")).toBe("---\nname: x\nrevision: bbb\n---\nbody");
+    expect(stampSkill("# bare\n", "ccc")).toBe("---\nrevision: ccc\n---\n# bare\n");
+    expect(stampedRevision("# bare\n")).toBeNull();
   });
   it("serves nested Markdown verbatim with no caching", async () => {
     const res = await app().request("/api/skill/references/api.md");
@@ -100,6 +117,17 @@ describe("skill command", () => {
     run(["install", "--project"]);
     installed(path.join(temp, ".codex/skills"));
     expect(fs.existsSync(path.join(temp, ".agents"))).toBe(false);
+  });
+  it("stamps the installed SKILL.md and reports new, unchanged and updated installs", () => {
+    const base = path.join(temp, "custom");
+    const first = skillRevision(source);
+    expect(run(["install", "--dir", base]).lines[0]).toContain(`(revision ${first})`);
+    expect(stampedRevision(fs.readFileSync(path.join(base, "purview/SKILL.md"), "utf8"))).toBe(first);
+    expect(run(["install", "--dir", base]).lines[0]).toContain(`(already at ${first})`);
+    fs.writeFileSync(path.join(source, "notes.txt"), "more notes");
+    const second = skillRevision(source);
+    expect(run(["install", "--dir", base]).lines[0]).toContain(`(updated from ${first} to ${second})`);
+    expect(stampedRevision(fs.readFileSync(path.join(base, "purview/SKILL.md"), "utf8"))).toBe(second);
   });
   it("uses --dir exactly and replaces stale files", () => {
     const base = path.join(temp, "custom");
