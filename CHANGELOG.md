@@ -5,13 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.20.3
 
-- **CI status on every PR.** The list and PR header show whether checks pass, fail or are still running; click the header chip for each check and its run.
-
-- **Your notes reach the agent.** Notes for the agent on a PR can be picked up by the coding agent that wrote it: `purview notes <pr> --wait` returns them as soon as you write one, and each note shows when it was picked up.
-
-- **The coding-agent skill knows when it is stale.** Installed copies carry a revision; the skill checks it against your Purview and tells you to reinstall when the skill changed. `purview skill install` says whether it updated anything.
+- **Your notes reach the agent.** Notes for the agent can be picked up by the coding agent that wrote the PR: `purview notes <pr> --wait` returns them as you write them, and each note shows when it was picked up.
+- **CI status on every PR.** The list and the PR header show whether the checks pass, fail or are still running; click the header chip for each check and its run.
+- **The coding-agent skill knows when it is stale.** Installed copies carry a revision; the skill tells you to reinstall when it changed, and `purview skill install` says whether it updated anything.
 
 ## 2026.10.20.2
 
