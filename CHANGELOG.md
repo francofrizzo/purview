@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.20.4
 
 - **Fix:** a PR renamed on GitHub now carries its new title everywhere: the report, the CLI list and what your coding agent reads, not only the header.
 
