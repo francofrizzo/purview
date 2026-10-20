@@ -41,7 +41,8 @@ Say "not analyzed" when `summary` is empty and no job is running.
 
 ## `POST /prs`  body `{ "url": "https://github.com/acme/billing/pull/482" }`
 
-Append `?analyze=false` to track without starting a run. Returns:
+Tracks the PR and starts its analysis (unless auto-analysis is off in the user's
+config). Append `?analyze=false` only when the user asked not to analyze. Returns:
 
 ```
 key, created (false when it was already tracked), unarchived, revision,

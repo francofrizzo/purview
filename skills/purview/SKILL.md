@@ -64,12 +64,12 @@ interpreting a response you have not seen before.
 
 ## How to behave
 
-**Adding a PR starts a paid analysis by default.** `POST /api/prs` kicks off an
-analysis run on the user's own Claude account unless you append `?analyze=false`. Add
-PRs with `?analyze=false` unless the user asked for the analysis in the same breath;
-then let the default do its work and say that a run started. The same goes for
-`refresh`: a new revision triggers a run when the PR is not archived. Never call
-`/analyze` with `{"fresh": true}` on your own initiative. A fresh run discards the
+**Adding a PR analyzes it.** `POST /api/prs` tracks the PR and starts an analysis run
+on the user's own Claude account, which is what the user expects: say that the PR was
+added and that its analysis started. Append `?analyze=false` only when the user says
+not to analyze it (or to "just track" it); then offer to start the run later. `refresh`
+works the same way: a new revision triggers a run when the PR is not archived. Never
+call `/analyze` with `{"fresh": true}` on your own initiative. A fresh run discards the
 reader's unit structure and costs a full run; use it only when the user says "from
 scratch" or "fresh".
 
@@ -104,8 +104,10 @@ and whether an analysis is running. Archived ones go last or are left out unless
 asked.
 
 **"Add https://github.com/acme/billing/pull/482 to purview"**
-`POST /api/prs?analyze=false` with the URL. Reply with the key, whether it was created
-or was already tracked (`created: false`), and the link. Offer to start the analysis.
+`POST /api/prs` with the URL. Reply with the key, whether it was created or was
+already tracked (`created: false`), that the analysis started (`analysisJob` is set)
+and the link. If `analysisJob` is null and nothing was imported, say the PR was
+tracked without a run and offer to start one.
 
 **"Re-analyze acme/billing#482"**
 `POST /api/prs/<key>/analyze` with no body (incremental: keeps the units the reader
