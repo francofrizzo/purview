@@ -55,6 +55,7 @@ import type {
   SyncResult,
   ChangelogEntry,
   VersionInfo,
+  SkillManifest,
   CommentAudience,
   PublishCommentResult,
 } from "../api/types";
@@ -724,6 +725,15 @@ const analysisPending: Record<string, AnalysisPending> = {};
 const archivedRepos = new Set<string>();
 
 export const mockApi = {
+  async getSkillManifest(): Promise<SkillManifest> {
+    return {
+      name: "purview",
+      version: "2026.10.20.1",
+      files: ["SKILL.md", "references/api.md"],
+      installPrompt: "Install the Purview skill for your coding agent. Fetch http://localhost:4779/api/skill/manifest.json, then download each file listed in the manifest from http://localhost:4779/api/skill/<path>. Save them under a purview directory in your own skills folder, preserving relative paths. Read SKILL.md and use the skill to track, list, refresh and re-analyze PRs in Purview and read the analysis findings; never write my review.",
+    };
+  },
+
   async listPrs(): Promise<PrListEntry[]> {
     await delay(80);
     return structuredClone(

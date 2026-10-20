@@ -8,6 +8,7 @@ import {
   useCheckForUpdate,
   useSaveGlobalConfig,
   useVersion,
+  useSkillManifest,
 } from "../api/hooks";
 import type { AgentSelection, AgentsInfo, ResolvedAgent } from "../api/types";
 import {
@@ -23,6 +24,7 @@ import {
 import { AttentionChip, ChangedBadge, KindChip, Progress } from "../components/Chips";
 import { Modal, useCloseModal } from "../components/Modal";
 import { Section, SettingsLayout, type SettingsNavGroup } from "../components/SettingsSections";
+import { CopyPathButton } from "../components/DiffPane";
 import { UPDATE_COMMAND } from "../components/UpdateAvailable";
 import { WhatsNew } from "../components/WhatsNew";
 import { IconSettings } from "../components/icons";
@@ -70,6 +72,7 @@ const APP_SETTINGS_NAV: SettingsNavGroup[] = [
     label: "System",
     items: [
       { id: "network", title: "Network access" },
+      { id: "coding-agents", title: "Coding agents" },
       { id: "about", title: "About" },
     ],
   },
@@ -164,6 +167,7 @@ export function SettingsModal() {
       <ReviewThreadsSection settings={settings} update={update} />
       <YourPrsSection />
       <NetworkSection />
+      <CodingAgentsSection />
       <AboutSection />
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Stored under <span className="font-mono">reviewer.settings</span> in localStorage · active
@@ -1034,6 +1038,37 @@ function LoginListField({
         </p>
       )}
     </>
+  );
+}
+
+function CodingAgentsSection() {
+  const manifest = useSkillManifest();
+  return (
+    <Section
+      id="coding-agents"
+      title="Coding agents"
+      hint="The Purview skill lets your coding agent track, list, refresh and re-analyze PRs in Purview and read what the analysis found. It never writes your review."
+    >
+      <div className="flex flex-col gap-2 text-2xs">
+        <Field label="Paste into your coding agent">
+          <textarea
+            className="input font-mono !text-xs leading-5 resize-y"
+            readOnly
+            rows={6}
+            value={manifest.data?.installPrompt ?? ""}
+            placeholder={manifest.isPending ? "loading…" : undefined}
+            aria-busy={manifest.isPending}
+          />
+        </Field>
+        {manifest.error ? <p role="alert" style={{ color: "var(--risk)" }}>{errorText(manifest.error)}</p> : null}
+        {manifest.data ? (
+          <div><CopyPathButton path={manifest.data.installPrompt} what="prompt" label="copy prompt" /></div>
+        ) : null}
+        <p style={{ color: "var(--fg-muted)" }}>
+          CLI: <code>purview skill install</code> — installs into <code>~/.claude/skills</code>, <code>~/.codex/skills</code> and <code>~/.agents/skills</code>, whichever exist.
+        </p>
+      </div>
+    </Section>
   );
 }
 

@@ -1,5 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runSkillCommand } from "../../server/src/skill-command.js";
+import { DEFAULT_PORT } from "../../server/src/app.js";
 import { main } from "../../server/src/main.js";
 
 /**
@@ -16,4 +18,15 @@ import { main } from "../../server/src/main.js";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const webDist = path.join(here, "..", "web-dist");
 
-void main({ webDist });
+if (process.argv[2] === "skill") {
+  try {
+    process.exitCode = runSkillCommand(process.argv.slice(3), {
+      port: Number(process.env.PURVIEW_PORT ?? DEFAULT_PORT),
+    });
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  }
+} else {
+  void main({ webDist });
+}

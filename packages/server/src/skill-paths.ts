@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { stateRoot } from "@reviewer/core";
 
 /**
@@ -22,7 +23,7 @@ import { stateRoot } from "@reviewer/core";
  */
 
 function moduleDir(): string {
-  return path.dirname(new URL(import.meta.url).pathname);
+  return path.dirname(fileURLToPath(import.meta.url));
 }
 
 /** Repo root: `<root>/packages/server/{src,dist}/skill-paths.{ts,js}` -> `<root>`. */
@@ -122,4 +123,10 @@ export function cliCommand(): string {
     if (ensureExecutable(file, cliWrapperScript(cli, process.execPath, file))) return file;
   }
   return `${process.execPath} ${cli}`;
+}
+
+/** The public agent skill, shipped beside the server bundle. */
+export function agentSkillDir(): string {
+  const packaged = path.join(moduleDir(), "agent-skill");
+  return fs.existsSync(packaged) ? packaged : path.join(repoRoot(), "skills", "purview");
 }

@@ -34,6 +34,11 @@ for (const name of bundles) {
   }
 }
 
+for (const skill of ["skill", "agent-skill"]) {
+  if (!fs.existsSync(path.join(distDir, skill, "SKILL.md"))) fail(`${skill}/SKILL.md missing`);
+}
+if (!fs.existsSync(path.join(distDir, "agent-skill", "references"))) fail("agent-skill/references missing");
+
 if (!failed) {
   const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), "purview-cli-check-"));
   try {
@@ -43,8 +48,20 @@ if (!failed) {
       stdio: ["ignore", "pipe", "pipe"],
     });
     if (!out.includes("Usage: reviewer-state")) fail(`reviewer-state.js --help printed unexpected output:\n${out}`);
+    const server = path.join(distDir, "server.js");
+    const env = { ...process.env, PURVIEW_STATE_DIR: stateDir, PURVIEW_PORT: "4880" };
+    const prompt = execFileSync(process.execPath, [server, "skill", "prompt"], { encoding: "utf8", env });
+    if (!prompt.includes("http://localhost:4880/api/skill/manifest.json")) fail("skill prompt missing configured port");
+    execFileSync(process.execPath, [server, "skill", "install", "--dir", stateDir], { env });
+    const shipped = path.join(distDir, "agent-skill");
+    for (const file of fs.readdirSync(shipped, { recursive: true })) {
+      if (!fs.statSync(path.join(shipped, file)).isFile()) continue;
+      if (!fs.readFileSync(path.join(shipped, file)).equals(fs.readFileSync(path.join(stateDir, "purview", file)))) {
+        fail(`installed skill differs: ${file}`);
+      }
+    }
   } catch (err) {
-    fail(`reviewer-state.js --help exited non-zero:\n${err.stderr || err.message}`);
+    fail(`bundle smoke check exited non-zero:\n${err.stderr || err.message}`);
   } finally {
     fs.rmSync(stateDir, { recursive: true, force: true });
   }

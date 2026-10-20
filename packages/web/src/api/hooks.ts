@@ -50,6 +50,7 @@ import type {
   SubmitReviewResult,
   SyncResult,
   VersionInfo,
+  SkillManifest,
   CommentAudience,
   PublishCommentResult,
 } from "./types";
@@ -63,6 +64,7 @@ export const qk = {
   agents: ["agents"] as const,
   lan: ["lan"] as const,
   version: ["version"] as const,
+  skillManifest: ["skill-manifest"] as const,
   pr: (key: string) => ["pr", key] as const,
   comments: (key: string) => ["comments", key] as const,
   /** under qk.comments, so every comments invalidation refreshes the trash too */
@@ -378,6 +380,10 @@ export function useSaveGlobalConfig() {
  * 403s when the app is itself being read over the LAN — which is the point:
  * the token cannot be fetched by anything holding it.
  */
+export function useSkillManifest() {
+  return useQuery<SkillManifest>({ queryKey: qk.skillManifest, queryFn: api.getSkillManifest, retry: false, staleTime: 60_000 });
+}
+
 export function useVersion() {
   return useQuery<VersionInfo>({ queryKey: qk.version, queryFn: api.getVersion, retry: false, staleTime: 60_000 });
 }

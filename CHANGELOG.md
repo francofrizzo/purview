@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Purview from your coding agent.** A bundled skill lets Claude Code, Codex or any agent track, list, refresh, archive and re-analyze PRs in Purview and read what the analysis found, never your review. Settings has a prompt to paste into the agent, and `purview skill install` does it for the common ones.
+
 ## 2026.10.19.3
 
 - **Skippable hunks, out of the way.** Small hunks like imports and renamed call sites now get marked skippable; opening a unit and `v` skip past them, and `Z` folds them all shut.

@@ -168,6 +168,7 @@ import { pruneCheckouts } from "./pr-checkout.js";
 import { removeRepo, repoRemovalSummary } from "./repo-removal.js";
 import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
 import { fileLinesAtHead } from "./file-content.js";
+import { agentSkillRoutes } from "./agent-skill.js";
 import { sinceLastReview } from "./since-review.js";
 
 export const DEFAULT_PORT = 4779;
@@ -433,6 +434,8 @@ export function createApp(opts: AppOptions = {}): Hono {
     const httpErr = classifyError(err);
     return c.json({ error: httpErr.message, detail: httpErr.detail }, httpErr.status as 400);
   });
+
+  app.route("/api/skill", agentSkillRoutes(port));
 
   /* -------------------------------------------------------------- PR list */
 

@@ -3,6 +3,7 @@
 //
 //   dist/server.js         - server+core, bundled+self-contained (ESM)
 //   dist/reviewer-state.js - the core CLI the skill shells out to, same deal
+//   dist/agent-skill/      - a copy of skills/purview
 //   dist/skill/            - a copy of skills/pr-review
 //   web-dist/               - a copy of packages/web/dist
 //
@@ -82,6 +83,9 @@ await esbuild.build({
 
 console.log("[cli build] copying skills/pr-review -> dist/skill");
 copyDir(path.join(repoRoot, "skills/pr-review"), path.join(distDir, "skill"));
+
+console.log("[cli build] copying skills/purview -> dist/agent-skill");
+copyDir(path.join(repoRoot, "skills/purview"), path.join(distDir, "agent-skill"));
 
 console.log("[cli build] copying packages/web/dist -> web-dist");
 copyDir(path.join(repoRoot, "packages/web/dist"), webDistOut);

@@ -170,6 +170,27 @@ unit patches), `units` (compact unit listing), `view`, `report`, `list`, `sync`,
 deletes all of Purview's local state for a repo (through the running server; nothing on
 GitHub changes).
 
+## Using Purview from your coding agent
+
+The Purview skill lets your coding agent track, list, refresh, and archive PRs,
+start or check an analysis, and read the analysis. It never writes the review.
+Install it in any of three ways:
+
+- Copy the paste-able install prompt from Settings into your agent.
+- Run `purview skill install`. It installs into every existing `~/.claude`,
+  `~/.codex`, or `~/.agents` directory, under `skills/purview`; if none exists,
+  it uses `~/.agents/skills/purview`. Choose targets with `--claude`, `--codex`,
+  or `--agents` (combinable). Add `--project` to use those directories in the
+  current project, or `--dir <path>` to install into exactly `<path>/purview`.
+  Existing copies are replaced. `purview skill prompt` prints the install prompt
+  for another agent.
+- With Purview running, fetch `http://localhost:4779/api/skill/manifest.json`,
+  then download every path in its `files` list from
+  `http://localhost:4779/api/skill/<path>`, preserving paths in your agent's
+  `skills/purview` directory. The entry point is
+  `http://localhost:4779/api/skill/SKILL.md`. Substitute your `PURVIEW_PORT`
+  if you use a different port.
+
 ## Agent integration
 
 The skill flow above also runs by itself. The server drives an agent harness headlessly for

@@ -1372,3 +1372,10 @@ export interface VersionInfo {
   /** the daily check is on (a global setting) */
   updateCheck: boolean;
 }
+
+export interface SkillManifest {
+  name: "purview";
+  version: string | null;
+  files: string[];
+  installPrompt: string;
+}

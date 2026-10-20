@@ -1,0 +1,117 @@
+---
+name: purview
+description: Operate the user's running Purview instance (the local PR review tool) over its HTTP API. Use this whenever the user mentions Purview, asks to track, add, list, refresh, archive or re-analyze a pull request in it, asks what Purview's analysis says about a PR, or asks for the review units, risks or findings Purview found. Also use it when the user asks you to "add this PR to purview", "start an analysis", "check if the analysis finished", or "what does Purview think of #123", even without naming the API.
+---
+
+# Purview
+
+Purview is a local, single-user pull request review tool. It runs as a server on the
+user's machine and keeps its own state per PR: the diff by revision, an AI analysis
+(a summary plus "review units" that group hunks by what they do, with attention
+levels, risks and verified findings), the reader's progress and their draft comments.
+
+This skill lets you manage PRs in that instance and read its analysis. It deliberately
+stops short of the review itself: you never post comments, mark things viewed or submit
+a review through it. Those are the user's own acts, done in the Purview window.
+
+## Finding the instance
+
+The server listens on loopback only. Its port is `PURVIEW_PORT` when that is set in the
+environment, else `4779`. Confirm it is there before anything else:
+
+```sh
+curl -s http://localhost:${PURVIEW_PORT:-4779}/api/version
+```
+
+A JSON object with a `version` field means Purview is up. A refused connection means it
+is not running: tell the user to start it (`purview`, or `pnpm start` in a checkout) and
+stop there. Do not try other ports.
+
+The API answers only loopback requests without a token, which is exactly your case.
+Send JSON bodies with `-H 'content-type: application/json'`.
+
+## PR keys
+
+Every PR route takes the PR's key as one path segment: `host/owner/repo/number`, URL
+encoded. `github.com/acme/billing/482` becomes `github.com%2Facme%2Fbilling%2F482`. The
+server also accepts a full PR URL in the same place, encoded the same way. Define a
+helper once per session:
+
+```sh
+P=http://localhost:${PURVIEW_PORT:-4779}/api
+key() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1"; }
+```
+
+## What you can do
+
+| Ask | Call |
+|---|---|
+| List tracked PRs | `GET $P/prs` |
+| Add (track) a PR | `POST $P/prs` with `{"url": "<pr url>"}` |
+| Show one PR | `GET $P/prs/<key>` |
+| Refresh from GitHub | `POST $P/prs/<key>/refresh` |
+| Archive or unarchive | `POST $P/prs/<key>/archive` with `{"archived": true|false}` |
+| Start an analysis | `POST $P/prs/<key>/analyze`, body `{"fresh": true}` to start over |
+| Analysis status | `GET $P/prs/<key>/analysis-job` |
+| Cancel an analysis | `DELETE $P/prs/<key>/analyze` |
+| The analysis itself | `GET $P/prs/<key>/analysis/export` |
+| Point a PR at a local checkout | `POST $P/prs/<key>/repo-path` with `{"path": "/abs/path"}` |
+| Discard a revision fetched mid-rebase | `POST $P/prs/<key>/revisions/<n>/discard` |
+| Tracked repos | `GET $P/repos` |
+
+`references/api.md` has the response shapes and the error codes. Read it before
+interpreting a response you have not seen before.
+
+## How to behave
+
+**Adding a PR starts a paid analysis by default.** `POST /api/prs` kicks off an
+analysis run on the user's own Claude account unless you append `?analyze=false`. Add
+PRs with `?analyze=false` unless the user asked for the analysis in the same breath;
+then let the default do its work and say that a run started. The same goes for
+`refresh`: a new revision triggers a run when the PR is not archived. Never call
+`/analyze` with `{"fresh": true}` on your own initiative. A fresh run discards the
+reader's unit structure and costs a full run; use it only when the user says "from
+scratch" or "fresh".
+
+**Reading an analysis.** `analysis/export` is the compact form: the summary and the
+units with `title`, `summary`, `kind`, `attention` (`must-read`, `skim`, `skip`),
+`attentionWhy`, `riskFlags` and `findings`. Lead with the summary, then the must-read
+units in `order`, each with its why and any `warning` findings. Do not restate skim or
+skip units unless asked. A 409 here means there is no analysis yet: say so and offer to
+start one.
+
+**Progress and status.** The list item's `progress.hunks` is `{viewed, total}`, how
+much the reader has read; an analysis job's `status` is `queued`, `running`, `done`, `failed` or
+`cancelled`, with `progress` text while running and `error` when failed. When the user
+asks whether an analysis is done, poll `analysis-job` every few seconds for at most a
+minute, then report the status rather than waiting on.
+
+**Answer in the user's terms.** Say "tracked", "refreshed", "archived", "analysis
+started" and name the PR by `owner/repo#number` and its title. Give the Purview link
+when the user will want to open it: `http://localhost:<port>/pr/<host>/<owner>/<repo>/<number>`
+(not encoded).
+
+**What stays out of reach.** Do not call routes this skill does not list, in
+particular anything under `comments`, `review`, `hunks`, `units` or `chat`: they write
+the user's review or spend money as the user. If asked, say that those happen in the
+Purview window and offer the link.
+
+## Examples
+
+**"What PRs do I have in Purview?"**
+`GET /api/prs`, then a short table: `owner/repo#n`, title, `state`, viewed/total,
+and whether an analysis is running. Archived ones go last or are left out unless
+asked.
+
+**"Add https://github.com/acme/billing/pull/482 to purview"**
+`POST /api/prs?analyze=false` with the URL. Reply with the key, whether it was created
+or was already tracked (`created: false`), and the link. Offer to start the analysis.
+
+**"Re-analyze acme/billing#482"**
+`POST /api/prs/<key>/analyze` with no body (incremental: keeps the units the reader
+knows). Report `job.status` and say the window shows progress live.
+
+**"What does Purview think of #482?"**
+`GET /api/prs/<key>/analysis/export`. Summary first, then must-read units with their
+why and warnings, in order. Mention how far the reader got if they asked about
+progress.

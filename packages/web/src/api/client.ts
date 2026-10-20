@@ -69,6 +69,7 @@ import type {
   SyncResult,
   ToolKind,
   VersionInfo,
+  SkillManifest,
 } from "./types";
 
 export const MOCK = import.meta.env.VITE_MOCK === "1";
@@ -562,6 +563,11 @@ export const api = {
   },
 
   /* --------------------------------------------------------- version */
+
+  async getSkillManifest(): Promise<SkillManifest> {
+    if (MOCK) return mockApi.getSkillManifest();
+    return request<SkillManifest>("/skill/manifest.json");
+  },
 
   async getVersion(): Promise<VersionInfo> {
     if (MOCK) return mockApi.getVersion();

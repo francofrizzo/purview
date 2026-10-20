@@ -1,0 +1,122 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { Hono } from "hono";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { agentSkillRoutes, installPrompt, skillFilePath } from "../src/agent-skill.js";
+import { readChangelog } from "../src/changelog.js";
+import { classifyError } from "../src/http-error.js";
+import { createApp } from "../src/app.js";
+import { runSkillCommand } from "../src/skill-command.js";
+
+let temp: string;
+let source: string;
+beforeEach(() => {
+  temp = fs.mkdtempSync(path.join(os.tmpdir(), "purview-skill-test-"));
+  source = path.join(temp, "source");
+  fs.mkdirSync(path.join(source, "references"), { recursive: true });
+  fs.writeFileSync(path.join(source, "SKILL.md"), "# Purview\n");
+  fs.writeFileSync(path.join(source, "references", "api.md"), "# API\n");
+  fs.writeFileSync(path.join(source, "notes.txt"), "notes");
+});
+afterEach(() => fs.rmSync(temp, { recursive: true, force: true }));
+
+function app() {
+  const app = new Hono();
+  app.onError((err, c) => { const e = classifyError(err); return c.json({ error: e.message }, e.status as 400); });
+  app.route("/api/skill", agentSkillRoutes(4880, source));
+  return app;
+}
+
+describe("agent skill API", () => {
+  it("lists every regular file in sorted order and the running version and prompt", async () => {
+    fs.symlinkSync(path.join(temp, "outside"), path.join(source, "link"));
+    const res = await app().request("/api/skill/manifest.json");
+    expect(await res.json()).toEqual({ name: "purview", version: readChangelog()[0]?.version ?? null,
+      files: ["SKILL.md", "notes.txt", "references/api.md"], installPrompt: installPrompt(4880) });
+  });
+  it("serves nested Markdown verbatim with no caching", async () => {
+    const res = await app().request("/api/skill/references/api.md");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/markdown; charset=utf-8");
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+    expect(await res.text()).toBe("# API\n");
+  });
+  it("serves other files as plain text", async () => {
+    const res = await app().request("/api/skill/notes.txt");
+    expect(res.headers.get("content-type")).toBe("text/plain");
+    expect(await res.text()).toBe("notes");
+  });
+  it.each(["..%2Fsecret", "%252e%252e%252fsecret", "%2Fetc/passwd", "C:%5Csecret", "%ZZ"])("refuses traversal or invalid path %s", async (file) => {
+    expect((await app().request(`/api/skill/${file}`)).status).toBe(400);
+  });
+  it("rejects literal traversal before URL normalization and symlinks escaping the root", async () => {
+    expect(() => skillFilePath(source, "../secret")).toThrow("invalid_skill_path");
+    fs.writeFileSync(path.join(temp, "secret"), "secret");
+    fs.symlinkSync(path.join(temp, "secret"), path.join(source, "link"));
+    expect((await app().request("/api/skill/link")).status).toBe(400);
+  });
+  it("returns 404 for missing files and directories", async () => {
+    for (const file of ["missing.md", "references"]) expect((await app().request(`/api/skill/${file}`)).status).toBe(404);
+  });
+  it("wires the real routes beneath the host guard", async () => {
+    const server = createApp({ stateDir: path.join(temp, "state"), port: 4880 });
+    expect((await server.request("http://localhost:4880/api/skill/manifest.json")).status).toBe(200);
+    expect((await server.request("http://evil.example/api/skill/manifest.json")).status).toBe(403);
+  });
+  it("uses the requested port in both prompt URLs", () => {
+    expect(installPrompt(4880).match(/localhost:4880/g)).toHaveLength(2);
+    expect(installPrompt(4880)).toContain("read its `files` list");
+  });
+});
+
+describe("skill command", () => {
+  function run(args: string[]) {
+    const lines: string[] = [];
+    const status = runSkillCommand(args, { port: 4880, home: path.join(temp, "home"), cwd: temp, source, print: (line) => lines.push(line) });
+    return { status, lines };
+  }
+  function installed(base: string) {
+    expect(fs.readFileSync(path.join(base, "purview/references/api.md"), "utf8")).toBe("# API\n");
+  }
+  it("auto-detects all existing home agent directories", () => {
+    for (const agent of [".claude", ".codex"]) fs.mkdirSync(path.join(temp, "home", agent), { recursive: true });
+    const { status, lines } = run(["install"]);
+    expect(status).toBe(0);
+    for (const agent of [".claude", ".codex"]) installed(path.join(temp, "home", agent, "skills"));
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toContain("purview skill prompt");
+  });
+  it("falls back to agents and explains it", () => {
+    expect(run(["install"]).lines[0]).toContain("No agent directories found");
+    installed(path.join(temp, "home/.agents/skills"));
+  });
+  it("installs explicit combined project targets", () => {
+    expect(run(["install", "--claude", "--codex", "--agents", "--project"]).status).toBe(0);
+    for (const agent of [".claude", ".codex", ".agents"]) installed(path.join(temp, agent, "skills"));
+  });
+  it("auto-detects project targets", () => {
+    fs.mkdirSync(path.join(temp, ".codex"));
+    run(["install", "--project"]);
+    installed(path.join(temp, ".codex/skills"));
+    expect(fs.existsSync(path.join(temp, ".agents"))).toBe(false);
+  });
+  it("uses --dir exactly and replaces stale files", () => {
+    const base = path.join(temp, "custom");
+    run(["install", "--dir", base]);
+    fs.writeFileSync(path.join(base, "purview/old.md"), "old");
+    const { lines } = run(["install", "--dir", "custom", "--claude", "--project"]);
+    installed(base);
+    expect(fs.existsSync(path.join(base, "purview/old.md"))).toBe(false);
+    expect(lines[0]).toContain(path.join(base, "purview"));
+  });
+  it("prints the shared prompt", () => expect(run(["prompt"]).lines).toEqual([installPrompt(4880)]));
+  it.each([[], ["--help"], ["install", "--help"]])("prints usage for %j", (...args) => {
+    const result = run(args as string[]);
+    expect(result.status).toBe(0);
+    expect(result.lines[0]).toContain("Usage:");
+  });
+  it.each([["unknown"], ["install", "--dir"], ["install", "--wat"], ["prompt", "extra"]])("rejects invalid arguments %j", (...args) => {
+    expect(run(args as string[]).status).toBe(1);
+  });
+});
