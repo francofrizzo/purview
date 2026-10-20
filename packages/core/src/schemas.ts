@@ -1160,6 +1160,17 @@ export const RevisionSummarizedEventSchema = z.object({
   text: z.string().min(1).max(REVISION_SUMMARY_MAX),
 });
 
+/**
+ * The PR's title on GitHub moved. `state.pr.title` is set at init and would
+ * otherwise keep the original forever while meta follows every refresh;
+ * `updateMeta` appends this whenever a title patch lands.
+ */
+export const PrRetitledEventSchema = z.object({
+  ...base,
+  type: z.literal("pr-retitled"),
+  title: z.string(),
+});
+
 export const EventSchema = z.discriminatedUnion("type", [
   PrInitializedEventSchema,
   RevisionAddedEventSchema,
@@ -1176,6 +1187,7 @@ export const EventSchema = z.discriminatedUnion("type", [
   RevisionDiscardedEventSchema,
   GeneratedClassifiedEventSchema,
   RevisionSummarizedEventSchema,
+  PrRetitledEventSchema,
 ]);
 export type ReviewerEvent = z.infer<typeof EventSchema>;
 export type EventType = ReviewerEvent["type"];

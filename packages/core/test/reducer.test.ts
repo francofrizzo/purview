@@ -82,6 +82,13 @@ describe("fold", () => {
     expect(s.files[0].total).toBe(2);
   });
 
+  it("follows a retitle, which only touches the title", () => {
+    const s = fold([...events, { ts, type: "pr-retitled", title: "Add widgets (v2)" }]);
+    expect(s.pr?.title).toBe("Add widgets (v2)");
+    expect(s.pr?.url).toBe("https://github.com/acme/widgets/pull/7");
+    expect(s.currentRevision).toBe(1);
+  });
+
   it("rolls a file up as viewed only when all its hunks are viewed", () => {
     const partial = fold([
       ...events,

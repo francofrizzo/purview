@@ -84,6 +84,14 @@ export function updateMeta(
 ): Meta {
   const merged = MetaSchema.parse({ ...readMeta(key, root), ...patch });
   writeJson(metaPath(key, root), merged);
+  // The state's copy of the title follows meta's: a refresh, the page's
+  // staleness check and the background sweep all land their title here.
+  if (patch.title !== undefined && fs.existsSync(eventsPath(key, root))) {
+    const state = loadState(key, root);
+    if (state.pr && state.pr.title !== patch.title) {
+      appendEvent(key, { type: "pr-retitled", title: patch.title }, root);
+    }
+  }
   return merged;
 }
 

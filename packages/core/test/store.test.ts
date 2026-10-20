@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { appendEvent, listPrs, listRepos, loadState, writeRevision } from "../src/store.js";
+import { appendEvent, listPrs, listRepos, loadState, readEvents, updateMeta, writeMeta, writeRevision } from "../src/store.js";
 import { statePath, triagePath } from "../src/paths.js";
 import { STATE_SHAPE_VERSION } from "../src/schemas.js";
 import { computeHunkId } from "../src/hunk-id.js";
@@ -99,5 +99,28 @@ describe("loadState", () => {
     const cur = JSON.parse(fs.readFileSync(file, "utf8"));
     fs.writeFileSync(file, JSON.stringify({ ...cur, summary: "kept" }));
     expect(loadState(key, tmp).summary).toBe("kept");
+  });
+});
+
+describe("updateMeta", () => {
+  const key: PrKey = { host: "github.com", owner: "acme", repo: "widgets", number: 7 };
+  const seed = () => {
+    writeMeta(key, { ...key, url: "https://github.com/acme/widgets/pull/7", createdAt: "2026-01-01T00:00:00.000Z", title: "Old" } as never, tmp);
+    appendEvent(key, { type: "pr-initialized", ...key, url: "https://github.com/acme/widgets/pull/7", title: "Old" }, tmp);
+  };
+  it("carries a new title into the state through a pr-retitled event", () => {
+    seed();
+    updateMeta(key, { title: "New" }, tmp);
+    expect(loadState(key, tmp).pr?.title).toBe("New");
+    expect(readEvents(key, tmp).filter((e) => e.type === "pr-retitled")).toHaveLength(1);
+    // Same title again, or a patch without one: nothing appended.
+    updateMeta(key, { title: "New" }, tmp);
+    updateMeta(key, { prState: "merged" }, tmp);
+    expect(readEvents(key, tmp).filter((e) => e.type === "pr-retitled")).toHaveLength(1);
+  });
+  it("leaves a PR with no event log alone", () => {
+    writeMeta(key, { ...key, url: "https://github.com/acme/widgets/pull/7", createdAt: "2026-01-01T00:00:00.000Z", title: "Old" } as never, tmp);
+    updateMeta(key, { title: "New" }, tmp);
+    expect(readEvents(key, tmp)).toEqual([]);
   });
 });

@@ -196,6 +196,11 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
       break;
     }
 
+    case "pr-retitled": {
+      if (state.pr) state.pr.title = event.title;
+      break;
+    }
+
     case "revision-added": {
       state.revisions = state.revisions.filter(
         (r) => r.revision !== event.revision,
