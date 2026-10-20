@@ -34,7 +34,8 @@ test("v marks the focused hunk viewed, folds it, and moves on to the next", asyn
   await expect(hunkHeader(page, B).getByRole("button", { name: "Mark as not viewed" })).toBeVisible();
   await expect(hunkHeader(page, B)).toContainText("lines folded");
   await expectUnderFileHeader(page, C);
-  await expect(page.getByTestId("file-header-src/billing/reconcile.ts").first()).toContainText("1/4 viewed");
+  // The file's own checkbox now reads partly done.
+  await expect(page.getByTestId("file-viewed-src/billing/reconcile.ts").first()).toHaveAttribute("aria-checked", "mixed");
 });
 
 test("a unit opens on its first hunk still to read, and v moves on to the next one still to read", async ({ page }) => {
@@ -60,25 +61,32 @@ test("Shift+J / Shift+K step between units in sidebar order", async ({ page }) =
   await expect(hunkHeader(page, "a1b2c3d4e5f60008")).toHaveAttribute("data-focused", "true");
 });
 
-test("s toggles the summary strip", async ({ page }) => {
-  // Hovering the strip peeks it open too; keep the pointer out of the way.
-  await page.mouse.move(8, 792);
-  const strip = page.getByTestId("summary-strip");
-  await expect(strip).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("summary-overlay")).toHaveCount(0);
-
+test("s opens the overview; a piece of the flow leads to the unit that changes it", async ({ page }) => {
   await page.keyboard.press("s");
-  await expect(strip).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByTestId("summary-overlay")).toBeVisible();
+  const overview = page.getByTestId("overview");
+  await expect(overview).toBeVisible();
+  await expect(page.getByTestId("view-overview")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("pr-summary")).toBeVisible();
   await expect(page.getByTestId("pr-description")).toContainText("Retried charges could double-bill");
-  // The tabs jump: the description scrolls to the panel's top and its tab lights up.
-  await page.getByTestId("summary-tab-description").click();
-  await expect(page.getByTestId("summary-tab-description")).toHaveAttribute("aria-selected", "true");
+  // Only what needs a close read is listed; the rest is counted.
+  const reading = page.getByTestId("reading-order");
+  await expect(reading).toContainText(UNITS.charge);
+  await expect(reading).not.toContainText(UNITS.reconcile);
+  await expect(page.getByTestId("reading-rest")).toHaveText("Then 2 to skim and 2 to skip.");
+
+  // How it runs: the path in order, the cut call still drawn beside the new one.
+  const flow = page.getByTestId("flow-view");
+  await expect(flow).toContainText("findByKey(key)");
+  await expect(flow).toContainText("authorize(charge)");
+  await page.locator('[data-flow-participant="retry"]').click();
+  await expect(overview).toHaveCount(0);
+  await expect(page.getByTestId("unit-header")).toContainText(UNITS.retry);
 
   await page.keyboard.press("s");
-  await expect(strip).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("summary-overlay")).toHaveCount(0);
+  await expect(overview).toBeVisible();
+  await page.keyboard.press("g");
+  await expect(overview).toHaveCount(0);
+  await expect(page.getByTestId("view-units")).toHaveAttribute("aria-pressed", "true");
 });
 
 test("V marks the whole unit viewed and moves on", async ({ page }) => {
@@ -87,9 +95,20 @@ test("V marks the whole unit viewed and moves on", async ({ page }) => {
   await page.keyboard.press("Shift+KeyV");
   // The unit is done, so the view advances to the next one in sidebar order.
   await expect(page.getByTestId("unit-header")).not.toContainText(UNITS.reconcile.slice(0, 30));
-  // The sidebar row is the button that holds the title; its progress reads full.
-  const row = page.locator("nav button", { hasText: UNITS.reconcile }).first();
-  await expect(row).toContainText("4/4");
+  // The row's own box reads fully viewed.
+  await expect(page.getByTestId("unit-viewed-ledger-reconciliation")).toHaveAttribute("aria-checked", "true");
+});
+
+test("a unit's box marks it all viewed from its row, and unmarks it", async ({ page }) => {
+  const box = page.getByTestId("unit-viewed-transient-retry-backoff");
+  // Retry has one of its two hunks viewed in the fixture.
+  await expect(box).toHaveAttribute("aria-checked", "mixed");
+  await box.click();
+  await expect(box).toHaveAttribute("aria-checked", "true");
+  // Not the open unit: marking it does not move the reader.
+  await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile.slice(0, 30));
+  await box.click();
+  await expect(box).toHaveAttribute("aria-checked", "false");
 });
 
 test("the revision menu lights up what a revision changed", async ({ page }) => {
@@ -119,4 +138,51 @@ test("space / shift+space step between the hunks still to read, skipping viewed 
   // From the first one still to read, backward wraps to the last.
   await page.keyboard.press("Shift+Space");
   await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
+});
+
+test("where it lands: the files as a tree with their notes, a file opens in the Files view", async ({ page }) => {
+  await page.keyboard.press("s");
+  // The key says what the marks are: new files, the rest changed.
+  await expect(page.getByTestId("file-legend")).toContainText(/\+\s*\d+ new/);
+  await expect(page.getByTestId("file-legend")).toContainText("changed");
+  const files = page.getByTestId("file-shape");
+  await expect(files).toContainText("Derives the charge key from order id");
+  await expect(files).toContainText("generated files");
+  await page.getByTestId("file-shape-src/billing/ledger.ts").click();
+  await expect(page.getByTestId("overview")).toHaveCount(0);
+  await expect(page.getByTestId("view-files")).toHaveAttribute("aria-pressed", "true");
+});
+
+test("a step of the flow says which unit it opens, and opens it; one that names none is inert", async ({ page }) => {
+  await page.keyboard.press("s");
+  // findByKey(key): a new step, made by the idempotent charge path.
+  const step = page.locator('[data-flow-step="2"]');
+  await expect(step).toHaveAttribute("data-tip", /^Opens \d+\. Idempotent charge path/);
+  // The gateway's answer is as before and names no unit: no tip to repeat its label.
+  await expect(page.locator('[data-flow-step="7"]')).not.toHaveAttribute("data-tip", /.*/);
+  await step.click();
+  await expect(page.getByTestId("overview")).toHaveCount(0);
+  await expect(page.getByTestId("unit-header")).toContainText(UNITS.charge);
+});
+
+test("the view tabs stay put when switching views, so the pointer doesn't have to chase them", async ({ page }) => {
+  const xs: number[] = [];
+  for (const key of ["s", "g", "f"]) {
+    await page.keyboard.press(key);
+    await expect(page.getByTestId("view-overview")).toBeVisible();
+    xs.push((await page.getByTestId("view-overview").boundingBox())!.x);
+  }
+  expect(Math.max(...xs) - Math.min(...xs)).toBeLessThanOrEqual(0.5);
+  // In the overview the button keeps only what applies there: no diff options.
+  await page.keyboard.press("s");
+  await page.getByTestId("view-options").click();
+  await expect(page.getByTestId("layout-unified")).toHaveCount(0);
+});
+
+test("a risk shows on the row only where the analysis says to skim or skip", async ({ page }) => {
+  // The reconciliation unit is a skim that makes an external call: worth knowing before skimming it.
+  await expect(page.getByTestId("unit-risk-ledger-reconciliation")).toHaveText("external call");
+  await expect(page.getByTestId("unit-risk-ledger-reconciliation")).toHaveAttribute("data-tip", "Skim, but a risk surface: external call");
+  // A must-read unit gets read anyway, and its why says the risk in words.
+  await expect(page.getByTestId("unit-risk-idempotent-charge-path")).toHaveCount(0);
 });

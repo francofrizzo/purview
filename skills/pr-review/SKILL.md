@@ -42,7 +42,7 @@ relative to it.
 
 Subcommands that exist: `init`, `refresh`, `report`, `units`, `triage`, `show`, `changes`,
 `base-file`, `history`, `description`, `set-analysis`, `set-unit`, `set-units`,
-`set-revision-summary`, `view`, `sync`, `list`, `discard-revision`, `remove-repo`, `comment`.
+`set-revision-summary`, `set-shape`, `view`, `sync`, `list`, `discard-revision`, `remove-repo`, `comment`.
 There are no others.
 
 ## 1. Determine state: init, refresh, or report (interactive only)
@@ -250,7 +250,9 @@ Produce:
 {
   "summary": "short, plain-language overall summary",
   "units": [ /* ReviewUnit[] */ ],
-  "unassigned": [ /* hunk ids deliberately left out of every unit */ ]
+  "unassigned": [ /* hunk ids deliberately left out of every unit */ ],
+  "fileNotes": { /* see "The shape of the change" below */ },
+  "flow": { /* optional, same section */ }
 }
 ```
 
@@ -371,6 +373,102 @@ An id listed twice is rejected.
 
 One more field, `findings`, is optional and is only ever filled in by the verification
 pass (step 5). Leave it off entirely here.
+
+### The shape of the change
+
+Units cut the PR into decisions; the reader reads them one at a time and loses how the
+pieces fit. Two top-level views give that back, each a compressed projection of the diff
+anchored to the code (real paths, real calls), so the reader can line up with the change
+before opening a unit. Purview draws both; you only write the data, and the CLI checks it
+like the rest of the payload.
+
+- **`fileNotes`** (write it on every analysis): where the change lands, one line per file.
+- **`flow`** (only when it earns its place): how one runtime path now runs, in order.
+
+Each view costs the reader attention. Draw what this PR needs, not what the format allows.
+
+#### File notes
+
+`fileNotes` maps a file path to one line: for a new file, what it is for; for a changed
+one, what the PR does to it. Purview draws them as the PR's file tree, new files marked,
+each note beside its file, the way a design doc shows where a change lands.
+
+```json
+"fileNotes": {
+  "src/billing/idempotency.ts": "Derives the charge key from order id, amount and currency.",
+  "src/billing/ledger.ts": "Finds and records charge outcomes by key in `charge_ledger`.",
+  "src/billing/charge.ts": "Looks the key up before calling the gateway; records failures too.",
+  "migrations/0042_charge_ledger.sql": "Creates `charge_ledger`, unique on the key."
+}
+```
+
+- A note says what the file *does in this change*, not what the file is in general and not
+  what to check. Under 15 words; a code span for the identifier it is about.
+- Note the files a reader would ask "what is this for?" about. Skip tests, docs, fixtures
+  and mechanical call-site edits unless they matter; never note generated files.
+- Paths are the exact paths of this revision; the CLI refuses any other, and caps the notes
+  at 40.
+
+#### The flow
+
+`flow` is a sequence diagram of one path: who calls whom, in order, and what comes back.
+Draw it when the PR adds or reroutes a path across three or more pieces (a request now
+enqueues instead of running inline, a job now claims before it executes, a charge now
+looks its key up before the gateway). Leave it off for a one-file fix, a rename, a refactor
+that keeps every call where it was, docs, config or a dependency bump: the file notes are
+the whole shape there, and a flow of two boxes and one arrow tells the reader nothing.
+
+```json
+"flow": {
+  "caption": "A charge now looks its key up in `charge_ledger` before the gateway, and records the outcome after.",
+  "participants": [
+    { "id": "route", "label": "POST /orders/:id/pay", "status": "changed", "units": ["wiring"] },
+    { "id": "charge", "label": "charge()", "status": "changed", "units": ["idempotent-charge"] },
+    { "id": "ledger", "label": "charge_ledger", "status": "added", "units": ["idempotent-charge"] },
+    { "id": "gateway", "label": "Payment gateway" }
+  ],
+  "phases": [{ "label": "Look up first", "at": 1 }, { "label": "Charge once", "at": 3 }],
+  "steps": [
+    { "from": "route", "to": "charge", "label": "charge(order, amount, currency)" },
+    { "from": "charge", "to": "ledger", "label": "find by idempotencyKey()", "status": "added", "units": ["idempotent-charge"] },
+    { "from": "ledger", "to": "charge", "label": "no row yet", "kind": "return", "status": "added", "units": ["idempotent-charge"] },
+    { "from": "charge", "to": "gateway", "label": "authorize via retry()", "status": "changed", "units": ["retry-backoff"] },
+    { "from": "charge", "to": "ledger", "label": "record result", "status": "added", "units": ["idempotent-charge"] },
+    { "from": "charge", "to": "route", "label": "ChargeResult", "kind": "return" }
+  ]
+}
+```
+
+- Participants are the lifelines, left to right in the order the path first reaches them
+  (at most 7). Label each with the name in the code (`charge()`, `charge_ledger`,
+  `POST /orders/:id/pay`), give it the `status` the PR gives it (`added`, `changed`,
+  `removed`, or the default `context` for what it only passes through), and list the
+  `units` whose hunks change it, so a click on it opens them.
+- Steps are messages in time order (at most 18). The label is the call with its key
+  argument, or for a `return`, what comes back. Mark `added` / `removed` / `changed` on
+  steps this PR creates, cuts or alters; a removed step is the old path, shown struck out.
+  A step from a participant to itself is a local computation worth naming.
+- Every step and participant that is not `context` lists its `units`: the units whose
+  hunks make that change (a return takes its call's unit). A click on it opens that unit,
+  so the drawing is a way into the review, not just a picture; the CLI refuses one that
+  names none.
+- `phases` (optional) name stretches of the path ("Page load", "Only on drill-in"): each
+  starts at the index of its first step.
+- `caption`: one sentence on what the PR changes in this path, not which path it is ("A
+  charge now looks its key up before the gateway", not "A charge request, from the route
+  to the gateway"). It is the line the reader reads the drawing by.
+- A step the PR moves (from every batch to once per run, from the request into a worker)
+  or replaces (a different call, a different decision: "keep the first one read" becomes
+  "sum them, keep the stronger") is drawn twice: `removed` where the old one ran, `added`
+  for the new. With only the new steps the reader sees the path but not the change.
+- When the path only runs under a condition (a second payment for an already linked
+  movement, a retry after a timeout), open with a phase at step 0 that names it, so the
+  reader knows when this happens before reading what happens.
+- One path per flow. Pick the one the PR is about, usually the happy path; name the
+  failure branch in a step label rather than drawing a second path.
+
+On a refresh, `set-shape` replaces either view (`{"flow": …}`, `{"fileNotes": …}`; `null`
+drops one); see the run prompt for when to redraw them.
 
 Every prose field — the overall `summary`, each unit's `summary`, `attentionWhy`, a
 hunk's `label` and heart `why`, and later the findings — is rendered as markdown. Use `code` spans for identifiers, paths,
@@ -557,6 +655,9 @@ units, so batch its reads and its re-verification the same way.
 - `reviewer-state set-unit <key> --id <unitId> --file patch.json` /
   `reviewer-state set-units <key> --file patches.json` — patch one unit, or several in one
   all-or-nothing batch; see MIGRATION-NOTES.md.
+- `reviewer-state set-shape <key> --file shape.json` — replace the flow or the file notes
+  (`{"flow": …, "fileNotes": …}`; each key present replaces that view,
+  `null` drops it). Validated like the same fields in `set-analysis`.
 - `reviewer-state report <key>` — human report: PR header, revision + shas, summary,
   migration report, hunk/file progress, per-unit progress bars, a "Needs classification"
   list of hunks in no unit, and recent archived hunks. Use it to verify your analysis

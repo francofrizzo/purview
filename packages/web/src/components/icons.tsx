@@ -5,6 +5,13 @@ import {
   IconArrowBackUp,
   IconArrowDown as TablerArrowDown,
   IconArrowLeft as TablerArrowLeft,
+  IconArrowRight as TablerArrowRight,
+  IconGitPullRequest as TablerGitPullRequest,
+  IconGitPullRequestDraft as TablerGitPullRequestDraft,
+  IconGitPullRequestClosed as TablerGitPullRequestClosed,
+  IconGitMerge as TablerGitMerge,
+  IconAdjustmentsHorizontal,
+  IconKeyboard as TablerKeyboard,
   IconArrowsExchange,
   IconArrowsRightLeft,
   IconBrandGithub as TablerBrandGithub,
@@ -106,6 +113,13 @@ export const IconChevron = ({ open, ...p }: P & { open?: boolean }) => (
 
 export const IconClose = wrap(IconX);
 export const IconArrowLeft = wrap(TablerArrowLeft);
+export const IconArrowRight = wrap(TablerArrowRight);
+export const IconPrOpen = wrap(TablerGitPullRequest);
+export const IconPrDraft = wrap(TablerGitPullRequestDraft);
+export const IconPrClosed = wrap(TablerGitPullRequestClosed);
+export const IconPrMerged = wrap(TablerGitMerge);
+export const IconViewOptions = wrap(IconAdjustmentsHorizontal);
+export const IconKeyboard = wrap(TablerKeyboard);
 export const IconWarning = wrap(IconAlertTriangle);
 export const IconCheck = wrap(TablerCheck);
 export const IconClock = wrap(TablerClock);

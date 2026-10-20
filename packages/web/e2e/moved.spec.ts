@@ -82,7 +82,10 @@ test("Enter on the focused band expands it", async ({ page }) => {
 
 test("split view: a block folds only when the whole run can — the one facing a real line stays open", async ({ page }) => {
   await page.keyboard.press("d");
-  await expect(page.getByTestId("view-split").first()).toHaveAttribute("aria-pressed", "true");
+  // The layout lives in the view options.
+  await page.getByTestId("view-options").click();
+  await expect(page.getByTestId("layout-split")).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
   // The new file's block faces nothing on the left: it folds, whole.
   await expect(page.getByTestId(band(IN_REGION))).toHaveText(/^8 lines moved from/);
   // In the old file the second half pairs with the re-export, a real line:

@@ -48,8 +48,12 @@ export interface Settings {
   foldSkippableHunks: boolean;
   /** Drop fully-viewed units out of the sidebar (except the selected one). */
   hideReviewedUnits: boolean;
+  /** The comment box shows its formatting buttons ("Aa"); the chords work either way. */
+  composerFormatting: boolean;
   /** Width of the review chat panel in px (clamped to the range below). */
   chatPanelWidth: number;
+  /** Width of the guide column in px, dragged at its edge (clamped below). */
+  sidebarWidth: number;
   /** Column-mode sidebar collapsed to nothing. Ignored in drawer mode, where
    *  the sidebar always starts closed regardless of this. */
   sidebarCollapsed: boolean;
@@ -80,6 +84,9 @@ export const UI_FONT_FALLBACK =
 export const MIN_CHAT_PANEL_WIDTH = 320;
 export const MAX_CHAT_PANEL_WIDTH = 760;
 export const DEFAULT_CHAT_PANEL_WIDTH = 420;
+export const MIN_SIDEBAR_WIDTH = 260;
+export const MAX_SIDEBAR_WIDTH = 560;
+export const DEFAULT_SIDEBAR_WIDTH = 352;
 
 export const MIN_CODE_FONT_SIZE = 11;
 export const MAX_CODE_FONT_SIZE = 16;
@@ -96,7 +103,9 @@ export const DEFAULT_SETTINGS: Settings = {
   autoCollapseViewedHunks: true,
   foldSkippableHunks: false,
   hideReviewedUnits: false,
+  composerFormatting: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
+  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   sidebarCollapsed: false,
   requestAgeDays: [1, 3, 7],
   showResolvedThreads: true,
@@ -139,8 +148,12 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   }
   if (typeof r.foldSkippableHunks === "boolean") out.foldSkippableHunks = r.foldSkippableHunks;
   if (typeof r.hideReviewedUnits === "boolean") out.hideReviewedUnits = r.hideReviewedUnits;
+  if (typeof r.composerFormatting === "boolean") out.composerFormatting = r.composerFormatting;
   if (typeof r.chatPanelWidth === "number" && Number.isFinite(r.chatPanelWidth)) {
     out.chatPanelWidth = clampChatPanelWidth(r.chatPanelWidth);
+  }
+  if (typeof r.sidebarWidth === "number" && Number.isFinite(r.sidebarWidth)) {
+    out.sidebarWidth = clampSidebarWidth(r.sidebarWidth);
   }
   if (typeof r.sidebarCollapsed === "boolean") out.sidebarCollapsed = r.sidebarCollapsed;
   if (
@@ -226,6 +239,10 @@ export function fontStack(family: string, fallback: string): string {
   if (!name) return fallback;
   if (GENERIC_FAMILIES.has(name.toLowerCase())) return `${name}, ${fallback}`;
   return `"${name}", ${fallback}`;
+}
+
+export function clampSidebarWidth(width: number): number {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, Math.round(width)));
 }
 
 export function clampChatPanelWidth(width: number): number {

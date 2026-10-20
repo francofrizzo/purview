@@ -207,7 +207,10 @@
   ::-webkit-scrollbar-thumb {
     background: var(--border-strong);
     border-radius: 6px;
-    border: 2px solid var(--bg);
+    /* A transparent ring, not one painted in --bg: on a raised pane a
+       bg-coloured ring read as a second rule beside the pane's border. */
+    border: 3px solid transparent;
+    background-clip: padding-box;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
@@ -845,4 +848,21 @@ html[data-mode="light"] .logo-for-light {
   width: 2px;
   background: var(--risk);
   pointer-events: none;
+}
+
+/* The flow (components/Shape.tsx): a step or a box that opens a unit says
+   so under the pointer. The labels carry inline fills, hence !important. */
+.flow-link:hover text {
+  fill: var(--accent) !important;
+}
+
+/* Panes that scroll (the guide column, the dock): the scrollbar shows while
+   the pointer is over them, so at rest the pane's edge is its only line. */
+.quiet-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.quiet-scroll:hover,
+.quiet-scroll:focus-within {
+  scrollbar-color: var(--border-strong) transparent;
 }

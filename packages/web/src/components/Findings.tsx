@@ -79,7 +79,7 @@ export function UnitFindings({ unitId, findings }: { unitId: string; findings: F
   ].filter(Boolean);
 
   return (
-    <div className="mt-1.5 max-w-4xl text-xs" data-testid="unit-findings" data-expanded={expanded}>
+    <div className="text-xs" data-testid="unit-findings" data-expanded={expanded}>
       <button
         type="button"
         data-testid="findings-toggle"
@@ -98,7 +98,7 @@ export function UnitFindings({ unitId, findings }: { unitId: string; findings: F
         <IconChevron open={expanded} width={10} height={10} className="flex-none" />
       </button>
       {expanded ? (
-    <ul className="mt-1.5 space-y-1 border-l pl-3" style={{ borderColor: "var(--border)" }}>
+    <ul className="mt-1.5 space-y-1.5 pl-[18px]">
       {sorted.map((f, i) => {
         const s = SEVERITY[f.severity] ?? SEVERITY.note;
         return (

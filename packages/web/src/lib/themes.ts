@@ -788,7 +788,46 @@ const MONOKAI_PRO: ThemeDef[] = MONOKAI_PRO_VARIANTS.map(({ id, label, palette }
 }));
 
 /** Every selectable theme, in picker order. `system` is handled separately. */
-export const THEMES: ThemeDef[] = [REVIEWER_DARK, REVIEWER_LIGHT, ...BUNDLED, ...MONOKAI_PRO];
+/**
+ * Reviewer's colours on neutral grays: no blue cast in the surfaces, so the
+ * only hues on screen are the ones that mean something (the diff, a warning,
+ * the accent).
+ */
+const GRAPHITE_DARK: ThemeDef = {
+  ...REVIEWER_DARK,
+  id: "graphite-dark",
+  label: "Graphite Dark",
+  palette: { ...REVIEWER_DARK.palette, bg: "#141414", fg: "#ececec", comment: "#787878" },
+  overrides: {
+    ...REVIEWER_DARK.overrides,
+    "bg-raised": "#1c1c1c",
+    "bg-inset": "#101010",
+    "bg-hover": "#242424",
+    border: "#2c2c2c",
+    "border-strong": "#3e3e3e",
+    "fg-muted": "#a6a6a6",
+    "fg-faint": "#787878",
+  },
+};
+
+const GRAPHITE_LIGHT: ThemeDef = {
+  ...REVIEWER_LIGHT,
+  id: "graphite-light",
+  label: "Graphite Light",
+  palette: { ...REVIEWER_LIGHT.palette, bg: "#fafafa", fg: "#171717", comment: "#878787" },
+  overrides: {
+    ...REVIEWER_LIGHT.overrides,
+    "bg-raised": "#ffffff",
+    "bg-inset": "#ececec",
+    "bg-hover": "#e9e9e9",
+    border: "#d8d8d8",
+    "border-strong": "#c4c4c4",
+    "fg-muted": "#525252",
+    "fg-faint": "#7a7a7a",
+  },
+};
+
+export const THEMES: ThemeDef[] = [REVIEWER_DARK, REVIEWER_LIGHT, GRAPHITE_DARK, GRAPHITE_LIGHT, ...BUNDLED, ...MONOKAI_PRO];
 
 export const THEMES_BY_ID = new Map(THEMES.map((t) => [t.id, t]));
 

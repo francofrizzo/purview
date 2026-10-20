@@ -515,12 +515,16 @@ export function analysisPrompt(
           "patch just the affected units, all in one `set-units` batch. Never regenerate the whole analysis",
           "with set-analysis on a refresh. Husks (\"Removed units\"; `~` in `units`) are not patched except",
           "to revive one with hunks that genuinely belong to that same decision.",
+          state.flow || state.fileNotes
+            ? "The PR has a shape (file notes, and maybe a flow; SKILL.md, 'The shape of the change'). Only if this revision adds, removes or reroutes something it shows, redraw that view with `set-shape` after `set-units`; otherwise leave it."
+            : "",
         ].join(" ") +
         "\n\n" +
         changesBlock(cmd, keyStr)
       : [
           "This PR has no analysis yet. Produce the full analysis and write it with",
           `\`${cmd} set-analysis ${keyStr} --file <analysis.json>\`.`,
+          "Include its shape (SKILL.md, 'The shape of the change'): `fileNotes` always, a `flow` when the PR adds or reroutes a runtime path.",
           "Every hunk id the triage lists must be covered by a unit or listed in \"unassigned\".",
           "Generated files and lockfiles (triage's GENERATED line) are already in Purview's own",
           `\`${GENERATED_UNIT_ID}\` unit: leave their hunks out, don't read them, and don't use that unit id.`,
@@ -569,6 +573,7 @@ export const ANALYSIS_CLI_SUBCOMMANDS: readonly ReviewerCommand[] = [
   "set-unit",
   "set-units",
   "set-revision-summary",
+  "set-shape",
 ];
 
 /* ------------------------------------------------------------------- queue */
@@ -755,7 +760,7 @@ function isUnder(p: string, dir: string): boolean {
 const INVESTIGATION_RE = /\b(grep|sed\s+-n|cat|head|tail)\b/;
 const GREP_RE = /\b(grep|rg)\b/;
 const SED_N_RE = /\bsed\s+-n\b/;
-const CLI_SUBCOMMAND_RE = /\b(set-analysis|set-units?)\b/;
+const CLI_SUBCOMMAND_RE = /\b(set-analysis|set-units?|set-shape)\b/;
 
 /**
  * Folds one real (non-synthetic) tool call into the running metrics. `index`

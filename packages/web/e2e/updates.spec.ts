@@ -17,12 +17,10 @@ test("a newer release on origin shows an update chip, with the command; the chec
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
 
-  // Inside a PR the same chip is the icon with a dot, named on hover.
+  // Inside a PR the reader is reviewing: the chip stays on the home page.
   await page.getByText("Charge retries: idempotency keys + backoff").click();
   await expect(page.getByTestId("topbar-comments")).toBeVisible();
-  const compact = page.getByTestId("update-available");
-  await expect(compact).toHaveAttribute("data-tip", "Purview 2026.10.15.1 is available");
-  await expect(compact).not.toContainText("available");
+  await expect(page.getByTestId("update-available")).toHaveCount(0);
   await page.goBack();
   await expect(page.getByText("Waiting on your review").first()).toBeVisible();
 

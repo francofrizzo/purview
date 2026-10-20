@@ -9,7 +9,7 @@
  * delete (they aren't the reader's to change).
  */
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { RemoteAuthor, RemoteComment, RemoteThread } from "../api/types";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
@@ -28,8 +28,7 @@ import {
 import { AuthorAvatar } from "./AuthorAvatar";
 import { CommentCard, type CommentActions } from "./CommentCard";
 import { CopyForAgentButton } from "./CopyForAgent";
-import { FloatingPanel } from "./FloatingPanel";
-import { IconBot, IconCheck, IconChevron, IconFilter, IconReply } from "./icons";
+import { IconBot, IconCheck, IconChevron, IconReply } from "./icons";
 import { Markdown, SuggestionContext } from "./Markdown";
 import { anchoredLines } from "../lib/suggestion";
 import type { DiffContext } from "../lib/agentExport";
@@ -346,104 +345,69 @@ export function ThreadView({
   );
 }
 
-/**
- * The filters as a compact popover: resolved threads, AI reviewers as a
- * whole, and each AI reviewer present on the PR.
- */
-export function ThreadFilterMenu({
+/** The thread filters themselves: the menu's body, and a section of the view options. */
+export function ThreadFilterFields({
   filters,
   threads,
-  hidden,
+  posts = [],
   onShowResolved,
   onShowAiReviewers,
   onBotHidden,
-  compact,
-  posts = [],
 }: {
   filters: ThreadFilters;
-  /** the PR's threads, for the per-bot list */
   threads: RemoteThread[];
-  /** who wrote each review and conversation comment, so post-only bots are listed too */
   posts?: readonly RemoteAuthor[];
-  /** how many threads the filters hide right now */
-  hidden: number;
   onShowResolved: (v: boolean) => void;
   onShowAiReviewers: (v: boolean) => void;
   onBotHidden: (key: string, hidden: boolean) => void;
-  /** icon only (the diff toolbars) */
-  compact?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLSpanElement>(null);
   const bots = knownBots(threads, posts);
   const resolvedCount = threads.filter((t) => t.isResolved).length;
-  if (threads.length === 0 && bots.length === 0) return null;
-  const active = !filters.showResolved || !filters.showAiReviewers || filters.hiddenBots.length > 0;
   return (
-    <span ref={wrapRef} className="relative inline-flex flex-none">
-      <button
-        type="button"
-        data-testid="thread-filters"
-        aria-expanded={open}
-        data-tip={hidden ? `GitHub threads: ${hidden} hidden by your filters` : "Which GitHub threads to show"}
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex h-[22px] items-center gap-1 rounded px-1.5 text-2xs transition-colors hover:bg-[var(--bg-hover)]"
-        style={{
-          color: active ? "var(--accent)" : "var(--fg-faint)",
-          border: "1px solid var(--border)",
-          background: open ? "var(--bg-hover)" : "var(--bg-inset)",
-        }}
-      >
-        <IconFilter width={11} height={11} />
-        {compact ? (hidden ? <span className="tabular-nums">{hidden}</span> : null) : <span>threads{hidden ? ` · ${hidden} hidden` : ""}</span>}
-      </button>
-      {open ? (
-        <FloatingPanel anchorRef={wrapRef} onClose={() => setOpen(false)} label="GitHub thread filters" className="w-64 p-2.5 text-xs">
-          <div className="mb-1.5 text-2xs font-semibold" style={{ color: "var(--fg-muted)" }}>
-            GitHub threads
-          </div>
+    <>
+      <div className="mb-1.5 text-2xs font-semibold" style={{ color: "var(--fg-muted)" }}>
+        GitHub threads
+      </div>
+      <FilterCheck
+        testId="filter-resolved"
+        checked={filters.showResolved}
+        onChange={onShowResolved}
+        label="Show resolved"
+        count={resolvedCount}
+        hint="They show collapsed to one line"
+      />
+      {bots.length ? (
+        <>
           <FilterCheck
-            testId="filter-resolved"
-            checked={filters.showResolved}
-            onChange={onShowResolved}
-            label="Show resolved"
-            count={resolvedCount}
-            hint="They show collapsed to one line"
+            testId="filter-ai"
+            checked={filters.showAiReviewers}
+            onChange={onShowAiReviewers}
+            label="Show AI reviewers"
+            count={bots.reduce((n, b) => n + b.count, 0)}
           />
-          {bots.length ? (
-            <>
+          <div className="ml-5 mt-0.5 flex flex-col">
+            {bots.map((b) => (
               <FilterCheck
-                testId="filter-ai"
-                checked={filters.showAiReviewers}
-                onChange={onShowAiReviewers}
-                label="Show AI reviewers"
-                count={bots.reduce((n, b) => n + b.count, 0)}
+                key={b.key}
+                testId={`filter-bot-${b.key}`}
+                checked={!filters.hiddenBots.includes(b.key)}
+                disabled={!filters.showAiReviewers}
+                onChange={(v) => onBotHidden(b.key, !v)}
+                label={b.name}
+                count={b.count}
               />
-              <div className="ml-5 mt-0.5 flex flex-col">
-                {bots.map((b) => (
-                  <FilterCheck
-                    key={b.key}
-                    testId={`filter-bot-${b.key}`}
-                    checked={!filters.hiddenBots.includes(b.key)}
-                    disabled={!filters.showAiReviewers}
-                    onChange={(v) => onBotHidden(b.key, !v)}
-                    label={b.name}
-                    count={b.count}
-                  />
-                ))}
-              </div>
-            </>
-          ) : null}
-          <p className="mt-2 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-            Threads holding a reply you haven't sent always show.
-          </p>
-        </FloatingPanel>
+            ))}
+          </div>
+        </>
       ) : null}
-    </span>
+      <p className="mt-2 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        Threads holding a reply you haven't sent always show.
+      </p>
+    </>
   );
 }
 
-function FilterCheck({
+export function FilterCheck({
   checked,
   onChange,
   label,

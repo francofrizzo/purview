@@ -17,14 +17,14 @@ import type { PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
 import {
-  EffortChip,
-  Progress,
-  PrStateChip,
   CiMark,
+  DiffSizeStat,
+  ProgressRing,
+  PrStateIcon,
   ReviewDecisionChip,
   ReviewRequestAge,
-  DiffSizeStat,
 } from "../components/Chips";
+import { formatMustReadLines } from "../lib/prList";
 import { useModalBackground } from "../components/Modal";
 import { UpdateAvailable } from "../components/UpdateAvailable";
 import { WhatsNew } from "../components/WhatsNew";
@@ -762,26 +762,24 @@ function PrRow({
 
   return (
     <li
-      className="group relative flex items-center gap-3 border-b pr-3 transition-colors last:border-b-0 hover:bg-[var(--bg-hover)]"
+      className="group relative flex items-center gap-3 border-b pr-1.5 transition-colors last:border-b-0 hover:bg-[var(--bg-hover)]"
       style={{
         borderColor: "var(--border)",
         opacity: archived ? 0.55 : 1,
-        paddingLeft: depth * STACK_INDENT,
+        // The row's own inset, then one step per level of a stack.
+        paddingLeft: 12 + depth * STACK_INDENT,
         // A base and its stack read as one block: the tree joins them, no rule between.
         ...(hasChildren ? { borderBottomWidth: 0 } : {}),
       }}
       data-testid={`pr-row-${pr.key}`}
       data-depth={depth || undefined}
+      data-waiting={waiting ? "true" : undefined}
     >
       {depth > 0 ? <StackTree row={row} /> : null}
-      {waiting ? (
-        <span
-          aria-hidden
-          className="absolute inset-y-0 left-0 w-0.5"
-          style={{ background: "var(--warn)" }}
-        />
-      ) : null}
-      <Link to={`/pr/${pr.key}`} className="min-w-0 flex-1 py-2.5 pl-3">
+      <span className="self-start pt-3">
+        <PrStateIcon state={pr.state} />
+      </span>
+      <Link to={`/pr/${pr.key}`} className="min-w-0 flex-1 py-2.5">
         <div className="flex items-baseline gap-2">
           <span className="truncate text-[13px] font-medium">
             {pr.title ?? meta?.title ?? pr.key}
@@ -959,37 +957,31 @@ function UpdateButton({ prKey }: { prKey: string }) {
 }
 
 /**
- * A row's status cluster: the out-of-the-ordinary state and review decision,
- * the analysis and effort chips, and how far you are through the hunks. Beside
- * the row on wide screens, under the meta line at phone width.
+ * A row's status cluster: the review decision, the analysis while it is not a
+ * plain success, and how far you are through the hunks. The unit count and
+ * the effort estimate ride in the ring's tooltip. Beside the row on wide
+ * screens, under the meta line at phone width.
  */
 function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
-  const decision =
-    pr.reviewDecision === "review_required" ? null : pr.reviewDecision;
+  const decision = pr.reviewDecision === "review_required" ? null : pr.reviewDecision;
+  const units = pr.unitCount ? `${pr.unitCount} ${pr.unitCount === 1 ? "unit" : "units"}` : null;
+  const effort = pr.effort?.badge
+    ? `${pr.effort.badge} review, ~${formatMustReadLines(pr.effort.weightedMustReadLines)} must-read lines`
+    : null;
+  const viewed = pr.viewedHunks ?? 0;
+  const tip = [`${viewed} of ${pr.totalHunks ?? 0} hunks viewed`, units, effort].filter(Boolean).join(" · ");
   return (
-    <div className={`items-center gap-2 ${className}`}>
-      {pr.needsUpdate && (pr.state === "open" || pr.state === "draft") ? (
-        <UpdateButton prKey={pr.key} />
-      ) : null}
-      {pr.state !== "open" ? <PrStateChip state={pr.state} /> : null}
+    <div className={`items-center gap-3 ${className}`}>
+      {pr.needsUpdate && (pr.state === "open" || pr.state === "draft") ? <UpdateButton prKey={pr.key} /> : null}
       <ReviewDecisionChip decision={decision} />
       <AnalysisChip job={pr.analysisJob} />
-      <EffortChip effort={pr.effort} />
-      {/* The unit count sits over the bar: one narrow column for the two numbers of the review's size. */}
-      <span className="inline-flex flex-none flex-col items-end gap-1.5">
-        <span
-          className="text-2xs leading-none tabular-nums"
-          style={{ color: "var(--fg-faint)" }}
-          data-testid="unit-count"
-        >
-          {pr.unitCount
-            ? `${pr.unitCount} ${pr.unitCount === 1 ? "unit" : "units"}`
-            : "not analyzed"}
+      {pr.totalHunks && pr.unitCount ? (
+        <ProgressRing viewed={viewed} total={pr.totalHunks} tip={tip} />
+      ) : (
+        <span className="text-2xs" style={{ color: "var(--fg-faint)" }} data-testid="unit-count">
+          not analyzed
         </span>
-        {pr.totalHunks ? (
-          <Progress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} stacked />
-        ) : null}
-      </span>
+      )}
     </div>
   );
 }

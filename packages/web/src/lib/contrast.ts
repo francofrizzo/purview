@@ -146,6 +146,17 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("tooltip", "Code and prose", "tooltip (fg on bg-raised)", "fg", 4.5, ["bg-raised"], "Comments, chat and review  m c r"),
     s("placeholder", "Code and prose", "placeholder (fg-faint on bg-inset)", "fg-faint", 2.4, ["bg-raised", "bg-inset"], "Ask about this PR…  (↵ send · ⇧↵ newline)"),
     s("agent-card", "Code and prose", "agent note card (fg on agent-soft)", "fg", 4.5, ["bg-raised", "agent-soft"], "Rename this before merging; the old name leaks."),
+    // The open unit's card in the guide column sits on bg-inset.
+    s("ok-on-inset", "Guide", "ok text on bg-inset", "ok", 3.0, ["bg-inset"], "idempotency.ts +14"),
+    s("risk-on-inset", "Guide", "risk text on bg-inset", "risk", 3.0, ["bg-inset"], "Must read — what counts as the same charge"),
+    // A skim unit's risk word stays on its row while the pointer is over it.
+    s("risk-on-hover-row", "Guide", "risk word on a hovered unit row", "risk", 3.0, ["bg-raised", "bg-hover"], "money · external call"),
+    // Where it lands (Shape.tsx): a file's +/− mark on its row tint. One
+    // glyph beside a plain-ink name, so the marker floor.
+    s("tree-added-mark", "Shape", "new file mark (ok on add-bg)", "ok", 3.0, ["bg-raised", "add-bg"], "+", mono),
+    s("tree-removed-mark", "Shape", "deleted file mark (risk on del-bg)", "risk", 3.0, ["bg-raised", "del-bg"], "−", mono),
+    s("warn-on-inset", "Map", "warn text on bg-inset", "warn", 3.0, ["bg-inset"], "Skim — the verdict table"),
+    s("heart-on-inset", "Map", "heart text on bg-inset", "heart", 3.0, ["bg-inset"], "Where the logic lives"),
     s("warn-banner", "Code and prose", "warn banner (warn on warn-soft)", "warn", 3.4, ["bg-raised", "warn-soft"], "Clear this conversation? It cannot be recovered."),
     s("risk-banner", "Code and prose", "risk banner (risk on risk-soft)", "risk", 3.4, ["bg-raised", "risk-soft"], "Analysis failed: claude exited with code 3"),
     s("divider", "Code and prose", "border on bg (divider)", "border", 1.25, ["bg"], "", { kind: "swatch" }),

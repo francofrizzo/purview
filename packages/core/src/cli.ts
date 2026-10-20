@@ -19,6 +19,7 @@ import {
   initPr,
   refreshPr,
   setAnalysis,
+  setShape,
   setHunkViewed,
   setUnits,
   setRevisionSummary,
@@ -558,6 +559,23 @@ program
           : ""),
     );
     console.log(formatRemaining(remainingWorkFor(key)));
+  });
+
+program
+  .command("set-shape")
+  .argument("<key>")
+  .requiredOption("--file <json>", 'JSON file with {flow?, fileNotes?} ("-" for stdin)')
+  .description(
+    "replace the flow or the file notes (a key present replaces that view, null drops it); set-analysis takes them too",
+  )
+  .action((keyArg: string, opts: { file: string }) => {
+    const key = requireExistingKey(keyArg);
+    const state = setShape(key, readJsonFile(opts.file));
+    const parts = [
+      state.flow ? `flow ${state.flow.participants.length} participants / ${state.flow.steps.length} steps` : "no flow",
+      state.fileNotes ? `${Object.keys(state.fileNotes).length} file notes` : "no file notes",
+    ];
+    console.log(`Shape for revision ${state.currentRevision}: ${parts.join(", ")}`);
   });
 
 program

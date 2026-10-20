@@ -7,6 +7,8 @@ test("What's new shows once after an update, and About has the version", async (
   await expect(panel).toContainText("2026.10.14.1");
   await page.getByTestId("whats-new-close").click();
   await expect(panel).toHaveCount(0);
+  // The mock records "seen" a beat after the close; reload only once it has.
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("purview-mock-last-seen"))).not.toBeNull();
   // Seen: a reload does not bring it back.
   await page.reload();
   await expect(page.getByText("Waiting on your review").first()).toBeVisible();

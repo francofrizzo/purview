@@ -33,19 +33,22 @@ test("the drawer files comments by audience; a draft moves between the two", asy
 
 test("the switch decides what a new comment is for; `a` flips it", async ({ page }) => {
   await openUnit(page, UNITS.reconcile);
-  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "github");
+  // GitHub is the unremarked default; only the agent case shows in the top bar.
+  const agentMode = page.getByTestId("topbar-audience-agent-mode");
+  await expect(agentMode).toHaveCount(0);
   await page.keyboard.press("a");
-  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "agent");
+  await expect(agentMode).toBeVisible();
 
   await openComposerOnLine(page, 10);
   const composer = page.getByTestId("comment-composer");
   await expect(composer).toHaveAttribute("data-audience", "agent");
-  await expect(composer).toContainText("Note for agent");
+  // No header in place under the line: the placeholder and the button say who it is for.
+  await expect(page.getByTestId("composer-textarea")).toHaveAttribute("placeholder", "Note for the agent on line 10…");
   await expect(page.getByTestId("composer-save")).toHaveText("save note");
   // Flipping inside the composer flips the global switch too.
   await page.getByTestId("composer-audience-github").click();
   await expect(composer).toHaveAttribute("data-audience", "github");
-  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "github");
+  await expect(agentMode).toHaveCount(0);
   await page.getByTestId("composer-audience-agent").click();
   await expect(composer).toHaveAttribute("data-audience", "agent");
 
@@ -59,17 +62,20 @@ test("the switch decides what a new comment is for; `a` flips it", async ({ page
   await expect(page.getByTestId("copy-bundle-drawer")).toContainText("(2)");
   // Back to GitHub for the next test (the mock keeps the switch in memory).
   await page.getByTestId("drawer-audience-github").click();
-  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "github");
+  await expect(agentMode).toHaveCount(0);
 });
 
 test("your own PR defaults to notes for the agent; the flip sticks to the PR", async ({ page }) => {
   await page.goto("/pr/github.com/acme/billing/491");
-  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "agent");
-  await page.getByTestId("topbar-audience-github").click();
-  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "github");
+  const agentMode = page.getByTestId("topbar-audience-agent-mode");
+  await expect(agentMode).toBeVisible();
+  // One click on the chip goes back to GitHub, and it sticks to this PR.
+  await agentMode.click();
+  await expect(agentMode).toHaveCount(0);
   // Someone else's PR is untouched by that flip.
   await page.goto("/pr/github.com/acme/billing/482");
-  await expect(page.getByTestId("topbar-audience")).toHaveAttribute("data-value", "github");
+  await expect(page.getByTestId("topbar-title")).toBeVisible();
+  await expect(agentMode).toHaveCount(0);
 });
 
 test("publish now posts one GitHub draft publicly, after a confirmation", async ({ page }) => {

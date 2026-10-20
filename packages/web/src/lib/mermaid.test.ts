@@ -45,6 +45,36 @@ describe("renderMermaid", () => {
     expect(render).toHaveBeenCalledTimes(1);
   });
 
+  it("never renders source that does not parse, and clears what a failed render left in <body>", async () => {
+    const leftovers: { id: string; parentElement: unknown; remove: () => void }[] = [];
+    const body = {};
+    const removed: string[] = [];
+    vi.stubGlobal("document", {
+      body,
+      getElementById: (id: string) => {
+        const el = { id, parentElement: body, remove: () => removed.push(id) };
+        leftovers.push(el);
+        return el;
+      },
+    });
+    try {
+      const parse = vi.fn(async () => false);
+      const { renderMermaid } = await import("./mermaid");
+      const mod = (await import("mermaid")) as unknown as { default: Record<string, unknown> };
+      mod.default.parse = parse;
+      expect(await renderMermaid("flowchart LR\n  A[x] -->", false, OPTS)).toEqual({ status: "error" });
+      expect(render).not.toHaveBeenCalled();
+
+      parse.mockResolvedValueOnce(true as never);
+      render.mockRejectedValueOnce(new Error("render error"));
+      expect(await renderMermaid("flowchart LR\n  A --> B", false, OPTS)).toEqual({ status: "error" });
+      expect(removed.some((id) => id.startsWith("dmmd-"))).toBe(true);
+      delete mod.default.parse;
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("resolves to error (not a throw) when mermaid.render rejects", async () => {
     render.mockRejectedValueOnce(new Error("parse error"));
     const { renderMermaid } = await import("./mermaid");

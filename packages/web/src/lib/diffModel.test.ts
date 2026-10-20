@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRows, buildSplitRows, heartRowIndices, hunkLabel, orderUnitHunks, unitProgress } from "./diffModel";
+import { buildRows, buildSplitRows, heartRowIndices, hunkLabel, hunkPlace, orderUnitHunks, unitProgress } from "./diffModel";
 import type { Hunk } from "../api/types";
 
 let seq = 0;
@@ -15,6 +15,19 @@ function hunk(lines: string[]): Hunk {
     lines,
   } as Hunk;
 }
+
+describe("hunkPlace", () => {
+  const base = { ...hunk([" a"]), oldStart: 18, oldLines: 10, newStart: 20, newLines: 26 };
+  it("is the new start and the section heading, without the raw range", () => {
+    expect(hunkPlace({ ...base, header: "@@ -18,10 +20,26 @@ export class ChargeService {" })).toEqual({
+      line: 20,
+      heading: "export class ChargeService {",
+    });
+  });
+  it("places a pure deletion by its old start", () => {
+    expect(hunkPlace({ ...base, newStart: 0, newLines: 0, header: "" })).toEqual({ line: 18, heading: "" });
+  });
+});
 
 describe("hunkLabel", () => {
   const base = { ...hunk([" a"]), oldStart: 18, oldLines: 10, newStart: 18, newLines: 26 };

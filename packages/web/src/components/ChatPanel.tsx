@@ -17,7 +17,8 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { OverflowMenu } from "./OverflowMenu";
 import { api, errorText } from "../api/client";
 import { useAgents } from "../api/hooks";
 import type {
@@ -49,10 +50,10 @@ import {
   IconFile,
   IconQuote,
   IconRewind,
-  IconSettings,
   IconSpinner,
   IconStop,
   IconTerminal,
+  IconTrash,
 } from "./icons";
 
 const STARTERS = [
@@ -317,7 +318,11 @@ export function ChatPanel({
   // in the harness the next message would start it on.
   const handoffHarness = manifestOf(agents, chat.sessionHarness ?? chat.agent?.harness ?? agents?.default ?? "");
   const [draft, setDraft] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // prKey is `host/owner/repo/number`; the repo settings route takes the first three.
+  const [repoHost, repoOwner, repoName] = prKey.split("/");
+  // Opens over the PR the user is reviewing rather than navigating away.
+  const background = useModalBackground();
+  const navigate = useNavigate();
   const [confirmClear, setConfirmClear] = useState(false);
   const [pinned, setPinned] = useState(true);
   const [preEditDraft, setPreEditDraft] = useState<string | null>(null);
@@ -443,7 +448,7 @@ export function ChatPanel({
       <div
         ref={scrollRef}
         onScroll={onScroll}
-        className="min-h-0 flex-1 overflow-y-auto"
+        className="quiet-scroll min-h-0 flex-1 overflow-y-auto"
         data-testid="chat-transcript"
       >
         {chat.loading ? (
@@ -565,16 +570,6 @@ export function ChatPanel({
           <IconArrowDown width={10} height={10} />
           jump to latest
         </button>
-      ) : null}
-
-      {settingsOpen ? (
-        <ChatSettings
-          prKey={prKey}
-          onClearConversation={() => {
-            setConfirmClear(true);
-            setSettingsOpen(false);
-          }}
-        />
       ) : null}
 
       {confirmClear ? (
@@ -754,11 +749,7 @@ export function ChatPanel({
                 {chat.stopping ? "stopping…" : "stop"}
               </button>
             </span>
-          ) : (
-            <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-              {chat.effectiveRefs.length || "no"} refs attached
-            </span>
-          )}
+          ) : null}
           {chat.agent && chat.configuredAgent ? (
             <ModelSelect
               manifest={manifestOf(agents, chat.agent.harness)}
@@ -782,15 +773,31 @@ export function ChatPanel({
               busy={chat.busy}
             />
           ) : null}
-          <button
-            type="button"
-            data-tip="Chat settings for this PR"
-            aria-label="Chat settings"
-            onClick={() => setSettingsOpen((v) => !v)}
-            style={{ color: settingsOpen ? "var(--fg)" : "var(--fg-faint)" }}
-          >
-            <IconSettings width={12} height={12} />
-          </button>
+          {/* The rarely-used: one menu instead of a settings panel. */}
+          <OverflowMenu
+            fixed
+            testId="chat-menu"
+            label="More chat actions"
+            buttonClassName="flex h-6 w-6 items-center justify-center rounded hover:bg-[var(--bg-hover)]"
+            buttonStyle={{ color: "var(--fg-faint)" }}
+            items={[
+              {
+                label: "clear conversation…",
+                icon: <IconTrash width={12} height={12} />,
+                testId: "chat-clear",
+                disabled: chat.messages.length === 0,
+                hint: "Asks first; it cannot be recovered.",
+                onClick: () => setConfirmClear(true),
+              },
+              {
+                label: "repo checkout…",
+                icon: <IconFile width={12} height={12} />,
+                testId: "chat-repo-settings-link",
+                hint: `Where the chat reads the code from; shared by every PR in ${repoOwner}/${repoName}.`,
+                onClick: () => navigate(`/repo/${repoHost}/${repoOwner}/${repoName}/settings`, { state: { background } }),
+              },
+            ]}
+          />
           <button
             type="button"
             data-testid="chat-send"
@@ -951,10 +958,11 @@ function HandoffButton({
         aria-expanded={open}
         disabled={reason !== null}
         onClick={() => void start()}
-        className="disabled:cursor-not-allowed disabled:opacity-40"
-        style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
+        className="inline-flex items-center gap-1 rounded px-1 text-2xs hover:!text-[var(--fg)] disabled:cursor-not-allowed disabled:opacity-40"
+        style={{ color: open ? "var(--fg)" : "var(--fg-muted)" }}
       >
         <IconTerminal width={12} height={12} />
+        terminal
       </button>
       {state ? (
         <div
@@ -1013,48 +1021,6 @@ function HandoffButton({
   );
 }
 
-/**
- * The repo checkout moved to the per-repo settings page (it is shared by every
- * PR in the repo, so a per-PR field was the wrong home for it); what is left
- * here is the pointer to it plus the conversation controls.
- */
-function ChatSettings({
-  prKey,
-  onClearConversation,
-}: {
-  prKey: string;
-  onClearConversation: () => void;
-}) {
-  // prKey is `host/owner/repo/number`; the repo settings route takes the first three.
-  const [host, owner, repo] = prKey.split("/");
-  // Opens over the PR the user is reviewing rather than navigating away.
-  const background = useModalBackground();
-
-  return (
-    <div className="flex-none border-t px-3 py-2" style={{ borderColor: "var(--border)" }}>
-      <span className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
-        local repo path
-      </span>
-      <p className="mt-1 flex items-center gap-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        <IconFile width={11} height={11} />
-        <Link
-          to={`/repo/${host}/${owner}/${repo}/settings`}
-          state={{ background }}
-          data-testid="chat-repo-settings-link"
-          className="underline underline-offset-2"
-          style={{ color: "var(--accent)" }}
-        >
-          set in repo settings
-        </Link>
-        <span>— it is shared by every PR in {owner}/{repo}.</span>
-      </p>
-      <button type="button" className="btn mt-2" onClick={onClearConversation}>
-        clear conversation
-      </button>
-    </div>
-  );
-}
-
 export { MIN_CHAT_PANEL_WIDTH, MAX_CHAT_PANEL_WIDTH };
 
 /** The top-bar toggle. */
@@ -1081,14 +1047,35 @@ export function QuoteButton({
   onClick,
   about,
   className,
+  labeled = false,
 }: {
   onClick: () => void;
   /** what the chat is asked about, e.g. "this hunk" */
   about: string;
   className?: string;
+  /** words ("ask Claude") instead of the quote mark, where icons crowd */
+  labeled?: boolean;
 }) {
   const agentName = useChatAgentName();
   const title = `Ask ${agentName} about ${about}`;
+  if (labeled) {
+    return (
+      <button
+        type="button"
+        data-tip={title}
+        aria-label={title}
+        data-testid="quote-button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+        className={`flex-none whitespace-nowrap rounded px-1 font-sans text-2xs hover:!text-[var(--fg)] ${className ?? ""}`}
+        style={{ color: "var(--fg-muted)" }}
+      >
+        ask {agentName}
+      </button>
+    );
+  }
   return (
     <button
       type="button"

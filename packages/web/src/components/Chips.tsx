@@ -24,7 +24,19 @@ import {
 import { useSettings } from "../lib/settings";
 import { useNow } from "../lib/useNow";
 import type { StackedOnLink } from "../lib/stacked";
-import { IconArrowDown, IconBolt, IconCheck, IconEye, IconWarning, IconWeight, RISK_META } from "./icons";
+import {
+  IconArrowDown,
+  IconBolt,
+  IconCheck,
+  IconEye,
+  IconPrClosed,
+  IconPrDraft,
+  IconPrMerged,
+  IconPrOpen,
+  IconWarning,
+  IconWeight,
+  RISK_META,
+} from "./icons";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
 // distinguishable — and coherent with the syntax colors — on every theme.
@@ -290,12 +302,6 @@ export function attentionColor(attention: Attention): string {
   return (ATTENTION_STYLE[attention] ?? ATTENTION_STYLE.skim).color;
 }
 
-/** The soft background half of the same decision, for callers building their
- *  own tinted chip-alike (e.g. the collapsed sidebar rail's unit squares). */
-export function attentionSoftBg(attention: Attention): string {
-  return (ATTENTION_STYLE[attention] ?? ATTENTION_STYLE.skim).bg;
-}
-
 const EFFORT_STYLE: Record<
   Exclude<EffortBadge, null>,
   { label: string; icon: (p: { width?: number; height?: number }) => JSX.Element; color: string; bg: string }
@@ -417,6 +423,112 @@ export function Progress({ viewed, total, stacked = false }: { viewed: number; t
       >
         {viewed}/{total}
       </span>
+    </span>
+  );
+}
+
+/**
+ * The one "viewed" box, for a hunk, a file or a unit: empty, partly (a dash)
+ * or all viewed. Drawn on its own raised ground with a visible edge, so it
+ * reads on any row behind it, focused or tinted.
+ */
+export function ViewedBox({
+  state,
+  onToggle,
+  tip,
+  testId,
+  kbd,
+  busy = false,
+}: {
+  state: "none" | "some" | "all";
+  onToggle: () => void;
+  tip: string;
+  testId?: string;
+  kbd?: string;
+  /** a save is in flight: the box already shows its outcome, so it only refuses a second click */
+  busy?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={state === "all" ? "true" : state === "some" ? "mixed" : "false"}
+      aria-label={tip}
+      aria-busy={busy || undefined}
+      disabled={busy}
+      data-tip={busy ? "Marking…" : tip}
+      data-tip-key={kbd}
+      data-testid={testId}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className="flex h-4 w-4 flex-none items-center justify-center rounded-[4px] border transition-colors hover:brightness-110"
+      style={{
+        borderColor: state === "none" ? "var(--fg-faint)" : "var(--ok)",
+        background: state === "all" ? "var(--ok)" : "var(--bg-raised)",
+        color: "var(--bg)",
+      }}
+    >
+      {state === "all" ? (
+        <IconCheck width={11} height={11} />
+      ) : state === "some" ? (
+        <span className="block h-0.5 w-2 rounded-full" style={{ background: "var(--ok)" }} />
+      ) : null}
+    </button>
+  );
+}
+
+/**
+ * How far through the hunks, as a ring and the count: the home list's right
+ * edge. The tooltip carries the rest (units, effort) the row no longer spells out.
+ */
+export function ProgressRing({ viewed, total, tip }: { viewed: number; total: number; tip?: string }) {
+  const done = total > 0 && viewed === total;
+  const r = 6;
+  const c = 2 * Math.PI * r;
+  const frac = total ? viewed / total : 0;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5"
+      data-tip={tip ?? `${viewed} of ${total} hunks viewed`}
+      data-testid="hunk-progress"
+    >
+      <svg width={16} height={16} viewBox="0 0 16 16" aria-hidden className="flex-none -rotate-90">
+        <circle cx={8} cy={8} r={r} fill="none" stroke="var(--border-strong)" strokeWidth={2} />
+        {frac > 0 ? (
+          <circle
+            cx={8}
+            cy={8}
+            r={r}
+            fill="none"
+            stroke={done ? "var(--ok)" : "var(--accent)"}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeDasharray={`${c * frac} ${c}`}
+          />
+        ) : null}
+      </svg>
+      <span className="w-12 text-2xs tabular-nums" style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}>
+        {viewed}/{total}
+      </span>
+    </span>
+  );
+}
+
+const PR_STATE_ICON: Record<PrGithubState, { Icon: typeof IconPrOpen; color: string; label: string }> = {
+  open: { Icon: IconPrOpen, color: "var(--ok)", label: "Open" },
+  draft: { Icon: IconPrDraft, color: "var(--fg-faint)", label: "Draft" },
+  merged: { Icon: IconPrMerged, color: "var(--kind-core)", label: "Merged" },
+  closed: { Icon: IconPrClosed, color: "var(--risk)", label: "Closed" },
+};
+
+/** The PR's lifecycle as GitHub draws it: one icon, its colour, the word on hover. */
+export function PrStateIcon({ state }: { state: PrGithubState }) {
+  const s = PR_STATE_ICON[state] ?? PR_STATE_ICON.open;
+  return (
+    <span className="flex flex-none" style={{ color: s.color }} data-tip={s.label} data-testid={`pr-state-${state}`}>
+      <s.Icon width={14} height={14} />
     </span>
   );
 }

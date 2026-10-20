@@ -1,20 +1,17 @@
-import { memo, useEffect, useState } from "react";
-import { isGeneratedUnit, type Attention, type ChatRef, type PrDetail, type ReviewUnit } from "../api/types";
+import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { isGeneratedUnit, type Attention, type PrDetail, type ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
-import { heartOf } from "../lib/units";
 import { useSettings } from "../lib/settings";
 import { filterUnits, hiddenHint } from "../lib/unitFilter";
 import { workUnits } from "../lib/generated";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { ChangedBadge, HunkProgress, KindChip, RiskFlags } from "./Chips";
+import { attentionColor, ChangedBadge, ViewedBox } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconChevron, IconEye, IconEyeOff, IconGenerated, IconHeart } from "./icons";
-import { ReclassifyPopover } from "./ReclassifyPopover";
+import { IconChevron, IconGenerated, RISK_META } from "./icons";
+import { LineDelta, unitFiles } from "./UnitBrief";
 import { InlineMarkdown } from "./Markdown";
-
-const HIDE_REVIEWED_TITLE = "Hide fully viewed units; the one you are reading stays";
 
 export const UNPLACED_TITLE =
   "Hunks the analysis hasn't placed in a unit yet, usually new commits since the last analysis";
@@ -29,30 +26,35 @@ export function UnitSidebar({
   detail,
   selectedUnitId,
   onSelect,
-  onReclassify,
-  onQuote,
   matchCounts,
   onlyUnitIds,
   changedUnits,
+  renderBrief,
+  onToggleUnitViewed,
+  markingUnitId,
 }: {
   detail: PrDetail;
   selectedUnitId: string | null;
   onSelect: (unitId: string) => void;
-  onReclassify: (unitId: string, patch: Partial<ReviewUnit>) => void;
-  onQuote?: (ref: ChatRef) => void;
   /** search hits per unit; units with none render exactly as they always do */
   matchCounts?: Map<string, number>;
   /** list only these units (the "since your review" filter); numbers stay as without it */
   onlyUnitIds?: ReadonlySet<string>;
   /** units the highlighted revisions changed, with the tip saying which */
   changedUnits?: { ids: ReadonlySet<string>; tip: string };
+  /** the selected unit's guide text, drawn under its row */
+  renderBrief?: (unit: ReviewUnit) => ReactNode;
+  /** the row's box: every hunk of the unit viewed, or none */
+  onToggleUnitViewed?: (unit: ReviewUnit, viewed: boolean) => void;
+  /** the unit whose whole-unit mark is being saved */
+  markingUnitId?: string | null;
 }) {
   const [open, setOpen] = useState<Record<Attention, boolean>>({
     "must-read": true,
     skim: true,
     skip: false,
   });
-  const { settings, update } = useSettings();
+  const { settings } = useSettings();
   const hide = settings.hideReviewedUnits;
 
   // Selecting a unit opens its group: a selection hidden inside a collapsed
@@ -112,34 +114,11 @@ export function UnitSidebar({
           No review units yet — the banner above tracks the analysis of this revision.
         </p>
       ) : null}
-      <div
-        className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-2xs"
-        style={{ color: "var(--fg-faint)" }}
-      >
-        {/* A toggle, drawn as one: an eye that closes when reviewed units
-            are hidden, in a bordered chip that takes the accent when on. */}
-        <button
-          type="button"
-          data-testid="hide-reviewed-units"
-          aria-pressed={hide}
-          data-tip={HIDE_REVIEWED_TITLE}
-          onClick={() => update({ hideReviewedUnits: !hide })}
-          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs transition-colors"
-          style={{
-            color: hide ? "var(--accent)" : "var(--fg-muted)",
-            borderColor: hide ? "var(--accent)" : "var(--border)",
-            background: hide ? "var(--accent-soft)" : "transparent",
-          }}
-        >
-          {hide ? <IconEyeOff width={11} height={11} /> : <IconEye width={11} height={11} />}
-          Hide reviewed
-        </button>
-        {hide && totalHidden > 0 ? (
-          <span className="ml-auto tabular-nums" data-testid="hidden-total">
-            {totalHidden} hidden
-          </span>
-        ) : null}
-      </div>
+      {hide && totalHidden > 0 ? (
+        <p className="px-3 pb-1 text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="hidden-total">
+          {totalHidden} read {totalHidden === 1 ? "unit" : "units"} hidden
+        </p>
+      ) : null}
       {GROUPS.map((g) => {
         const all = units.filter(
           (u) => u.attention === g.attention && (!onlyUnitIds || onlyUnitIds.has(u.id)),
@@ -166,27 +145,24 @@ export function UnitSidebar({
             <button
               type="button"
               onClick={() => setOpen((s) => ({ ...s, [g.attention]: !s[g.attention] }))}
-              className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors hover:opacity-100"
-              style={{
-                color:
-                  g.attention === "must-read"
-                    ? "var(--risk)"
-                    : g.attention === "skim"
-                      ? "var(--warn)"
-                      : "var(--fg-faint)",
-              }}
+              className="flex w-full items-center gap-1.5 px-3 pb-1 pt-2.5 text-2xs font-medium uppercase tracking-wider transition-colors hover:text-[var(--fg-muted)]"
+              style={{ color: "var(--fg-faint)" }}
+              data-testid={`group-${g.attention}`}
             >
-              <IconChevron open={isOpen} width={10} height={10} />
+              <span
+                className="inline-block h-1.5 w-1.5 flex-none rounded-full"
+                style={{ background: attentionColor(g.attention) }}
+              />
               {g.label}
-              <span style={{ color: "var(--fg-faint)" }}>({groupUnits.length})</span>
               {hidden > 0 ? (
-                <span data-testid={`hidden-${g.attention}`} style={{ color: "var(--fg-faint)" }}>
+                <span data-testid={`hidden-${g.attention}`} className="normal-case tracking-normal">
                   {hiddenHint(hidden)}
                 </span>
               ) : null}
-              <span className="ml-auto tabular-nums" style={{ color: "var(--fg-faint)" }}>
+              <span className="ml-auto tabular-nums tracking-normal">
                 {groupViewed.viewed}/{groupViewed.total}
               </span>
+              <IconChevron open={isOpen} width={9} height={9} />
             </button>
             {isOpen ? (
               <ul>
@@ -197,11 +173,12 @@ export function UnitSidebar({
                     unit={u}
                     number={displayNumber.get(u.id) ?? u.order}
                     selected={u.id === selectedUnitId}
-                    onSelect={onSelect}
-                    onReclassify={onReclassify}
-                    onQuote={onQuote}
+                    onSelect={() => onSelect(u.id)}
                     matches={matchCounts?.get(u.id)}
                     changedTip={changedUnits?.ids.has(u.id) ? changedUnits.tip : undefined}
+                    brief={u.id === selectedUnitId && renderBrief ? renderBrief(u) : null}
+                    onToggleViewed={onToggleUnitViewed ? (viewed) => onToggleUnitViewed(u, viewed) : undefined}
+                    marking={markingUnitId === u.id}
                   />
                 ))}
               </ul>
@@ -250,23 +227,18 @@ function UnplacedGroup({
         onClick={onSelect}
         data-tip={UNPLACED_TITLE}
         aria-current={selected ? "true" : undefined}
-        className="flex w-full items-center gap-1.5 border-l-2 px-2.5 py-1.5 text-xs font-medium transition-colors"
+        className="mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-1.5 rounded-md px-1.5 pb-1 pt-2.5 text-2xs font-medium uppercase tracking-wider transition-colors hover:text-[var(--fg-muted)]"
         style={{
-          color: selected ? "var(--fg-muted)" : "var(--fg-faint)",
-          borderColor: selected ? "var(--accent)" : "transparent",
-          background: selected ? "var(--accent-soft)" : "transparent",
-        }}
-        onMouseEnter={(e) => {
-          if (!selected) e.currentTarget.style.background = "var(--bg-hover)";
-        }}
-        onMouseLeave={(e) => {
-          if (!selected) e.currentTarget.style.background = "transparent";
+          color: selected ? "var(--fg)" : "var(--fg-faint)",
+          background: selected ? "var(--bg-inset)" : "transparent",
         }}
       >
-        {/* Stands in for the chevron so the label lines up with the groups above. */}
-        <span className="inline-block w-[10px] text-center normal-case">?</span>
+        <span
+          className="inline-block h-1.5 w-1.5 flex-none rounded-full border"
+          style={{ borderColor: "var(--fg-faint)" }}
+        />
         Not in any unit
-        <span>({hunkIds.length})</span>
+        <span className="normal-case tracking-normal">({hunkIds.length})</span>
         {matches ? <MatchBadge count={matches} /> : null}
         <span className="ml-auto tabular-nums">
           {viewed}/{hunkIds.length}
@@ -291,12 +263,15 @@ function RemovedGroup({ units }: { units: ReviewUnit[] }) {
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors hover:opacity-100"
+        className="flex w-full items-center gap-1.5 px-3 pb-1 pt-2.5 text-2xs font-medium uppercase tracking-wider transition-colors hover:text-[var(--fg-muted)]"
         style={{ color: "var(--fg-faint)" }}
       >
-        <IconChevron open={isOpen} width={10} height={10} />
+        <span className="inline-block h-1.5 w-1.5 flex-none rounded-full" style={{ background: "var(--border-strong)" }} />
         Removed
-        <span>({units.length})</span>
+        <span className="normal-case tracking-normal">({units.length})</span>
+        <span className="ml-auto">
+          <IconChevron open={isOpen} width={9} height={9} />
+        </span>
       </button>
       {isOpen ? (
         <ul>
@@ -357,127 +332,183 @@ const UnitRow = memo(function UnitRow({
   number,
   selected,
   onSelect,
-  onReclassify,
-  onQuote,
   matches,
   changedTip,
+  brief,
+  onToggleViewed,
+  marking = false,
 }: {
   detail: PrDetail;
   unit: ReviewUnit;
   number: number;
   selected: boolean;
-  onSelect: (unitId: string) => void;
-  onReclassify: (unitId: string, patch: Partial<ReviewUnit>) => void;
-  onQuote?: (ref: ChatRef) => void;
+  onSelect: () => void;
   matches?: number;
   /** set when the highlighted revisions touched this unit: the badge's tip */
   changedTip?: string;
+  brief?: ReactNode;
+  /** mark every hunk of the unit viewed (true) or not (false) */
+  onToggleViewed?: (viewed: boolean) => void;
+  marking?: boolean;
 }) {
-  const [popover, setPopover] = useState(false);
   const p = unitProgress(detail, unit);
   // Purview's own unit: re-kinding or re-prioritizing it means nothing (it is
   // rebuilt every revision) and the analysis never read it to be asked about.
   const generated = isGeneratedUnit(unit);
+  const done = p.total > 0 && p.viewed === p.total;
+  const warnings = (unit.findings ?? []).filter((f) => f.severity === "warning").length;
+  const files = unitFiles(detail, unit);
+  const delta = files.reduce((acc, f) => ({ a: acc.a + f.added, r: acc.r + f.removed }), { a: 0, r: 0 });
+  // Kind and risk surfaces are classification detail: on the number, on hover.
+  const facts = [
+    KIND_WORD[unit.kind],
+    ...unit.riskFlags.map((f) => RISK_META[f]?.label ?? f),
+  ].join(" · ");
+  // Except a risk on a unit the analysis says to skim or skip: that is the one
+  // place a risk changes what the reader does, so it is on the row, in words.
+  const risks =
+    unit.attention !== "must-read" && !generated ? unit.riskFlags.map((f) => RISK_META[f]?.label ?? f) : [];
+  const riskWords = risks.length ? (
+    <span
+      className="flex-none text-2xs"
+      style={{ color: "var(--risk)" }}
+      data-tip={`${unit.attention === "skip" ? "Skip" : "Skim"}, but a risk surface: ${risks.join(" and ")}`}
+      data-testid={`unit-risk-${unit.id}`}
+    >
+      {risks.join(" · ")}
+    </span>
+  ) : null;
+  const rowRef = useRef<HTMLLIElement>(null);
+  // The open unit's brief can run long: keep its title in view when picked
+  // from elsewhere (J/K, a link, the map).
+  useEffect(() => {
+    if (selected) rowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
 
   return (
-    <li className="group relative">
-      <button
-        type="button"
-        onClick={() => onSelect(unit.id)}
-        className="sidebar-row-btn w-full border-l-2 px-2.5 py-2 text-left transition-colors"
-        style={{
-          borderColor: selected ? "var(--accent)" : "transparent",
-          background: selected ? "var(--accent-soft)" : "transparent",
-        }}
-        onMouseEnter={(e) => {
-          if (!selected) e.currentTarget.style.background = "var(--bg-hover)";
-        }}
-        onMouseLeave={(e) => {
-          if (!selected) e.currentTarget.style.background = "transparent";
-        }}
+    <li
+      ref={rowRef}
+      className="group relative mx-1.5 rounded-md transition-colors"
+      data-selected={selected ? "true" : undefined}
+      data-testid={selected && brief ? "unit-header" : undefined}
+      // The open unit is a tint and nothing else: one cue for "this is inside it".
+      style={selected ? { background: "var(--bg-inset)" } : undefined}
+    >
+      {/* The open unit's header stays pinned while its brief scrolls under
+          it: which unit this is, and its box, are always in view. */}
+      <div
+        className={`flex items-start rounded-md ${selected ? "sticky top-0 z-10" : "hover:bg-[var(--bg-hover)]"}`}
+        style={selected ? { background: "var(--bg-inset)" } : undefined}
       >
-        <div className="flex items-start gap-1.5">
-          {generated ? (
+        <button
+          type="button"
+          onClick={onSelect}
+          aria-current={selected ? "true" : undefined}
+          data-testid={`unit-row-${unit.id}`}
+          className={`sidebar-row-btn flex min-w-0 flex-1 flex-col gap-1 pl-2 text-left ${selected ? "py-2" : "py-1.5"}`}
+          data-tip={selected ? undefined : unit.title}
+        >
+          <span className="flex w-full items-start gap-2">
+            {generated ? (
+              <span
+                className="flex h-[18px] w-[18px] flex-none items-center justify-center"
+                style={{ color: "var(--fg-faint)" }}
+                data-tip="Detected by Purview, not by the analysis"
+                data-testid="generated-unit-icon"
+              >
+                <IconGenerated width={12} height={12} />
+              </span>
+            ) : (
+              <span
+                className="flex h-[18px] min-w-[18px] flex-none items-center justify-center rounded-[5px] px-1 text-2xs tabular-nums"
+                style={{
+                  background: selected ? "var(--bg-raised)" : "var(--bg-inset)",
+                  color: selected ? "var(--fg)" : "var(--fg-muted)",
+                }}
+                data-tip={facts}
+              >
+                {number}
+              </span>
+            )}
+            {/* The rows not being read are one line each, so the list stays
+                short beside an open brief; the open one wraps in full. */}
             <span
-              className="mt-[3px] flex flex-none text-xs"
-              style={{ color: "var(--fg-faint)" }}
-              data-tip="Detected by Purview, not by the analysis"
-              data-testid="generated-unit-icon"
+              className={`min-w-0 flex-1 text-[13px] leading-[18px] ${selected ? "break-words font-medium" : "truncate"}`}
+              style={{ color: done && !selected ? "var(--fg-faint)" : "var(--fg)" }}
             >
-              <IconGenerated width={12} height={12} />
+              <InlineMarkdown text={unit.title} />
             </span>
-          ) : (
-            <span
-              className="mt-[3px] flex-none text-xs tabular-nums"
-              style={{ color: "var(--fg-faint)" }}
-            >
-              {number}
-            </span>
-          )}
+            {!selected && (riskWords || changedTip || warnings > 0 || matches) ? (
+              <span className="flex h-[18px] flex-none items-center gap-1.5">
+                {riskWords}
+                {changedTip ? (
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: "var(--warn)" }}
+                    data-tip={changedTip}
+                    data-testid={`unit-changed-${unit.id}`}
+                  />
+                ) : null}
+                {warnings > 0 ? <FindingsBadge unit={unit} /> : null}
+                {matches ? <MatchBadge count={matches} /> : null}
+              </span>
+            ) : null}
+          </span>
+          {/* The open unit: its size, then what asks for the reader. */}
+          {selected ? (
           <span
-            className="min-w-0 flex-1 break-words pr-3 text-[13px] font-medium leading-[18px]"
-            data-tip={unit.title}
-            style={{ color: p.total > 0 && p.viewed === p.total ? "var(--fg-muted)" : "var(--fg)" }}
+            className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-[26px] text-2xs"
+            style={{ color: "var(--fg-faint)" }}
           >
-            <InlineMarkdown text={unit.title} />
-          </span>
-        </div>
-        <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 pl-5">
-          {/* Core logic is what most units are; only the exceptions get a chip. */}
-          {/* The generated unit's kind is a placeholder, not a judgment. */}
-          {unit.kind !== "core-logic" && !generated ? <KindChip kind={unit.kind} /> : null}
-          <RiskFlags flags={unit.riskFlags} compact />
-          {changedTip ? <ChangedBadge tip={changedTip} testId={`unit-changed-${unit.id}`} /> : null}
-          {heartOf(unit).length ? (
-            <span
-              className="inline-flex items-center gap-0.5 text-2xs tabular-nums"
-              style={{ color: "var(--heart)" }}
-              data-testid={`unit-heart-${unit.id}`}
-              data-tip={`${heartOf(unit).length} of ${unit.hunks.length} hunks at the heart`}
-            >
-              <IconHeart width={11} height={11} />
-              {heartOf(unit).length}
+            <span>
+              {files.length} {files.length === 1 ? "file" : "files"}
             </span>
-          ) : null}
-          <FindingsBadge unit={unit} />
-          {matches ? <MatchBadge count={matches} /> : null}
-          <span className="ml-auto">
-            <HunkProgress viewed={p.viewed} total={p.total} />
+            <LineDelta added={delta.a} removed={delta.r} />
+            {riskWords}
+            {changedTip ? <ChangedBadge tip={changedTip} testId={`unit-changed-${unit.id}`} /> : null}
+            {warnings > 0 ? <FindingsBadge unit={unit} /> : null}
+            {matches ? <MatchBadge count={matches} /> : null}
           </span>
-        </div>
-      </button>
-      {generated ? null : (
-      <button
-        type="button"
-        data-tip="Unit actions"
-        aria-label="Unit actions"
-        data-testid={`unit-menu-${unit.id}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          setPopover((v) => !v);
-        }}
-        className={`absolute right-1 top-1.5 rounded px-1 text-xs leading-4 transition-opacity hover:opacity-100 focus-visible:opacity-100 group-hover:opacity-60 ${
-          popover ? "opacity-100" : "opacity-0"
-        }`}
-        style={{ color: "var(--fg-muted)" }}
-      >
-        ⋯
-      </button>
-      )}
-      {popover && !generated ? (
-        <ReclassifyPopover
-          unit={unit}
-          onAskAgent={onQuote ? () => onQuote({ kind: "unit", id: unit.id }) : undefined}
-          onClose={() => setPopover(false)}
-          onApply={(patch) => {
-            onReclassify(unit.id, patch);
-            setPopover(false);
-          }}
-        />
-      ) : null}
+          ) : null}
+        </button>
+        {/* Its own column: the box to mark the whole unit is on its row,
+            wherever the brief scrolls. */}
+        <span className={`flex flex-none items-center gap-1.5 pl-1.5 pr-3 ${selected ? "h-[34px]" : "h-[30px]"}`}>
+          <span
+            className="text-2xs tabular-nums"
+            style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}
+            data-tip={`${p.viewed} of ${p.total} hunks viewed`}
+            data-testid="hunk-progress"
+          >
+            {p.viewed}/{p.total}
+          </span>
+          {onToggleViewed && p.total > 0 ? (
+            <ViewedBox
+              state={done ? "all" : p.viewed > 0 ? "some" : "none"}
+              tip={done ? "Mark the unit as not viewed" : "Mark the whole unit viewed"}
+              kbd={selected ? "V" : undefined}
+              testId={`unit-viewed-${unit.id}`}
+              onToggle={() => onToggleViewed(!done)}
+              busy={marking}
+            />
+          ) : null}
+        </span>
+      </div>
+      {brief}
     </li>
   );
 });
+
+const KIND_WORD: Record<ReviewUnit["kind"], string> = {
+  "core-logic": "core logic",
+  "connective-tissue": "glue",
+  wiring: "wiring",
+  ripple: "ripple",
+  tests: "tests",
+  docs: "docs",
+  refactor: "refactor",
+  data: "data",
+};
 
 /** Search-hit count for a sidebar row. Only rendered when there are hits. */
 export function MatchBadge({ count }: { count: number }) {

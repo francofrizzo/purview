@@ -59,17 +59,18 @@ export function RightDock({
 
   return (
     <aside
-      className="pane relative m-[7px] ml-0 rounded-bl-none flex flex-none flex-col overflow-hidden"
+      // Flat against the diff, one rule between them, like the guide column.
+      className="relative flex flex-none flex-col overflow-hidden border-l"
       data-testid="right-dock"
       data-tab={tab}
-      style={{ width }}
+      style={{ width, borderColor: "var(--border)", background: "var(--bg-raised)" }}
     >
       <div
         onMouseDown={startResize}
         data-tip="Drag to resize"
-        className="absolute left-0 top-0 z-20 h-full w-1 cursor-col-resize"
+        className="absolute -left-px top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-[var(--border-strong)]"
         data-testid="dock-resize"
-        style={{ background: dragWidth === null ? "transparent" : "var(--accent)" }}
+        style={dragWidth === null ? undefined : { background: "var(--accent)" }}
       />
       <div
         role="tablist"

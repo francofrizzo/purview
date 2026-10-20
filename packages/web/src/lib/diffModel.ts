@@ -255,6 +255,17 @@ export function buildSplitRows(hunk: Hunk, diffText: string): SplitRow[] {
  * A label for a hunk row. core stores only the section heading in `header`
  * (frequently empty), so the `@@` range is reconstructed here for display.
  */
+/**
+ * Where a hunk is, the way a reader asks it: the line it starts at and the
+ * scope it sits in. The raw `@@ -a,b +c,d @@` range (hunkLabel) is diff
+ * syntax; the start is the gutter's first number and the length is what the
+ * fold counts, so it stays a hover away. A pure deletion has no new lines, so
+ * it is placed by its old start.
+ */
+export function hunkPlace(hunk: Hunk): { line: number; heading: string } {
+  return { line: hunk.newLines > 0 ? hunk.newStart : hunk.oldStart, heading: sectionHeading(hunk.header) };
+}
+
 export function hunkLabel(hunk: Hunk): string {
   const range = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`;
   const heading = sectionHeading(hunk.header);

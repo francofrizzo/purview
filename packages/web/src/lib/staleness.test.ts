@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import type { Staleness } from "../api/types";
 import {
   STALENESS_POLL_MS,
-  shouldShowStalenessHint,
-  stalenessDismissKey,
   stalenessPollInterval,
   stalenessReasonText,
   stalenessTooltip,
@@ -57,42 +55,5 @@ describe("reason wording", () => {
 
   it("spells the reasons out in the tooltip", () => {
     expect(stalenessTooltip(result())).toBe("new commits upstream — refresh to fetch the latest");
-  });
-});
-
-describe("hint dismissal", () => {
-  it("shows the bar for a fresh stale result", () => {
-    expect(shouldShowStalenessHint(result(), null)).toBe(true);
-  });
-
-  it("stays hidden for the same upstream head sha", () => {
-    const first = result();
-    const key = stalenessDismissKey(first);
-    expect(shouldShowStalenessHint(first, key)).toBe(false);
-    // A later check that reports the same upstream revision is not distinct,
-    // even though it is a different response object.
-    expect(shouldShowStalenessHint(result({ checkedAt: "2026-01-01T00:05:00Z" }), key)).toBe(false);
-  });
-
-  it("comes back once upstream moves again", () => {
-    const key = stalenessDismissKey(result());
-    expect(shouldShowStalenessHint(result({ upstreamHeadSha: "sha-3" }), key)).toBe(true);
-  });
-
-  it("keys a reason-only change on the same sha, so a dismiss holds", () => {
-    const key = stalenessDismissKey(result());
-    expect(shouldShowStalenessHint(result({ reasons: ["base-moved"] }), key)).toBe(false);
-  });
-
-  it("never shows the bar for a non-stale or missing result", () => {
-    expect(shouldShowStalenessHint(undefined, null)).toBe(false);
-    expect(shouldShowStalenessHint(result({ stale: false, reasons: [] }), null)).toBe(false);
-    expect(stalenessDismissKey(result({ stale: false }))).toBeNull();
-  });
-
-  it("tolerates a stale result with no upstream sha", () => {
-    const noSha = result({ upstreamHeadSha: null, reasons: ["base-moved"] });
-    expect(shouldShowStalenessHint(noSha, null)).toBe(true);
-    expect(shouldShowStalenessHint(noSha, stalenessDismissKey(noSha))).toBe(false);
   });
 });

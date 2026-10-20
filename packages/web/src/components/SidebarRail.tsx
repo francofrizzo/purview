@@ -1,10 +1,13 @@
-import { isGeneratedUnit, type PrDetail, type ReviewUnit } from "../api/types";
-import { attentionColor, attentionSoftBg } from "./Chips";
+import { Fragment } from "react";
+import { isGeneratedUnit, type Attention, type PrDetail, type ReviewUnit } from "../api/types";
+import { attentionColor } from "./Chips";
 import { unitProgress } from "../lib/diffModel";
 import { workUnits } from "../lib/generated";
 import { unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { IconChevron, IconGenerated } from "./icons";
+import { IconCheck, IconChevron, IconGenerated } from "./icons";
+
+const ATTENTION_LABEL: Record<Attention, string> = { "must-read": "Must read", skim: "Skim", skip: "Skip" };
 
 /**
  * The sidebar collapsed to a narrow strip: one square per review unit, same
@@ -52,46 +55,53 @@ export function SidebarRail({
             const number = i + 1;
             const p = unitProgress(detail, u);
             const done = p.total > 0 && p.viewed === p.total;
-            // A unit mid-review fills in as a pie, in the same hue as the
-            // number. Nothing to show it for: an empty unit (its flat tint is
-            // not a completion state — see `done` above) or a finished one
-            // (recedes to flat + faint instead, its job is done).
-            const showPie = p.total > 0 && !done;
             const pct = p.total > 0 ? p.viewed / p.total : 0;
-            const fill = attentionColor(u.attention);
             const selected = u.id === selectedUnitId;
             const label = `${number}. ${u.title} — ${p.viewed}/${p.total} hunks`;
+            // Same marks as the full sidebar: a group starts with its
+            // attention dot, the number is neutral, progress fills it.
+            const groupStart = i === 0 || ordered[i - 1].attention !== u.attention;
             return (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => onSelect(u.id)}
-                data-tip={label}
-                aria-label={label}
-                className="sidebar-rail-item relative flex flex-none items-center justify-center rounded font-mono text-2xs tabular-nums"
-                style={{
-                  background: showPie
-                    ? // The whole pill is the pie: the viewed fraction sweeps
-                      // clockwise in a slightly stronger tint of the same hue
-                      // over the unit's usual soft tint, so progress reads as
-                      // the square filling in rather than a gauge sitting on it.
-                      `conic-gradient(color-mix(in srgb, ${fill} 30%, transparent) ${pct * 360}deg, ${attentionSoftBg(u.attention)} 0)`
-                    : done
-                      ? "transparent"
-                      : attentionSoftBg(u.attention),
-                  color: done ? "var(--fg-faint)" : fill,
-                  boxShadow: selected ? "0 0 0 2px var(--accent)" : "none",
-                }}
-              >
-                {/* Same cog as the full sidebar: Purview's unit, not the analysis's. */}
-                {isGeneratedUnit(u) ? <IconGenerated width={11} height={11} /> : number}
-                {matchCounts?.get(u.id) ? (
+              <Fragment key={u.id}>
+                {groupStart ? (
                   <span
-                    className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
-                    style={{ background: "var(--accent)" }}
+                    className={`h-1.5 w-1.5 flex-none rounded-full ${i === 0 ? "" : "mt-1.5"}`}
+                    style={{ background: attentionColor(u.attention) }}
+                    data-tip={ATTENTION_LABEL[u.attention]}
                   />
                 ) : null}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onSelect(u.id)}
+                  data-tip={label}
+                  aria-label={label}
+                  aria-current={selected ? "true" : undefined}
+                  className="sidebar-rail-item relative flex flex-none items-center justify-center rounded-[5px] text-2xs tabular-nums"
+                  style={{
+                    background:
+                      pct > 0 && !done
+                        ? `conic-gradient(color-mix(in srgb, var(--accent) 28%, var(--bg-inset)) ${pct * 360}deg, var(--bg-inset) 0)`
+                        : "var(--bg-inset)",
+                    color: done ? "var(--ok)" : selected ? "var(--fg)" : "var(--fg-muted)",
+                    boxShadow: selected ? "0 0 0 1.5px var(--fg-muted)" : "none",
+                  }}
+                >
+                  {/* Same cog as the full sidebar: Purview's unit, not the analysis's. */}
+                  {isGeneratedUnit(u) ? (
+                    <IconGenerated width={11} height={11} />
+                  ) : done ? (
+                    <IconCheck width={11} height={11} />
+                  ) : (
+                    number
+                  )}
+                  {matchCounts?.get(u.id) ? (
+                    <span
+                      className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
+                      style={{ background: "var(--accent)" }}
+                    />
+                  ) : null}
+                </button>
+              </Fragment>
             );
           })}
           {unplaced.length ? (
@@ -143,7 +153,7 @@ function UnplacedCell({
         background: "transparent",
         color: viewed === hunkIds.length ? "var(--fg-faint)" : "var(--fg-muted)",
         border: "1px dashed var(--border-strong)",
-        boxShadow: selected ? "0 0 0 2px var(--accent)" : "none",
+        boxShadow: selected ? "0 0 0 1.5px var(--fg-muted)" : "none",
       }}
     >
       ?

@@ -1,4 +1,3 @@
-import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -6,7 +5,6 @@ import type {
   AnalysisImportReport,
   ChatRef,
   FileEntry,
-  HeartSegment,
   MigrationReport,
   PrDetail,
   ReviewEvent,
@@ -15,7 +13,6 @@ import type {
   SubmitReviewResult,
   SyncResult, CommentAudience, ReactionContent } from "../api/types";
 import { isGeneratedUnit, isJobLive } from "../api/types";
-import { baseName } from "../lib/chatRefs";
 import {
   qk,
   useAddComment,
@@ -66,13 +63,10 @@ import {
 import { errorText } from "../api/errors";
 import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
-import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
+import { Progress, ViewedBox } from "../components/Chips";
 import {
   CopyPathButton,
   DiffPane,
-  DiffViewToggle,
-  NarrowPaneNote,
-  WrapToggle,
   type HeartMark,
   type HunkEntry,
 } from "../components/DiffPane";
@@ -88,15 +82,12 @@ import {
 import { CommentBubble, InlineCommentList } from "../components/InlineComments";
 import { hunkForLine, isLineInDiff } from "../lib/comments";
 import { buildThreadGroups, remoteReplyTarget, replyTarget, type DisplayThread } from "../lib/threads";
-import { ThreadFilterMenu } from "../components/Threads";
 import type { CommentActionError } from "../components/CommentCard";
-import { UnitChangelog } from "../components/UnitChangelog";
-import { FindingsBadge, UnitFindings } from "../components/Findings";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { RightDock, type DockTab } from "../components/RightDock";
 import { isForAgent } from "../lib/comments";
 import { FileTree } from "../components/FileTree";
-import { IconChevron, IconComment, IconHeart, IconSpinner } from "../components/icons";
+import { IconChevron, IconComment, IconSpinner } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
 import { generatedUnitFiles, reviewProgress, workUnits } from "../lib/generated";
 import {
@@ -108,16 +99,20 @@ import {
   ShareAnalysisConfirmPanel,
   ShareAnalysisResultPanel,
   SharedAnalysisBanner,
-  StalenessHint,
   SyncResultPanel,
 } from "../components/Panels";
-import { SummaryStrip, visibleDescription } from "../components/SummaryStrip";
+import { visibleDescription } from "../components/SummaryStrip";
+import { Overview } from "../components/Overview";
+import { UnitBrief, UnitEnd } from "../components/UnitBrief";
+import { ViewOptions } from "../components/ViewOptions";
+import { Modal } from "../components/Modal";
+import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
 import { TopBar } from "../components/TopBar";
 import { UNPLACED_TITLE, UnitSidebar } from "../components/UnitSidebar";
 import { SidebarRail } from "../components/SidebarRail";
 import { DiffSearchBar } from "../components/DiffSearchBar";
 import { orderUnitHunks, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
-import { heartOf, heartSegments, hunkIdsOf, skipOf } from "../lib/units";
+import { heartOf, hunkIdsOf, skipOf } from "../lib/units";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { rollbackMessage } from "../lib/rollback";
@@ -135,11 +130,17 @@ import { prPageTitle, unitFromSearch, withUnitParam } from "../lib/prUrl";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
-import { useDiffViewPrefs, useSettings, useThreadFilters } from "../lib/settings";
+import {
+  clampSidebarWidth,
+  DEFAULT_SIDEBAR_WIDTH,
+  useDiffViewPrefs,
+  useSettings,
+  useThreadFilters,
+} from "../lib/settings";
 import { latestVerdicts } from "../lib/reviews";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
-import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
+import { stalenessTooltip } from "../lib/staleness";
 import { AttachmentContext, CodeLinkContext, InlineMarkdown } from "../components/Markdown";
 import { useAttachmentScope } from "../components/Attachments";
 
@@ -232,18 +233,14 @@ export function PrView() {
     [patchUnit.mutate],
   );
 
-  // Dismissing the hint bar is remembered against the upstream head sha it was
-  // raised for, so the bar comes back the next time the PR really moves.
-  const [dismissedStaleKey, setDismissedStaleKey] = useState<string | null>(null);
   // The PR's own lifecycle state only reaches us through the check itself, and
   // that is enough: it decides whether the 5-minute interval is worth running
   // (a merged or closed PR grows no commits, so it is mount + focus only).
   const staleness = useStaleness(prKey);
   // Comment pictures: where editors upload to, and how bodies find their local copies.
   const attachmentScope = useAttachmentScope(prKey);
+  // Upstream moved: the top bar's refresh button says so, nothing else does.
   const stale = staleness.data?.stale === true;
-  const showStalenessHint =
-    stale && shouldShowStalenessHint(staleness.data, dismissedStaleKey);
 
   const [tab, setTab] = useState<"units" | "files">("units");
   // Seeded from `?unit=` so a unit link opens on that unit; validated against
@@ -265,6 +262,22 @@ export function PrView() {
     if (sidebarMode === "column") setDrawerOpen(false);
   }, [sidebarMode]);
   const sidebarCollapsed = settings.sidebarCollapsed;
+  // The guide column's width: dragged at its right edge, remembered.
+  const [sidebarDrag, setSidebarDrag] = useState<number | null>(null);
+  const sidebarWidth = sidebarDrag ?? settings.sidebarWidth;
+  const startSidebarResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const left = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect().left;
+    const onMove = (ev: MouseEvent) => setSidebarDrag(clampSidebarWidth(ev.clientX - left));
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      updateSettings({ sidebarWidth: clampSidebarWidth(ev.clientX - left) });
+      setSidebarDrag(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
   const toggleSidebar = useCallback(() => {
     if (sidebarMode === "drawer") setDrawerOpen((v) => !v);
     else updateSettings({ sidebarCollapsed: !sidebarCollapsed });
@@ -300,46 +313,12 @@ export function PrView() {
 
   const fullscreen = useFullscreen();
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const shortcutsRef = useRef<HTMLDivElement>(null);
-  const shortcutsPopRef = useRef<HTMLDivElement>(null);
-  // Where the card goes: above the toggle, aligned to its left edge.
-  const [shortcutsAt, setShortcutsAt] = useState<{ left: number; bottom: number } | null>(null);
-  useEffect(() => {
-    if (!showShortcuts) {
-      setShortcutsAt(null);
-      return;
-    }
-    const place = () => {
-      const r = shortcutsRef.current?.getBoundingClientRect();
-      if (r) setShortcutsAt({ left: r.left + 8, bottom: window.innerHeight - r.top + 6 });
-    };
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [showShortcuts]);
-  useEffect(() => {
-    if (!showShortcuts) return;
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (shortcutsRef.current?.contains(t) || shortcutsPopRef.current?.contains(t)) return;
-      setShowShortcuts(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setShowShortcuts(false);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey, true);
-    };
-  }, [showShortcuts]);
   const [standalone] = useState(isStandalone);
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
-  const [summaryOpen, setSummaryOpen] = useState(false);
+  // The overview (summary, shape, reading order) in place of the workspace. It
+  // opens by itself on a PR with nothing read yet, unless a link named a unit.
+  const [overview, setOverview] = useState(false);
+  const overviewDecided = useRef<string | null>(null);
   // The right dock: comments, chat or review, one at a time. The chat's own
   // open flag (lib/chat.tsx, which attachRef and the composer flip) stays the
   // source of truth for its tab; the other two live here.
@@ -397,7 +376,6 @@ export function PrView() {
   const probedForRef = useRef<string | null>(null);
   const { viewMode, setViewMode, toggleViewMode, wrap, setWrap, toggleWrap } = useDiffViewPrefs();
   const [narrow, setNarrow] = useState(false);
-  const showNarrowNote = narrow && viewMode === "split";
 
   // --- go to definition ---------------------------------------------------
   // A new object (even for a repeat target) is what re-triggers DiffPane's
@@ -534,8 +512,8 @@ export function PrView() {
   const sinceUnitIdsRef = useRef(sinceUnitIds);
   sinceUnitIdsRef.current = sinceUnitIds;
 
-  // Whether every unit in the PR is fully viewed — drives the quiet "all units
-  // viewed" indicator next to the units-tab "mark unit viewed" button.
+  // Whether every unit in the PR is fully viewed — the sidebar's summary line
+  // says so instead of counting.
   const allUnitsViewed = useMemo(() => {
     if (!detail || analyzedUnits.length === 0) return false;
     return analyzedUnits.every((u) => {
@@ -948,11 +926,22 @@ export function PrView() {
         toggleDock("review");
       } else if (e.key === "s") {
         e.preventDefault();
-        setSummaryOpen((v) => !v);
+        setOverview((v) => !v);
+      } else if (e.key === "g") {
+        e.preventDefault();
+        setOverview(false);
+        setTab("units");
+      } else if (e.key === "f") {
+        e.preventDefault();
+        setOverview(false);
+        setTab("files");
+      } else if (e.key === "?") {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
       } else if (e.key === "/") {
         e.preventDefault();
         openSearch();
-      } else if ((e.key === "J" || e.key === "K") && tab === "units") {
+      } else if ((e.key === "J" || e.key === "K") && tab === "units" && !overview) {
         // Shift+j/k: the unit-sized step next to the hunk-sized j/k, in the
         // sidebar's order.
         const ordered = sortUnitsForDisplay(units).filter((u) => !sinceUnitIds || sinceUnitIds.has(u.id));
@@ -962,7 +951,7 @@ export function PrView() {
           e.preventDefault();
           setSelectedUnitId(next.id);
         }
-      } else if (e.key === "V" && tab === "units") {
+      } else if (e.key === "V" && tab === "units" && !overview) {
         // Shift+v: the unit-sized "mark unit viewed", next to v for one hunk.
         if (!selectedUnit || !detail || setUnitViewed.isPending) return;
         const p = unitProgress(detail, selectedUnit);
@@ -997,7 +986,7 @@ export function PrView() {
         // Last in line: an open popover, overlay, composer or line selection
         // claims Escape first (they mark it handled, or stop it outright).
         !e.defaultPrevented &&
-        !summaryOpen &&
+        !overview &&
         !commentTarget
       ) {
         e.preventDefault();
@@ -1024,11 +1013,25 @@ export function PrView() {
     advanceAfterUnitViewed,
     highlightActive,
     clearHighlight,
-    summaryOpen,
+    overview,
     commentTarget,
     settings.foldSkippableHunks,
     updateSettings,
   ]);
+
+  // First visit to an analyzed PR with nothing read: start on the overview.
+  useEffect(() => {
+    if (!detail || overviewDecided.current === prKey) return;
+    overviewDecided.current = prKey;
+    const anyViewed = Object.values(detail.state.hunks).some((h) => h.viewed);
+    const hasOverview = Boolean(detail.state.summary?.trim());
+    if (!anyViewed && hasOverview && !unitFromSearch(location.search)) setOverview(true);
+  }, [detail, prKey, location.search]);
+
+  // Any jump into the diff (a link, a heart, a comment) leaves the overview.
+  useEffect(() => {
+    if (jumpToHunk) setOverview(false);
+  }, [jumpToHunk]);
 
   // Keep the focused hunk inside the currently shown set. Entering a unit (or
   // a file) lands on its first hunk still to read that the analysis did not
@@ -1104,6 +1107,7 @@ export function PrView() {
   // driving unit by id (see lib/codeLinks.ts).
   const openUnitFromText = useCallback(
     (unitId: string) => {
+      setOverview(false);
       setTab("units");
       selectUnitFromSidebar(unitId);
     },
@@ -1117,6 +1121,7 @@ export function PrView() {
       const hunkId = file && line !== undefined ? hunkAtLine(file.hunks, line) : null;
       if (hunkId) jumpToDiffHunk(hunkId, path, { line });
       else {
+        setOverview(false);
         setTab("files");
         setSelectedPath(path);
       }
@@ -1154,18 +1159,6 @@ export function PrView() {
   const replyAt = commentTarget?.inReplyTo ? threadGroups.located.get(commentTarget.inReplyTo) : undefined;
   const replyInHeader =
     tab === "files" && fileCommentsOpen && !!replyAt && "file" in replyAt && replyAt.file === selectedPath;
-  const threadFilterMenu = (
-    <ThreadFilterMenu
-      compact
-      filters={threadFilters.filters}
-      threads={remoteThreads ?? []}
-      posts={postAuthors}
-      hidden={threadGroups.hidden}
-      onShowResolved={threadFilters.setShowResolved}
-      onShowAiReviewers={threadFilters.setShowAiReviewers}
-      onBotHidden={threadFilters.setBotHidden}
-    />
-  );
   const progress = selectedUnit ? unitProgress(detail, selectedUnit) : null;
   const unsubmittedDrafts = drafts.filter((d) => d.status !== "submitted");
 
@@ -1366,54 +1359,140 @@ export function PrView() {
     startAnalysis.mutate();
   };
 
+  const unitNumbers = unitDisplayNumbers(unitDisplayOrder(detail.state.units));
+  const markUnitViewed = (unitId: string) =>
+    setUnitViewed.mutate(unitId, { onSuccess: () => advanceAfterUnitViewed(unitId) });
+  // A ranged heart segment lands on its first line, not the hunk's top.
+  const jumpToHeartHunk = (hunkId: string, line?: number) => {
+    setFocusedHunkId(hunkId);
+    setJumpToHunk(line === undefined ? { hunkId, nonce: Date.now() } : { hunkId, nonce: Date.now(), line, side: "RIGHT" });
+  };
+  const renderBrief = (u: ReviewUnit) => (
+    <UnitBrief
+      detail={detail}
+      unit={u}
+      onJumpHunk={jumpToHeartHunk}
+      onAsk={() => quote({ kind: "unit", id: u.id })}
+      onMove={(attention) => reclassifyUnit(u.id, { attention })}
+      changelog={{ activeRevisions: highlightRevisions, onSelectRevision: toggleHighlight }}
+      extra={
+        <>
+          {isGeneratedUnit(u) ? (
+            <GeneratedUnitFileList
+              files={generatedUnitFiles(detail.files.files, u)}
+              onOpen={(path) => {
+                const first = detail.files.files
+                  .find((f) => f.path === path)
+                  ?.hunks.find((h) => u.hunks.some((x) => x.id === h.id));
+                if (first) setJumpToHunk({ hunkId: first.id, nonce: Date.now() });
+              }}
+            />
+          ) : null}
+          {highlightActive ? (
+            <HighlightSummary
+              revisions={highlightRevisions}
+              highlight={highlight}
+              failed={lineChanges.failed}
+              onClear={clearHighlight}
+            />
+          ) : null}
+        </>
+      }
+    />
+  );
+  // After the open unit: the next one with hunks still to read, in the
+  // sidebar's order, wrapping around; none when every unit is read.
+  const nextUnread = (() => {
+    if (!selectedUnit) return null;
+    const ordered = unitDisplayOrder(detail.state.units);
+    const at = ordered.findIndex((u) => u.id === selectedUnit.id);
+    for (let k = 1; k < ordered.length; k++) {
+      const u = ordered[(at + k) % ordered.length];
+      const p = unitProgress(detail, u);
+      if (p.total > 0 && p.viewed < p.total) return u;
+    }
+    return null;
+  })();
+  const unitEnd =
+    tab === "units" && selectedUnit ? (
+      <UnitEnd
+        number={unitNumbers.get(selectedUnit.id)}
+        progress={unitProgress(detail, selectedUnit)}
+        next={nextUnread ? { number: unitNumbers.get(nextUnread.id), title: nextUnread.title } : null}
+        onMarkViewed={() => markUnitViewed(selectedUnit.id)}
+        onOpenNext={() => nextUnread && setSelectedUnitId(nextUnread.id)}
+        onFinish={() => {
+          setSubmitResult(null);
+          submitReview.reset();
+          openDock("review");
+        }}
+      />
+    ) : undefined;
+  // The guide's text sits in the sidebar column; with the column out of view
+  // a one-line bar over the diff names the unit instead.
+  const briefInSidebar = sidebarMode === "column" && !sidebarCollapsed;
+
   // Shared between the column and the drawer — same header row (tabs +
   // collapse/close chevron), same list, same footer legend, just mounted in
   // a different container depending on `sidebarMode`.
   const sidebarBody = (
     <>
-      {/* Same jump-bar vocabulary as the summary panel: sentence case, a
-          2px accent underline on the current one. */}
-      <div className="flex flex-none items-end gap-1 border-b px-2 pt-1.5" style={{ borderColor: "var(--border)" }}>
-        {(["units", "files"] as const).map((t) => (
-          <button
-            key={t}
-            type="button"
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            className="sidebar-tab-btn -mb-px border-b-2 px-2 pb-1.5 pt-1 text-xs font-medium transition-colors"
-            style={{
-              borderColor: tab === t ? "var(--accent)" : "transparent",
-              color: tab === t ? "var(--fg)" : "var(--fg-muted)",
-            }}
-          >
-            {t === "units" ? "Review units" : "Files"}
-          </button>
-        ))}
-        <span className="flex-1" />
+      <div
+        className="flex flex-none items-center gap-2 px-3 pb-1 pt-2 text-2xs"
+        style={{ color: "var(--fg-faint)" }}
+      >
+        <span className="min-w-0 flex-1 truncate tabular-nums" data-testid="sidebar-summary">
+          {tab === "files"
+            ? `${detail.files.files.length} files`
+            : allUnitsViewed
+              ? "every unit read"
+              : `${analyzedUnits.length} ${analyzedUnits.length === 1 ? "unit" : "units"} · ${overall.viewed}/${overall.total} hunks read`}
+        </span>
+        {/* The way in to every key, in sight: a shortcut list only reachable
+            by a key nobody knows about would never be found. */}
         <button
           type="button"
-          className="flex-none px-2 pb-2"
+          className="flex h-[18px] min-w-[18px] flex-none items-center justify-center rounded border px-1 font-mono text-2xs hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
+          style={{ color: "var(--fg-faint)", borderColor: "var(--border)" }}
+          data-tip="Keyboard shortcuts"
+          data-tip-key="?"
+          aria-label="Keyboard shortcuts"
+          data-testid="shortcuts-button"
+          onClick={() => setShowShortcuts(true)}
+        >
+          ?
+        </button>
+        <button
+          type="button"
+          className="flex-none rounded p-0.5 hover:bg-[var(--bg-hover)]"
           style={{ color: "var(--fg-faint)" }}
           data-tip={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
+          data-tip-key="b"
           aria-label={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
           onClick={toggleSidebar}
         >
           <IconChevron width={11} height={11} style={{ transform: "rotate(180deg)" }} />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden pb-2">
         {tab === "units" ? (
           <CodeLinkContext.Provider value={textLinks}>
             <UnitSidebar
               detail={detail}
               selectedUnitId={selectedUnitId}
               onSelect={selectUnitFromSidebar}
-              onReclassify={reclassifyUnit}
-              onQuote={quote}
               matchCounts={unitMatchCounts}
               onlyUnitIds={sinceUnitIds}
               changedUnits={changedUnits}
+              renderBrief={renderBrief}
+              onToggleUnitViewed={(u, viewed) =>
+                viewed
+                  ? u.id === selectedUnitId
+                    ? markUnitViewed(u.id)
+                    : setUnitViewed.mutate(u.id)
+                  : setHunksViewed.mutate({ hunkIds: hunkIdsOf(u), viewed: false })
+              }
+              markingUnitId={setUnitViewed.isPending ? setUnitViewed.variables : null}
             />
           </CodeLinkContext.Provider>
         ) : (
@@ -1427,80 +1506,8 @@ export function PrView() {
           />
         )}
       </div>
-      <div
-        ref={shortcutsRef}
-        className="relative flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
-        style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
-      >
-        <button
-          type="button"
-          className="flex items-center gap-1 rounded transition-colors hover:text-[var(--fg-muted)]"
-          aria-expanded={showShortcuts}
-          data-testid="shortcuts-toggle"
-          onClick={() => setShowShortcuts((v) => !v)}
-        >
-          <IconChevron open={showShortcuts} width={9} height={9} />
-          keyboard shortcuts
-        </button>
-        {/* A card floating over the desk, not a strip that eats the sidebar.
-            Portaled: the sidebar pane clips its overflow. */}
-        {showShortcuts && shortcutsAt
-          ? createPortal(
-          <div
-            ref={shortcutsPopRef}
-            role="dialog"
-            aria-label="Keyboard shortcuts"
-            data-testid="shortcuts-popover"
-            className="surface elev-3 fixed z-50 grid w-[max-content] max-w-[calc(100vw-2rem)] grid-cols-1 gap-x-8 gap-y-3 rounded-lg p-3 sm:grid-cols-[repeat(3,max-content)]"
-            style={{ left: shortcutsAt.left, bottom: shortcutsAt.bottom }}
-          >
-            <ShortcutGroup
-              title="Reading"
-              rows={[
-                [["j", "k"], "next / previous hunk"],
-                [["h", "H"], "next / previous heart hunk"],
-                [["J", "K"], "next / previous unit"],
-                [["v"], "mark hunk viewed"],
-                [["V"], "mark unit viewed"],
-                [["space", "⇧ space"], "next / previous unviewed hunk"],
-                [["z"], "fold / unfold"],
-                [["Z"], "fold / show skippable hunks"],
-                [["n"], "comment (then a line number)"],
-                [["a"], "comments for GitHub / for agent"],
-              ]}
-            />
-            <ShortcutGroup
-              title="View"
-              rows={[
-                [["d"], viewMode === "split" ? "unified diff" : "split diff"],
-                [["w"], wrap ? "stop wrapping" : "wrap long lines"],
-                [["s"], "summary"],
-                [["m", "c", "r"], "comments, chat, review"],
-                [["b"], "sidebar"],
-                [["/"], "search"],
-                [["⌘", "click"], "go to definition"],
-              ]}
-            />
-            <ShortcutGroup
-              title="In a comment"
-              rows={[
-                [["⌘↵"], "save"],
-                [["⌘⇧↵"], "ask chat"],
-                [["⌘⇧P"], "preview"],
-                [["⌘B", "⌘I", "⌘E", "⌘K"], "bold, italic, code, link"],
-                [["⌘⇧7", "⌘⇧8"], "numbered / bullet list"],
-                [["⌘⇧."], "quote"],
-                [["⌘⇧S"], "suggest a change"],
-              ]}
-            />
-          </div>,
-          document.body,
-        )
-        : null}
-      </div>
     </>
   );
-
 
   const renderComposer = (variant: "inline" | "floating") =>
     commentTarget ? (
@@ -1606,21 +1613,49 @@ export function PrView() {
         }}
         onRefresh={() => refresh.mutate(undefined, { onSuccess: setReport })}
         onSync={() => sync.mutate(undefined, { onSuccess: setSyncResult })}
+        view={overview ? "overview" : tab}
+        onView={(v) => {
+          if (v === "overview") setOverview(true);
+          else {
+            setOverview(false);
+            setTab(v);
+          }
+        }}
+        viewOptions={
+          <ViewOptions
+            diff={!overview}
+            viewMode={viewMode}
+            onViewMode={setViewMode}
+            wrap={wrap}
+            onWrap={setWrap}
+            narrow={narrow}
+            foldSkippable={settings.foldSkippableHunks}
+            onFoldSkippable={(v) => updateSettings({ foldSkippableHunks: v })}
+            hideReviewed={settings.hideReviewedUnits}
+            onHideReviewed={(v) => updateSettings({ hideReviewedUnits: v })}
+            threads={remoteThreads ?? []}
+            posts={postAuthors}
+            filters={threadFilters.filters}
+            hiddenThreads={threadGroups.hidden}
+            onShowResolved={threadFilters.setShowResolved}
+            onShowAiReviewers={threadFilters.setShowAiReviewers}
+            onBotHidden={threadFilters.setBotHidden}
+          />
+        }
+        onShowShortcuts={() => setShowShortcuts(true)}
       />
 
-      {showStalenessHint && staleness.data ? (
-        <StalenessHint
-          result={staleness.data}
-          refreshing={refresh.isPending}
-          onRefresh={() => refresh.mutate(undefined, { onSuccess: setReport })}
-          onDismiss={() => setDismissedStaleKey(stalenessDismissKey(staleness.data))}
-        />
-      ) : null}
       {refresh.error ? (
         <ErrorBar message={`refresh failed: ${(refresh.error as Error).message}`} />
       ) : null}
       {sync.error ? <ErrorBar message={`sync failed: ${(sync.error as Error).message}`} /> : null}
-      {report ? <MigrationReportPanel report={report} onDismiss={() => setReport(null)} /> : null}
+      {report ? (
+        <MigrationReportPanel
+          report={report}
+          summary={detail.state.revisions?.find((r) => r.revision === report.revision)?.summary}
+          onDismiss={() => setReport(null)}
+        />
+      ) : null}
       {syncResult ? (
         <SyncResultPanel result={syncResult} onDismiss={() => setSyncResult(null)} />
       ) : null}
@@ -1731,38 +1766,51 @@ export function PrView() {
           onCancel={() => cancelAnalysis.mutate()}
         />
       ) : null}
-      {summary || description || threadsQuery.data?.reviews?.length || threadsQuery.data?.conversation?.length ? (
-        <SummaryStrip
-          summary={summary}
-          description={description}
-          author={detail.meta.author}
-          authorAvatarUrl={detail.meta.authorAvatarUrl}
-          reviews={threadsQuery.data?.reviews}
-          conversation={threadsQuery.data?.conversation}
-          filters={threadFilters.filters}
-          revisions={revisionContext}
-          viewed={overall.viewed}
-          total={overall.total}
-          open={summaryOpen}
-          onToggle={() => setSummaryOpen((v) => !v)}
-          onClose={() => setSummaryOpen(false)}
-        />
-      ) : null}
-
-      {/* The workspace: the diff is the desk — it runs to the edges, unframed —
-          and the sidebar and side panels are instruments resting on it:
-          bordered, rounded, a hair of gutter around each. Only things that
-          truly float (the summary panel, pills, menus) cast a shadow. */}
+      {/* The workspace: the guide column, the diff and the right panel sit
+          flat, side by side, one rule between each. Only things that truly
+          float (the drawer, popovers, menus) are cards with a shadow. */}
       <div className="workspace relative flex min-h-0 flex-1" style={{ background: "var(--bg)" }}>
-        {sidebarMode === "column" ? (
+        {overview ? (
+          <main className="relative min-w-0 flex-1">
+            <CodeLinkContext.Provider value={textLinks}>
+              <Overview
+                detail={detail}
+                summary={summary}
+                description={description}
+                reviews={threadsQuery.data?.reviews}
+                conversation={threadsQuery.data?.conversation}
+                filters={threadFilters.filters}
+                revisions={revisionContext}
+                onOpenUnit={openUnitFromText}
+                onOpenFile={openFileFromText}
+              />
+            </CodeLinkContext.Provider>
+          </main>
+        ) : null}
+        {!overview && sidebarMode === "column" ? (
+          // Flat against the diff, one rule between them; the rule is the
+          // handle that sets the column's width.
           <nav
-            className="pane m-[7px] mr-0 rounded-br-none flex flex-none flex-col overflow-hidden transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
+            className={`relative flex flex-none flex-col overflow-hidden border-r ${
+              sidebarDrag === null ? "transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0" : ""
+            }`}
+            data-testid="guide-column"
             style={{
-              width: sidebarCollapsed ? "var(--sidebar-rail-width)" : "19rem",
+              width: sidebarCollapsed ? "var(--sidebar-rail-width)" : sidebarWidth,
               borderColor: "var(--border)",
               background: "var(--bg-raised)",
             }}
           >
+            {sidebarCollapsed ? null : (
+              <div
+                onMouseDown={startSidebarResize}
+                onDoubleClick={() => updateSettings({ sidebarWidth: DEFAULT_SIDEBAR_WIDTH })}
+                data-tip="Drag to resize; double-click for the default width"
+                data-testid="sidebar-resize"
+                className="absolute -right-px top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-[var(--border-strong)]"
+                style={sidebarDrag === null ? undefined : { background: "var(--accent)" }}
+              />
+            )}
             {sidebarCollapsed ? (
               <SidebarRail
                 detail={detail}
@@ -1774,17 +1822,19 @@ export function PrView() {
                 expandLabel="Expand sidebar"
               />
             ) : (
-              <div className="flex h-full w-[19rem] flex-none flex-col">{sidebarBody}</div>
+              <div className="flex h-full flex-none flex-col" style={{ width: sidebarWidth }}>
+                {sidebarBody}
+              </div>
             )}
           </nav>
         ) : null}
 
-        {sidebarMode === "drawer" ? (
+        {!overview && sidebarMode === "drawer" ? (
           // The rail is the drawer mode's resting state — always present,
           // never unmounted — with the full sidebar floating over it (and
           // over the diff) exactly like it floats when opened below.
           <nav
-            className="pane m-[7px] mr-0 rounded-br-none flex flex-none flex-col overflow-hidden"
+            className="flex flex-none flex-col overflow-hidden border-r"
             style={{
               width: "var(--sidebar-rail-width)",
               borderColor: "var(--border)",
@@ -1803,7 +1853,7 @@ export function PrView() {
           </nav>
         ) : null}
 
-        {sidebarMode === "drawer" && drawerOpen ? (
+        {!overview && sidebarMode === "drawer" && drawerOpen ? (
           <>
             {/* Transparent scrim: tapping anywhere outside the drawer closes it. */}
             <div
@@ -1812,7 +1862,7 @@ export function PrView() {
               onClick={() => setDrawerOpen(false)}
             />
             <nav
-              className="pane elev-3 absolute inset-y-[7px] left-[7px] z-40 flex w-[19rem] flex-none flex-col overflow-hidden"
+              className="pane elev-3 absolute inset-y-[7px] left-[7px] z-40 flex w-[22rem] max-w-[calc(100%-14px)] flex-none flex-col overflow-hidden"
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
             >
               {sidebarBody}
@@ -1820,204 +1870,60 @@ export function PrView() {
           </>
         ) : null}
 
+        {/* Unmounted under the overview, not hidden: the diff's keys (j, k, v)
+            must not act on hunks the reader cannot see. */}
+        {overview ? null : (
         <main ref={mainRef} className="relative flex min-w-0 flex-1 flex-col">
-          {tab === "units" && selectedUnit ? (
-            <CodeLinkContext.Provider value={textLinks}>
+          {tab === "units" && selectedUnit && !briefInSidebar ? (
             <div
-              ref={setHeaderEl}
               data-testid="unit-header"
-              data-collapsed={headerCollapsed ? "true" : "false"}
-              // The unit's brief rests on the desk like the other instruments;
-              // the file headers below it belong to the desk itself.
-              // px-2 inside a 6px margin + 1px border lands the title on the
-              // same x as the file path in the rows below.
-              className={`pane m-[7px] flex-none px-2 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
-                headerCollapsed ? "cursor-pointer py-1" : "py-2"
-              }`}
+              className="flex flex-none items-center gap-2 border-b px-3 py-1.5"
               style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
-              // The whole condensed row is the target that brings the prose
-              // back — except where a control already owns the click.
-              onClick={(e) => {
-                if (!headerCollapsed) return;
-                if ((e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
-                setPeek(true);
-              }}
             >
-              <div
-                className={`flex items-center gap-2 ${
-                  headerCollapsed ? "flex-nowrap overflow-hidden" : "flex-wrap"
-                }`}
+              <button
+                type="button"
+                className="flex-none rounded p-0.5 hover:bg-[var(--bg-hover)]"
+                style={{ color: "var(--fg-faint)" }}
+                data-tip="Open the guide"
+                data-tip-key="b"
+                aria-label="Open the guide"
+                onClick={openSidebar}
               >
-                {diffScrolled ? (
-                  <button
-                    type="button"
-                    data-testid="unit-header-toggle"
-                    className="flex-none"
-                    style={{ color: "var(--fg-faint)" }}
-                    aria-expanded={!headerCollapsed}
-                    data-tip={headerCollapsed ? "Show unit details" : "Hide unit details"}
-                    aria-label={headerCollapsed ? "Show unit details" : "Hide unit details"}
-                    onClick={() => setPeek((v) => !v)}
-                  >
-                    <IconChevron open={!headerCollapsed} width={11} height={11} />
-                  </button>
-                ) : null}
-                <h2
-                  className={`min-w-0 flex-1 basis-64 text-[13px] font-semibold leading-tight ${
-                    headerCollapsed ? "truncate" : "line-clamp-2"
-                  }`}
-                  data-tip={selectedUnit.title}
-                >
-                  <InlineMarkdown text={selectedUnit.title} />
-                </h2>
-                <div className="flex flex-none flex-wrap items-center gap-2">
-                  {isGeneratedUnit(selectedUnit) ? null : <KindChip kind={selectedUnit.kind} />}
-                  {/* The expanded header's "why must-read:" line already names it. */}
-                  {headerCollapsed || !selectedUnit.attentionWhy ? (
-                    <AttentionChip attention={selectedUnit.attention} />
-                  ) : null}
-                  <RiskFlags flags={selectedUnit.riskFlags} />
-                  {changedUnits?.ids.has(selectedUnit.id) ? <ChangedBadge tip={changedUnits.tip} /> : null}
-                  {/* Collapsed, the findings list is gone — the badge is what
-                      keeps a warning from disappearing with it. */}
-                  {headerCollapsed ? <FindingsBadge unit={selectedUnit} /> : null}
-                  {headerCollapsed && highlightActive ? (
-                    <button
-                      type="button"
-                      className="changed-in-chip chip"
-                      data-testid="highlight-chip"
-                      data-tip={`Showing the lines ${revisionsLabel(highlightRevisions, " + ")} changed; click to clear`}
-                      data-tip-key="esc"
-                      onClick={clearHighlight}
-                    >
-                      {revisionsLabel(highlightRevisions, " + ")} changes · clear
-                    </button>
-                  ) : null}
-                </div>
-                <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
-                  {showNarrowNote ? <NarrowPaneNote /> : null}
-                  {threadFilterMenu}
-                  <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                  <WrapToggle wrap={wrap} onChange={setWrap} />
-                  {progress?.skipped ? (
-                    <button
-                      type="button"
-                      className="text-2xs tabular-nums"
-                      style={{ color: "var(--fg-faint)", textDecoration: settings.foldSkippableHunks ? "line-through" : undefined }}
-                      data-testid="unit-skipped-count"
-                      data-folded={settings.foldSkippableHunks ? "true" : "false"}
-                      data-tip={
-                        settings.foldSkippableHunks
-                          ? "Skippable hunks are folded shut; click or Z shows them muted instead"
-                          : "Hunks the analysis says you can skip; shown muted, they count toward nothing. Click or Z folds them shut"
-                      }
-                      onClick={() => updateSettings({ foldSkippableHunks: !settings.foldSkippableHunks })}
-                    >
-                      {progress.skipped} skippable
-                    </button>
-                  ) : null}
-                  {progress ? <Progress viewed={progress.viewed} total={progress.total} /> : null}
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={setUnitViewed.isPending || (progress?.viewed ?? 0) === (progress?.total ?? 0)}
-                    onClick={() =>
-                      setUnitViewed.mutate(selectedUnit.id, {
-                        onSuccess: () => advanceAfterUnitViewed(selectedUnit.id),
-                      })
+                <IconChevron width={11} height={11} />
+              </button>
+              <span className="flex-none text-xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+                {unitNumbers.get(selectedUnit.id) ?? ""}
+              </span>
+              <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold" data-tip={selectedUnit.title}>
+                <InlineMarkdown text={selectedUnit.title} />
+              </h2>
+              {progress ? (
+                <>
+                  <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="hunk-progress">
+                    {progress.viewed}/{progress.total}
+                  </span>
+                  <ViewedBox
+                    state={
+                      progress.total > 0 && progress.viewed === progress.total
+                        ? "all"
+                        : progress.viewed > 0
+                          ? "some"
+                          : "none"
                     }
-                  >
-                    {/* Same action; for the generated unit it is the one-click way through. */}
-                    {setUnitViewed.isPending
-                      ? "marking…"
-                      : isGeneratedUnit(selectedUnit)
-                        ? "mark all viewed"
-                        : "mark unit viewed"}
-                  </button>
-                  {allUnitsViewed ? (
-                    <span
-                      className="text-2xs"
-                      data-testid="all-units-viewed"
-                      style={{ color: "var(--fg-faint)" }}
-                    >
-                      all units viewed
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-              {/* 0fr -> 1fr animates to the content's real height without
-                  anyone having to measure it. */}
-              <div
-                className="grid transition-[grid-template-rows,opacity,visibility] duration-[140ms] ease-out motion-reduce:transition-none"
-                style={{
-                  gridTemplateRows: headerCollapsed ? "0fr" : "1fr",
-                  opacity: headerCollapsed ? 0 : 1,
-                  // Clipped is not hidden: without this the summary's "show all"
-                  // button stays in the tab order behind a 0px row. `visibility`
-                  // flips at the *end* of the transition on the way out and at
-                  // the start on the way in, so it costs nothing visually.
-                  visibility: headerCollapsed ? "hidden" : "visible",
-                }}
-                aria-hidden={headerCollapsed}
-              >
-                <div className="min-h-0 overflow-hidden">
-                  <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
-                    <InlineMarkdown text={selectedUnit.summary} />
-                  </p>
-                  {isGeneratedUnit(selectedUnit) ? (
-                    <GeneratedUnitFileList
-                      files={generatedUnitFiles(detail.files.files, selectedUnit)}
-                      onOpen={(path) => {
-                        const first = detail.files.files
-                          .find((f) => f.path === path)
-                          ?.hunks.find((h) => selectedUnit.hunks.some((x) => x.id === h.id));
-                        if (first) setJumpToHunk({ hunkId: first.id, nonce: Date.now() });
-                      }}
-                    />
-                  ) : null}
-                  <UnitChangelog
-                    changelog={selectedUnit.changelog}
-                    currentRevision={detail.state.revision}
-                    activeRevisions={highlightRevisions}
-                    onSelectRevision={toggleHighlight}
+                    tip={
+                      progress.viewed === progress.total ? "Mark the unit as not viewed" : "Mark the whole unit viewed"
+                    }
+                    kbd="V"
+                    onToggle={() =>
+                      progress.viewed === progress.total
+                        ? setHunksViewed.mutate({ hunkIds: hunkIdsOf(selectedUnit), viewed: false })
+                        : markUnitViewed(selectedUnit.id)
+                    }
+                    busy={setUnitViewed.isPending && setUnitViewed.variables === selectedUnit.id}
                   />
-                  {highlightActive ? (
-                    <HighlightSummary
-                      revisions={highlightRevisions}
-                      highlight={highlight}
-                      failed={lineChanges.failed}
-                      onClear={clearHighlight}
-                    />
-                  ) : null}
-                  {selectedUnit.attentionWhy ? (
-                    <p
-                      className="mt-1.5 flex max-w-4xl items-start gap-2 text-xs leading-5"
-                      style={{ color: "var(--fg)" }}
-                      data-testid="unit-why"
-                    >
-                      <span className="flex-none pt-px">
-                        <AttentionChip attention={selectedUnit.attention} />
-                      </span>
-                      <span className="min-w-0">
-                        <InlineMarkdown text={selectedUnit.attentionWhy} />
-                      </span>
-                    </p>
-                  ) : null}
-                  {heartOf(selectedUnit).length ? (
-                    <UnitHeart
-                      segments={heartSegments(selectedUnit)}
-                      files={detail.files.files}
-                      onJump={(hunkId, line) => {
-                        setFocusedHunkId(hunkId);
-                        setJumpToHunk({ hunkId, nonce: Date.now(), line, side: "RIGHT" });
-                      }}
-                    />
-                  ) : null}
-                  <UnitFindings unitId={selectedUnit.id} findings={selectedUnit.findings} />
-                </div>
-              </div>
+                </>
+              ) : null}
             </div>
-            </CodeLinkContext.Provider>
           ) : null}
 
           {tab === "units" && unplacedSelected ? (
@@ -2030,21 +1936,14 @@ export function PrView() {
               onAnalyze={() => startAnalysis.mutate()}
               markingViewed={setHunksViewed.isPending}
               onMarkViewed={() => setHunksViewed.mutate({ hunkIds: unplaced, viewed: true })}
-              controls={
-                <>
-                  {showNarrowNote ? <NarrowPaneNote /> : null}
-                  {threadFilterMenu}
-                  <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                  <WrapToggle wrap={wrap} onChange={setWrap} />
-                </>
-              }
+              controls={null}
             />
           ) : null}
 
           {tab === "files" && selectedPath ? (
             // The file's brief rests on the desk like a unit's: the header,
             // and under it the comments on the file as a whole.
-            <div className="pane m-[7px] flex flex-none flex-col overflow-hidden">
+            <div className="flex flex-none flex-col overflow-hidden border-b" style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}>
             <div
               ref={setHeaderEl}
               data-testid="file-header"
@@ -2086,10 +1985,6 @@ export function PrView() {
                   comment
                 </button>
                 {selectedFile ? generatedMenuFor(selectedFile) : null}
-                {showNarrowNote ? <NarrowPaneNote /> : null}
-                {threadFilterMenu}
-                  <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                <WrapToggle wrap={wrap} onChange={setWrap} />
               </div>
             </div>
           {/* The pane below is virtualized and shows no file row in this tab,
@@ -2163,10 +2058,13 @@ export function PrView() {
               skip={skip}
               labels={labels}
               highlight={tab === "units" ? highlight : null}
-              unitForHunkId={unitForHunkId}
+              // In the guide every hunk on screen is the open unit's; naming it
+              // on each header only repeats the sidebar.
+              unitForHunkId={tab === "files" ? unitForHunkId : undefined}
               onUnitClick={onHunkUnitClick}
               renderFileMenu={generatedMenuFor}
               showFileRows={tab === "units"}
+              endOfList={unitEnd}
               emptyMessage={
                 tab === "units"
                   ? "Select a review unit to read its hunks."
@@ -2179,6 +2077,7 @@ export function PrView() {
             renderComposer("floating")
           ) : null}
         </main>
+        )}
 
 
         {dock ? (
@@ -2305,6 +2204,54 @@ export function PrView() {
           </RightDock>
         ) : null}
       </div>
+      {showShortcuts ? (
+        <Modal title="Keyboard shortcuts" maxWidth={760} onClose={() => setShowShortcuts(false)} testId="shortcuts-popover">
+          <div className="grid grid-cols-1 gap-x-10 gap-y-4 p-4 sm:grid-cols-[repeat(3,max-content)]">
+            <ShortcutGroup
+              title="Reading"
+              rows={[
+                [["j", "k"], "next / previous hunk"],
+                [["h", "H"], "next / previous heart hunk"],
+                [["J", "K"], "next / previous unit"],
+                [["v"], "mark hunk viewed"],
+                [["V"], "mark unit viewed"],
+                [["space", "⇧ space"], "next / previous unviewed hunk"],
+                [["z"], "fold / unfold"],
+                [["Z"], "fold / show skippable hunks"],
+                [["n"], "comment (then a line number)"],
+                [["a"], "comments for GitHub / for agent"],
+              ]}
+            />
+            <ShortcutGroup
+              title="View"
+              rows={[
+                [["s"], "overview"],
+                [["g"], "guide"],
+                [["f"], "files"],
+                [["d"], viewMode === "split" ? "unified diff" : "split diff"],
+                [["w"], wrap ? "stop wrapping" : "wrap long lines"],
+                [["m", "c", "r"], "comments, chat, review"],
+                [["b"], "sidebar"],
+                [["/"], "search"],
+                [["⌘", "click"], "go to definition"],
+                [["?"], "this list"],
+              ]}
+            />
+            <ShortcutGroup
+              title="In a comment"
+              rows={[
+                [["⌘↵"], "save"],
+                [["⌘⇧↵"], "ask chat"],
+                [["⌘⇧P"], "preview"],
+                [["⌘B", "⌘I", "⌘E", "⌘K"], "bold, italic, code, link"],
+                [["⌘⇧7", "⌘⇧8"], "numbered / bullet list"],
+                [["⌘⇧."], "quote"],
+                [["⌘⇧S"], "suggest a change"],
+              ]}
+            />
+          </div>
+        </Modal>
+      ) : null}
     </div>
     </AttachmentContext.Provider>
   );
@@ -2443,60 +2390,6 @@ function ErrorBar({ message, testId }: { message: string; testId?: string }) {
       style={{ background: "var(--risk-soft)", color: "var(--risk)", borderColor: "var(--border)" }}
     >
       {message}
-    </div>
-  );
-}
-
-/**
- * The unit's heart: the segments its logic lives in, each with the
- * analysis's one-sentence why. A button per segment lands the reader on its
- * first line; the pane draws the same rows with a bar, so this is the index
- * and the diff the map.
- */
-function UnitHeart({
-  segments,
-  files,
-  onJump,
-}: {
-  segments: (HeartSegment & { id: string })[];
-  files: FileEntry[];
-  onJump: (hunkId: string, line?: number) => void;
-}) {
-  const pathOf = (hunkId: string) => files.find((f) => f.hunks.some((h) => h.id === hunkId))?.path;
-  return (
-    <div className="mt-1.5 max-w-4xl text-xs" data-testid="unit-heart">
-      <div className="flex items-center gap-1.5" style={{ color: "var(--heart)" }}>
-        <IconHeart width={12} height={12} className="flex-none" />
-        <span>Heart</span>
-        <span style={{ color: "var(--fg-faint)" }}>· where the logic lives</span>
-      </div>
-      <ol className="mt-1 space-y-0.5 border-l pl-3" style={{ borderColor: "var(--heart)" }}>
-        {segments.map((h, i) => {
-          const path = pathOf(h.id);
-          return (
-            <li key={`${h.id}:${i}`}>
-              <button
-                type="button"
-                data-testid={`heart-jump-${h.id}`}
-                data-segment={i}
-                className="changelog-row -mx-1.5 flex w-[calc(100%+0.75rem)] items-baseline gap-2 rounded px-1.5 text-left leading-[18px]"
-                onClick={() => onJump(h.id, h.lines?.[0])}
-                data-tip={path ? `Go to this hunk in ${path}` : "Go to this hunk"}
-              >
-                {path ? (
-                  <span className="flex-none font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
-                    {baseName(path)}
-                    {h.lines ? `:${h.lines[0]}-${h.lines[1]}` : ""}
-                  </span>
-                ) : null}
-                <span style={{ color: "var(--fg)" }}>
-                  <InlineMarkdown text={h.why} />
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
     </div>
   );
 }

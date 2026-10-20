@@ -133,6 +133,8 @@ export function buildAnalysisExport(key: PrKey, root: string): AnalysisExport {
     exportedAt: new Date().toISOString(),
     summary: state.summary,
     units,
+    ...(state.flow ? { flow: state.flow } : {}),
+    ...(state.fileNotes ? { fileNotes: state.fileNotes } : {}),
   });
 }
 
@@ -195,9 +197,24 @@ export function applyAnalysisImport(
 
   const unassigned = [...currentIds].filter((id) => !matched.has(id));
 
+  // The flow keeps only the units that made it across.
+  const kept = new Set(units.map((u) => u.id));
+  const flow = envelope.flow
+    ? {
+        ...envelope.flow,
+        participants: envelope.flow.participants.map((p) => ({ ...p, units: p.units.filter((u) => kept.has(u)) })),
+        steps: envelope.flow.steps.map((s) => ({ ...s, units: s.units.filter((u) => kept.has(u)) })),
+      }
+    : undefined;
+  // Notes on files this revision no longer has would be refused: keep the rest.
+  const here = new Set(readFilesJson(key, loadState(key, root).currentRevision, root).files.map((f) => f.path));
+  const fileNotes = envelope.fileNotes
+    ? Object.fromEntries(Object.entries(envelope.fileNotes).filter(([p]) => here.has(p)))
+    : undefined;
+
   const { state: next } = setAnalysis(
     key,
-    { summary: envelope.summary, units, unassigned },
+    { summary: envelope.summary, units, unassigned, flow, fileNotes },
     { origin: "import" },
     root,
   );

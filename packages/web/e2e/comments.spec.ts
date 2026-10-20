@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 test("compose on a line: type, bold with the chord, preview, save shows the marker", async ({ page }) => {
   const row = await openComposerOnLine(page, 10);
   const composer = page.getByTestId("comment-composer");
-  await expect(composer).toContainText("on line 10");
+  await expect(composer.getByTestId("composer-textarea")).toHaveAttribute("placeholder", /on line 10…$/);
 
   const textarea = page.getByTestId("composer-textarea");
   await textarea.fill("needs a test");
@@ -45,7 +45,7 @@ test("a gutter range opens the composer on lines A–B, and 'Suggest a change' p
   await expect(page.getByTestId("quote-selection")).toContainText("reconcile.ts:11–13");
   await page.getByTestId("comment-selection-button").click();
   const composer = page.getByTestId("comment-composer");
-  await expect(composer).toContainText("on lines 11–13");
+  await expect(composer.getByTestId("composer-textarea")).toHaveAttribute("placeholder", /on lines 11–13…$/);
 
   await page.getByTestId("composer-format-suggestion").click();
   const value = await page.getByTestId("composer-textarea").inputValue();
@@ -87,7 +87,7 @@ test("`n` opens the composer: on the gutter range, else on the focused hunk's fi
   await expect(page.getByTestId("quote-selection")).toContainText("reconcile.ts:11–13");
   await page.keyboard.press("n");
   const composer = page.getByTestId("comment-composer");
-  await expect(composer).toContainText("on lines 11–13");
+  await expect(composer.getByTestId("composer-textarea")).toHaveAttribute("placeholder", /on lines 11–13…$/);
   await expect(page.getByTestId("quote-selection")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(composer).toHaveCount(0);
@@ -100,7 +100,7 @@ test("`n` opens the composer: on the gutter range, else on the focused hunk's fi
   const prefilled = await prompt.inputValue();
   expect(prefilled).toMatch(/^\d+$/);
   await page.keyboard.press("Enter");
-  await expect(composer).toContainText(`on line ${prefilled}`);
+  await expect(composer.getByTestId("composer-textarea")).toHaveAttribute("placeholder", new RegExp(`on line ${prefilled}…$`));
   await page.keyboard.press("Escape");
   await expect(composer).toHaveCount(0);
 
@@ -108,7 +108,7 @@ test("`n` opens the composer: on the gutter range, else on the focused hunk's fi
   await page.keyboard.press("n");
   await prompt.fill("11-13");
   await page.keyboard.press("Enter");
-  await expect(composer).toContainText("on lines 11–13");
+  await expect(composer.getByTestId("composer-textarea")).toHaveAttribute("placeholder", /on lines 11–13…$/);
   await page.keyboard.press("Escape");
 
   // A line outside the diff is refused, and the prompt stays open to fix it.

@@ -223,6 +223,12 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
                 color: "var(--fg)",
                 fontSize: "0.92em",
                 border: "1px solid var(--border)",
+                // A long identifier (`Factory.BuildAssociator`) has no break
+                // point of its own: let it wrap rather than run past its box,
+                // and keep the chip's edges on every line it spans.
+                overflowWrap: "anywhere",
+                boxDecorationBreak: "clone",
+                WebkitBoxDecorationBreak: "clone",
               }}
             >
               {node.text}

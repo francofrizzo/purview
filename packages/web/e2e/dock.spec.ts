@@ -51,3 +51,26 @@ test("one dock on the right: comments, chat and review are its tabs, one at a ti
   await page.getByTestId("topbar-finish-review").click();
   await expect(page.getByTestId("right-dock")).toHaveCount(0);
 });
+
+test("the chat's ⋯ menu opens upward, on screen, from the bottom of the panel", async ({ page }) => {
+  await page.keyboard.press("c");
+  await page.getByTestId("chat-menu").click();
+  await expect(page.getByTestId("chat-repo-settings-link")).toBeInViewport();
+  await expect(page.getByTestId("chat-clear")).toBeInViewport();
+});
+
+test("the chat at work shows on the dock button only while the panel is shut, and the button keeps its width", async ({ page }) => {
+  const button = page.getByTestId("topbar-comments");
+  const width = (await button.boundingBox())!.width;
+  await page.keyboard.press("c");
+  await page.keyboard.type("what is risky here?");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("chat-streaming")).toBeVisible();
+  // Open: the Chat tab says it, so the button doesn't.
+  await expect(page.getByTestId("topbar-chat-busy")).toHaveCount(0);
+  await button.click();
+  await expect(page.getByTestId("topbar-chat-busy")).toBeVisible();
+  expect(Math.abs((await button.boundingBox())!.width - width)).toBeLessThanOrEqual(0.5);
+  await button.click();
+  await expect(page.getByTestId("topbar-chat-busy")).toHaveCount(0);
+});

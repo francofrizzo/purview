@@ -58,6 +58,12 @@ test.describe("folding keeps the header where the reader sees it", () => {
   test("the last hunk of a unit can scroll all the way to the top", async ({ page }) => {
     for (const id of RECONCILE_HUNKS.slice(1)) await step(page, "j", id);
     await expectUnderFileHeader(page, LAST);
+    // And that is as far as the pane scrolls: no blank room past it to
+    // scroll the last hunk's code away into.
+    const atTop = await settledScrollTop(page);
+    await scroller(page).evaluate((sc) => sc.scrollTo({ top: sc.scrollHeight, behavior: "instant" }));
+    await page.waitForTimeout(400);
+    expect(Math.abs((await settledScrollTop(page)) - atTop)).toBeLessThanOrEqual(3);
     await expect(page.locator('[data-sticky="true"] [data-testid="file-header-src/jobs/reconcileNightly.ts"]')).toBeVisible();
     // Nothing further to go to: j stays put.
     await page.keyboard.press("j");
@@ -80,11 +86,17 @@ test.describe("folding keeps the header where the reader sees it", () => {
     await expect(page.getByTestId(`gap-src/billing/reconcile.ts:${C}`)).toContainText("28 hidden lines");
     await expect(page.getByTestId("gap-src/billing/reconcile.ts:a1b2c3d4e5f60010")).toContainText("more of the file below");
 
-    // charge.ts: one hunk in each of the two must-read units, the same gap between them in both.
+    // charge.ts: one hunk in each of the two must-read units, the same gap
+    // between them in both. Both start read, so folded, and a gap that only
+    // touches folded hunks draws nothing until one of them opens.
     await openUnit(page, UNITS.charge);
+    await expect(page.getByTestId("gap-src/billing/charge.ts:^")).toHaveCount(0);
+    await clickAt(hunkHeader(page, "a1b2c3d4e5f60001").getByTestId("hunk-toggle-a1b2c3d4e5f60001"));
     await expect(page.getByTestId("gap-src/billing/charge.ts:^")).toContainText("17 hidden lines");
     await expect(page.getByTestId("gap-src/billing/charge.ts:a1b2c3d4e5f60001")).toContainText("24 hidden lines");
     await openUnit(page, UNITS.retry);
+    await expect(page.getByTestId("gap-src/billing/charge.ts:a1b2c3d4e5f60001")).toHaveCount(0);
+    await clickAt(hunkHeader(page, "a1b2c3d4e5f60002").getByTestId("hunk-toggle-a1b2c3d4e5f60002"));
     await expect(page.getByTestId("gap-src/billing/charge.ts:a1b2c3d4e5f60001")).toContainText("24 hidden lines");
     await expect(page.getByTestId("gap-src/billing/charge.ts:a1b2c3d4e5f60002")).toContainText("more of the file below");
   });

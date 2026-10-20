@@ -12,6 +12,7 @@ import {
   buildSplitRows,
   heartRowIndices,
   hunkLabel,
+  hunkPlace,
   languageFor,
   type CharRange,
   type DiffRow,
@@ -79,7 +80,6 @@ import { DiffOfDiffs } from "./DiffOfDiffs";
 import { GeneratedTag } from "./Generated";
 import { targetKey, type CommentTarget } from "./Drafts";
 import { CommentBubble, InlineCommentList, type InlineCommentActions } from "./InlineComments";
-import { MiddleTruncate } from "./Truncate";
 import {
   IconCheck,
   IconChevron,
@@ -225,6 +225,8 @@ export interface DiffPaneProps {
   /** Files tab shows a single file and already names it in the pane header. */
   showFileRows?: boolean;
   emptyMessage?: string;
+  /** drawn in the room left past the last hunk: what comes after this list */
+  endOfList?: ReactNode;
   /** Quote affordances — omitted, the diff has no chat integration at all. */
   onQuote?: (ref: ChatRef) => void;
   /** Search hits for every row of the whole diff, keyed `hunkId:lineIdx`. */
@@ -343,6 +345,8 @@ function findFileRow(rows: FlatRow[], hunkIdx: number): number {
   for (let i = hunkIdx; i >= 0; i--) if (rows[i].type === "file") return i;
   return -1;
 }
+/** Height of the end-of-list block drawn past the last hunk. */
+const END_ROOM = 120;
 
 export function DiffPane({
   detail,
@@ -367,6 +371,7 @@ export function DiffPane({
   onNarrowChange,
   showFileRows = true,
   emptyMessage = "Nothing to show.",
+  endOfList,
   onQuote,
   searchMarks,
   activeMatch,
@@ -1122,6 +1127,12 @@ export function DiffPane({
       const lines = loaded?.status === "ok" ? loaded.lines : null;
       // Nothing is revealed until the file is here to draw it from.
       const reveal = lines ? (contextReveal[gap.key] ?? { top: 0, bottom: 0 }) : { top: 0, bottom: 0 };
+      // Context only means something next to code that is showing: between
+      // folded hunks (or a folded hunk and the file's edge) the row would be
+      // a line of noise per gap, so there is none, unless the reader has
+      // already opened some of it.
+      const open = (id: string | null) => id !== null && shownAt.has(id) && !isCollapsed(collapsed, id);
+      if (!open(gap.prevHunkId) && !open(gap.nextHunkId) && reveal.top === 0 && reveal.bottom === 0) return;
       const shown = revealGap(gap, reveal, lines ? lines.length : null);
       const pushCtx = (range: [number, number] | null, side: "top" | "bottom") => {
         if (!range) return;
@@ -1445,6 +1456,18 @@ export function DiffPane({
     return () => ro.disconnect();
   }, [hasEntries]);
 
+  // Room past the last hunk: exactly what it takes for the last hunk's header
+  // to reach the top (under the pinned file header), and no more — so the
+  // pane stops scrolling where the last hunk sits at the top instead of
+  // scrolling its code away into blank space. A tall last hunk needs none.
+  // Measured from the last render, as the file header's height is above.
+  const lastHunkIdx = rows.findLastIndex((r) => r.type === "hunk");
+  const measured = virtualizerRef.current?.measurementsCache;
+  const lastStart = lastHunkIdx >= 0 ? measured?.[lastHunkIdx]?.start : undefined;
+  const contentEnd = measured?.[rows.length - 1]?.end;
+  const lastSpan = lastStart !== undefined && contentEnd !== undefined ? contentEnd - lastStart : 0;
+  // The end of the list (mark it viewed, the next unit) is drawn in this room.
+  const tailRoom = Math.max(endOfList ? END_ROOM : 24, viewportHeight - fileHeaderHeight - lastSpan);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -1479,8 +1502,8 @@ export function DiffPane({
     scrollPaddingStart: fileHeaderHeight,
     // Room past the last hunk, as editors leave past the last line: without
     // it the last hunks of a unit can never reach the top, so `v`/`j` would
-    // leave them wherever the page ran out.
-    paddingEnd: Math.max(0, viewportHeight - fileHeaderHeight - 120),
+    // leave them wherever the page ran out. `endOfList` is drawn in it.
+    paddingEnd: tailRoom,
   });
   virtualizerRef.current = virtualizer;
   const fileHeaderHeightRef = useRef(fileHeaderHeight);
@@ -2612,6 +2635,15 @@ export function DiffPane({
             className="pointer-events-none absolute left-0 top-0 w-full"
             style={{ height: EXPAND_UNDER }}
           />
+          {endOfList && rows.length ? (
+            <div
+              className="absolute left-0"
+              style={{ top: virtualizer.getTotalSize() - tailRoom, width: scrollRef.current?.clientWidth ?? "100%" }}
+              data-testid="end-of-list"
+            >
+              {endOfList}
+            </div>
+          ) : null}
         {(() => {
           // The current headers render in-flow + sticky instead of absolute.
           // They are the lowest indexes in the range, so they are the first
@@ -2890,7 +2922,7 @@ export function DiffPane({
           // file with a chip in its header used to be 2px taller than one
           // without — enough to leave the previous (folded) hunk as current.
           data-testid={`file-header-${row.path}`}
-          className="box-border flex h-8 items-center gap-2 border-y px-3 font-mono text-xs"
+          className="group/file box-border flex h-8 items-center gap-2 border-y px-3 font-mono text-xs"
           style={{
             background: "var(--bg-raised)",
             borderColor: "var(--border)",
@@ -2916,8 +2948,8 @@ export function DiffPane({
                 }
                 className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
                 style={{
-                  borderColor: allViewed || someViewed ? "var(--ok)" : "var(--border-strong)",
-                  background: allViewed ? "var(--ok)" : "transparent",
+                  borderColor: allViewed || someViewed ? "var(--ok)" : "var(--fg-faint)",
+                  background: allViewed ? "var(--ok)" : "var(--bg-raised)",
                   color: allViewed ? "var(--bg)" : "var(--ok)",
                 }}
               >
@@ -2928,27 +2960,50 @@ export function DiffPane({
                 ) : null}
               </button>
             ) : null}
-            <MiddleTruncate text={row.path} tail={18} />
-            <CopyPathButton path={row.path} />
-            {row.file.status && row.file.status !== "modified" ? (
+            {/* The name is what the eye looks for; the folder only places it.
+                New files read green, deleted ones red, as on the guide's list. */}
+            <FileName path={row.path} status={row.file.status} done={rollup?.viewed === true} />
+            <span className="hidden flex-none group-hover/file:inline-flex">
+              <CopyPathButton path={row.path} />
+            </span>
+            {row.file.status === "renamed" ? (
               <span
                 className="chip"
                 style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+                data-tip={row.file.oldPath ? `Renamed from ${row.file.oldPath}` : "Renamed"}
               >
-                {row.file.status}
+                renamed
               </span>
             ) : null}
             {row.file.generated ? <GeneratedTag generated={row.file.generated} /> : null}
-            {rollup ? (
-              <span
-                className="flex-none text-2xs"
-                style={{ color: rollup.viewed ? "var(--ok)" : "var(--fg-faint)" }}
-              >
-                {rollup.viewedHunks}/{rollup.totalHunks} viewed
-              </span>
-            ) : null}
           </span>
           <span className="ml-auto flex flex-none items-center gap-2">
+            {/* First in a right-aligned row and absent at rest: on hover they
+                grow to the left, and nothing after them moves. */}
+            <span className="hidden items-center gap-2 group-hover/file:flex">
+              {/* Words, not a second bubble next to the threads' bubble. */}
+              <button
+                type="button"
+                data-testid={`add-file-comment-${row.path}`}
+                aria-label={`Comment on ${row.path} as a whole`}
+                data-tip={`Comment on ${row.path} as a whole`}
+                className="whitespace-nowrap rounded px-1 font-sans text-2xs hover:!text-[var(--fg)]"
+                style={{ color: "var(--fg-muted)" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onComment({ subjectType: "file", file: row.path });
+                }}
+              >
+                comment
+              </button>
+              {onQuote ? (
+                <QuoteButton
+                  labeled
+                  about={row.path}
+                  onClick={() => onQuote({ kind: "file", path: row.path })}
+                />
+              ) : null}
+            </span>
             {fileComments ? (
               <CommentBubble
                 threads={fileComments}
@@ -2956,29 +3011,10 @@ export function DiffPane({
                 onToggle={() => toggleFileComments(row.path)}
               />
             ) : null}
-            <button
-              type="button"
-              data-testid={`add-file-comment-${row.path}`}
-              aria-label={`Comment on ${row.path} as a whole`}
-              data-tip={`Comment on ${row.path} as a whole`}
-              className="inline-flex items-center hover:!text-[var(--fg)]"
-              style={{ color: "var(--fg-faint)" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onComment({ subjectType: "file", file: row.path });
-              }}
-            >
-              <IconComment width={13} height={13} />
-            </button>
-            {onQuote ? (
-              <QuoteButton
-                about={row.path}
-                onClick={() => onQuote({ kind: "file", path: row.path })}
-              />
-            ) : null}
-            <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-              {row.file.additions !== undefined ? `+${row.file.additions}` : ""}{" "}
-              {row.file.deletions !== undefined ? `−${row.file.deletions}` : ""}
+            <span className="text-2xs tabular-nums">
+              {row.file.additions ? <span style={{ color: "var(--ok)" }}>+{row.file.additions}</span> : null}
+              {row.file.additions && row.file.deletions ? " " : null}
+              {row.file.deletions ? <span style={{ color: "var(--risk)" }}>−{row.file.deletions}</span> : null}
             </span>
             {renderFileMenu?.(row.file)}
           </span>
@@ -3150,7 +3186,7 @@ export function DiffPane({
           data-testid={`hunk-header-${row.hunkId}`}
           data-collapsed={folded ? "true" : "false"}
           data-focused={focused ? "true" : undefined}
-          className="flex cursor-pointer items-center gap-2 px-3 py-1"
+          className="group/hunk flex cursor-pointer items-center gap-2 px-3 py-1"
           style={{
             // A step lighter than the code, so a file's hunks read as
             // separate blocks. accent-soft is translucent; composite it over
@@ -3196,25 +3232,20 @@ export function DiffPane({
             data-tip-key="v"
             aria-label={st.viewed ? "Mark as not viewed" : "Mark as viewed"}
             className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
+            // Its own ground and a visible edge: it has to read on a focused,
+            // heart-tinted or highlighted header alike.
             style={{
-              borderColor: st.viewed ? "var(--ok)" : "var(--border-strong)",
-              background: st.viewed ? "var(--ok)" : "transparent",
+              borderColor: st.viewed ? "var(--ok)" : "var(--fg-faint)",
+              background: st.viewed ? "var(--ok)" : "var(--bg-raised)",
               color: "var(--bg)",
             }}
           >
             {st.viewed ? <IconCheck width={11} height={11} /> : null}
           </button>
-          {onQuote ? (
-            <QuoteButton
-              about="this hunk"
-              onClick={() => onQuote({ kind: "hunk", id: row.hunkId, path: row.entry.file.path })}
-            />
-          ) : null}
           {title !== undefined ? (
-            // The analysis's words lead the line as the hunk's title; the
-            // machine header follows, faint. A label after a long `@@`
-            // header reads as more of the same string. A skippable hunk's
-            // title is its reason, faint like its rows.
+            // The analysis's words lead the line as the hunk's title; where
+            // the hunk is follows, faint. A skippable hunk's title is its
+            // reason, faint like its rows.
             <span
               className="min-w-0 truncate font-sans text-xs"
               data-testid={`hunk-label-${row.hunkId}`}
@@ -3228,12 +3259,23 @@ export function DiffPane({
               {title}
             </span>
           ) : null}
-          <span
-            className="truncate font-mono text-2xs"
-            style={title !== undefined ? { color: "var(--fg-faint)", flex: "1 1 0" } : undefined}
-          >
-            {hunkLabel(row.entry.hunk)}
-          </span>
+          {/* Where the hunk is: its first line and its scope. The raw range
+              is diff syntax, one hover away. */}
+          {(() => {
+            const place = hunkPlace(row.entry.hunk);
+            return (
+              <span
+                className="truncate font-mono text-2xs"
+                data-tip={hunkLabel(row.entry.hunk)}
+                style={title !== undefined ? { color: "var(--fg-faint)", flex: "1 1 0" } : undefined}
+              >
+                <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
+                  {place.heading ? place.line : `line ${place.line}`}
+                </span>
+                {place.heading ? <span className="ml-2">{place.heading}</span> : null}
+              </span>
+            );
+          })()}
           {skipWhy !== undefined ? (
             <span
               className="chip flex-none"
@@ -3349,6 +3391,15 @@ export function DiffPane({
               on a wide screen the full title shows and on a narrow one the
               code-identifying content wins. */}
           <span className="ml-auto flex min-w-0 shrink-[3] items-center gap-2">
+            {onQuote ? (
+              <span className="hidden group-hover/hunk:flex">
+                <QuoteButton
+                  labeled
+                  about="this hunk"
+                  onClick={() => onQuote({ kind: "hunk", id: row.hunkId, path: row.entry.file.path })}
+                />
+              </span>
+            ) : null}
             {(() => {
               const unit = unitForHunkId?.(row.hunkId);
               if (!unit) return null;
@@ -3371,9 +3422,6 @@ export function DiffPane({
                 </button>
               );
             })()}
-            <span className="font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
-              {row.hunkId.slice(0, 8)}
-            </span>
           </span>
         </div>
       );
@@ -3492,6 +3540,31 @@ export function DiffPane({
       />
     );
   }
+}
+
+/** A file's name, then its folder, faint: what the eye looks for first. */
+function FileName({ path, status, done }: { path: string; status?: FileEntry["status"]; done?: boolean }) {
+  const slash = path.lastIndexOf("/");
+  const name = path.slice(slash + 1);
+  const dir = slash > 0 ? path.slice(0, slash) : "";
+  const color =
+    status === "added" ? "var(--ok)" : status === "removed" ? "var(--risk)" : done ? "var(--fg-muted)" : "var(--fg)";
+  return (
+    <span className="flex min-w-0 items-baseline gap-2" data-tip={path}>
+      <span
+        className="flex-none font-medium"
+        style={{ color, textDecoration: status === "removed" ? "line-through" : undefined }}
+      >
+        {name}
+      </span>
+      {dir ? (
+        <span className="min-w-0 truncate text-2xs" style={{ color: "var(--fg-faint)", direction: "rtl", textAlign: "left" }}>
+          {/* rtl truncates from the left, so the folder nearest the file stays */}
+          <bdi>{dir}</bdi>
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 /** Segmented unified / split control. Lives in the diff pane's own header. */

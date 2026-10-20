@@ -26,7 +26,7 @@ import { GENERATED_UNIT_ID, generatedFilesOf, isGeneratedUnit } from "./generate
 import { classifyFiles, gatherGeneratedFacts, gatherGeneratedFactsAsync, reclassifyGenerated, reclassifyGeneratedAsync } from "./generated-io.js";
 import { parseDiff } from "./parse-diff.js";
 import { analysisJobPath, commentsPath, repoKeyOf, stateRoot, type PrKey } from "./paths.js";
-import { nextRevisionNumber, priorRevisions } from "./reducer.js";
+import { liveUnits, nextRevisionNumber, priorRevisions } from "./reducer.js";
 import { planUnitPatches, remainingWork, resolveHunkRef, type RemainingWork, type UnitPatchRequest } from "./unit-patch.js";
 import {
   appendEvent,
@@ -47,6 +47,8 @@ import {
 import type {
   Analysis,
   AnalysisJob,
+  FileNotes,
+  Flow,
   BasePr,
   HunkEntry,
   Meta,
@@ -57,6 +59,7 @@ import type {
 import {
   AnalysisJobSchema,
   AnalysisSchema,
+  ShapeSchema,
   CHANGELOG_TEXT_MAX,
   REVISION_SUMMARY_MAX,
   FINDING_EVIDENCE_MAX,
@@ -635,6 +638,88 @@ export function truncateFindings(
   return { payload: fixUnit(p), warnings };
 }
 
+/** What is wrong with a flow, one line per problem (empty when it is sound). */
+export function flowProblems(flow: Flow, unitIds: ReadonlySet<string>): string[] {
+  const problems: string[] = [];
+  const ids = new Set<string>();
+  for (const p of flow.participants) {
+    if (ids.has(p.id)) problems.push(`participant id "${p.id}" is used twice`);
+    ids.add(p.id);
+    for (const u of p.units) if (!unitIds.has(u)) problems.push(`participant "${p.id}": unknown unit "${u}"`);
+    if (p.status !== "context" && p.units.length === 0) {
+      problems.push(`participant "${p.id}" is ${p.status} but names no unit: list the units whose hunks change it, or make it context`);
+    }
+  }
+  flow.steps.forEach((s, i) => {
+    for (const end of [s.from, s.to]) {
+      if (!ids.has(end)) problems.push(`step ${i} (${s.from} -> ${s.to}): unknown participant "${end}"`);
+    }
+    for (const u of s.units) if (!unitIds.has(u)) problems.push(`step ${i}: unknown unit "${u}"`);
+    // A step is the reader's most precise way into the review: a click on
+    // it opens the unit that makes it, so a step the PR touches must say which.
+    if (s.status !== "context" && s.units.length === 0) {
+      problems.push(`step ${i} (${s.label}) is ${s.status} but names no unit: list the units whose hunks make it, or make it context`);
+    }
+  });
+  let last = -1;
+  for (const ph of flow.phases) {
+    if (ph.at >= flow.steps.length) problems.push(`phase "${ph.label}" starts at step ${ph.at}, past the last step`);
+    if (ph.at <= last) problems.push(`phase "${ph.label}" must start after the phase before it`);
+    last = ph.at;
+  }
+  if (flow.steps.every((s) => s.status === "context") && flow.participants.every((p) => p.status === "context")) {
+    problems.push("nothing in the flow is added, changed or removed: mark what this PR does to it");
+  }
+  return problems;
+}
+
+/**
+ * What is wrong with file notes: each path must be a file of the revision,
+ * and not a generated one (those are Purview's, and never read).
+ */
+export function fileNoteProblems(notes: FileNotes, paths: ReadonlySet<string>, generated: ReadonlySet<string>): string[] {
+  const problems: string[] = [];
+  for (const path of Object.keys(notes)) {
+    if (generated.has(path)) problems.push(`"${path}" is a generated file; leave it out`);
+    else if (!paths.has(path)) problems.push(`"${path}" is not a file of this revision`);
+  }
+  return problems;
+}
+
+function assertShape(
+  shape: { flow?: Flow | null; fileNotes?: FileNotes | null },
+  ctx: { unitIds: ReadonlySet<string>; paths: ReadonlySet<string>; generated: ReadonlySet<string> },
+): void {
+  const problems = [
+    ...(shape.flow ? flowProblems(shape.flow, ctx.unitIds).map((p) => `flow: ${p}`) : []),
+    ...(shape.fileNotes ? fileNoteProblems(shape.fileNotes, ctx.paths, ctx.generated).map((p) => `fileNotes: ${p}`) : []),
+  ];
+  if (problems.length > 0) {
+    throw new Error(`The shape of the change does not hold together:\n  ${problems.join("\n  ")}`);
+  }
+}
+
+/** The revision's file paths, and which of them are generated. */
+function revisionPaths(key: PrKey, state: State, root: string) {
+  const files = readFilesJson(key, state.currentRevision, root).files;
+  return {
+    paths: new Set(files.map((f) => f.path)),
+    generated: new Set((state.generated ?? []).map((g) => g.path)),
+  };
+}
+
+/**
+ * `set-shape`: replace the flow or the file notes without
+ * re-sending the analysis (a refresh redraws them this way). Each key present
+ * replaces that view; `null` drops it. Units named must be live.
+ */
+export function setShape(key: PrKey, input: unknown, root = stateRoot()): State {
+  const shape = ShapeSchema.parse(input);
+  const state = loadState(key, root);
+  assertShape(shape, { unitIds: new Set(liveUnits(state).map((u) => u.id)), ...revisionPaths(key, state, root) });
+  return appendEvent(key, { type: "shape-set", revision: state.currentRevision, ...shape }, root);
+}
+
 export interface SetAnalysisOptions {
   /** Provenance: set to "import" when the units came from another reader's
    *  exported analysis (see analysis-share.ts) rather than a fresh Claude run. */
@@ -705,6 +790,7 @@ export function setAnalysis(
           dupes.map((d) => `${d.hunkId}: ${d.owners.join(", ")}`).join("\n  "),
       );
     }
+    assertShape(analysis, { unitIds: new Set(analysis.units.map((u) => u.id)), ...revisionPaths(key, state, root) });
   }
   const next = appendEvent(
     key,
@@ -715,6 +801,8 @@ export function setAnalysis(
       units: analysis.units,
       unassigned: analysis.unassigned ?? [],
       origin: opts.origin,
+      flow: analysis.flow,
+      fileNotes: analysis.fileNotes,
     },
     root,
   );

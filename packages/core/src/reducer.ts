@@ -3,6 +3,8 @@ import { GENERATED_UNIT_ID, buildGeneratedUnit, isGeneratedUnit } from "./genera
 import { hunkIdsOf, normalizeHunks, skipOf, toHunkEntry, upsertHunks } from "./units.js";
 import { upcastEvent } from "./upcast.js";
 import type {
+  FileNotes,
+  Flow,
   ReviewUnit,
   ReviewUnitPatch,
   ReviewerEvent,
@@ -177,6 +179,27 @@ function fromAnalysis<T extends { origin?: unknown }>(unit: T): Omit<T, "origin"
   const { origin: _origin, ...rest } = unit;
   void _origin;
   return rest;
+}
+
+/**
+ * Apply a shape change: each view present in `shape` is replaced (or dropped
+ * on `null`); an absent one is left as it was.
+ */
+function applyShape(
+  state: State,
+  shape: { flow?: Flow | null; fileNotes?: FileNotes | null },
+  revision: number,
+): void {
+  if (shape.flow !== undefined) {
+    if (shape.flow) state.flow = shape.flow;
+    else delete state.flow;
+  }
+  if (shape.fileNotes !== undefined) {
+    if (shape.fileNotes) state.fileNotes = shape.fileNotes;
+    else delete state.fileNotes;
+  }
+  if (state.flow || state.fileNotes) state.shapeRevision = revision;
+  else delete state.shapeRevision;
 }
 
 /** Apply one event to a state, returning a new state (input is not mutated). */
@@ -435,7 +458,18 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
       state.unassignedHunkIds = [...(event.unassigned ?? [])];
       state.analysisRevision = event.revision;
       state.analysisOrigin = event.origin;
+      // A full analysis replaces the shape too: a view it drew none of is gone.
+      applyShape(
+        state,
+        { flow: event.flow ?? null, fileNotes: event.fileNotes ?? null },
+        event.revision,
+      );
       applyGenerated(state);
+      break;
+    }
+
+    case "shape-set": {
+      applyShape(state, event, event.revision);
       break;
     }
 

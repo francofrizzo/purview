@@ -13,8 +13,9 @@ test("tooltips are the app's own: text, keys as kbd, gone on a press or Escape",
   await expect(toggle).not.toHaveAttribute("title", /.+/);
 
   // Straight on to the next tipped element: no wait, the new text.
-  await page.getByTestId("topbar-audience-agent").hover();
-  await expect(tip).toContainText("notes for a coding agent");
+  await page.getByTestId("view-units").hover();
+  await expect(tip).toContainText("The PR unit by unit");
+  await expect(tip.locator("kbd")).toHaveText(["g"]);
 
   await page.keyboard.press("Escape");
   await expect(tip).toHaveCount(0);

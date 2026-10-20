@@ -118,7 +118,9 @@ export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
       data-tip={
         job.status === "failed"
           ? (job.error ?? "The analysis failed")
-          : (job.progress ?? STATUS_TEXT[job.status])
+          : job.progress
+            ? splitToolProgress(job.progress).doing
+            : STATUS_TEXT[job.status]
       }
       style={{ background: tone.bg, color: tone.fg }}
     >
@@ -161,6 +163,7 @@ function ProgressText({ text }: { text: string }) {
     </span>
   );
 }
+
 
 /** Banner copy, split out so it can be tested without rendering. */
 export function archivedSkipText(

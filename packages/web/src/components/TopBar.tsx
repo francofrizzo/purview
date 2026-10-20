@@ -1,22 +1,20 @@
 import { EditorButton } from "./Editor";
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useRef, useState } from "react";
 import { TagChip, TagPopover } from "./TagPopover";
 import { Link, useNavigate } from "react-router-dom";
 import type { AnalysisJob, CommentAudience, PrDetail, RevisionInfo } from "../api/types";
 import { isJobLive } from "../api/types";
-import { AnalysisChip, AnalysisStats } from "./Analysis";
+import { AnalysisChip } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
-import { CiMark, DiffSizeStat, ReviewRequestAge, StackedOnChip } from "./Chips";
+import { CiMark, PrStateIcon, ReviewRequestAge, StackedOnChip } from "./Chips";
 import { ReviewersMark, showsReviewers } from "./Reviewers";
 import { RevisionMenu } from "./RevisionMenu";
-import { AudienceSwitch } from "./AudienceSwitch";
-import { UpdateAvailable } from "./UpdateAvailable";
 import { diffTotals, formatAddedAt } from "../lib/prList";
 import { formatRevisionSummary, revisionSummaryLines } from "../lib/revisionSummary";
 import { stackedOnLink } from "../lib/stacked";
 import { CopyPathButton } from "./DiffPane";
 import { useModalBackground } from "./Modal";
+import { OverflowMenu } from "./OverflowMenu";
 import {
   IconArchive,
   IconArrowLeft,
@@ -28,14 +26,13 @@ import {
   IconExpand,
   IconFileImport,
   IconInbox,
-  IconMore,
+  IconKeyboard,
   IconRefresh,
   IconRewind,
   IconSettings,
   IconShare,
   IconUpload,
   IconDock,
-  IconSpinner,
   IconTag,
 } from "./icons";
 
@@ -65,8 +62,6 @@ export function TopBar({
   onRefresh,
   onSync,
   onFinishReview,
-  audience = "github",
-  onAudienceChange,
   onAnalyze,
   onAnalyzeFresh,
   onCancelAnalysis,
@@ -85,6 +80,12 @@ export function TopBar({
   onSetArchived,
   repoArchiving = false,
   onSetRepoArchived,
+  audience = "github",
+  onAudienceChange,
+  view = "units",
+  onView,
+  viewOptions,
+  onShowShortcuts,
 }: {
   detail: PrDetail;
   draftCount: number;
@@ -120,9 +121,6 @@ export function TopBar({
   onToggleFullscreen?: () => void;
   onRefresh: () => void;
   onSync: () => void;
-  /** the global switch: who new comments are for */
-  audience?: CommentAudience;
-  onAudienceChange?: (next: CommentAudience) => void;
   onFinishReview: () => void;
   onAnalyze: () => void;
   /** "analyze from scratch": the first-analysis flow, replacing every unit */
@@ -150,6 +148,15 @@ export function TopBar({
   repoArchiving?: boolean;
   /** archive state of the PR's whole repo (`detail.repoArchived`) */
   onSetRepoArchived?: (archived: boolean) => void;
+  /** who new comments are for; only the agent case is shown */
+  audience?: CommentAudience;
+  onAudienceChange?: (next: CommentAudience) => void;
+  /** which way the PR is being read; omit `onView` to hide the tabs */
+  view?: PrViewMode;
+  onView?: (view: PrViewMode) => void;
+  /** the view-options popover (diff layout, wrapping, threads) */
+  viewOptions?: React.ReactNode;
+  onShowShortcuts?: () => void;
 }) {
   // The tag popover hangs under the chip when there is one, under the ⋯ menu otherwise.
   const tagChipRef = useRef<HTMLButtonElement>(null);
@@ -161,15 +168,11 @@ export function TopBar({
   // The gear opens settings over this PR view instead of leaving it.
   const background = useModalBackground();
   const navigate = useNavigate();
+  const totals = diffTotals(detail.files.files);
   return (
     <header
       className="flex flex-none flex-wrap items-center gap-x-2 gap-y-1.5 border-b px-2 py-2 sm:flex-nowrap sm:gap-3 sm:px-3"
-      style={{
-        borderColor: "var(--border)",
-        // A faint wash of the theme's accent: the PR's header reads as its
-        // own band above the summary strip and the diff, in every theme.
-        background: "color-mix(in srgb, var(--accent) 7%, var(--bg-raised))",
-      }}
+      style={{ borderColor: "var(--border)", background: "var(--bg)" }}
     >
       <Link
         to="/"
@@ -180,13 +183,13 @@ export function TopBar({
       >
         <IconArrowLeft width={12} height={12} />
       </Link>
-      {/* Two lines: the title gets the whole width it needs, and the PR's
-          facts sit quietly under it — the actions keep to the right. On a
-          narrow screen the least useful facts step aside first. */}
       {/* Phone width: back + actions share the first row, and the title
           takes a full-width row of its own under them. */}
       <div className="order-last flex min-w-0 flex-1 basis-full flex-col justify-center gap-0.5 sm:order-none sm:basis-auto">
-        <div className="flex min-w-0 items-baseline gap-2.5">
+        {/* The PR's state only when it is not the usual one: a draft, a
+            merged or a closed PR reads differently, an open one doesn't. */}
+        <span className="flex min-w-0 items-center gap-1.5">
+          {meta.prState && meta.prState !== "open" ? <PrStateIcon state={meta.prState} /> : null}
           <a
             href={meta.url}
             target="_blank"
@@ -198,45 +201,32 @@ export function TopBar({
           >
             {meta.title ?? `${meta.owner}/${meta.repo}#${meta.number}`}
           </a>
-          {/* Wide screens: the branch belongs to the PR's name, next to the
-              title. Narrower, it ends the facts line below instead. */}
-          {meta.headRef ? (
-            <span
-              className="hidden min-w-0 max-w-[22rem] shrink-[2] items-center gap-1 text-2xs xl:flex"
-              style={{ color: "var(--fg-faint)" }}
-              data-tip={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
-              data-testid="topbar-branch"
-            >
-              <span className="truncate font-mono">{meta.headRef}</span>
-              <CopyPathButton path={meta.headRef} what="branch name" />
-            </span>
-          ) : null}
-        </div>
+        </span>
+        {/* One quiet line, in the order a person says it: who, which PR,
+            from where to where, how big. Then only what needs the reader. */}
         <div
-          className="flex min-w-0 items-center gap-x-3 overflow-hidden whitespace-nowrap text-2xs leading-4"
+          className="flex min-w-0 items-center gap-x-2 overflow-hidden whitespace-nowrap text-2xs leading-4"
           style={{
             color: "var(--fg-faint)",
-            // Out of room, the last fact fades out rather than being cut mid-word.
             maskImage: "linear-gradient(to right, black calc(100% - 2rem), transparent)",
             WebkitMaskImage: "linear-gradient(to right, black calc(100% - 2rem), transparent)",
           }}
           data-testid="topbar-meta"
         >
-          {/* Which PR and whose, together: the author rides on the PR number. */}
-          <span className="flex flex-none items-center gap-1.5">
-            <span className="font-mono">
-              {meta.owner}/{meta.repo}
-              <span style={{ color: "var(--fg-muted)" }}>#{meta.number}</span>
+          {meta.author ? (
+            <span className="flex flex-none items-center gap-1" data-tip={`Opened by ${meta.author}`}>
+              <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
+              <span style={{ color: "var(--fg-muted)" }}>{meta.author}</span>
             </span>
+          ) : null}
+          <span className="flex flex-none items-center gap-1 font-mono">
+            {meta.repo}#{meta.number}
             <CopyPathButton path={String(meta.number)} what="PR number" />
-            {meta.author ? (
-              <span className="flex items-center gap-1" data-tip={`Opened by ${meta.author}`}>
-                <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
-                <span className="hidden sm:inline">{meta.author}</span>
-              </span>
-            ) : null}
           </span>
-          <DiffSizeStat size={diffTotals(detail.files.files)} />
+          <span className="flex-none tabular-nums" data-tip={`${totals.files} files changed`}>
+            <span style={{ color: "var(--ok)" }}>+{totals.additions}</span>{" "}
+            <span style={{ color: "var(--risk)" }}>−{totals.deletions}</span>
+          </span>
           {meta.tag ? (
             <button
               ref={tagChipRef}
@@ -254,17 +244,19 @@ export function TopBar({
           {showsReviewers(detail.authoredByYou, meta.prState) ? (
             <ReviewersMark reviewers={meta.reviewers} className="flex-none" ring="var(--bg-raised)" />
           ) : null}
-          <RevisionMenu
-            state={state}
-            analysisLive={live}
-            discarding={discardingRevision}
-            error={discardRevisionError}
-            onDiscard={onDiscardRevision}
-            onResetError={onResetDiscardRevision}
-            highlightRevisions={highlightRevisions}
-            onToggleHighlight={onToggleHighlight}
-            highlightAvailable={highlightAvailable}
-          />
+          {state.revisions && state.revisions.length > 1 ? (
+            <RevisionMenu
+              state={state}
+              analysisLive={live}
+              discarding={discardingRevision}
+              error={discardRevisionError}
+              onDiscard={onDiscardRevision}
+              onResetError={onResetDiscardRevision}
+              highlightRevisions={highlightRevisions}
+              onToggleHighlight={onToggleHighlight}
+              highlightAvailable={highlightAvailable}
+            />
+          ) : null}
           {detail.sinceReview && onToggleSinceReview ? (
             <SinceReviewChip
               since={detail.sinceReview}
@@ -288,8 +280,6 @@ export function TopBar({
               {archiving ? "unarchiving…" : "archived · unarchive"}
             </button>
           ) : detail.repoArchived && onSetRepoArchived ? (
-            // Archived through its repo, not on its own: the way out is the
-            // repo's unarchive, which restores every PR in it as it was.
             <button
               type="button"
               className="chip flex-none hover:!text-[var(--fg)]"
@@ -305,38 +295,76 @@ export function TopBar({
           ) : null}
           {/* Only interesting while the analysis is not a plain success. */}
           <AnalysisChip job={analysisJob} />
-          <AnalysisStats job={analysisJob} />
+
           <span className="hidden flex-none md:inline-flex">
             <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
           </span>
+          {/* Last: the longest and least needed, so the fade takes it first. */}
           {meta.headRef ? (
             <span
-              className="hidden min-w-0 items-center gap-1 lg:flex xl:hidden"
+              className="hidden min-w-[8rem] items-center gap-1 md:flex"
               data-tip={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
-              data-testid="topbar-branch-meta"
+              data-testid="topbar-branch"
             >
-              <span className="truncate font-mono">{meta.headRef}</span>
+              <span className="truncate font-mono">
+                {meta.baseRef ? `${meta.baseRef} ← ` : ""}
+                {meta.headRef}
+              </span>
               <CopyPathButton path={meta.headRef} what="branch name" />
             </span>
           ) : null}
         </div>
       </div>
 
-      <div className="ml-auto flex flex-none items-center gap-1.5 sm:gap-2">
-        <UpdateAvailable compact />
-        {onAudienceChange ? (
-          <span className="hidden lg:inline-flex">
-            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="topbar-audience" />
-          </span>
+      {onView ? <ViewTabs view={view} onView={onView} /> : null}
+
+      <div className="ml-auto flex flex-none items-center gap-1.5 sm:ml-0 sm:gap-2">
+        {stale ? (
+          // Quiet until GitHub moved: then it is the one thing worth a press.
+          <button
+            type="button"
+            className="btn"
+            data-testid="topbar-refresh"
+            data-stale="1"
+            data-tip={refreshing ? "Refreshing…" : (staleTooltip ?? "Refresh from GitHub")}
+            onClick={onRefresh}
+            disabled={refreshing}
+            style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
+          >
+            <IconRefresh width={12} height={12} className={refreshing ? "animate-spin" : undefined} />
+            <span className="hidden md:inline">new commits</span>
+          </button>
+        ) : null}
+        {viewOptions}
+        {/* GitHub is where a comment goes unless said otherwise; the agent
+            case is the one to be told about, and one click undoes it. */}
+        {audience === "agent" && onAudienceChange ? (
+          <button
+            type="button"
+            className="chip flex-none"
+            data-testid="topbar-audience-agent-mode"
+            data-tip="New comments are notes for a coding agent. Click for GitHub review comments"
+            data-tip-key="a"
+            style={{ background: "var(--agent-soft)", color: "var(--agent)" }}
+            onClick={() => onAudienceChange("github")}
+          >
+            notes for agent
+          </button>
         ) : null}
         <EditorButton prKey={detail.key} />
         {/* The right dock (comments, chat, review) has one toggle; its tabs
             take over once it is open. The badge is the unsent comments. */}
         <button
           type="button"
-          className="btn"
+          className="btn relative"
           onClick={onToggleDock}
-          data-tip={dockOpen ? "Close the panel" : "Comments, chat and review"}
+          data-tip={
+            dockOpen
+              ? "Close the panel"
+              : dockBusy
+                ? "The chat is answering · comments, chat and review"
+                : "Comments, chat and review"
+          }
           data-tip-key="m c r"
           aria-label="Comments, chat and review"
           aria-pressed={dockOpen}
@@ -352,57 +380,17 @@ export function TopBar({
               {draftCount}
             </span>
           ) : null}
-          {dockBusy ? <IconSpinner width={10} height={10} style={{ color: "var(--accent)" }} /> : null}
-        </button>
-        <div className="btn-group">
-        <button
-          type="button"
-          className="btn relative"
-          data-testid="topbar-refresh"
-          data-stale={stale ? "1" : undefined}
-          data-tip={refreshing ? "Refreshing…" : (staleTooltip ?? "Refresh from GitHub")}
-          aria-label="Refresh"
-          onClick={onRefresh}
-          disabled={refreshing}
-        >
-          <IconRefresh width={12} height={12} className={refreshing ? "animate-spin" : undefined} />
-          {stale ? (
+          {/* The chat at work, while the panel is shut (open, its tab says
+              so). A dot on the corner, so the button never changes width
+              and nothing beside it moves. */}
+          {dockBusy && !dockOpen ? (
             <span
-              data-testid="staleness-dot"
-              aria-label="This PR changed upstream"
-              className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
-              style={{ background: "var(--accent)" }}
+              className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full"
+              style={{ background: "var(--accent)", boxShadow: "0 0 0 2px var(--bg)" }}
+              data-testid="topbar-chat-busy"
             />
           ) : null}
         </button>
-        <button
-          type="button"
-          className="btn hidden sm:inline-flex"
-          onClick={onSync}
-          disabled={syncing}
-          data-tip={syncing ? "Syncing…" : "Sync viewed files and comments to GitHub"}
-          aria-label="Sync"
-        >
-          <IconUpload width={12} height={12} className={syncing ? "animate-pulse" : undefined} />
-        </button>
-        </div>
-        {fullscreenVisible && onToggleFullscreen ? (
-          <button
-            type="button"
-            className="btn"
-            data-testid="topbar-fullscreen"
-            onClick={onToggleFullscreen}
-            data-tip={fullscreenActive ? "Exit full screen" : "Full screen"}
-            aria-label={fullscreenActive ? "Exit full screen" : "Full screen"}
-            aria-pressed={fullscreenActive}
-          >
-            {fullscreenActive ? (
-              <IconCollapse width={12} height={12} />
-            ) : (
-              <IconExpand width={12} height={12} />
-            )}
-          </button>
-        ) : null}
         <input
           ref={importInputRef}
           type="file"
@@ -419,12 +407,18 @@ export function TopBar({
         <OverflowMenu
           items={[
             { label: meta.tag ? "change tag…" : "tag…", testId: "header-tag-menu", icon: <IconTag width={12} height={12} />, onClick: () => setTagOpen(true) },
-            // Phone width: the row keeps chat, comments, refresh and finish;
-            // sync moves in here.
             {
-              label: syncing ? "syncing…" : "sync",
+              label: refreshing ? "refreshing…" : "refresh from GitHub",
+              icon: <IconRefresh width={12} height={12} />,
+              testId: "menu-refresh",
+              disabled: refreshing,
+              hint: staleTooltip ?? "Fetch the PR's latest commits and comments.",
+              onClick: onRefresh,
+            },
+            {
+              label: syncing ? "syncing…" : "sync to GitHub",
               icon: <IconUpload width={12} height={12} />,
-              narrowOnly: true,
+              testId: "menu-sync",
               disabled: syncing,
               hint: "Push viewed files and comments to GitHub.",
               onClick: onSync,
@@ -435,6 +429,7 @@ export function TopBar({
                     label: analysisCancelling ? "cancelling analysis…" : "cancel analysis",
                     icon: <IconClose width={12} height={12} />,
                     testId: "menu-cancel-analysis",
+                    dividerBefore: true,
                     disabled: analysisCancelling,
                     onClick: onCancelAnalysis,
                   },
@@ -444,6 +439,7 @@ export function TopBar({
                     label: analysisStarting ? "starting analysis…" : "analyze again",
                     icon: <IconBolt width={12} height={12} />,
                     testId: "menu-analyze-again",
+                    dividerBefore: true,
                     disabled: analysisStarting,
                     hint: "Re-runs the automatic analysis for this revision; what is already classified stays.",
                     onClick: onAnalyze,
@@ -454,7 +450,7 @@ export function TopBar({
                     testId: "menu-analyze-fresh",
                     disabled: analysisStarting || !hasAnalysis,
                     hint: hasAnalysis
-                      ? "Drops every unit and the summary, then analyzes this revision again from nothing."
+                      ? "Drops every unit, the summary and the map, then analyzes this revision again from nothing."
                       : "No analysis yet — analyze first.",
                     onClick: onAnalyzeFresh,
                   },
@@ -510,9 +506,31 @@ export function TopBar({
                 ]
               : []),
             // App-level, not about this PR: last.
+            ...(fullscreenVisible && onToggleFullscreen
+              ? [
+                  {
+                    label: fullscreenActive ? "exit full screen" : "full screen",
+                    dividerBefore: true,
+                    icon: fullscreenActive ? <IconCollapse width={12} height={12} /> : <IconExpand width={12} height={12} />,
+                    testId: "menu-fullscreen",
+                    onClick: onToggleFullscreen,
+                  },
+                ]
+              : []),
+            ...(onShowShortcuts
+              ? [
+                  {
+                    label: "keyboard shortcuts",
+                    dividerBefore: !(fullscreenVisible && onToggleFullscreen),
+                    icon: <IconKeyboard width={12} height={12} />,
+                    testId: "menu-shortcuts",
+                    hint: "Or press ?",
+                    onClick: onShowShortcuts,
+                  },
+                ]
+              : []),
             {
               label: "repo settings",
-              dividerBefore: true,
               icon: <IconSettings width={12} height={12} />,
               testId: "menu-repo-settings",
               hint: `Shared by every PR in ${meta.owner}/${meta.repo}.`,
@@ -535,12 +553,13 @@ export function TopBar({
           className="btn flex-none font-semibold hover:brightness-110"
           style={{ background: "var(--accent)", borderColor: "var(--accent)", color: "var(--bg)" }}
           data-testid="topbar-finish-review"
+          data-tip-key="r"
           onClick={onFinishReview}
         >
           <IconCheck width={12} height={12} />
           {/* One flex item, so the button's gap never lands between the words. */}
           <span>
-            finish<span className="hidden sm:inline"> review</span>
+            finish<span className="hidden lg:inline"> review</span>
           </span>
           {pendingReview ? (
             <span
@@ -567,141 +586,50 @@ export function TopBar({
   );
 }
 
-export interface MenuItem {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  keepOpen?: boolean;
-  /** shown as the item's tooltip, not inline: the menu stays one line per action */
-  hint?: string;
-  icon?: React.ReactNode;
-  /** a destructive action, drawn in the risk color */
-  danger?: boolean;
-  testId?: string;
-  /** listed only at phone width, where its button leaves the row */
-  narrowOnly?: boolean;
-  /** starts a new group: a rule is drawn above it */
-  dividerBefore?: boolean;
-}
+export type PrViewMode = "overview" | "units" | "files";
 
-/**
- * The rarely-used actions, kept out of the button row. Also the repo group
- * header's ⋯ in the PR list, which passes its own test id, label and a
- * smaller trigger.
- */
-export function OverflowMenu({
-  items,
-  testId = "topbar-overflow",
-  label = "More actions",
-  buttonClassName = "btn",
-  buttonStyle,
-  fixed = false,
-}: {
-  items: MenuItem[];
-  testId?: string;
-  label?: string;
-  buttonClassName?: string;
-  buttonStyle?: React.CSSProperties;
-  /**
-   * Render the menu in a portal, positioned against the viewport, so an
-   * ancestor's `overflow: hidden` or opacity (a PR-list repo card, dimmed
-   * when archived) cannot clip or fade it. It closes on scroll then, rather
-   * than drifting away from its button.
-   */
-  fixed?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const [anchor, setAnchor] = useState<{ top: number; right: number } | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+const VIEW_TABS: { id: PrViewMode; label: string; key: string; tip: string }[] = [
+  { id: "overview", label: "Overview", key: "s", tip: "Summary, shape and what to read closely" },
+  { id: "units", label: "Guide", key: "g", tip: "The PR unit by unit" },
+  { id: "files", label: "Files", key: "f", tip: "The PR file by file" },
+];
 
-  useEffect(() => {
-    if (!open || !fixed) return;
-    const close = () => setOpen(false);
-    window.addEventListener("scroll", close, true);
-    window.addEventListener("resize", close);
-    return () => {
-      window.removeEventListener("scroll", close, true);
-      window.removeEventListener("resize", close);
-    };
-  }, [open, fixed]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      e.preventDefault(); // claimed: the page's own Escape leaves it alone
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const menu = (
-    <div
-      ref={menuRef}
-      className={`surface z-40 w-52 rounded-md p-1 elev-2 ${fixed ? "fixed" : "absolute right-0 top-7"}`}
-      style={fixed && anchor ? { top: anchor.top, right: anchor.right } : undefined}
-    >
-      {items.map((item) => (
-        <button
-          key={item.label}
-          type="button"
-          data-testid={item.testId}
-          disabled={item.disabled}
-          data-tip={item.hint}
-          data-divider={item.dividerBefore ? "true" : undefined}
-          className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 ${
-            item.narrowOnly ? "sm:hidden" : ""
-          } ${item.dividerBefore ? "menu-divider" : ""}`}
-          style={{ color: item.danger ? "var(--risk)" : "var(--fg)" }}
-          onClick={() => {
-            if (!item.keepOpen) setOpen(false);
-            item.onClick();
-          }}
-        >
-          <span className="flex w-3.5 flex-none items-center justify-center" style={{ color: item.danger ? "var(--risk)" : "var(--fg-muted)" }}>
-            {item.icon}
-          </span>
-          <span className="min-w-0 flex-1 truncate">{item.label}</span>
-        </button>
-      ))}
-    </div>
-  );
-
+/** Overview · Guide · Files: the three ways to read the PR. */
+function ViewTabs({ view, onView }: { view: PrViewMode; onView: (v: PrViewMode) => void }) {
   return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        className={buttonClassName}
-        data-testid={testId}
-        data-tip={label}
-        aria-label={label}
-        aria-expanded={open}
-        style={buttonStyle}
-        onClick={(e) => {
-          if (fixed) {
-            const r = e.currentTarget.getBoundingClientRect();
-            setAnchor({ top: r.bottom + 4, right: window.innerWidth - r.right });
-          }
-          setOpen((v) => !v);
-        }}
-      >
-        <IconMore width={12} height={12} />
-      </button>
-      {open ? (fixed ? createPortal(menu, document.body) : menu) : null}
-    </div>
+    <nav
+      className="flex flex-none items-center gap-0.5 rounded-md p-0.5"
+      style={{ background: "var(--bg-inset)" }}
+      aria-label="View"
+      data-testid="view-tabs"
+    >
+      {VIEW_TABS.map((t) => {
+        const on = t.id === view;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            data-testid={`view-${t.id}`}
+            aria-pressed={on}
+            data-tip={t.tip}
+            data-tip-key={t.key}
+            onClick={() => onView(t.id)}
+            className="rounded px-2 py-1 text-xs transition-colors lg:px-2.5"
+            style={
+              on
+                ? { background: "var(--bg-raised)", color: "var(--fg)", boxShadow: "0 0 0 1px var(--border)" }
+                : { color: "var(--fg-muted)" }
+            }
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </nav>
   );
 }
+
+export { OverflowMenu, type MenuItem } from "./OverflowMenu";
 
 const VERDICT_WORD: Record<string, string> = {
   APPROVE: "approved",

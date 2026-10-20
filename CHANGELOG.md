@@ -36,6 +36,24 @@ app, not for git: say what changed in the review, not which file moved.
 - **Search switches.** The find bar shows both sides of each choice, "this unit | whole diff" and "changed | all lines", with the active one lit. All lines is the default.
 - **Fix:** "Publish now" shows "publishing…" on the card while GitHub takes it, then the comments panel scrolls to the card under Submitted and flashes it.
 - **Fix:** code in a bold lead-in, such as **`file.go`**, renders as code and links to the diff instead of showing the backticks.
+- **The shape of the change.** The Overview shows where a PR lands, as its file tree with a one-line note per file (new files marked, quiet folders folded to one line), and, when the PR adds or reroutes a runtime path, how that path now runs, as a sequence of the real calls with the cut ones struck out. Click a file to open it, or any step or piece the PR touches to open the unit that makes it; its tooltip names that unit. The analysis writes both; `reviewer-state set-shape` redraws them on a refresh.
+- **Overview, Guide, Files.** Three ways to read a PR, in the top bar: `s` for the summary, the shape and what to read closely, `g` for the guide, `f` for files. The top bar holds still between them: view options stay in every view (in the Overview, only the thread filters that shape its reviews).
+- **The diff stops scrolling where the last hunk reaches the top.** The room past the end is just what that takes (none for a tall hunk), so the code can't be scrolled away into a screenful of blank.
+- **Hunk headers say where, not the diff syntax.** After the analysis's label, a hunk shows its first line and its scope (`733  func newAssociateTool(…)`); the raw `@@ -a,b +c,d @@` range is on hover.
+- **A lighter comment box.** In place under its line it has no header: the placeholder names the line ("Comment on lines 11–13…") and who it is for, and the GitHub / agent choice sits in words beside the save button. The floating box keeps its one-line header, since it is away from its line.
+- **No hidden-lines rows between folded hunks.** Context rows only appear next to a hunk that is open, so a unit you have mostly read is a compact list of headers instead of every other row saying "3 hidden lines".
+- **The guide reads beside the diff.** The open unit unfolds in the sidebar with its summary, why, heart, checks and files; its title stays pinned while you scroll it, and the other units take one line each. A unit to skim or skip that has a risk surface says it on its row ("money", "auth"); kind and the rest of the classification are on its number, on hover. The diff gets the full height.
+- **A quieter screen.** Refresh, sync and full screen moved to the ⋯ menu; layout, wrapping and thread filters to one view-options button; `?` lists the shortcuts. Hunk and file headers, and comment cards, show their buttons on hover.
+- **Mark a unit from its row.** Each unit in the guide has a box: a dash while partly read, a click marks every hunk viewed (or none). `V` still does it for the open unit.
+- **A lighter comment box.** One line on top (what, where, who it is for), and below it attach, "suggest change", write or preview, ask chat and save. It no longer spills out of a narrow pane. Bold, lists and links are behind **Aa**, which remembers whether you keep it open.
+- **The end of a unit says what is next.** Past its last hunk: mark it viewed and go on, the next unit to read, or finish the review.
+- **One submit button.** Pick Comment, Approve or Request changes, then submit; the review asks again only while must-read units are unread.
+- **The open unit's actions are in its brief.** Ask Claude about it, or move it to another group, at the end of the unit's text instead of a menu on every row. The chat's settings panel became a ⋯ menu.
+- **What a refresh brought, in one line.** "Revision 2: 33 new hunks, 11 changed, 15 gone", then the analysis's summary of the revision once it is written, with a per-file breakdown on demand instead of the hunk-by-hunk report.
+- **A flat workspace, with a guide column you can widen.** The guide, the diff and the right panel sit side by side, one rule between each; drag the guide's edge to resize it (double-click for the default).
+- **Calmer home rows.** A PR's state is an icon and its progress a ring with its count; units and effort are in the ring's tooltip.
+- **Graphite themes.** Dark and light on neutral grays, in Settings → Appearance.
+- **Fix:** a diagram that cannot be drawn shows its source, with nothing left at the bottom of the page.
 
 ## 2026.10.22.1
 

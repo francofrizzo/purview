@@ -74,7 +74,7 @@ export function UnitChangelog({
         </button>
       )}
       {expanded ? (
-        <ol className="mt-1.5 space-y-1 border-l pl-3" style={{ borderColor: "var(--border)" }}>
+        <ol className="mt-1.5 space-y-1 pl-[18px]">
           {entries.map((e) => {
             const active = activeRevisions.includes(e.revision);
             const badge = (

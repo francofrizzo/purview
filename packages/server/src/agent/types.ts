@@ -100,6 +100,7 @@ export const REVIEWER_COMMANDS = [
   "set-unit",
   "set-units",
   "set-revision-summary",
+  "set-shape",
   "units",
   "view",
   "sync",

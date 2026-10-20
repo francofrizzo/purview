@@ -33,7 +33,7 @@ export async function openUnit(page: Page, title: string) {
   const nav = page.locator("nav");
   const unit = nav.getByText(title).first();
   // The "skip" group starts folded; its units are only there once it opens.
-  if (!(await unit.isVisible())) await nav.getByRole("button", { name: /^skip/i }).click();
+  if (!(await unit.isVisible())) await nav.getByTestId("group-skip").click();
   await unit.click();
   await expect(page.getByTestId("unit-header")).toContainText(title.slice(0, 30));
 }

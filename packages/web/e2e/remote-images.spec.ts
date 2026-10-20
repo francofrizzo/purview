@@ -8,7 +8,8 @@ import { openPr } from "./helpers";
  */
 test("the description shows GitHub-hosted pictures and keeps other images as links", async ({ page }) => {
   await openPr(page);
-  await page.getByTestId("summary-strip-has-description").click();
+  // The description is in the overview.
+  await page.keyboard.press("s");
   const description = page.getByTestId("pr-description");
   await expect(description).toBeVisible();
 

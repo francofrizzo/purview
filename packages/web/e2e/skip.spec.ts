@@ -36,7 +36,7 @@ test("a skippable hunk is muted, labelled, uncounted, and Space passes over it",
 
 test("the files tab leaves skippable hunks out of a file's count", async ({ page }) => {
   await openPr(page);
-  await page.getByRole("tab", { name: /files/i }).click();
+  await page.getByTestId("view-files").click();
   await page.getByText("reconcileNightly.ts").first().click();
   await expect(page.getByText("0/1 hunks viewed")).toBeVisible();
 });
