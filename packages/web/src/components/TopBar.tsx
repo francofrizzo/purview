@@ -5,7 +5,7 @@ import type { AnalysisJob, CommentAudience, PrDetail, RevisionInfo } from "../ap
 import { isJobLive } from "../api/types";
 import { AnalysisChip, AnalysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
-import { CiChip, DiffSizeStat, ReviewRequestAge, StackedOnChip } from "./Chips";
+import { CiMark, DiffSizeStat, ReviewRequestAge, StackedOnChip } from "./Chips";
 import { RevisionMenu } from "./RevisionMenu";
 import { AudienceSwitch } from "./AudienceSwitch";
 import { UpdateAvailable } from "./UpdateAvailable";
@@ -228,6 +228,7 @@ export function TopBar({
             ) : null}
           </span>
           <DiffSizeStat size={diffTotals(detail.files.files)} />
+          <CiMark ci={meta.ci} interactive />
           <RevisionMenu
             state={state}
             analysisLive={live}
@@ -280,7 +281,6 @@ export function TopBar({
           {/* Only interesting while the analysis is not a plain success. */}
           <AnalysisChip job={analysisJob} />
           <AnalysisStats job={analysisJob} />
-          <CiChip ci={meta.ci} interactive />
           <span className="hidden flex-none md:inline-flex">
             <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
           </span>

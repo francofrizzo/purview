@@ -77,54 +77,42 @@ function ciSummary(ci: Ci) {
 }
 
 /**
- * The row's CI mark: the icon in the state's color, the count only when the
- * checks disagree. Sits with the line counts, so it costs the row no chip.
+ * CI beside the line counts: the icon in the state's color, the count only
+ * when the checks disagree, the words in the tip. Interactive, it opens the
+ * list of checks with a link to each run.
  */
-export function CiMark({ ci }: { ci?: Ci }) {
-  if (!ci || ci.state === "none") return null;
-  const { token, label, count, mixed, Icon, firstFailure } = ciSummary(ci);
-  const tip = `CI ${label}${mixed ? ` (${count} of ${ci.checks.length})` : ""}${firstFailure ? `: ${firstFailure}` : ""}`;
-  return (
-    <span
-      className="inline-flex flex-none items-center gap-0.5 text-2xs tabular-nums"
-      style={{ color: `var(--${token})` }}
-      data-tip={tip}
-      data-testid="ci-mark"
-    >
-      <Icon width={10} height={10} />
-      {mixed ? `${count}/${ci.checks.length}` : null}
-    </span>
-  );
-}
-
-/** CI counts refer to checks in the aggregate state (e.g. one failing of five). */
-export function CiChip({ ci, interactive = false }: { ci?: Ci; interactive?: boolean }) {
+export function CiMark({ ci, interactive = false }: { ci?: Ci; interactive?: boolean }) {
   const [open, setOpen] = useState(false);
   const anchorRef = useRef<HTMLSpanElement>(null);
   const close = useCallback(() => setOpen(false), []);
   if (!ci || ci.state === "none") return null;
   const { token, label, count, mixed, Icon, firstFailure } = ciSummary(ci);
-  const content = <><Icon width={10} height={10} />{label}{mixed ? ` · ${count} of ${ci.checks.length}` : ""}</>;
+  const tip = `CI ${label}${mixed ? ` (${count} of ${ci.checks.length})` : ""}${firstFailure ? `: ${firstFailure}` : ""}`;
   const props = {
-    className: "chip",
-    style: { color: `var(--${token})`, background: `var(--${token}-soft)` },
-    title: firstFailure,
-    "data-testid": "ci-chip",
+    className: "inline-flex flex-none items-center gap-0.5 text-2xs tabular-nums",
+    style: { color: `var(--${token})` },
+    "data-tip": tip,
+    "data-testid": "ci-mark",
   };
+  const content = <><Icon width={10} height={10} />{mixed ? `${count}/${ci.checks.length}` : null}</>;
   if (!interactive) return <span {...props}>{content}</span>;
   return (
     <span ref={anchorRef} className="inline-flex flex-none">
-      <button {...props} type="button" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(v => !v)}>
+      <button {...props} type="button" aria-label={tip} aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((v) => !v)}>
         {content}
       </button>
-      {open ? <FloatingPanel anchorRef={anchorRef} onClose={close} label="CI checks" className="w-80 max-h-80 overflow-y-auto p-3 text-xs">
-        <ul className="space-y-2" style={{ color: "var(--fg)" }}>
-          {ci.checks.map((check, i) => <li key={i} data-testid="ci-check" className="flex items-start justify-between gap-3">
-            {check.url ? <a className="underline break-words" href={check.url} target="_blank" rel="noreferrer">{check.name}</a> : <span>{check.name}</span>}
-            <span className="flex-none">{check.state}</span>
-          </li>)}
-        </ul>
-      </FloatingPanel> : null}
+      {open ? (
+        <FloatingPanel anchorRef={anchorRef} onClose={close} label="CI checks" className="w-80 max-h-80 overflow-y-auto p-3 text-xs">
+          <ul className="space-y-2" style={{ color: "var(--fg)" }}>
+            {ci.checks.map((check, i) => (
+              <li key={i} data-testid="ci-check" className="flex items-start justify-between gap-3">
+                {check.url ? <a className="underline break-words" href={check.url} target="_blank" rel="noreferrer">{check.name}</a> : <span>{check.name}</span>}
+                <span className="flex-none">{check.state}</span>
+              </li>
+            ))}
+          </ul>
+        </FloatingPanel>
+      ) : null}
     </span>
   );
 }

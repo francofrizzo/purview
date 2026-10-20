@@ -93,9 +93,6 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("selected-row", "Buttons", "selected row (fg on accent-soft)", "fg", 4.5, ["bg-raised", "accent-soft"], "1  Idempotent charge path"),
     s("selected-row-muted", "Buttons", "selected row, muted (fg-muted on accent-soft)", "fg-muted", 3.2, ["bg-raised", "accent-soft"], "2 risks · changed · 1/3"),
 
-    chip("chip-ci-success", "passing", "ok", "ok-soft"),
-    chip("chip-ci-failure", "failing", "risk", "risk-soft"),
-    chip("chip-ci-pending", "pending", "warn", "warn-soft"),
     chip("chip-core", "core", "kind-core", "kind-core-soft"),
     chip("chip-glue", "glue", "kind-glue", "kind-glue-soft"),
     chip("chip-wiring", "wiring", "kind-wiring", "kind-wiring-soft"),
