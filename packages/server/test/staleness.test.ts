@@ -20,6 +20,7 @@ interface Upstream {
   draft: boolean;
   merged: boolean;
   reviewDecision: string | null;
+  commits?: unknown;
 }
 
 let root: string;
@@ -35,7 +36,7 @@ function installGh() {
     if (args[1] === "graphql") {
       return JSON.stringify({
         data: {
-          repository: { pullRequest: { reviewDecision: upstream.reviewDecision } },
+          repository: { pullRequest: { reviewDecision: upstream.reviewDecision, commits: upstream.commits } },
         },
       });
     }
@@ -322,4 +323,20 @@ describe("GET /api/prs/:key/staleness", () => {
     await app.request(`/api/prs/${encodedKey}/staleness`);
     expect(pullCalls()).toBe(1);
   });
+});
+
+
+it("persists CI-only changes, exposes them on both endpoints, and ignores timestamp-only changes", async () => {
+  upstream.commits = { nodes: [{ commit: { oid: "head1", statusCheckRollup: { contexts: { nodes: [
+    { __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://example.com/run" },
+  ] } } } }] };
+  const result = checkStaleness(key, root);
+  expect(result.metaUpdated).toBe(true);
+  expect(result.stale).toBe(false);
+  expect(readMeta(key, root).ci?.state).toBe("failure");
+  const detail = await (await app.request(`/api/prs/${encodedKey}`)).json();
+  expect(detail.meta.ci.checks[0].name).toBe("Tests");
+  const list = await (await app.request("/api/prs")).json();
+  expect(list.prs[0].ci.state).toBe("failure");
+  expect(checkStaleness(key, root, { force: true }).metaUpdated).toBe(false);
 });

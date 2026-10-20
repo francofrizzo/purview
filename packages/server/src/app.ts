@@ -474,6 +474,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         title: meta.title ?? state.pr?.title ?? "",
         state: meta.prState ?? "open",
         reviewDecision: meta.reviewDecision ?? null,
+        ci: meta.ci,
         // Absent (not `null`) until first looked up: `null` means "nothing pending".
         reviewRequest: meta.reviewRequest,
         authoredByYou: authoredByYou(meta.author, loginOf(key.host), extraAuthors),

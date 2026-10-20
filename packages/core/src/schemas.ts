@@ -479,6 +479,18 @@ export const ReviewRequestSchema = z.object({
 });
 export type ReviewRequest = z.infer<typeof ReviewRequestSchema>;
 
+export const CiSchema = z.object({
+  state: z.enum(["success", "failure", "pending", "none"]),
+  checks: z.array(z.object({
+    name: z.string(),
+    state: z.enum(["success", "failure", "pending", "skipped"]),
+    url: z.string().nullable(),
+  })),
+  headSha: z.string(),
+  checkedAt: z.string(),
+});
+export type Ci = z.infer<typeof CiSchema>;
+
 export const MetaSchema = z.object({
   host: z.string(),
   owner: z.string(),
@@ -535,6 +547,7 @@ export const MetaSchema = z.object({
    * query failed, which must never break a refresh.
    */
   reviewDecision: ReviewDecisionSchema.nullable().optional(),
+  ci: CiSchema.optional(),
   /**
    * The user's still-pending review request on this PR, folded out of the
    * issue timeline (`github.ts` `foldReviewRequest`). `null` = none pending;

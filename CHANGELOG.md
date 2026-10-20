@@ -7,6 +7,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **CI status on every PR.** The list and PR header show whether checks pass, fail or are still running; click the header chip for each check and its run.
+
 - **Your notes reach the agent.** Notes for the agent on a PR can be picked up by the coding agent that wrote it: `purview notes <pr> --wait` returns them as soon as you write one, and each note shows when it was picked up.
 
 - **The coding-agent skill knows when it is stale.** Installed copies carry a revision; the skill checks it against your Purview and tells you to reinstall when the skill changed. `purview skill install` says whether it updated anything.

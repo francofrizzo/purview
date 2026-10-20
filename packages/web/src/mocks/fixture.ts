@@ -1,3 +1,4 @@
+import type { Ci } from "../api/types";
 import type {
   ConfigSource,
   ResolvedAgent,
@@ -17,7 +18,21 @@ import type {
 } from "../api/types";
 import { buildGeneratedUnit } from "./generated";
 
+const failingCi: Ci = {
+  state: "failure", headSha: "mock-head", checkedAt: "2026-10-20T12:00:00Z",
+  checks: [
+    { name: "Unit tests", state: "failure", url: "https://github.com/acme/billing/actions/runs/123" },
+    { name: "Build", state: "success", url: null },
+    { name: "Integration tests", state: "pending", url: null },
+  ],
+};
+const passingCi: Ci = {
+  state: "success", headSha: "mock-passing", checkedAt: "2026-10-20T12:00:00Z",
+  checks: [{ name: "Build", state: "success", url: null }],
+};
+
 const meta = {
+  ci: failingCi,
   host: "github.com",
   owner: "acme",
   repo: "billing",
@@ -1037,6 +1052,7 @@ export const mockList: PrListEntry[] = [
   // --- acme/billing: several PRs, mixed states, one archived ---------------
   {
     key: MOCK_KEY,
+    ci: failingCi,
     meta,
     title: meta.title,
     unitCount: units.length,
@@ -1052,7 +1068,9 @@ export const mockList: PrListEntry[] = [
   },
   {
     key: "github.com/acme/billing/491",
+    ci: passingCi,
     meta: {
+      ci: passingCi,
       host: "github.com",
       owner: "acme",
       repo: "billing",

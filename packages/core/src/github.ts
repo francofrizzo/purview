@@ -8,7 +8,7 @@ import {
   type PrKey,
   type RepoKey,
 } from "./paths.js";
-import type { BasePr, PrState, ReviewDecision, ReviewRequest } from "./schemas.js";
+import type { BasePr, Ci, PrState, ReviewDecision, ReviewRequest } from "./schemas.js";
 
 /**
  * Every `gh` invocation in the project funnels through here so the server
@@ -314,9 +314,62 @@ export function setFileViewedOnGithub(
 
 /* -------------------------------------------------------- review decision */
 
+const CI_FIELDS = `commits(last: 1) { nodes { commit { oid statusCheckRollup {
+  state contexts(first: 50) { nodes { __typename
+    ... on CheckRun { name status conclusion detailsUrl }
+    ... on StatusContext { context state targetUrl }
+  } }
+} } } }`;
+
+interface RawCiCommit {
+  oid?: string;
+  statusCheckRollup?: { state?: string; contexts?: { nodes?: ({
+    __typename?: string; name?: string; context?: string; status?: string;
+    conclusion?: string | null; state?: string; detailsUrl?: string | null; targetUrl?: string | null;
+  } | null)[] | null } | null } | null;
+}
+
+/** Pure normalization; timestamps are supplied by the fetching boundary. */
+export function ciFromRollup(raw: RawCiCommit | null | undefined): Omit<Ci, "checkedAt"> {
+  const checks: Ci["checks"] = [];
+  for (const node of raw?.statusCheckRollup?.contexts?.nodes ?? []) {
+    if (!node) continue;
+    let state: Ci["checks"][number]["state"] = "pending";
+    if (node.__typename === "CheckRun") {
+      if (node.conclusion === "SUCCESS" || node.conclusion === "NEUTRAL") state = "success";
+      else if (["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"].includes(node.conclusion ?? "")) state = "failure";
+      else if (node.conclusion === "SKIPPED") state = "skipped";
+      checks.push({ name: node.name ?? "", state, url: node.detailsUrl ?? null });
+    } else if (node.__typename === "StatusContext") {
+      if (node.state === "SUCCESS") state = "success";
+      else if (node.state === "ERROR" || node.state === "FAILURE") state = "failure";
+      checks.push({ name: node.context ?? "", state, url: node.targetUrl ?? null });
+    }
+  }
+  return {
+    state: checks.some(c => c.state === "failure") ? "failure"
+      : checks.some(c => c.state === "pending") ? "pending"
+      : checks.some(c => c.state === "success") ? "success" : "none",
+    checks,
+    headSha: raw?.oid ?? "",
+  };
+}
+
+function ciFromPr(raw: { commits?: { nodes?: ({ commit?: RawCiCommit | null } | null)[] } } | null | undefined): Ci | undefined {
+  const commit = raw?.commits?.nodes?.[0]?.commit;
+  if (!commit?.oid) return undefined;
+  return { ...ciFromRollup(commit), checkedAt: new Date().toISOString() };
+}
+
+/** Ignore observation time when deciding whether persisted CI changed. */
+export function ciChanged(before: Ci | undefined, after: Ci | undefined): boolean {
+  return after !== undefined && (before?.state !== after.state ||
+    before?.headSha !== after.headSha || JSON.stringify(before?.checks) !== JSON.stringify(after.checks));
+}
+
 const REVIEW_DECISION_QUERY = `query($owner:String!,$repo:String!,$number:Int!){
   repository(owner:$owner,name:$repo){
-    pullRequest(number:$number){ reviewDecision }
+    pullRequest(number:$number){ reviewDecision ${CI_FIELDS} }
   }
 }`;
 
@@ -328,6 +381,11 @@ const REVIEW_DECISION_QUERY = `query($owner:String!,$repo:String!,$number:Int!){
  * failing the refresh that carries it.
  */
 export function fetchReviewDecision(key: PrKey): ReviewDecision | null {
+  return fetchReviewStatus(key).reviewDecision;
+}
+
+/** Review decision and CI share one best-effort GraphQL request. */
+export function fetchReviewStatus(key: PrKey): { reviewDecision: ReviewDecision | null; ci?: Ci } {
   try {
     const res = JSON.parse(
       gh([
@@ -344,24 +402,19 @@ export function fetchReviewDecision(key: PrKey): ReviewDecision | null {
         `number=${key.number}`,
       ]),
     ) as {
-      data?: { repository?: { pullRequest?: { reviewDecision?: string | null } } };
+      data?: { repository?: { pullRequest?: RawPrStatus } };
     };
-    const raw = res.data?.repository?.pullRequest?.reviewDecision;
-    if (typeof raw !== "string" || raw === "") return null;
-    const normalized = raw.toLowerCase();
-    return normalized === "approved" ||
-      normalized === "changes_requested" ||
-      normalized === "review_required"
-      ? (normalized as ReviewDecision)
-      : null;
+    const raw = res.data?.repository?.pullRequest;
+    return { reviewDecision: normalizeDecision(raw?.reviewDecision), ci: ciFromPr(raw) };
   } catch {
-    return null;
+    return { reviewDecision: null };
   }
 }
 
 /* ------------------------------------------------------- batched statuses */
 
 export interface PrStatus {
+  ci?: Ci;
   prState: PrState;
   /** `null` when GitHub has none, or the host does not know the field. */
   reviewDecision: ReviewDecision | null;
@@ -395,7 +448,7 @@ export async function fetchPrStatuses(
     const fields = chunk
       .map(
         (n) =>
-          `pr${n}: pullRequest(number: ${n}) { state isDraft reviewDecision title body headRefOid }`,
+          `pr${n}: pullRequest(number: ${n}) { state isDraft reviewDecision title body headRefOid ${CI_FIELDS} }`,
       )
       .join("\n");
     const query = `query($owner: String!, $repo: String!) {
@@ -427,6 +480,7 @@ ${fields}
           merged: raw.state.toUpperCase() === "MERGED",
         }),
         reviewDecision: normalizeDecision(raw.reviewDecision),
+        ci: ciFromPr(raw),
         title: raw.title ?? "",
         body: normalizeBody(raw.body),
         headSha: raw.headRefOid ?? "",
@@ -437,6 +491,7 @@ ${fields}
 }
 
 interface RawPrStatus {
+  commits?: { nodes?: ({ commit?: RawCiCommit | null } | null)[] };
   state?: string;
   isDraft?: boolean;
   reviewDecision?: string | null;

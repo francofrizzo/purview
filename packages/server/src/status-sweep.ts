@@ -1,5 +1,6 @@
 import {
   fetchPrStatuses,
+  ciChanged,
   listPrs,
   readMeta,
   repoKeyToString,
@@ -65,15 +66,17 @@ function safeRepoArchived(key: PrKey, root: string): boolean {
  * since GitHub hosts that lack the field would otherwise wipe real ones.
  */
 export function statusPatch(
-  meta: Pick<Meta, "prState" | "reviewDecision" | "title" | "body">,
+  meta: Pick<Meta, "prState" | "reviewDecision" | "title" | "body" | "ci">,
   upstream: {
     prState: Meta["prState"];
     reviewDecision: Meta["reviewDecision"];
     title: string;
     body?: string;
+    ci?: Meta["ci"];
   },
 ): Partial<Meta> | null {
   const patch: Partial<Meta> = {};
+  if (ciChanged(meta.ci, upstream.ci)) patch.ci = upstream.ci;
   if (upstream.prState && upstream.prState !== meta.prState) patch.prState = upstream.prState;
   if (upstream.reviewDecision && upstream.reviewDecision !== meta.reviewDecision) {
     patch.reviewDecision = upstream.reviewDecision;

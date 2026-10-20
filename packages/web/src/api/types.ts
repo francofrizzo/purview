@@ -286,7 +286,15 @@ export interface FileRollup {
   syncedToGitHub?: boolean;
 }
 
+export interface Ci {
+  state: "success" | "failure" | "pending" | "none";
+  checks: { name: string; state: "success" | "failure" | "pending" | "skipped"; url: string | null }[];
+  headSha: string;
+  checkedAt: string;
+}
+
 export interface PrMeta {
+  ci?: Ci;
   host: string;
   owner: string;
   repo: string;
@@ -502,6 +510,7 @@ export interface DiffSize {
 }
 
 export interface PrListEntry {
+  ci?: Ci;
   key: string;
   /** Absent from an older server; `null` until the revision's files are stored. */
   diffSize?: DiffSize | null;

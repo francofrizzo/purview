@@ -1,5 +1,8 @@
+import { useCallback, useRef, useState } from "react";
+import { FloatingPanel } from "./FloatingPanel";
 import type {
   Attention,
+  Ci,
   DiffSize,
   EffortBadge,
   Kind,
@@ -60,6 +63,42 @@ export function PrStateChip({ state }: { state: PrGithubState }) {
   return (
     <span className="chip" style={{ color: s.color, background: s.bg }} data-tip={`GitHub state: ${state}`}>
       {s.label}
+    </span>
+  );
+}
+
+/** CI counts refer to checks in the aggregate state (e.g. one failing of five). */
+export function CiChip({ ci, interactive = false }: { ci?: Ci; interactive?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const close = useCallback(() => setOpen(false), []);
+  if (!ci || ci.state === "none") return null;
+  const token = ci.state === "success" ? "ok" : ci.state === "failure" ? "risk" : "warn";
+  const label = ci.state === "success" ? "passing" : ci.state === "failure" ? "failing" : "pending";
+  const count = ci.checks.filter(c => c.state === ci.state).length;
+  const mixed = new Set(ci.checks.map(c => c.state)).size > 1;
+  const Icon = ci.state === "success" ? IconCheck : ci.state === "failure" ? IconWarning : IconBolt;
+  const content = <><Icon width={10} height={10} />{label}{mixed ? ` · ${count} of ${ci.checks.length}` : ""}</>;
+  const props = {
+    className: "chip",
+    style: { color: `var(--${token})`, background: `var(--${token}-soft)` },
+    title: ci.checks.find(c => c.state === "failure")?.name,
+    "data-testid": "ci-chip",
+  };
+  if (!interactive) return <span {...props}>{content}</span>;
+  return (
+    <span ref={anchorRef} className="inline-flex flex-none">
+      <button {...props} type="button" aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen(v => !v)}>
+        {content}
+      </button>
+      {open ? <FloatingPanel anchorRef={anchorRef} onClose={close} label="CI checks" className="w-80 max-h-80 overflow-y-auto p-3 text-xs">
+        <ul className="space-y-2" style={{ color: "var(--fg)" }}>
+          {ci.checks.map((check, i) => <li key={i} data-testid="ci-check" className="flex items-start justify-between gap-3">
+            {check.url ? <a className="underline break-words" href={check.url} target="_blank" rel="noreferrer">{check.name}</a> : <span>{check.name}</span>}
+            <span className="flex-none">{check.state}</span>
+          </li>)}
+        </ul>
+      </FloatingPanel> : null}
     </span>
   );
 }

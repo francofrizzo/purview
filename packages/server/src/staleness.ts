@@ -1,6 +1,7 @@
 import {
   fetchPullRequest,
-  fetchReviewDecision,
+  fetchReviewStatus,
+  ciChanged,
   keyToString,
   loadState,
   readMeta,
@@ -136,7 +137,8 @@ export function checkStaleness(
     const pr = fetchPullRequest(key);
     // Best-effort, and `null` from it is indistinguishable from a failed
     // query — see the guard below.
-    const upstreamReviewDecision = fetchReviewDecision(key);
+    const { reviewDecision: upstreamReviewDecision, ci: upstreamCi } = fetchReviewStatus(key);
+    const ciMoved = ciChanged(meta.ci, upstreamCi);
 
     const reasons: StalenessReason[] = [];
     if (localHeadSha && pr.headSha && localHeadSha !== pr.headSha) reasons.push("new-commits");
@@ -161,13 +163,14 @@ export function checkStaleness(
       localState,
       upstreamReviewDecision,
       localReviewDecision,
-      metaUpdated: stateMoved || decisionMoved,
+      metaUpdated: stateMoved || decisionMoved || ciMoved,
       checkedAt,
     };
 
     // The one write: cheap, and it keeps the PR list's chips from lying until
     // someone happens to refresh.
     const patch: Partial<Meta> = {};
+    if (ciMoved) patch.ci = upstreamCi;
     if (stateMoved) patch.prState = pr.prState;
     if (decisionMoved) patch.reviewDecision = upstreamReviewDecision;
     // Title and description ride along for free on the same payload (and

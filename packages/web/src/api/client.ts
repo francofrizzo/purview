@@ -160,6 +160,7 @@ interface WireProgress {
 }
 
 interface WireListEntry {
+  ci?: PrListEntry["ci"];
   key: string;
   diffSize?: PrListEntry["diffSize"];
   meta: PrListEntry["meta"];
@@ -486,6 +487,7 @@ export const api = {
       // blanking the row: it simply reads as a never-archived open PR.
       state: e.state ?? "open",
       reviewDecision: e.reviewDecision ?? null,
+      ci: e.ci,
       reviewRequest: e.reviewRequest !== undefined ? e.reviewRequest : e.meta?.reviewRequest,
       authoredByYou: Boolean(e.authoredByYou),
       addedAt: e.addedAt ?? e.meta?.createdAt ?? new Date(0).toISOString(),

@@ -172,3 +172,29 @@ describe("statusPatch and the description", () => {
     expect(statusPatch(meta, up)).toBeNull();
   });
 });
+
+it("patches CI content and head changes but ignores observation time", () => {
+  const ci = { state: "success" as const, headSha: "head", checkedAt: "first", checks: [{ name: "Build", state: "success" as const, url: null }] };
+  const meta = { title: "PR", body: "", ci };
+  const upstream = { title: "PR", body: "", prState: undefined, reviewDecision: null, ci };
+  expect(statusPatch(meta, { ...upstream, ci: { ...ci, checkedAt: "later" } })).toBeNull();
+  expect(statusPatch(meta, { ...upstream, ci: { ...ci, headSha: "new" } })?.ci?.headSha).toBe("new");
+  expect(statusPatch(meta, { ...upstream, ci: { ...ci, checks: [] } })?.ci?.checks).toEqual([]);
+  expect(statusPatch(meta, { ...upstream, ci: undefined })).toBeNull();
+});
+
+it("sweeps CI and clears checks when the new head has none", async () => {
+  const key = pr("widgets", 1);
+  initPr(key, root);
+  const raw = { state: "OPEN", title: "PR 1", commits: { nodes: [{ commit: {
+    oid: "new-head", statusCheckRollup: { contexts: { nodes: [
+      { __typename: "StatusContext", context: "Build", state: "PENDING", targetUrl: null },
+    ] } },
+  } }] } };
+  setGhRunner(statusGh({ widgets: { 1: raw } }));
+  await sweepPrStatuses(root);
+  expect(readMeta(key, root).ci).toMatchObject({ state: "pending", headSha: "new-head" });
+  setGhRunner(statusGh({ widgets: { 1: { ...raw, commits: { nodes: [{ commit: { oid: "next", statusCheckRollup: null } }] } } } }));
+  await sweepPrStatuses(root);
+  expect(readMeta(key, root).ci).toMatchObject({ state: "none", headSha: "next", checks: [] });
+});

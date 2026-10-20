@@ -9,6 +9,7 @@ import {
   EffortChip,
   Progress,
   PrStateChip,
+  CiChip,
   ReviewDecisionChip,
   ReviewRequestAge,
   DiffSizeStat,
@@ -621,6 +622,7 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
     <div className={`items-center gap-2 ${className}`}>
       {pr.state !== "open" ? <PrStateChip state={pr.state} /> : null}
       <ReviewDecisionChip decision={decision} />
+      <CiChip ci={pr.ci} />
       <AnalysisChip job={pr.analysisJob} />
       <EffortChip effort={pr.effort} />
       <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="unit-count">

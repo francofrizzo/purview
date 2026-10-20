@@ -6,7 +6,8 @@ import {
   fetchPullDiff,
   fetchPullRequest,
   fetchRemoteViewedState,
-  fetchReviewDecision,
+  fetchReviewStatus,
+  ciChanged,
   resolveReviewRequest,
   setFileViewedOnGithub,
 } from "./github.js";
@@ -194,7 +195,7 @@ export function initPr(key: PrKey, root = stateRoot()): InitResult {
         headRef: pr.headRef,
         baseRef: pr.baseRef,
         prState: pr.prState,
-        reviewDecision: fetchReviewDecision(key),
+        ...fetchReviewStatus(key),
         archived: false,
         createdAt: now,
       },
@@ -236,11 +237,11 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   const pr = fetchPullRequest(key);
   // The head branch can be renamed (or was never recorded, on older state), and
   // worktree resolution keys off it, so keep it current on every refresh.
-  // GitHub's PR state and review decision ride along on the same refresh:
-  // there is no background polling, so a refresh is the only moment they can
-  // move. Both are additive, and a failed decision query degrades to null.
-  const reviewDecision = fetchReviewDecision(key);
+  // State, review decision and CI also ride along on explicit refreshes.
+  // A failed GraphQL query leaves the previous CI intact.
+  const { reviewDecision, ci } = fetchReviewStatus(key);
   const metaPatch: Partial<Meta> = {};
+  if (ciChanged(meta.ci, ci)) metaPatch.ci = ci;
   if (meta.headRef !== pr.headRef) metaPatch.headRef = pr.headRef;
   // Same for the base branch, plus the PR it is stacked on (when it targets
   // anything but the default branch) — the prompts tell Claude about it.
