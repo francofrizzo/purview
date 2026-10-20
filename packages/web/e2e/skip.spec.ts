@@ -17,16 +17,19 @@ test("a skippable hunk is muted, labelled, uncounted, and Space passes over it",
   for (let i = 0; i < 3; i++) await page.keyboard.press("j");
   const header = page.getByTestId(`hunk-header-${SKIPPED}`);
   await expect(header).toHaveAttribute("data-focused", "true");
-  // Open, not folded: its rows are there, muted.
+  // Open, not folded: its rows are there, and at full strength while it is
+  // the focused hunk.
   await expect(header).toHaveAttribute("data-collapsed", "false");
   await expect(page.getByTestId(`hunk-label-${SKIPPED}`)).toHaveText("renamed call site");
   await expect(page.getByTestId(`hunk-skip-${SKIPPED}`)).toHaveText("skippable");
-  await expect(page.locator('[data-skippable="true"]').first()).toBeVisible();
-  await expect(page.getByTestId(`hunk-header-${SKIPPED}`).locator("xpath=..")).not.toHaveAttribute("data-skippable", "true");
+  await expect(page.locator('[data-skippable="true"]')).toHaveCount(0);
 
-  // Space from the hunk before it lands on the one after it.
+  // Focus moves off it: its rows go muted. Space from the hunk before it
+  // lands on the one after it.
   await page.keyboard.press("k");
   await expect(page.getByTestId(`hunk-header-${THIRD}`)).toHaveAttribute("data-focused", "true");
+  await expect(page.locator('[data-skippable="true"]').first()).toBeVisible();
+  await expect(page.getByTestId(`hunk-header-${SKIPPED}`).locator("xpath=..")).not.toHaveAttribute("data-skippable", "true");
   await page.keyboard.press("Space");
   await expect(page.getByTestId(`hunk-header-${LAST}`)).toHaveAttribute("data-focused", "true");
 });

@@ -2512,7 +2512,9 @@ export function DiffPane({
               data-heart={heartMarks(row) ? "true" : undefined}
               data-heart-end={heartEndsAt(row) ? "true" : undefined}
               data-skippable={
-                skip && (row.type === "line" || row.type === "split") && skip.has(row.hunkId) ? "true" : undefined
+                skip && (row.type === "line" || row.type === "split") && skip.has(row.hunkId) && row.hunkId !== focusedHunkId
+                  ? "true"
+                  : undefined
               }
               ref={virtualizer.measureElement}
               style={
