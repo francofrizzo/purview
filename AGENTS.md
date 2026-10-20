@@ -42,6 +42,9 @@ or tag) a version:
 If `## Unreleased` has bullets at the end of a turn, remind the user in one line
 that there is unreleased work and offer to ship it.
 
+A fix to something already shipped is announced as `**Fix:**` followed by one
+short sentence of what now works, not what was broken.
+
 Internal changes (documentation, tests, refactors, tooling) get no entry and no
 version bump. Neither do small tweaks the reader would not look for in a
 changelog: a label's wording, a spacing or color nudge, a tooltip. An entry is
