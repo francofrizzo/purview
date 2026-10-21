@@ -5,6 +5,8 @@
   "engines": { "node": ">=20.11" },
   "scripts": {
     "test": "node --test --test-concurrency=1 spike.test.mjs",
+    "test:eval": "node --test --test-concurrency=1 eval*.test.mjs",
+    "eval": "node eval.mjs",
     "auth:login": "node auth-smoke.mjs --login",
     "auth:smoke": "node auth-smoke.mjs --run"
   },

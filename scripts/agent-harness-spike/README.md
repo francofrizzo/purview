@@ -2,6 +2,12 @@
 
 Fecha: 2026-10-21. Estado: experimento local; no integra ni modifica el runtime de Purview.
 
+**Siguiente bloque implementado:** [evaluación funcional con servicios reales](eval.md).
+Compara Claude actual, Claude con superficie MCP compartida y Codex con esa misma
+superficie sobre cuatro casos fijos. Tiene tests locales sin inferencia remota;
+las comparaciones con modelos reales quedan para la Mac. No reemplaza el harness
+del producto ni demuestra paridad general de calidad.
+
 ## Conclusión
 
 **Viable el contrato de operaciones compartidas por MCP; integración condicionada por el aislamiento de Codex.** Los dos harnesses reales ejecutan las mismas operaciones tipadas y devuelven los mismos rechazos del servidor. No hace falta traducir reglas `Bash(...)` de Claude a reglas de Codex.
@@ -153,7 +159,7 @@ Mantener la división propuesta:
 
 1. **Purview autoriza operaciones de dominio.** Tools tipadas, contexto de PR/run no elegible por el modelo, revisión y estado actual validados al ejecutar. Annotations MCP y aprobación del harness no son la autoridad.
 2. **Cada adapter controla las rutas alternativas.** Claude puede empezar tool-only. Codex requiere aislamiento de configuración y políticas efectivas, contemplando herramientas anidadas. No traducir su sandbox a una imitación de `Bash(...)`.
-3. **Lectura de código como decisión explícita.** Si se ofrecen herramientas nativas de lectura/ejecución, comprobar raíces, symlinks, red y escritura. Para el primer camino común, es razonable exponer lectura/búsqueda acotada por MCP; sus implementaciones reales todavía no existen en este spike.
+3. **Lectura de código como decisión explícita.** Si se ofrecen herramientas nativas de lectura/ejecución, comprobar raíces, symlinks, red y escritura. El [bloque de eval](eval.md) ahora implementa lectura/búsqueda acotada por MCP para probar el primer camino común; todavía no está integrada al producto.
 4. **Fallos de compatibilidad cierran el acceso.** Una versión/modelo/configuración que no permita garantizar las restricciones debe marcarse incompatible, sin degradar silenciosamente a permisos amplios.
 
 No recomendaría implementar todo el adapter de Codex antes de resolver estos puntos de salida:
