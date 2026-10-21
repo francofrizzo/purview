@@ -1281,6 +1281,8 @@ export interface RemoteComment {
   url: string;
   /** PENDING = sits in someone's (only ever the viewer's) unsubmitted review */
   reviewState: "PENDING" | "SUBMITTED";
+  /** the `RemoteReview` it was submitted with; absent on older caches */
+  reviewId?: string;
   /** the viewer wrote it */
   isMine: boolean;
   /**

@@ -5,6 +5,7 @@ import type {
   ReviewEvent,
   ReviewStatus,
   SubmitReviewResult,
+  RemoteThread,
 } from "../api/types";
 import { errorText } from "../api/errors";
 import { isCommentAnchored } from "../lib/comments";
@@ -67,11 +68,16 @@ export function FinishReviewPanel({
   onProposeReanchor,
   onApplyReanchor,
   verdicts = [],
+  threads,
+  onJumpToThread,
   unresolvedThreads = 0,
 }: {
   review?: ReviewStatus;
   /** each reviewer's standing verdict on GitHub, yours included */
   verdicts?: ReviewerVerdict[];
+  /** the PR's review threads, so a verdict can lead to its inline comments */
+  threads?: RemoteThread[];
+  onJumpToThread?: (thread: RemoteThread) => void;
   /** review threads on GitHub nobody has resolved yet */
   unresolvedThreads?: number;
   loading: boolean;
@@ -158,7 +164,9 @@ export function FinishReviewPanel({
               {verdicts.length || unresolvedThreads ? (
                 <section data-testid="previous-reviews">
                   <SectionTitle>On GitHub so far</SectionTitle>
-                  {verdicts.length ? <ReviewerVerdictList verdicts={verdicts} /> : null}
+                  {verdicts.length ? (
+                    <ReviewerVerdictList verdicts={verdicts} threads={threads ?? []} onJumpToThread={onJumpToThread ?? (() => {})} />
+                  ) : null}
                   {unresolvedThreads ? (
                     <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
                       {unresolvedThreads} unresolved {unresolvedThreads === 1 ? "thread" : "threads"}

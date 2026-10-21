@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { RemoteConversationComment, RemoteReview } from "../api/types";
-import { buildTimeline, entryBody, latestVerdicts, reviewRevision, revisionNote, verdictsTitle } from "./reviews";
+import type { RemoteConversationComment, RemoteReview, RemoteThread } from "../api/types";
+import { buildTimeline, entryBody, latestVerdicts, reviewRevision, reviewThreads, revisionNote, verdictsTitle } from "./reviews";
 import { DEFAULT_THREAD_FILTERS } from "./threads";
 
 let seq = 0;
@@ -180,5 +180,22 @@ describe("reviewRevision", () => {
     const [v] = latestVerdicts([review("bob", "APPROVED", "2026-01-02T12:00:00Z", { commitOid: "a" })], { revisions: ctx });
     expect(v.revision).toEqual({ kind: "older", revision: 1, behind: 3 });
     expect(verdictsTitle([v])).toBe("bob approved (on rev 1 · 3 revisions ago)");
+  });
+});
+
+describe("the review behind a verdict", () => {
+  it("is the one that set it, so its body and inline count travel with the verdict", () => {
+    const first = review("maria", "CHANGES_REQUESTED", "2026-01-01", { body: "Cap the backoff.", commentCount: 2 });
+    const v = latestVerdicts([first, review("maria", "COMMENTED", "2026-01-02", { commentCount: 1 })]);
+    expect(v[0].review).toBe(first);
+  });
+
+  it("finds the threads a review submitted by the root comment's review id", () => {
+    const r = review("maria", "CHANGES_REQUESTED", "2026-01-01");
+    const thread = (id: string, reviewId?: string): RemoteThread =>
+      ({ id, path: "a.ts", comments: [{ id: `${id}-c`, reviewId } as RemoteThread["comments"][number]] }) as RemoteThread;
+    const own = reviewThreads(r, [thread("t1", r.id), thread("t2", "PRR_other"), thread("t3", r.id), thread("t4")]);
+    expect(own.map((t) => t.id)).toEqual(["t1", "t3"]);
+    expect(reviewThreads(r)).toEqual([]);
   });
 });

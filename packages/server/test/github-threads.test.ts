@@ -54,7 +54,7 @@ function rawComment(
     lastEditedAt: over.edited ?? null,
     url: `https://github.com/acme/widgets/pull/7#discussion_r${dbId}`,
     author: login === null ? null : { __typename: over.typename ?? "User", login, avatarUrl: `https://a/${login}` },
-    pullRequestReview: { state: over.state ?? "COMMENTED" },
+    pullRequestReview: { id: `PRR_${over.reviewId ?? 1}`, state: over.state ?? "COMMENTED" },
   };
 }
 
@@ -195,6 +195,7 @@ describe("normalizeThreads", () => {
       updatedAt: "2026-01-03T00:00:00Z",
       url: "https://github.com/acme/widgets/pull/7#discussion_r10",
       reviewState: "SUBMITTED",
+      reviewId: "PRR_1",
       isMine: true,
     });
     expect(t.comments[1].isMine).toBe(false);

@@ -2206,6 +2206,8 @@ export function PrView() {
               prAuthor: detail?.meta.author,
               revisions: revisionContext,
             })}
+            threads={threadsQuery.data?.threads}
+            onJumpToThread={(t) => jumpToComment({ file: t.path, line: t.line, side: t.side })}
             unresolvedThreads={threadsQuery.data?.threads.filter((t) => !t.isResolved).length ?? 0}
             loading={review.isLoading}
             error={review.error as Error | null}

@@ -6,7 +6,7 @@
  * Pure functions only.
  */
 
-import type { RemoteAuthor, RemoteConversationComment, RemoteReview, RevisionInfo } from "../api/types";
+import type { RemoteAuthor, RemoteConversationComment, RemoteReview, RevisionInfo, RemoteThread } from "../api/types";
 import { botKey, cleanRemoteBody, type ThreadFilters } from "./threads";
 
 export type TimelineEntry =
@@ -78,6 +78,13 @@ export interface ReviewerVerdict {
   at: string;
   /** which of Purview's revisions it covers, when that could be told */
   revision?: ReviewRevision;
+  /** the review that set the verdict: its body and inline comments */
+  review: RemoteReview;
+}
+
+/** The threads a review submitted: those whose root comment came with it. */
+export function reviewThreads(review: Pick<RemoteReview, "id">, threads: readonly RemoteThread[] = []): RemoteThread[] {
+  return threads.filter((t) => t.comments[0]?.reviewId === review.id);
 }
 
 /** The PR's revisions as Purview recorded them, and the one in force. */
@@ -149,7 +156,7 @@ export function latestVerdicts(
     if (opts.filters && isAuthorHidden(r.author, r.isMine, opts.filters)) continue;
     const cur = by.get(key);
     if (r.state === "COMMENTED") {
-      if (!cur) by.set(key, { author: r.author, isMine: r.isMine, verdict: "COMMENTED", at: r.submittedAt });
+      if (!cur) by.set(key, { author: r.author, isMine: r.isMine, verdict: "COMMENTED", at: r.submittedAt, review: r });
       continue;
     }
     by.set(key, {
@@ -158,6 +165,7 @@ export function latestVerdicts(
       verdict: r.state,
       at: r.submittedAt,
       revision: reviewRevision(r, opts.revisions),
+      review: r,
     });
   }
   return [...by.values()]

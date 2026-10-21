@@ -1646,6 +1646,8 @@ export const mockThreads: RemoteThread[] = [
         "maria",
         "With `delay + random() * delay` the wait can reach `2 * delay` *and then* doubles — the third attempt may sit ~1.6s. Cap the backoff, or jitter inside a fixed window?",
         "2026-08-11T14:20:00Z",
+        // Submitted with maria's change request (the second review below).
+        { reviewId: "PRR_3100002" },
       ),
       remote(
         "dana",

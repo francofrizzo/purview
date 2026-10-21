@@ -41,6 +41,8 @@ export interface RemoteComment {
   updatedAt?: string;
   url: string;
   reviewState: "PENDING" | "SUBMITTED";
+  /** the review it was submitted with (absent on older caches) */
+  reviewId?: string;
   isMine: boolean;
   localId?: string;
 }
@@ -174,7 +176,7 @@ export interface RawComment {
   lastEditedAt?: string | null;
   url: string;
   author?: { __typename?: string; login?: string; avatarUrl?: string } | null;
-  pullRequestReview?: { state?: string } | null;
+  pullRequestReview?: { id?: string; state?: string } | null;
 }
 
 export interface RawConnection<T> {
@@ -227,7 +229,7 @@ export interface RawIssueComment {
 
 const COMMENT_FIELDS = `id databaseId body createdAt lastEditedAt url
   author{ __typename login avatarUrl }
-  pullRequestReview{ state }`;
+  pullRequestReview{ id state }`;
 
 const THREADS_QUERY = `query($owner:String!,$repo:String!,$number:Int!,$after:String){
   viewer{ login }
@@ -411,6 +413,7 @@ export function normalizeThreads(raw: readonly RawThread[], opts: NormalizeOptio
         ...(c.lastEditedAt ? { updatedAt: c.lastEditedAt } : {}),
         url: c.url,
         reviewState: pending ? "PENDING" : "SUBMITTED",
+        ...(c.pullRequestReview?.id ? { reviewId: c.pullRequestReview.id } : {}),
         isMine,
       });
     }

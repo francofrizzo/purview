@@ -28,8 +28,13 @@ test("the finish-review panel shows the drafts going out and what is on GitHub s
 
   const github = panel.getByTestId("previous-reviews");
   await expect(github).toContainText("On GitHub so far");
-  await expect(github).toContainText("maria");
   await expect(github).toContainText(/unresolved threads/);
+  // Each verdict carries what the review said and leads to its inline comments.
+  const maria = github.getByTestId("verdict-row-maria");
+  await expect(maria).toContainText("requested changes");
+  await expect(maria.getByTestId("review-body")).toContainText("The retry wrapper swallows the gateway's 4xx");
+  await maria.getByTestId("verdict-inline-jump").click();
+  await expect(page.locator('[data-testid^="hunk-header-"][data-focused="true"]')).toBeVisible();
 
   await expect(panel.getByText("Comments", { exact: true })).toBeVisible();
   await expect(panel.getByTestId("comment-card-draft-1")).toBeVisible();

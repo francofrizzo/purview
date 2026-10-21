@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **What each reviewer said, where you decide.** The finish-review panel now shows each reviewer's review text under their verdict, and "N inline comments" takes you to those comments in the diff, one after another.
 - **Fix:** tool calls in the chat and the analysis progress read as plain actions ("Search code src/billing", "Run", "Find files") instead of raw tool names, and a shared tool no longer shows its name twice.
 
 ## 2026.10.21.2

@@ -21,7 +21,10 @@ import {
   type RevisionContext,
   type TimelineEntry,
   type Verdict,
+  reviewThreads,
 } from "../lib/reviews";
+import { cleanRemoteBody } from "../lib/threads";
+import type { RemoteReview, RemoteThread } from "../api/types";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { Markdown } from "./Markdown";
 import { withoutHeadings } from "./SummaryStrip";
@@ -293,19 +296,36 @@ export function ReviewerVerdicts({ verdicts }: { verdicts: ReviewerVerdict[] }) 
  * finish-review dialog, where "who already approved, who is blocking" is
  * part of the decision rather than a glance.
  */
-export function ReviewerVerdictList({ verdicts }: { verdicts: ReviewerVerdict[] }) {
+/**
+ * Each reviewer's standing verdict. With `threads` and `onJumpToThread`, each
+ * row also carries what the review said and a way to its inline comments:
+ * the count is a button that lands on them one after another.
+ */
+export function ReviewerVerdictList({
+  verdicts,
+  threads,
+  onJumpToThread,
+}: {
+  verdicts: ReviewerVerdict[];
+  threads?: RemoteThread[];
+  onJumpToThread?: (thread: RemoteThread) => void;
+}) {
+  const detailed = threads !== undefined && onJumpToThread !== undefined;
   return (
-    <ul className="mt-1.5 flex flex-col gap-1" data-testid="reviewer-verdict-list">
+    <ul className={`mt-1.5 flex flex-col ${detailed ? "gap-2.5" : "gap-1"}`} data-testid="reviewer-verdict-list">
       {verdicts.map((v) => {
         const name = v.author.bot ? (v.author.botName ?? v.author.login) : v.author.login;
         const mark = MARK[v.verdict];
+        const body = detailed ? cleanRemoteBody(v.review.body) : "";
+        const inline = v.review.commentCount;
         return (
           <li
             key={v.author.login}
-            className="flex items-center gap-1.5 text-xs"
+            className="flex flex-col text-xs"
             data-testid={`verdict-row-${v.author.login}`}
             data-verdict={v.verdict}
           >
+          <div className="flex items-center gap-1.5">
             <AuthorAvatar author={name} url={v.author.avatarUrl} size={16} />
             <span style={{ color: "var(--fg)" }}>{v.isMine ? "You" : name}</span>
             {v.author.bot ? <BotChip /> : null}
@@ -322,9 +342,55 @@ export function ReviewerVerdictList({ verdicts }: { verdicts: ReviewerVerdict[] 
                 · {revisionNote(v.revision)}
               </span>
             ) : null}
+            {detailed && inline > 0 ? (
+              <InlineCommentsJump review={v.review} threads={threads} onJump={onJumpToThread} />
+            ) : null}
+            {detailed ? <GithubLink url={v.review.url} what="review" /> : null}
+          </div>
+          {body ? <ClampedBody text={body} /> : null}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * "2 inline comments": a button when the threads of that review are known,
+ * landing on the next one each click; plain text otherwise.
+ */
+function InlineCommentsJump({
+  review,
+  threads,
+  onJump,
+}: {
+  review: RemoteReview;
+  threads: RemoteThread[];
+  onJump: (thread: RemoteThread) => void;
+}) {
+  const next = useRef(0);
+  const own = reviewThreads(review, threads);
+  const label = `${review.commentCount} inline ${review.commentCount === 1 ? "comment" : "comments"}`;
+  if (!own.length) {
+    return (
+      <span className="flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="verdict-inline-count">
+        · {label}
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="-my-0.5 flex-none rounded px-1 py-0.5 text-2xs tabular-nums transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
+      style={{ color: "var(--fg-muted)" }}
+      data-testid="verdict-inline-jump"
+      data-tip={own.length === 1 ? "Go to the comment in the diff" : `Go to the next of ${own.length} in the diff`}
+      onClick={() => {
+        onJump(own[next.current % own.length]);
+        next.current += 1;
+      }}
+    >
+      · {label}
+    </button>
   );
 }
