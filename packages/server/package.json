@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@reviewer/core": "workspace:*",
     "hono": "^4.6.13",
     "qrcode": "^1.5.4",

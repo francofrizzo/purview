@@ -703,6 +703,7 @@ function Stat({ label, children }: { label: string; children: React.ReactNode })
 }
 
 const SOURCE_LABEL: Record<ConfigSource, string> = {
+  env: "the server's environment",
   chat: "this conversation",
   pr: "this PR's override",
   repo: "this repo",

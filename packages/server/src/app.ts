@@ -163,7 +163,7 @@ import {
   isRepoArchived,
 } from "./repo-config.js";
 import { agentView, checkAgentSelection, resolveAgent, resolveChatAgent } from "./repo-config.js";
-import { DEFAULT_HARNESS, getHarness, harnessIds } from "./agent/registry.js";
+import { DEFAULT_HARNESS, getHarness, listedHarnessIds } from "./agent/registry.js";
 import { generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
@@ -1357,6 +1357,15 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /* ------------------------------------------------------------ comments */
 
+  // Experimental tools bind a draft mutation to the revision they read.
+  // Check after reading the request body, immediately before synchronous
+  // validation/write, so a refresh while HTTP is in flight cannot reanchor it.
+  function assertCommentRevision(key: PrKey, expected: string | undefined) {
+    if (expected !== undefined && expected !== String(loadState(key, root).currentRevision)) {
+      throw new HttpError(409, "stale_revision", "The PR revision changed; start a new run.");
+    }
+  }
+
   app.get("/api/prs/:key/comments", (c) => {
     const key = keyParam(c);
     // `deleted` is the trash (deleted drafts, restorable for a while) — see
@@ -1368,6 +1377,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const key = keyParam(c);
     const actor = actorOf(c);
     const body = await readJsonBody(c);
+    assertCommentRevision(key, c.req.header("X-Purview-Revision"));
     // CLI-created comments (the chat's included) must land inside the current
     // diff: nobody is looking at the line they chose, and a comment outside
     // the diff would only fail later, at push time. The web picks lines from
@@ -1498,6 +1508,7 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.delete("/api/prs/:key/comments/:id", (c) => {
     const key = keyParam(c);
+    assertCommentRevision(key, c.req.header("X-Purview-Revision"));
     const id = c.req.param("id");
     const actor = actorOf(c);
     const target = readComments(key, root).find((cc) => cc.id === id);
@@ -1597,6 +1608,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       audience?: unknown;
     };
 
+    assertCommentRevision(key, c.req.header("X-Purview-Revision"));
     const actor = actorOf(c);
     const existing = readComments(key, root);
     let target = existing.find((c2) => c2.id === id);
@@ -2134,7 +2146,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.get("/api/agents", (c) =>
     c.json({
       default: DEFAULT_HARNESS,
-      harnesses: harnessIds().map((id) => {
+      harnesses: listedHarnessIds().map((id) => {
         const { toolNames: _toolNames, inlineOutputLimit: _limit, ...manifest } = getHarness(id).manifest;
         return manifest;
       }),

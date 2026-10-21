@@ -39,6 +39,7 @@ import { resolveRunCheckout } from "./pr-checkout.js";
 import { baseNote, isManagedCheckout } from "./base-note.js";
 import { descriptionBlock } from "./pr-description.js";
 import { HttpError } from "./http-error.js";
+import { reviewSystemPrompt, reviewRunPrompt } from "./agent/review-tools/prompts.js";
 
 /**
  * Automatic PR analysis: one agent run per (PR, revision), driven through the
@@ -1015,6 +1016,9 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   // the run must produce a full analysis (which drops the husks). Nor is the
   // generated unit, which Purview builds before any analysis runs.
   const incremental = !slot.fresh && analysisUnits(state).length > 0;
+  const instructions = harness.manifest.reviewTools
+    ? reviewSystemPrompt(key, root, { task: "analysis", incremental, committed })
+    : analysisSystemPrompt({ incremental }, skillDir(), harness.manifest.toolNames);
 
   const metrics = emptyMetrics();
   // Recorded before the spawn so a run that dies early still says what it was.
@@ -1025,7 +1029,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     checkout: checkout.path || undefined,
     model,
     effort: effort === "none" ? undefined : effort,
-    promptVersion: promptVersion(),
+    promptVersion: harness.manifest.reviewTools ? createHash("sha256").update(instructions).digest("hex").slice(0, 12) : promptVersion(),
     ...analysisRunSize(key, root, state),
   };
 
@@ -1039,9 +1043,11 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     // The stable block (skill + rubric [+ migration notes] + hard rules) is
     // the instructions; everything specific to this PR/run is the prompt,
     // after it, so the prefix is identical across runs.
-    instructions: analysisSystemPrompt({ incremental }, skillDir(), harness.manifest.toolNames),
+    instructions,
+    review: harness.manifest.reviewTools ? { root, key, revision, checkout: checkout.error ? undefined : checkout.path || undefined,
+      analysisMode: incremental ? "incremental" : "initial" } : undefined,
     environment: cliEnvironment(harness.manifest),
-    prompt: analysisPrompt(key, root, {
+    prompt: harness.manifest.reviewTools ? reviewRunPrompt(key, root, checkout, incremental) : analysisPrompt(key, root, {
       incremental,
       checkout,
       headSha,

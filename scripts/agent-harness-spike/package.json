@@ -1,0 +1,19 @@
+{
+  "name": "purview-agent-harness-spike",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 spike.test.mjs",
+    "test:eval": "node --test --test-concurrency=1 eval*.test.mjs",
+    "eval": "node eval.mjs",
+    "auth:login": "node auth-smoke.mjs --login",
+    "auth:smoke": "node auth-smoke.mjs --run"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.305",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@openai/codex": "0.163.0",
+    "zod": "4.6.7"
+  }
+}

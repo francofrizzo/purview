@@ -199,7 +199,7 @@ Install it in any of three ways:
 ## Agent integration
 
 The skill flow above also runs by itself. The server drives an agent harness headlessly for
-two things. Today that harness is Claude Code: the server runs the `claude` CLI, reusing your
+two things. By default that harness is Claude Code: the server runs the `claude` CLI, reusing your
 existing Claude Code auth — there are no API keys anywhere. Everything outside the adapter
 (`packages/server/src/agent/claude-code/`) speaks the harness contract in
 `packages/server/src/agent/types.ts`, and the settings and chat UI are built from the
