@@ -153,7 +153,7 @@ function TipCard({ tip }: { tip: Tip }) {
       className="tip surface elev-2 pointer-events-none fixed z-[70] flex max-w-[20rem] items-center gap-1.5 rounded px-2 py-1 text-2xs leading-4"
       style={{ top, left, visibility: box ? "visible" : "hidden" }}
     >
-      <span>{tip.text}</span>
+      <span className="whitespace-pre-line">{tip.text}</span>
       {tip.keys.length ? (
         <span className="flex flex-none items-center gap-0.5" aria-label={`shortcut ${tip.keys.join(" or ")}`}>
           {tip.keys.map((k, i) => (

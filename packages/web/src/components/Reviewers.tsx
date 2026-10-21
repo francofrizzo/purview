@@ -1,6 +1,6 @@
 import type { PrGithubState, Reviewer } from "../api/types";
 import { AuthorAvatar } from "./AuthorAvatar";
-import { IconCheck, IconClose, IconWarning } from "./icons";
+import { IconCheck, IconClock, IconClose, IconWarning } from "./icons";
 
 /** How many avatars the cluster shows before folding the rest into "+N". */
 const MAX_SHOWN = 4;
@@ -13,8 +13,9 @@ const STATE_LABEL: Record<Reviewer["state"], string> = {
   dismissed: "dismissed",
 };
 
-/** The verdict badge on an avatar: a check or a cross on its soft tint; none for the rest. */
+/** The badge on an avatar: a clock while the reviewer is still to answer, a check or a cross once they did. */
 const BADGE: Partial<Record<Reviewer["state"], { fg: string; bg: string }>> = {
+  requested: { fg: "var(--fg-muted)", bg: "var(--bg-inset)" },
   approved: { fg: "var(--ok)", bg: "var(--ok-soft)" },
   changes_requested: { fg: "var(--risk)", bg: "var(--risk-soft)" },
 };
@@ -24,17 +25,22 @@ export function showsReviewers(authoredByYou: boolean | undefined, state: PrGith
   return authoredByYou === true && (state === "open" || state === "draft" || state === undefined);
 }
 
+/** The people on the PR: a bot's review (CodeRabbit, Copilot…) does not make it a reviewer. */
+export function humanReviewers(reviewers: Reviewer[]): Reviewer[] {
+  return reviewers.filter((r) => !r.bot);
+}
+
 export function reviewersTooltip(reviewers: Reviewer[]): string {
   return reviewers.map((r) => `${r.login} · ${STATE_LABEL[r.state]}`).join("\n");
 }
 
 /**
  * Who is on one of your PRs, at a glance: up to four overlapping avatars, a
- * dashed ring on a reviewer still to answer, a check or a cross on one who
- * did; "+N" for the rest. Fetched and empty says "no reviewers"; not fetched
- * yet renders nothing. The PR page's own verdict strip (Reviews.tsx) is a
- * different thing: that one reads the review timeline, this one GitHub's
- * reviewer list.
+ * reviewer still to answer dimmed with a clock, one who did with a check or a
+ * cross; "+N" for the rest. Bots are left out. Fetched and nobody human says
+ * "no reviewers"; not fetched yet renders nothing. The PR page's own verdict
+ * strip (Reviews.tsx) is a different thing: that one reads the review
+ * timeline, this one GitHub's reviewer list.
  */
 export function ReviewersMark({
   reviewers,
@@ -47,7 +53,8 @@ export function ReviewersMark({
   ring?: string;
 }) {
   if (reviewers === undefined) return null;
-  if (reviewers.length === 0) {
+  const people = humanReviewers(reviewers);
+  if (people.length === 0) {
     return (
       <span
         className={`chip px-0 font-normal ${className ?? ""}`}
@@ -60,12 +67,12 @@ export function ReviewersMark({
       </span>
     );
   }
-  const shown = reviewers.slice(0, MAX_SHOWN);
-  const rest = reviewers.length - shown.length;
+  const shown = people.slice(0, MAX_SHOWN);
+  const rest = people.length - shown.length;
   return (
     <span
       className={`inline-flex flex-none items-center ${className ?? ""}`}
-      data-tip={reviewersTooltip(reviewers)}
+      data-tip={reviewersTooltip(people)}
       data-testid="reviewers"
     >
       {shown.map((r, i) => {
@@ -74,29 +81,27 @@ export function ReviewersMark({
           <span
             key={r.login}
             className="relative inline-flex flex-none rounded-full"
-            style={{
-              marginLeft: i ? -4 : 0,
-              // The ring is the pane color so overlapping discs stay apart;
-              // a reviewer still to answer gets a dashed one in its place.
-              boxShadow: r.state === "requested" ? undefined : `0 0 0 1.5px ${ring}`,
-              outline: r.state === "requested" ? "1.5px dashed var(--fg-faint)" : undefined,
-              outlineOffset: 1,
-            }}
+            // The ring is the pane color so overlapping discs stay apart.
+            style={{ marginLeft: i ? -4 : 0, boxShadow: `0 0 0 1.5px ${ring}` }}
             data-testid="reviewer"
             data-state={r.state}
             data-login={r.login}
           >
-            <AuthorAvatar author={r.login} url={r.avatarUrl ?? undefined} size={16} />
+            <span className="inline-flex" style={{ opacity: r.state === "requested" ? 0.55 : 1 }}>
+              <AuthorAvatar author={r.login} url={r.avatarUrl ?? undefined} size={16} />
+            </span>
             {badge ? (
               <span
                 aria-hidden
-                className="absolute -bottom-[3px] -right-[3px] inline-flex h-[10px] w-[10px] items-center justify-center rounded-full"
-                style={{ background: badge.bg, color: badge.fg, boxShadow: `0 0 0 1.5px ${ring}` }}
+                className="absolute -bottom-[2px] -right-[3px] inline-flex h-[9px] w-[9px] items-center justify-center rounded-full"
+                style={{ background: badge.bg, color: badge.fg, boxShadow: `0 0 0 1px ${ring}` }}
               >
-                {r.state === "approved" ? (
-                  <IconCheck width={8} height={8} strokeWidth={2.4} />
+                {r.state === "requested" ? (
+                  <IconClock width={7} height={7} strokeWidth={2.6} />
+                ) : r.state === "approved" ? (
+                  <IconCheck width={7} height={7} strokeWidth={2.6} />
                 ) : (
-                  <IconClose width={7} height={7} strokeWidth={2.4} />
+                  <IconClose width={6} height={6} strokeWidth={2.6} />
                 )}
               </span>
             ) : null}

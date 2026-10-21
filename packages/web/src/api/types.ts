@@ -303,6 +303,8 @@ export interface Reviewer {
   avatarUrl: string | null;
   kind: "user" | "team";
   state: "requested" | "approved" | "changes_requested" | "commented" | "dismissed";
+  /** GitHub's verdict: a Bot actor or a `[bot]` login. The cluster leaves bots out. */
+  bot?: boolean;
 }
 
 export interface PrMeta {

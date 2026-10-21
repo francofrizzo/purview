@@ -1119,6 +1119,8 @@ export const mockList: PrListEntry[] = [
       { login: "dana", avatarUrl: null, kind: "user", state: "requested" },
       { login: "sam", avatarUrl: null, kind: "user", state: "approved" },
       { login: "lee", avatarUrl: null, kind: "user", state: "changes_requested" },
+      // A bot's review is not a reviewer: the cluster leaves it out.
+      { login: "coderabbitai", avatarUrl: null, kind: "user", state: "commented", bot: true },
     ],
     addedAt: ago(3 * HOUR + 12 * MINUTE),
     archived: false,

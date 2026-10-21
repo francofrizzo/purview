@@ -501,6 +501,8 @@ export const ReviewerSchema = z.object({
   avatarUrl: z.string().nullable(),
   kind: z.enum(["user", "team"]),
   state: z.enum(["requested", "approved", "changes_requested", "commented", "dismissed"]),
+  /** GitHub's verdict: a Bot actor or a `[bot]` login (CodeRabbit, Copilot…). */
+  bot: z.boolean().optional(),
 });
 export type Reviewer = z.infer<typeof ReviewerSchema>;
 

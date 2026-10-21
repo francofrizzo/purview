@@ -330,7 +330,7 @@ const REVIEWER_FIELDS = `reviewRequests(first: 20) { nodes { requestedReviewer {
   ... on Team { slug avatarUrl }
   ... on Bot { login avatarUrl }
 } } }
-latestReviews(first: 50) { nodes { state author { login avatarUrl } } }
+latestReviews(first: 50) { nodes { state author { __typename login avatarUrl } } }
 author { login }`;
 
 interface RawReviewers {
@@ -339,9 +339,13 @@ interface RawReviewers {
     __typename?: string; login?: string; slug?: string; avatarUrl?: string | null;
   } | null } | null)[] | null } | null;
   latestReviews?: { nodes?: ({
-    state?: string; author?: { login?: string; avatarUrl?: string | null } | null;
+    state?: string; author?: { __typename?: string; login?: string; avatarUrl?: string | null } | null;
   } | null)[] | null } | null;
 }
+
+/** GitHub's own verdict on an account: a Bot actor, or a `[bot]` login. */
+const isBotLogin = (typename: string | undefined, login: string): boolean =>
+  typename === "Bot" || /\[bot\]$/i.test(login);
 
 const REVIEW_STATES: Record<string, Reviewer["state"]> = {
   APPROVED: "approved",
@@ -374,11 +378,13 @@ export function reviewersFromPr(raw: RawReviewers | null | undefined): Reviewer[
     const who = node?.requestedReviewer;
     if (!who) continue;
     const team = who.__typename === "Team";
+    const login = (team ? who.slug : who.login) ?? "";
     push({
-      login: (team ? who.slug : who.login) ?? "",
+      login,
       avatarUrl: who.avatarUrl ?? null,
       kind: team ? "team" : "user",
       state: "requested",
+      ...(isBotLogin(who.__typename, login) ? { bot: true } : {}),
     });
   }
   const author = raw?.author?.login?.toLowerCase();
@@ -386,7 +392,14 @@ export function reviewersFromPr(raw: RawReviewers | null | undefined): Reviewer[
     const state = REVIEW_STATES[node?.state ?? ""];
     if (!state) continue;
     if (author && node?.author?.login?.toLowerCase() === author) continue;
-    push({ login: node?.author?.login ?? "", avatarUrl: node?.author?.avatarUrl ?? null, kind: "user", state });
+    const login = node?.author?.login ?? "";
+    push({
+      login,
+      avatarUrl: node?.author?.avatarUrl ?? null,
+      kind: "user",
+      state,
+      ...(isBotLogin(node?.author?.__typename, login) ? { bot: true } : {}),
+    });
   }
   return out;
 }

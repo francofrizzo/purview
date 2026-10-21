@@ -86,11 +86,22 @@ describe("reviewers normalization", () => {
     expect(reviewersFromPr(raw)).toEqual([
       { login: "dana", avatarUrl: "https://a/dana", kind: "user", state: "requested" },
       { login: "payments", avatarUrl: "https://a/payments", kind: "team", state: "requested" },
-      { login: "coderabbit[bot]", avatarUrl: null, kind: "user", state: "requested" },
+      { login: "coderabbit[bot]", avatarUrl: null, kind: "user", state: "requested", bot: true },
       { login: "sam", avatarUrl: "https://a/sam", kind: "user", state: "approved" },
       { login: "lee", avatarUrl: "https://a/lee", kind: "user", state: "commented" },
       { login: "kim", avatarUrl: "https://a/kim", kind: "user", state: "dismissed" },
     ]);
+  });
+
+  it("marks bots by GitHub's verdict: a Bot actor or a [bot] login", () => {
+    expect(reviewersFromPr({
+      reviewRequests: { nodes: [{ requestedReviewer: { __typename: "Bot", login: "copilot", avatarUrl: null } }] },
+      latestReviews: { nodes: [
+        { state: "COMMENTED", author: { __typename: "Bot", login: "coderabbitai", avatarUrl: null } },
+        { state: "COMMENTED", author: { __typename: "User", login: "acme-agent[bot]", avatarUrl: null } },
+        { state: "APPROVED", author: { __typename: "User", login: "sam", avatarUrl: null } },
+      ] },
+    })?.map((r) => [r.login, r.bot ?? false])).toEqual([["copilot", true], ["coderabbitai", true], ["acme-agent[bot]", true], ["sam", false]]);
   });
 
   it("leaves the PR author's own review comments out", () => {

@@ -15,6 +15,7 @@ import {
   IconBolt as TablerBolt,
   IconHeartFilled as TablerHeartFilled,
   IconCheck as TablerCheck,
+  IconClock as TablerClock,
   IconDownload as TablerDownload,
   IconFileImport as TablerFileImport,
   IconInbox as TablerInbox,
@@ -104,6 +105,7 @@ export const IconClose = wrap(IconX);
 export const IconArrowLeft = wrap(TablerArrowLeft);
 export const IconWarning = wrap(IconAlertTriangle);
 export const IconCheck = wrap(TablerCheck);
+export const IconClock = wrap(TablerClock);
 export const IconDownload = wrap(TablerDownload);
 export const IconFileImport = wrap(TablerFileImport);
 export const IconInbox = wrap(TablerInbox);
