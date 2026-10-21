@@ -13,11 +13,15 @@ const STATE_LABEL: Record<Reviewer["state"], string> = {
   dismissed: "dismissed",
 };
 
-/** The badge on an avatar: a clock while the reviewer is still to answer, a check or a cross once they did. */
+/**
+ * The badge on an avatar: a clock while the reviewer is still to answer, a
+ * check or a cross once they did. Solid discs (the soft tints are translucent
+ * and vanish over an avatar), the glyph in the pane color.
+ */
 const BADGE: Partial<Record<Reviewer["state"], { fg: string; bg: string }>> = {
-  requested: { fg: "var(--fg-muted)", bg: "var(--bg-inset)" },
-  approved: { fg: "var(--ok)", bg: "var(--ok-soft)" },
-  changes_requested: { fg: "var(--risk)", bg: "var(--risk-soft)" },
+  requested: { fg: "var(--bg)", bg: "var(--fg-muted)" },
+  approved: { fg: "var(--bg)", bg: "var(--ok)" },
+  changes_requested: { fg: "var(--bg)", bg: "var(--risk)" },
 };
 
 /** Only an open PR of yours has reviewers worth watching. */
@@ -93,15 +97,15 @@ export function ReviewersMark({
             {badge ? (
               <span
                 aria-hidden
-                className="absolute -bottom-[2px] -right-[3px] inline-flex h-[9px] w-[9px] items-center justify-center rounded-full"
+                className="absolute -bottom-[2px] -right-[3px] inline-flex h-[10px] w-[10px] items-center justify-center rounded-full"
                 style={{ background: badge.bg, color: badge.fg, boxShadow: `0 0 0 1px ${ring}` }}
               >
                 {r.state === "requested" ? (
-                  <IconClock width={7} height={7} strokeWidth={2.6} />
+                  <IconClock width={8} height={8} strokeWidth={3} />
                 ) : r.state === "approved" ? (
-                  <IconCheck width={7} height={7} strokeWidth={2.6} />
+                  <IconCheck width={9} height={9} strokeWidth={3} />
                 ) : (
-                  <IconClose width={6} height={6} strokeWidth={2.6} />
+                  <IconClose width={8} height={8} strokeWidth={3} />
                 )}
               </span>
             ) : null}
