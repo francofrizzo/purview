@@ -5,6 +5,10 @@ producto ni cambia el Claude que usa Purview hoy. Usa repos Git y stores Purview
 reales pero sintéticos y descartables. No lee sesiones personales, no usa
 `~/.purview`, no publica nada y no escucha en 4779.
 
+**Material para evals:** [findings-for-evals.md](findings-for-evals.md) lista
+cada conducta observada con su evidencia, el caso de eval que la capturaría y
+su estado. El protocolo de PRs reales está en [realpr/](realpr/README.md).
+
 **Integración posterior:** `--runtime production` usa los nuevos adapters y
 prompts del producto con los mismos casos y graders, sin reescribir los informes
 del spike. Ver [setup y siguiente handoff Mac](integration.md); el producto sólo
