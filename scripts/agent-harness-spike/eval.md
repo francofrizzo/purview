@@ -157,7 +157,13 @@ node scripts/agent-harness-spike/eval.mjs --run \
   --out /tmp/purview-eval-claude-paired.jsonl
 ```
 
-Claude usa el login normal de la CLI, no pide un login separado. También respeta
+Claude usa el login normal de la CLI, no pide un login separado. En macOS la
+CLI lee ese login del Keychain con la cuenta `$USER`: el runner pasa `USER` y
+`LOGNAME` al hijo; sin ellas el hijo responde "Not logged in" sin tocar la API
+(hallazgo de la Mac, ver `eval-results.md`). `PURVIEW_EVAL_DEBUG_LOG=<archivo>`
+vuelca stderr del hijo y sus eventos `system`/`result` en ese archivo, aparte
+del reporte, para diagnosticar un fallo de arranque; contiene IDs de sesión y
+no se publica. También respeta
 las variables de autenticación Anthropic explícitas si existen: no afirmar que
 una corrida usó Max si la máquina tenía una API key seleccionada. No copiar ni
 imprimir tokens y no cambiar la autenticación para hacer pasar una prueba.

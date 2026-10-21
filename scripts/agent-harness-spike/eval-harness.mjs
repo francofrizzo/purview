@@ -39,7 +39,9 @@ export function sharedInstructions(task, incremental = false) {
 function childEnv(f, environment) {
   const env = {};
   // Keep official CLI authentication and network routing, not arbitrary app secrets.
-  for (const key of ["PATH", "HOME", "CLAUDE_CONFIG_DIR", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
+  // USER/LOGNAME: on macOS the CLI reads its login from the Keychain item whose
+  // account is the user name; without them the child sees "Not logged in".
+  for (const key of ["PATH", "HOME", "USER", "LOGNAME", "CLAUDE_CONFIG_DIR", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
     "ANTHROPIC_BASE_URL", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR"]) {
     if (process.env[key]) env[key] = process.env[key];
   }
@@ -111,9 +113,14 @@ export async function runClaudeEval(f, { surface, model = "sonnet", effort = "me
     child = spawn(claudeBin, args, { cwd: surface === "shared" ? f.root : opts.cwd,
       env: { ...env, ...opts.env }, stdio: ["pipe", "pipe", "pipe"], detached: true });
     // Inspect only protocol fields; no raw stdout, stderr, account IDs or auth logs are saved.
+    // Opt-in local diagnosis only: PURVIEW_EVAL_DEBUG_LOG appends the child's stderr and
+    // result events to a file the operator names. Never part of the report.
+    const debugLog = process.env.PURVIEW_EVAL_DEBUG_LOG;
+    if (debugLog) createInterface({ input: child.stderr }).on("line", line => fs.appendFileSync(debugLog, `stderr: ${line}\n`));
     createInterface({ input: child.stdout }).on("line", line => {
       let event;
       try { event = JSON.parse(line); } catch { return; }
+      if (debugLog && (event.type === "result" || event.type === "system")) fs.appendFileSync(debugLog, `event: ${line}\n`);
       if (event.type === "assistant") for (const block of event.message?.content ?? []) {
         if (block.type === "tool_use") toolNames.push(block.name);
       }
