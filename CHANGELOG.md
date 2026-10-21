@@ -5,9 +5,9 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.21.1
 
-- **Reviewers on your PRs.** The list and the PR header show who was asked to review one of your PRs and what they said; a PR of yours with no reviewer says so.
+- **Reviewers on your PRs.** The row and the PR header show who was asked to review one of your PRs and what they said; bots are left out, and a PR with no reviewer says so.
 - **Update from the list.** A PR with new commits on GitHub carries an "update" button on its row; click it to refresh without opening it.
 
 ## 2026.10.20.4
