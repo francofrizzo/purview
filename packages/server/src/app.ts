@@ -148,7 +148,7 @@ import { prHead, resolveRepoPathInput, setRepoPath } from "./repo-path.js";
 import { resolveCheckout } from "./worktree.js";
 import { localOnlyGuard, loopbackOnly } from "./security.js";
 import { LAN_WARNING, lanQrSvg, lanUrl } from "./lan.js";
-import { checkStaleness, clearStalenessCache } from "./staleness.js";
+import { checkStaleness, clearStalenessCache, needsUpdate } from "./staleness.js";
 import { reviewEffort } from "./effort.js";
 import { diffSize } from "./diff-size.js";
 import { compareVersions, entriesSince, headSha, readChangelog } from "./changelog.js";
@@ -475,6 +475,10 @@ export function createApp(opts: AppOptions = {}): Hono {
         state: meta.prState ?? "open",
         reviewDecision: meta.reviewDecision ?? null,
         ci: meta.ci,
+        // `[]` = GitHub said nobody; absent = not fetched yet.
+        reviewers: meta.reviewers,
+        // GitHub holds commits the stored revision does not (see staleness.ts).
+        needsUpdate: needsUpdate(meta, state),
         // Absent (not `null`) until first looked up: `null` means "nothing pending".
         reviewRequest: meta.reviewRequest,
         authoredByYou: authoredByYou(meta.author, loginOf(key.host), extraAuthors),
@@ -664,6 +668,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       reviewRequest: meta.reviewRequest,
       analysisPending: meta.analysisPending ?? null,
       commentAudience: commentAudienceFor(key, root),
+      // Same rule as the list: the cached login only, never a `gh` call.
+      authoredByYou: authoredByYou(meta.author, cachedViewerLogin(key.host, root), readConfig(root).extraAuthors),
       // Whether the PR behaves as archived because its whole repo is; the
       // header offers "unarchive repo" then rather than a per-PR unarchive.
       repoArchived: isRepoArchived(repoKeyOf(key), root),

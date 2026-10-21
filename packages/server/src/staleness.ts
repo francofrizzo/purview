@@ -2,6 +2,7 @@ import {
   fetchPullRequest,
   fetchReviewStatus,
   ciChanged,
+  reviewersChanged,
   keyToString,
   loadState,
   readMeta,
@@ -13,6 +14,7 @@ import {
   type PrKey,
   type PrState,
   type ReviewDecision,
+  type State,
 } from "@reviewer/core";
 import { reviewRequestDue } from "./review-request-refresh.js";
 
@@ -90,9 +92,26 @@ export interface StalenessOptions {
   force?: boolean;
 }
 
-function localRevision(key: PrKey, root: string) {
-  const state = loadState(key, root);
+/** The revision the PR currently shows, or null before one exists. */
+export function currentRevisionOf(state: Pick<State, "revisions" | "currentRevision">) {
   return state.revisions.find((r) => r.revision === state.currentRevision) ?? null;
+}
+
+function localRevision(key: PrKey, root: string) {
+  return currentRevisionOf(loadState(key, root));
+}
+
+/**
+ * GitHub reported a head (sweep, staleness poll or refresh) other than the
+ * one the stored revision holds: the list can say so without a `gh` call.
+ * False when either side is unknown.
+ */
+export function needsUpdate(
+  meta: Pick<Meta, "upstreamHeadSha">,
+  state: Pick<State, "revisions" | "currentRevision">,
+): boolean {
+  const local = currentRevisionOf(state)?.headSha;
+  return !!meta.upstreamHeadSha && !!local && meta.upstreamHeadSha !== local;
 }
 
 /**
@@ -103,8 +122,8 @@ function localRevision(key: PrKey, root: string) {
  * UI polls this on focus and on an interval, and a `gh` that is failing is
  * exactly the case where hammering it helps least.
  *
- * Read-only with two deliberate exceptions: when the only thing that moved is
- * the PR's state or review decision, meta is patched in place so the home
+ * Read-only with a few deliberate exceptions: when the only thing that moved
+ * is the PR's state, review decision, CI or reviewers, meta is patched in place so the home
  * page's chips stay honest without a full refresh; and the base branch
  * (`baseRef`/`basePr`) is backfilled or followed the same way, so older PRs
  * learn what they target without anyone refreshing them; and `reviewRequest`
@@ -137,8 +156,13 @@ export function checkStaleness(
     const pr = fetchPullRequest(key);
     // Best-effort, and `null` from it is indistinguishable from a failed
     // query — see the guard below.
-    const { reviewDecision: upstreamReviewDecision, ci: upstreamCi } = fetchReviewStatus(key);
+    const {
+      reviewDecision: upstreamReviewDecision,
+      ci: upstreamCi,
+      reviewers: upstreamReviewers,
+    } = fetchReviewStatus(key);
     const ciMoved = ciChanged(meta.ci, upstreamCi);
+    const reviewersMoved = reviewersChanged(meta.reviewers, upstreamReviewers);
 
     const reasons: StalenessReason[] = [];
     if (localHeadSha && pr.headSha && localHeadSha !== pr.headSha) reasons.push("new-commits");
@@ -163,7 +187,7 @@ export function checkStaleness(
       localState,
       upstreamReviewDecision,
       localReviewDecision,
-      metaUpdated: stateMoved || decisionMoved || ciMoved,
+      metaUpdated: stateMoved || decisionMoved || ciMoved || reviewersMoved,
       checkedAt,
     };
 
@@ -171,6 +195,12 @@ export function checkStaleness(
     // someone happens to refresh.
     const patch: Partial<Meta> = {};
     if (ciMoved) patch.ci = upstreamCi;
+    if (reviewersMoved) {
+      patch.reviewers = upstreamReviewers;
+      patch.reviewersCheckedAt = checkedAt;
+    }
+    // The head GitHub holds, so the home list can mark the PR "needs update".
+    if (pr.headSha && pr.headSha !== meta.upstreamHeadSha) patch.upstreamHeadSha = pr.headSha;
     if (stateMoved) patch.prState = pr.prState;
     if (decisionMoved) patch.reviewDecision = upstreamReviewDecision;
     // Title and description ride along for free on the same payload (and

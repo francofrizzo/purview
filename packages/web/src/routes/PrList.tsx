@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { MOCK } from "../api/client";
-import { useAddPr, useImportReviews, useMarkVersionSeen, usePrs, useRepos, useSetArchived, useVersion } from "../api/hooks";
+import { useAddPr, useImportReviews, useMarkVersionSeen, usePrs, useRefresh, useRepos, useSetArchived, useVersion } from "../api/hooks";
 import type { PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
@@ -17,7 +17,8 @@ import {
 import { useModalBackground } from "../components/Modal";
 import { UpdateAvailable } from "../components/UpdateAvailable";
 import { WhatsNew } from "../components/WhatsNew";
-import { IconArchive, IconChevron, IconPlus, IconSettings, IconSpinner } from "../components/icons";
+import { IconArchive, IconChevron, IconPlus, IconRefresh, IconSettings, IconSpinner } from "../components/icons";
+import { ReviewersMark, showsReviewers } from "../components/Reviewers";
 import { errorText } from "../api/errors";
 import { rollbackMessage } from "../lib/rollback";
 import { formatImportResult } from "../lib/reviewImport";
@@ -592,6 +593,7 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
           <span data-tip={formatFullTimestamp(pr.addedAt)}>added {formatAddedAt(pr.addedAt)}</span>
           <DiffSizeStat size={pr.diffSize} files={false} />
           <CiMark ci={pr.ci} />
+          {showsReviewers(pr.authoredByYou, pr.state) ? <ReviewersMark reviewers={pr.reviewers} /> : null}
         </div>
         <RowStatus pr={pr} className="mt-1.5 flex flex-wrap sm:hidden" />
       </Link>
@@ -615,6 +617,36 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
 }
 
 /**
+ * "update": GitHub holds commits this PR's stored revision does not. Refreshes
+ * the PR from the row, without opening it; the list re-reads itself after and
+ * the mark goes away on its own (the new revision's head is the one upstream).
+ * The row is a link, so the click must not travel.
+ */
+function UpdateButton({ prKey }: { prKey: string }) {
+  const refresh = useRefresh(prKey);
+  const error = refresh.isError ? errorText(refresh.error) : null;
+  return (
+    <button
+      type="button"
+      className="chip px-0 font-normal disabled:opacity-60"
+      style={{ color: "var(--warn)", background: "transparent" }}
+      data-testid="update-button"
+      data-tip={error ? `Refresh failed: ${error}` : "New commits on GitHub · refresh this PR"}
+      aria-label="Refresh this PR"
+      disabled={refresh.isPending}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        refresh.mutate();
+      }}
+    >
+      <IconRefresh width={10} height={10} className={refresh.isPending ? "animate-spin" : undefined} />
+      update
+    </button>
+  );
+}
+
+/**
  * A row's status cluster: the out-of-the-ordinary state and review decision,
  * the analysis and effort chips, and how far you are through the hunks. Beside
  * the row on wide screens, under the meta line at phone width.
@@ -623,6 +655,7 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
   const decision = pr.reviewDecision === "review_required" ? null : pr.reviewDecision;
   return (
     <div className={`items-center gap-2 ${className}`}>
+      {pr.needsUpdate && (pr.state === "open" || pr.state === "draft") ? <UpdateButton prKey={pr.key} /> : null}
       {pr.state !== "open" ? <PrStateChip state={pr.state} /> : null}
       <ReviewDecisionChip decision={decision} />
       <AnalysisChip job={pr.analysisJob} />

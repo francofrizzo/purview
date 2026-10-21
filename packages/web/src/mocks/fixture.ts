@@ -1085,8 +1085,11 @@ export const mockList: PrListEntry[] = [
     totalHunks: 6,
     state: "draft",
     reviewDecision: null,
-    // Your own draft: the list files it under "Your PRs".
+    // Your own draft: the list files it under "Your PRs". Nobody is on it
+    // yet, and GitHub holds commits the stored revision does not.
     authoredByYou: true,
+    reviewers: [],
+    needsUpdate: true,
     addedAt: ago(40 * MINUTE),
     archived: false,
   },
@@ -1111,6 +1114,12 @@ export const mockList: PrListEntry[] = [
     effort: { mustReadLines: 160, weightedMustReadLines: 120, mustReadUnits: 1, riskCount: 0, badge: null },
     state: "open",
     reviewDecision: null,
+    // Yours (via extraAuthors), so the row shows who is on it.
+    reviewers: [
+      { login: "dana", avatarUrl: null, kind: "user", state: "requested" },
+      { login: "sam", avatarUrl: null, kind: "user", state: "approved" },
+      { login: "lee", avatarUrl: null, kind: "user", state: "changes_requested" },
+    ],
     addedAt: ago(3 * HOUR + 12 * MINUTE),
     archived: false,
   },

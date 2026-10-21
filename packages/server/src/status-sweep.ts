@@ -1,6 +1,7 @@
 import {
   fetchPrStatuses,
   ciChanged,
+  reviewersChanged,
   listPrs,
   readMeta,
   repoKeyToString,
@@ -13,7 +14,7 @@ import { isRepoArchived } from "./repo-config.js";
 
 /**
  * Keeps every tracked PR's open/draft/merged/closed state, review decision,
- * title and description current, whether or not anyone has its page open. The
+ * reviewers, upstream head, title and description current, whether or not anyone has its page open. The
  * staleness check does the same for one PR while its page is up; this is the
  * background twin for the rest, run on the review watcher's tick.
  *
@@ -66,17 +67,27 @@ function safeRepoArchived(key: PrKey, root: string): boolean {
  * since GitHub hosts that lack the field would otherwise wipe real ones.
  */
 export function statusPatch(
-  meta: Pick<Meta, "prState" | "reviewDecision" | "title" | "body" | "ci">,
+  meta: Pick<Meta, "prState" | "reviewDecision" | "title" | "body" | "ci" | "reviewers" | "upstreamHeadSha">,
   upstream: {
     prState: Meta["prState"];
     reviewDecision: Meta["reviewDecision"];
     title: string;
     body?: string;
     ci?: Meta["ci"];
+    reviewers?: Meta["reviewers"];
+    headSha?: string;
   },
+  now: () => string = () => new Date().toISOString(),
 ): Partial<Meta> | null {
   const patch: Partial<Meta> = {};
   if (ciChanged(meta.ci, upstream.ci)) patch.ci = upstream.ci;
+  // An unknown answer (the fields missing) never clears a known list.
+  if (reviewersChanged(meta.reviewers, upstream.reviewers)) {
+    patch.reviewers = upstream.reviewers;
+    patch.reviewersCheckedAt = now();
+  }
+  // "" is what GitHub never says; only a real head is recorded.
+  if (upstream.headSha && upstream.headSha !== meta.upstreamHeadSha) patch.upstreamHeadSha = upstream.headSha;
   if (upstream.prState && upstream.prState !== meta.prState) patch.prState = upstream.prState;
   if (upstream.reviewDecision && upstream.reviewDecision !== meta.reviewDecision) {
     patch.reviewDecision = upstream.reviewDecision;

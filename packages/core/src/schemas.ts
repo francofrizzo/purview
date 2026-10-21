@@ -491,6 +491,19 @@ export const CiSchema = z.object({
 });
 export type Ci = z.infer<typeof CiSchema>;
 
+/**
+ * One reviewer of the PR, as GitHub lists them: still asked (`requested`), or
+ * with the state of their latest review. A team shows up with its slug as
+ * `login`. Order: requested first, then reviews, as GitHub returned them.
+ */
+export const ReviewerSchema = z.object({
+  login: z.string(),
+  avatarUrl: z.string().nullable(),
+  kind: z.enum(["user", "team"]),
+  state: z.enum(["requested", "approved", "changes_requested", "commented", "dismissed"]),
+});
+export type Reviewer = z.infer<typeof ReviewerSchema>;
+
 export const MetaSchema = z.object({
   host: z.string(),
   owner: z.string(),
@@ -548,6 +561,21 @@ export const MetaSchema = z.object({
    */
   reviewDecision: ReviewDecisionSchema.nullable().optional(),
   ci: CiSchema.optional(),
+  /**
+   * Who was asked to review and what they said (see `Reviewer`). `[]` =
+   * GitHub answered and nobody is on it; absent = not fetched yet, or the
+   * query failed, which never clears a known list. Kept current by refresh,
+   * the status sweep and the staleness poll.
+   */
+  reviewers: z.array(ReviewerSchema).optional(),
+  /** When `reviewers` was last written (ISO). */
+  reviewersCheckedAt: z.string().optional(),
+  /**
+   * The PR head GitHub last reported (sweep, staleness poll, refresh). The
+   * list compares it with the current revision's head to say "needs update"
+   * without opening the PR; absent until one of those runs.
+   */
+  upstreamHeadSha: z.string().optional(),
   /**
    * The user's still-pending review request on this PR, folded out of the
    * issue timeline (`github.ts` `foldReviewRequest`). `null` = none pending;

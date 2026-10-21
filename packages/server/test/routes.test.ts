@@ -77,7 +77,47 @@ describe("GET /api/prs", () => {
   });
 });
 
+describe("GET /api/prs needsUpdate", () => {
+  const entry = async () => ((await (await app.request("/api/prs")).json()) as any).prs[0];
+
+  it("is false until GitHub reported a head other than the stored one, and clears on refresh", async () => {
+    expect((await entry()).needsUpdate).toBe(false);
+    expect((await entry()).reviewers).toBeUndefined();
+    updateMeta(key, { upstreamHeadSha: "head1" }, root);
+    expect((await entry()).needsUpdate).toBe(false);
+    updateMeta(key, { upstreamHeadSha: "head2" }, root);
+    expect((await entry()).needsUpdate).toBe(true);
+    // A refresh that finds nothing new still records the head it saw.
+    setGhRunner((args) => {
+      const joined = args.join(" ");
+      if (args[1] === "graphql") return JSON.stringify({ data: { repository: { pullRequest: { reviewDecision: null } } } });
+      if (joined.includes("Accept: application/vnd.github.v3.diff")) return "";
+      if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
+      return JSON.stringify({
+        node_id: "PR_1",
+        number: key.number,
+        title: "Add widgets",
+        html_url: "https://example.invalid/pr",
+        state: "open",
+        base: { ref: "main", sha: "base1" },
+        head: { ref: "feature", sha: "head1" },
+      });
+    });
+    const res = await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
+    expect(res.status).toBe(200);
+    expect((await entry()).needsUpdate).toBe(false);
+  });
+});
+
 describe("GET /api/prs/:key", () => {
+  it("says whether the PR is yours, from the cached login only", async () => {
+    updateMeta(key, { author: "Octocat" }, root);
+    const detail = async () => (await (await app.request(`/api/prs/${encodedKey}`)).json()) as any;
+    expect((await detail()).authoredByYou).toBe(false);
+    fs.writeFileSync(githubUserCachePath(root), JSON.stringify({ [key.host]: { login: "octocat" } }));
+    expect((await detail()).authoredByYou).toBe(true);
+  });
+
   it("returns state, current-revision files, diff text and meta", async () => {
     const res = await app.request(`/api/prs/${encodedKey}`);
     expect(res.status).toBe(200);

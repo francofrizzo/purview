@@ -344,7 +344,7 @@ still writes the **PR-level** checkout override; the repo-level default is writt
 
 `GET /api/prs` carries each PR's `state` (`open`/`draft`/`merged`/`closed`), `reviewDecision`
 (`approved`/`changes_requested`/`review_required`/`null`), `addedAt`, `archived` and `title`.
-GitHub state, review decisions and CI checks stay current through the background status sweep and the open PR’s staleness poll; the list and PR header show CI status, and the header chip opens each check and its run. The review decision comes from a small
+GitHub state, review decisions and CI checks stay current through the background status sweep and the open PR’s staleness poll; the list and PR header show CI status, and the header chip opens each check and its run. The same sweep records who is reviewing your own PRs (shown on the row and in the header) and the head GitHub holds, so a row whose PR gained commits upstream offers an "update" button that refreshes it from the list. The review decision comes from a small
 GraphQL query (REST has no such field); if it fails, it degrades to `null` instead of failing
 the refresh.
 

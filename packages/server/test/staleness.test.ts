@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { loadState, readMeta, setGhRunner, updateMeta, type GhRunner } from "@reviewer/core";
 import { createApp } from "../src/app.js";
-import { STALENESS_TTL_MS, checkStaleness, clearStalenessCache } from "../src/staleness.js";
+import { STALENESS_TTL_MS, checkStaleness, clearStalenessCache, needsUpdate } from "../src/staleness.js";
 import { buildFixture, key } from "./fixtures.js";
 
 const encodedKey = encodeURIComponent(`${key.host}/${key.owner}/${key.repo}/${key.number}`);
@@ -21,6 +21,7 @@ interface Upstream {
   merged: boolean;
   reviewDecision: string | null;
   commits?: unknown;
+  reviewers?: { reviewRequests: unknown; latestReviews: unknown };
 }
 
 let root: string;
@@ -36,7 +37,7 @@ function installGh() {
     if (args[1] === "graphql") {
       return JSON.stringify({
         data: {
-          repository: { pullRequest: { reviewDecision: upstream.reviewDecision, commits: upstream.commits } },
+          repository: { pullRequest: { reviewDecision: upstream.reviewDecision, commits: upstream.commits, ...upstream.reviewers } },
         },
       });
     }
@@ -275,6 +276,7 @@ describe("opportunistic meta update", () => {
         body: "",
         reviewRequest: null,
         reviewRequestCheckedAt: new Date().toISOString(),
+        upstreamHeadSha: "head1",
       },
       root,
     );
@@ -339,4 +341,37 @@ it("persists CI-only changes, exposes them on both endpoints, and ignores timest
   const list = await (await app.request("/api/prs")).json();
   expect(list.prs[0].ci.state).toBe("failure");
   expect(checkStaleness(key, root, { force: true }).metaUpdated).toBe(false);
+});
+
+describe("reviewers and the upstream head", () => {
+  it("needsUpdate compares the reported head with the stored revision, and is false when either is unknown", () => {
+    const state = { currentRevision: 2, revisions: [
+      { revision: 1, headSha: "h1" }, { revision: 2, headSha: "h2" },
+    ] } as unknown as Parameters<typeof needsUpdate>[1];
+    expect(needsUpdate({ upstreamHeadSha: "h3" }, state)).toBe(true);
+    expect(needsUpdate({ upstreamHeadSha: "h2" }, state)).toBe(false);
+    expect(needsUpdate({}, state)).toBe(false);
+    expect(needsUpdate({ upstreamHeadSha: "h3" }, { currentRevision: 0, revisions: [] })).toBe(false);
+  });
+
+  it("writes the reviewers and the upstream head into meta and reports the reviewers as a meta update", async () => {
+    upstream.headSha = "head2";
+    upstream.reviewers = {
+      reviewRequests: { nodes: [{ requestedReviewer: { __typename: "User", login: "dana", avatarUrl: null } }] },
+      latestReviews: { nodes: [] },
+    };
+    const result = checkStaleness(key, root);
+    expect(result.stale).toBe(true);
+    expect(result.metaUpdated).toBe(true);
+    const meta = readMeta(key, root);
+    expect(meta.upstreamHeadSha).toBe("head2");
+    expect(meta.reviewers).toEqual([{ login: "dana", avatarUrl: null, kind: "user", state: "requested" }]);
+    expect(meta.reviewersCheckedAt).toBe(result.checkedAt);
+    const list = await (await app.request("/api/prs")).json();
+    expect(list.prs[0]).toMatchObject({ needsUpdate: true, reviewers: [{ login: "dana" }] });
+    // Same answer again: nothing to write, and a missing field never clears the list.
+    upstream.reviewers = undefined;
+    expect(checkStaleness(key, root, { force: true }).metaUpdated).toBe(false);
+    expect(readMeta(key, root).reviewers).toHaveLength(1);
+  });
 });

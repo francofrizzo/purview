@@ -198,3 +198,42 @@ it("sweeps CI and clears checks when the new head has none", async () => {
   await sweepPrStatuses(root);
   expect(readMeta(key, root).ci).toMatchObject({ state: "none", headSha: "next", checks: [] });
 });
+
+describe("reviewers and the upstream head", () => {
+  const dana = { login: "dana", avatarUrl: null, kind: "user" as const, state: "requested" as const };
+  const base = { title: "PR", body: "", prState: undefined, reviewDecision: null };
+
+  it("records reviewers with a stamp, never clears them on an unknown answer, and follows the head", () => {
+    const now = () => "2026-10-21T10:00:00.000Z";
+    expect(statusPatch({ title: "PR", body: "" }, { ...base, reviewers: [dana], headSha: "h2" }, now)).toEqual({
+      reviewers: [dana],
+      reviewersCheckedAt: "2026-10-21T10:00:00.000Z",
+      upstreamHeadSha: "h2",
+    });
+    const meta = { title: "PR", body: "", reviewers: [dana], upstreamHeadSha: "h2" };
+    expect(statusPatch(meta, { ...base, reviewers: undefined, headSha: "h2" })).toBeNull();
+    expect(statusPatch(meta, { ...base, reviewers: [dana], headSha: "" })).toBeNull();
+    expect(statusPatch(meta, { ...base, reviewers: [], headSha: "h2" }, now)).toEqual({
+      reviewers: [],
+      reviewersCheckedAt: "2026-10-21T10:00:00.000Z",
+    });
+  });
+
+  it("sweeps them into meta", async () => {
+    const key = pr("widgets", 1);
+    initPr(key, root);
+    setGhRunner(statusGh({ widgets: { 1: {
+      state: "OPEN", title: "PR 1", headRefOid: "moved",
+      reviewRequests: { nodes: [{ requestedReviewer: { __typename: "Team", slug: "payments", avatarUrl: null } }] },
+      latestReviews: { nodes: [{ state: "APPROVED", author: { login: "sam", avatarUrl: "https://a/sam" } }] },
+    } } }));
+    await sweepPrStatuses(root);
+    const meta = readMeta(key, root);
+    expect(meta.upstreamHeadSha).toBe("moved");
+    expect(meta.reviewers).toEqual([
+      { login: "payments", avatarUrl: null, kind: "team", state: "requested" },
+      { login: "sam", avatarUrl: "https://a/sam", kind: "user", state: "approved" },
+    ]);
+    expect(typeof meta.reviewersCheckedAt).toBe("string");
+  });
+});

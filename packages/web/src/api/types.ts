@@ -293,8 +293,24 @@ export interface Ci {
   checkedAt: string;
 }
 
+/**
+ * One reviewer of a PR: still asked (`requested`), or with the state of their
+ * latest review. A team carries its slug as `login`. Requested first, then
+ * reviews, in GitHub's order.
+ */
+export interface Reviewer {
+  login: string;
+  avatarUrl: string | null;
+  kind: "user" | "team";
+  state: "requested" | "approved" | "changes_requested" | "commented" | "dismissed";
+}
+
 export interface PrMeta {
   ci?: Ci;
+  /** `[]` = GitHub said nobody is on it; absent = not fetched yet. */
+  reviewers?: Reviewer[];
+  /** The PR head GitHub last reported; absent until a sweep or poll ran. */
+  upstreamHeadSha?: string;
   host: string;
   owner: string;
   repo: string;
@@ -511,6 +527,10 @@ export interface DiffSize {
 
 export interface PrListEntry {
   ci?: Ci;
+  /** See `PrMeta.reviewers`. Absent from an older server. */
+  reviewers?: Reviewer[];
+  /** GitHub holds commits the stored revision does not. Absent from an older server. */
+  needsUpdate?: boolean;
   key: string;
   /** Absent from an older server; `null` until the revision's files are stored. */
   diffSize?: DiffSize | null;
@@ -729,6 +749,8 @@ export interface PrDetail {
   commentAudience?: { effective: CommentAudience; override: CommentAudience | null };
   /** the PR's whole repo is archived, so the PR behaves as archived too */
   repoArchived?: boolean;
+  /** You opened it (its author is the `gh` user). Absent from an older server. */
+  authoredByYou?: boolean;
   /** what changed since the reader's last submitted review; null/absent: nothing to compare */
   sinceReview?: SinceReview | null;
 }

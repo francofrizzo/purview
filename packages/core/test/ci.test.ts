@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { ciFromRollup, fetchPrStatuses, fetchReviewStatus, setGhRunner } from "../src/github.js";
+import { ciFromRollup, fetchPrStatuses, fetchReviewStatus, reviewersChanged, reviewersFromPr, setGhRunner } from "../src/github.js";
 
 const key = { host: "github.com", owner: "acme", repo: "app", number: 1 };
 const run = (conclusion: string | null, status = "COMPLETED") => ({
@@ -59,4 +59,76 @@ it("tolerates absent commits and failed page queries", () => {
   expect(fetchReviewStatus(key)).toEqual({ reviewDecision: "approved", ci: undefined });
   setGhRunner(() => { throw new Error("offline"); });
   expect(fetchReviewStatus(key)).toEqual({ reviewDecision: null });
+});
+
+describe("reviewers normalization", () => {
+  const user = (login: string, state: string) => ({ state, author: { login, avatarUrl: `https://a/${login}` } });
+  const request = (who: Record<string, unknown>) => ({ requestedReviewer: who });
+  const raw = {
+    reviewRequests: { nodes: [
+      request({ __typename: "User", login: "dana", avatarUrl: "https://a/dana" }),
+      request({ __typename: "Team", slug: "payments", avatarUrl: "https://a/payments" }),
+      request({ __typename: "Bot", login: "coderabbit[bot]", avatarUrl: null }),
+      null,
+    ] },
+    latestReviews: { nodes: [
+      user("sam", "APPROVED"),
+      user("dana", "CHANGES_REQUESTED"),
+      user("lee", "COMMENTED"),
+      user("kim", "DISMISSED"),
+      user("me", "PENDING"),
+      user("sam", "COMMENTED"),
+      null,
+    ] },
+  };
+
+  it("lists requests first, then latest reviews, deduped by login, PENDING skipped", () => {
+    expect(reviewersFromPr(raw)).toEqual([
+      { login: "dana", avatarUrl: "https://a/dana", kind: "user", state: "requested" },
+      { login: "payments", avatarUrl: "https://a/payments", kind: "team", state: "requested" },
+      { login: "coderabbit[bot]", avatarUrl: null, kind: "user", state: "requested" },
+      { login: "sam", avatarUrl: "https://a/sam", kind: "user", state: "approved" },
+      { login: "lee", avatarUrl: "https://a/lee", kind: "user", state: "commented" },
+      { login: "kim", avatarUrl: "https://a/kim", kind: "user", state: "dismissed" },
+    ]);
+  });
+
+  it("leaves the PR author's own review comments out", () => {
+    expect(reviewersFromPr({
+      author: { login: "Me" },
+      reviewRequests: { nodes: [] },
+      latestReviews: { nodes: [
+        { state: "COMMENTED", author: { login: "me", avatarUrl: null } },
+        { state: "APPROVED", author: { login: "sam", avatarUrl: null } },
+      ] },
+    })).toEqual([{ login: "sam", avatarUrl: null, kind: "user", state: "approved" }]);
+  });
+
+  it("is empty when GitHub answered with nobody, and unknown when the fields are missing", () => {
+    expect(reviewersFromPr({ reviewRequests: { nodes: [] }, latestReviews: { nodes: [] } })).toEqual([]);
+    expect(reviewersFromPr(null)).toBeUndefined();
+    expect(reviewersFromPr({ reviewRequests: { nodes: [] } })).toBeUndefined();
+    expect(reviewersFromPr({ latestReviews: { nodes: [] } })).toBeUndefined();
+  });
+
+  it("changes on content only, and never on an unknown answer", () => {
+    const a = [{ login: "dana", avatarUrl: null, kind: "user" as const, state: "requested" as const }];
+    expect(reviewersChanged(undefined, a)).toBe(true);
+    expect(reviewersChanged(a, [{ ...a[0], state: "approved" }])).toBe(true);
+    expect(reviewersChanged(a, [...a])).toBe(false);
+    expect(reviewersChanged(a, undefined)).toBe(false);
+    expect(reviewersChanged(undefined, [])).toBe(true);
+  });
+
+  it("rides on both the batched and the page queries", async () => {
+    const calls: string[][] = [];
+    const pr = { state: "OPEN", reviewDecision: null, ...raw };
+    setGhRunner(args => {
+      calls.push(args);
+      return JSON.stringify({ data: { repository: { pullRequest: pr, pr1: pr } } });
+    });
+    expect(fetchReviewStatus(key).reviewers).toHaveLength(6);
+    expect((await fetchPrStatuses(key, [1])).get(1)?.reviewers).toHaveLength(6);
+    for (const call of calls) expect(call.join(" ")).toContain("latestReviews(first: 50)");
+  });
 });

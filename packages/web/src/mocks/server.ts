@@ -1006,7 +1006,8 @@ export const mockApi = {
       !!basePr && list.some((p) => p.key === `${host}/${owner}/${repo}/${basePr.number}`);
     const entry = list.find((p) => p.key === key);
     target.reviewRequest = entry?.reviewRequest;
-    target.meta = { ...target.meta, archived: entry?.archived ?? false };
+    target.authoredByYou = entry?.authoredByYou || loginListed(entry?.meta?.author, globalConfig.extraAuthors);
+    target.meta = { ...target.meta, archived: entry?.archived ?? false, reviewers: entry?.reviewers };
     target.repoArchived = archivedRepos.has(`${host}/${owner}/${repo}`);
     target.analysisPending = analysisPending[key] ?? null;
     return withAudience(structuredClone(target));
@@ -1108,6 +1109,9 @@ export const mockApi = {
     // reporting is gone until upstream moves again.
     const flag = readStaleFlag();
     if (flag) acknowledgedSha[key] = flag.sha;
+    // The new revision holds the head GitHub had, so the list's "update" goes.
+    const entry = list.find((p) => p.key === key);
+    if (entry) entry.needsUpdate = false;
     return {
       revision: detail.state.revision,
       baseOnly: false,

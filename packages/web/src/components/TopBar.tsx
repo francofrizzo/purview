@@ -6,6 +6,7 @@ import { isJobLive } from "../api/types";
 import { AnalysisChip, AnalysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { CiMark, DiffSizeStat, ReviewRequestAge, StackedOnChip } from "./Chips";
+import { ReviewersMark, showsReviewers } from "./Reviewers";
 import { RevisionMenu } from "./RevisionMenu";
 import { AudienceSwitch } from "./AudienceSwitch";
 import { UpdateAvailable } from "./UpdateAvailable";
@@ -229,6 +230,9 @@ export function TopBar({
           </span>
           <DiffSizeStat size={diffTotals(detail.files.files)} />
           <CiMark ci={meta.ci} interactive />
+          {showsReviewers(detail.authoredByYou, meta.prState) ? (
+            <ReviewersMark reviewers={meta.reviewers} className="flex-none" ring="var(--bg-raised)" />
+          ) : null}
           <RevisionMenu
             state={state}
             analysisLive={live}

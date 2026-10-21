@@ -8,6 +8,7 @@ import {
   fetchRemoteViewedState,
   fetchReviewStatus,
   ciChanged,
+  reviewersChanged,
   resolveReviewRequest,
   setFileViewedOnGithub,
 } from "./github.js";
@@ -239,9 +240,16 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
   // worktree resolution keys off it, so keep it current on every refresh.
   // State, review decision and CI also ride along on explicit refreshes.
   // A failed GraphQL query leaves the previous CI intact.
-  const { reviewDecision, ci } = fetchReviewStatus(key);
+  const { reviewDecision, ci, reviewers } = fetchReviewStatus(key);
   const metaPatch: Partial<Meta> = {};
   if (ciChanged(meta.ci, ci)) metaPatch.ci = ci;
+  if (reviewersChanged(meta.reviewers, reviewers)) {
+    metaPatch.reviewers = reviewers;
+    metaPatch.reviewersCheckedAt = new Date().toISOString();
+  }
+  // What the list compares the stored revision against to say "needs
+  // update"; the refresh is about to hold this head, so the mark clears.
+  if (pr.headSha && meta.upstreamHeadSha !== pr.headSha) metaPatch.upstreamHeadSha = pr.headSha;
   if (meta.headRef !== pr.headRef) metaPatch.headRef = pr.headRef;
   // Same for the base branch, plus the PR it is stacked on (when it targets
   // anything but the default branch) — the prompts tell Claude about it.

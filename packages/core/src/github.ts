@@ -8,7 +8,7 @@ import {
   type PrKey,
   type RepoKey,
 } from "./paths.js";
-import type { BasePr, Ci, PrState, ReviewDecision, ReviewRequest } from "./schemas.js";
+import type { BasePr, Ci, PrState, ReviewDecision, ReviewRequest, Reviewer } from "./schemas.js";
 
 /**
  * Every `gh` invocation in the project funnels through here so the server
@@ -321,6 +321,81 @@ const CI_FIELDS = `commits(last: 1) { nodes { commit { oid statusCheckRollup {
   } }
 } } } }`;
 
+/**
+ * Who is on the PR: still-pending requests (users, teams, bots) and the latest
+ * review of everyone who gave one. Rides on the same queries as `CI_FIELDS`.
+ */
+const REVIEWER_FIELDS = `reviewRequests(first: 20) { nodes { requestedReviewer { __typename
+  ... on User { login avatarUrl }
+  ... on Team { slug avatarUrl }
+  ... on Bot { login avatarUrl }
+} } }
+latestReviews(first: 50) { nodes { state author { login avatarUrl } } }
+author { login }`;
+
+interface RawReviewers {
+  author?: { login?: string } | null;
+  reviewRequests?: { nodes?: ({ requestedReviewer?: {
+    __typename?: string; login?: string; slug?: string; avatarUrl?: string | null;
+  } | null } | null)[] | null } | null;
+  latestReviews?: { nodes?: ({
+    state?: string; author?: { login?: string; avatarUrl?: string | null } | null;
+  } | null)[] | null } | null;
+}
+
+const REVIEW_STATES: Record<string, Reviewer["state"]> = {
+  APPROVED: "approved",
+  CHANGES_REQUESTED: "changes_requested",
+  COMMENTED: "commented",
+  DISMISSED: "dismissed",
+};
+
+/**
+ * Pure normalization of the reviewer fields. Requested reviewers first (a
+ * re-requested reviewer counts as requested, whatever their last review
+ * said), then the latest reviews, deduped by login; `PENDING` reviews are
+ * the viewer's own unsubmitted one and are skipped, as are the PR author's
+ * own review comments (they are not a reviewer). `undefined` when the
+ * payload lacks the fields (a failed or partial answer), never `[]` for a
+ * failure: `[]` means GitHub answered and nobody is on the PR.
+ */
+export function reviewersFromPr(raw: RawReviewers | null | undefined): Reviewer[] | undefined {
+  const requests = raw?.reviewRequests?.nodes;
+  const reviews = raw?.latestReviews?.nodes;
+  if (!Array.isArray(requests) || !Array.isArray(reviews)) return undefined;
+  const out: Reviewer[] = [];
+  const seen = new Set<string>();
+  const push = (r: Reviewer) => {
+    if (!r.login || seen.has(r.login)) return;
+    seen.add(r.login);
+    out.push(r);
+  };
+  for (const node of requests) {
+    const who = node?.requestedReviewer;
+    if (!who) continue;
+    const team = who.__typename === "Team";
+    push({
+      login: (team ? who.slug : who.login) ?? "",
+      avatarUrl: who.avatarUrl ?? null,
+      kind: team ? "team" : "user",
+      state: "requested",
+    });
+  }
+  const author = raw?.author?.login?.toLowerCase();
+  for (const node of reviews) {
+    const state = REVIEW_STATES[node?.state ?? ""];
+    if (!state) continue;
+    if (author && node?.author?.login?.toLowerCase() === author) continue;
+    push({ login: node?.author?.login ?? "", avatarUrl: node?.author?.avatarUrl ?? null, kind: "user", state });
+  }
+  return out;
+}
+
+/** Whether persisted reviewers differ from a fresh answer; an unknown answer never counts. */
+export function reviewersChanged(before: Reviewer[] | undefined, after: Reviewer[] | undefined): boolean {
+  return after !== undefined && JSON.stringify(before) !== JSON.stringify(after);
+}
+
 interface RawCiCommit {
   oid?: string;
   statusCheckRollup?: { state?: string; contexts?: { nodes?: ({
@@ -369,7 +444,7 @@ export function ciChanged(before: Ci | undefined, after: Ci | undefined): boolea
 
 const REVIEW_DECISION_QUERY = `query($owner:String!,$repo:String!,$number:Int!){
   repository(owner:$owner,name:$repo){
-    pullRequest(number:$number){ reviewDecision ${CI_FIELDS} }
+    pullRequest(number:$number){ reviewDecision ${CI_FIELDS} ${REVIEWER_FIELDS} }
   }
 }`;
 
@@ -384,8 +459,12 @@ export function fetchReviewDecision(key: PrKey): ReviewDecision | null {
   return fetchReviewStatus(key).reviewDecision;
 }
 
-/** Review decision and CI share one best-effort GraphQL request. */
-export function fetchReviewStatus(key: PrKey): { reviewDecision: ReviewDecision | null; ci?: Ci } {
+/** Review decision, CI and reviewers share one best-effort GraphQL request. */
+export function fetchReviewStatus(key: PrKey): {
+  reviewDecision: ReviewDecision | null;
+  ci?: Ci;
+  reviewers?: Reviewer[];
+} {
   try {
     const res = JSON.parse(
       gh([
@@ -405,7 +484,11 @@ export function fetchReviewStatus(key: PrKey): { reviewDecision: ReviewDecision 
       data?: { repository?: { pullRequest?: RawPrStatus } };
     };
     const raw = res.data?.repository?.pullRequest;
-    return { reviewDecision: normalizeDecision(raw?.reviewDecision), ci: ciFromPr(raw) };
+    return {
+      reviewDecision: normalizeDecision(raw?.reviewDecision),
+      ci: ciFromPr(raw),
+      reviewers: reviewersFromPr(raw),
+    };
   } catch {
     return { reviewDecision: null };
   }
@@ -415,6 +498,8 @@ export function fetchReviewStatus(key: PrKey): { reviewDecision: ReviewDecision 
 
 export interface PrStatus {
   ci?: Ci;
+  /** Absent when the answer lacked the fields (see `reviewersFromPr`). */
+  reviewers?: Reviewer[];
   prState: PrState;
   /** `null` when GitHub has none, or the host does not know the field. */
   reviewDecision: ReviewDecision | null;
@@ -448,7 +533,7 @@ export async function fetchPrStatuses(
     const fields = chunk
       .map(
         (n) =>
-          `pr${n}: pullRequest(number: ${n}) { state isDraft reviewDecision title body headRefOid ${CI_FIELDS} }`,
+          `pr${n}: pullRequest(number: ${n}) { state isDraft reviewDecision title body headRefOid ${CI_FIELDS} ${REVIEWER_FIELDS} }`,
       )
       .join("\n");
     const query = `query($owner: String!, $repo: String!) {
@@ -481,6 +566,7 @@ ${fields}
         }),
         reviewDecision: normalizeDecision(raw.reviewDecision),
         ci: ciFromPr(raw),
+        reviewers: reviewersFromPr(raw),
         title: raw.title ?? "",
         body: normalizeBody(raw.body),
         headSha: raw.headRefOid ?? "",
@@ -490,7 +576,7 @@ ${fields}
   return out;
 }
 
-interface RawPrStatus {
+interface RawPrStatus extends RawReviewers {
   commits?: { nodes?: ({ commit?: RawCiCommit | null } | null)[] };
   state?: string;
   isDraft?: boolean;

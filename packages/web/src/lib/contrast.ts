@@ -82,6 +82,7 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("ok-on-raised", "Text on surfaces", "ok text on bg-raised", "ok", 3.0, ["bg-raised"], "2/2 viewed"),
     s("risk-on-raised", "Text on surfaces", "risk text on bg-raised", "risk", 3.0, ["bg-raised"], "Must read (2)"),
     s("warn-on-raised", "Text on surfaces", "warn text on bg-raised", "warn", 3.0, ["bg-raised"], "Skim (1)"),
+    s("warn-on-bg", "Text on surfaces", "warn text on bg (home list: \"no reviewers\", \"update\")", "warn", 3.0, ["bg"], "no reviewers · update"),
     s("heart-on-raised", "Text on surfaces", "heart text on bg-raised", "heart", 3.0, ["bg-raised"], "Heart · where the logic lives"),
     s("agent-on-raised", "Text on surfaces", "agent text on bg-raised", "agent", 3.0, ["bg-raised"], "Note for agent"),
 
@@ -107,6 +108,8 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     chip("chip-heart", "heart", "heart", "heart-soft"),
     chip("chip-core-inset", "chip on bg-inset: core", "kind-core", "kind-core-soft", "bg-inset"),
     chip("chip-risk-inset", "chip on bg-inset: risk", "risk", "risk-soft", "bg-inset"),
+    chip("badge-approved", "reviewer approved badge (ok on ok-soft, home list)", "ok", "ok-soft", "bg"),
+    chip("badge-changes", "reviewer changes badge (risk on risk-soft, home list)", "risk", "risk-soft", "bg"),
     s("age-1", "Chips and badges", "age-1 (fresh request)", "age-1", 3.0, ["bg-raised"], "asked you 2h ago"),
     s("age-2", "Chips and badges", "age-2 (waiting)", "age-2", 3.0, ["bg-raised"], "asked you 2d ago"),
     s("age-3", "Chips and badges", "age-3 (stale)", "age-3", 3.0, ["bg-raised"], "asked you 9d ago"),

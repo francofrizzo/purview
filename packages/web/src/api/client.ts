@@ -161,6 +161,8 @@ interface WireProgress {
 
 interface WireListEntry {
   ci?: PrListEntry["ci"];
+  reviewers?: PrListEntry["reviewers"];
+  needsUpdate?: boolean;
   key: string;
   diffSize?: PrListEntry["diffSize"];
   meta: PrListEntry["meta"];
@@ -488,6 +490,8 @@ export const api = {
       state: e.state ?? "open",
       reviewDecision: e.reviewDecision ?? null,
       ci: e.ci,
+      reviewers: e.reviewers,
+      needsUpdate: Boolean(e.needsUpdate),
       reviewRequest: e.reviewRequest !== undefined ? e.reviewRequest : e.meta?.reviewRequest,
       authoredByYou: Boolean(e.authoredByYou),
       addedAt: e.addedAt ?? e.meta?.createdAt ?? new Date(0).toISOString(),
