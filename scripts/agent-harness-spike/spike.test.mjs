@@ -42,6 +42,17 @@ async function fixture(t) {
   return f;
 }
 
+/** Resolves once `read()` has not changed for `ms`; bounded by `until`'s timeout. */
+async function quiet(read, ms) {
+  let last = read();
+  let since = Date.now();
+  await until(() => {
+    const now = read();
+    if (now !== last) { last = now; since = Date.now(); }
+    return Date.now() - since >= ms;
+  }, "egress to settle");
+}
+
 /** Live child processes of the test process, by pid. */
 function children() {
   const out = spawnSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" });
@@ -495,6 +506,12 @@ test("Codex feature gate suppresses curated plugin preparation, including after 
     await until(() => client.stderr().includes("curated") || f.api.egress.length > 0, "plugin startup attempt");
     await fs.access(path.join(home, ".tmp/plugins.sync.lock"));
     await client.close();
+    // Preparation reaches for more than one host (chatgpt.com, then
+    // github.com, ~20 ms apart on macOS) and a connect already in the proxy's
+    // accept queue is still delivered after the process group is killed. Wait
+    // for the control's egress to go quiet so none of it is charged to the
+    // gated run below, which must observe exactly zero.
+    await quiet(() => f.api.egress.length, 750);
   });
   await t.test("feature off prevents preparation across startup, login and a real harness turn", async () => {
     const start = f.api.egress.length;
@@ -509,6 +526,7 @@ test("Codex feature gate suppresses curated plugin preparation, including after 
       throw error;
     });
     assert.ok(!entries.some(name => name.startsWith("plugins")));
-    assert.equal(f.api.egress.length, start);
+    await quiet(() => f.api.egress.length, 750);
+    assert.deepEqual(f.api.egress.slice(start), [], "egress attempted with the plugin feature off");
   });
 });

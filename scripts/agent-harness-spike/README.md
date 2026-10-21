@@ -44,7 +44,7 @@ La autorización de la fixture vuelve a leer en cada mutación el grant activo, 
 
 ## Evidencia ejecutada
 
-Última ejecución en Linux x64: **44 tests, 44 pass, 0 fail**. En macOS 27.0 arm64 con Node 26.3.0 (Homebrew), la matriz anterior: **34 tests, 34 pass, 0 fail**, en tres corridas consecutivas, sin procesos ni directorios temporales remanentes. Los diez tests nuevos de auth/plugins están pendientes en macOS. El conteo incluye subtests y pruebas que caracterizan limitaciones: no equivale a 44 garantías de seguridad satisfechas.
+Última ejecución en Linux x64: **44 tests, 44 pass, 0 fail**. En macOS 27.0 arm64 con Node 26.3.0 (Homebrew): **44 tests, 44 pass, 0 fail**, en dos corridas consecutivas tras corregir una carrera del propio test (abajo), sin procesos ni directorios temporales remanentes. La primera corrida en macOS dio 42/44: el control positivo de preparación de plugins alcanza dos hosts por el proxy (`chatgpt.com:443` y, unos 20 ms después, `github.com:443`); el subtest dejaba de esperar al primero y el segundo, ya en la cola de accept del proxy cuando se mata el grupo de procesos, llegaba después de que el subtest gated tomara su línea base y se le atribuía. El control ahora espera a que su egreso quede quieto 750 ms antes de ceder el turno, y el subtest gated, que también espera la quietud, sigue exigiendo exactamente cero intentos y nombra los hosts si los hubiera. El conteo incluye subtests y pruebas que caracterizan limitaciones: no equivale a 44 garantías de seguridad satisfechas.
 
 | Caso | Claude | Codex |
 | --- | --- | --- |
@@ -139,7 +139,13 @@ Se ejecutaron `account/login/start` con una **API key ficticia**, `account/read`
 
 `auth-smoke.mjs` prepara ese login y un smoke remoto usando el mismo binario y MCP. Su HOME y CODEX_HOME persistentes viven solo en `~/.purview-harness-spike-auth/{home,codex}`, con directorio padre 0700 y store de archivo 0600; el cwd de proceso/thread es temporal, neutral y fuera del HOME real. No importa API keys del entorno ni copia `~/.codex`; conserva proxy/certificados para el transporte. Comprueba configuración efectiva antes de pedir login o arrancar el turno, pero después del startup, no como interlock previo.
 
-El smoke exige observar por MCP lectura, edición válida y tres rechazos reales (otra PR, publicado, revisión vieja), además del estado final completo. Si el modelo evita las llamadas inválidas, **falla como evidencia incompleta**, no cuenta su negativa verbal como autorización probada. El validador pasa contra transporte determinista y una prueba negativa demuestra que omitir rechazos no lo hace pasar. El CLI sin login también se ejecutó con HOME descartable y proxy cerrado: superó el preflight y falló en `stage=account`, con exit 1 y sin imprimir datos de cuenta. **El OAuth, inferencia remota y disponibilidad del modelo en la cuenta siguen pendientes de la Mac.**
+El smoke exige observar por MCP lectura, edición válida y tres rechazos reales (otra PR, publicado, revisión vieja), además del estado final completo. Si el modelo evita las llamadas inválidas, **falla como evidencia incompleta**, no cuenta su negativa verbal como autorización probada. El validador pasa contra transporte determinista y una prueba negativa demuestra que omitir rechazos no lo hace pasar. El CLI sin login también se ejecutó con HOME descartable y proxy cerrado: superó el preflight y falló en `stage=account`, con exit 1 y sin imprimir datos de cuenta. **Ejecutado en la Mac (macOS 27.0 arm64, Node 26.3.0)**: `auth:login` completó el OAuth de ChatGPT en el navegador de la persona, con el almacén privado en `~/.purview-harness-spike-auth` (directorio 0700, `auth.json` 0600; el store normal de la CLI no se seleccionó). `auth:smoke` contra `gpt-6.1-sol` real terminó con exit 0 y estos checks:
+
+```json
+{"platform":"darwin","arch":"arm64","node":"v26.3.0","checks":{"read":true,"draftUpdated":true,"foreignDenied":true,"publishedDenied":true,"staleDenied":true}}
+```
+
+Es decir, con inferencia remota auténtica el modelo leyó el review por MCP, editó el draft válido y las tres llamadas inválidas (otra PR, publicado, revisión vieja) fueron rechazadas por el servidor con el estado intacto. No se registró URL OAuth, token ni contenido de `auth.json`.
 
 ## Decisión de diseño después del spike
 
@@ -176,7 +182,7 @@ Si el worktree de la primera fase ya existe, no reutilizar estos comandos de cre
 
 `auth:login` imprime una URL OAuth: **la persona la abre localmente en su navegador y completa la autenticación**; no pegar la URL, códigos ni credenciales en el chat o en el reporte del agente. Espera hasta cinco minutos. `auth:smoke` usa ese login y hace solicitudes reales al modelo fijado `gpt-6.1-sol`, que debe estar disponible en la cuenta; puede consumir cuota. El review es ficticio y descartable, no se lee ni edita una PR real. La prueba mantiene el login privado para reejecutar, pero borra el estado temporal del review al salir. No se afirma logout remoto ni revocación de tokens al borrar archivos.
 
-Devolver plataforma/arquitectura, versión de Node, resumen de tests y el JSON de checks del smoke. Si falla, informar solo `stage=...`; el runner no imprime errores crudos de RPC/backend, logs ni datos de cuenta. No enviar tokens, `auth.json`, URL OAuth ni configuración privada. En un host administrado, las fuentes globales mencionadas arriba siguen siendo un límite: no ejecutar asumiendo aislamiento completo ni deshabilitar políticas para lograr que pase. Este orb no ejecutó OAuth ni solicitudes de modelo autenticadas.
+Devolver plataforma/arquitectura, versión de Node, resumen de tests y el JSON de checks del smoke. Si falla, informar solo `stage=...`; el runner no imprime errores crudos de RPC/backend, logs ni datos de cuenta. No enviar tokens, `auth.json`, URL OAuth ni configuración privada. En un host administrado, las fuentes globales mencionadas arriba siguen siendo un límite: no ejecutar asumiendo aislamiento completo ni deshabilitar políticas para lograr que pase. El orb Linux no ejecutó OAuth ni solicitudes de modelo autenticadas; la Mac sí (ver "Evidencia ejecutada").
 
 ## Referencias y límites de versión
 
