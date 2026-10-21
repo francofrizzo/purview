@@ -311,6 +311,10 @@ It is read from your local checkout when one is configured, and otherwise fetche
 result is cached per revision (`revisions/<n>/team-config.json`), so it costs one read per
 revision and is picked up again whenever you refresh.
 
+**Language.** Purview takes no side: a rubric layer may name the language the analysis and
+drafts are written in, and wins; otherwise they follow the PR's own title and description.
+The chat answers in whatever language you write to it.
+
 **Rubrics stack.** Analysis and chat runs get the built-in skill rubric first, then the
 committed `.purview/RUBRIC.md` ("refines the above"), then your own `RUBRIC.local.md`
 ("highest precedence"), clearly delimited and in that order. Write house rules in the local

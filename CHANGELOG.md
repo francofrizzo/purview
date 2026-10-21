@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Language follows the PR.** Units, findings and drafts are written in the language of the PR's description, unless your rubric names one; the chat answers in the language you write in.
+
 ## 2026.10.21.1
 
 - **Reviewers on your PRs.** The row and the PR header show who was asked to review one of your PRs and what they said; bots are left out, and a PR with no reviewer says so.

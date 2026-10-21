@@ -34,7 +34,7 @@ import {
   effectiveRepoPath,
 } from "../src/repo-config.js";
 import { loadCommittedConfig } from "../src/team-config.js";
-import { rubricLayers, rubricSection } from "../src/rubric.js";
+import { languageRule, rubricLayers, rubricSection } from "../src/rubric.js";
 import { buildFixture, key, REV1_PATCH, REV2_PATCH } from "./fixtures.js";
 import { makeRepo } from "./git-fixtures.js";
 
@@ -556,6 +556,13 @@ describe("rubric layering", () => {
     ghFor();
     expect(rubricSection(key, root)).toBe("");
     expect(rubricLayers(key, root)).toHaveLength(1);
+  });
+
+  it("states the language rule explicitly: a rubric layer wins, else the PR's description; chat follows the reader", () => {
+    expect(languageRule("analysis")).toContain("language of the PR's title and description");
+    expect(languageRule("analysis")).toContain("findings");
+    expect(languageRule("chat")).toContain("comment drafts");
+    expect(languageRule("chat")).toContain("language they write to you in");
   });
 
   it("keeps the local overlay even with no committed rubric", () => {

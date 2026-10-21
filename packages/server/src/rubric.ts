@@ -117,3 +117,22 @@ export function rubricSection(
   out.push("", "===== END REVIEW RUBRIC =====");
   return out.join("\n");
 }
+
+/**
+ * Which language the run writes in. Purview takes no side: a rubric layer may
+ * state one and wins; otherwise the PR's own description decides. Stated
+ * explicitly because "the reader's language" on its own is ambiguous, and two
+ * harnesses were seen resolving it differently on the same repository.
+ */
+export function languageRule(kind: "analysis" | "chat"): string {
+  const written = kind === "analysis"
+    ? "unit titles, summaries, attentionWhy, findings and revision summaries"
+    : "comment drafts";
+  return [
+    "LANGUAGE:",
+    `Write ${written} in the language a rubric layer above names, if one does; otherwise in the language of the PR's title and description.`,
+    kind === "chat"
+      ? "Answer the reader in the language they write to you in, whatever the drafts' language."
+      : "Code identifiers, paths and quoted code stay as they are.",
+  ].join("\n");
+}

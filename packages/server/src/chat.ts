@@ -23,7 +23,7 @@ import { checkoutNote } from "./analysis.js";
 import { baseNote } from "./base-note.js";
 import { descriptionBlock } from "./pr-description.js";
 import { cliCommand, skillDir } from "./skill-paths.js";
-import { rubricSection } from "./rubric.js";
+import { languageRule, rubricSection } from "./rubric.js";
 import { chatInstructionsSection } from "./chat-instructions.js";
 import type { CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
@@ -514,6 +514,7 @@ export function chatSystemPrompt(
     // Overlays are inlined rather than pointed at: the team rubric may only
     // exist on GitHub, and the local one is outside the chat's roots.
     rubricSection(key, root, { committed: opts.committed }),
+    languageRule("chat"),
     ...reading.status,
     // Repo-provided chat overlays, mirroring the rubric layering above; chat-
     // only, so the analysis prompt (which never calls this) is unaffected.

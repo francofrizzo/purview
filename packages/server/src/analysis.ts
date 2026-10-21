@@ -32,7 +32,7 @@ import type { AgentAction, AgentRun, HarnessManifest, ReviewerCommand } from "./
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 import { readConfig } from "./config.js";
 import { effectiveAnalysisAgent, type AgentChoice } from "./repo-config.js";
-import { rubricSection } from "./rubric.js";
+import { languageRule, rubricSection } from "./rubric.js";
 import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
 import { resolveRunCheckout } from "./pr-checkout.js";
@@ -495,6 +495,8 @@ export function analysisPrompt(
     "\n" + findingsNote(opts.checkout),
     movedNote(movedCodeSummary(key, state.currentRevision, root)),
     rubric ? "\n" + rubric : "",
+    "",
+    languageRule("analysis"),
     "",
     correctionsNote(state),
     "",
