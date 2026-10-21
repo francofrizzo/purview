@@ -28,6 +28,7 @@ import {
   GENERATED_UNIT_ID,
 } from "@reviewer/core";
 import { cliEnvironment, getHarness } from "./agent/registry.js";
+import { actionLabel } from "./agent/types.js";
 import type { AgentAction, AgentRun, HarnessManifest, ReviewerCommand } from "./agent/types.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 import { readConfig } from "./config.js";
@@ -762,7 +763,8 @@ function recordAction(
   action: AgentAction,
   ctx: { cliCmd: string; skillDir: string; prDir: string },
 ): void {
-  metrics.toolCalls[action.name] = (metrics.toolCalls[action.name] ?? 0) + 1;
+  const label = actionLabel(action.name);
+  metrics.toolCalls[label] = (metrics.toolCalls[label] ?? 0) + 1;
   const phases = (metrics.phases ??= {});
 
   if (action.kind === "command") {
@@ -1084,7 +1086,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
         if (latest) {
           writeJob(
             key,
-            { ...latest, progress: `${event.action.name} ${event.action.summary}`.trim().slice(0, 300) },
+            { ...latest, progress: `${actionLabel(event.action.name)} ${event.action.summary}`.trim().slice(0, 300) },
             root,
           );
         }

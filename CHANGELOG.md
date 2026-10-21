@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Fix:** tool calls in the chat and the analysis progress read as plain actions ("Search code src/billing", "Run", "Find files") instead of raw tool names, and a shared tool no longer shows its name twice.
+
 ## 2026.10.21.2
 
 - **Findings link to their evidence.** Each place a finding cites that the diff shows opens there with a click; the fold under a unit's summary is now called Findings.

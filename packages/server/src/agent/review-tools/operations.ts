@@ -7,6 +7,27 @@ import * as core from "@reviewer/core";
 import { readComments } from "../../comments.js";
 import type { AgentAction, AgentRunRequest } from "../types.js";
 
+/**
+ * The one-line detail of a tool call: its arguments, minus paging, in the
+ * order given. "src/billing/charge.ts:120", "unit:core, hunk-3", "retry, backoff".
+ */
+export function describeArgs(args: unknown): string {
+  if (!args || typeof args !== "object") return "";
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(args as Record<string, unknown>)) {
+    if (k === "cursor" || k === "limit" || v === undefined || v === null || v === "") continue;
+    if (k === "path" && typeof v === "string") {
+      const start = (args as Record<string, unknown>).start;
+      parts.push(typeof start === "number" && start > 1 ? `${v}:${start}` : v);
+    } else if (k === "start") continue;
+    else if (Array.isArray(v)) parts.push(v.map(String).join(", "));
+    else if (typeof v === "string" || typeof v === "number") parts.push(String(v));
+    else if (typeof v === "boolean") { if (v) parts.push(k); }
+  }
+  const text = parts.join(" · ");
+  return text.length > 200 ? text.slice(0, 197) + "..." : text;
+}
+
 const pageArgs = { cursor: z.string().optional(), limit: z.number().int().min(1).max(100).default(100) };
 const relativePath = z.string().min(1).max(512);
 const revisionArg = z.number().int().positive().optional();
@@ -226,7 +247,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
         const operation = operations.get(name);
         if (!operation) failure("operation_not_granted", "Operation not granted for this task.");
         const args = operation.schema.parse(input);
-        onAction?.({ kind: "tool", name, target: core.keyToString(key), summary: name });
+        onAction?.({ kind: "tool", name, target: core.keyToString(key), summary: describeArgs(args) });
         return operation.handler(args);
       });
       queue = result.catch(() => {});

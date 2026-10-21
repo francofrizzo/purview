@@ -192,6 +192,39 @@ export interface AgentAction {
   summary: string;
 }
 
+/**
+ * What an action is called where the reader sees it: the chat's tool lines,
+ * the analysis progress line and the metrics row. Harness tool names stay
+ * on the action (`name`) for everything that keys on them.
+ */
+const ACTION_LABELS: Record<string, string> = {
+  Bash: "Run",
+  Read: "Read",
+  Write: "Write",
+  Edit: "Edit",
+  MultiEdit: "Edit",
+  NotebookEdit: "Edit",
+  Glob: "Find files",
+  Grep: "Search",
+  LS: "List",
+  WebFetch: "Fetch",
+  WebSearch: "Web search",
+  Task: "Subagent",
+  TodoWrite: "Plan",
+  checkout: "Checkout",
+};
+
+export function actionLabel(name: string): string {
+  if (ACTION_LABELS[name]) return ACTION_LABELS[name];
+  // mcp__purview__review_units -> review_units; snake_case -> "Review units"
+  const bare = name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/^purview_/, "");
+  if (/^[a-z0-9]+(_[a-z0-9]+)*$/.test(bare)) {
+    const words = bare.split("_").join(" ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
+  return name;
+}
+
 export interface AgentUsage {
   inputTokens?: number;
   cacheCreationInputTokens?: number;

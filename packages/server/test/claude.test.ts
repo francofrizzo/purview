@@ -569,7 +569,7 @@ describe("analysis job lifecycle", () => {
     expect(m.apiMs).toBe(90_000);
     expect(m.costUsd).toBe(1.23);
     expect(m.usage).toEqual({ input: 1000, cacheCreation: 200, cacheRead: 5000, output: 300 });
-    expect(m.toolCalls).toMatchObject({ Read: 1, Bash: 4, Write: 1 });
+    expect(m.toolCalls).toMatchObject({ Read: 1, Run: 4, Write: 1 });
     expect(m.reads.filesJson).toBe(1);
     expect(m.bash.state).toBe(1);
     expect(m.bash.grep).toBe(1);

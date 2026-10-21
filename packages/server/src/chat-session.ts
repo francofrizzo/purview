@@ -13,6 +13,7 @@ import {
 } from "@reviewer/core";
 import { resolveRunCheckout } from "./pr-checkout.js";
 import { cliEnvironment, getHarness } from "./agent/registry.js";
+import { actionLabel } from "./agent/types.js";
 import type { AgentAction, AgentHarness, AgentRun, AgentSession, HarnessId } from "./agent/types.js";
 import { skillDir } from "./skill-paths.js";
 import { effectiveChatAgent, effectiveRepoPath } from "./repo-config.js";
@@ -279,7 +280,7 @@ export function startChatTurn(
             partial = "";
             emit({
               type: "tool",
-              name: event.action.name,
+              name: actionLabel(event.action.name),
               detail: event.action.summary,
               kind: event.action.kind,
             });
