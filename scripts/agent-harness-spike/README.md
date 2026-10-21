@@ -10,7 +10,7 @@ El spike no demuestra todavía un adapter listo para producción. En particular,
 
 ## Reproducir
 
-Node >=20.11. Ejecutado en Linux x64, en un orb con Node 26.10.0 y las capacidades de sandbox que necesita Codex. El runner también resuelve el binario de macOS x64/arm64 y Linux arm64, pero esas plataformas están pendientes de ejecución. Windows no está implementado. No requiere una API key, login ni el servidor de Purview.
+Node >=20.11. Ejecutado en Linux x64, en un orb con Node 26.10.0 y las capacidades de sandbox que necesita Codex, y en macOS 27.0 arm64 (Apple Silicon) con Node 26.3.0 de Homebrew. El runner también resuelve el binario de macOS x64 y Linux arm64, pero esas plataformas están pendientes de ejecución. Windows no está implementado. No requiere una API key, login ni el servidor de Purview.
 
 ```sh
 npm ci --prefix scripts/agent-harness-spike --no-audit --no-fund
@@ -36,7 +36,7 @@ Versiones fijadas:
 - **Transporte de modelo:** servidor HTTP local que emite SSE de Messages o Responses y fuerza llamadas concretas. También observa las herramientas que el harness declara y los resultados que devuelve al modelo. No se llama a un modelo remoto.
 - **Estado:** un JSON descartable en un directorio temporal; no son los servicios, eventos ni autorización actuales de Purview. El servidor MCP, fuera del sandbox del agente, es quien escribe ese estado.
 
-Cada escenario crea HOME y directorios de configuración temporales y una whitelist de variables de entorno. No toma credenciales reales ni usa `~/.purview` o el puerto 4779. Los procesos se cierran antes de borrar sus directorios.
+Cada escenario crea HOME y directorios de configuración temporales y una whitelist de variables de entorno. No toma credenciales reales ni usa `~/.purview` o el puerto 4779. Los procesos se cierran antes de borrar sus directorios: la limpieza espera a que no quede ningún hijo del proceso de test (un Claude Code abortado todavía escribe su log de cierre de MCP bajo el HOME temporal un instante después de `abort()`), y falla si alguno persiste.
 
 La fixture impide transportes Git mediante `protocol.allow=never`, sin cargar configuración Git personal/sistema. Esto contiene la preparación de marketplaces de plugins que Codex puede intentar en background; **no es una garantía de permisos del producto ni un sandbox de red para todo app-server**. Cada app-server pertenece a un grupo de procesos del test que se termina al cerrar, incluidos hijos de preparación de plugins. No se deja un daemon corriendo.
 
@@ -44,7 +44,7 @@ La autorización de la fixture vuelve a leer en cada mutación el grant activo, 
 
 ## Evidencia ejecutada
 
-Última ejecución: **34 tests, 34 pass, 0 fail**. El conteo incluye subtests y pruebas que caracterizan limitaciones: no equivale a 34 garantías de seguridad satisfechas.
+Última ejecución en Linux x64: **34 tests, 34 pass, 0 fail**. En macOS 27.0 arm64 con Node 26.3.0 (Homebrew): **34 tests, 34 pass, 0 fail**, en tres corridas consecutivas, sin procesos ni directorios temporales remanentes. El conteo incluye subtests y pruebas que caracterizan limitaciones: no equivale a 34 garantías de seguridad satisfechas.
 
 | Caso | Claude | Codex |
 | --- | --- | --- |
@@ -113,7 +113,9 @@ La segunda fase también prueba **turnos reales del harness** con shell delibera
 
 En Linux el sandbox puede ocultar una ruta denegada como `No such file or directory`, no necesariamente `Permission denied`. El sentinel existe fuera del sandbox y el control amplio lo lee: la prueba no depende de la redacción del error.
 
-El perfil agrega el runtime de Codex, el ejecutable de Node y las rutas mínimas del sistema a las raíces de lectura: no promete un filesystem que contenga exclusivamente el checkout. Falta verificar las mismas restricciones en otras plataformas y con inferencia remota.
+El perfil agrega el runtime de Codex, el runtime de Node y las rutas mínimas del sistema a las raíces de lectura: no promete un filesystem que contenga exclusivamente el checkout. Falta verificar las mismas restricciones en macOS x64, Linux arm64 y con inferencia remota.
+
+En macOS el "runtime de Node" no es solo el ejecutable. El Node de Homebrew está enlazado dinámicamente: dyld abre `libnode` y una veintena de bibliotecas repartidas en `/opt/homebrew/Cellar/*/lib`, alcanzadas por los symlinks de `/opt/homebrew/opt/<pkg>`, y libcrypto lee `openssl.cnf` de su OPENSSLDIR al arrancar. Con solo el ejecutable en las raíces, Node muere con `dyld: Library not loaded` (exit 134) antes de ejecutar JavaScript, y con las bibliotecas pero sin `openssl.cnf` sale con 1. `nodeRuntimeReadRoots()` en `runtime.mjs` calcula la clausura con `otool -L` (resolviendo `@rpath`, `@loader_path` y `@executable_path`) y concede lectura a cada directorio de biblioteca en su forma literal y real, al directorio padre de cada symlink del camino (el sandbox canonicaliza las raíces, así que conceder el symlink concede su destino y no el enlace, y el enlace solo se sigue donde su padre es legible) y al OPENSSLDIR. En Linux sigue siendo el ejecutable solo. Las aserciones del test no cambiaron: sigue exigiendo que la red esté bloqueada y la escritura denegada bajo el perfil restringido.
 
 ### Codex: los overrides no reemplazan la configuración heredada
 
@@ -149,7 +151,7 @@ Una API key no elimina la necesidad de harness. Este spike usa los loops de Clau
 
 ## Próximo paso en la máquina del usuario
 
-El siguiente resultado que este orb no puede producir es la misma matriz en el sistema operativo del usuario. La branch `spike/agent-harness-compat` contiene solo este experimento. Desde un clon existente, para no cambiar su branch ni sus ediciones:
+Hecho para macOS arm64 (ver arriba). Para otra plataforma, el siguiente resultado es la misma matriz en ella. La branch `spike/agent-harness-compat` contiene solo este experimento. Desde un clon existente, para no cambiar su branch ni sus ediciones:
 
 ```sh
 git fetch origin spike/agent-harness-compat

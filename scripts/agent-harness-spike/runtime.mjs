@@ -1,6 +1,6 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { realpathSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 
@@ -12,6 +12,74 @@ if (!["linux", "darwin"].includes(process.platform) || !["x64", "arm64"].include
 const target = `${process.arch === "x64" ? "x86_64" : "aarch64"}-${process.platform === "darwin" ? "apple-darwin" : "unknown-linux-musl"}`;
 export const codexBin = realpathSync(path.join(import.meta.dirname, `node_modules/@openai/codex-${process.platform}-${process.arch}/vendor/${target}/bin/codex`));
 export const mcpBin = path.join(import.meta.dirname, "review-fixture.mjs");
+
+/**
+ * Read roots a restricted profile needs so that the Node that runs this spike
+ * can start at all. On Linux the executable is enough. On macOS a packaged
+ * Node (Homebrew's, for one) is dynamically linked: dyld must open
+ * libnode and its dependencies, spread over several directories reached
+ * through symlinks, or the process aborts (exit 134) before running any
+ * JavaScript. The closure is walked with `otool -L`, resolving `@rpath`,
+ * `@loader_path` and `@executable_path` the way dyld does for this binary;
+ * libraries under /usr/lib and /System come from the shared cache and need
+ * no grant. Each library's directory is granted both as spelled and as its
+ * real path, plus the directory holding every symlink on the spelled path
+ * (Homebrew's `opt/` of `opt/<pkg>` links): the sandbox canonicalizes a
+ * granted root, so granting the link itself grants its target and not the
+ * link, and the link can only be followed where its parent is readable.
+ * Homebrew's libcrypto also opens its OPENSSLDIR config at startup and Node
+ * exits 1 without it, so that directory is granted when it can be found.
+ */
+export function nodeRuntimeReadRoots(executable = process.execPath) {
+  const exe = realpathSync(executable);
+  const roots = new Set([executable, exe]);
+  if (process.platform !== "darwin") return [...roots];
+  const system = p => p.startsWith("/usr/lib/") || p.startsWith("/System/");
+  const load = (file, flag) => execFileSync("otool", [flag, file], { encoding: "utf8" }).split("\n");
+  const rpaths = file => {
+    const out = [];
+    const lines = load(file, "-l");
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].includes("LC_RPATH")) {
+        const m = /^\s*path (\S+)/.exec(lines[i + 2] ?? "");
+        if (m) out.push(m[1]);
+      }
+    }
+    return out;
+  };
+  const expand = (p, loader) => p.replace("@loader_path", path.dirname(loader)).replace("@executable_path", path.dirname(exe));
+  const seen = new Set();
+  const visit = file => {
+    if (seen.has(file)) return;
+    seen.add(file);
+    for (const line of load(file, "-L").slice(1)) {
+      const m = /^\s+(\S+) \(/.exec(line);
+      if (!m || system(m[1])) continue;
+      let candidates;
+      if (m[1].startsWith("@rpath/")) candidates = rpaths(file).map(r => path.join(expand(r, file), m[1].slice("@rpath/".length)));
+      else candidates = [expand(m[1], file)];
+      const found = candidates.find(c => existsSync(c));
+      if (!found) continue;
+      const real = realpathSync(found);
+      if (real === file) continue;
+      roots.add(path.dirname(found));
+      roots.add(path.dirname(real));
+      for (let dir = path.dirname(found); dir !== "/"; dir = path.dirname(dir)) {
+        if (lstatSync(dir).isSymbolicLink()) roots.add(path.dirname(dir));
+      }
+      if (path.basename(real).startsWith("libcrypto")) {
+        const openssl = path.join(path.dirname(real), "..", "bin", "openssl");
+        if (existsSync(openssl)) {
+          const dir = /OPENSSLDIR: "([^"]+)"/.exec(execFileSync(openssl, ["version", "-d"], { encoding: "utf8" }));
+          if (dir && existsSync(dir[1])) roots.add(dir[1]);
+        }
+      }
+      visit(real);
+    }
+  };
+  visit(exe);
+  return [...roots];
+}
 
 export function toml(value) {
   if (value && typeof value === "object" && !Array.isArray(value)) {

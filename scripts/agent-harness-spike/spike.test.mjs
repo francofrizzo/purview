@@ -3,9 +3,9 @@ import { test } from "node:test";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { provider } from "./provider.mjs";
-import { codexBin, codexClient, codexConfig, claudeQuery, claudeTurn, until } from "./runtime.mjs";
+import { codexBin, codexClient, codexConfig, claudeQuery, claudeTurn, nodeRuntimeReadRoots, until } from "./runtime.mjs";
 
 async function fixture(t) {
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "purview-agent-spike-")));
@@ -24,6 +24,11 @@ async function fixture(t) {
   t.after(async () => {
     for (const client of f.clients) await client.close();
     await f.api.close();
+    // An aborted Claude Code child still writes its MCP shutdown log under
+    // the fixture HOME a moment after `abort()` returns. Wait for every
+    // child of this process to be gone before the directory is removed, and
+    // fail loudly if one lingers: a leftover would be invisible otherwise.
+    await until(() => children().length === 0, "fixture children to exit", 10000);
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5 });
   });
   for (const dir of [f.cwd, f.codexHome, f.claudeHome]) await fs.mkdir(dir);
@@ -33,6 +38,12 @@ async function fixture(t) {
     published: { pr: "fixture/repo#17", status: "submitted", body: "public-original" },
   } });
   return f;
+}
+
+/** Live child processes of the test process, by pid. */
+function children() {
+  const out = spawnSync("pgrep", ["-P", String(process.pid)], { encoding: "utf8" });
+  return out.stdout.split("\n").filter(Boolean);
 }
 
 function catalog(request) {
@@ -276,7 +287,8 @@ test("Codex model turns enforce a named profile, including after cold resume", {
   config.features.shell_tool = true;
   config.permissions = {
     "purview-read": { filesystem: { ":minimal": "read", [neutral]: "read", [f.cwd]: "read",
-      [path.dirname(path.dirname(codexBin))]: "read", [process.execPath]: "read" }, network: { enabled: false } },
+      [path.dirname(path.dirname(codexBin))]: "read", ...Object.fromEntries(nodeRuntimeReadRoots().map(root => [root, "read"])) },
+      network: { enabled: false } },
     "probe-control": { filesystem: { ":root": "read", [f.cwd]: "write" }, network: { enabled: true } },
   };
   let client = await codexClient(f, config, true);
