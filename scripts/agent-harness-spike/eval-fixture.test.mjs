@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { EVAL_CASES, createEvalFixture } from "./eval-fixture.mjs";
-import { loadState, readDiff, setAnalysis } from "../../packages/core/dist/index.js";
+import { loadState, readDiff, setAnalysis, setUnits, setRevisionSummary } from "../../packages/core/dist/index.js";
 import { addComment } from "../../packages/server/dist/comments.js";
 
 async function fixture(t, id) {
@@ -13,7 +13,7 @@ async function fixture(t, id) {
 }
 
 test("fresh isolated real stores and Git repos, cleanup and invalid id", async t => {
-  assert.equal(EVAL_CASES.length, 4);
+  assert.equal(EVAL_CASES.filter(c => !c.optional).length, 4);
   await assert.rejects(createEvalFixture("missing"), /Unknown/);
   const a = await fixture(t, "code-investigation");
   const b = await fixture(t, "code-investigation");
@@ -79,4 +79,32 @@ test("large diff is pageable and tail answer depends on unchanged branch", async
   assert.equal(f.grade({ symbol: "tailInvoice", tier: "archive", seats: 17, total: 160 }).pass, true);
   for (const total of [64, 104, 0]) assert.equal(f.grade({ symbol: "tailInvoice", tier: "archive", seats: 17, total }).pass, false);
   assert.equal(f.grade({ symbol: "tailInvoice", tier: "live", seats: 17, total: 160 }).pass, false);
+});
+
+test("incremental grader requires real migration, corrected findings, retained stable unit and partial updates", async t => {
+  const f = await fixture(t, "incremental-analysis");
+  const state = loadState(f.key, f.root);
+  assert.deepEqual(state.lastMigration.counts, { identical: 1, fuzzy: 1, renamed: 0, archived: 1, new: 1 });
+  assert.ok(state.units.find(u => u.id === "stable").findings.length);
+  assert.equal(state.units.find(u => u.id === "invoice").findings, undefined);
+  assert.equal(state.units.find(u => u.id === "retired").findings, undefined);
+  assert.equal(f.grade("complete").pass, false);
+  const finding = { severity: "warning", text: "archive total changes from 55 to 69", evidence: "src/invoice.js:2, src/pricing.js:2" };
+  const patches = [
+    { unitId: "invoice", payload: { summary: "Updated archive seats", findings: [finding], changelogEntry: "Seats changed again" } },
+    { unitId: "retired", payload: { changelogEntry: "Removed retired flag change" } },
+    { unitId: "fee", payload: { title: "Fee", summary: "New fee of 11", kind: "core-logic", attention: "must-read", attentionWhy: "New charge", order: 3,
+      hunks: [f.files.find(file => file.path === "src/fees.js").hunks[0].id] } },
+  ];
+  setUnits(f.key, [patches[2]], f.root);
+  assert.equal(f.grade("").checks.remaining, false, "new coverage alone leaves changed units pending");
+  setUnits(f.key, patches.slice(0, 2), f.root);
+  setRevisionSummary(f.key, "Updated archive invoice; added fee; retired change removed", 2, f.root);
+  assert.equal(f.grade("").pass, true, JSON.stringify(f.grade("")));
+  setUnits(f.key, [{ unitId: "invoice", payload: { findings: [{ ...finding, text: "archive changes from 55 to 104" }] } }], f.root);
+  assert.equal(f.grade("").checks.invoice, false, "old valid finding is no longer correct");
+  setUnits(f.key, [{ unitId: "invoice", payload: { findings: [finding] } }], f.root);
+  const complete = loadState(f.key, f.root);
+  setAnalysis(f.key, { summary: complete.summary, units: complete.units.filter(u => u.hunks.length), unassigned: [] }, {}, f.root);
+  assert.equal(f.grade("").checks.partialUpdate, false, "full replacement is not an incremental refresh");
 });

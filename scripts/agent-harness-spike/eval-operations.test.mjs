@@ -2,8 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { createEvalFixture } from "./eval-fixture.mjs";
 import { createReviewOperations } from "./eval-operations.mjs";
+import { prepareContext, evalMcpBin } from "./eval-harness.mjs";
 import { appendEvent, readEvents, toRevisionFiles } from "../../packages/core/dist/index.js";
 import { addComment, readComments, writeComments } from "../../packages/server/dist/comments.js";
 
@@ -86,4 +89,34 @@ test("analysis validates payloads with real core service and stale revision bloc
   const beforeStale = readEvents(f.key, f.root).length;
   await assert.rejects(ops.execute("patch_units", { units: [{ id: "invoice", patch: { summary: "stale" } }] }), e => e.code === "stale_revision");
   assert.equal(readEvents(f.key, f.root).length, beforeStale);
+});
+
+test("MCP grants stay stale across migration and cold reconnect; a later grant cannot revive a revoked one", async t => {
+  const f = await createEvalFixture("resumed-incremental", { revision: 1 });
+  t.after(() => f.dispose());
+  const old = prepareContext(f, "claude-code");
+  async function connect(binding) {
+    const client = new Client({ name: "grant-regression", version: "1" });
+    const transport = new StdioClientTransport({ command: process.execPath, args: [evalMcpBin, binding.contextFile], stderr: "pipe",
+      env: { PATH: process.env.PATH, HOME: f.root } });
+    await client.connect(transport);
+    t.after(() => client.close());
+    return client;
+  }
+  const live = await connect(old);
+  assert.equal((await live.callTool({ name: "review_context", arguments: {} })).isError, false);
+  f.advanceRevision();
+  const before = readEvents(f.key, f.root).length;
+  const stale = await live.callTool({ name: "patch_units", arguments: { units: [{ id: "invoice", patch: { summary: "stale" } }] } });
+  assert.match(stale.content[0].text, /stale_revision/);
+  const cold = await connect(old);
+  assert.match((await cold.callTool({ name: "set_revision_summary", arguments: { text: "stale" } })).content[0].text, /stale_revision/);
+  fs.rmSync(old.contextFile);
+  const fresh = prepareContext(f, "claude-code");
+  assert.notEqual(fresh.contextFile, old.contextFile);
+  const current = await connect(fresh);
+  const result = await current.callTool({ name: "review_context", arguments: {} });
+  assert.equal(JSON.parse(result.content[0].text).revision, 2);
+  assert.match((await live.callTool({ name: "review_context", arguments: {} })).content[0].text, /revoked/);
+  assert.equal(readEvents(f.key, f.root).length, before, "stale/revoked operations never append events");
 });

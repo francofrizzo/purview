@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parseOptions, runPlan } from "./eval.mjs";
 import { provider } from "./provider.mjs";
+import { createEvalFixture } from "./eval-fixture.mjs";
 
 const exec = promisify(execFile);
 const runner = path.join(import.meta.dirname, "eval.mjs");
@@ -25,6 +26,9 @@ test("eval CLI is dry by default, rejects ambiguous paid options and pairs equal
   }
   const { stdout } = await exec(process.execPath, [runner, "--list"]);
   assert.equal(JSON.parse(stdout).dryRun, true);
+  assert.throws(() => parseOptions(["--cases", "resumed-incremental"]), /shared arms only/);
+  const resumed = await exec(process.execPath, [runner, "--cases", "resumed-incremental", "--arms", "claude-shared", "--repeats", "1"]);
+  assert.equal(JSON.parse(resumed.stdout).requests, 2, "one resumed case has two model turns");
 });
 
 test("real eval CLI saves functional outcomes and failures, with no paid provider or personal state", { timeout: 60000 }, async t => {
@@ -54,4 +58,41 @@ test("real eval CLI saves functional outcomes and failures, with no paid provide
     await assert.rejects(exec(process.execPath, args, { env: { PATH: process.env.PATH, HOME: home } }));
     assert.equal(api.requests.length, count);
   }
+});
+
+test("eval CLI cold-resumes a real Claude session and reports both turns without session identifiers", { timeout: 60000 }, async t => {
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "purview-eval-resume-cli-")));
+  const api = await provider();
+  t.after(async () => { await api.close(); fs.rmSync(home, { recursive: true, force: true }); });
+  const f = await createEvalFixture("resumed-incremental");
+  const feeId = f.files.find(file => file.path === "src/fees.js").hunks[0].id;
+  f.dispose();
+  api.plan([{ tool: "review_context", args: {} }, { tool: "review_units", args: {} }, { tool: "review_diff", args: {} }, { text: "ready" },
+    { tool: "patch_units", args: { units: [
+      { id: "invoice", patch: { findings: [{ severity: "warning", text: "archive changes from 55 to 69", evidence: "src/invoice.js:2 src/pricing.js:2" }], changelogEntry: "Updated seats" } },
+      { id: "retired", patch: { changelogEntry: "Removed flag change" } },
+      { id: "fee", patch: { title: "Fee", summary: "Fee is 11", kind: "core-logic", attention: "must-read", attentionWhy: "Charge", order: 3, hunks: [feeId] } },
+    ] } }, { tool: "set_revision_summary", args: { text: "Changed invoice, fee, retired flag" } }, { text: "updated" }]);
+  const out = path.join(home, "resume.jsonl");
+  await exec(process.execPath, [runner, "--run", "--out", out, "--arms", "claude-shared", "--cases", "resumed-incremental", "--repeats", "1"], {
+    env: { PATH: process.env.PATH, HOME: home, ANTHROPIC_API_KEY: "local-fixture-not-a-secret", ANTHROPIC_BASE_URL: api.url,
+      ENABLE_TOOL_SEARCH: "false", HTTPS_PROXY: api.url, HTTP_PROXY: api.url, NO_PROXY: "127.0.0.1,localhost" }, timeout: 45000 });
+  const rows = fs.readFileSync(out, "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(rows[1].pass, true);
+  assert.equal(rows[1].resumedSameSession, true);
+  assert.equal(rows[1].warmup.ok, true);
+  assert.ok(rows[1].warmup.usage);
+  assert.equal(rows[1].session, undefined);
+  assert.equal(rows[2].arms["claude-shared"].passed, 1);
+  api.plan([{ text: "ready without reading anything" }]);
+  const count = api.requests.length;
+  const failed = path.join(home, "failed-warmup.jsonl");
+  await assert.rejects(exec(process.execPath, [runner, "--run", "--out", failed, "--arms", "claude-shared", "--cases", "resumed-incremental", "--repeats", "1"], {
+    env: { PATH: process.env.PATH, HOME: home, ANTHROPIC_API_KEY: "local-fixture-not-a-secret", ANTHROPIC_BASE_URL: api.url,
+      ENABLE_TOOL_SEARCH: "false", HTTPS_PROXY: api.url, HTTP_PROXY: api.url, NO_PROXY: "127.0.0.1,localhost" }, timeout: 45000 }));
+  const failure = JSON.parse(fs.readFileSync(failed, "utf8").trim().split("\n")[1]);
+  assert.equal(failure.pass, false);
+  assert.equal(failure.phase, "warmup");
+  assert.ok(failure.warmup.usage, "failed warmup must not disappear from quota accounting");
+  assert.equal(api.requests.length, count + 1, "failed warmup must not start the second turn");
 });

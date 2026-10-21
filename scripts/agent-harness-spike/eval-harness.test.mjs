@@ -5,9 +5,10 @@ import path from "node:path";
 import { createEvalFixture } from "./eval-fixture.mjs";
 import { runClaudeEval, runCodexEval } from "./eval-harness.mjs";
 import { provider } from "./provider.mjs";
+import { loadState, readEvents } from "../../packages/core/dist/index.js";
 
-async function setup(t, id) {
-  const f = await createEvalFixture(id);
+async function setup(t, id, options) {
+  const f = await createEvalFixture(id, options);
   const api = await provider();
   t.after(async () => { await api.close(); f.dispose(); });
   const environment = { HOME: f.root, CLAUDE_CONFIG_DIR: path.join(f.root, "claude"),
@@ -66,4 +67,51 @@ test("Claude baseline uses the current harness and real reviewer-state CLI with 
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(f.grade(result.answer).pass, true, transcript(api));
   assert.ok(result.toolNames.includes("Bash"));
+});
+
+for (const harness of ["claude", "codex"]) test(`${harness}: cold resume after real migration uses a fresh revision-bound MCP and patches incrementally`, { timeout: 120000 }, async t => {
+  const { f, api, environment } = await setup(t, "resumed-incremental", { revision: 1 });
+  const invoke = session => harness === "claude"
+    ? runClaudeEval(f, { surface: "shared", environment, session, timeoutMs: 45000 })
+    : runCodexEval(f, { api, environment, session, timeoutMs: 45000 });
+  api.plan([{ tool: "review_context", args: {} }, { tool: "review_units", args: {} }, { tool: "review_diff", args: {} }, { text: "ready" }]);
+  const first = await invoke();
+  assert.equal(first.ok, true, JSON.stringify(first));
+  assert.ok(first.session?.id);
+  assert.equal(fs.readdirSync(f.root).filter(n => n.startsWith("run-context-")).length, 0);
+  f.advanceRevision();
+  const stable = structuredClone(loadState(f.key, f.root).units.find(u => u.id === "stable"));
+  const units = [
+    { id: "invoice", patch: { summary: "Updated invoice", findings: [{ severity: "warning", text: "archive changes from 55 to 69", evidence: "src/invoice.js:2, src/pricing.js:2" }], changelogEntry: "Changed seats" } },
+    { id: "retired", patch: { changelogEntry: "Removed flag change" } },
+    { id: "fee", patch: { title: "Fee", summary: "New fee of 11", kind: "core-logic", attention: "must-read", attentionWhy: "New fee", order: 3,
+      hunks: [f.files.find(file => file.path === "src/fees.js").hunks[0].id] } },
+  ];
+  api.plan([{ tool: "review_context", args: {} }, { tool: "review_changes", args: {} },
+    { tool: "patch_units", args: { units } }, { tool: "set_revision_summary", args: { text: "Updated invoice, new fee and retired flag" } }, { text: "updated" }]);
+  const second = await invoke(first.session);
+  assert.equal(second.ok, true, JSON.stringify(second));
+  assert.equal(second.session.id, first.session.id);
+  assert.equal(f.grade("").pass, true, JSON.stringify(f.grade("")));
+  assert.deepEqual(loadState(f.key, f.root).units.find(u => u.id === "stable"), stable);
+  assert.ok(second.operations.some(o => o.name === "patch_units" && o.ok));
+  const requests = api.requests.length;
+  const events = readEvents(f.key, f.root).length;
+  f.task = "chat";
+  if (harness === "claude") assert.equal((await invoke(second.session)).ok, false);
+  else await assert.rejects(invoke(second.session), /Incompatible session/);
+  assert.equal(api.requests.length, requests, "incompatible instructions must not start a model");
+  assert.equal(readEvents(f.key, f.root).length, events);
+});
+
+test("Claude baseline does not force-resume initial analysis under different incremental instructions", { timeout: 60000 }, async t => {
+  const { f, api, environment } = await setup(t, "incremental-analysis", { revision: 1 });
+  api.plan([{ text: "ready" }]);
+  const first = await runClaudeEval(f, { surface: "baseline", environment, timeoutMs: 45000 });
+  assert.equal(first.ok, true);
+  f.advanceRevision();
+  const requests = api.requests.length;
+  const next = await runClaudeEval(f, { surface: "baseline", environment, session: first.session });
+  assert.equal(next.ok, false);
+  assert.equal(api.requests.length, requests);
 });

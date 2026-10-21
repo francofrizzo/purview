@@ -5,13 +5,13 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { EVAL_CASES, createEvalFixture } from "./eval-fixture.mjs";
-import { loadState } from "../../packages/core/dist/index.js";
+import { loadState, readEvents } from "../../packages/core/dist/index.js";
 import { readComments } from "../../packages/server/dist/comments.js";
 
 export const ARMS = ["claude-baseline", "claude-shared", "codex-shared"];
 
 export function parseOptions(argv) {
-  const options = { run: false, arms: ARMS.slice(0, 2), cases: EVAL_CASES.map(c => c.id), repeats: 3,
+  const options = { run: false, arms: ARMS.slice(0, 2), cases: EVAL_CASES.filter(c => !c.optional).map(c => c.id), repeats: 3,
     claudeModel: "sonnet", codexModel: "gpt-6.1-sol", effort: "medium", timeoutMs: 180000 };
   const fields = { "--arms": "arms", "--cases": "cases", "--repeats": "repeats", "--claude-model": "claudeModel",
     "--codex-model": "codexModel", "--effort": "effort", "--timeout-ms": "timeoutMs", "--out": "out" };
@@ -31,6 +31,9 @@ export function parseOptions(argv) {
   if (!Number.isInteger(options.repeats) || options.repeats < 1 || options.repeats > 20) throw new Error("repeats must be 1..20");
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1000 || options.timeoutMs > 1800000) throw new Error("timeout-ms must be 1000..1800000");
   if (!["low", "medium", "high"].includes(options.effort)) throw new Error("effort must be low, medium or high");
+  if (options.cases.includes("resumed-incremental") && options.arms.includes("claude-baseline")) {
+    throw new Error("resumed-incremental supports shared arms only; baseline changes system instructions across modes");
+  }
   for (const model of [options.claudeModel, options.codexModel]) if (!/^[a-zA-Z0-9_.:-]+$/.test(model)) throw new Error("Invalid model ID");
   if (options.run && !options.out) throw new Error("--run requires --out to a NEW JSONL file; this consumes model quota");
   return options;
@@ -58,7 +61,7 @@ export async function main(argv = process.argv.slice(2)) {
   const options = parseOptions(argv);
   const plan = runPlan(options);
   if (!options.run) {
-    console.log(JSON.stringify({ dryRun: true, requests: plan.length, options, cases: EVAL_CASES, plan,
+    console.log(JSON.stringify({ dryRun: true, requests: plan.reduce((n, r) => n + (r.caseId === "resumed-incremental" ? 2 : 1), 0), options, cases: EVAL_CASES, plan,
       next: "No harness/model started. See eval.md; --run --out <new.jsonl> explicitly enables paid runs." }, null, 2));
     return 0;
   }
@@ -76,18 +79,39 @@ export async function main(argv = process.argv.slice(2)) {
     write({ type: "manifest", schema: 1, createdAt: new Date().toISOString(), ...metadata(), options, plannedRuns: plan.length,
       limitations: ["Synthetic functional evaluation, not general review quality or a causal tool-only experiment.",
         "Different prompts and harness context; Claude paired runs hold requested model and effort fixed.",
-        "No incremental refresh, resume, human consent UX or production concurrency validation.",
+        "Incremental/resume are optional synthetic cases; no human consent UX or production concurrency validation.",
         "Codex and Claude token/cost accounting is not directly comparable. Missing cost is unknown, never zero."] });
     for (const entry of plan) {
       if (controller.signal.aborted) break;
       let f;
       let result;
+      let warmup;
+      let phase = "run";
       const started = Date.now();
       try {
-        f = await createEvalFixture(entry.caseId);
+        const resumed = entry.caseId === "resumed-incremental";
+        f = await createEvalFixture(entry.caseId, { revision: resumed ? 1 : 2 });
         const common = { effort: options.effort, timeoutMs: options.timeoutMs, signal: controller.signal };
-        result = entry.arm === "codex-shared" ? await runCodexEval(f, { ...common, model: options.codexModel })
-          : await runClaudeEval(f, { ...common, model: options.claudeModel, surface: entry.arm === "claude-baseline" ? "baseline" : "shared" });
+        const invoke = (fixture, session) => entry.arm === "codex-shared" ? runCodexEval(fixture, { ...common, session, model: options.codexModel })
+          : runClaudeEval(fixture, { ...common, session, model: options.claudeModel, surface: entry.arm === "claude-baseline" ? "baseline" : "shared" });
+        let resumedSession;
+        if (resumed) {
+          phase = "warmup";
+          const before = readEvents(f.key, f.root).length;
+          warmup = await invoke({ ...f, prompt: "Read review_context, review_units and the invoice diff at revision 1. Do not mutate anything. Report the current invoice finding and say ready." });
+          resumedSession = warmup.session;
+          const readContext = ["review_context", "review_units", "review_diff"].every(name => warmup.operations.some(o => o.name === name && o.ok));
+          if (!warmup.ok || !resumedSession || !readContext || readEvents(f.key, f.root).length !== before) throw new Error("Warmup failed or mutated state");
+          f.advanceRevision();
+        }
+        phase = resumed ? "resume" : "run";
+        result = await invoke(f, resumedSession);
+        if (resumed) {
+          result.resumedSameSession = result.session?.id === resumedSession.id;
+          result.ok &&= result.resumedSameSession;
+          result.wallMs += warmup.wallMs;
+        }
+        delete result.session;
         const grading = f.grade(result.answer);
         // Keep synthetic answers for human adjudication, not raw transport/account errors.
         result.answer = result.ok ? result.answer.replaceAll(f.root, "<eval>").replaceAll(os.homedir(), "<home>") : "";
@@ -98,8 +122,10 @@ export async function main(argv = process.argv.slice(2)) {
       } catch {
         // Don't echo RPC/backend errors: they can contain account or request data.
         result = { ok: false, pass: false, failure: controller.signal.aborted ? "cancelled" : "setup_transport_or_timeout",
-          wallMs: Date.now() - started };
+          phase, wallMs: Date.now() - started };
       } finally { f?.dispose(); }
+      if (warmup) result.warmup = { ok: warmup.ok, wallMs: warmup.wallMs, usage: warmup.usage,
+        operations: warmup.operations, modelResolved: warmup.modelResolved };
       const record = { type: "run", ...entry, ...result };
       write(record);
       results.push(record);

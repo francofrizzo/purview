@@ -13,7 +13,8 @@ reales pero sintéticos y descartables. No lee sesiones personales, no usa
 | `claude-shared` | Mismo binario/modelo/effort solicitado, sin tools nativas | MCP compartido |
 | `codex-shared` | app-server 0.163.0, perfil restringido y configuración controlada del spike | El mismo MCP compartido |
 
-Cada caso/brazo/repetición tiene un checkout, sesión y store nuevos. El orden se
+Cada caso/brazo/repetición tiene un checkout, sesión y store nuevos; solo el caso
+optativo de resume reutiliza su propia sesión entre sus dos turnos. El orden se
 invierte entre casos/repeticiones; nada corre en paralelo. El baseline arranca
 una instancia HTTP efímera de los servicios reales para los comandos de comments,
 en un puerto libre de loopback. Las escrituras de análisis usan core; las de
@@ -41,10 +42,39 @@ correcta y no detecta todas las interpretaciones incorrectas. Revisar también
 `observed.units`, findings, comments y respuestas del reporte. No confundir estos
 casos dirigidos con descubrir bugs espontáneamente en PRs reales.
 
-**No evaluado:** refresh incremental/migración, reanudación de sesiones, calidad
-general de review, consentimiento para editar drafts humanos, concurrencia de
-producción ni todos los ataques de prompt injection. El caso grande reemplaza
-deliberadamente al incremental; no se simuló una migración parcial.
+Los cuatro casos anteriores siguen siendo el default: **24 corridas** para la
+pareja Claude. Los casos nuevos no se agregan automáticamente a una tanda.
+
+### Casos optativos: incremental y resume
+
+- `incremental-analysis`: parte de un análisis r1 persistido y ejecuta la
+  migración real de core a r2, sin GitHub. Hay un hunk idéntico, uno modificado,
+  uno nuevo y uno retirado. Debe conservar la unidad estable y su finding,
+  corregir el importe del finding modificado (55→69, no el viejo 55→104),
+  clasificar la nueva comisión de 11, anotar la unidad retirada y guardar un
+  resumen de revisión. Cobertura completa sola no alcanza; reemplazar el análisis
+  entero tampoco aprueba. Los tres brazos pueden correrlo con sesión nueva.
+- `resumed-incremental`: primero lee contexto, unidades y diff de r1 sin escribir.
+  Se cierra el proceso, se migra a r2 y se abre un proceso nuevo que reanuda la
+  misma sesión con un grant MCP nuevo, ligado a r2. Debe resolver el mismo trabajo
+  incremental sin arrastrar los importes viejos. El grader valida el estado final
+  y el runner comprueba identidad de sesión y ausencia de escrituras en el primer
+  turno. Eso no demuestra que el modelo use bien cualquier contexto histórico.
+
+Resume se ofrece **solo en los brazos compartidos**. El baseline de producción
+usa instrucciones distintas para análisis inicial e incremental; Claude ignora
+instrucciones nuevas al reanudar y su adapter rechaza ese cambio. No se fuerza una
+equivalencia que quite esa protección. El incremental con sesión nueva sí permite
+comparar baseline y superficie compartida.
+
+Pruebas locales con ambos binarios y proveedor determinista verifican el protocolo
+de cold resume, patches reales y rechazo de instrucciones incompatibles. Pruebas
+MCP verifican grants viejos, reconexión con revisión vieja y revocación: una corrida
+posterior no recrea el archivo de autorización anterior. Esto **no es evidencia
+de calidad con modelos reales**; eso queda para la Mac.
+
+**No evaluado:** calidad general de review, consentimiento para editar drafts
+humanos, concurrencia de producción ni todos los ataques de prompt injection.
 
 ## Superficie compartida y límites
 
@@ -152,6 +182,35 @@ SIGINT/SIGTERM detienen el plan y cierran los procesos; terminar una llamada de
 startup/RPC de Codex puede demorar hasta su timeout de 20 segundos. SIGKILL/crash
 no garantiza cleanup. No cancelar Purview ni procesos ajenos.
 
+### Segunda tanda optativa
+
+Esperar a que termine cualquier tanda en curso antes de actualizar el worktree.
+No hace falta repetir los cuatro casos originales para ejecutar estos dos.
+Primero el incremental con sesión nueva: dos brazos Claude × tres repeticiones
+= **6 corridas**; agregar `codex-shared` explícitamente si se quiere comparar los
+tres (9 corridas).
+
+```sh
+node scripts/agent-harness-spike/eval.mjs --run \
+  --cases incremental-analysis --repeats 3 \
+  --claude-model claude-sonnet-5-5 --effort medium \
+  --out /tmp/purview-eval-incremental.jsonl
+```
+
+Después, resume compartido. Una repetición de cada harness son **2 casos, 4 turnos
+de harness** (cada turno puede hacer múltiples solicitudes al modelo):
+
+```sh
+node scripts/agent-harness-spike/eval.mjs --run \
+  --cases resumed-incremental --arms claude-shared,codex-shared --repeats 1 \
+  --claude-model claude-sonnet-5-5 --codex-model gpt-6.1-sol --effort medium \
+  --out /tmp/purview-eval-resumed.jsonl
+```
+
+Si todavía no se quiere usar Codex, seleccionar solo `--arms claude-shared`.
+El timeout se aplica a cada turno; resume puede consumir dos cuotas de tiempo.
+No hay login nuevo ni cambios a la autenticación existente.
+
 ## Reportar y decidir
 
 JSONL en modo 0600: manifest (commit, dirty, plataforma, pins declarados,
@@ -163,6 +222,13 @@ protocolo crudo, datos de cuenta ni errores crudos de backend. Un fallo de setup
 transporte o timeout cuenta como fallo; no se omite. Exit 0 = todas pasan, 1 =
 alguna falla, 130 = cancelado. Un fallo de escritura deja un reporte incompleto.
 
+En resume, `wallMs` incluye los dos turnos; `usage` corresponde al turno reanudado
+y `warmup.usage` registra el primero por separado. No sumarlos ciegamente: los
+harnesses pueden reportar acumulados de sesión. Un warmup que no lee las tres
+operaciones pedidas o escribe estado cuenta como fallo y no inicia el segundo
+turno; su usage se conserva. `resumedSameSession` verifica la identidad, sin
+guardar el ID ni la ruta de sesión en el reporte.
+
 No sumar tokens entre proveedores como si significaran lo mismo. Costos ausentes
 son desconocidos, no cero. Comparar primero correctness por caso y repetición,
 después latencia/costo en los pares Claude que usaron el mismo modelo resuelto.
@@ -173,6 +239,6 @@ Antes de commitear un reporte, revisarlo: el modelo y las políticas administrad
 pueden introducir texto no previsto; el filtrado no es un detector universal de
 secretos. No adjuntar credenciales, config personal, transcripts de la CLI ni
 URLs OAuth. Devolver resumen por caso, hallazgos cualitativos y reportes revisados
-en esta misma branch. **No habilitar el adapter en producción** por pasar cuatro
-casos: después faltan incremental/resume y ejemplos representativos de reviews
-reales, con un protocolo acordado y datos compartidos explícitamente.
+en esta misma branch. **No habilitar el adapter en producción** por pasar estos
+casos: faltan corridas reales de los casos optativos y ejemplos representativos de
+reviews reales, con un protocolo acordado y datos compartidos explícitamente.
