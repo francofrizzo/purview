@@ -43,6 +43,26 @@ export function resolveCodeTarget(
   return m[2] ? { kind: "file", path, line: Number(m[2]) } : { kind: "file", path };
 }
 
+/**
+ * A finding's `evidence` ("src/a.ts:64, src/b.ts:31") cut into the places it
+ * names and the text between them, so each place can be linked on its own.
+ * `ref` pieces are candidates only: whether one opens anything is the
+ * linker's call. A trailing `.` or `:` stays text.
+ */
+export function evidenceParts(evidence: string): { text: string; ref?: true }[] {
+  const parts: { text: string; ref?: true }[] = [];
+  let at = 0;
+  for (const m of evidence.matchAll(/[^\s,;()`'"]+/g)) {
+    const token = m[0].replace(/[.:]+$/, "");
+    if (!token) continue;
+    if (m.index > at) parts.push({ text: evidence.slice(at, m.index) });
+    parts.push({ text: token, ref: true });
+    at = m.index + token.length;
+  }
+  if (at < evidence.length) parts.push({ text: evidence.slice(at) });
+  return parts;
+}
+
 /** The hunk showing `line` on the new side, if the diff shows it at all. */
 export function hunkAtLine(
   hunks: Pick<Hunk, "id" | "newStart" | "newLines">[],

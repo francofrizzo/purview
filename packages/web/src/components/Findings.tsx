@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import type { Finding, ReviewUnit } from "../api/types";
+import { evidenceParts } from "../lib/codeLinks";
 import { findingsBadge, sortFindings } from "../lib/diffModel";
 import { IconCheck, IconChevron, IconWarning } from "./icons";
-import { InlineMarkdown } from "./Markdown";
+import { CodeLinkContext, InlineMarkdown } from "./Markdown";
 
 /**
  * Findings are what the analysis *verified* in the local checkout, as opposed
@@ -47,14 +48,14 @@ export function FindingsBadge({ unit }: { unit: Pick<ReviewUnit, "findings"> }) 
 }
 
 /**
- * Units whose checks the reader opened this session. Module state on purpose:
+ * Units whose findings the reader opened this session. Module state on purpose:
  * the list must not snap shut while the reader works through a unit, and
  * must not stay open on the next unit, where the counts are the point.
  */
-const openedChecks = new Set<string>();
+const openedFindings = new Set<string>();
 
 /**
- * The checks under a unit's summary in the diff pane, folded to one line of
+ * The findings under a unit's summary in the diff pane, folded to one line of
  * counts by default (warnings in the warn color, so a unit with a problem
  * still announces it) and opened per unit. Warnings first when open — if the
  * reader only looks at the first line, it should be the one that might change
@@ -66,10 +67,10 @@ export function UnitFindings({ unitId, findings }: { unitId: string; findings: F
   const sorted = sortFindings(findings);
   const warnings = sorted.filter((f) => f.severity === "warning").length;
   const notes = sorted.length - warnings;
-  const expanded = openedChecks.has(unitId);
+  const expanded = openedFindings.has(unitId);
   const toggle = () => {
-    if (expanded) openedChecks.delete(unitId);
-    else openedChecks.add(unitId);
+    if (expanded) openedFindings.delete(unitId);
+    else openedFindings.add(unitId);
     rerender((n) => n + 1);
   };
   const counts = [
@@ -92,7 +93,7 @@ export function UnitFindings({ unitId, findings }: { unitId: string; findings: F
         ) : (
           <IconCheck width={12} height={12} className="flex-none" style={{ color: "var(--ok)" }} />
         )}
-        <span>Checks</span>
+        <span>Findings</span>
         <span style={{ color: warnings ? "var(--warn)" : undefined }}>· {counts.join(" · ")}</span>
         <IconChevron open={expanded} width={10} height={10} className="flex-none" />
       </button>
@@ -114,9 +115,7 @@ export function UnitFindings({ unitId, findings }: { unitId: string; findings: F
               <span style={{ color: "var(--fg-muted)" }}>
                 <InlineMarkdown text={f.text} />
               </span>{" "}
-              <span className="font-mono" style={{ color: "var(--fg-faint)" }}>
-                {f.evidence}
-              </span>
+              <Evidence text={f.evidence} />
             </span>
           </li>
         );
@@ -124,5 +123,34 @@ export function UnitFindings({ unitId, findings }: { unitId: string; findings: F
     </ul>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Where the finding was verified. Each place the diff shows opens there (the
+ * same linker the chat and the brief use); a place outside the diff, usually
+ * a caller the PR did not touch, stays text.
+ */
+function Evidence({ text }: { text: string }) {
+  const linkFor = useContext(CodeLinkContext);
+  return (
+    <span className="font-mono" style={{ color: "var(--fg-faint)" }} data-testid="finding-evidence">
+      {evidenceParts(text).map((part, i) => {
+        const link = part.ref ? linkFor?.(part.text) : null;
+        if (!link) return part.text;
+        return (
+          <button
+            key={i}
+            type="button"
+            className="inline rounded underline decoration-dotted underline-offset-2 transition-colors hover:bg-[var(--accent-soft)]"
+            style={{ color: "var(--accent)" }}
+            data-tip={link.title}
+            onClick={link.onOpen}
+          >
+            {part.text}
+          </button>
+        );
+      })}
+    </span>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hunkAtLine, resolveCodeTarget, resolveDiffPath } from "./codeLinks";
+import { evidenceParts, hunkAtLine, resolveCodeTarget, resolveDiffPath } from "./codeLinks";
 
 const files = [
   { path: "pkg/openairesponses/rollout.go" },
@@ -59,5 +59,22 @@ describe("hunkAtLine", () => {
     expect(hunkAtLine(hunks, 12)).toBe("a");
     expect(hunkAtLine(hunks, 15)).toBeNull();
     expect(hunkAtLine(hunks, 40)).toBe("b");
+  });
+});
+
+describe("evidenceParts", () => {
+  const join = (parts: { text: string }[]) => parts.map((p) => p.text).join("");
+  const refs = (evidence: string) => evidenceParts(evidence).filter((p) => p.ref).map((p) => p.text);
+
+  it("cuts a comma list into its places, keeping the separators as text", () => {
+    const e = "src/payments/refund.ts:64, src/payments/ledger.ts:31";
+    expect(refs(e)).toEqual(["src/payments/refund.ts:64", "src/payments/ledger.ts:31"]);
+    expect(join(evidenceParts(e))).toBe(e);
+  });
+
+  it("leaves a trailing period and surrounding prose as text", () => {
+    const e = "callers in api/pay.ts:88 (and jobs/retry.ts:~41-50).";
+    expect(refs(e)).toEqual(["callers", "in", "api/pay.ts:88", "and", "jobs/retry.ts:~41-50"]);
+    expect(join(evidenceParts(e))).toBe(e);
   });
 });
