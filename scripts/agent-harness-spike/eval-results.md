@@ -393,6 +393,58 @@ comentarios; ninguno afirmó haber publicado.
 - Esto es una muestra de 3 PRs sin repetición; la adjudicación de calidad
   por unidad y finding sigue siendo humana.
 
+
+## Cuarta tanda (2026-10-21, misma Mac): casos de contradicción documental, `--runtime production`
+
+Los dos casos nuevos (`documented-api-contradiction`, 1 hunk;
+`large-documented-api-contradiction`, 162 hunks en tres temas), tres brazos,
+una repetición: 6 corridas, en serie, mismos binarios y logins que la tercera
+tanda, con el paso de verificación ya en el prompt compartido. Reporte:
+`eval-reports/2026-10-21-mac-production-docs-6.jsonl`.
+
+### Resultado: 0/6 por grader, 6/6 en sustancia
+
+| Caso | Brazo | Wall | Ops | Unidades | Finding emitido |
+| --- | --- | --- | --- | --- | --- |
+| chico | `claude-baseline` | 24 s | — | 1 | warning, evidencia en ambos archivos |
+| chico | `claude-shared` | 12 s | 7 | 1 | warning + note (la llamada correcta) |
+| chico | `codex-shared` | 27 s | 7 | 1 | warning, con la llamada correcta |
+| grande | `claude-baseline` | 44 s | — | 4 | warning |
+| grande | `claude-shared` | 40 s | 12 | 4 | warning, evidencia incluye la búsqueda |
+| grande | `codex-shared` | 75 s | 11 | 1 | warning |
+
+Los seis encontraron la contradicción plantada, la emitieron como `warning`
+en la unidad del hunk afectado, nombraron `openLegacyArchive`, `openArchive`,
+`accountId` y `retentionDays`, y citaron `docs/archive/quickstart.md:2` y
+`src/archive.js:1`. Es decir, cumplieron todas las cláusulas del grader menos
+una.
+
+### Clasificación de fallos
+
+| Tipo | Corridas | Detalle |
+| --- | --- | --- |
+| Transporte / permisos | 0 | `toolErrors` 1 en cada brazo del caso grande (una operación rechazada y reintentada; se registra, no es fallo del caso) |
+| Formato (vocabulario) | 6 | el grader exige una de "not exported / does not exist / missing export / nonexistent / removed / unavailable"; los modelos escribieron "exports only openArchive and openLive", "does not export it", "has no such export" |
+| Contenido | 0 | — |
+
+El grader se conserva tal cual (regla de esta serie: no corregirlo
+retroactivamente). Para la próxima versión del caso: la cláusula de vocabulario
+debería aceptar la negación en cualquiera de sus formas, o reemplazarse por
+"menciona `openLegacyArchive` y `openArchive` en el mismo finding con severidad
+`warning`", que es lo que de hecho distingue un hallazgo de una paráfrasis.
+
+### Lectura
+
+- Con el paso de verificación en el prompt, Claude compartido emite el
+  finding en el caso chico y en el grande, en 12 y 40 s, más barato que el
+  baseline (0,053 contra 0,117 USD en el chico; 0,154 contra 0,222 en el grande).
+- Codex también lo encuentra en los dos, y en el grande agrupó los 162 hunks
+  en una sola unidad (los Claude en 4). Con dos páginas de diff no paginó de
+  más: 11 operaciones, 75 s.
+- Estos casos piden verificar documentación de forma explícita: miden ese
+  contrato dirigido. El descubrimiento espontáneo en una PR real sigue siendo
+  lo que vimos en "PRs reales".
+
 ## Pendientes
 
 Lo que queda está en [integration.md](integration.md), sección "Pendientes para

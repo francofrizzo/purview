@@ -42,8 +42,11 @@ caso y grader), `parcial`, `falta`.
   correcto y cuyo texto menciona el identificador; que el summary lo mencione
   no cuenta. Variante grande: el mismo plantado entre 150+ hunks de docs.
 - **Estado**: cubierto por `documented-api-contradiction` (1 hunk) y
-  `large-documented-api-contradiction` (162 hunks). Pendiente correr modelos
-  reales; son casos dirigidos, no prueba de descubrimiento espontáneo.
+  `large-documented-api-contradiction` (162 hunks). Corridos con modelos reales
+  (eval-results.md, cuarta tanda): 6/6 emiten el warning correcto con evidencia;
+  0/6 por grader por su cláusula de vocabulario, que conviene relajar en la
+  próxima versión del caso. Son casos dirigidos, no prueba de descubrimiento
+  espontáneo.
 
 ## 3. Sobreclasificación de docs como `core-logic`
 
