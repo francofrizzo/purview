@@ -43,7 +43,7 @@ beforeEach(() => {
     expect(options.env.CODEX_HOME).toBe(store);
     expect(options.env).not.toHaveProperty("OPENAI_API_KEY");
     let script: string;
-    if (args[0] === "--version") script = mode === "startup-hang" ? "setInterval(()=>{},1000)" : `console.log('codex-cli ${mode === "version" ? "0.164.0" : "0.163.0"}')`;
+    if (args[0] === "--version") script = mode === "startup-hang" ? "setInterval(()=>{},1000)" : `console.log('codex-cli ${mode === "version" ? "0.162.0" : mode === "newer" ? "0.164.0" : "0.163.0"}')`;
     else {
       const config: any = {};
       for (let i = 3; i < args.length; i += 2) { const entry = args[i + 1]; const split = entry.indexOf("="); config[entry.slice(0, split)] = JSON.parse(entry.slice(split + 1).replace(/=/g, ":")); }
@@ -91,10 +91,10 @@ beforeEach(() => {
 afterEach(() => { setCodexSpawner(null); vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }); });
 
 describe("experimental Codex harness", () => {
-  it("probes only the exact tested version through the supplied Exec", () => {
-    for (const version of ["0.162.0", "0.163.0", "0.164.0"]) {
+  it("probes the minimum version and newer through the supplied Exec", () => {
+    for (const version of ["0.162.0", "0.163.0", "0.164.0", "1.0.0"]) {
       const exec = vi.fn(() => ({ ok: true, stdout: `codex-cli ${version}\n`, stderr: "private" }));
-      expect(codexHarness.probe(exec).available).toBe(version === "0.163.0");
+      expect(codexHarness.probe(exec).available).toBe(version !== "0.162.0");
       expect(exec).toHaveBeenCalledWith(process.execPath, ["--version"]);
     }
   });

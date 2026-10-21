@@ -7,7 +7,25 @@ import { stateRoot } from "@reviewer/core";
 import { startReviewTools } from "../review-tools/run.js";
 import type { AgentEvent, AgentHarness, AgentRunRequest, AgentSession, Exec, HarnessManifest } from "../types.js";
 
-const VERSION = "0.163.0";
+/**
+ * The oldest native Codex whose app-server configuration keys were verified
+ * to behave as this adapter assumes. Newer versions are accepted; the
+ * effective configuration is still read back before the first turn, so a key
+ * a future version drops or renames fails the run instead of widening it.
+ */
+const MIN_VERSION = "0.163.0";
+/** `codex-cli 0.164.0` -> `0.164.0`; undefined for anything else or older than MIN_VERSION. */
+export function acceptedCodexVersion(output: string): string | undefined {
+  const m = /^codex-cli (\d+)\.(\d+)\.(\d+)$/.exec(output.trim());
+  if (!m) return undefined;
+  const have = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const min = MIN_VERSION.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (have[i] > min[i]) return `${m[1]}.${m[2]}.${m[3]}`;
+    if (have[i] < min[i]) return undefined;
+  }
+  return `${m[1]}.${m[2]}.${m[3]}`;
+}
 const ADDENDUM = "[Purview Codex adaptation]\nKeep evidence excerpts <=200 characters and text fields <=300 characters. For targeted questions use selective reads/search; for full analysis cover all relevant hunks. These limits do not change the task's permissions.";
 const instructions = (value?: string) => `${value ?? ""}\n\n${ADDENDUM}`;
 const fingerprint = (value?: string) => createHash("sha256").update(instructions(value)).digest("hex");
@@ -15,7 +33,7 @@ const executable = () => process.env.PURVIEW_CODEX_BIN || "codex";
 function nativePath(): string {
   const command = executable();
   const found = command.includes(path.sep) ? command : (process.env.PATH ?? "").split(path.delimiter).map(dir => path.join(dir, command)).find(file => existsSync(file));
-  if (!found) throw new Error(`Requires native Codex ${VERSION}; install it or set PURVIEW_CODEX_BIN to its executable path`);
+  if (!found) throw new Error(`Requires native Codex ${MIN_VERSION} or newer; install it or set PURVIEW_CODEX_BIN to its executable path`);
   const file = realpathSync(found);
   // Spawning npm's JS launcher does not reliably own the native server group.
   const fd = openSync(file, "r");
@@ -38,10 +56,10 @@ const manifest: HarnessManifest & { reviewTools: boolean } = {
 };
 function probe(exec: Exec) {
   const result = exec(executable(), ["--version"]);
-  const supported = result.ok && result.stdout.trim() === `codex-cli ${VERSION}`;
-  return { available: supported, version: supported ? VERSION : undefined,
-    detail: supported ? `Codex ${VERSION} (experimental)` : `Requires native Codex ${VERSION}`,
-    setupHint: `Install native Codex ${VERSION}. ${loginHint}` };
+  const version = result.ok ? acceptedCodexVersion(result.stdout) : undefined;
+  return { available: !!version, version,
+    detail: version ? `Codex ${version} (experimental)` : `Requires native Codex ${MIN_VERSION} or newer`,
+    setupHint: `Install native Codex ${MIN_VERSION} or newer. ${loginHint}` };
 }
 function canResume(session: AgentSession, next: { cwd: string; instructions?: string }) {
   return session.harness === "codex" && session.cwd === next.cwd && session.fingerprint === fingerprint(next.instructions);
@@ -124,7 +142,8 @@ function run(request: AgentRunRequest) {
       if (child.pid) { try { process.kill(-child.pid, "SIGKILL"); } catch { /* exited */ } }
       child = undefined;
       check();
-      if (version.trim() !== `codex-cli ${VERSION}`) throw new Error(`Requires native Codex ${VERSION}`);
+      const acceptedVersion = acceptedCodexVersion(version);
+      if (!acceptedVersion) throw new Error(`Requires native Codex ${MIN_VERSION} or newer`);
       child = spawner(binary, ["app-server", "--listen", "stdio://", ...Object.entries(config).flatMap(([k, v]) => ["-c", `${k}=${toml(v)}`])], { cwd: neutral, env, detached: true, stdio: ["pipe", "pipe", "pipe"] });
       closed = new Promise(resolve => child!.once("close", resolve));
       child.stderr.resume(); // Never surface native auth/RPC diagnostics.
@@ -173,7 +192,7 @@ function run(request: AgentRunRequest) {
         permissions: "purview", approvalPolicy: "never", baseInstructions: instructions(request.instructions) });
       if (resume && thread.id !== resume.id) throw new Error("Codex resumed a different session");
       session = { harness: "codex", id: thread.id, cwd: request.cwd, fingerprint: fingerprint(request.instructions) };
-      emit({ type: "session", session, resolvedModel: thread.model, harnessVersion: VERSION });
+      emit({ type: "session", session, resolvedModel: thread.model, harnessVersion: acceptedVersion });
       await call("turn/start", { threadId: thread.id, input: [{ type: "text", text: request.prompt }] });
       const turn = await turnDone;
       if (turn.status !== "completed") throw new Error("Codex turn failed");

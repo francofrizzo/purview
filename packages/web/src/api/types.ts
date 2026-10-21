@@ -1088,7 +1088,7 @@ export interface ResolvedAgent {
 }
 
 /** Which configuration layer an effective value came from. */
-export type ConfigSource = "chat" | "pr" | "repo" | "committed" | "global" | "default";
+export type ConfigSource = "env" | "chat" | "pr" | "repo" | "committed" | "global" | "default";
 
 /** GET /api/prs/:key/chat */
 export interface ChatState {

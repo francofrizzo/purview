@@ -205,15 +205,6 @@ existing Claude Code auth — there are no API keys anywhere. Everything outside
 `packages/server/src/agent/types.ts`, and the settings and chat UI are built from the
 harness's manifest (`GET /api/agents`).
 
-**Experimental shared tools.** Start the server with `PURVIEW_EXPERIMENTAL_HARNESSES=1`
-to also offer `claude-shared` and `codex` in the existing agent selectors. They share
-typed, revision-bound review operations instead of granting a shell or checkout writes;
-the native Claude harness stays available and remains the default. These adapters
-require exactly Claude Code 2.1.305 / native Codex 0.163.0 and are not yet a claim of
-equivalent real-review quality. Claude reuses its existing CLI login; Codex requires
-an explicitly authenticated private store, never a copy of `~/.codex`.
-See [setup, permission boundaries and Mac validation](scripts/agent-harness-spike/integration.md).
-
 **Automatic analysis.** Tracking a new PR queues an analysis run immediately; refreshing one
 queues another only when the migration actually produced hunks nobody has classified yet.
 Runs are one-at-a-time, their status lives in `analysis-job.json`

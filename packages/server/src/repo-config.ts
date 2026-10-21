@@ -16,7 +16,7 @@ import {
   type ChatAgentSelection,
 } from "@reviewer/core";
 import { configExists, readConfig, type ReviewerConfig } from "./config.js";
-import { DEFAULT_HARNESS, findHarness, harnessIds } from "./agent/registry.js";
+import { DEFAULT_HARNESS, findHarness, harnessIds, harnessOverride, harnessOverrideRaw } from "./agent/registry.js";
 import type { HarnessId } from "./agent/types.js";
 import { HttpError } from "./http-error.js";
 
@@ -45,7 +45,7 @@ import { HttpError } from "./http-error.js";
  */
 
 /** `chat`: a conversation's own pin (chat.json), more specific than any layer. */
-export type ConfigSource = "chat" | "pr" | "repo" | "committed" | "global" | "default";
+export type ConfigSource = "env" | "chat" | "pr" | "repo" | "committed" | "global" | "default";
 
 export interface Resolved<T> {
   value: T;
@@ -101,6 +101,7 @@ export const BUILTIN_DEFAULTS = {
 };
 
 const SOURCE_NAMES: Record<ConfigSource, string> = {
+  env: "the PURVIEW_HARNESS environment variable",
   chat: "this chat's own setting",
   pr: "this PR's settings",
   repo: "the repo settings",
@@ -114,6 +115,10 @@ const SOURCE_NAMES: Record<ConfigSource, string> = {
  * one any layer names. A model or effort only counts from a layer that names
  * that same harness: a Claude model set globally means nothing to a repo that
  * switched to another harness, which gets that harness's defaults instead.
+ *
+ * `PURVIEW_HARNESS` (see registry.ts) sits above every layer: it names the
+ * harness, and the model and effort the layers chose for the configured
+ * harness carry over when the override harness has them, else its defaults.
  */
 export function resolveAgent(
   label: string,
@@ -121,12 +126,23 @@ export function resolveAgent(
   withEffort: boolean,
 ): ResolvedAgent {
   const named = candidates.find(([, sel]) => sel);
-  const harness: Resolved<HarnessId> = named
-    ? { value: named[1]!.harness, source: named[0] }
-    : { value: DEFAULT_HARNESS, source: "default" };
+  const override = harnessOverride();
+  const harness: Resolved<HarnessId> = override
+    ? { value: override, source: "env" }
+    : named
+      ? { value: named[1]!.harness, source: named[0] }
+      : { value: DEFAULT_HARNESS, source: "default" };
   const same = candidates.filter(([, sel]) => sel?.harness === harness.value);
+  // Under the override, what the layers chose for the configured harness is
+  // borrowed when the override harness knows it; never a problem when not.
+  const borrowed = override && named
+    ? candidates.filter(([, sel]) => sel?.harness === named[1]!.harness && sel.harness !== override)
+    : [];
   const found = findHarness(harness.value);
   const problems: string[] = [];
+  if (!override && harnessOverrideRaw()) {
+    problems.push(`PURVIEW_HARNESS names "${harnessOverrideRaw()}", which is not a harness; available: ${harnessIds().join(", ")}.`);
+  }
   if (!found) {
     problems.push(
       `The ${label} agent "${harness.value}" (from ${SOURCE_NAMES[harness.source]}) is not available here; ` +
@@ -135,7 +151,11 @@ export function resolveAgent(
   }
 
   const pick = (field: "model" | "effort", fallback: string | undefined, allowed: string[] | undefined) => {
-    const hit = same.find(([, sel]) => (sel as AgentSelection)[field] !== undefined);
+    let hit = same.find(([, sel]) => (sel as AgentSelection)[field] !== undefined);
+    if (!hit) {
+      const carried = borrowed.find(([, sel]) => (sel as AgentSelection)[field] !== undefined);
+      if (carried && (!allowed || allowed.includes((carried[1] as AgentSelection)[field]!))) hit = carried;
+    }
     const resolved: Resolved<string> = hit
       ? { value: (hit[1] as AgentSelection)[field]!, source: hit[0] }
       : { value: fallback ?? "", source: "default" };

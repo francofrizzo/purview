@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { loadState } from "@reviewer/core";
-import { claudeSharedHarness, setSharedClaudeSpawner } from "../src/agent/claude-shared/index.js";
+import { acceptedClaudeVersion, claudeSharedHarness, setSharedClaudeSpawner, unexpectedCapability } from "../src/agent/claude-shared/index.js";
 import { buildFixture, key } from "./fixtures.js";
 import type { AgentEvent, AgentRun, AgentRunRequest } from "../src/agent/types.js";
 
@@ -24,8 +24,12 @@ beforeEach(() => {
   vi.stubEnv("PURVIEW_CLAUDE_BIN", binary);
   setSharedClaudeSpawner((_command, args, opts) => {
     const session = args[args.indexOf(args.includes("--resume") ? "--resume" : "--session-id") + 1];
+    const at = args.indexOf("--allowedTools");
+    const allowed = at < 0 ? [] : args.slice(at + 1).filter(a => a.startsWith("mcp__purview__"));
+    const tools = mode === "extra-tool" ? [...allowed, "Bash"] : allowed;
+    const servers = mode === "no-mcp" ? [] : [{ name: "purview", status: "connected" }];
     const script = mode === "hang" ? "setInterval(()=>{},1000)" : `
-      console.log(JSON.stringify({type:'system',subtype:'init',session_id:${JSON.stringify(session)}}));
+      console.log(JSON.stringify({type:'system',subtype:'init',session_id:${JSON.stringify(session)},tools:${JSON.stringify(tools)},mcp_servers:${JSON.stringify(servers)},claude_code_version:'2.1.305'}));
       console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'review answer'}]}}));
       console.log(JSON.stringify({type:'result',is_error:${mode === "error"},usage:{input_tokens:17,output_tokens:3}}));`;
     return spawn(process.execPath, ["-e", script], { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"] });
@@ -44,6 +48,37 @@ it("normalizes text/usage and resumes only sessions with unchanged instructions"
   expect(claudeSharedHarness.canResume(session, { cwd: root, instructions: "Different rules" })).toBe(false);
   const resumed = terminal(await collect(claudeSharedHarness.run(request({ session }))));
   expect(resumed).toMatchObject({ ok: true, session: { id: session.id } });
+});
+it("accepts the minimum CLI version and newer, nothing older or unparseable", () => {
+  expect(acceptedClaudeVersion("2.1.305 (Claude Code)\n")).toBe("2.1.305");
+  expect(acceptedClaudeVersion("2.1.306 (Claude Code)")).toBe("2.1.306");
+  expect(acceptedClaudeVersion("2.2.0 (Claude Code)")).toBe("2.2.0");
+  expect(acceptedClaudeVersion("3.0.0 (Claude Code)")).toBe("3.0.0");
+  expect(acceptedClaudeVersion("2.1.304 (Claude Code)")).toBeUndefined();
+  expect(acceptedClaudeVersion("2.0.999 (Claude Code)")).toBeUndefined();
+  expect(acceptedClaudeVersion("2.1.306")).toBeUndefined();
+  expect(acceptedClaudeVersion("not a version")).toBeUndefined();
+  const probe = claudeSharedHarness.probe(() => ({ ok: true, stdout: "2.1.306 (Claude Code)\n", stderr: "" }));
+  expect(probe).toMatchObject({ available: true, version: "2.1.306" });
+  expect(claudeSharedHarness.probe(() => ({ ok: true, stdout: "2.1.300 (Claude Code)\n", stderr: "" })).available).toBe(false);
+});
+it("runs on a newer CLI and refuses an older one by version", async () => {
+  const binary = process.env.PURVIEW_CLAUDE_BIN!;
+  fs.writeFileSync(binary, "#!/bin/sh\nprintf '2.1.306 (Claude Code)\\n'\n", { mode: 0o700 });
+  expect(terminal(await collect(claudeSharedHarness.run(request())))).toMatchObject({ ok: true });
+  fs.writeFileSync(binary, "#!/bin/sh\nprintf '2.1.304 (Claude Code)\\n'\n", { mode: 0o700 });
+  expect(terminal(await collect(claudeSharedHarness.run(request())))).toMatchObject({ ok: false, error: expect.stringMatching(/^Requires Claude Code 2\.1\.305 or newer/) });
+});
+it("checks capabilities on the init event: only review tools, with the MCP connected", async () => {
+  expect(unexpectedCapability({ tools: ["mcp__purview__read_code"], mcp_servers: [{ name: "purview", status: "connected" }] }, ["mcp__purview__read_code"])).toBeUndefined();
+  expect(unexpectedCapability({ tools: ["mcp__purview__read_code", "Bash"], mcp_servers: [] }, ["mcp__purview__read_code"])).toMatch(/Unexpected native tool.*Bash/);
+  expect(unexpectedCapability({ tools: ["mcp__purview__read_code"], mcp_servers: [{ name: "purview", status: "failed" }] }, ["mcp__purview__read_code"])).toMatch(/review tools connected/);
+  expect(unexpectedCapability({ tools: [] }, [])).toBeUndefined();
+  expect(unexpectedCapability({}, [])).toMatch(/without a tool list/);
+  mode = "extra-tool";
+  expect(terminal(await collect(claudeSharedHarness.run(request())))).toMatchObject({ ok: false, error: expect.stringMatching(/^Unexpected native tool/) });
+  mode = "no-mcp";
+  expect(terminal(await collect(claudeSharedHarness.run(request())))).toMatchObject({ ok: false, error: expect.stringMatching(/^Unexpected Claude session/) });
 });
 it("treats a native error result as failure even on exit zero", async () => {
   mode = "error";

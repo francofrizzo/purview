@@ -9,7 +9,41 @@ import { superviseProcess, type ProcessSpawner } from "../process-runner.js";
 import { startReviewTools } from "../review-tools/run.js";
 import type { AgentEvent, AgentHarness, AgentRunRequest, AgentSession } from "../types.js";
 
-const VERSION = "2.1.305";
+/**
+ * The oldest CLI whose permission flags were verified to behave as this
+ * adapter assumes. Newer versions are accepted and then checked by behaviour:
+ * the init event must list the review tools and nothing else. A flag a future
+ * version silently ignores would show up there as a native tool.
+ */
+const MIN_VERSION = "2.1.305";
+/** `2.1.306 (Claude Code)` -> `2.1.306`; undefined for anything else or anything older than MIN_VERSION. */
+export function acceptedClaudeVersion(output: string): string | undefined {
+  const m = /^(\d+)\.(\d+)\.(\d+) \(Claude Code\)$/.exec(output.trim());
+  if (!m) return undefined;
+  const have = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const min = MIN_VERSION.split(".").map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (have[i] > min[i]) return `${m[1]}.${m[2]}.${m[3]}`;
+    if (have[i] < min[i]) return undefined;
+  }
+  return `${m[1]}.${m[2]}.${m[3]}`;
+}
+/**
+ * The capability check on the CLI's init event: every tool it offers must be
+ * one of ours, and the review MCP must be connected when the run has one.
+ * Returns the reason to refuse, or undefined.
+ */
+export function unexpectedCapability(init: Record<string, unknown>, expectedTools: string[] | undefined): string | undefined {
+  if (!Array.isArray(init.tools)) return "Unexpected Claude session without a tool list";
+  const allowed = new Set(expectedTools ?? []);
+  const foreign = (init.tools as unknown[]).filter((t) => typeof t !== "string" || !allowed.has(t));
+  if (foreign.length) return `Unexpected native tool offered by Claude Code: ${foreign.map(String).join(", ")}`;
+  if (expectedTools?.length) {
+    const servers = Array.isArray(init.mcp_servers) ? (init.mcp_servers as { name?: string; status?: string }[]) : [];
+    if (!servers.some((s) => s?.name === "purview" && s.status === "connected")) return "Unexpected Claude session without the review tools connected";
+  }
+  return undefined;
+}
 const executable = () => process.env.PURVIEW_CLAUDE_BIN ?? process.env.REVIEWER_CLAUDE_BIN ?? "claude";
 const fingerprint = (value?: string) => `shared1:${createHash("sha256").update(value ?? "").digest("hex")}`;
 const canResume: AgentHarness["canResume"] = (session, next) => session.harness === "claude-shared" &&
@@ -54,8 +88,9 @@ function run(request: AgentRunRequest) {
       const resume = typeof request.session === "object" ? request.session : undefined;
       if (resume && !canResume(resume, request)) throw new Error("Incompatible Claude shared-tools session");
       const env = environment();
-      const version = execFileSync(executable(), ["--version"], { env, encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }).trim();
-      if (version !== `${VERSION} (Claude Code)`) throw new Error(`Requires Claude Code ${VERSION}; unverified versions are not allowed`);
+      const reported = execFileSync(executable(), ["--version"], { env, encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }).trim();
+      const version = acceptedClaudeVersion(reported);
+      if (!version) throw new Error(`Requires Claude Code ${MIN_VERSION} or newer; found "${reported.slice(0, 40)}"`);
       // Stable per logical cwd so cold resume finds the same transcript, but
       // outside the repository so project instructions cannot widen authority.
       const cwd = path.join(request.review?.root ?? stateRoot(), "agents", "claude-shared", createHash("sha256").update(request.cwd).digest("hex"));
@@ -78,7 +113,7 @@ function run(request: AgentRunRequest) {
         "--mcp-config", JSON.stringify({ mcpServers: binding ? { purview: { type: "http", url: binding.url } } : {} }),
       ];
       proc = superviseProcess({ command: executable(), argv, cwd, env, spawn: spawner, stdin: request.prompt, timeoutMs: request.timeoutMs ?? 30 * 60_000 });
-      if (session) emit({ type: "session", session, harnessVersion: VERSION });
+      if (session) emit({ type: "session", session, harnessVersion: version });
       let resultSeen = false;
       for await (const event of proc.events) {
         if (event.type === "exit") {
@@ -91,6 +126,10 @@ function run(request: AgentRunRequest) {
         }
         let raw: Record<string, unknown>;
         try { raw = JSON.parse(event.line); } catch { continue; }
+        if (raw.type === "system" && raw.subtype === "init") {
+          const refusal = unexpectedCapability(raw, binding?.names.map(name => `mcp__purview__${name}`));
+          if (refusal) throw new Error(refusal);
+        }
         if (raw.type === "result") {
           resultSeen = true;
           if (Array.isArray(raw.permission_denials) && raw.permission_denials.length) error = "Claude denied a required review tool";
@@ -131,7 +170,7 @@ export const claudeSharedHarness: AgentHarness = {
   canResume, run,
   probe(exec) {
     const result = exec(executable(), ["--version"]);
-    const available = result.ok && result.stdout.trim() === `${VERSION} (Claude Code)`;
-    return { available, version: available ? VERSION : undefined, detail: available ? `Claude ${VERSION} (experimental)` : `Requires Claude Code ${VERSION}` };
+    const version = result.ok ? acceptedClaudeVersion(result.stdout) : undefined;
+    return { available: !!version, version, detail: version ? `Claude ${version} (experimental)` : `Requires Claude Code ${MIN_VERSION} or newer` };
   },
 };

@@ -1,9 +1,53 @@
 # Integración experimental: siguiente handoff a Mac
 
 Los adapters viven ahora en `packages/server/src/agent/{claude-shared,codex}`.
-No importan el spike. `PURVIEW_EXPERIMENTAL_HARNESSES=1` los registra junto al
-Claude actual, que conserva sus permisos, prompts y posición de default.
-No cambia el formato persistido ni migra las sesiones existentes.
+No importan el spike. Nada es visible en la UI ni en el changelog; el Claude
+actual conserva sus permisos, prompts y posición de default. No cambia el
+formato persistido ni migra las sesiones existentes.
+
+## Cómo usarlo hoy (privado, sin exponer nada)
+
+- `PURVIEW_HARNESS=claude-shared` (o `codex`) al arrancar el server: todo
+  análisis y todo turno de chat corre en ese harness, por encima de cualquier
+  capa de configuración. El modelo y el effort configurados para el harness
+  original se conservan si el nuevo los conoce (Claude ↔ Claude); si no, usa los
+  defaults del manifest (Codex: `gpt-6.1-sol`). Sin la variable, todo sigue
+  exactamente como hoy. Un valor que no nombra un harness falla el run con un
+  mensaje claro, no cae en silencio al default.
+- `PURVIEW_EXPERIMENTAL_HARNESSES=1` es otra cosa: hace que los adapters
+  aparezcan en los selectores de la UI. No hace falta para la variable anterior,
+  y `GET /api/agents` no lista un harness que solo corre por override.
+- Claude compartido usa el `claude` del PATH (o `PURVIEW_CLAUDE_BIN`) con su
+  login existente. Codex necesita `PURVIEW_CODEX_HOME` apuntando a un store
+  privado autenticado (ver abajo).
+
+## Versiones: mínima más verificación de comportamiento
+
+No hay pin exacto. Cada adapter exige una versión mínima (la verificada en las
+evals: Claude Code 2.1.305, Codex 0.163.0), acepta cualquier versión posterior
+y después verifica conducta, no cadena de versión:
+
+- **Claude:** el evento `system/init` del CLI debe listar como herramientas
+  exactamente las `mcp__purview__*` del run (ninguna nativa) y el MCP `purview`
+  como `connected`. Un flag que una versión futura ignore en silencio
+  aparecería ahí como herramienta nativa y el run falla cerrado con
+  `Unexpected native tool offered by Claude Code: …`. Ya pasó una vez con
+  `--safe-mode`, que apaga el MCP explícito.
+- **Codex:** sigue leyendo la configuración efectiva por app-server antes del
+  primer turno y rechaza si shell, red, plugins o multi-agente quedaron activos.
+
+Lo que una versión nueva no puede cambiar sin que se note es, entonces, el
+límite de permisos. Lo que sí puede cambiar (formato de salida, modelo) no nos
+importa: la superficie es nuestra.
+
+## Prompt de análisis compartido: paso de verificación
+
+El prompt compartido no carga `SKILL.md` (tiene recetas de CLI), así que no
+recibía el "VERIFICATION PASS: RUN IT" del harness actual. Ahora lo tiene en su
+propia forma: para cada unidad must-read o ambigua, elegir las afirmaciones que
+cambiarían un veredicto, chequearlas con `search_code`/`read_code` y persistir
+cada conclusión como finding. Resultado en la PR real grande: de 0 findings a 5
+verificados, estables en dos corridas (ver eval-results.md, "PRs reales").
 
 ## Contrato común y diferencias identificadas
 
@@ -21,17 +65,17 @@ No cambia el formato persistido ni migra las sesiones existentes.
   rutas reales de Purview, con sus anclajes, historia, trash, audiencia y eventos.
   Ninguno puede editar drafts humanos con esta integración experimental; propone
   el cambio. Una revisión vieja se rechaza también al llegar al servidor HTTP.
-- **Claude:** CLI 2.1.305, login propio existente, fuentes de settings vacías,
+- **Claude:** CLI 2.1.305 o posterior (ver "Versiones"), login propio existente, fuentes de settings vacías,
   restricted, hooks/memoria/slash commands desactivados y allowlist del único MCP.
   No usa safe-mode porque impediría cargar ese MCP explícito. No hay nuevo OAuth.
-- **Codex:** binario nativo 0.163.0, app-server, HOME/store privados, cwd neutro,
+- **Codex:** binario nativo 0.163.0 o posterior, app-server, HOME/store privados, cwd neutro,
   perfil de filesystem mínimo y sin red para ejecución, herramientas/plugins/hooks
   desactivados. Se comprueba la configuración efectiva antes del primer turno.
   Un config.toml privado no vacío se rechaza, no se mezcla.
 - **Prompts:** mismo workflow y RUBRIC.md/overlays del producto. Codex agrega
   `[Purview Codex adaptation]`: recordatorio de tamaños de evidencia y lecturas
   selectivas por los reintentos observados en las evals. No amplía permisos.
-  Claude no tiene addendum específico. Los resultados nuevos NO son directamente
+  Claude tiene el paso de verificación descrito arriba. Los resultados nuevos NO son directamente
   comparables al prompt corto del prototipo como si sólo hubiera cambiado el modelo.
 - Chat puede continuar sesiones compatibles; cada turno crea una autoridad fresca.
   Reanchor sigue siendo tool-free. Los adapters experimentales no ofrecen handoff
@@ -112,9 +156,8 @@ en [eval-results.md](eval-results.md), "Tercera tanda". Reportes en
    corridas sin fallos de transporte ni permisos. Ver "PRs reales" en
    [eval-results.md](eval-results.md). Lo que salió de ahí y hay que arreglar
    antes de usar los adapters en serio:
-   - `claude-shared` verifica pero no emite findings en PRs grandes: reforzar
-     en el prompt de análisis que cada verificación con resultado se persista
-     como finding (`warning` o `note`), como ya hace en chat.
+   - `claude-shared` verifica pero no emitía findings en PRs grandes: hecho
+     (paso de verificación en el prompt; 0 → 5 findings en la PR grande).
    - `codex`: sobreclasifica (`core-logic` en markdown), duplica unidades y
      tarda 6 min en una PR de 76 archivos; el addendum necesita granularidad
      ("~30 unidades o menos", "docs de agentes son `docs`") y findings.
@@ -123,15 +166,14 @@ en [eval-results.md](eval-results.md), "Tercera tanda". Reportes en
    - El protocolo de copias está en el scratch del operador (`prepare.mjs`,
      `server.sh`, `drive.mjs`, `chat.mjs`); vale la pena moverlo a
      `scripts/agent-harness-spike/realpr/` si se repite.
-2. **Selección de harness con UI.** Hoy entra por los selectores existentes solo
-   con `PURVIEW_EXPERIMENTAL_HARNESSES=1`. Decidir si es global, por repo o por
-   PR y persistirlo.
+2. **Selección de harness con UI.** Por ahora, `PURVIEW_HARNESS` (arriba).
+   Cuando se exponga: decidir si es global, por repo o por PR y persistirlo.
 3. **Costo de Codex.** El adapter devuelve tokens, no USD (`inputTokens`
    incluye los cacheados). Tabla de precios o mostrar tokens.
 4. **Diff grande con Codex.** El addendum no evitó paginar todo el diff
    (25 páginas, 2,3 M tokens, ~2 min). Hace falta una instrucción que lo lleve
    al overview y a `search_code`, como hace Claude compartido con 4–5 llamadas.
-5. **Versiones: mínima más verificación de comportamiento, no pin exacto.**
+5. **Versiones: hecho** (ver "Versiones" arriba). Queda como referencia la propuesta original:
    No dependemos del modelo ni del formato de salida, pero sí de los flags que
    forman el límite de permisos (`--tools ''`, `--restricted`,
    `--setting-sources ""`, hooks y memoria apagados; en Codex las claves de

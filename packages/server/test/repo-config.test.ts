@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -282,6 +282,33 @@ describe("effectiveConfig precedence", () => {
     );
     expect(effectiveAnalysisAgent(key, root)).toEqual({ harness: "claude-code", model: "haiku", effort: "medium" });
     expect(effectiveChatAgent(key, root)).toEqual({ harness: "claude-code", model: "opus" });
+  });
+
+  it("PURVIEW_HARNESS runs everything on that harness, carrying a model the override knows and dropping one it does not", () => {
+    writeConfig({ analysisAgent: { harness: "claude-code", model: "opus", effort: "high" }, chatAgent: { harness: "claude-code", model: "opus" } }, root);
+    vi.stubEnv("PURVIEW_HARNESS", "claude-shared");
+    try {
+      const analysis = effectiveConfig(key, root).analysisAgent;
+      expect(analysis.harness).toEqual({ value: "claude-shared", source: "env" });
+      // Same model ids: the configured Claude model and effort carry over.
+      expect(effectiveAnalysisAgent(key, root)).toEqual({ harness: "claude-shared", model: "opus", effort: "high" });
+      expect(effectiveChatAgent(key, root)).toEqual({ harness: "claude-shared", model: "opus" });
+      // Nothing is listed for the UI without the opt-in flag.
+      expect(effectiveConfig(key, root).analysisAgent.problem).toBeUndefined();
+    } finally { vi.unstubAllEnvs(); }
+    vi.stubEnv("PURVIEW_HARNESS", "codex");
+    try {
+      // Codex has no "opus": its own default, with no problem reported.
+      expect(effectiveAnalysisAgent(key, root)).toEqual({ harness: "codex", model: "gpt-6.1-sol", effort: "high" });
+      expect(effectiveChatAgent(key, root)).toEqual({ harness: "codex", model: "gpt-6.1-sol" });
+    } finally { vi.unstubAllEnvs(); }
+    vi.stubEnv("PURVIEW_HARNESS", "nope");
+    try {
+      expect(effectiveConfig(key, root).analysisAgent.problem).toMatch(/PURVIEW_HARNESS names "nope", which is not a harness/);
+      expect(() => effectiveAnalysisAgent(key, root)).toThrow(/invalid_agent_config/);
+    } finally { vi.unstubAllEnvs(); }
+    // Unset: exactly as configured.
+    expect(effectiveAnalysisAgent(key, root)).toEqual({ harness: "claude-code", model: "opus", effort: "high" });
   });
 
   it("a model or effort only counts under the harness its layer names", () => {
@@ -1252,6 +1279,13 @@ describe("/api/config", () => {
 });
 
 describe("/api/agents", () => {
+  it("does not list an experimental harness the PURVIEW_HARNESS override runs on", async () => {
+    vi.stubEnv("PURVIEW_HARNESS", "claude-shared");
+    try {
+      const body = await (await app.request("/api/agents")).json();
+      expect(body.harnesses.map((h: { id: string }) => h.id)).toEqual(["claude-code"]);
+    } finally { vi.unstubAllEnvs(); }
+  });
   it("lists every harness's manifest, without its prompt vocabulary", async () => {
     const body = await (await app.request("/api/agents")).json();
     expect(body.default).toBe("claude-code");

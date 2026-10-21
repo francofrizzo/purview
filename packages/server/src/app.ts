@@ -163,7 +163,7 @@ import {
   isRepoArchived,
 } from "./repo-config.js";
 import { agentView, checkAgentSelection, resolveAgent, resolveChatAgent } from "./repo-config.js";
-import { DEFAULT_HARNESS, getHarness, harnessIds } from "./agent/registry.js";
+import { DEFAULT_HARNESS, getHarness, listedHarnessIds } from "./agent/registry.js";
 import { generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
@@ -2140,7 +2140,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.get("/api/agents", (c) =>
     c.json({
       default: DEFAULT_HARNESS,
-      harnesses: harnessIds().map((id) => {
+      harnesses: listedHarnessIds().map((id) => {
         const { toolNames: _toolNames, inlineOutputLimit: _limit, ...manifest } = getHarness(id).manifest;
         return manifest;
       }),
