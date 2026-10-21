@@ -82,7 +82,37 @@ policy remains outside this isolation; this is not an OS sandbox or proof of
 zero network traffic from the binary. No real credential files, `~/.purview`, or
 port 4779 are involved. No dependencies or shared harness files were changed.
 
-## Mac handoff — pending, human-operated diagnostic only
+## Mac outcome (2026-10-21): diagnostic prepared, deliberately not run
+
+Verified on macOS 27.0 arm64 (Apple Silicon), Node 26.3.0, inside the personal
+account and without touching its Keychain:
+
+- The pinned darwin-arm64 binary from the lockfile reports `2.1.305 (Claude Code)`.
+- `node --test claude-auth.test.mjs`: 2 pass, 1 skipped (the Linux-only
+  logged-out probe, as designed). `--preflight` refuses macOS, as designed.
+- `claude-auth-mac.sh` (this directory) scripts the handoff below phase by
+  phase, prints only versions, exit codes, `loggedIn` booleans and file modes,
+  and refuses to run under the personal account. The binary and the script were
+  staged world-readable under `/Users/Shared` for a disposable account, since a
+  personal home directory is not readable by other accounts.
+
+**Decision: the disposable-account diagnostic is not run.** The policy decision
+above already closes Purview-owned Claude.ai login. What the diagnostic would
+test, an independent second sign-in under a separate config directory, is not
+something the product needs: Purview already runs the unmodified Claude Code
+binary on the user's machine, authenticated by the user's own login, which is
+the permitted case. A separate directory would add a second login for the user
+and a dependency on an undocumented Keychain keying that the official page
+itself calls no universal isolation boundary. Codex needed isolation to keep
+ambient MCP servers, hooks and plugins out, and its login rode along; Claude
+Code gives a tool-only session through SDK options without moving the login.
+
+So, for Claude: keep the user's existing login for analysis runs (as today);
+offer API keys or supported cloud credentials for a Purview-owned path; leave
+Keychain separation unverified and unneeded unless the product changes course.
+No login was started, no model request was made, no credential was read.
+
+## Mac handoff — prepared, human-operated diagnostic, only if ever needed
 
 Use a **disposable macOS OS account with its own login Keychain**, not just a
 temporary HOME inside the personal account. Do not import credentials or unlock
@@ -137,7 +167,7 @@ delete Keychain credentials. Do not run logout against the personal account.
 Report only version/architecture, booleans for A/B status and entry separation,
 file modes, and pass/fail — never raw status JSON, tokens, email or login URL.
 
-**Still pending:** real Mac execution, exact pinned Keychain namespace behavior,
+**Still pending (by decision, not by failure):** real Mac execution of the login phases, exact pinned Keychain namespace behavior,
 independent credential lifecycle, provider-approved Purview authentication UX,
 API-key secret-storage design and any product adapter. The existing Codex
 44/44 + OAuth/model result does not establish any of these Claude properties.
