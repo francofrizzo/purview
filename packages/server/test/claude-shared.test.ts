@@ -26,11 +26,13 @@ beforeEach(() => {
     const session = args[args.indexOf(args.includes("--resume") ? "--resume" : "--session-id") + 1];
     const at = args.indexOf("--allowedTools");
     const allowed = at < 0 ? [] : args.slice(at + 1).filter(a => a.startsWith("mcp__purview__"));
-    const tools = mode === "extra-tool" ? [...allowed, "Bash"] : allowed;
+    const tools = mode === "extra-tool" ? [...allowed, "Bash"] : mode === "missing-tools" ? allowed.slice(1) : mode === "no-tool-list" ? undefined : allowed;
     const servers = mode === "no-mcp" ? [] : [{ name: "purview", status: "connected" }];
+    const init = JSON.stringify({ type: "system", subtype: "init", session_id: session, tools, mcp_servers: servers, claude_code_version: "2.1.305" });
     const script = mode === "hang" ? "setInterval(()=>{},1000)" : `
-      console.log(JSON.stringify({type:'system',subtype:'init',session_id:${JSON.stringify(session)},tools:${JSON.stringify(tools)},mcp_servers:${JSON.stringify(servers)},claude_code_version:'2.1.305'}));
-      console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'review answer'}]}}));
+      ${mode === "late-init" ? "console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'unverified answer'}]}}));" : ""}
+      ${["no-init", "result-only"].includes(mode) ? "" : `console.log(${JSON.stringify(init)});`}
+      ${mode === "result-only" ? "" : "console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:'review answer'}]}}));"}
       console.log(JSON.stringify({type:'result',is_error:${mode === "error"},usage:{input_tokens:17,output_tokens:3}}));`;
     return spawn(process.execPath, ["-e", script], { cwd: opts.cwd, stdio: ["pipe", "pipe", "pipe"] });
   });
@@ -84,6 +86,15 @@ it("treats a native error result as failure even on exit zero", async () => {
   mode = "error";
   expect(terminal(await collect(claudeSharedHarness.run(request())))).toMatchObject({ ok: false, error: "Claude returned an error result" });
 });
+it.each(["no-init", "result-only", "late-init", "no-tool-list", "missing-tools", "extra-tool", "no-mcp"])("rejects %s without delivering an unverified answer", async failure => {
+  mode = failure;
+  const events = await collect(claudeSharedHarness.run(request()));
+  expect(terminal(events)).toMatchObject({ ok: false, error: expect.stringMatching(/^Unexpected /) });
+  expect(events.filter(e => e.type === "output" || e.type === "output-delta")).toEqual([]);
+});
+it("accepts an explicitly empty capability list for a tool-free reanchor", async () => {
+  expect(terminal(await collect(claudeSharedHarness.run(request({ task: { kind: "reanchor" }, review: undefined }))))).toMatchObject({ ok: true });
+});
 it("ends cancellation and timeout exactly once", async () => {
   mode = "hang";
   const run = claudeSharedHarness.run(request());
@@ -125,6 +136,10 @@ describe.skipIf(!process.env.PURVIEW_TEST_CLAUDE_BIN)("pinned native Claude with
       expect(terminal(resumed)).toMatchObject({ ok: true, session: { id: session.id } });
       expect(resumed).toContainEqual(expect.objectContaining({ type: "action", action: expect.objectContaining({ name: "review_context" }) }));
       expect(resumed).toContainEqual({ type: "output", text: "resumed done" });
+      api.plan([{ text: "tool-free answer" }]);
+      const reanchor = await collect(claudeSharedHarness.run(request({ task: { kind: "reanchor" }, review: undefined, timeoutMs: 30000 })));
+      expect(terminal(reanchor)).toMatchObject({ ok: true });
+      expect(reanchor).toContainEqual({ type: "output", text: "tool-free answer" });
     } finally { await api.close(); }
   }, 40000);
 });

@@ -38,6 +38,7 @@ export function unexpectedCapability(init: Record<string, unknown>, expectedTool
   const allowed = new Set(expectedTools ?? []);
   const foreign = (init.tools as unknown[]).filter((t) => typeof t !== "string" || !allowed.has(t));
   if (foreign.length) return `Unexpected native tool offered by Claude Code: ${foreign.map(String).join(", ")}`;
+  if ([...allowed].some(tool => !(init.tools as unknown[]).includes(tool))) return "Unexpected Claude session without all granted review tools";
   if (expectedTools?.length) {
     const servers = Array.isArray(init.mcp_servers) ? (init.mcp_servers as { name?: string; status?: string }[]) : [];
     if (!servers.some((s) => s?.name === "purview" && s.status === "connected")) return "Unexpected Claude session without the review tools connected";
@@ -115,12 +116,14 @@ function run(request: AgentRunRequest) {
       proc = superviseProcess({ command: executable(), argv, cwd, env, spawn: spawner, stdin: request.prompt, timeoutMs: request.timeoutMs ?? 30 * 60_000 });
       if (session) emit({ type: "session", session, harnessVersion: version });
       let resultSeen = false;
+      let capabilitiesChecked = false;
       for await (const event of proc.events) {
         if (event.type === "exit") {
           const exit = event.exit;
           if (exit.reason === "cancelled") error = "cancelled";
           else if (exit.reason === "timeout") error = "Claude timed out";
           else if (exit.reason !== "exited" || exit.code !== 0) error = "Claude process failed; check the CLI installation and login";
+          else if (!capabilitiesChecked) error = "Unexpected Claude session without verified initialization";
           else if (!resultSeen) error = "Claude ended without a result";
           break;
         }
@@ -129,7 +132,9 @@ function run(request: AgentRunRequest) {
         if (raw.type === "system" && raw.subtype === "init") {
           const refusal = unexpectedCapability(raw, binding?.names.map(name => `mcp__purview__${name}`));
           if (refusal) throw new Error(refusal);
+          capabilitiesChecked = true;
         }
+        if (!capabilitiesChecked && ["assistant", "stream_event", "result"].includes(raw.type as string)) throw new Error("Unexpected Claude response before verified initialization");
         if (raw.type === "result") {
           resultSeen = true;
           if (Array.isArray(raw.permission_denials) && raw.permission_denials.length) error = "Claude denied a required review tool";
