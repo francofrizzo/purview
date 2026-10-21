@@ -32,6 +32,8 @@ import {
   type RepoGroup,
 } from "../lib/prList";
 import { AutoArchiveButton, RepoMenu } from "../components/RepoActions";
+// Inlined as data URLs by the build (see vite.config.ts): the logo is part of
+// the first paint, not a request that lands after the header drew without it.
 import logoDark from "../assets/logo-dark.png";
 import logoLight from "../assets/logo-light.png";
 
@@ -97,8 +99,8 @@ export function PrList() {
         <div className="min-w-0 flex-1">
           <h1>
             {/* Two inks, one shown per theme (see index.css); the h1's name is the alt. */}
-            <img src={logoLight} alt="Purview" className="logo-for-dark h-6 w-auto" />
-            <img src={logoDark} alt="Purview" className="logo-for-light h-6 w-auto" />
+            <img src={logoLight} alt="Purview" width={110} height={24} className="logo-for-dark h-6 w-auto" />
+            <img src={logoDark} alt="Purview" width={110} height={24} className="logo-for-light h-6 w-auto" />
           </h1>
           {MOCK ? (
             <p className="mt-0.5 text-xs" style={{ color: "var(--warn)" }}>
@@ -147,7 +149,7 @@ export function PrList() {
 
       <div className="min-h-0 flex-1 overflow-auto">
         {isLoading ? (
-          <p className="surface inline-flex items-center gap-2 rounded-md p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
+          <p className="surface flex items-center gap-2 rounded-md p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
             <IconSpinner width={12} height={12} />
             Loading…
           </p>

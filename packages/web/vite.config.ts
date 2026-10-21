@@ -88,5 +88,8 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: true,
+    // The header logo is inlined whatever its size: on a cold load the home
+    // page otherwise paints its header before the image request lands.
+    assetsInlineLimit: (file) => (/\/assets\/logo-(dark|light)\.png$/.test(file) ? true : undefined),
   },
 });
