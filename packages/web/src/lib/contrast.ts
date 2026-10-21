@@ -108,7 +108,7 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     chip("chip-heart", "heart", "heart", "heart-soft"),
     chip("chip-core-inset", "chip on bg-inset: core", "kind-core", "kind-core-soft", "bg-inset"),
     chip("chip-risk-inset", "chip on bg-inset: risk", "risk", "risk-soft", "bg-inset"),
-    s("badge-requested", "Chips and badges", "reviewer still to answer badge (bg on fg-muted)", "bg", 3.0, ["fg-muted"], "clock", { kind: "chip" }),
+    chip("badge-requested", "reviewer still to answer badge (fg-muted on bg-inset, home list)", "fg-muted", "bg-inset", "bg"),
     s("badge-approved", "Chips and badges", "reviewer approved badge (bg on ok)", "bg", 3.0, ["ok"], "check", { kind: "chip" }),
     s("badge-changes", "Chips and badges", "reviewer changes badge (bg on risk)", "bg", 3.0, ["risk"], "cross", { kind: "chip" }),
     s("age-1", "Chips and badges", "age-1 (fresh request)", "age-1", 3.0, ["bg-raised"], "asked you 2h ago"),

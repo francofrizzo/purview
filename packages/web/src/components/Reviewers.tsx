@@ -16,10 +16,11 @@ const STATE_LABEL: Record<Reviewer["state"], string> = {
 /**
  * The badge on an avatar: a clock while the reviewer is still to answer, a
  * check or a cross once they did. Solid discs (the soft tints are translucent
- * and vanish over an avatar), the glyph in the pane color.
+ * and vanish over an avatar): verdicts in their color with the glyph in the
+ * pane color, the clock quiet on the inset surface.
  */
 const BADGE: Partial<Record<Reviewer["state"], { fg: string; bg: string }>> = {
-  requested: { fg: "var(--bg)", bg: "var(--fg-muted)" },
+  requested: { fg: "var(--fg-muted)", bg: "var(--bg-inset)" },
   approved: { fg: "var(--bg)", bg: "var(--ok)" },
   changes_requested: { fg: "var(--bg)", bg: "var(--risk)" },
 };
