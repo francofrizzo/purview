@@ -38,13 +38,13 @@ Versiones fijadas:
 
 Cada escenario crea HOME y directorios de configuración temporales y una whitelist de variables de entorno. No toma credenciales reales ni usa `~/.purview` o el puerto 4779. Los procesos se cierran antes de borrar sus directorios: la limpieza espera a que no quede ningún hijo del proceso de test (un Claude Code abortado todavía escribe su log de cierre de MCP bajo el HOME temporal un instante después de `abort()`), y falla si alguno persiste.
 
-La fixture impide transportes Git mediante `protocol.allow=never`, sin cargar configuración Git personal/sistema. Esto contiene la preparación de marketplaces de plugins que Codex puede intentar en background; **no es una garantía de permisos del producto ni un sandbox de red para todo app-server**. Cada app-server pertenece a un grupo de procesos del test que se termina al cerrar, incluidos hijos de preparación de plugins. No se deja un daemon corriendo.
+La fixture impide transportes Git mediante `protocol.allow=never`, sin cargar configuración Git personal/sistema, y dirige HTTP(S) a un proxy local que rechaza CONNECT sin reenviarlo. Git bloqueado por sí solo no contiene la preparación de plugins: Codex tiene fallbacks HTTPS. El proxy permite observar esos intentos; **no es una garantía de permisos del producto ni un sandbox de red para todo app-server**. La configuración normal desactiva `features.plugins` y `features.remote_plugin`. Cada app-server pertenece a un grupo de procesos del test que se termina al cerrar, incluidos hijos de preparación del control positivo. No se deja un daemon corriendo.
 
 La autorización de la fixture vuelve a leer en cada mutación el grant activo, el tipo de tarea, la revisión, la pertenencia del comentario a la PR y su estado draft. La PR no la elige el modelo. Esta fixture serial no implementa transacciones, control de concurrencia ni un sistema de grants utilizable en producción.
 
 ## Evidencia ejecutada
 
-Última ejecución en Linux x64: **34 tests, 34 pass, 0 fail**. En macOS 27.0 arm64 con Node 26.3.0 (Homebrew): **34 tests, 34 pass, 0 fail**, en tres corridas consecutivas, sin procesos ni directorios temporales remanentes. El conteo incluye subtests y pruebas que caracterizan limitaciones: no equivale a 34 garantías de seguridad satisfechas.
+Última ejecución en Linux x64: **44 tests, 44 pass, 0 fail**. En macOS 27.0 arm64 con Node 26.3.0 (Homebrew), la matriz anterior: **34 tests, 34 pass, 0 fail**, en tres corridas consecutivas, sin procesos ni directorios temporales remanentes. Los diez tests nuevos de auth/plugins están pendientes en macOS. El conteo incluye subtests y pruebas que caracterizan limitaciones: no equivale a 44 garantías de seguridad satisfechas.
 
 | Caso | Claude | Codex |
 | --- | --- | --- |
@@ -123,13 +123,23 @@ Se plantó un servidor MCP `ambient` en el `config.toml` de un CODEX_HOME tempor
 
 Una nueva prueba planta dos MCP que escriben archivos al iniciar: uno personal y otro en `.codex/config.toml` de un checkout confiable. El control positivo arranca ambos. Con CODEX_HOME privado y cwd neutral tanto en el proceso como en el thread, ninguno escribe su marcador y solo `purview` aparece conectado. `config/read` con el mismo cwd e `includeLayers` confirma inventario y procedencia, sin el layer del checkout.
 
-El runtime del spike aplica desde el arranque `features.hooks=false`, `notify=[]`, `plugins._default.enabled=false` y `orchestrator.mcp.enabled=false`; se comprueban sus valores efectivos y que el MCP propio sigue funcionando. Según el código fuente, `notify` es independiente de hooks y un plugin explícitamente habilitado prevalece sobre `_default=false`. Estas comprobaciones no son una auditoría de todas las variantes de hooks/plugins.
+El runtime del spike aplica desde el arranque `features.hooks=false`, `notify=[]`, `features.plugins=false`, `features.remote_plugin=false`, `plugins._default.enabled=false` y `orchestrator.mcp.enabled=false`; se comprueban sus valores efectivos y que el MCP propio sigue funcionando. Según el código fuente, `notify` es independiente de hooks y un plugin explícitamente habilitado prevalece sobre `_default=false`. Estas comprobaciones no son una auditoría de todas las variantes de hooks/plugins.
 
-**Sigue sin estar resuelto el aislamiento completo del proceso.** En una ejecución se observó preparación de un repositorio de plugins bajo `CODEX_HOME/.tmp/plugins-clone-*` aun con activación deshabilitada; la limpieza falló con `ENOTEMPTY` en `.git/objects`. El código de app-server habilita tareas de preparación de plugins por defecto. De ahí los controles Git y de procesos de la fixture. No confundir impedir activación de plugins con impedir toda preparación en background.
+**La segunda fase resuelve la preparación de plugins para esta versión, no el aislamiento completo del proceso.** La primera observó preparación bajo `CODEX_HOME/.tmp/plugins-clone-*` aun con activación deshabilitada. El control positivo nuevo reproduce el arranque de preparación con `features.plugins=true` y `_default.enabled=false`: aparece el lock de sincronización. Con `features.plugins=false`, no aparecen el lock, los directorios de preparación ni intentos HTTPS observados por el proxy durante startup, login con API key ficticia y un turno real del harness. La fuente confirma que el feature gate precede tanto al sync local como al refresh remoto. No confundir este resultado con una prueba de ausencia de cualquier tráfico o efecto del proceso, ni con login ChatGPT real.
 
 La CLI stock no expone los `LoaderOverrides` internos para ignorar todos los layers personales, de proyecto y de sistema, ni `PluginStartupTasks::Skip`. HOME privado y cwd neutral tampoco suprimen configuración/requirements de `/etc/codex`, preferencias administradas de macOS o política enterprise. `config/read` observa estado después de iniciar: no es una barrera previa a todo efecto de startup.
 
-Para producción se necesita aceptar/verificar expresamente esas fuentes del host, aislar externamente el proceso o evaluar un host Rust pequeño que use los controles de embedding existentes. No se implementó un host Rust ni un fork. La reutilización del login existente sigue pendiente y no se resuelve copiando toda la configuración personal.
+Para producción se necesita aceptar/verificar expresamente esas fuentes del host, aislar externamente el proceso o evaluar un host Rust pequeño que use los controles de embedding existentes. No se implementó un host Rust ni un fork. El hallazgo de plugins ya no justifica por sí solo un host Rust.
+
+### Codex: autenticación separada de configuración
+
+Se ejecutaron `account/login/start` con una **API key ficticia**, `account/read`, reinicio y `account/logout` contra el binario real. El proveedor local exige auth y comprueba el header Bearer exacto. El almacén privado en modo `file` crea `auth.json` con permisos 0600, se carga en un proceso nuevo y se elimina al hacer logout. Una configuración y credencial señuelo en el HOME original no se seleccionan ni modifican. Una política `forced_login_method=chatgpt` rechaza el login de API key. No se enviaron credenciales reales ni se comprobó su aceptación por OpenAI.
+
+**Decisión del spike: login ChatGPT nuevo e independiente**, mediante el RPC público, en vez de importar el login de la CLI. `chatgptAuthTokens`, la alternativa para inyectar un access token externo, está marcada en la fuente como `UNSTABLE, FOR OPENAI INTERNAL USE ONLY - DO NOT USE`. No se construye un broker sobre ella. Copiar refresh tokens tampoco es un contrato de integración y puede acoplar la rotación entre stores. El costo visible del camino elegido es pedir un login adicional; no se presenta como reutilización transparente del login actual.
+
+`auth-smoke.mjs` prepara ese login y un smoke remoto usando el mismo binario y MCP. Su HOME y CODEX_HOME persistentes viven solo en `~/.purview-harness-spike-auth/{home,codex}`, con directorio padre 0700 y store de archivo 0600; el cwd de proceso/thread es temporal, neutral y fuera del HOME real. No importa API keys del entorno ni copia `~/.codex`; conserva proxy/certificados para el transporte. Comprueba configuración efectiva antes de pedir login o arrancar el turno, pero después del startup, no como interlock previo.
+
+El smoke exige observar por MCP lectura, edición válida y tres rechazos reales (otra PR, publicado, revisión vieja), además del estado final completo. Si el modelo evita las llamadas inválidas, **falla como evidencia incompleta**, no cuenta su negativa verbal como autorización probada. El validador pasa contra transporte determinista y una prueba negativa demuestra que omitir rechazos no lo hace pasar. El CLI sin login también se ejecutó con HOME descartable y proxy cerrado: superó el preflight y falló en `stage=account`, con exit 1 y sin imprimir datos de cuenta. **El OAuth, inferencia remota y disponibilidad del modelo en la cuenta siguen pendientes de la Mac.**
 
 ## Decisión de diseño después del spike
 
@@ -151,18 +161,22 @@ Una API key no elimina la necesidad de harness. Este spike usa los loops de Clau
 
 ## Próximo paso en la máquina del usuario
 
-Hecho para macOS arm64 (ver arriba). Para otra plataforma, el siguiente resultado es la misma matriz en ella. La branch `spike/agent-harness-compat` contiene solo este experimento. Desde un clon existente, para no cambiar su branch ni sus ediciones:
+La primera matriz ya pasó en macOS arm64 (ver arriba). El siguiente paso es repetir los 44 tests y ejecutar el login independiente y el smoke remoto. La branch `spike/agent-harness-compat` contiene solo este experimento. Desde un clon existente, para no cambiar su branch ni sus ediciones, crear un worktree en una ruta libre:
 
 ```sh
 git fetch origin spike/agent-harness-compat
 git worktree add --detach ../purview-harness-spike origin/spike/agent-harness-compat
 npm ci --prefix ../purview-harness-spike/scripts/agent-harness-spike --no-audit --no-fund
 npm test --prefix ../purview-harness-spike/scripts/agent-harness-spike
+npm run auth:login --prefix ../purview-harness-spike/scripts/agent-harness-spike
+npm run auth:smoke --prefix ../purview-harness-spike/scripts/agent-harness-spike
 ```
 
-Prerequisito: Node >=20.11 instalado. La instalación descarga las dependencias y sus binarios fijados; los tests usan el proveedor local y no piden login. Devolver plataforma/arquitectura, versión de Node, resumen y errores de tests; no enviar tokens, `auth.json` ni configuración privada. En un host administrado, las fuentes globales mencionadas arriba siguen siendo un límite del experimento: no ejecutar asumiendo aislamiento completo.
+Si el worktree de la primera fase ya existe, no reutilizar estos comandos de creación sobre él: usar otra ruta libre o actualizarlo solo si está limpio. Prerequisito: Node >=20.11 instalado. La instalación descarga las dependencias y sus binarios fijados; los tests usan el proveedor local y no piden login.
 
-No hay prueba autenticada incluida en este paso. Validar el login real y modelos remotos será un paso separado después de decidir cómo separar autenticación y configuración; no se modifican los stores de login actuales.
+`auth:login` imprime una URL OAuth: **la persona la abre localmente en su navegador y completa la autenticación**; no pegar la URL, códigos ni credenciales en el chat o en el reporte del agente. Espera hasta cinco minutos. `auth:smoke` usa ese login y hace solicitudes reales al modelo fijado `gpt-6.1-sol`, que debe estar disponible en la cuenta; puede consumir cuota. El review es ficticio y descartable, no se lee ni edita una PR real. La prueba mantiene el login privado para reejecutar, pero borra el estado temporal del review al salir. No se afirma logout remoto ni revocación de tokens al borrar archivos.
+
+Devolver plataforma/arquitectura, versión de Node, resumen de tests y el JSON de checks del smoke. Si falla, informar solo `stage=...`; el runner no imprime errores crudos de RPC/backend, logs ni datos de cuenta. No enviar tokens, `auth.json`, URL OAuth ni configuración privada. En un host administrado, las fuentes globales mencionadas arriba siguen siendo un límite: no ejecutar asumiendo aislamiento completo ni deshabilitar políticas para lograr que pase. Este orb no ejecutó OAuth ni solicitudes de modelo autenticadas.
 
 ## Referencias y límites de versión
 
@@ -173,5 +187,7 @@ El código ejecutable y su lockfile son la evidencia reproducible. Para contrast
 - [Fuente de Codex fijada a rust-v0.163.0](https://github.com/openai/codex/tree/rust-v0.163.0/codex-rs): metadata de modelos en `models-manager/models.json`, serialización Responses Lite en `core/src/client.rs`, selección de tools en `core/src/tools/mod.rs` y contrato de permisos en `app-server-protocol`.
 - Controles internos de carga: [`LoaderOverrides`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/config/src/state.rs#L41-L62); opciones de runtime: [`PluginStartupTasks`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/app-server/src/lib.rs#L468-L506). No son flags de aislamiento de la CLI stock.
 - Selector experimental: [`turn/start.permissions`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/app-server-protocol/src/protocol/v2/turn.rs#L230-L245); hooks y notify independientes: [`registry.rs`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/hooks/src/registry.rs#L118-L142).
+- Gate de plugins: [`Feature::Plugins`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/features/src/lib.rs#L1620-L1625) y [`PluginManager`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/core-plugins/src/manager.rs#L752-L770), que comprueba `plugins_enabled` antes de preparar el marketplace; el refresh remoto también retorna si está deshabilitado.
+- Contrato de login: [`LoginAccountParams`](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/app-server-protocol/src/protocol/v2/account.rs#L64-L104), incluida la advertencia explícita sobre `chatgptAuthTokens`. Fuente consultada: commit del tag `83086188ae0614bd882818ff1aa23f3194962012`.
 - `codex app-server generate-json-schema` del binario fijado: el test inspecciona el schema generado para `CommandExecParams`.
 - Contrato actual de Purview: `packages/server/src/agent/types.ts` y `packages/server/src/agent/claude-code/permissions.ts`. No se modificaron en este spike.

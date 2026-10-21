@@ -4,6 +4,7 @@ import http from 'node:http';
 // harness still decides which tools exist and whether/how a call executes.
 export async function provider() {
   const requests = [];
+  const egress = [];
   let plan = [];
   const server = http.createServer(async (req, res) => {
     let raw = '';
@@ -15,7 +16,7 @@ export async function provider() {
       res.end(JSON.stringify({ input_tokens: 10 }));
       return;
     }
-    requests.push({ path: req.url, body });
+    requests.push({ path: req.url, body, authorization: req.headers.authorization });
     const next = plan.shift() ?? { text: 'spike-done' };
     if (next.hold) return; // Cancellation fixture: never return model output.
     const id = `call_${requests.length}`;
@@ -58,7 +59,13 @@ export async function provider() {
     }
     res.end();
   });
+  // A rejecting proxy for synthetic probes. Observe attempted HTTPS egress
+  // without forwarding it; this is not an OS-level network sandbox.
+  server.on('connect', (req, socket) => {
+    egress.push(req.url);
+    socket.end('HTTP/1.1 502 Fixture proxy rejects external traffic\r\nConnection: close\r\n\r\n');
+  });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  return { url: `http://127.0.0.1:${server.address().port}`, requests,
+  return { url: `http://127.0.0.1:${server.address().port}`, requests, egress,
     plan: steps => { plan = [...steps]; }, close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }

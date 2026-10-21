@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { provider } from "./provider.mjs";
+import { runReviewSmoke } from "./auth-smoke.mjs";
 import { codexBin, codexClient, codexConfig, claudeQuery, claudeTurn, nodeRuntimeReadRoots, until } from "./runtime.mjs";
 
 async function fixture(t) {
@@ -21,6 +22,7 @@ async function fixture(t) {
     read: async () => JSON.parse(await fs.readFile(f.statePath, "utf8")),
     write: state => fs.writeFile(f.statePath, JSON.stringify(state)),
   };
+  Object.assign(f.env, { HTTPS_PROXY: f.api.url, HTTP_PROXY: f.api.url, NO_PROXY: "127.0.0.1,localhost" });
   t.after(async () => {
     for (const client of f.clients) await client.close();
     await f.api.close();
@@ -400,6 +402,8 @@ test("Codex private home plus neutral cwd avoids planted user and project MCP st
     assert.equal(read.config.features.hooks, false);
     assert.deepEqual(read.config.notify, []);
     assert.equal(read.config.plugins._default.enabled, false);
+    assert.equal(read.config.features.plugins, false);
+    assert.equal(read.config.features.remote_plugin, false);
     assert.equal(read.config.orchestrator.mcp.enabled, false);
     const { thread } = await client.call("thread/start", { cwd: neutral });
     f.api.plan([{ tool: "read_review", args: {} }]);
@@ -408,5 +412,103 @@ test("Codex private home plus neutral cwd avoids planted user and project MCP st
     assert.deepEqual(status.data.map(s => s.name), ["purview"]);
     for (const marker of [userMarker, projectMarker]) await assert.rejects(fs.access(marker), { code: "ENOENT" });
     assert.ok(!JSON.stringify(read.layers).includes(path.join(f.cwd, ".codex")));
+  });
+});
+
+test("Codex private auth store: public API login, restart and original-store isolation", { timeout: 60000 }, async t => {
+  const f = await fixture(t);
+  const original = path.join(f.root, ".codex");
+  await fs.mkdir(original);
+  const originalAuth = JSON.stringify({ OPENAI_API_KEY: "original-fixture-key-not-a-secret" });
+  const originalConfig = "notify = [\"/not/a/program\"]\n";
+  await fs.writeFile(path.join(original, "auth.json"), originalAuth, { mode: 0o600 });
+  await fs.writeFile(path.join(original, "config.toml"), originalConfig);
+  const config = codexConfig(f);
+  config.cli_auth_credentials_store = "file";
+  config.model_providers.fixture.requires_openai_auth = true;
+  delete config.sandbox_mode;
+  config.default_permissions = "purview-read";
+  config.permissions = { "purview-read": { filesystem: { ":minimal": "read", [f.cwd]: "read",
+    [path.dirname(path.dirname(codexBin))]: "read" }, network: { enabled: false } } };
+  let client = await codexClient(f, config, true);
+  await t.test("does not pick up original credentials and does not leak account errors", async () => {
+    const account = await client.call("account/read", { refreshToken: false });
+    assert.equal(account.account, null);
+    const restricted = await codexClient(f, { ...config, forced_login_method: "chatgpt" });
+    await assert.rejects(restricted.call("account/login/start", { type: "apiKey", apiKey: "must-not-be-persisted" }), /Account RPC failed/);
+    await restricted.close();
+    await assert.rejects(fs.access(path.join(f.codexHome, "auth.json")), { code: "ENOENT" });
+  });
+  await t.test("login persists only in the private file store, with private permissions", async () => {
+    const result = await client.call("account/login/start", { type: "apiKey", apiKey: "private-fixture-key-not-a-secret" });
+    assert.equal(result.type, "apiKey");
+    const stored = JSON.parse(await fs.readFile(path.join(f.codexHome, "auth.json"), "utf8"));
+    assert.equal(stored.OPENAI_API_KEY, "private-fixture-key-not-a-secret");
+    assert.equal((await fs.stat(path.join(f.codexHome, "auth.json"))).mode & 0o777, 0o600);
+  });
+  await t.test("fresh process loads private auth and sends it only to the local model fixture", async () => {
+    await client.close();
+    client = await codexClient(f, config, true);
+    assert.equal((await client.call("account/read", { refreshToken: false })).account.type, "apiKey");
+    const { thread } = await client.call("thread/start", { cwd: f.cwd });
+    f.api.plan([{ tool: "read_review", args: {} }, { tool: "edit_draft", args: { commentId: "draft", revision: 7, body: "private-auth-update" } }]);
+    assert.equal((await client.turn(thread.id)).status, "completed");
+    assert.equal((await f.read()).comments.draft.body, "private-auth-update");
+    assert.ok(f.api.requests.length > 0);
+    for (const req of f.api.requests) assert.equal(req.authorization, "Bearer private-fixture-key-not-a-secret");
+  });
+  await t.test("the real-login smoke validator observes all five MCP outcomes", async () => {
+    f.api.plan([{ tool: "read_review", args: {} },
+      { tool: "edit_draft", args: { commentId: "draft", revision: 7, body: "authenticated-spike" } },
+      ...[["foreign", 7], ["published", 7], ["draft", 6]].map(([commentId, revision]) =>
+        ({ tool: "edit_draft", args: { commentId, revision, body: "must-not-write" } })),
+    ]);
+    assert.deepEqual(await runReviewSmoke(f, client), {
+      read: true, draftUpdated: true, foreignDenied: true, publishedDenied: true, staleDenied: true,
+    });
+  });
+  await t.test("a model skipping denial probes cannot make the smoke pass", async () => {
+    f.api.plan([{ tool: "read_review", args: {} },
+      { tool: "edit_draft", args: { commentId: "draft", revision: 7, body: "authenticated-spike" } },
+    ]);
+    await assert.rejects(runReviewSmoke(f, client), /Missing observed denial/);
+  });
+  await t.test("logout removes only the private login", async () => {
+    await client.call("account/logout", {});
+    assert.equal((await client.call("account/read", { refreshToken: false })).account, null);
+    assert.equal(await fs.readFile(path.join(original, "auth.json"), "utf8"), originalAuth);
+    assert.equal(await fs.readFile(path.join(original, "config.toml"), "utf8"), originalConfig);
+  });
+});
+
+test("Codex feature gate suppresses curated plugin preparation, including after login", { timeout: 60000 }, async t => {
+  const f = await fixture(t);
+  const config = codexConfig(f);
+  config.cli_auth_credentials_store = "file";
+  await t.test("activation deny alone still starts preparation (positive control)", async () => {
+    const home = path.join(f.root, "plugins-control");
+    await fs.mkdir(home);
+    const control = { ...config, features: { ...config.features, plugins: true } };
+    const client = await codexClient({ ...f, codexHome: home }, control);
+    // Startup creates this lock before Git / HTTP fallback. The rejecting
+    // proxy contains HTTP fallback; the Git transport is disabled by the fixture.
+    await until(() => client.stderr().includes("curated") || f.api.egress.length > 0, "plugin startup attempt");
+    await fs.access(path.join(home, ".tmp/plugins.sync.lock"));
+    await client.close();
+  });
+  await t.test("feature off prevents preparation across startup, login and a real harness turn", async () => {
+    const start = f.api.egress.length;
+    const client = await codexClient(f, config);
+    await client.call("account/login/start", { type: "apiKey", apiKey: "plugin-probe-not-a-secret" });
+    const { thread } = await client.call("thread/start", { cwd: f.cwd });
+    assert.equal((await client.turn(thread.id)).status, "completed");
+    await client.close();
+    await assert.rejects(fs.access(path.join(f.codexHome, ".tmp/plugins.sync.lock")), { code: "ENOENT" });
+    const entries = await fs.readdir(path.join(f.codexHome, ".tmp")).catch(error => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    assert.ok(!entries.some(name => name.startsWith("plugins")));
+    assert.equal(f.api.egress.length, start);
   });
 });

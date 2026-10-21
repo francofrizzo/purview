@@ -95,6 +95,7 @@ export function codexConfig(fixture) {
     plugins: { _default: { enabled: false } }, orchestrator: { mcp: { enabled: false } },
     features: { shell_tool: false, view_image: false, multi_agent: false, multi_agent_v2: false,
       apps: false, browser_use: false, computer_use: false, goals: false, hooks: false,
+      plugins: false, remote_plugin: false,
       code_mode_only_strict_3p_tools: false,
       code_mode: { enabled: false, direct_only_tool_namespaces: ["mcp__purview"] } },
     agents: { enabled: false },
@@ -136,7 +137,7 @@ export async function codexClient(fixture, config = codexConfig(fixture), experi
     pending.clear();
   };
   child.on("error", fail);
-  child.on("exit", code => fail(new Error(`codex exit ${code}: ${stderr}`)));
+  child.on("exit", code => fail(new Error(`codex exit ${code}`)));
   createInterface({ input: child.stdout }).on("line", line => {
     let message;
     try { message = JSON.parse(line); } catch { return; }
@@ -151,22 +152,23 @@ export async function codexClient(fixture, config = codexConfig(fixture), experi
       const p = pending.get(message.id);
       pending.delete(message.id);
       clearTimeout(p.timer);
-      message.error ? p.reject(new Error(JSON.stringify(message.error))) : p.resolve(message.result);
+      message.error ? p.reject(new Error(p.method.startsWith("account/")
+        ? `Account RPC failed (${message.error.code})` : JSON.stringify(message.error))) : p.resolve(message.result);
     }
   });
   function call(method, params = {}) {
     return new Promise((resolve, reject) => {
       const id = ++serial;
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Timeout ${method}: ${stderr}`)); }, 20000);
-      pending.set(id, { resolve, reject, timer });
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Timeout ${method}`)); }, 20000);
+      pending.set(id, { resolve, reject, timer, method });
       send({ id, method, params });
     });
   }
   const client = {
     call, events, serverRequests, stderr: () => stderr,
-    async turn(threadId, overrides = {}) {
+    async turn(threadId, overrides = {}, timeoutMs = 15000) {
       const { turn } = await call("turn/start", { threadId, input: [{ type: "text", text: "Run the local fixture scenario." }], ...overrides });
-      return (await until(() => events.find(e => e.method === "turn/completed" && e.params.turn.id === turn.id), "Codex turn")).params.turn;
+      return (await until(() => events.find(e => e.method === "turn/completed" && e.params.turn.id === turn.id), "Codex turn", timeoutMs)).params.turn;
     },
     async close() {
       return closing ??= (async () => {
