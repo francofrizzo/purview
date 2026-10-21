@@ -88,7 +88,8 @@ it("paginates with source lines, rejects mismatched cursors and confines real pa
 });
 
 it("serves the actual MCP protocol with strict capability URLs and revocation", async () => {
-  binding = await startReviewTools(request("analysis"), "test");
+  const outcomes: unknown[] = [];
+  binding = await startReviewTools(request("analysis"), "test", undefined, result => outcomes.push(result));
   client = new Client({ name: "test", version: "1" });
   await client.connect(new StreamableHTTPClientTransport(new URL(binding.url)));
   const tools = await client.listTools();
@@ -103,6 +104,16 @@ it("serves the actual MCP protocol with strict capability URLs and revocation", 
   const missing = await client.callTool({ name: "read_code", arguments: { path: "src/missing.ts" } });
   expect(missing.isError).toBe(true);
   expect(JSON.stringify(missing)).not.toContain(root);
+  const invalid = await client.callTool({ name: "read_code", arguments: { path: 123 } });
+  expect(invalid.isError).toBe(true);
+  expect(outcomes).toEqual([
+    { name: "review_context", ok: true, durationMs: expect.any(Number) },
+    { name: "set_analysis", ok: true, durationMs: expect.any(Number) },
+    { name: "unknown", ok: false, code: "operation_not_granted", durationMs: expect.any(Number) },
+    { name: "read_code", ok: false, code: "invalid_operation", durationMs: expect.any(Number) },
+    { name: "read_code", ok: false, code: "invalid_operation", durationMs: expect.any(Number) },
+  ]);
+  expect(JSON.stringify(outcomes)).not.toMatch(/missing|Change foo|publish/);
   expect((await fetch(binding.url, { method: "POST", headers: { Origin: "https://evil.invalid" } })).status).toBe(404);
   expect((await fetch(binding.url.replace(/mcp\/.*/, "mcp/wrong"), { method: "POST" })).status).toBe(404);
   await binding.close();
@@ -180,6 +191,7 @@ it.skipIf(!process.env.PURVIEW_TEST_CODEX_BIN)("native Codex reads shared HTTP t
       expect(completed).toHaveLength(1);
       expect(completed[0]).toMatchObject({ ok: true });
       expect(events).toContainEqual({ type: "output", text: "native done" });
+      expect(events).toContainEqual({ type: "operation-result", operation: { name: "review_context", ok: true, durationMs: expect.any(Number) } });
       return completed[0].type === "completed" ? completed[0].session! : undefined!;
     };
     const first = await runOnce();

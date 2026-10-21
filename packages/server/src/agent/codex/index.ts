@@ -94,7 +94,8 @@ function run(request: AgentRunRequest) {
         if (existsSync(path.join(dir, ".codex", "config.toml"))) throw new Error("Unsafe ambient project Codex config above private working directory");
         if (dir === path.dirname(dir)) break;
       }
-      if (request.task.kind !== "reanchor") binding = await startReviewTools(request, "codex", action => emit({ type: "action", action }));
+      if (request.task.kind !== "reanchor") binding = await startReviewTools(request, "codex",
+        action => emit({ type: "action", action }), operation => emit({ type: "operation-result", operation }));
       check();
       const config = {
         model: request.model, model_reasoning_effort: request.effort ?? "medium", cli_auth_credentials_store: "file",

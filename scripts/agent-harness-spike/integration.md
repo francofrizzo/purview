@@ -79,10 +79,12 @@ node scripts/agent-harness-spike/eval.mjs --runtime production \
 
 Después, agregar `--run --out <archivo-nuevo.jsonl>` inicia 12 corridas con cuota
 real. Empezar con una repetición; si funcionan, repetir tres veces. Incremental se
-puede pedir con `--cases incremental-analysis`. Este runner aún no audita éxito
-de cada operación: registra intentos, no inventa ceros para errores/denegaciones.
-Por eso rechaza `resumed-incremental`; el cold-resume del adapter tiene su test
-nativo separado. No sobrescribir informes ni corregir graders retroactivamente.
+puede pedir con `--cases incremental-analysis`. El runner ahora audita resultados
+de las operaciones MCP y habilita `resumed-incremental` en los brazos compartidos:
+el warmup debe leer contexto, unidades y diff con éxito sin escribir. Los errores
+de tools se cuentan; los permisos nativos no observables siguen como `null`.
+No sobrescribir informes ni corregir graders retroactivamente. Los nuevos casos
+optativos de documentación y sus comandos están en [eval.md](eval.md).
 
 Además falta la comparación de calidad sobre 2–3 PRs reales representativos:
 una pequeña, una grande y una con findings relevantes. Preparar copias independientes
@@ -142,6 +144,6 @@ en [eval-results.md](eval-results.md), "Tercera tanda". Reportes en
    configuración efectiva por app-server antes del primer turno y rechazar si
    shell, red o plugins quedaron activos. Una versión nueva que se comporta
    igual pasa; una que no, falla con mensaje claro.
-6. **Huecos declarados**: sin handoff a terminal, sin editar drafts humanos, el
-   runner de producción no audita el resume (tiene test nativo aparte). Ninguno
-   bloquea el uso experimental.
+6. **Huecos declarados**: sin handoff a terminal ni edición de drafts humanos.
+   El runner ya puede evaluar resume en producción; falta la nueva tanda con
+   modelos reales. Ninguno bloquea el uso experimental.

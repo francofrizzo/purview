@@ -32,9 +32,6 @@ export function parseOptions(argv) {
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1000 || options.timeoutMs > 1800000) throw new Error("timeout-ms must be 1000..1800000");
   if (!["low", "medium", "high"].includes(options.effort)) throw new Error("effort must be low, medium or high");
   if (!["spike", "production"].includes(options.runtime)) throw new Error("runtime must be spike or production");
-  if (options.runtime === "production" && options.cases.includes("resumed-incremental")) {
-    throw new Error("Production runner does not yet audit successful warmup operations; native cold resume has a separate integration test");
-  }
   if (options.cases.includes("resumed-incremental") && options.arms.includes("claude-baseline")) {
     throw new Error("resumed-incremental supports shared arms only; baseline changes system instructions across modes");
   }

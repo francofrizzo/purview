@@ -5,7 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { toJsonSchemaCompat } from "@modelcontextprotocol/sdk/server/zod-json-schema-compat.js";
 import { ListToolsRequestSchema, CallToolRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { createReviewOperations } from "./operations.js";
-import type { AgentAction, AgentRunRequest } from "../types.js";
+import type { AgentAction, AgentOperationResult, AgentRunRequest } from "../types.js";
 
 // Codex 0.163.0 silently drops schemas with draft-7 tuple items arrays.
 // Publish equivalent homogeneous fixed pairs; execution uses the core schema.
@@ -22,7 +22,8 @@ function wireSchema(value: unknown): any {
 }
 
 /** A live, per-run capability, not an API on the public Purview server. */
-export async function startReviewTools(request: AgentRunRequest, harness: string, onAction?: (action: AgentAction) => void) {
+export async function startReviewTools(request: AgentRunRequest, harness: string, onAction?: (action: AgentAction) => void,
+  onResult?: (result: AgentOperationResult) => void) {
   const operations = createReviewOperations(request, harness, onAction);
   const endpoint = `/mcp/${randomBytes(32).toString("hex")}`;
   const transports = new Set<StreamableHTTPServerTransport>();
@@ -41,6 +42,10 @@ export async function startReviewTools(request: AgentRunRequest, harness: string
       annotations: { readOnlyHint: tool.readOnly, destructiveHint: !tool.readOnly },
     })) }));
     mcp.setRequestHandler(CallToolRequestSchema, async call => {
+      const started = performance.now();
+      // An unknown tool name is model input too; do not copy it into telemetry.
+      const name = operations.tools.some(tool => tool.name === call.params.name) ? call.params.name : "unknown";
+      let code: string | undefined;
       try {
         const result = await operations.execute(call.params.name, call.params.arguments);
         return { content: [{ type: "text", text: JSON.stringify(result) }], isError: false };
@@ -49,7 +54,10 @@ export async function startReviewTools(request: AgentRunRequest, harness: string
         // Validation and deliberate denials are useful to repair a payload.
         // Unexpected filesystem/transport errors must not reveal host paths.
         const detail = e.reviewOperation ? e.message : e.issues ? JSON.stringify(e.issues) : "Operation failed; do not claim it succeeded.";
-        return { content: [{ type: "text", text: JSON.stringify({ error: e.reviewOperation ? e.code : "invalid_operation", detail }) }], isError: true };
+        code = e.reviewOperation && e.code ? e.code : "invalid_operation";
+        return { content: [{ type: "text", text: JSON.stringify({ error: code, detail }) }], isError: true };
+      } finally {
+        onResult?.({ name, ok: code === undefined, ...(code ? { code } : {}), durationMs: Math.round(performance.now() - started) });
       }
     });
     try { await mcp.connect(transport); await transport.handleRequest(req, res); }

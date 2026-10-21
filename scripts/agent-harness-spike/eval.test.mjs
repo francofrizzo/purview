@@ -17,7 +17,7 @@ test("eval CLI is dry by default, rejects ambiguous paid options and pairs equal
   assert.equal(options.run, false);
   assert.equal(parseOptions(["--runtime", "production"]).runtime, "production");
   assert.throws(() => parseOptions(["--runtime", "other"]));
-  assert.throws(() => parseOptions(["--runtime", "production", "--arms", "claude-shared", "--cases", "resumed-incremental"]));
+  assert.equal(parseOptions(["--runtime", "production", "--arms", "claude-shared", "--cases", "resumed-incremental"]).runtime, "production");
   const plan = runPlan(options);
   assert.equal(plan.length, 24);
   for (const id of options.cases) for (const arm of options.arms) {
@@ -39,7 +39,10 @@ test("real eval CLI saves functional outcomes and failures, with no paid provide
   const api = await provider();
   t.after(async () => { await api.close(); fs.rmSync(home, { recursive: true, force: true }); });
   for (const runtime of ["spike", "production"]) for (const correct of [true, false]) {
-    api.plan([{ text: JSON.stringify({ symbol: "price", before: 55, after: correct ? 104 : 40 }) }]);
+    api.plan([
+      ...(runtime === "production" ? [{ tool: "read_code", args: { path: "src/nonexistent-private-name.js" } }, { tool: "review_context", args: {} }] : []),
+      { text: JSON.stringify({ symbol: "price", before: 55, after: correct ? 104 : 40 }) },
+    ]);
     const out = path.join(home, `${runtime}-${correct}.jsonl`);
     const args = [runner, "--runtime", runtime, "--run", "--out", out, "--arms", "claude-shared", "--cases", "code-investigation", "--repeats", "1"];
     let exit = 0;
@@ -54,6 +57,15 @@ test("real eval CLI saves functional outcomes and failures, with no paid provide
     assert.equal(rows[0].type, "manifest");
     assert.equal(rows[1].pass, correct);
     assert.equal(rows[1].grading.checks.totals, correct);
+    if (runtime === "production") {
+      assert.equal(rows[1].toolErrors, 1, "a repaired tool failure is not an unobserved success");
+      assert.equal(rows[1].permissionDenials, null, "native permissions remain unobservable");
+      assert.deepEqual(rows[1].operations.map(({ durationMs, ...rest }) => rest), [
+        { name: "read_code", ok: false, code: "invalid_operation" }, { name: "review_context", ok: true },
+      ]);
+      assert.ok(rows[1].operations.every(o => Number.isFinite(o.durationMs) && o.durationMs >= 0));
+      assert.ok(!JSON.stringify(rows[1].operations).includes("nonexistent-private-name"));
+    }
     assert.equal(rows[2].arms["claude-shared"].failed, correct ? 0 : 1);
     assert.equal(fs.statSync(out).mode & 0o777, 0o600);
     assert.equal(fs.existsSync(path.join(home, ".purview")), false);
@@ -64,7 +76,7 @@ test("real eval CLI saves functional outcomes and failures, with no paid provide
   }
 });
 
-test("eval CLI cold-resumes a real Claude session and reports both turns without session identifiers", { timeout: 60000 }, async t => {
+for (const runtime of ["spike", "production"]) test(`${runtime} eval CLI cold-resumes a real Claude session and reports both turns without session identifiers`, { timeout: 60000 }, async t => {
   const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "purview-eval-resume-cli-")));
   const api = await provider();
   t.after(async () => { await api.close(); fs.rmSync(home, { recursive: true, force: true }); });
@@ -78,21 +90,27 @@ test("eval CLI cold-resumes a real Claude session and reports both turns without
       { id: "fee", patch: { title: "Fee", summary: "Fee is 11", kind: "core-logic", attention: "must-read", attentionWhy: "Charge", order: 3, hunks: [feeId] } },
     ] } }, { tool: "set_revision_summary", args: { text: "Changed invoice, fee, retired flag" } }, { text: "updated" }]);
   const out = path.join(home, "resume.jsonl");
-  await exec(process.execPath, [runner, "--run", "--out", out, "--arms", "claude-shared", "--cases", "resumed-incremental", "--repeats", "1"], {
+  await exec(process.execPath, [runner, "--runtime", runtime, "--run", "--out", out, "--arms", "claude-shared", "--cases", "resumed-incremental", "--repeats", "1"], {
     env: { PATH: process.env.PATH, HOME: home, ANTHROPIC_API_KEY: "local-fixture-not-a-secret", ANTHROPIC_BASE_URL: api.url,
+      PURVIEW_CLAUDE_BIN: path.join(import.meta.dirname, `node_modules/@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`),
       ENABLE_TOOL_SEARCH: "false", HTTPS_PROXY: api.url, HTTP_PROXY: api.url, NO_PROXY: "127.0.0.1,localhost" }, timeout: 45000 });
   const rows = fs.readFileSync(out, "utf8").trim().split("\n").map(JSON.parse);
   assert.equal(rows[1].pass, true);
   assert.equal(rows[1].resumedSameSession, true);
   assert.equal(rows[1].warmup.ok, true);
   assert.ok(rows[1].warmup.usage);
+  if (runtime === "production") {
+    assert.equal(rows[1].toolErrors, 0);
+    assert.ok(rows[1].operations.some(o => o.name === "patch_units" && o.ok));
+  }
   assert.equal(rows[1].session, undefined);
   assert.equal(rows[2].arms["claude-shared"].passed, 1);
   api.plan([{ text: "ready without reading anything" }]);
   const count = api.requests.length;
   const failed = path.join(home, "failed-warmup.jsonl");
-  await assert.rejects(exec(process.execPath, [runner, "--run", "--out", failed, "--arms", "claude-shared", "--cases", "resumed-incremental", "--repeats", "1"], {
+  await assert.rejects(exec(process.execPath, [runner, "--runtime", runtime, "--run", "--out", failed, "--arms", "claude-shared", "--cases", "resumed-incremental", "--repeats", "1"], {
     env: { PATH: process.env.PATH, HOME: home, ANTHROPIC_API_KEY: "local-fixture-not-a-secret", ANTHROPIC_BASE_URL: api.url,
+      PURVIEW_CLAUDE_BIN: path.join(import.meta.dirname, `node_modules/@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`),
       ENABLE_TOOL_SEARCH: "false", HTTPS_PROXY: api.url, HTTP_PROXY: api.url, NO_PROXY: "127.0.0.1,localhost" }, timeout: 45000 }));
   const failure = JSON.parse(fs.readFileSync(failed, "utf8").trim().split("\n")[1]);
   assert.equal(failure.pass, false);

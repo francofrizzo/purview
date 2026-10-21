@@ -17,7 +17,7 @@ export async function runClaudeEval(fixture, opts) {
 }
 export const runCodexEval = (fixture, opts) => run(fixture, codexHarness, opts);
 
-async function run(f, harness, { model, effort, timeoutMs, signal }) {
+async function run(f, harness, { model, effort, timeoutMs, signal, session }) {
   let app;
   let http;
   let active;
@@ -37,11 +37,11 @@ async function run(f, harness, { model, effort, timeoutMs, signal }) {
       : { kind: "chat", reviewerCommands: [] },
       review: { root: f.root, key: f.key, revision: f.revision, checkout: f.checkout,
         analysisMode: f.incremental ? "incremental" : "initial", serverUrl: `http://127.0.0.1:${port}` },
-      cwd: f.checkout, model, effort, instructions, prompt, timeoutMs, session: "new" });
+      cwd: f.checkout, model, effort, instructions, prompt, timeoutMs, session: session ?? "new" });
     if (signal?.aborted) active.cancel();
     const result = { ok: false, modelRequested: model, effort, usage: {}, operations: [], toolNames: [],
-      // These aren't observable in normalized events: unknown, not zero.
-      permissionDenials: null, toolErrors: null, instructionsHash: createHash("sha256").update(instructions).digest("hex") };
+      // Native permission denials remain unknown; shared-tool failures are audited.
+      permissionDenials: null, toolErrors: 0, instructionsHash: createHash("sha256").update(instructions).digest("hex") };
     let answer = "";
     for await (const event of active.events) {
       if (event.type === "output") answer = event.text;
@@ -51,7 +51,10 @@ async function run(f, harness, { model, effort, timeoutMs, signal }) {
       }
       if (event.type === "action") {
         result.toolNames.push(event.action.name);
-        result.operations.push({ name: event.action.name, attempted: true });
+      }
+      if (event.type === "operation-result") {
+        result.operations.push(event.operation);
+        if (!event.operation.ok) result.toolErrors++;
       }
       if (event.type === "completed") { completed = true; result.ok = event.ok; if (!event.ok) result.failure = "harness_failed_or_timed_out"; }
     }

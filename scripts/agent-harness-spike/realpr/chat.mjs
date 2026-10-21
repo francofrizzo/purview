@@ -1,22 +1,36 @@
-// chat.mjs <port> <host/owner/repo> <pr> <question> <draft-request> — one exploration question, one draft request, one Stop; prints sanitized outcomes (lengths, anchors, timings; the first 400 chars of each answer).
-const [port, repo, n, Q1 = "What does this PR change, and where? Cite file and line.", Q2 = "Leave a draft comment for the author on the main change, audience github."] = process.argv.slice(2);
-const key = encodeURIComponent(`${repo}/${n}`); const P = `http://127.0.0.1:${port}/api`;
-const j = async (p, init) => { const r = await fetch(P + p, init); if (!r.ok) throw new Error(`${p}: ${r.status} ${await r.text()}`); return r.json(); };
-async function turn(text, { stopAfterMs } = {}) {
-  const t0 = Date.now();
-  const res = await fetch(`${P}/prs/${key}/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, refs: [] }) });
-  if (!res.ok) throw new Error(`chat: ${res.status} ${await res.text()}`);
-  let stopped = null;
-  if (stopAfterMs) setTimeout(async () => { try { stopped = await j(`/prs/${key}/chat/stop`, { method: "POST" }); } catch (e) { stopped = { error: String(e) }; } }, stopAfterMs);
-  const reader = res.body.getReader(); let bytes = 0; for (;;) { const { done, value } = await reader.read(); if (done) break; bytes += value.length; }
-  const chat = await j(`/prs/${key}/chat`);
-  const last = chat.messages.at(-1);
-  return { wallS: Math.round((Date.now() - t0) / 1000), streamBytes: bytes, busy: chat.busy, harness: chat.sessionHarness, messages: chat.messages.length,
-    lastRole: last?.role, lastChars: (last?.text ?? last?.content ?? "").length, lastHead: (last?.text ?? last?.content ?? "").slice(0, 400).replace(/\n+/g, " / "), stopped };
-}
-const before = (await j(`/prs/${key}/comments`)).comments?.length ?? 0;
-console.log("Q1", JSON.stringify(await turn(Q1)));
-console.log("Q2", JSON.stringify(await turn(Q2)));
-const comments = (await j(`/prs/${key}/comments`)).comments ?? [];
-console.log("drafts", JSON.stringify({ before, after: comments.length, last: comments.at(-1) && { path: comments.at(-1).path, line: comments.at(-1).line ?? comments.at(-1).anchor?.line, status: comments.at(-1).status, audience: comments.at(-1).audience, chars: (comments.at(-1).body || "").length } }));
-console.log("Q3-stop", JSON.stringify(await turn("Walk through every file of the PR exhaustively and summarize each one.", { stopAfterMs: 4000 })));
+// chat.mjs <port> <repo> <pr> <arm> [question] [draft-request]
+import { checkKey, client, selection, verify, preflight, post, checkPort } from "./protocol.mjs";
+try {
+  const [port, repo, n, arm, q = "What does this PR change? Cite file and line.", draft = "Leave a draft comment for the author on the main change, audience github."] = process.argv.slice(2);
+  checkKey(repo, [n]);
+  const expected = selection(arm), j = client(port), p = `/prs/${encodeURIComponent(`${repo}/${n}`)}`;
+  await preflight(j, repo, expected);
+  async function turn(text, stop = false) {
+    const before = await j(`${p}/chat`);
+    verify(before.agent, expected);
+    if (before.busy) throw Error("chat busy");
+    const t = Date.now();
+    const res = await fetch(`http://127.0.0.1:${checkPort(port)}/api${p}/chat`, { ...post({ text, refs: [] }), signal: AbortSignal.timeout(120000) });
+    if (!res.ok) throw Error("chat failed");
+    let timer, stopping, stopped = false, bytes = 0;
+    try {
+      if (stop) timer = setTimeout(() => {
+        stopping = j(`${p}/chat/stop`, post({})).then(r => { stopped = r.ok === true; }, () => { stopped = false; });
+      }, 4000);
+      for await (const chunk of res.body) bytes += chunk.length;
+    } finally { clearTimeout(timer); if (stopping) await stopping; }
+    const after = await j(`${p}/chat`);
+    verify(after.agent, expected);
+    if (after.busy || after.sessionHarness !== expected.harness || after.messages.length <= before.messages.length || (!stop && (after.messages.at(-1)?.role !== "assistant" || !after.messages.at(-1)?.text?.length || after.messages.at(-1)?.interrupted)) || (stop && (!stopped || !after.messages.at(-1)?.interrupted))) throw Error("chat result failed");
+    console.log(JSON.stringify({ stage: stop ? "stop" : "turn", harness: expected.harness, model: expected.model, busy: after.busy, messages: after.messages.length, streamBytes: bytes, stopped, wallMs: Date.now() - t }));
+  }
+  const before = (await j(`${p}/comments`)).comments ?? [];
+  await turn(q);
+  await turn(draft);
+  const after = (await j(`${p}/comments`)).comments ?? [];
+  const added = after.filter(c => !before.some(b => b.id === c.id));
+  console.log(JSON.stringify({ draftsAdded: added.length }));
+  if (!added.length || added.some(c => c.status !== "draft" || c.audience !== "github")) throw Error("draft result failed");
+  await turn("Walk through every file of the PR exhaustively and summarize each one.", true);
+  await turn("Continue after the stopped turn. Give a brief summary.");
+} catch { console.error("chat comparison failed (details withheld); inspect private state locally"); process.exitCode = 1; }

@@ -69,6 +69,60 @@ test("analysis needs real coverage AND concrete finding, not answer counters", a
   assert.equal(f.grade({}).pass, false);
 });
 
+for (const id of ["documented-api-contradiction", "large-documented-api-contradiction"]) {
+  test(`${id}: persisted material finding, asymmetric evidence and negative controls`, async t => {
+    const f = await fixture(t, id);
+    assert.equal(EVAL_CASES.find(c => c.id === id).optional, true);
+    assert.ok(f.files.every(file => file.path.endsWith(".md")));
+    assert.equal(f.hunkIds.length, id.startsWith("large-") ? 162 : 1);
+    const source = fs.readFileSync(`${f.checkout}/src/archive.js`, "utf8");
+    assert.ok(source.includes("openArchive({ accountId, retentionDays })"));
+    assert.ok(!source.includes("openLegacyArchive"));
+    // Execute the unchanged implementation without packages or personal state.
+    const api = await import(`data:text/javascript,${encodeURIComponent(source)}`);
+    assert.deepEqual(api.openArchive({ accountId: "acct-81", retentionDays: 23 }), { accountId: "acct-81", retentionDays: 23 });
+    assert.throws(() => api.openArchive("acct-81", 23), /Invalid/);
+    assert.deepEqual(api.openLive("acct-17"), { accountId: "acct-17" });
+    const finding = { severity: "warning", text: "openLegacyArchive is not exported; the quickstart call fails. Use openArchive with accountId and retentionDays instead.", evidence: "docs/archive/quickstart.md:2, src/archive.js:1" };
+    const unit = { id: "docs", title: "Documentation", summary: "API guidance", kind: "docs", attention: "must-read", attentionWhy: "Executable quickstart", order: 0, hunks: f.hunkIds };
+    const store = (findings, summary = "Documentation update", units = [{ ...unit, findings }]) => setAnalysis(f.key, { summary, units, unassigned: [] }, {}, f.root);
+    assert.equal(f.grade({ findings: [finding] }).pass, false);
+    store([]);
+    assert.equal(f.grade({}).checks.coverage, true);
+    assert.equal(f.grade({}).pass, false, "omission");
+    store([], finding.text);
+    assert.equal(f.grade({}).pass, false, "PR summary only");
+    store([], "Documentation update", [{ ...unit, summary: finding.text }]);
+    assert.equal(f.grade({}).pass, false, "unit summary only");
+    for (const bad of [
+      { ...finding, text: "openLegacyArchive is exported and valid; openArchive also accepts accountId and retentionDays." },
+      { ...finding, text: "openLive is missing; use openArchive with accountId and retentionDays." },
+      { ...finding, text: "Verified openArchive accepts accountId and retentionDays." },
+      { ...finding, text: "This change might cause outages in production." },
+      { ...finding, evidence: "docs/archive/quickstart.md:2" },
+      { ...finding, evidence: "docs/live/guide-1.md:2, src/archive.js:1" },
+      { ...finding, evidence: "docs/archive/quickstart.md:20, src/archive.js:10" },
+    ]) {
+      store([bad]);
+      assert.equal(f.grade({}).pass, false, JSON.stringify(bad));
+    }
+    store([finding]);
+    assert.equal(f.grade("answer ignored").pass, true);
+    assert.deepEqual(f.grade({}).metrics, { unitCount: 1, hunkCount: f.hunkIds.length, topicCount: id.startsWith("large-") ? 3 : 1 });
+    if (id.startsWith("large-")) {
+      const units = f.files.map((file, order) => ({ ...unit, id: `docs-${order}`, order, hunks: file.hunks.map(h => h.id), findings: file.path === "docs/archive/quickstart.md" ? [finding] : [] }));
+      store([], "Documentation update", units);
+      assert.equal(f.grade({}).pass, true, "granularity is not a quality threshold");
+      assert.equal(f.grade({}).metrics.unitCount, 162);
+      const wrong = units.find(u => u.findings.length);
+      wrong.findings = [];
+      units.find(u => u.id !== wrong.id).findings = [finding];
+      store([], "Documentation update", units);
+      assert.equal(f.grade({}).pass, false, "finding must belong to the affected hunk");
+    }
+  });
+}
+
 test("large diff is pageable and tail answer depends on unchanged branch", async t => {
   const f = await fixture(t, "large-diff-read");
   assert.ok(Buffer.byteLength(f.patch) >= 100 * 1024);

@@ -60,7 +60,8 @@ function run(request: AgentRunRequest) {
       // outside the repository so project instructions cannot widen authority.
       const cwd = path.join(request.review?.root ?? stateRoot(), "agents", "claude-shared", createHash("sha256").update(request.cwd).digest("hex"));
       mkdirSync(cwd, { recursive: true, mode: 0o700 });
-      if (request.task.kind !== "reanchor") binding = await startReviewTools(request, "claude-shared", action => emit({ type: "action", action }));
+      if (request.task.kind !== "reanchor") binding = await startReviewTools(request, "claude-shared",
+        action => emit({ type: "action", action }), operation => emit({ type: "operation-result", operation }));
       if (cancelled) throw new Error("cancelled");
       const id = resume?.id ?? (request.session === "new" ? randomUUID() : undefined);
       if (id) session = { harness: "claude-shared", id, cwd: request.cwd, fingerprint: fingerprint(request.instructions) };

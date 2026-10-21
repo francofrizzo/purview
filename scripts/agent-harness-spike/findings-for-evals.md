@@ -41,7 +41,9 @@ caso y grader), `parcial`, `falta`.
   rama renombró). Grader: existe un finding cuyo `evidence` nombra el archivo
   correcto y cuyo texto menciona el identificador; que el summary lo mencione
   no cuenta. Variante grande: el mismo plantado entre 150+ hunks de docs.
-- **Estado**: falta.
+- **Estado**: cubierto por `documented-api-contradiction` (1 hunk) y
+  `large-documented-api-contradiction` (162 hunks). Pendiente correr modelos
+  reales; son casos dirigidos, no prueba de descubrimiento espontáneo.
 
 ## 3. Sobreclasificación de docs como `core-logic`
 
@@ -65,7 +67,8 @@ caso y grader), `parcial`, `falta`.
   tema). Grader: número de unidades no generadas entre K y 2K; ningún par de
   unidades comparte el mismo directorio y kind sin razón (heurística débil;
   mejor como métrica reportada que como pass/fail).
-- **Estado**: falta.
+- **Estado**: parcial. La variante documental grande registra unidades, hunks y
+  temas como métricas, sin convertir una heurística de agrupación en pass/fail.
 
 ## 5. Idioma ambiguo
 
@@ -129,14 +132,15 @@ caso y grader), `parcial`, `falta`.
 
 - **Observado**: `resumed-incremental` 5 de 6 por grader, 6 de 6 sustantivo;
   la identidad de sesión se mantuvo en los seis; sin escrituras en el warmup.
-  El runner de producción no audita el éxito de cada operación, por eso
-  rechaza ese caso ahí (tiene test nativo aparte).
+  En esa tanda el runner de producción no auditaba el éxito de cada operación,
+  por eso rechazaba ese caso ahí (tenía test nativo aparte).
 - **Evidencia**: `eval-reports/2026-10-21-mac-resumed-rep1-2.jsonl`,
   `...-resumed-rep2-3-4.jsonl`.
-- **Eval**: cubierto en el prototipo; para producción hace falta que el runner
-  observe `ok`/`code` por operación (hoy `permissionDenials` y `toolErrors`
-  son `null`, desconocido).
-- **Estado**: parcial.
+- **Eval**: el runner de producción ahora observa `ok`/`code`/duración por
+  operación y cuenta `toolErrors`; `permissionDenials` sigue desconocido.
+  Habilitado el caso con lecturas exitosas obligatorias en el warmup.
+- **Estado**: mecanismo cubierto con proveedor determinista; pendiente nueva
+  tanda de producción con modelos reales.
 
 ## 10. Lo que funcionó sin excepción (canarios de regresión)
 

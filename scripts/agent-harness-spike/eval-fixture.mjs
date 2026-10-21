@@ -13,6 +13,8 @@ export const EVAL_CASES = Object.freeze([
   { id: "large-diff-read", task: "chat", description: "Read a paginable >100KB diff and resolve a tail record through unchanged code." },
   { id: "incremental-analysis", task: "analysis", optional: true, description: "Patch a real r1→r2 migration, retaining unchanged units and rechecking changed findings." },
   { id: "resumed-incremental", task: "analysis", optional: true, description: "Cold-resume a shared-tool session after migration, with a fresh revision-bound grant." },
+  { id: "documented-api-contradiction", task: "analysis", optional: true, description: "Persist a material documentation/API contradiction verified against unchanged code." },
+  { id: "large-documented-api-contradiction", task: "analysis", optional: true, description: "Find the same contradiction among 162 coherent documentation hunks; report grouping only as a metric." },
 ]);
 
 // Coverage here measures bookkeeping only, NOT general review quality.
@@ -41,6 +43,8 @@ export async function createEvalFixture(caseId, { revision: startRevision = 2 } 
   const spec = EVAL_CASES.find(c => c.id === caseId);
   if (!spec) throw new Error(`Unknown evaluation case: ${caseId}`);
   const incremental = ["incremental-analysis", "resumed-incremental"].includes(caseId);
+  const documentation = ["documented-api-contradiction", "large-documented-api-contradiction"].includes(caseId);
+  const largeDocumentation = caseId === "large-documented-api-contradiction";
   if (incremental && ![1, 2].includes(startRevision)) throw new Error("Incremental fixture starts at revision 1 or 2");
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "purview-eval-")));
   const dispose = () => fs.rmSync(root, { recursive: true, force: true });
@@ -57,13 +61,37 @@ export async function createEvalFixture(caseId, { revision: startRevision = 2 } 
     const write = (name, text) => fs.writeFileSync(path.join(checkout, name), text);
     write("src/pricing.js", 'export function price(tier, seats) {\n  return tier === "archive" ? 41 + seats * 7 : 13 + seats * 3;\n}\n');
     write("src/invoice.js", 'import { price } from "./pricing.js";\nexport const invoice = () => price("archive", 2);\n');
+    if (documentation) {
+      write("src/archive.js", 'export function openArchive({ accountId, retentionDays }) {\n  if (!accountId || retentionDays < 7) throw new Error("Invalid archive policy");\n  return { accountId, retentionDays };\n}\nexport function openLive(accountId) { return { accountId }; }\n');
+      fs.mkdirSync(path.join(checkout, "docs/archive"), { recursive: true });
+      write("docs/archive/quickstart.md", '# Archive quickstart\nUse the archive API to create a retention policy.\n');
+      if (largeDocumentation) {
+        for (const topic of ["archive", "live", "operations"]) {
+          fs.mkdirSync(path.join(checkout, `docs/${topic}`), { recursive: true });
+          for (let i = 0; i < 54; i++) {
+            if (topic === "archive" && i === 0) continue;
+            write(`docs/${topic}/guide-${i}.md`, `# ${topic} guide ${i}\nConsult the service API.\n`);
+          }
+        }
+      }
+    }
     if (incremental) {
       write("src/stable.js", "export const limit = 3;\n");
       write("src/retired.js", "export const retired = false;\n");
     }
     git("add", "."); git("commit", "--quiet", "-m", "base");
     const baseSha = git("rev-parse", "HEAD");
-    write("src/invoice.js", 'import { price } from "./pricing.js";\nexport const invoice = () => price("archive", 9);\n');
+    if (documentation) {
+      write("docs/archive/quickstart.md", '# Archive quickstart\nCreate a 23-day archive for account acct-81 with openLegacyArchive("acct-81", 23), exported by src/archive.js.\n');
+      if (largeDocumentation) {
+        for (const topic of ["archive", "live", "operations"]) {
+          for (let i = 0; i < 54; i++) {
+            if (topic === "archive" && i === 0) continue;
+            write(`docs/${topic}/guide-${i}.md`, `# ${topic} guide ${i}\n${topic === "archive" ? 'Use openArchive({ accountId: "acct-81", retentionDays: 23 }) from src/archive.js.' : topic === "live" ? 'Use openLive("acct-17") from src/archive.js; live accounts have no retention policy.' : 'Archive retentionDays must be at least 7; an accountId is required, as validated by src/archive.js.'}\n`);
+          }
+        }
+      }
+    } else write("src/invoice.js", 'import { price } from "./pricing.js";\nexport const invoice = () => price("archive", 9);\n');
     if (incremental) {
       write("src/stable.js", "export const limit = 5;\n");
       write("src/retired.js", "export const retired = true;\n");
@@ -106,6 +134,9 @@ export async function createEvalFixture(caseId, { revision: startRevision = 2 } 
     };
     if (incremental) prompts["incremental-analysis"] += ' A unit patch uses the regular unit fields plus changelogEntry (a string), not the persisted changelog array.';
     prompts["resumed-incremental"] = prompts["incremental-analysis"];
+    const documentationPrompt = 'Review the documentation diff against the current checkout and persist a complete analysis with no unassigned hunks. Use the fewest coherent review decisions. Persist verified, sourced, material problems as findings on the relevant unit, with file:line evidence for the changed documentation and the implementation. A summary alone does not record a finding. Do not emit each successful verification: trivial confirmations and unverifiable speculation are not findings. Do not create comments.';
+    prompts["documented-api-contradiction"] = documentationPrompt;
+    prompts["large-documented-api-contradiction"] = documentationPrompt;
     const grade = answer => {
       const state = loadState(key, root);
       const comments = readComments(key, root);
@@ -137,6 +168,17 @@ export async function createEvalFixture(caseId, { revision: startRevision = 2 } 
           checks.fee = !!feeId && state.units.some(u => u.hunks.some(h => h.id === feeId) && /\b11\b/.test(u.summary));
           checks.partialUpdate = state.analysisRevision === 1;
           checks.revisionSummary = !!state.revisions.find(r => r.revision === 2)?.summary?.trim();
+        } else if (documentation) {
+          const coverage = analysisCoverage(state, { units: state.units, unassigned: state.unassignedHunkIds });
+          checks.analysisStored = state.analysisRevision === revision && state.summary.trim().length > 0;
+          checks.coverage = coverage.missing.length === 0 && coverage.unknown.length === 0 && state.unassignedHunkIds.length === 0 && duplicateHunks({ units: state.units }).length === 0;
+          const docIds = files.find(f => f.path === "docs/archive/quickstart.md").hunks.map(h => h.id);
+          checks.finding = state.units.some(u => u.hunks.some(h => docIds.includes(h.id)) && u.findings?.some(f =>
+            ["warning", "critical"].includes(f.severity) &&
+            /\bopenLegacyArchive\b/.test(f.text) &&
+            /\b(not exported|does not exist|missing export|no longer exists|no longer exported|removed|nonexistent|unavailable)\b/i.test(f.text) &&
+            /\bopenArchive\b/.test(f.text) && /\baccountId\b/.test(f.text) && /\bretentionDays\b/.test(f.text) &&
+            /docs\/archive\/quickstart\.md:2\b/.test(f.evidence) && /src\/archive\.js:1\b/.test(f.evidence)));
         } else if (caseId === "initial-analysis") {
           const coverage = analysisCoverage(state, { units: state.units, unassigned: state.unassignedHunkIds });
           checks.analysisStored = state.analysisRevision === revision && state.summary.trim().length > 0;
@@ -153,7 +195,8 @@ export async function createEvalFixture(caseId, { revision: startRevision = 2 } 
           checks.noAnalysis = state.analysisRevision === undefined;
         }
       }
-      return { pass: Object.values(checks).every(Boolean), checks, limitations };
+      return { pass: Object.values(checks).every(Boolean), checks, limitations,
+        ...(documentation ? { metrics: { unitCount: state.units.length, hunkCount: hunkIds.length, topicCount: largeDocumentation ? 3 : 1 } } : {}) };
     };
     const fixture = { root, checkout, key, revision, incremental, task: spec.task, prompt: prompts[caseId], dispose, grade, patch, files, hunkIds, shas, anchor, limitations };
     if (incremental) {

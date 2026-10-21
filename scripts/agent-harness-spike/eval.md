@@ -54,6 +54,30 @@ casos dirigidos con descubrir bugs espontáneamente en PRs reales.
 Los cuatro casos anteriores siguen siendo el default: **24 corridas** para la
 pareja Claude. Los casos nuevos no se agregan automáticamente a una tanda.
 
+### Casos optativos: hallazgos materiales en documentación
+
+- `documented-api-contradiction`: un quickstart prescribe una función inexistente
+  y una firma incompatible con la implementación sin cambios. Exige un finding
+  persistido en la unidad del hunk afectado, con evidencia en ambos archivos.
+  Mencionarlo sólo en el resumen no aprueba.
+- `large-documented-api-contradiction`: la misma contradicción entre 162 hunks
+  documentales de tres temas coherentes. La cantidad de unidades se registra como
+  métrica, sin umbral de aprobación: agrupar más no demuestra mejor revisión.
+
+Los casos piden explícitamente verificar documentación: miden ese contrato dirigido,
+no descubrimiento espontáneo. El grader conserva límites de vocabulario; adjudicar
+paráfrasis correctas por separado, sin reescribir el resultado estricto.
+
+Handoff opcional, con autorización de gasto en la Mac (6 corridas, no automático):
+
+```sh
+node scripts/agent-harness-spike/eval.mjs --runtime production --run \
+  --cases documented-api-contradiction,large-documented-api-contradiction \
+  --arms claude-baseline,claude-shared,codex-shared --repeats 1 \
+  --claude-model claude-sonnet-5-5 --effort medium --timeout-ms 600000 \
+  --out /tmp/purview-eval-documentation-nuevo.jsonl
+```
+
 ### Casos optativos: incremental y resume
 
 - `incremental-analysis`: parte de un análisis r1 persistido y ejecuta la
@@ -243,6 +267,14 @@ harnesses pueden reportar acumulados de sesión. Un warmup que no lee las tres
 operaciones pedidas o escribe estado cuenta como fallo y no inicia el segundo
 turno; su usage se conserva. `resumedSameSession` verifica la identidad, sin
 guardar el ID ni la ruta de sesión en el reporte.
+
+Con `--runtime production`, los brazos compartidos registran el resultado de cada
+operación MCP: `name`, `ok`, `code` en fallos y `durationMs`, sin argumentos,
+contenido ni rutas. `toolErrors` cuenta los fallos, incluso si después se reparan;
+no es por sí solo un fallo del caso. `permissionDenials` sigue siendo `null`:
+no observamos todos los permisos nativos. Esto habilita `resumed-incremental`
+también en producción, verificando lecturas exitosas del warmup. Las pruebas con
+proveedor determinista validan el mecanismo, no la calidad del modelo.
 
 No sumar tokens entre proveedores como si significaran lo mismo. Costos ausentes
 son desconocidos, no cero. Comparar primero correctness por caso y repetición,
