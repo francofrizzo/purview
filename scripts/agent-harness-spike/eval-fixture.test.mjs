@@ -6,8 +6,8 @@ import { EVAL_CASES, createEvalFixture } from "./eval-fixture.mjs";
 import { loadState, readDiff, setAnalysis, setUnits, setRevisionSummary } from "../../packages/core/dist/index.js";
 import { addComment } from "../../packages/server/dist/comments.js";
 
-async function fixture(t, id) {
-  const f = await createEvalFixture(id);
+async function fixture(t, id, options) {
+  const f = await createEvalFixture(id, options);
   t.after(() => f.dispose());
   return f;
 }
@@ -69,9 +69,9 @@ test("analysis needs real coverage AND concrete finding, not answer counters", a
   assert.equal(f.grade({}).pass, false);
 });
 
-for (const id of ["documented-api-contradiction", "large-documented-api-contradiction"]) {
-  test(`${id}: persisted material finding, asymmetric evidence and negative controls`, async t => {
-    const f = await fixture(t, id);
+for (const graderVersion of [1, 2]) for (const id of ["documented-api-contradiction", "large-documented-api-contradiction"]) {
+  test(`${id} v${graderVersion}: persisted material finding, asymmetric evidence and negative controls`, async t => {
+    const f = await fixture(t, id, { graderVersion });
     assert.equal(EVAL_CASES.find(c => c.id === id).optional, true);
     assert.ok(f.files.every(file => file.path.endsWith(".md")));
     assert.equal(f.hunkIds.length, id.startsWith("large-") ? 162 : 1);
@@ -98,7 +98,13 @@ for (const id of ["documented-api-contradiction", "large-documented-api-contradi
       { ...finding, text: "openLegacyArchive is exported and valid; openArchive also accepts accountId and retentionDays." },
       { ...finding, text: "openLive is missing; use openArchive with accountId and retentionDays." },
       { ...finding, text: "Verified openArchive accepts accountId and retentionDays." },
+      ...(graderVersion === 2 ? [
+        { ...finding, text: "openLegacyArchive is valid. openArchive does not exist; it takes accountId and retentionDays." },
+        { ...finding, text: "openLegacyArchive is not missing. openArchive takes accountId and retentionDays." },
+        { ...finding, text: "The module exports only openArchive, openLive and openLegacyArchive; accountId and retentionDays work." },
+      ] : []),
       { ...finding, text: "This change might cause outages in production." },
+      { ...finding, severity: "note" },
       { ...finding, evidence: "docs/archive/quickstart.md:2" },
       { ...finding, evidence: "docs/live/guide-1.md:2, src/archive.js:1" },
       { ...finding, evidence: "docs/archive/quickstart.md:20, src/archive.js:10" },
@@ -108,6 +114,17 @@ for (const id of ["documented-api-contradiction", "large-documented-api-contradi
     }
     store([finding]);
     assert.equal(f.grade("answer ignored").pass, true);
+    assert.equal(f.grade().graderVersion, graderVersion);
+    const paraphrases = [
+      "openLegacyArchive is prescribed, but src/archive.js does not export it; use openArchive instead.",
+      "openLegacyArchive fails: the module exports only openArchive and openLive.",
+      "The quickstart documents openLegacyArchive; that module has no such export. Use openArchive.",
+    ];
+    for (const text of paraphrases) {
+      store([{ ...finding, text }]);
+      assert.equal(f.grade().pass, graderVersion === 2, text);
+    }
+    store([finding]);
     assert.deepEqual(f.grade({}).metrics, { unitCount: 1, hunkCount: f.hunkIds.length, topicCount: id.startsWith("large-") ? 3 : 1 });
     if (id.startsWith("large-")) {
       const units = f.files.map((file, order) => ({ ...unit, id: `docs-${order}`, order, hunks: file.hunks.map(h => h.id), findings: file.path === "docs/archive/quickstart.md" ? [finding] : [] }));

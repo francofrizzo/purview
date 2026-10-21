@@ -449,3 +449,23 @@ debería aceptar la negación en cualquiera de sus formas, o reemplazarse por
 
 Lo que queda está en [integration.md](integration.md), sección "Pendientes para
 la integración".
+
+## Relectura offline con grader v2 (2026-10-21)
+
+Reporte secundario: `eval-reports/2026-10-21-offline-docs-v2.jsonl`, generado con
+`regrade.mjs` a partir de `2026-10-21-mac-production-docs-6.jsonl`.
+**6/6 bajo v2; 0 corridas nuevas de modelos.** El original permanece intacto
+con su resultado 0/6 bajo v1. Los hashes del original y del código del grader
+quedan en el reporte secundario.
+
+Además del vocabulario de negación, v1 exigía `accountId` y `retentionDays` en el
+texto. Algunas respuestas correctas no nombran esos parámetros: prueban la
+función inexistente y proponen `openArchive`. V2 evalúa esa contradicción sin
+exigir la receta textual; mantiene warning, símbolos, evidencia y pertenencia
+al hunk. No alcanza con mencionar las dos APIs. Sus controles negativos incluyen
+afirmar que la API correcta no existe, negar que falte la función vieja,
+evidencia incorrecta, omisión y hallazgo sólo en summary.
+
+La relectura conserva todos los checks originales ajenos a finding, incluido un
+fallo si la ejecución original no terminó bien. No demuestra mejora de modelo
+ni paridad de calidad: aplica una regla secundaria a las mismas seis respuestas.

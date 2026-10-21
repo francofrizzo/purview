@@ -44,8 +44,10 @@ caso y grader), `parcial`, `falta`.
 - **Estado**: cubierto por `documented-api-contradiction` (1 hunk) y
   `large-documented-api-contradiction` (162 hunks). Corridos con modelos reales
   (eval-results.md, cuarta tanda): 6/6 emiten el warning correcto con evidencia;
-  0/6 por grader por su cláusula de vocabulario, que conviene relajar en la
-  próxima versión del caso. Son casos dirigidos, no prueba de descubrimiento
+  0/6 históricos bajo v1. El grader v2 reconoce otras formas de negación y no
+  exige parámetros cuando el problema es la función inexistente. La relectura
+  offline separada da 6/6 sin nuevas inferencias (ver eval-results.md); no
+  altera el reporte original. Son casos dirigidos, no prueba de descubrimiento
   espontáneo.
 
 ## 3. Sobreclasificación de docs como `core-logic`

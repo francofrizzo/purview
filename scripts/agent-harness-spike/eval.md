@@ -68,10 +68,38 @@ Los casos piden explícitamente verificar documentación: miden ese contrato dir
 no descubrimiento espontáneo. El grader conserva límites de vocabulario; adjudicar
 paráfrasis correctas por separado, sin reescribir el resultado estricto.
 
+### Versiones del grader y relectura sin cuota
+
+El default sigue siendo `--grader-version 1`, la regla histórica. Para tandas
+nuevas, `--grader-version 2` cambia **solo** la cláusula de contradicción documental:
+reconoce formas como "does not export it", "has no such export" y "exports only…";
+no exige los nombres de parámetros cuando el problema probado es la función
+inexistente. Sigue exigiendo warning, ambos símbolos, evidencia en ambos archivos
+y finding en la unidad del hunk afectado. Mencionar los símbolos, afirmar que la
+API correcta no existe o poner el hallazgo sólo en el resumen no aprueba.
+Es un reconocedor acotado en inglés, no entailment general ni un juez de calidad:
+puede equivocarse con paráfrasis, negaciones complejas u otros idiomas.
+La versión queda en las opciones del manifest y en cada grading.
+
+No hace falta repetir las seis corridas documentales para aplicar esa regla:
+
+```sh
+node scripts/agent-harness-spike/regrade.mjs \
+  scripts/agent-harness-spike/eval-reports/2026-10-21-mac-production-docs-6.jsonl \
+  /tmp/purview-docs-regrade-nuevo.jsonl
+```
+
+Sólo admite esos casos sintéticos con el mismo hash de prompt. Reconstruye las
+unidades en un store descartable y reevalúa la cláusula finding; conserva los
+checks originales de transporte, revisión, comentarios y cobertura. El reporte
+secundario registra hashes del original y del código del grader, no incluye
+contenido y nunca sobrescribe archivos. Esto **no es una nueva tanda de modelos**
+ni modifica los 0/6 históricos. La relectura v2 dio 6/6 (ver eval-results.md).
+
 Handoff opcional, con autorización de gasto en la Mac (6 corridas, no automático):
 
 ```sh
-node scripts/agent-harness-spike/eval.mjs --runtime production --run \
+node scripts/agent-harness-spike/eval.mjs --runtime production --grader-version 2 --run \
   --cases documented-api-contradiction,large-documented-api-contradiction \
   --arms claude-baseline,claude-shared,codex-shared --repeats 1 \
   --claude-model claude-sonnet-5-5 --effort medium --timeout-ms 600000 \

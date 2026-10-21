@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 import { parseOptions, runPlan } from "./eval.mjs";
 import { provider } from "./provider.mjs";
 import { createEvalFixture } from "./eval-fixture.mjs";
+import { regrade } from "./regrade.mjs";
 
 const exec = promisify(execFile);
 const runner = path.join(import.meta.dirname, "eval.mjs");
@@ -15,6 +16,9 @@ const runner = path.join(import.meta.dirname, "eval.mjs");
 test("eval CLI is dry by default, rejects ambiguous paid options and pairs equal case counts", async () => {
   const options = parseOptions([]);
   assert.equal(options.run, false);
+  assert.equal(options.graderVersion, 1);
+  assert.equal(parseOptions(["--grader-version", "2"]).graderVersion, 2);
+  assert.throws(() => parseOptions(["--grader-version", "3"]));
   assert.equal(parseOptions(["--runtime", "production"]).runtime, "production");
   assert.throws(() => parseOptions(["--runtime", "other"]));
   assert.equal(parseOptions(["--runtime", "production", "--arms", "claude-shared", "--cases", "resumed-incremental"]).runtime, "production");
@@ -34,6 +38,34 @@ test("eval CLI is dry by default, rejects ambiguous paid options and pairs equal
   assert.equal(JSON.parse(resumed.stdout).requests, 2, "one resumed case has two model turns");
 });
 
+test("offline v2 regrade preserves history and non-finding failures without new model runs", async t => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "purview-regrade-"));
+  t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+  const input = path.join(import.meta.dirname, "eval-reports/2026-10-21-mac-production-docs-6.jsonl");
+  const original = fs.readFileSync(input);
+  const out = path.join(tmp, "regrade.jsonl");
+  assert.deepEqual(await regrade(input, out), { type: "summary", completed: 6, originalPassed: 0, passed: 6 });
+  assert.deepEqual(fs.readFileSync(input), original);
+  const rows = fs.readFileSync(out, "utf8").trim().split("\n").map(JSON.parse);
+  assert.equal(rows[0].newModelRuns, 0);
+  assert.equal(rows[0].graderVersion, 2);
+  assert.equal(fs.statSync(out).mode & 0o777, 0o600);
+  await assert.rejects(regrade(input, out), /EEXIST/);
+  await assert.rejects(regrade(input, input), /EEXIST/);
+  assert.deepEqual(fs.readFileSync(input), original);
+  const modified = original.toString("utf8").trim().split("\n").map(JSON.parse);
+  const runs = modified.filter(row => row.type === "run");
+  runs[0].grading.checks.coverage = false;
+  runs[1].ok = false;
+  const badInput = path.join(tmp, "bad.jsonl");
+  fs.writeFileSync(badInput, modified.map(row => JSON.stringify(row)).join("\n"));
+  assert.equal((await regrade(badInput, path.join(tmp, "bad-regrade.jsonl"))).passed, 4);
+  runs[0].promptHash = "different-fixture";
+  fs.writeFileSync(badInput, modified.map(row => JSON.stringify(row)).join("\n"));
+  await assert.rejects(regrade(badInput, path.join(tmp, "mismatch.jsonl")), /compatible/);
+  assert.equal(fs.existsSync(path.join(tmp, "mismatch.jsonl")), false);
+});
+
 test("real eval CLI saves functional outcomes and failures, with no paid provider or personal state", { timeout: 60000 }, async t => {
   const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "purview-eval-cli-")));
   const api = await provider();
@@ -44,7 +76,7 @@ test("real eval CLI saves functional outcomes and failures, with no paid provide
       { text: JSON.stringify({ symbol: "price", before: 55, after: correct ? 104 : 40 }) },
     ]);
     const out = path.join(home, `${runtime}-${correct}.jsonl`);
-    const args = [runner, "--runtime", runtime, "--run", "--out", out, "--arms", "claude-shared", "--cases", "code-investigation", "--repeats", "1"];
+    const args = [runner, "--runtime", runtime, "--grader-version", runtime === "production" ? "2" : "1", "--run", "--out", out, "--arms", "claude-shared", "--cases", "code-investigation", "--repeats", "1"];
     let exit = 0;
     try {
       await exec(process.execPath, args, { env: { PATH: process.env.PATH, HOME: home,
@@ -55,6 +87,8 @@ test("real eval CLI saves functional outcomes and failures, with no paid provide
     assert.equal(exit, correct ? 0 : 1);
     const rows = fs.readFileSync(out, "utf8").trim().split("\n").map(JSON.parse);
     assert.equal(rows[0].type, "manifest");
+    assert.equal(rows[0].options.graderVersion, runtime === "production" ? 2 : 1);
+    assert.equal(rows[1].grading.graderVersion, rows[0].options.graderVersion);
     assert.equal(rows[1].pass, correct);
     assert.equal(rows[1].grading.checks.totals, correct);
     if (runtime === "production") {

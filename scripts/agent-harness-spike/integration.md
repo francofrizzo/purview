@@ -5,6 +5,41 @@ No importan el spike. Nada es visible en la UI ni en el changelog; el Claude
 actual conserva sus permisos, prompts y posición de default. No cambia el
 formato persistido ni migra las sesiones existentes.
 
+## Cierre de evals: siguiente prueba acotada en la Mac
+
+No repetir la tanda documental sólo para corregir su score: `regrade.mjs` ya
+aplicó v2 a las seis respuestas guardadas, sin cuota (ver eval-results.md).
+El grader histórico sigue disponible y no se reescribió ningún reporte.
+
+Lo útil ahora es verificar **los binarios que la Mac usa hoy** con los tests
+nativos y proveedor local, porque Claude ahora exige un init válido antes de
+aceptar respuestas/resultados. En un checkout separado actualizado a esta branch,
+con core y server construidos, resolver las rutas absolutas de ambos ejecutables
+(Codex debe ser el binario nativo, no su launcher npm) y ejecutar desde la raíz:
+
+```sh
+PURVIEW_TEST_CLAUDE_BIN=/ruta/absoluta/al/claude-instalado \
+PURVIEW_TEST_CODEX_BIN=/ruta/absoluta/al/codex-nativo-instalado \
+pnpm --filter @reviewer/server exec vitest run \
+  test/claude-shared.test.ts test/codex-harness.test.ts test/review-tools.test.ts
+```
+
+No instalar otra versión para lograr verde: registrar las versiones encontradas.
+Los tests usan HOME/store descartables y proveedor HTTP local determinista:
+sin modelos pagos, login nuevo ni copia de credenciales. No tocan `~/.purview`
+ni 4779. Comprobar que los tests nativos no figuren como skipped y guardar sólo
+versiones, plataforma, conteos y fallos sanitizados, nunca auth/transcripts.
+Una falla no autoriza cambiar permisos, hacer OAuth o tocar la sesión personal.
+
+Después, si se quiere evaluar calidad, usar el protocolo [realpr](realpr/README.md)
+con autorización de cuota y worktrees dedicados, sin `PURVIEW_HARNESS` heredado
+en los servidores de comparación. Una PR representativa, tres brazos, mismo
+modelo/effort solicitado para los Claude, sin otra matriz sintética completa.
+Adjudicar privadamente findings útiles/falsos, omisiones, notas triviales,
+agrupación y latencia. En particular, comprobar si "persistir cada conclusión"
+agrega ruido; un aumento del número de findings no prueba una mejora.
+Ese piloto no está ejecutado por este handoff ni es necesario para validar v2.
+
 ## Cómo usarlo hoy (privado, sin exponer nada)
 
 - `PURVIEW_HARNESS=claude-shared` (o `codex`) al arrancar el server: todo
@@ -33,12 +68,15 @@ y después verifica conducta, no cadena de versión:
   aparecería ahí como herramienta nativa y el run falla cerrado con
   `Unexpected native tool offered by Claude Code: …`. Ya pasó una vez con
   `--safe-mode`, que apaga el MCP explícito.
+  Se rechazan también init ausente/tardío, listas incompletas y MCP desconectado;
+  no se entrega una respuesta anterior a la inicialización verificada.
 - **Codex:** sigue leyendo la configuración efectiva por app-server antes del
   primer turno y rechaza si shell, red, plugins o multi-agente quedaron activos.
 
-Lo que una versión nueva no puede cambiar sin que se note es, entonces, el
-límite de permisos. Lo que sí puede cambiar (formato de salida, modelo) no nos
-importa: la superficie es nuestra.
+Estos checks verifican lo que el CLI declara en su protocolo, no constituyen un
+sandbox independiente ni certifican que un binario incompatible no haya actuado
+antes de reportarse. Tampoco prometen compatibilidad general de versiones futuras:
+un cambio de protocolo puede provocar un rechazo seguro y requerir otro adapter.
 
 ## Prompt de análisis compartido: paso de verificación
 

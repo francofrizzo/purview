@@ -31,6 +31,17 @@ function answerObject(answer) {
   return answer && typeof answer === "object" ? answer : {};
 }
 
+// v2 recognizes bounded English contradiction forms, not arbitrary entailment.
+// Naming the two APIs alone (or saying the replacement is missing) is not proof.
+function documentationContradiction(text) {
+  const plain = text.replace(/`/g, "").replace(/\s+/g, " ");
+  if (!/\bopenLegacyArchive\b/.test(plain) || !/\bopenArchive\b/.test(plain)) return false;
+  return /\bopenLegacyArchive\b(?:\([^)]*\))?\s+(?:(?:is|was)\s+)?(?:not exported|missing|unavailable|nonexistent|does not exist|no longer exists|no longer exported)\b/i.test(plain)
+    || /\b(?:does not|doesn't) export\s+(?:openLegacyArchive|it)\b/i.test(plain)
+    || /\b(?:module|implementation|src\/archive\.js)\s+has no such export\b/i.test(plain)
+    || /\bexports only\s+openArchive\b[^.;]*\bopenLive\b(?![^.;]*\bopenLegacyArchive\b)/i.test(plain);
+}
+
 /**
  * Async factory; all disk APIs and grade() are synchronous. root is the Purview
  * store root AND disposable parent of checkout; always pass root explicitly to
@@ -39,9 +50,10 @@ function answerObject(answer) {
  * answers. grade accepts a JSON string or object (analysis/draft ignore it).
  * dispose is idempotent. Call once per arm/repetition; never reuse a fixture.
  */
-export async function createEvalFixture(caseId, { revision: startRevision = 2 } = {}) {
+export async function createEvalFixture(caseId, { revision: startRevision = 2, graderVersion = 1 } = {}) {
   const spec = EVAL_CASES.find(c => c.id === caseId);
   if (!spec) throw new Error(`Unknown evaluation case: ${caseId}`);
+  if (![1, 2].includes(graderVersion)) throw new Error("Unknown grader version");
   const incremental = ["incremental-analysis", "resumed-incremental"].includes(caseId);
   const documentation = ["documented-api-contradiction", "large-documented-api-contradiction"].includes(caseId);
   const largeDocumentation = caseId === "large-documented-api-contradiction";
@@ -175,9 +187,10 @@ export async function createEvalFixture(caseId, { revision: startRevision = 2 } 
           const docIds = files.find(f => f.path === "docs/archive/quickstart.md").hunks.map(h => h.id);
           checks.finding = state.units.some(u => u.hunks.some(h => docIds.includes(h.id)) && u.findings?.some(f =>
             ["warning", "critical"].includes(f.severity) &&
-            /\bopenLegacyArchive\b/.test(f.text) &&
-            /\b(not exported|does not exist|missing export|no longer exists|no longer exported|removed|nonexistent|unavailable)\b/i.test(f.text) &&
-            /\bopenArchive\b/.test(f.text) && /\baccountId\b/.test(f.text) && /\bretentionDays\b/.test(f.text) &&
+            (graderVersion === 2 ? documentationContradiction(f.text) : (
+              /\bopenLegacyArchive\b/.test(f.text) &&
+              /\b(not exported|does not exist|missing export|no longer exists|no longer exported|removed|nonexistent|unavailable)\b/i.test(f.text) &&
+              /\bopenArchive\b/.test(f.text) && /\baccountId\b/.test(f.text) && /\bretentionDays\b/.test(f.text))) &&
             /docs\/archive\/quickstart\.md:2\b/.test(f.evidence) && /src\/archive\.js:1\b/.test(f.evidence)));
         } else if (caseId === "initial-analysis") {
           const coverage = analysisCoverage(state, { units: state.units, unassigned: state.unassignedHunkIds });
@@ -195,7 +208,7 @@ export async function createEvalFixture(caseId, { revision: startRevision = 2 } 
           checks.noAnalysis = state.analysisRevision === undefined;
         }
       }
-      return { pass: Object.values(checks).every(Boolean), checks, limitations,
+      return { pass: Object.values(checks).every(Boolean), checks, limitations, graderVersion,
         ...(documentation ? { metrics: { unitCount: state.units.length, hunkCount: hunkIds.length, topicCount: largeDocumentation ? 3 : 1 } } : {}) };
     };
     const fixture = { root, checkout, key, revision, incremental, task: spec.task, prompt: prompts[caseId], dispose, grade, patch, files, hunkIds, shas, anchor, limitations };

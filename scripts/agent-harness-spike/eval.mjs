@@ -12,9 +12,9 @@ export const ARMS = ["claude-baseline", "claude-shared", "codex-shared"];
 
 export function parseOptions(argv) {
   const options = { run: false, arms: ARMS.slice(0, 2), cases: EVAL_CASES.filter(c => !c.optional).map(c => c.id), repeats: 3,
-    claudeModel: "sonnet", codexModel: "gpt-6.1-sol", effort: "medium", timeoutMs: 180000, runtime: "spike" };
+    claudeModel: "sonnet", codexModel: "gpt-6.1-sol", effort: "medium", timeoutMs: 180000, runtime: "spike", graderVersion: 1 };
   const fields = { "--arms": "arms", "--cases": "cases", "--repeats": "repeats", "--claude-model": "claudeModel",
-    "--codex-model": "codexModel", "--effort": "effort", "--timeout-ms": "timeoutMs", "--out": "out", "--runtime": "runtime" };
+    "--codex-model": "codexModel", "--effort": "effort", "--timeout-ms": "timeoutMs", "--out": "out", "--runtime": "runtime", "--grader-version": "graderVersion" };
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i];
     if (flag === "--run") { options.run = true; continue; }
@@ -23,7 +23,7 @@ export function parseOptions(argv) {
     if (!field || !argv[i + 1] || argv[i + 1].startsWith("--")) throw new Error("Invalid options; see eval.md");
     const value = argv[++i];
     options[field] = ["arms", "cases"].includes(field) ? value.split(",")
-      : ["repeats", "timeoutMs"].includes(field) ? Number(value) : value;
+      : ["repeats", "timeoutMs", "graderVersion"].includes(field) ? Number(value) : value;
   }
   for (const [items, allowed] of [[options.arms, ARMS], [options.cases, EVAL_CASES.map(c => c.id)]]) {
     if (!items.length || new Set(items).size !== items.length || items.some(x => !allowed.includes(x))) throw new Error("Unknown or duplicate arm/case");
@@ -32,6 +32,7 @@ export function parseOptions(argv) {
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1000 || options.timeoutMs > 1800000) throw new Error("timeout-ms must be 1000..1800000");
   if (!["low", "medium", "high"].includes(options.effort)) throw new Error("effort must be low, medium or high");
   if (!["spike", "production"].includes(options.runtime)) throw new Error("runtime must be spike or production");
+  if (![1, 2].includes(options.graderVersion)) throw new Error("grader-version must be 1 or 2");
   if (options.cases.includes("resumed-incremental") && options.arms.includes("claude-baseline")) {
     throw new Error("resumed-incremental supports shared arms only; baseline changes system instructions across modes");
   }
@@ -91,7 +92,7 @@ export async function main(argv = process.argv.slice(2)) {
       const started = Date.now();
       try {
         const resumed = entry.caseId === "resumed-incremental";
-        f = await createEvalFixture(entry.caseId, { revision: resumed ? 1 : 2 });
+        f = await createEvalFixture(entry.caseId, { revision: resumed ? 1 : 2, graderVersion: options.graderVersion });
         const common = { effort: options.effort, timeoutMs: options.timeoutMs, signal: controller.signal };
         const invoke = (fixture, session) => entry.arm === "codex-shared" ? runCodexEval(fixture, { ...common, session, model: options.codexModel })
           : runClaudeEval(fixture, { ...common, session, model: options.claudeModel, surface: entry.arm === "claude-baseline" ? "baseline" : "shared" });
