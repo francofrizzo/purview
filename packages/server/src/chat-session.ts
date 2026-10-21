@@ -31,6 +31,7 @@ import {
   type ChatRef,
 } from "./chat.js";
 import { HttpError } from "./http-error.js";
+import { reviewSystemPrompt, checkoutGuidance } from "./agent/review-tools/prompts.js";
 
 /**
  * A chat turn runs independently of the HTTP request that started it: the SSE
@@ -214,7 +215,9 @@ export function startChatTurn(
 
       // Built every turn: they carry the current head, checkout, CLI path and
       // team overlays, and the read-only contract.
-      const instructions = chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed });
+      const instructions = harness.manifest.reviewTools
+        ? reviewSystemPrompt(key, root, { task: "chat", committed })
+        : chatSystemPrompt(key, root, { resolution: checkout, headSha }, { committed });
       // A session the harness cannot continue with these instructions from
       // this cwd (or none at all) means a fresh session that replays the kept
       // transcript, exactly like a rewind does. Claude Code, for one, freezes
@@ -232,7 +235,10 @@ export function startChatTurn(
       if (stopped) throw new StoppedBeforeRun();
       run = harness.run({
         task: { kind: "chat", reviewerCommands: CHAT_CLI_SUBCOMMANDS },
-        prompt,
+        prompt: harness.manifest.reviewTools ? `${checkoutGuidance(checkout)}\n\n${prompt}` : prompt,
+        review: harness.manifest.reviewTools ? { root, key, revision: state.currentRevision,
+          checkout: checkout.error ? undefined : checkout.path || undefined,
+          serverUrl: opts.serverPort === undefined ? undefined : `http://127.0.0.1:${opts.serverPort}` } : undefined,
         cwd,
         readRoots,
         instructions,

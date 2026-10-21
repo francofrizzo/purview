@@ -1,3 +1,5 @@
+import type { PrKey } from "@reviewer/core";
+
 /**
  * The agent harness contract: what Purview asks of whatever runs its
  * analysis, chat and re-anchoring turns.
@@ -52,6 +54,8 @@ export interface HarnessManifest {
    * the model reads it in one step instead of discovering a truncation.
    */
   inlineOutputLimit: number;
+  /** Experimental adapters consume typed review operations, not CLI commands. */
+  reviewTools?: boolean;
 }
 
 /** Injectable, synchronous process runner for probes. Never throws. */
@@ -147,6 +151,15 @@ export interface AgentSession {
 
 export interface AgentRunRequest {
   task: AgentTask;
+  /** Explicit run authority, supplied by the owner; never inferred from cwd or model input. */
+  review?: {
+    root: string;
+    key: PrKey;
+    revision: number;
+    checkout?: string;
+    serverUrl?: string;
+    analysisMode?: "initial" | "incremental";
+  };
   /** the stable behavioral contract (appended to the harness's own system prompt) */
   instructions?: string;
   /** the run-specific input; never placed in argv */

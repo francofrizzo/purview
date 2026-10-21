@@ -354,7 +354,7 @@ const NO_INVENTION_RULE =
  * mermaid suggestion and the rendering claims and keeps the rest (plain-text
  * visuals read the same anywhere).
  */
-function showingLines(panel: boolean): string[] {
+export function showingLines(panel: boolean): string[] {
   return [
     "- When asked to be shown or walked through something, or whenever structure, control flow, or a before/after shape would land faster than prose, reach for a small visual instead of describing it in paragraphs.",
     "- Pick the smallest view that makes the point:",

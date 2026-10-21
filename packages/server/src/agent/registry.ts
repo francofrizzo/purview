@@ -1,5 +1,7 @@
 import { INLINE_LIMIT_ENV } from "@reviewer/core";
 import { claudeCodeHarness } from "./claude-code/index.js";
+import { claudeSharedHarness } from "./claude-shared/index.js";
+import { codexHarness } from "./codex/index.js";
 import type { AgentHarness, HarnessId } from "./types.js";
 
 /**
@@ -8,26 +10,27 @@ import type { AgentHarness, HarnessId } from "./types.js";
  * that names one; until then every run uses the default.
  */
 
-const HARNESSES: ReadonlyMap<HarnessId, AgentHarness> = new Map([
-  [claudeCodeHarness.manifest.id, claudeCodeHarness],
-]);
+function harnesses(): AgentHarness[] {
+  return process.env.PURVIEW_EXPERIMENTAL_HARNESSES === "1"
+    ? [claudeCodeHarness, claudeSharedHarness, codexHarness] : [claudeCodeHarness];
+}
 
 export const DEFAULT_HARNESS: HarnessId = claudeCodeHarness.manifest.id;
 
 /** A registered harness; throws on an unknown id rather than falling back. */
 export function getHarness(id: HarnessId = DEFAULT_HARNESS): AgentHarness {
-  const harness = HARNESSES.get(id);
+  const harness = findHarness(id);
   if (!harness) throw new Error(`Unknown agent harness "${id}"`);
   return harness;
 }
 
 /** A registered harness, or undefined. */
 export function findHarness(id: HarnessId): AgentHarness | undefined {
-  return HARNESSES.get(id);
+  return harnesses().find(harness => harness.manifest.id === id);
 }
 
 export function harnessIds(): HarnessId[] {
-  return [...HARNESSES.keys()];
+  return harnesses().map(harness => harness.manifest.id);
 }
 
 /**

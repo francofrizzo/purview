@@ -15,6 +15,9 @@ const runner = path.join(import.meta.dirname, "eval.mjs");
 test("eval CLI is dry by default, rejects ambiguous paid options and pairs equal case counts", async () => {
   const options = parseOptions([]);
   assert.equal(options.run, false);
+  assert.equal(parseOptions(["--runtime", "production"]).runtime, "production");
+  assert.throws(() => parseOptions(["--runtime", "other"]));
+  assert.throws(() => parseOptions(["--runtime", "production", "--arms", "claude-shared", "--cases", "resumed-incremental"]));
   const plan = runPlan(options);
   assert.equal(plan.length, 24);
   for (const id of options.cases) for (const arm of options.arms) {
@@ -35,13 +38,14 @@ test("real eval CLI saves functional outcomes and failures, with no paid provide
   const home = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "purview-eval-cli-")));
   const api = await provider();
   t.after(async () => { await api.close(); fs.rmSync(home, { recursive: true, force: true }); });
-  for (const correct of [true, false]) {
+  for (const runtime of ["spike", "production"]) for (const correct of [true, false]) {
     api.plan([{ text: JSON.stringify({ symbol: "price", before: 55, after: correct ? 104 : 40 }) }]);
-    const out = path.join(home, `${correct}.jsonl`);
-    const args = [runner, "--run", "--out", out, "--arms", "claude-shared", "--cases", "code-investigation", "--repeats", "1"];
+    const out = path.join(home, `${runtime}-${correct}.jsonl`);
+    const args = [runner, "--runtime", runtime, "--run", "--out", out, "--arms", "claude-shared", "--cases", "code-investigation", "--repeats", "1"];
     let exit = 0;
     try {
       await exec(process.execPath, args, { env: { PATH: process.env.PATH, HOME: home,
+        PURVIEW_CLAUDE_BIN: path.join(import.meta.dirname, `node_modules/@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/claude`),
         ANTHROPIC_API_KEY: "local-fixture-not-a-secret", ANTHROPIC_BASE_URL: api.url,
         HTTPS_PROXY: api.url, HTTP_PROXY: api.url, NO_PROXY: "127.0.0.1,localhost" }, timeout: 45000 });
     } catch (error) { exit = error.code; }

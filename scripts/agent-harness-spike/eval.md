@@ -1,9 +1,14 @@
 # Evaluación funcional de la superficie compartida
 
-Este bloque es **opt-in y experimental**: no registra un adapter de Codex en el
+El runtime original (`--runtime spike`, default) es **opt-in y experimental**: no registra un adapter de Codex en el
 producto ni cambia el Claude que usa Purview hoy. Usa repos Git y stores Purview
 reales pero sintéticos y descartables. No lee sesiones personales, no usa
 `~/.purview`, no publica nada y no escucha en 4779.
+
+**Integración posterior:** `--runtime production` usa los nuevos adapters y
+prompts del producto con los mismos casos y graders, sin reescribir los informes
+del spike. Ver [setup y siguiente handoff Mac](integration.md); el producto sólo
+ofrece los adapters nuevos con `PURVIEW_EXPERIMENTAL_HARNESSES=1`.
 
 ## Qué se compara
 
