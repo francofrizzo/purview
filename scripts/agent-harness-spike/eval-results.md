@@ -295,8 +295,105 @@ Codex solo devuelve tokens; `inputTokens` incluye los cacheados:
 - El spike del formato (frase antes del JSON) es irrelevante para el producto:
   ahí nadie pide JSON al modelo. Se conserva porque el grader es el histórico.
 
+
+## PRs reales (2026-10-21, misma Mac): tres PRs, tres brazos, adjudicación humana pendiente
+
+Protocolo: copias privadas del estado (`PURVIEW_STATE_DIR` propio por brazo,
+sin token LAN, sin checkouts, `autoAnalyze` apagado, `managedCheckouts: false`
+para que el run resuelva por sha un worktree existente y solo lo lea), server
+privado por brazo en un puerto efímero con `PURVIEW_EXPERIMENTAL_HARNESSES=1`,
+una corrida por brazo y etapa, en serie. Modelos: Claude `sonnet` medium en
+`claude-code` (actual) y `claude-shared`; Codex `gpt-6.1-sol` medium. Se
+guardan solo conteos y conclusiones; nada del contenido de las PRs.
+
+PRs, todas abiertas y del mismo repo privado Go + frontend:
+
+| PR | Tamaño | Qué es |
+| --- | --- | --- |
+| chica | 8 archivos, 10 hunks | borrar un alias de endpoint deprecado y migrar un cliente interno |
+| mediana | 27 archivos, 58 hunks; tiene revisión nueva en GitHub | reprogramación de intentos de cobro, con dry-run y confirmación |
+| grande | 76 archivos, 161 hunks | solo markdown: auditoría de instrucciones para agentes |
+
+### Análisis fresco (wall s · unidades · findings, warnings entre paréntesis)
+
+| PR | `claude-code` | `codex` | `claude-shared` |
+| --- | --- | --- | --- |
+| chica | 46 · 3 · 2 (1) | 66 · 4 · 0 | 30 · 4 · 3 (1) |
+| mediana* | 67 · 9 · 1 (0) | 193 · 10 · 0 | 52 · 6 · 0 |
+| grande | 113 · 10 · 5 (1) | 360 · 21 · 2 (0) | 94 · 8 · 0 |
+
+\* El Purview en uso ya había refrescado esa PR y movido el checkout
+gestionado al head nuevo, así que las tres copias (una revisión atrás)
+analizaron con checkout desfasado. Codex lo dijo en su resumen. Misma condición
+para los tres; deprime los findings.
+
+Lo que se vio, PR por PR:
+
+- **Chica.** Los tres entendieron lo mismo y agruparon igual; nadie dejó hunks
+  sin asignar. El hallazgo real (una frase del README que quedó obsoleta tras
+  la migración) lo marcaron como `warning` los dos Claude, con archivo y línea.
+  Codex lo vio y lo escribió en el summary de la unidad, pero no lo emitió como
+  finding. Claude compartido fue el más completo (dos notes con evidencia,
+  incluida una búsqueda de llamadores en el frontend) y el más rápido.
+- **Mediana.** Agrupaciones razonables en los tres; el compartido es el más
+  grueso (6 unidades). Codex titula como decisiones, como pide el rubric.
+- **Grande.** El único `warning` verdadero (una instrucción nueva en una skill
+  cita una firma de función que ya no existe, verificado contra el checkout) lo
+  encontró solo Claude actual. Claude compartido hizo spot-checks, los
+  menciona en el resumen y no emitió ningún finding. Codex produjo 21 unidades
+  (el doble) en 6 minutos y clasificó 10 como `core-logic` en una PR que solo
+  toca markdown: extendió la regla del rubric sobre prompts y configuración de
+  asistentes a toda skill de agente.
+- **Idioma.** Codex escribió en castellano en la chica y la grande y en inglés
+  en la mediana; los Claude siempre en inglés. Causa verificada: el prompt pide
+  "the reader's language" y ninguna capa del rubric define cuál es; el rubric
+  del equipo está en inglés y la descripción de las PRs en castellano. Cada
+  modelo resolvió la ambigüedad distinto. Se arregla con una línea en el rubric
+  del equipo o en el overlay local; no se tocó durante la comparación.
+
+### Refresh e incremental (PR mediana, revisión 2 → 3; la 3 solo renombra una ruta)
+
+| Brazo | Wall | Unidades tocadas | Resumen de revisión |
+| --- | --- | --- | --- |
+| `claude-code` | 27 s | 4 | correcto |
+| `codex` | 117 s | 4 | correcto |
+| `claude-shared` | 25 s | 4 | correcto |
+
+Los tres patchearon exactamente las cuatro unidades afectadas por el rename
+(handler, ruta, tests, README), conservaron el resto, escribieron un
+`changelogEntry` por unidad y un resumen de revisión acertado. Ninguno
+reemplazó el análisis. Eventos: `unit-updated` ×4, `revision-summarized` ×1 en
+cada brazo.
+
+### Chat: pregunta, draft, Stop (PR mediana, revisión 3, checkout coincidente)
+
+| Brazo | Pregunta con cita archivo:línea | Draft (audiencia github, anclado) | Stop a los 4 s |
+| --- | --- | --- | --- |
+| `claude-code` | 24 s, correcta, cita 3 archivos | sí, 669 caracteres, línea del godoc del handler | interrumpido, chat libre |
+| `codex` | 49 s, correcta, cita 2 archivos | sí, 229 caracteres, misma línea | interrumpido, chat libre |
+| `claude-shared` | 26 s, correcta, cita 3 archivos | sí, 899 caracteres, misma línea | interrumpido, chat libre |
+
+Los tres respondieron en castellano (la pregunta lo estaba) y los tres
+anclaron el draft en la misma línea sin que se les dijera cuál. Los dos
+compartidos lo crearon por `create_draft` contra las rutas reales de
+comentarios; ninguno afirmó haber publicado.
+
+### Lectura
+
+- La integración funciona de punta a punta en PRs reales: análisis fresco,
+  incremental con patches precisos, chat con evidencia, drafts anclados, Stop.
+  Sin fallos de transporte ni de permisos en 15 corridas.
+- Claude compartido es el más barato y rápido y agrupa bien, pero en la PR
+  grande no convirtió sus verificaciones en findings. Es un problema de prompt
+  (el de análisis le dice que verifique pero no insiste en emitir), no de la
+  superficie: en chat, con la misma superficie, cita y verifica sin problema.
+- Codex: lento en PRs grandes (6 min), sobreclasifica, y no emite findings
+  aunque los detecte. Antes de usarlo en serio hace falta un addendum más
+  fuerte sobre findings y granularidad, además del del diff grande.
+- Esto es una muestra de 3 PRs sin repetición; la adjudicación de calidad
+  por unidad y finding sigue siendo humana.
+
 ## Pendientes
 
 Lo que queda está en [integration.md](integration.md), sección "Pendientes para
-la integración": validación con PRs reales, selección de harness con UI, costo
-de Codex, prompt del diff grande para Codex, política de versiones.
+la integración".

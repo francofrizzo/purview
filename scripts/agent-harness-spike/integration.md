@@ -105,14 +105,22 @@ en [eval-results.md](eval-results.md), "Tercera tanda". Reportes en
 
 ## Pendientes para la integración
 
-1. **PRs reales.** Preparado y verificado sin modelo: copias privadas del estado
-   de tres PRs (chica, mediana con findings y commits nuevos arriba, grande),
-   una raíz por brazo, sin token LAN ni checkouts, con `managedCheckouts: false`
-   para que el run resuelva por sha el worktree gestionado existente y solo lo
-   lea. Falta correr: análisis fresco por brazo, refresh + incremental sobre la
-   mediana, una pregunta de chat, un draft, Stop y continuación; y la
-   adjudicación humana. Límite conocido: tras el refresh el incremental no
-   tendrá checkout al head nuevo (igual para los tres brazos).
+1. **PRs reales: corridas hechas, adjudicación humana pendiente.** Tres PRs,
+   tres brazos, análisis fresco + refresh/incremental + chat/draft/Stop, 15
+   corridas sin fallos de transporte ni permisos. Ver "PRs reales" en
+   [eval-results.md](eval-results.md). Lo que salió de ahí y hay que arreglar
+   antes de usar los adapters en serio:
+   - `claude-shared` verifica pero no emite findings en PRs grandes: reforzar
+     en el prompt de análisis que cada verificación con resultado se persista
+     como finding (`warning` o `note`), como ya hace en chat.
+   - `codex`: sobreclasifica (`core-logic` en markdown), duplica unidades y
+     tarda 6 min en una PR de 76 archivos; el addendum necesita granularidad
+     ("~30 unidades o menos", "docs de agentes son `docs`") y findings.
+   - Idioma: el prompt pide "the reader's language" y nada lo define; una línea
+     en el rubric del equipo o el overlay local lo fija para los tres.
+   - El protocolo de copias está en el scratch del operador (`prepare.mjs`,
+     `server.sh`, `drive.mjs`, `chat.mjs`); vale la pena moverlo a
+     `scripts/agent-harness-spike/realpr/` si se repite.
 2. **Selección de harness con UI.** Hoy entra por los selectores existentes solo
    con `PURVIEW_EXPERIMENTAL_HARNESSES=1`. Decidir si es global, por repo o por
    PR y persistirlo.
