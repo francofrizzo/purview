@@ -7,7 +7,6 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Findings link to their evidence.** Each place a finding cites that the diff shows opens there with a click; the fold under a unit's summary is now called Findings.
 - **Language follows the PR.** Units, findings and drafts are written in the language of the PR's description, unless your rubric names one; the chat answers in the language you write in.
 
 ## 2026.10.21.1
