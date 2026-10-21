@@ -93,3 +93,47 @@ hunks omitidos, evidencia, hallazgos útiles/falsos positivos, turns, tiempo y u
 Guardar sólo resultados sanitizados y conclusiones; no subir diffs, transcripts,
 comentarios privados, tokens o cuentas. Un grader verde no demuestra paridad de
 calidad: hace falta adjudicación humana. No activar esto por defecto todavía.
+
+## Validación Mac (2026-10-21)
+
+Hecha según esta guía, en un checkout separado, sin tocar el Purview en uso.
+Tests nativos 27/27; dry-run ok; `--runtime production` 10/12 en una repetición
+y 28/36 en tres. Todos los fallos son de formato en Claude (frase antes del
+JSON), ninguno de transporte, permisos ni contenido. Números, tablas y lectura
+en [eval-results.md](eval-results.md), "Tercera tanda". Reportes en
+`eval-reports/2026-10-21-mac-production-*.jsonl`.
+
+## Pendientes para la integración
+
+1. **PRs reales.** Preparado y verificado sin modelo: copias privadas del estado
+   de tres PRs (chica, mediana con findings y commits nuevos arriba, grande),
+   una raíz por brazo, sin token LAN ni checkouts, con `managedCheckouts: false`
+   para que el run resuelva por sha el worktree gestionado existente y solo lo
+   lea. Falta correr: análisis fresco por brazo, refresh + incremental sobre la
+   mediana, una pregunta de chat, un draft, Stop y continuación; y la
+   adjudicación humana. Límite conocido: tras el refresh el incremental no
+   tendrá checkout al head nuevo (igual para los tres brazos).
+2. **Selección de harness con UI.** Hoy entra por los selectores existentes solo
+   con `PURVIEW_EXPERIMENTAL_HARNESSES=1`. Decidir si es global, por repo o por
+   PR y persistirlo.
+3. **Costo de Codex.** El adapter devuelve tokens, no USD (`inputTokens`
+   incluye los cacheados). Tabla de precios o mostrar tokens.
+4. **Diff grande con Codex.** El addendum no evitó paginar todo el diff
+   (25 páginas, 2,3 M tokens, ~2 min). Hace falta una instrucción que lo lleve
+   al overview y a `search_code`, como hace Claude compartido con 4–5 llamadas.
+5. **Versiones: mínima más verificación de comportamiento, no pin exacto.**
+   No dependemos del modelo ni del formato de salida, pero sí de los flags que
+   forman el límite de permisos (`--tools ''`, `--restricted`,
+   `--setting-sources ""`, hooks y memoria apagados; en Codex las claves de
+   `features`, `permissions` y `mcp_servers`). Un flag ignorado en silencio por
+   una versión nueva daría shell al modelo sin aviso (ya pasó con `--safe-mode`,
+   que apaga el MCP explícito). Propuesta: exigir versión mínima y, al arrancar,
+   verificar conducta en vez de cadena de versión: en Claude, leer las
+   herramientas que el hijo anuncia en el evento `system` inicial y rechazar si
+   hay alguna que no sea `mcp__purview__*`; en Codex, seguir leyendo la
+   configuración efectiva por app-server antes del primer turno y rechazar si
+   shell, red o plugins quedaron activos. Una versión nueva que se comporta
+   igual pasa; una que no, falla con mensaje claro.
+6. **Huecos declarados**: sin handoff a terminal, sin editar drafts humanos, el
+   runner de producción no audita el resume (tiene test nativo aparte). Ninguno
+   bloquea el uso experimental.

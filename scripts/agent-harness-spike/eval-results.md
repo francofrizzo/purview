@@ -215,10 +215,88 @@ el primero, como documenta `eval.md`; no se suman.
   nombrar el importe viejo) además de la corrección. Si se quiere separar
   corrección de redacción, es una decisión de diseño del grader, no de esta tanda.
 
+
+## Tercera tanda (2026-10-21, misma Mac): `--runtime production`
+
+Misma máquina, mismos binarios (Claude 2.1.305 del SDK fijado, Codex 0.163.0
+nativo), mismo login de Claude y mismo store privado de Codex. Lo que cambia es
+el código bajo prueba: los adapters de `packages/server/src/agent/{claude-shared,codex}`
+y los prompts del producto (`review-tools/prompts.ts`), a través de
+`eval-production.mjs`. Los casos y graders son los mismos y no se tocaron. Por el
+cambio de prompts, estos números no son comparables a las tandas anteriores como
+si solo hubiera cambiado el harness.
+
+Preparación verificada antes de gastar cuota: `pnpm install --frozen-lockfile`,
+builds de core y server, `npm ci` del spike; tests nativos de los tres adapters
+con transporte determinista local, 27/27; dry-run del plan, exit 0.
+
+Reportes: `eval-reports/2026-10-21-mac-production-rep1-12.jsonl` (una
+repetición, 10/12) y `eval-reports/2026-10-21-mac-production-rep2-4-36.jsonl`
+(tres repeticiones, 28/36). Se corrieron en serie, nunca en paralelo. El runner
+de producción registra operaciones intentadas, no auditadas: `permissionDenials`
+y `toolErrors` quedan en `null` (desconocido), no en cero.
+
+### Clasificación de fallos (48 corridas)
+
+| Tipo | Corridas | Detalle |
+| --- | --- | --- |
+| Transporte | 0 | ningún `harness_failed_or_timed_out` |
+| Permisos | 0 | ninguna operación fuera de la allowlist; ningún intento de shell |
+| Formato | 10 | Claude antepone una frase ("41 + 9·7 = 104") al JSON pedido; `answerObject` no parsea. 8 en `code-investigation` (baseline 4, shared 4), 2 en `large-diff-read` (baseline 1, shared 1) |
+| Contenido | 0 | las respuestas con JSON parseable fueron todas correctas |
+
+El fallo de formato es el mismo de la primera tanda, ahora en los dos brazos de
+Claude por igual: no lo introduce la superficie compartida. Codex no lo tiene.
+
+### Por caso, tres repeticiones (pass / wall s / operaciones)
+
+| Caso | `claude-baseline` | `claude-shared` | `codex-shared` |
+| --- | --- | --- | --- |
+| `code-investigation` | 0/3 · 6–8 s · 0 | 0/3 · 6–10 s · 4 | 3/3 · 10–13 s · 3–4 |
+| `draft-comment` | 3/3 · 7–10 s · 0 | 3/3 · 5–7 s · 2–3 | 3/3 · 9–10 s · 2 |
+| `initial-analysis` | 3/3 · 18–21 s · 0 | 3/3 · 10–16 s · 6 | 3/3 · 25–30 s · 7–8 |
+| `large-diff-read` | 2/3 · 10–21 s · 0 | 2/3 · 9–16 s · 4–5 | 3/3 · 109–124 s · 27 |
+
+Baseline no expone operaciones: usa Bash y `reviewer-state`, que el runner de
+producción no observa. Los ceros son "no observable", no "no hizo nada".
+
+### Costo y uso (Claude: `claude-sonnet-5-5`, Codex: `gpt-6.1-sol`, effort medium)
+
+Por repetición completa de los cuatro casos, promedio de las tres:
+
+| Brazo | USD | Wall |
+| --- | --- | --- |
+| `claude-baseline` | 0,146 | 50 s |
+| `claude-shared` | 0,065 | 41 s |
+| `codex-shared` | sin costo reportado | 165 s |
+
+El compartido de Claude cuesta menos de la mitad del baseline en los cuatro
+casos (por ejemplo `initial-analysis`: 0,025 contra 0,046 USD) con 5–7 turnos
+contra 3–5: menos contexto por turno porque no carga la skill ni el CLI.
+
+Codex solo devuelve tokens; `inputTokens` incluye los cacheados:
+
+| Caso | Codex input / cacheados / output |
+| --- | --- |
+| `code-investigation` | 58–75 k / 24–33 k / ~0,1 k |
+| `draft-comment` | 33–41 k / 8–16 k / ~0,1 k |
+| `initial-analysis` | 122–149 k / 51–69 k / ~2 k |
+| `large-diff-read` | 2,3 M / 2,2 M / ~0,2 k |
+
+### Lectura
+
+- La integración funciona de punta a punta con el código del producto: los
+  tres brazos completan análisis, draft e investigación con prompts reales.
+- `large-diff-read` con Codex sigue igual que en el prototipo: una página por
+  defecto y después 25 páginas de 100 hunks, 2,3 M tokens, ~2 minutos. El
+  addendum `[Purview Codex adaptation]` no cambió esa conducta. Claude
+  compartido resuelve el mismo caso con 4–5 operaciones leyendo el overview y
+  buscando. Es un problema de prompt para Codex, no de la superficie.
+- El spike del formato (frase antes del JSON) es irrelevante para el producto:
+  ahí nadie pide JSON al modelo. Se conserva porque el grader es el histórico.
+
 ## Pendientes
 
-- Casos optativos y `codex-shared`: corridos en la segunda tanda (arriba).
-- `large-diff-read` con Codex a 2–3 minutos: medir con `--timeout-ms` mayor o
-  con una instrucción que permita buscar en vez de paginar todo.
-- Ejemplos de reviews reales con protocolo acordado; estos casos son sintéticos
-  y dirigidos.
+Lo que queda está en [integration.md](integration.md), sección "Pendientes para
+la integración": validación con PRs reales, selección de harness con UI, costo
+de Codex, prompt del diff grande para Codex, política de versiones.
