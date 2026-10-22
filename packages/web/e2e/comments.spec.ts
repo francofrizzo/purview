@@ -150,3 +150,22 @@ test("a delete the server refuses says so under that card", async ({ page }) => 
   await expect(card.getByTestId(`comment-error-${id}`)).toContainText("Not deleted: comments.json is read-only");
   await expect(card).toBeVisible();
 });
+
+test("the emoji button searches by name and puts the pick at the caret, leaving the composer open", async ({ page }) => {
+  await openComposerOnLine(page, 10);
+  const textarea = page.getByTestId("composer-textarea");
+  await textarea.fill("ship it ");
+  await page.getByTestId("composer-format-emoji").click();
+  const search = page.getByTestId("composer-format-emoji-search");
+  await expect(search).toBeFocused();
+  await search.fill("rocket");
+  await expect(page.getByTestId("composer-format-emoji-pick-rocket")).toBeVisible();
+  await search.press("Enter");
+  await expect(textarea).toHaveValue("ship it 🚀");
+  await expect(page.getByTestId("composer-format-emoji-search")).toHaveCount(0);
+  // Escape in the search box closes the panel only; the composer stays.
+  await page.getByTestId("composer-format-emoji").click();
+  await page.getByTestId("composer-format-emoji-search").press("Escape");
+  await expect(page.getByTestId("composer-format-emoji-search")).toHaveCount(0);
+  await expect(page.getByTestId("comment-composer")).toBeVisible();
+});

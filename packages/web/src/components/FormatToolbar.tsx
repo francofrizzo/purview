@@ -30,6 +30,7 @@ import {
   type TextEdit,
 } from "../lib/composerFormat";
 import { insertSuggestion, type SuggestionSource } from "../lib/suggestion";
+import { EmojiPicker } from "./EmojiPicker";
 
 /**
  * Markdown formatting for a comment textarea: the toolbar's buttons and the
@@ -39,6 +40,8 @@ import { insertSuggestion, type SuggestionSource } from "../lib/suggestion";
  */
 export interface ComposerFormat {
   apply: (action: FormatAction) => void;
+  /** put text at the caret (over the selection), caret after it */
+  insert: (text: string) => void;
   /** "suggest a change": the lines it starts from, or why it is off; absent when the editor has no anchor */
   suggestion?: SuggestionSource;
   /** the textarea's keydown: true when the key was a formatting chord or a list Enter (and handled) */
@@ -92,6 +95,11 @@ export function useComposerFormat({
 
   return {
     apply: (action) => run(body, action),
+    insert: (text) => {
+      const { start, end } = selection();
+      const at = start + text.length;
+      commit({ text: body.slice(0, start) + text + body.slice(end), start: at, end: at });
+    },
     suggestion,
     onKeyDown: (e) => {
       // Enter continues a list; ⇧↵ and the ⌘↵ family (save, ask chat) are not ours.
@@ -170,6 +178,7 @@ export function FormatToolbar({
           </ToolButton>
         );
       })}
+      <EmojiPicker onPick={fmt.insert} disabled={disabled} testId={`${testId}-emoji`} />
       {suggest ? (
         <>
           <span aria-hidden className="mx-1 h-3 w-px flex-none" style={{ background: "var(--border)" }} />
