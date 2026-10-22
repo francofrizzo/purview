@@ -28,22 +28,60 @@ import { IconArrowDown, IconBolt, IconCheck, IconEye, IconWarning, IconWeight, R
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
 // distinguishable — and coherent with the syntax colors — on every theme.
-const KIND_STYLE: Record<Kind, { label: string; color: string; bg: string }> = {
-  "core-logic": { label: "core", color: "var(--kind-core)", bg: "var(--kind-core-soft)" },
-  "connective-tissue": { label: "glue", color: "var(--kind-glue)", bg: "var(--kind-glue-soft)" },
-  wiring: { label: "wiring", color: "var(--kind-wiring)", bg: "var(--kind-wiring-soft)" },
-  ripple: { label: "ripple", color: "var(--kind-ripple)", bg: "var(--kind-ripple-soft)" },
-  tests: { label: "tests", color: "var(--kind-tests)", bg: "var(--kind-tests-soft)" },
-  docs: { label: "docs", color: "var(--kind-docs)", bg: "var(--kind-docs-soft)" },
+const KIND_STYLE: Record<Kind, { label: string; color: string; bg: string; tip: string }> = {
+  "core-logic": {
+    label: "core",
+    color: "var(--kind-core)",
+    bg: "var(--kind-core-soft)",
+    tip: "Core logic: what the system decides or does. Wrong here means wrong behavior.",
+  },
+  "connective-tissue": {
+    label: "glue",
+    color: "var(--kind-glue)",
+    bg: "var(--kind-glue-soft)",
+    tip: "Connective tissue: glue that makes a small decision while connecting two things, like a mapper with a branch or an adapter.",
+  },
+  wiring: {
+    label: "wiring",
+    color: "var(--kind-wiring)",
+    bg: "var(--kind-wiring-soft)",
+    tip: "Wiring: mechanical connection with no decisions, like registrations, exports and config values.",
+  },
+  ripple: {
+    label: "ripple",
+    color: "var(--kind-ripple)",
+    bg: "var(--kind-ripple-soft)",
+    tip: "Ripple: fallout of another change in this PR, like renamed call sites, a parameter threaded through or moved imports.",
+  },
+  tests: { label: "tests", color: "var(--kind-tests)", bg: "var(--kind-tests-soft)", tip: "Tests, fixtures and evals." },
+  docs: { label: "docs", color: "var(--kind-docs)", bg: "var(--kind-docs-soft)", tip: "Docs and comment-only changes." },
 };
 
 const ATTENTION_STYLE: Record<
   Attention,
-  { label: string; color: string; bg: string; icon: (p: { width: number; height: number }) => JSX.Element }
+  { label: string; color: string; bg: string; icon: (p: { width: number; height: number }) => JSX.Element; tip: string }
 > = {
-  "must-read": { label: "must-read", color: "var(--risk)", bg: "var(--risk-soft)", icon: IconWarning },
-  skim: { label: "skim", color: "var(--warn)", bg: "var(--warn-soft)", icon: IconEye },
-  skip: { label: "skip", color: "var(--kind-wiring)", bg: "var(--kind-wiring-soft)", icon: IconArrowDown },
+  "must-read": {
+    label: "must-read",
+    color: "var(--risk)",
+    bg: "var(--risk-soft)",
+    icon: IconWarning,
+    tip: "Must-read: getting this wrong breaks something, or it encodes a decision you have to validate.",
+  },
+  skim: {
+    label: "skim",
+    color: "var(--warn)",
+    bg: "var(--warn-soft)",
+    icon: IconEye,
+    tip: "Skim: check the shape is right without tracing the logic.",
+  },
+  skip: {
+    label: "skip",
+    color: "var(--kind-wiring)",
+    bg: "var(--kind-wiring-soft)",
+    icon: IconArrowDown,
+    tip: "Skip: mechanical and correct by construction.",
+  },
 };
 
 /**
@@ -218,7 +256,7 @@ export function StackedOnChip({ link }: { link: StackedOnLink | null }) {
 export function KindChip({ kind }: { kind: Kind }) {
   const s = KIND_STYLE[kind] ?? KIND_STYLE.wiring;
   return (
-    <span className="chip" style={{ color: s.color, background: s.bg }} data-tip={kind}>
+    <span className="chip" style={{ color: s.color, background: s.bg }} data-tip={s.tip}>
       {s.label}
     </span>
   );
@@ -227,7 +265,7 @@ export function KindChip({ kind }: { kind: Kind }) {
 export function AttentionChip({ attention }: { attention: Attention }) {
   const s = ATTENTION_STYLE[attention] ?? ATTENTION_STYLE.skim;
   return (
-    <span className="chip" style={{ color: s.color, background: s.bg }} data-attention={attention}>
+    <span className="chip" style={{ color: s.color, background: s.bg }} data-attention={attention} data-tip={s.tip}>
       <s.icon width={10} height={10} />
       {s.label}
     </span>
