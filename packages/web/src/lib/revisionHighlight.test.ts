@@ -13,6 +13,7 @@ import {
   removalMarks,
   removalMarksByHunk,
   revisionsLabel,
+  changedUnitIds,
   splitRemovalMarks,
 } from "./revisionHighlight";
 
@@ -348,5 +349,20 @@ describe("several revisions at once", () => {
     expect(highlightSummaryText([3], buildHighlight(r3, { hunkIds: ["zz"] }), null)).toBe(
       "Showing changes from r3 · none in this unit's current hunks",
     );
+  });
+});
+
+describe("changedUnitIds", () => {
+  it("names the units holding a hunk the revisions changed or emptied, and no others", () => {
+    const data = [
+      { revision: 3, currentRevision: 4, hunks: [{ currentHunkId: "h1", lines: [2], removedCount: 0 }], goneCount: 0, gone: [] },
+      { revision: 4, currentRevision: 4, hunks: [{ currentHunkId: "h3", lines: [], removedCount: 0 }], goneCount: 1, gone: [{ unitId: "u3" }] },
+    ] as never;
+    const units = [
+      { id: "u1", hunks: [{ id: "h1" }, { id: "h2" }] },
+      { id: "u2", hunks: [{ id: "h3" }] },
+      { id: "u3", hunks: [{ id: "h4" }] },
+    ];
+    expect([...changedUnitIds(data, units)]).toEqual(["u1", "u3"]);
   });
 });

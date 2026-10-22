@@ -82,7 +82,7 @@ export function RevisionMenu({
           anchorRef={wrapRef}
           onClose={close}
           label={`Revision ${state.revision}`}
-          className="w-72 p-2.5 text-xs"
+          className="w-[26rem] p-2.5 text-xs"
         >
           <div style={{ color: "var(--fg)" }}>
             Revision {state.revision}
@@ -113,6 +113,7 @@ export function RevisionMenu({
                   const summary = summaryOf(r.revision);
                   return (
                     <li key={r.revision} data-testid={`revision-row-${r.revision}`}>
+                      <span className="flex items-center gap-1.5">
                       {onToggleHighlight ? (
                         <button
                           type="button"
@@ -137,6 +138,17 @@ export function RevisionMenu({
                           r{r.revision}
                         </span>
                       )}
+                      {r.addedAt ? (
+                        <span
+                          className="text-2xs"
+                          style={{ color: "var(--fg-faint)" }}
+                          data-testid={`revision-when-${r.revision}`}
+                          data-tip={formatFullTimestamp(r.addedAt)}
+                        >
+                          {formatAddedAt(r.addedAt)}
+                        </span>
+                      ) : null}
+                      </span>
                       {summary ? (
                         // One muted line under the revision: what it changed across the PR.
                         <div

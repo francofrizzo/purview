@@ -148,9 +148,10 @@ first three as "carried".
 
 4. **Summarize the revision.** Once the batch lands, record what *this revision* changed
    across the PR as a whole, once:
-   `reviewer-state set-revision-summary <key> --text "<one or two sentences>"`.
-   Write it for the reader: the behavior that moved, not the bookkeeping, and no file paths
-   unless they are the point (`"stop timeout constant moved to shared.go; queue mapping
+   `reviewer-state set-revision-summary <key> --text "<one sentence>"`.
+   One sentence, 25 words at most: it sits in a list with every other revision's. Write it
+   for the reader: the behavior that moved, not the bookkeeping or the test plumbing, and no
+   file paths unless they are the point (`"stop timeout constant moved to shared.go; queue mapping
    failure model moved to models/communication.go"`). It replaces an earlier summary of the
    same revision; `changes` and `report` say when the revision has none. Revision 1 takes
    none (the PR summary covers it).

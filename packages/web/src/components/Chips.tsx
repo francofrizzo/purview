@@ -303,13 +303,13 @@ export function RiskFlags({ flags, compact }: { flags: RiskFlag[]; compact?: boo
   );
 }
 
-export function ChangedBadge({ count, onClick }: { count?: number; onClick?: () => void }) {
-  const content = count && count > 1 ? `changed ×${count}` : "changed";
+export function ChangedBadge({ tip, testId, onClick }: { tip?: string; testId?: string; onClick?: () => void }) {
+  const content = "changed";
   const cls = "chip";
   const style = { color: "var(--warn)", background: "var(--warn-soft)" };
   if (!onClick) {
     return (
-      <span className={cls} style={style} data-tip="Changed since you viewed it">
+      <span className={cls} style={style} data-testid={testId} data-tip={tip ?? "Changed since you viewed it"}>
         {content}
       </span>
     );

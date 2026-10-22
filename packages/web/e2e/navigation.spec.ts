@@ -98,6 +98,8 @@ test("the revision menu lights up what a revision changed", async ({ page }) => 
   await expect(r3).toHaveAttribute("aria-pressed", "false");
   await r3.click();
   await expect(page.getByTestId("highlight-summary")).toBeVisible();
+  // The sidebar marks the units that revision touched.
+  await expect(page.locator('[data-testid^="unit-changed-"]').first()).toHaveAttribute("data-tip", "Changed in r3");
   // The menu may have closed on the scroll the highlight caused; reopened, it shows r3 on.
   const menu = page.getByTestId("revision-menu");
   if ((await menu.getAttribute("aria-expanded")) !== "true") await menu.click();

@@ -124,6 +124,7 @@ import { unitForHunk } from "../lib/diffSearch";
 import { codeLinker, hunkAtLine } from "../lib/codeLinks";
 import {
   buildHighlight,
+  changedUnitIds,
   highlightSummaryText,
   revisionsLabel,
   type RevisionHighlight,
@@ -675,6 +676,14 @@ export function PrView() {
     if (!highlightActive || !selectedUnit || !lineChanges.data) return null;
     return buildHighlight(lineChanges.data, { hunkIds: hunkIdsOf(selectedUnit), unitId: selectedUnit.id });
   }, [highlightActive, selectedUnit, lineChanges.data]);
+  // The sidebar's "changed" badge: the units those revisions touched.
+  const changedUnits = useMemo(
+    () =>
+      highlightActive && lineChanges.data
+        ? { ids: changedUnitIds(lineChanges.data, units), tip: `Changed in ${revisionsLabel(highlightRevisions, " + ")}` }
+        : undefined,
+    [highlightActive, lineChanges.data, units, highlightRevisions],
+  );
 
   // The composer's auto-attach chip follows whatever unit is in context; the
   // files tab has no such concept, so it sees null and shows nothing.
@@ -1386,6 +1395,7 @@ export function PrView() {
               onQuote={quote}
               matchCounts={unitMatchCounts}
               onlyUnitIds={sinceUnitIds}
+              changedUnits={changedUnits}
             />
           </CodeLinkContext.Provider>
         ) : (
@@ -1849,7 +1859,7 @@ export function PrView() {
                     <AttentionChip attention={selectedUnit.attention} />
                   ) : null}
                   <RiskFlags flags={selectedUnit.riskFlags} />
-                  {progress && progress.changed > 0 ? <ChangedBadge count={progress.changed} /> : null}
+                  {changedUnits?.ids.has(selectedUnit.id) ? <ChangedBadge tip={changedUnits.tip} /> : null}
                   {/* Collapsed, the findings list is gone — the badge is what
                       keeps a warning from disappearing with it. */}
                   {headerCollapsed ? <FindingsBadge unit={selectedUnit} /> : null}

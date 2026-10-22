@@ -266,9 +266,9 @@ export function changesBlock(cmd: string, keyStr: string): string {
     "(`addHunks`/`removeHunkIds` attach, move or re-label a hunk without resending the unit's list). It prints",
     "what is left; there is no need to run `report` afterwards.",
     `REVISION SUMMARY: after the patches land, run \`${cmd} set-revision-summary ${keyStr} --text "<summary>"\` once`,
-    "(MIGRATION-NOTES.md step 4): one or two sentences on what this revision changed across the PR as a whole,",
-    "in the reader's language — the behavior that moved, not the bookkeeping; file paths only when they are the",
-    "point (\"the stop timeout moved to shared.go\"). Then stop.",
+    "(MIGRATION-NOTES.md step 4): ONE sentence, 25 words at most, on what this revision changed across the PR",
+    "as a whole, in the reader's language — the behavior that moved, not the bookkeeping or the test plumbing;",
+    "file paths only when they are the point (\"the stop timeout moved to shared.go\"). Then stop.",
   ].join("\n");
 }
 

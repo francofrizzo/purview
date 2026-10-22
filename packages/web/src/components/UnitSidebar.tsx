@@ -33,6 +33,7 @@ export function UnitSidebar({
   onQuote,
   matchCounts,
   onlyUnitIds,
+  changedUnits,
 }: {
   detail: PrDetail;
   selectedUnitId: string | null;
@@ -43,6 +44,8 @@ export function UnitSidebar({
   matchCounts?: Map<string, number>;
   /** list only these units (the "since your review" filter); numbers stay as without it */
   onlyUnitIds?: ReadonlySet<string>;
+  /** units the highlighted revisions changed, with the tip saying which */
+  changedUnits?: { ids: ReadonlySet<string>; tip: string };
 }) {
   const [open, setOpen] = useState<Record<Attention, boolean>>({
     "must-read": true,
@@ -198,6 +201,7 @@ export function UnitSidebar({
                     onReclassify={(patch) => onReclassify(u.id, patch)}
                     onQuote={onQuote ? () => onQuote({ kind: "unit", id: u.id }) : undefined}
                     matches={matchCounts?.get(u.id)}
+                    changedTip={changedUnits?.ids.has(u.id) ? changedUnits.tip : undefined}
                   />
                 ))}
               </ul>
@@ -356,6 +360,7 @@ function UnitRow({
   onReclassify,
   onQuote,
   matches,
+  changedTip,
 }: {
   detail: PrDetail;
   unit: ReviewUnit;
@@ -365,6 +370,8 @@ function UnitRow({
   onReclassify: (patch: Partial<ReviewUnit>) => void;
   onQuote?: () => void;
   matches?: number;
+  /** set when the highlighted revisions touched this unit: the badge's tip */
+  changedTip?: string;
 }) {
   const [popover, setPopover] = useState(false);
   const p = unitProgress(detail, unit);
@@ -420,7 +427,7 @@ function UnitRow({
           {/* The generated unit's kind is a placeholder, not a judgment. */}
           {unit.kind !== "core-logic" && !generated ? <KindChip kind={unit.kind} /> : null}
           <RiskFlags flags={unit.riskFlags} compact />
-          {p.changed > 0 ? <ChangedBadge count={p.changed} /> : null}
+          {changedTip ? <ChangedBadge tip={changedTip} testId={`unit-changed-${unit.id}`} /> : null}
           {heartOf(unit).length ? (
             <span
               className="inline-flex items-center gap-0.5 text-2xs tabular-nums"

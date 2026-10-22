@@ -392,3 +392,23 @@ export function highlightTally(h: RevisionHighlight): { lines: number; hunks: nu
 export function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
+
+/**
+ * The units the highlighted revisions touched: any unit holding a hunk those
+ * revisions changed, or whose hunk they emptied out. The sidebar marks these so
+ * the reader knows where to look before opening each unit.
+ */
+export function changedUnitIds(
+  data: readonly RevisionLineChanges[],
+  units: readonly { id: string; hunks: readonly { id: string }[] }[],
+): Set<string> {
+  const hunks = new Set<string>();
+  for (const d of data) {
+    for (const h of d.hunks) if (h.lines.length || h.removedCount) hunks.add(h.currentHunkId);
+  }
+  const out = new Set<string>();
+  for (const u of units) if (u.hunks.some((h) => hunks.has(h.id))) out.add(u.id);
+  // A hunk the revisions emptied out is gone from the diff; its unit still changed.
+  for (const d of data) for (const g of d.gone ?? []) if (g.unitId) out.add(g.unitId);
+  return out;
+}
