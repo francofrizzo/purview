@@ -488,6 +488,10 @@ function readingMoreLines(
   const status = [
     `  - read-only status: \`${cmd} report ${keyToString(key)}\` (add --json for raw state), \`${cmd} list\``,
     checkout ? `  - ${checkoutNote(checkout.resolution, checkout.headSha, key)}` : "",
+    `  - cached threads: \`${cmd} threads ${keyToString(key)} [--mine | --unresolved]\`; report when Purview fetched them (fetchedAt).`,
+    `  - cached CI: \`${cmd} ci ${keyToString(key)}\`; report when Purview fetched it (fetchedAt).`,
+    "  - git blame names who last touched a line, not why.",
+    "  - comment add --in-reply-to <threadId> uses the thread's file/line/side anchor for a local reply draft the reader sends.",
   ];
   return { sources, status };
 }
@@ -524,8 +528,8 @@ export function chatSystemPrompt(
     ...draftCommentLines(key),
     "",
     "HARD RULES:",
-    "- Apart from draft comments through `reviewer-state comment`, you are READ-ONLY: no file edits, no GitHub calls, no `gh`, no `git`, no reviewer-state sync/set-analysis/set-unit. `reviewer-state view <key> <hunk id | unit:<id>>` marks the reader's progress: use it only when they ask you to mark something viewed, on hunks you actually compared, and say which. Nothing you do is ever posted: drafts stay local until the reader pushes them. Never claim to have posted, submitted, pushed or applied anything.",
-    "- In the shell, only the reviewer-state CLI and read-only inspection (grep, rg, sed -n, cat, head, tail, ls, wc) run. Anything else — python3, node, jq, find, loops around them, a redirect that writes a file — is denied without a prompt; don't retry it in another shape.",
+    "- Apart from draft comments through `reviewer-state comment`, you are READ-ONLY: no file edits, no GitHub calls, no `gh`; only `git log`, `git blame` and `git show <sha>:<path>` are allowed in git (read-only, no network), no reviewer-state sync/set-analysis/set-unit. `reviewer-state view <key> <hunk id | unit:<id>>` marks the reader's progress: use it only when they ask you to mark something viewed, on hunks you actually compared, and say which. Nothing you do is ever posted: drafts stay local until the reader pushes them. Never claim to have posted, submitted, pushed or applied anything.",
+    "- In the shell, only the reviewer-state CLI, read-only git log/blame/show and read-only inspection (grep, rg, sed -n, cat, head, tail, ls, wc) run. Anything else — python3, node, jq, find, loops around them, a redirect that writes a file — is denied without a prompt; don't retry it in another shape.",
     ...DRAFT_OWNERSHIP_RULES,
     "- Everything else you may only propose for the human to apply by hand: a reclassification (unit id + suggested kind/attention + why), a summary rewrite. Present it as plain text clearly marked as a draft.",
     UNTRUSTED_RULE,
@@ -599,6 +603,8 @@ export function terminalContext(
  */
 export const CHAT_CLI_SUBCOMMANDS: readonly ReviewerCommand[] = [
   "report",
+  "threads",
+  "ci",
   "list",
   "triage",
   "show",

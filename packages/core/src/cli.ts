@@ -2,6 +2,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { cachedThreads, cachedCi } from "./review-cache.js";
 import { Command } from "commander";
 import {
   parseKey,
@@ -229,6 +230,17 @@ program
     }
     console.log("Nothing on GitHub was changed.");
   });
+
+program.command("threads").argument("<key>")
+  .option("--mine", "threads containing your comments")
+  .option("--unresolved", "unresolved threads")
+  .description("read cached GitHub threads and reviews without fetching")
+  .action((key: string, opts: { mine?: boolean; unresolved?: boolean }) => {
+    if (opts.mine && opts.unresolved) throw new Error("Choose --mine or --unresolved");
+    console.log(JSON.stringify(cachedThreads(parseKey(key), opts.mine ? "mine" : opts.unresolved ? "unresolved" : "all"), null, 2));
+  });
+program.command("ci").argument("<key>").description("read cached CI status without fetching")
+  .action((key: string) => console.log(JSON.stringify(cachedCi(parseKey(key)), null, 2)));
 
 program
   .command("report")
@@ -748,6 +760,7 @@ comment
   .option("--line <n>", "line number on --side (new side by default); the last line of a range")
   .option("--start-line <n>", "first line of a multi-line comment (covers start-line..line, same hunk)")
   .option("--side <RIGHT|LEFT>", "RIGHT = the new version (default), LEFT = the old one")
+  .option("--in-reply-to <threadId>", "draft a reply anchored to a GitHub thread")
   .option("--whole-file", "comment on the file as a whole instead of a line")
   .option(
     "--for <github|agent>",
@@ -765,13 +778,14 @@ comment
         startLine?: string;
         side?: string;
         wholeFile?: boolean;
+        inReplyTo?: string;
         for?: string;
         body?: string;
         bodyFile?: string;
       },
     ) => {
       const key = parseKey(keyArg);
-      const payload = { ...newCommentPayload(opts), body: resolveBody(opts, readBodyFile) };
+      const payload = { ...newCommentPayload(opts), ...(opts.inReplyTo ? { inReplyTo: opts.inReplyTo, audience: "github" } : {}), body: resolveBody(opts, readBodyFile) };
       const { comment: created } = await callServer<{ comment: ServerComment }>(
         "POST",
         commentsUrl(serverBaseUrl(), key),

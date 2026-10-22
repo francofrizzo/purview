@@ -21,7 +21,7 @@ function deniedReviewerCommands(cli: string, allowed: readonly ReviewerCommand[]
   return REVIEWER_COMMANDS.filter((sub) => !allowed.includes(sub)).map((sub) => `Bash(${cli} ${sub}:*)`);
 }
 
-/** Network and version control: denied for every task. */
+/** Analysis denies version control entirely; chat grants only local reads. */
 const NETWORK_DENIALS = ["Bash(gh:*)", "Bash(git:*)", "Bash(curl:*)", "Bash(wget:*)"];
 
 /**
@@ -133,11 +133,18 @@ export function chatPolicy(
       "Grep",
       ...task.reviewerCommands.map((sub) => `Bash(${cli} ${sub}:*)`),
       ...INSPECTION_ALLOWS,
+      "Bash(git log:*)",
+      "Bash(git blame:*)",
+      "Bash(git show *:*)",
     ],
     disallowedTools: [
       ...deniedReviewerCommands(cli, task.reviewerCommands),
       ...INSPECTION_DENIALS,
-      ...NETWORK_DENIALS,
+      ...NETWORK_DENIALS.filter(rule => rule !== "Bash(git:*)"),
+      // These flags turn an otherwise local read into a write or external program.
+      "Bash(git * --output*)",
+      "Bash(git * --ext-diff*)",
+      "Bash(git * --textconv*)",
       "Write",
       "Edit",
       "NotebookEdit",

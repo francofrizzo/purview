@@ -2,11 +2,13 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { execFileSync, spawn } from "node:child_process";
+import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import { serve, type ServerType } from "@hono/node-server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import { loadState, keyToString, writeRevision, appendEvent, parseDiff, toRevisionFiles } from "@reviewer/core";
+import { prDir, readMeta, writeMeta, loadState, keyToString, writeRevision, appendEvent, parseDiff, toRevisionFiles } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { readComments, readDeletedComments, addComment } from "../src/comments.js";
 import { createReviewOperations } from "../src/agent/review-tools/operations.js";
@@ -127,6 +129,17 @@ it("creates, edits and trashes drafts through the real server, preserving bounda
   app = createApp({ stateDir: root, port, webDist: path.join(root, "no-web"), autoAnalyze: false, reviewRequestRefresh: false, updateChecker: false });
   const ops = createReviewOperations(request("chat", { serverUrl: `http://127.0.0.1:${port}` }), "codex");
   const result = await ops.execute("create_draft", { file: "src/foo.ts", subjectType: "line", line: 2, body: "Check new2", audience: "agent" }) as any;
+  const reply = await ops.execute("create_draft", { file: "src/foo.ts", line: 900, side: "LEFT", body: "Reply on an outdated thread", inReplyTo: "thread-1" }) as any;
+  expect(reply.comment).toMatchObject({ inReplyTo: "thread-1", line: 900, side: "LEFT", audience: "github", status: "draft" });
+  await ops.execute("delete_draft", { id: reply.comment.id });
+  await promisify(execFile)(process.execPath, [fileURLToPath(new URL("../../core/dist/cli.js", import.meta.url)),
+    "comment", "add", keyToString(key), "--file", "src/foo.ts", "--line", "901", "--side", "LEFT",
+    "--in-reply-to", "thread-cli", "--body", "CLI reply"], {
+    env: { ...process.env, REVIEWER_STATE_DIR: root, PURVIEW_SERVER_URL: `http://127.0.0.1:${port}`, PURVIEW_ACTOR: "chat", PURVIEW_AGENT: "codex" },
+  });
+  const cliReply = readComments(key, root).find(c => c.inReplyTo === "thread-cli")!;
+  expect(cliReply).toMatchObject({ status: "draft", audience: "github", line: 901, side: "LEFT" });
+  await ops.execute("delete_draft", { id: cliReply.id });
   const id = result.comment.id;
   expect(readComments(key, root)).toContainEqual(expect.objectContaining({ id, author: { agent: "codex" }, audience: "agent", status: "draft", line: 2 }));
   await ops.execute("edit_draft", { id, body: "Rechecked new2" });
@@ -208,3 +221,54 @@ it.skipIf(!process.env.PURVIEW_TEST_CODEX_BIN)("native Codex reads shared HTTP t
     expect(api.requests.length).toBeGreaterThanOrEqual(4);
   } finally { setCodexSpawner(null); vi.unstubAllEnvs(); await api.close(); }
 }, 70000);
+
+
+it("reads cached threads with filters, truncation and independent review pagination", async () => {
+  const ops = createReviewOperations(request("chat"), "test");
+  expect(await ops.execute("list_threads")).toMatchObject({ error: "no_threads_cache", items: [] });
+  const author = { login: "reader", bot: false };
+  const thread = { id: "thread-1", path: "src/foo.ts", line: 2, isResolved: false, isOutdated: true,
+    comments: [{ author, isMine: true, createdAt: "yesterday", body: "x".repeat(601) }] };
+  fs.writeFileSync(path.join(prDir(key, root), "threads.json"), JSON.stringify({ fetchedAt: "today",
+    threads: [thread, { ...thread, id: "thread-2", path: "else.ts", isResolved: true, comments: [] }],
+    reviews: [1, 2].map(n => ({ author, state: "APPROVED", submittedAt: String(n), body: "fine" })) }));
+  const first = await ops.execute("list_threads", { limit: 1 }) as any;
+  expect(first).toMatchObject({ fetchedAt: "today", total: 2, reviews: { total: 2 } });
+  expect(first.items[0]).toMatchObject({ outdated: true, authorKinds: ["human"], comments: [{ author: "reader", isMine: true, body: "x".repeat(600), truncated: true }] });
+  const next = await ops.execute("list_threads", { limit: 1, cursor: first.nextCursor }) as any;
+  expect(next.items[0].id).toBe("thread-2");
+  const reviewNext = await ops.execute("list_threads", { limit: 1, reviewsCursor: first.reviews.nextCursor }) as any;
+  expect(reviewNext.reviews.items[0].submittedAt).toBe("2");
+  for (const only of ["mine", "unresolved"]) {
+    const result = await ops.execute("list_threads", { only }) as any;
+    expect(result.total).toBe(1);
+    expect(result.reviews).toBeUndefined();
+  }
+  expect(await ops.execute("list_threads", { path: "else.ts" })).toMatchObject({ total: 1 });
+  await expect(ops.execute("list_threads", { only: "mine", cursor: first.nextCursor })).rejects.toMatchObject({ code: "stale_cursor" });
+});
+
+it("reads CI only from meta and reports unavailable run details honestly", async () => {
+  const ops = createReviewOperations(request("chat"), "test");
+  expect(await ops.execute("ci_status")).toMatchObject({ error: "no_ci_cache", checks: [] });
+  writeMeta(key, { ...readMeta(key, root), ci: { state: "failure", checkedAt: "today", headSha: "head",
+    checks: [{ name: "Tests", state: "failure", url: "https://example.com/run" }] } }, root);
+  expect(await ops.execute("ci_status")).toEqual({ state: "failure", fetchedAt: "today", headSha: "head",
+    checks: [{ name: "Tests", state: "failure", url: "https://example.com/run", conclusion: null, startedAt: null, completedAt: null }] });
+});
+
+it("blames actual local lines, reuses commit metadata and validates ranges and paths", async () => {
+  execFileSync("git", ["-C", checkout, "-c", "user.name=Reviewer", "-c", "user.email=reviewer@example.com", "-c", "commit.gpgsign=false", "commit", "-qm", "Initial lines"]);
+  const ops = createReviewOperations(request("chat"), "test");
+  const result = await ops.execute("blame", { path: "src/foo.ts", start: 1, end: 3 }) as any;
+  expect(result.rows).toHaveLength(3);
+  expect(result.rows.map((r: any) => r.line)).toEqual([1, 2, 3]);
+  for (const row of result.rows) expect(row).toMatchObject({ author: "Reviewer", summary: "Initial lines", date: expect.stringMatching(/^\d{4}-/), sha: result.rows[0].sha });
+  for (const range of [{ start: 0, end: 2 }, { start: 3, end: 2 }, { start: 1, end: 402 }]) {
+    await expect(ops.execute("blame", { path: "src/foo.ts", ...range })).rejects.toThrow();
+  }
+  await expect(ops.execute("blame", { path: "../private", start: 1, end: 1 })).rejects.toMatchObject({ code: "outside_checkout" });
+  const noCheckout = createReviewOperations(request("chat", { checkout: undefined }), "test");
+  await expect(noCheckout.execute("blame", { path: "src/foo.ts", start: 1, end: 1 })).rejects.toMatchObject({ code: "no_checkout" });
+  await expect(createReviewOperations(request("analysis"), "test").execute("blame", {})).rejects.toMatchObject({ code: "operation_not_granted" });
+});

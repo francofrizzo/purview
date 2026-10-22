@@ -7,8 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Review chat tools.** You can inspect cached threads, CI or line authorship and draft thread replies in the review chat.
-
+- **Threads, CI and blame in the chat.** Ask the chat which threads are open or yours, what reviewers said, whether checks pass, or who last touched a line. It can draft a reply to a thread.
 - **Risks on the lines they concern.** The diff marks the lines a risk is about with a bar, its flag and one sentence of what is at stake. Re-analyze to get them.
 - **Fable in the model list.** The analysis and chat model pickers offer Fable, Opus, Sonnet and Haiku for both Claude harnesses.
 - **The chat can mark hunks viewed.** Ask it to tick moved or mechanical code and it marks those hunks, in both Claude harnesses, and says which.

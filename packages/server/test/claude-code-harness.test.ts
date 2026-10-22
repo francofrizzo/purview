@@ -64,7 +64,7 @@ describe("task -> Claude tool policy", () => {
     );
     expect(sorted(policy.disallowedTools)).toEqual(
       sorted([
-        ...["sync", "init", "refresh", "discard-revision", "remove-repo", "comment", "view"].map(
+        ...["threads", "ci", "sync", "init", "refresh", "discard-revision", "remove-repo", "comment", "view"].map(
           (s) => `Bash(${cmd} ${s}:*)`,
         ),
         "Bash(sed * -i*)",
@@ -87,10 +87,13 @@ describe("task -> Claude tool policy", () => {
     expect(policy.tools).toEqual(["Read", "Glob", "Grep", "Bash"]);
     expect(sorted(policy.allowedTools)).toEqual(
       sorted([
+        "Bash(git log:*)",
+        "Bash(git blame:*)",
+        "Bash(git show *:*)",
         "Read",
         "Glob",
         "Grep",
-        ...["report", "list", "triage", "show", "changes", "units", "base-file", "history", "description", "comment"].map((s) => `Bash(${cmd} ${s}:*)`),
+        ...["report", "threads", "ci", "list", "triage", "show", "changes", "units", "base-file", "history", "description", "comment"].map((s) => `Bash(${cmd} ${s}:*)`),
         ...["grep:*", "rg:*", "sed -n:*", "ls:*", "cat:*", "head:*", "tail:*", "wc:*"].map((r) => `Bash(${r})`),
       ]),
     );
@@ -102,7 +105,9 @@ describe("task -> Claude tool policy", () => {
         "Bash(sed * -i*)",
         "Bash(sed * --in-place*)",
         "Bash(gh:*)",
-        "Bash(git:*)",
+        "Bash(git * --output*)",
+        "Bash(git * --ext-diff*)",
+        "Bash(git * --textconv*)",
         "Bash(curl:*)",
         "Bash(wget:*)",
         "Write",

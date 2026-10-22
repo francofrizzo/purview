@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { keyToString, prCheckoutPath, type PrKey } from "../src/paths.js";
+import { keyToString, prDir, prCheckoutPath, type PrKey } from "../src/paths.js";
 import {
   appendEvent,
   loadState,
@@ -824,4 +824,27 @@ describe("cli discard-revision", () => {
     expect(res.status).toBe(1);
     expect(res.stderr).toMatch(/only revision/);
   });
+});
+
+
+it("reads cached threads and CI without fetching, including missing and malformed caches", () => {
+  seed();
+  const run = (...args: string[]) => JSON.parse(execFileSync(process.execPath, [cliPath, ...args, keyToString(key)], { encoding: "utf8", env: process.env }));
+  expect(run("threads")).toMatchObject({ error: "no_threads_cache", threads: [] });
+  expect(run("ci")).toMatchObject({ error: "no_ci_cache", checks: [] });
+  const file = path.join(prDir(key), "threads.json");
+  fs.writeFileSync(file, "{bad");
+  expect(run("threads")).toMatchObject({ error: "no_threads_cache" });
+  fs.writeFileSync(file, JSON.stringify({ fetchedAt: "today", threads: [
+    { id: "t", path: "a.ts", line: null, isResolved: false, isOutdated: false,
+      comments: [{ author: { login: "reader", bot: true }, isMine: true, createdAt: "today", body: "x".repeat(601) }] },
+    { id: "other", path: "b.ts", line: 1, isResolved: true, isOutdated: false, comments: [] },
+  ] }));
+  expect(run("threads")).toMatchObject({ fetchedAt: "today", reviews: [], threads: [
+    { authorKinds: ["bot"], comments: [{ body: "x".repeat(600), truncated: true }] }, { id: "other" },
+  ] });
+  expect(run("threads", "--mine").threads).toHaveLength(1);
+  expect(run("threads", "--unresolved").threads).toHaveLength(1);
+  updateMeta(key, { ci: { state: "success", headSha: "h", checkedAt: "today", checks: [{ name: "Build", state: "success", url: null }] } });
+  expect(run("ci")).toMatchObject({ state: "success", fetchedAt: "today", checks: [{ name: "Build", conclusion: null }] });
 });

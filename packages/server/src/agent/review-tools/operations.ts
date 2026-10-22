@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import * as core from "@reviewer/core";
+import { readThreadsCache } from "../../github-threads.js";
 import { readComments } from "../../comments.js";
 import type { AgentAction, AgentRunRequest } from "../types.js";
 
@@ -223,11 +224,42 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
       if (target.status !== "draft") failure("not_draft", "Only drafts may be changed.");
       if (!target.author || target.author === "you") failure("consent_required", "Experimental tools cannot edit human drafts; propose the edit instead.");
     }
-    add("create_draft", "Create one local draft at a diff anchor. No publish operation exists.", z.object({
+    add("list_threads", "Cached GitHub threads and reviews; report fetchedAt, never fetch GitHub. Follow nextCursor with cursor and reviews.nextCursor with reviewsCursor.", z.object({
+      only: z.enum(["mine", "unresolved", "all"]).default("all"), path: relativePath.optional(), reviewsCursor: z.string().optional(), ...pageArgs,
+    }).strict(), args => {
+      const { threads, reviews, ...meta } = core.compactThreads(readThreadsCache(key, root), args.only, args.path);
+      const { reviewsCursor, ...threadArgs } = args;
+      return { ...meta, ...page("list_threads", threadArgs, threads),
+        ...(reviews ? { reviews: page("thread_reviews", { limit: args.limit, cursor: reviewsCursor }, reviews) } : {}) };
+    });
+    add("ci_status", "CI from Purview's cache, with fetchedAt; null fields were not cached. Never fetch GitHub.", z.object({}).strict(), () => core.cachedCi(key, root));
+    add("blame", "Who last touched each checkout line, not why; local git only.", z.object({
+      path: relativePath, start: z.number().int().positive(), end: z.number().int().positive(),
+    }).strict().refine(a => a.end >= a.start && a.end - a.start <= 400, { message: "Use an ordered range of at most 401 lines." }), args => {
+      const output = git(["blame", "--porcelain", "-L", `${args.start},${args.end}`, "--", safeRelative(args.path)]);
+      const commits = new Map<string, { author: string; date: string; summary: string }>();
+      const rows: { line: number; sha: string; author: string; date: string; summary: string }[] = [];
+      let sha = "", line = 0;
+      for (const text of output.split("\n")) {
+        const header = /^([0-9a-f]{40,64}) \d+ (\d+)(?: \d+)?$/.exec(text);
+        if (header) {
+          sha = header[1]; line = Number(header[2]);
+          if (!commits.has(sha)) commits.set(sha, { author: "", date: "", summary: "" });
+        } else if (commits.has(sha)) {
+          const commit = commits.get(sha)!;
+          if (text.startsWith("author ")) commit.author = text.slice(7);
+          else if (text.startsWith("author-time ")) commit.date = new Date(Number(text.slice(12)) * 1000).toISOString();
+          else if (text.startsWith("summary ")) commit.summary = text.slice(8);
+          else if (text.startsWith("\t")) rows.push({ line, sha, ...commit });
+        }
+      }
+      return { rows };
+    });
+    add("create_draft", "Create one local draft at a diff anchor; inReplyTo anchors a reply to a GitHub thread. A reply stays a local draft until the reader sends it. No publish operation exists.", z.object({
       file: relativePath, line: z.number().int().positive().optional(), subjectType: z.enum(["line", "file"]).optional(),
       side: z.enum(["LEFT", "RIGHT"]).default("RIGHT"), startLine: z.number().int().positive().optional(),
-      body: z.string().min(1).max(20000), audience: z.enum(["github", "agent"]).optional(),
-    }).strict(), args => commentRequest("POST", "", args), false);
+      inReplyTo: z.string().min(1).optional(), body: z.string().min(1).max(20000), audience: z.enum(["github", "agent"]).optional(),
+    }).strict(), args => commentRequest("POST", "", { ...args, ...(args.inReplyTo ? { audience: "github" } : {}), ...(args.startLine ? { startSide: args.side } : {}) }), false);
     add("edit_draft", "Edit an agent-authored draft in this PR. Human and published comments are refused.", z.object({ id: z.string().min(1), body: z.string().min(1).max(20000) }).strict(), args => {
       editable(args.id); return commentRequest("PATCH", `/${encodeURIComponent(args.id)}`, { body: args.body });
     }, false);
