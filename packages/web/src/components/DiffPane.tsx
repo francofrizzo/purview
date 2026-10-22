@@ -266,6 +266,8 @@ export interface DiffPaneProps {
     addedIndex?: number;
     /** open the comments on that line, when it has any */
     showComments?: boolean;
+    /** land on the file's header with its whole-file comments open, not on the hunk */
+    fileComments?: boolean;
   } | null;
   /**
    * The selected unit's heart (hunk id -> its segments): those hunks are
@@ -333,6 +335,12 @@ const inSelection = (
 
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
+
+/** The file header row above a hunk's header row, or -1 when the pane shows none. */
+function findFileRow(rows: FlatRow[], hunkIdx: number): number {
+  for (let i = hunkIdx; i >= 0; i--) if (rows[i].type === "file") return i;
+  return -1;
 }
 
 export function DiffPane({
@@ -2004,13 +2012,24 @@ export function DiffPane({
         return;
       }
     }
+    // A whole-file thread lives in the file's comment block, which only
+    // renders once the file is expanded: open it and bail, the same way the
+    // line comments above do; the rerun lands on the file header.
+    const fileRow = jumpToHunk.fileComments ? findFileRow(rows, idx) : -1;
+    if (fileRow !== -1) {
+      const path = (rows[fileRow] as { path: string }).path;
+      if (grouped.byFile.has(path) && !expandedFiles.has(path)) {
+        setExpandedFiles((cur) => new Set(cur).add(path));
+        return;
+      }
+    }
     jumpedNonce.current = jumpToHunk.nonce;
     onFocusHunk(jumpToHunk.hunkId);
     // The hunk's rows follow its header contiguously; walk them for the
     // requested line (unified rows carry it directly, split rows on their
     // right cell) and fall back to the header when nothing matches.
-    let target = idx;
-    if (line !== undefined || addedIndex !== undefined) {
+    let target = fileRow !== -1 ? fileRow : idx;
+    if (fileRow === -1 && (line !== undefined || addedIndex !== undefined)) {
       let added = 0;
       for (let i = idx + 1; i < rows.length; i++) {
         const r = rows[i];
@@ -2060,6 +2079,7 @@ export function DiffPane({
     collapsed,
     grouped,
     expandedAnchors,
+    expandedFiles,
   ]);
 
   /** The row's comment actions, plus the reply composer when it is written in there. */

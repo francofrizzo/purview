@@ -88,3 +88,14 @@ test("a root comment reaction can be added and removed from the drawer", async (
   await page.getByTestId("react-pick-HOORAY").click();
   await expect(row.getByTestId("reaction-HOORAY")).toHaveCount(0);
 });
+
+test("a whole-file or outdated thread clicked in the drawer opens in the unit that holds the file, not the files tab", async ({ page }) => {
+  await page.getByTestId("topbar-comments").click();
+  await page.getByTestId("drawer-thread-PRRT_docs_file").click();
+  await expect(page.getByTestId("unit-header")).toBeVisible();
+  await expect(page.getByTestId("thread-PRRT_docs_file")).toBeVisible();
+
+  await page.getByTestId("drawer-thread-PRRT_charge_old").click();
+  await expect(page.getByTestId("unit-header")).toBeVisible();
+  await expect(page.getByTestId("thread-PRRT_charge_old")).toBeVisible();
+});

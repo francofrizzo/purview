@@ -249,7 +249,7 @@ export function CommentComposer({
       {/* Title, then the formatting controls; on the narrow floating box the
           controls drop to a second line rather than squeeze the file name. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pr-8 pt-2 text-2xs">
-        <span className="flex min-w-0 flex-1 items-center gap-2">
+        <span className={`flex min-w-0 items-center gap-2 ${floating ? "flex-auto" : "flex-1"}`}>
           <span className="flex-none font-medium" style={{ color: ink }}>
             {reply ? "Reply" : forAgent ? "Note for agent" : "New comment"}
           </span>
@@ -267,9 +267,11 @@ export function CommentComposer({
             )}
           </span>
         </span>
-        <span className="ml-auto flex flex-none items-center gap-1.5">
+        {/* The floating box is narrow: the audience switch goes icon-only and
+            the controls wrap instead of running past the edge. */}
+        <span className="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-1.5">
           {onAudienceChange && !reply ? (
-            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="composer-audience" />
+            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="composer-audience" compact={floating} />
           ) : null}
           <FormatToolbar fmt={fmt} disabled={!wp.writing} testId="composer-format" />
           <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} />
@@ -319,9 +321,11 @@ export function CommentComposer({
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
-        <span className="hidden text-2xs sm:inline" style={{ color: "var(--fg-faint)" }}>
-          markdown · <kbd>⌘↵</kbd> save{onSendToChat ? <> · <kbd>⌘⇧↵</kbd> ask chat</> : null}
-        </span>
+        {floating ? null : (
+          <span className="hidden text-2xs sm:inline" style={{ color: "var(--fg-faint)" }}>
+            markdown · <kbd>⌘↵</kbd> save{onSendToChat ? <> · <kbd>⌘⇧↵</kbd> ask chat</> : null}
+          </span>
+        )}
         {prKey ? <AttachButton editor={attach} testId="composer-attach" disabled={!wp.writing} /> : null}
         <span className="ml-auto flex items-center gap-1.5">
           {exportCtx ? (

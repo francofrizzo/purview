@@ -791,7 +791,7 @@ export function PrView() {
     (
       hunkId: string,
       path: string,
-      target?: { line?: number; side?: "LEFT" | "RIGHT"; addedIndex?: number; showComments?: boolean },
+      target?: { line?: number; side?: "LEFT" | "RIGHT"; addedIndex?: number; showComments?: boolean; fileComments?: boolean },
     ) => {
       if (tab === "units") {
         const unit = unitForHunk(units, hunkId);
@@ -822,13 +822,28 @@ export function PrView() {
     (c: { file: string; line?: number | null; side?: "LEFT" | "RIGHT" | null }) => {
       const side = c.side ?? "RIGHT";
       const hunkId = detail && c.line != null ? hunkForLine(detail.files, c.file, c.line, side) : null;
-      if (hunkId) jumpToDiffHunk(hunkId, c.file, { line: c.line!, side, showComments: true });
-      else {
-        setTab("files");
-        setSelectedPath(c.file);
+      if (hunkId) {
+        jumpToDiffHunk(hunkId, c.file, { line: c.line!, side, showComments: true });
+        return;
       }
+      // The diff has no line to land on (file-level, or outdated): in the
+      // units tab the thread hangs off the file's header inside the unit that
+      // holds the file, so land there rather than leave the tab the reader
+      // works in.
+      const fileHunk =
+        tab === "units" && detail
+          ? detail.files.files
+              .find((f) => f.path === c.file)
+              ?.hunks.find((h) => unitForHunk(units, h.id) || unplacedSet.has(h.id))
+          : undefined;
+      if (fileHunk) {
+        jumpToDiffHunk(fileHunk.id, c.file, { fileComments: true });
+        return;
+      }
+      setTab("files");
+      setSelectedPath(c.file);
     },
-    [detail, jumpToDiffHunk],
+    [detail, jumpToDiffHunk, tab, units, unplacedSet],
   );
 
   /**
