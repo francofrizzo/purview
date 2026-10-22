@@ -200,3 +200,32 @@ export function formatBundle(
 export function repoLabel(meta: { owner: string; repo: string; number: number }): string {
   return `${meta.owner}/${meta.repo}#${meta.number}`;
 }
+
+/* ---------------------------------------------------------- GitHub threads */
+
+/** One post of a GitHub thread, body already cleaned of bookkeeping. */
+export interface ThreadPost {
+  /** the login as it reads on GitHub; "you" for the reader's own */
+  author: string;
+  body: string;
+}
+
+/**
+ * A GitHub thread as a work order: where it is, the code there, and each
+ * post as a quote that names who wrote it (they are not the reader's words).
+ * `posts` is the thread oldest first, or the one comment being copied.
+ */
+export function formatThread(
+  where: Omit<ExportableComment, "body">,
+  posts: ThreadPost[],
+  ctx: DiffContext,
+): string {
+  const location: ExportableComment = { ...where, body: "" };
+  const parts: string[] = [heading(location)];
+  if (!isFileComment(location)) {
+    const snippet = snippetFor(location, ctx);
+    parts.push(snippet ? ["```" + snippet.lang, ...snippet.lines, "```"].join("\n") : STALE_NOTE);
+  }
+  for (const post of posts) parts.push(blockquote(`**${post.author}**:\n${post.body}`));
+  return parts.join("\n");
+}

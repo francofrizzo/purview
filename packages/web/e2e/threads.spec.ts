@@ -43,3 +43,31 @@ test("the finish-review panel shows the drafts going out and what is on GitHub s
   await page.getByTestId("dock-close").click();
   await expect(panel).toHaveCount(0);
 });
+
+test("a GitHub thread in the drawer can be copied with its code, replied to and resolved from there", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByTestId("topbar-comments").click();
+  const row = page.getByTestId("drawer-thread-PRRT_charge77_79");
+  await expect(row).toBeVisible();
+  await row.hover();
+
+  await page.getByTestId("drawer-thread-copy-PRRT_charge77_79").click();
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(copied).toContain("### `src/billing/charge.ts:77–79` (new side)");
+  expect(copied).toContain("```typescript");
+  expect(copied).toContain("> **maria**:");
+  expect(copied).toContain("> **dana**:");
+  expect(copied).toContain("Cap the backoff");
+
+  await row.hover();
+  await page.getByTestId("drawer-thread-resolve-PRRT_charge77_79").click();
+  await expect(page.getByTestId("drawer-thread-resolve-PRRT_charge77_79")).toBeDisabled();
+  await expect(row.locator('[aria-label="resolved"]')).toBeVisible();
+  await expect(page.getByTestId("drawer-thread-resolve-PRRT_charge77_79")).toHaveAttribute("data-tip", "Mark unresolved on GitHub");
+
+  await row.hover();
+  await page.getByTestId("drawer-thread-reply-PRRT_charge77_79").click();
+  const composer = page.getByTestId("comment-composer");
+  await expect(composer).toBeVisible();
+  await expect(composer).toContainText("maria");
+});

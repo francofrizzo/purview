@@ -85,7 +85,7 @@ import {
 } from "../components/Drafts";
 import { CommentBubble, InlineCommentList } from "../components/InlineComments";
 import { hunkForLine, isLineInDiff } from "../lib/comments";
-import { buildThreadGroups, replyTarget, type DisplayThread } from "../lib/threads";
+import { buildThreadGroups, remoteReplyTarget, replyTarget, type DisplayThread } from "../lib/threads";
 import { ThreadFilterMenu } from "../components/Threads";
 import type { CommentActionError } from "../components/CommentCard";
 import { UnitChangelog } from "../components/UnitChangelog";
@@ -2183,6 +2183,16 @@ export function PrView() {
                     onShowAiReviewers: threadFilters.setShowAiReviewers,
                     onBotHidden: threadFilters.setBotHidden,
                     onJump: (t) => jumpToComment({ file: t.path, line: t.line, side: t.side }),
+                    exportCtx,
+                    // The composer opens at the thread in the diff, where the
+                    // reply reads in context; the jump brings it into view.
+                    onReply: (t) => {
+                      jumpToComment({ file: t.path, line: t.line, side: t.side });
+                      openComposer(remoteReplyTarget(t));
+                    },
+                    onResolve: (t, resolved) => resolveThread.mutate({ id: t.id, resolved }),
+                    resolving: resolveThread.isPending ? (resolveThread.variables?.id ?? null) : null,
+                    resolveError,
                   }
                 : undefined
             }

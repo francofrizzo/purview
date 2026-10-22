@@ -16,6 +16,7 @@ import { formatFullTimestamp } from "../lib/prList";
 import {
   authorOf,
   cleanRemoteBody,
+  formatRemoteThread,
   knownBots,
   placementLabel,
   splitReviewTags,
@@ -31,6 +32,7 @@ import { FloatingPanel } from "./FloatingPanel";
 import { IconBot, IconCheck, IconChevron, IconFilter, IconReply } from "./icons";
 import { Markdown, SuggestionContext } from "./Markdown";
 import { anchoredLines } from "../lib/suggestion";
+import type { DiffContext } from "../lib/agentExport";
 
 /** What a thread can do, on top of what each of its comments can. */
 export interface ThreadActions {
@@ -73,7 +75,7 @@ export function BotChip({ tip }: { tip?: string }) {
 }
 
 /** Someone else's comment on GitHub (or the reader's own, written there directly). */
-export function RemoteCommentCard({ comment }: { comment: RemoteComment }) {
+export function RemoteCommentCard({ comment, thread, exportCtx }: { comment: RemoteComment; thread?: RemoteThread; exportCtx?: DiffContext }) {
   const author = authorOf({ kind: "remote", comment });
   const { tags, body } = splitReviewTags(cleanRemoteBody(comment.body));
   const created = age(comment.createdAt);
@@ -114,8 +116,8 @@ export function RemoteCommentCard({ comment }: { comment: RemoteComment }) {
           <CopyForAgentButton
             iconOnly
             testId={`copy-remote-${comment.databaseId}`}
-            tip="Copy as markdown"
-            text={() => cleanRemoteBody(comment.body)}
+            tip={thread && exportCtx ? "Copy with its code, for an agent" : "Copy as markdown"}
+            text={() => (thread && exportCtx ? formatRemoteThread(thread, exportCtx, comment) : cleanRemoteBody(comment.body))}
           />
           <a
             href={comment.url}
@@ -252,7 +254,7 @@ export function ThreadView({
     item.kind === "local" ? (
       <CommentCard comment={item.comment} actions={actions} />
     ) : (
-      <RemoteCommentCard comment={item.comment} />
+      <RemoteCommentCard comment={item.comment} thread={t} exportCtx={ctx} />
     );
   const busy = actions.resolving === t.id;
   const resolveError = actions.resolveError?.id === t.id ? actions.resolveError.message : null;

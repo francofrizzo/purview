@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { errorText, isConfirmRequired } from "../api/errors";
 import { useAgentName } from "../api/hooks";
 import {
@@ -17,6 +17,7 @@ import {
   authorOf,
   drawerThreads,
   excerpt,
+  formatRemoteThread,
   groupThreadsByAuthor,
   isBotHidden,
   type ThreadFilters,
@@ -35,7 +36,7 @@ import {
 } from "../lib/comments";
 import { AUDIENCE_HINT, AudienceSwitch } from "./AudienceSwitch";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
-import { IconChat, IconCheck, IconClose, IconSend } from "./icons";
+import { IconChat, IconCheck, IconClose, IconReply, IconSend } from "./icons";
 import { BotChip, ThreadFilterMenu } from "./Threads";
 import { AttachmentContext, Markdown, SuggestionContext } from "./Markdown";
 import { suggestionSource, type SuggestionSource } from "../lib/suggestion";
@@ -1015,6 +1016,15 @@ export interface DrawerThreads {
   onShowAiReviewers: (v: boolean) => void;
   onBotHidden: (key: string, hidden: boolean) => void;
   onJump: (thread: RemoteThread) => void;
+  /** the diff, so a copied thread carries the code it is about */
+  exportCtx?: DiffContext;
+  /** open the composer as a reply to this thread, at the thread */
+  onReply?: (thread: RemoteThread) => void;
+  onResolve?: (thread: RemoteThread, resolved: boolean) => void;
+  /** the id of the thread whose resolve/unresolve is in flight */
+  resolving?: string | null;
+  /** the thread whose last resolve/unresolve the server refused, and why */
+  resolveError?: { id: string; message: string } | null;
 }
 
 /**
@@ -1081,7 +1091,7 @@ function GithubThreadsSection({ github }: { github: DrawerThreads }) {
                 <ul className="flex flex-col gap-1">
                   {shown.map((t) => (
                     <li key={t.id}>
-                      <GithubThreadRow thread={t} onJump={() => github.onJump(t)} />
+                      <GithubThreadRow thread={t} github={github} />
                     </li>
                   ))}
                 </ul>
@@ -1094,7 +1104,12 @@ function GithubThreadsSection({ github }: { github: DrawerThreads }) {
   );
 }
 
-function GithubThreadRow({ thread, onJump }: { thread: RemoteThread; onJump: () => void }) {
+/**
+ * One thread in the drawer: click shows it in the diff; hovering reveals what
+ * can be done to it from here (copy with its code, reply, resolve) so the
+ * reader need not go to the diff for the routine moves.
+ */
+function GithubThreadRow({ thread, github }: { thread: RemoteThread; github: DrawerThreads }) {
   const root = thread.comments[0];
   const author = authorOf({ kind: "remote", comment: root });
   const line = thread.line ?? thread.originalLine;
@@ -1103,7 +1118,39 @@ function GithubThreadRow({ thread, onJump }: { thread: RemoteThread; onJump: () 
     thread.subjectType === "file" || line === null ? "" : `:${lines}`
   }`;
   const replies = thread.comments.length - 1;
+  const busy = github.resolving === thread.id;
+  const canResolve = thread.isResolved ? thread.viewerCanUnresolve : thread.viewerCanResolve;
+  const resolveError = github.resolveError?.id === thread.id ? github.resolveError.message : null;
+  const actions = [
+    github.exportCtx ? (
+      <CopyForAgentButton
+        key="copy"
+        iconOnly
+        testId={`drawer-thread-copy-${thread.id}`}
+        tip={`Copy the thread with its code${replies ? ", replies included" : ""}`}
+        text={() => formatRemoteThread(thread, github.exportCtx!)}
+      />
+    ) : null,
+    github.onReply && thread.viewerCanReply ? (
+      <RowAction key="reply" testId={`drawer-thread-reply-${thread.id}`} tip="Reply in this thread" onClick={() => github.onReply!(thread)}>
+        <IconReply width={11} height={11} />
+      </RowAction>
+    ) : null,
+    github.onResolve && canResolve ? (
+      <RowAction
+        key="resolve"
+        testId={`drawer-thread-resolve-${thread.id}`}
+        tip={busy ? (thread.isResolved ? "Unresolving…" : "Resolving…") : thread.isResolved ? "Mark unresolved on GitHub" : "Resolve on GitHub, right away"}
+        disabled={busy}
+        active={thread.isResolved}
+        onClick={() => github.onResolve!(thread, !thread.isResolved)}
+      >
+        <IconCheck width={11} height={11} />
+      </RowAction>
+    ) : null,
+  ].filter(Boolean);
   return (
+    <div className="group/row relative">
     <button
       type="button"
       data-testid={`drawer-thread-${thread.id}`}
@@ -1114,7 +1161,7 @@ function GithubThreadRow({ thread, onJump }: { thread: RemoteThread; onJump: () 
         opacity: thread.isResolved ? 0.7 : undefined,
       }}
       data-tip={`${thread.path}${line !== null && thread.subjectType !== "file" ? `:${lines}` : ""}; show it in the diff`}
-      onClick={onJump}
+      onClick={() => github.onJump(thread)}
     >
       <span className="flex items-center gap-1.5 text-2xs">
         {thread.isResolved ? (
@@ -1140,6 +1187,56 @@ function GithubThreadRow({ thread, onJump }: { thread: RemoteThread; onJump: () 
         )}
         {excerpt(root.body, 120)}
       </span>
+    </button>
+      {actions.length ? (
+        <span
+          data-testid={`drawer-thread-actions-${thread.id}`}
+          className="absolute right-1.5 top-1 flex items-center gap-0.5 rounded px-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/row:opacity-100"
+          style={{ background: "var(--bg-hover)" }}
+        >
+          {actions}
+        </span>
+      ) : null}
+      {resolveError ? (
+        <p className="px-1 pt-0.5 text-2xs leading-4" role="alert" data-testid={`drawer-thread-error-${thread.id}`} style={{ color: "var(--risk)" }}>
+          {resolveError}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/** A small icon action on a drawer row; `active` paints it in the ok color (a resolved thread's check). */
+function RowAction({
+  onClick,
+  tip,
+  testId,
+  disabled,
+  active,
+  children,
+}: {
+  onClick: () => void;
+  tip: string;
+  testId?: string;
+  disabled?: boolean;
+  active?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      data-tip={tip}
+      aria-label={tip}
+      disabled={disabled}
+      className="flex-none rounded p-0.5 opacity-60 transition-opacity hover:opacity-100 disabled:opacity-40"
+      style={{ color: active ? "var(--ok)" : "var(--fg-muted)" }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      {children}
     </button>
   );
 }

@@ -26,6 +26,7 @@ import {
   type RemoteThread,
 } from "../api/types";
 import { attentionStatus, bubbleTitle, isRange, lineAnchor, lineLabel, isForAgent } from "./comments";
+import { formatThread, type DiffContext } from "./agentExport";
 
 export type ThreadItem =
   | { kind: "local"; comment: DraftComment }
@@ -338,9 +339,12 @@ export type ReplyTarget =
   | { subjectType: "file"; file: string; inReplyTo: string; replyTo: string };
 
 export function replyTarget(thread: DisplayThread): ReplyTarget | null {
-  const t = thread.remote;
-  if (!t) return null;
-  const replyTo = thread.author.name;
+  return thread.remote ? remoteReplyTarget(thread.remote) : null;
+}
+
+/** The composer target for a reply to a GitHub thread, named after who started it. */
+export function remoteReplyTarget(t: RemoteThread): ReplyTarget {
+  const replyTo = authorOf({ kind: "remote", comment: t.comments[0] }).name;
   const line = t.line ?? t.originalLine;
   if (t.subjectType === "file" || line === null) return { subjectType: "file", file: t.path, inReplyTo: t.id, replyTo };
   return { subjectType: "line", file: t.path, line, side: t.side, inReplyTo: t.id, replyTo };
@@ -497,4 +501,25 @@ export function parseLoginList(text: string): string[] {
     if (login && !out.some((l) => l.toLowerCase() === login.toLowerCase())) out.push(login);
   }
   return out;
+}
+
+/**
+ * A GitHub thread as text for a coding agent: its location, the code there
+ * and the posts (`only` narrows them to one comment). The reader's own posts
+ * say "you"; everyone else is named by their GitHub login.
+ */
+export function formatRemoteThread(thread: RemoteThread, ctx: DiffContext, only?: RemoteComment): string {
+  const line = thread.line ?? thread.originalLine;
+  const where = {
+    file: thread.path,
+    line,
+    side: line === null ? null : thread.side,
+    startLine: thread.startLine ?? thread.originalStartLine ?? null,
+    subjectType: thread.subjectType,
+  };
+  const posts = (only ? [only] : thread.comments).map((c) => ({
+    author: c.isMine ? "you" : c.author.login,
+    body: cleanRemoteBody(c.body),
+  }));
+  return formatThread(where, posts, ctx);
 }

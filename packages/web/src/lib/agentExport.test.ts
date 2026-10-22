@@ -4,6 +4,7 @@ import {
   blockquote,
   formatBundle,
   formatComment,
+  formatThread,
   repoLabel,
   selectForBundle,
   snippetFor,
@@ -352,5 +353,43 @@ describe("multi-line comments", () => {
   it("is stale when the hunk lacks the range's start", () => {
     expect(snippetFor(comment({ line: 5, startLine: 0 }), ctx)).toBeNull();
     expect(formatComment(comment({ line: 5, startLine: 0 }), ctx)).toContain(STALE_NOTE);
+  });
+});
+
+describe("formatThread", () => {
+  it("names each post's author under the code, the way a work order from someone else's review reads", () => {
+    const ctx = ctxOf(file("src/a.ts", [hunk("src/a.ts", 1, [" a", " b", "+c", " d", " e"])]));
+    const text = formatThread(
+      { file: "src/a.ts", line: 3, side: "RIGHT" },
+      [
+        { author: "maria", body: "Cap the backoff." },
+        { author: "you", body: "Will do." },
+      ],
+      ctx,
+    );
+    expect(text).toBe(
+      [
+        "### `src/a.ts:3` (new side)",
+        "```typescript",
+        "a",
+        "b",
+        "+c",
+        "d",
+        "e",
+        "```",
+        "> **maria**:",
+        "> Cap the backoff.",
+        "> **you**:",
+        "> Will do.",
+      ].join("\n"),
+    );
+  });
+
+  it("says the line is gone for an outdated thread and skips the code for a file-level one", () => {
+    const ctx = ctxOf(file("src/a.ts", [hunk("src/a.ts", 1, [" a"])]));
+    // An outdated thread keeps the line it was written on, which the diff no longer has.
+    expect(formatThread({ file: "src/a.ts", line: 99, side: "RIGHT" }, [{ author: "maria", body: "x" }], ctx)).toContain(STALE_NOTE);
+    const whole = formatThread({ file: "src/a.ts", line: null, side: null, subjectType: "file" }, [{ author: "maria", body: "x" }], ctx);
+    expect(whole).toBe("### `src/a.ts` (file-level)\n> **maria**:\n> x");
   });
 });
