@@ -50,8 +50,9 @@ const manifest: HarnessManifest = {
   // The CLI's own aliases: stable across model releases, where a pinned
   // `claude-sonnet-5` id rots.
   models: [
-    { id: "sonnet", label: "Sonnet" },
+    { id: "fable", label: "Fable" },
     { id: "opus", label: "Opus" },
+    { id: "sonnet", label: "Sonnet" },
     { id: "haiku", label: "Haiku" },
   ],
   // "none" omits `--effort`, for a CLI too old to know the flag.

@@ -139,6 +139,23 @@ describe("parseInline", () => {
 
   it("parses bold, italics and links", () => {
     expect(parseInline("**bold**")).toEqual([{ type: "strong", text: "bold" }]);
+    // A bold lead-in naming code keeps the code spans (and so their links).
+    expect(parseInline("**`a.go`, `Foo`.** rest")).toEqual([
+      {
+        type: "strong",
+        text: "`a.go`, `Foo`.",
+        children: [
+          { type: "code", text: "a.go" },
+          { type: "text", text: ", " },
+          { type: "code", text: "Foo" },
+          { type: "text", text: "." },
+        ],
+      },
+      { type: "text", text: " rest" },
+    ]);
+    expect(parseInline("*see `x`*")).toEqual([
+      { type: "em", text: "see `x`", children: [{ type: "text", text: "see " }, { type: "code", text: "x" }] },
+    ]);
     expect(parseInline("_soft_")).toEqual([{ type: "em", text: "soft" }]);
     expect(parseInline("[docs](https://x.dev/a)")).toEqual([
       { type: "link", text: "docs", href: "https://x.dev/a" },

@@ -232,12 +232,12 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
         if (node.type === "strong") {
           return (
             <strong key={i} style={{ color: "var(--fg)" }}>
-              {node.text}
+              {node.children ? <Inline nodes={node.children} /> : node.text}
             </strong>
           );
         }
         if (node.type === "em") {
-          return <em key={i}>{node.text}</em>;
+          return <em key={i}>{node.children ? <Inline nodes={node.children} /> : node.text}</em>;
         }
         if (node.type === "link") {
           return (

@@ -330,7 +330,7 @@ describe("effectiveConfig precedence", () => {
     const resolved = effectiveConfig(key, root).chatAgent;
     expect(resolved.model).toEqual({ value: "gpt-9", source: "repo" });
     expect(resolved.problem).toBe(
-      'Claude Code has no model "gpt-9" (from the repo settings); it has sonnet, opus, haiku.',
+      'Claude Code has no model "gpt-9" (from the repo settings); it has fable, opus, sonnet, haiku.',
     );
   });
 
@@ -1073,7 +1073,7 @@ describe("/api/repos/:rkey/config", () => {
     const model = await put({ analysisAgent: { harness: "claude-code", model: "claude-opus-4-6" } });
     expect(model.status).toBe(400);
     expect((await model.json()).detail).toBe(
-      'analysisAgent.model: "claude-opus-4-6" is not one of Claude Code\'s models: sonnet, opus, haiku',
+      'analysisAgent.model: "claude-opus-4-6" is not one of Claude Code\'s models: fable, opus, sonnet, haiku',
     );
     const effort = await put({ analysisAgent: { harness: "claude-code", effort: "extreme" } });
     expect((await effort.json()).detail).toBe(
@@ -1177,7 +1177,7 @@ describe("/api/config", () => {
     });
     expect(bad.status).toBe(400);
     expect((await bad.json()).detail).toBe(
-      'analysisAgent.model: "gpt-9" is not one of Claude Code\'s models: sonnet, opus, haiku',
+      'analysisAgent.model: "gpt-9" is not one of Claude Code\'s models: fable, opus, sonnet, haiku',
     );
     const effort = await app.request("/api/config", {
       method: "PUT",

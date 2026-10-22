@@ -294,8 +294,12 @@ export function parseMarkdown(src: string): MdBlock[] {
 export type MdInline =
   | { type: "text"; text: string }
   | { type: "code"; text: string }
-  | { type: "strong"; text: string }
-  | { type: "em"; text: string }
+  /**
+   * `text` is the raw inside; `children` is it parsed, present only when
+   * it holds markdown of its own (a code span in a bold lead-in, a link).
+   */
+  | { type: "strong"; text: string; children?: MdInline[] }
+  | { type: "em"; text: string; children?: MdInline[] }
   | { type: "link"; text: string; href: string }
   /** GitHub extras: ~~strike~~ and the inline HTML its sanitizer lets through. */
   | { type: "del" | "ins" | "kbd" | "sub" | "sup" | "mark"; text: string }
@@ -376,6 +380,12 @@ function intrawordUnderscore(src: string, start: number, end: number, delim: str
 const LAYOUT_HTML =
   /<\/?(?:p|div|span|picture|center)(?:\s[^>]*)?>|<source\b[^>]*>|<a\s[^>]*#gh-light-mode-only[^>]*>[\s\S]*?<\/a\s*>|!\[[^\]]*\]\([^)\s]*#gh-light-mode-only\)|<img\b[^>]*#gh-light-mode-only[^>]*>|#gh-dark-mode-only/gi;
 
+/** Emphasis around other markdown keeps it: **`file.go`** is bold code, not bold backticks. */
+function nested(type: "strong" | "em", text: string): MdInline {
+  const children = parseInline(text);
+  return children.some((n) => n.type !== "text") ? { type, text, children } : { type, text };
+}
+
 export function parseInline(src: string): MdInline[] {
   const out: MdInline[] = [];
   let rest = src.replace(LAYOUT_HTML, "");
@@ -410,9 +420,9 @@ export function parseInline(src: string): MdInline[] {
     } else if (m[6]) {
       out.push({ type: "link", text: m[5] || m[6], href: m[6] });
     } else if (m[7]) {
-      out.push({ type: "strong", text: m[8] });
+      out.push(nested("strong", m[8]));
     } else if (m[9]) {
-      out.push({ type: "em", text: m[10] });
+      out.push(nested("em", m[10]));
     } else if (m[11]) {
       out.push({ type: "link", text: m[11], href: m[11] });
     }
