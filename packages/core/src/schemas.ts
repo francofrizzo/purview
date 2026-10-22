@@ -216,9 +216,22 @@ export type HeartSegment = z.infer<typeof HeartSegmentSchema>;
  */
 export const HunkEntrySchema = z.object({
   id: z.string().min(1),
-  label: z.string().min(1).max(HUNK_LABEL_MAX).optional(),
-  skip: z.literal(true).optional(),
-  heart: z.array(HeartSegmentSchema).min(1).max(MAX_HEART_SEGMENTS).optional(),
+  label: z
+    .string()
+    .min(1)
+    .max(HUNK_LABEL_MAX)
+    .optional()
+    .describe("A few words saying what this hunk is to the unit when its header and path do not. Every hunk of a must-read or skim unit gets one; on a skip it says why there is nothing to read."),
+  skip: z
+    .literal(true)
+    .optional()
+    .describe("The reader need not read this hunk (an import change, a re-export, a renamed call site, moved boilerplate) inside a unit that otherwise matters. Needs a label; never on a heart; only after reading the body."),
+  heart: z
+    .array(HeartSegmentSchema)
+    .min(1)
+    .max(MAX_HEART_SEGMENTS)
+    .optional()
+    .describe("Where the unit's logic lives, as opposed to the call sites, tests and plumbing around it: one to three segments with a why and source line ranges."),
 });
 export type HunkEntry = z.infer<typeof HunkEntrySchema>;
 
