@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.22.1
 
 - **Thread actions in the comments panel.** Hover a GitHub thread to copy it with the code it points at, reply to it, or resolve it.
 - **Reactions on GitHub comments.** Each comment in the diff shows its reactions; click one to add or remove yours, or pick from the eight GitHub emoji.
