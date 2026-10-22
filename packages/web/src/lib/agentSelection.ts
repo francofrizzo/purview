@@ -16,7 +16,7 @@ export function manifestOf(agents: AgentsInfo | undefined, harness: string): Har
 
 /** Only worth a picker when there is a choice to make. */
 export function offersHarnessChoice(agents: AgentsInfo | undefined): boolean {
-  return (agents?.harnesses.length ?? 0) > 1;
+  return harnessOptions(agents).length > 1;
 }
 
 /**
@@ -66,7 +66,7 @@ export interface PickerOption {
 }
 
 export function harnessOptions(agents: AgentsInfo | undefined): PickerOption[] {
-  return (agents?.harnesses ?? []).map((h) => ({ value: h.id, label: h.name }));
+  return (agents?.harnesses ?? []).filter((h) => h.listed !== false).map((h) => ({ value: h.id, label: h.name }));
 }
 
 export function modelOptions(manifest: HarnessManifest | undefined): PickerOption[] {

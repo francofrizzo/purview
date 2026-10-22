@@ -1286,11 +1286,16 @@ describe("/api/config", () => {
 });
 
 describe("/api/agents", () => {
-  it("does not list an experimental harness the PURVIEW_HARNESS override runs on", async () => {
+  it("carries an experimental harness the PURVIEW_HARNESS override runs on, marked unlisted", async () => {
     vi.stubEnv("PURVIEW_HARNESS", "claude-shared");
     try {
       const body = await (await app.request("/api/agents")).json();
-      expect(body.harnesses.map((h: { id: string }) => h.id)).toEqual(["claude-code"]);
+      // A chat already on it needs its models; the settings pickers skip it.
+      expect(body.harnesses.map((h: { id: string; listed: boolean }) => [h.id, h.listed])).toEqual([
+        ["claude-code", true],
+        ["claude-shared", false],
+      ]);
+      expect(body.harnesses[1].models.map((m: { id: string }) => m.id)).toContain("fable");
     } finally { vi.unstubAllEnvs(); }
   });
   it("lists every harness's manifest, without its prompt vocabulary", async () => {
@@ -1305,6 +1310,7 @@ describe("/api/agents", () => {
         efforts: ["low", "medium", "high", "none"],
         defaults: { model: "sonnet", effort: "medium" },
         capabilities: { resume: true, handoff: true },
+        listed: true,
       },
     ]);
   });

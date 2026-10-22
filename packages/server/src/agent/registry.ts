@@ -39,6 +39,15 @@ function harnesses(): AgentHarness[] {
 
 export const DEFAULT_HARNESS: HarnessId = claudeCodeHarness.manifest.id;
 
+/**
+ * Every harness this server can run right now, listed or not: the private
+ * override registers one without listing it, and a chat on it still needs
+ * its manifest (models, efforts) to draw its pickers.
+ */
+export function registeredHarnessIds(): HarnessId[] {
+  return harnesses().map((harness) => harness.manifest.id);
+}
+
 /** What the settings UI may offer: the experimental ones only when opted in. */
 export function listedHarnessIds(): HarnessId[] {
   const listed = process.env.PURVIEW_EXPERIMENTAL_HARNESSES === "1" ? [claudeCodeHarness, ...EXPERIMENTAL] : [claudeCodeHarness];

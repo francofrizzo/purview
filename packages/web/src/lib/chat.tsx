@@ -35,7 +35,7 @@ import {
   isAutoRef as deriveIsAutoRef,
 } from "./autoRef";
 import { addRef as addRefTo, refKey, removeRef as removeRefFrom } from "./chatRefs";
-import { isCommentWriteTool } from "./comments";
+import { isCommentWriteTool, isViewedWriteTool } from "./comments";
 
 export interface ToolActivity {
   name: string;
@@ -322,7 +322,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // on the next event after one (it has finished by then) and at turn end.
     const refreshComments = () =>
       void queryClient.invalidateQueries({ queryKey: qk.comments(key) });
+    // Same for viewed marks the chat sets on request: the ticks are read
+    // from the PR state, so that query is the one to refetch.
+    const refreshPr = () => void queryClient.invalidateQueries({ queryKey: qk.pr(key) });
     let commentWritePending = false;
+    let viewedWritePending = false;
 
     void (async () => {
       let seenTools: ToolActivity[] = [];
@@ -331,7 +335,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
           commentWritePending = false;
           refreshComments();
         }
+        if (viewedWritePending) {
+          viewedWritePending = false;
+          refreshPr();
+        }
         if (event.type === "tool" && isCommentWriteTool(event)) commentWritePending = true;
+        if (event.type === "tool" && isViewedWriteTool(event)) viewedWritePending = true;
         if (event.type === "delta") {
           outcome.text += event.text;
           setStreaming((cur) => (cur ? { ...cur, text: cur.text + event.text } : cur));
@@ -367,6 +376,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
       // Even a cancelled or failed turn may have changed comments before it ended.
       if (seenTools.some(isCommentWriteTool)) refreshComments();
+      if (seenTools.some(isViewedWriteTool)) refreshPr();
       if (controller.signal.aborted || keyRef.current !== key) return;
 
       abortRef.current = null;

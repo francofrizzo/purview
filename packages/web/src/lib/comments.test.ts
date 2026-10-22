@@ -7,6 +7,7 @@ import {
   agentDeletedDrafts,
   isByAgent,
   isCommentWriteTool,
+  isViewedWriteTool,
   compareCommentOrder,
   groupComments,
   hunkForLine,
@@ -254,6 +255,12 @@ describe("comments the chat wrote", () => {
     expect(isCommentWriteTool({ name: "Bash", kind: "command", detail: `${cli} comment list github.com/a/b/1` })).toBe(false);
     expect(isCommentWriteTool({ name: "Bash", kind: "command", detail: `${cli} show github.com/a/b/1 x` })).toBe(false);
     expect(isCommentWriteTool({ name: "Read", kind: "read", detail: "comment add" })).toBe(false);
+    expect(isCommentWriteTool({ name: "Drafting a comment", kind: "tool", detail: "src/a.ts:2" })).toBe(true);
+    expect(isCommentWriteTool({ name: "Reading code", kind: "tool", detail: "src/a.ts" })).toBe(false);
+    expect(isViewedWriteTool({ name: "Bash", kind: "command", detail: `${cli} view github.com/a/b/1 unit:foo` })).toBe(true);
+    expect(isViewedWriteTool({ name: "Bash", kind: "command", detail: `${cli} units github.com/a/b/1` })).toBe(false);
+    expect(isViewedWriteTool({ name: "Marking viewed", kind: "tool", detail: "3 hunks" })).toBe(true);
+    expect(isViewedWriteTool({ name: "Drafting a comment", kind: "tool" })).toBe(false);
     // The kind decides, not the harness's tool name.
     expect(isCommentWriteTool({ name: "Bash", detail: `${cli} comment add github.com/a/b/1 --body x` })).toBe(false);
     expect(isCommentWriteTool({ name: "shell", kind: "command", detail: `${cli} comment add github.com/a/b/1 --body x` })).toBe(true);

@@ -255,11 +255,23 @@ export function agentDeletedDrafts(
 
 /**
  * A chat tool call that changes comments: a shell command running the
- * reviewer-state CLI's `comment add|edit|delete`. The chat panel refreshes
- * the comments query once such a call has finished.
+ * reviewer-state CLI's `comment add|edit|delete`, or one of the shared
+ * review tools that draft (named by the gerund the server shows). The chat
+ * panel refreshes the comments query once such a call has finished.
  */
 export function isCommentWriteTool(tool: { name?: string; kind?: string; detail?: string }): boolean {
-  return tool.kind === "command" && /\bcomment\s+(add|edit|delete)\b/.test(tool.detail ?? "");
+  if (tool.kind === "command") return /\bcomment\s+(add|edit|delete)\b/.test(tool.detail ?? "");
+  return tool.kind === "tool" && /^(Drafting a comment|Editing a draft|Deleting a draft)$/.test(tool.name ?? "");
+}
+
+/**
+ * A chat tool call that marks hunks viewed (`reviewer-state view`, or the
+ * shared `mark_viewed` tool): the PR state is refetched the same way, so the
+ * ticks show without a reload.
+ */
+export function isViewedWriteTool(tool: { name?: string; kind?: string; detail?: string }): boolean {
+  if (tool.kind === "command") return /\bview\s+\S/.test(tool.detail ?? "");
+  return tool.kind === "tool" && tool.name === "Marking viewed";
 }
 
 /** Who a comment is for; older payloads carry no field and are GitHub comments. */

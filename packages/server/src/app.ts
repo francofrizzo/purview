@@ -163,7 +163,7 @@ import {
   isRepoArchived,
 } from "./repo-config.js";
 import { agentView, checkAgentSelection, resolveAgent, resolveChatAgent } from "./repo-config.js";
-import { DEFAULT_HARNESS, getHarness, listedHarnessIds } from "./agent/registry.js";
+import { DEFAULT_HARNESS, getHarness, listedHarnessIds, registeredHarnessIds } from "./agent/registry.js";
 import { generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
@@ -2161,9 +2161,11 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.get("/api/agents", (c) =>
     c.json({
       default: DEFAULT_HARNESS,
-      harnesses: listedHarnessIds().map((id) => {
+      harnesses: registeredHarnessIds().map((id) => {
         const { toolNames: _toolNames, inlineOutputLimit: _limit, ...manifest } = getHarness(id).manifest;
-        return manifest;
+        // Unlisted: registered by the private override only, so the settings
+        // pickers leave it out while a chat already on it can still name models.
+        return { ...manifest, listed: listedHarnessIds().includes(id) };
       }),
     }),
   )

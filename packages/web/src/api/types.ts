@@ -1088,6 +1088,8 @@ export interface HarnessManifest {
   efforts: string[];
   defaults: { model: string; effort: string };
   capabilities: { resume: boolean; handoff: boolean };
+  /** false: runnable (a chat may already be on it) but not offered in settings */
+  listed?: boolean;
 }
 
 export interface AgentsInfo {

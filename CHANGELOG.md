@@ -7,9 +7,13 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Review chat tools.** You can inspect cached threads, CI or line authorship and draft thread replies in the review chat.
+
 - **Risks on the lines they concern.** The diff marks the lines a risk is about with a bar, its flag and one sentence of what is at stake. Re-analyze to get them.
 - **Fable in the model list.** The analysis and chat model pickers offer Fable, Opus, Sonnet and Haiku for both Claude harnesses.
 - **The chat can mark hunks viewed.** Ask it to tick moved or mechanical code and it marks those hunks, in both Claude harnesses, and says which.
+- **Fix:** hunks the chat marks viewed, and drafts it writes with the shared tools, show in the diff and the comments panel as soon as the call finishes.
+- **Fix:** the chat's model picker lists every model when the chat runs on a harness the settings do not offer, instead of only the default.
 - **Fix:** code in a bold lead-in, such as **`file.go`**, renders as code and links to the diff instead of showing the backticks.
 - **Two more unit kinds.** A unit can be "refactor" (restructured, nothing changed) or "data" (schema, seeds, generated files); re-analyze to get them.
 - **Search switches.** The find bar shows both sides of each choice, "this unit | whole diff" and "changed | all lines", with the active one lit. All lines is the default.
