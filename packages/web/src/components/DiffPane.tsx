@@ -116,6 +116,7 @@ type FlatRow =
   /** `seam`: not its file's first hunk here, so it draws the divider above it */
   | { type: "hunk"; key: string; hunkId: string; entry: HunkEntry; seam: boolean }
   /** the analysis's why, under a heart hunk's header (shown folded too) */
+  | { type: "risk"; key: string; hunkId: string; flag: string; why: string }
   | { type: "heart"; key: string; hunkId: string; seg: number; why: string }
   | { type: "dod"; key: string; hunkId: string }
   | { type: "line"; key: string; hunkId: string; entry: HunkEntry; lineIdx: number }
@@ -882,6 +883,27 @@ export function DiffPane({
     }
     return { heartRows, heartCaptions, heartEnds };
   }, [heart, entries, detail.diff]);
+  const riskMarks = useMemo(() => {
+    const byId = new Map(detail.state.units.flatMap((u) => u.hunks.map((h) => [h.id, h.risks] as const)));
+    return new Map(entries.map((e) => {
+      const rows = buildRows(e.hunk, detail.diff);
+      return [e.hunk.id, (byId.get(e.hunk.id) ?? []).map((mark, index) => {
+        const indices = mark.lines ? heartRowIndices(rows, mark.lines) : new Set(rows.map((_, i) => i));
+        return { ...mark, index, indices, at: indices.size ? Math.min(...indices) : 0 };
+      })];
+    }));
+  }, [detail.state.units, entries, detail.diff]);
+  const riskMarksRow = (row: FlatRow): boolean => {
+    if (!("hunkId" in row)) return false;
+    if (row.type === "risk") return true;
+    const marks = riskMarks.get(row.hunkId) ?? [];
+    if (row.type === "line") return marks.some((m) => m.indices.has(row.lineIdx));
+    if (row.type === "split") {
+      const pair = buildSplitRows(row.entry.hunk, detail.diff)[row.rowIdx];
+      return marks.some((m) => (pair?.left && m.indices.has(pair.left.index)) || (pair?.right && m.indices.has(pair.right.index)));
+    }
+    return false;
+  };
   /** Whether a row is the last of a heart segment, where the segment's closing rule sits. */
   const heartEndsAt = (row: FlatRow): boolean => {
     if (!("hunkId" in row)) return false;
@@ -1190,6 +1212,9 @@ export function DiffPane({
       const captions = marks?.length && heartRows.get(hunk.id) !== null && open ? (heartCaptions.get(hunk.id) ?? []) : null;
       const headerIdx = out.length;
       let nextCaption = 0;
+      const risks = riskMarks.get(hunk.id) ?? [];
+      const shownRisks = new Set<number>();
+      const riskRow = (m: typeof risks[number]): FlatRow => ({ type: "risk", key: `risk:${hunk.id}:${m.index}`, hunkId: hunk.id, flag: m.flag, why: m.why });
       const heartRow = (seg: number, why: string): FlatRow => ({
         type: "heart",
         key: `heart:${hunk.id}:${seg}`,
@@ -1199,6 +1224,12 @@ export function DiffPane({
       });
       /** Captions whose row is `unifiedIdx`, in order. */
       const pushCaptionsAt = (unifiedIdx: number) => {
+        for (const m of risks) {
+          if (m.at === unifiedIdx && !shownRisks.has(m.index)) {
+            out.push(riskRow(m));
+            shownRisks.add(m.index);
+          }
+        }
         if (!captions) return;
         while (nextCaption < captions.length && captions[nextCaption].at === unifiedIdx) {
           out.push(heartRow(captions[nextCaption].seg, captions[nextCaption].why));
@@ -1206,6 +1237,7 @@ export function DiffPane({
         }
       };
       if (marks?.length && captions === null) marks.forEach((m, seg) => out.push(heartRow(seg, m.why)));
+      if (!open) risks.forEach((m) => out.push(riskRow(m)));
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
       }
@@ -1296,6 +1328,7 @@ export function DiffPane({
           }
         }
       }
+      out.splice(headerIdx, 0, ...risks.filter((m) => !shownRisks.has(m.index)).map(riskRow));
       if (captions && nextCaption < captions.length) {
         const left = captions.slice(nextCaption).map((c) => heartRow(c.seg, c.why));
         out.splice(headerIdx, 0, ...left);
@@ -1322,6 +1355,7 @@ export function DiffPane({
     openedFoldRegions,
     heart,
     heartRows,
+    riskMarks,
     heartCaptions,
   ]);
 
@@ -1423,7 +1457,7 @@ export function DiffPane({
       // A fold placeholder is one row, always — no wrapping content inside it.
       if (r.type === "fold") return codeLineHeight;
       if (r.type === "dod") return 170;
-      if (r.type === "heart") return 26;
+      if (r.type === "heart" || r.type === "risk") return 26;
       if (r.type === "compose") return 150;
       // Comment blocks are the one genuinely variable row. The estimate only
       // has to be in the right order of magnitude — measureElement's
@@ -2530,6 +2564,7 @@ export function DiffPane({
               data-flash={vi.key === flashKey ? "true" : undefined}
               data-sticky={stickyTop !== null ? "true" : undefined}
               data-heart={heartMarks(row) ? "true" : undefined}
+              data-risk={riskMarksRow(row) ? "true" : undefined}
               data-heart-end={heartEndsAt(row) ? "true" : undefined}
               data-skippable={
                 skip && (row.type === "line" || row.type === "split") && skip.has(row.hunkId) && row.hunkId !== focusedHunkId
@@ -2554,6 +2589,7 @@ export function DiffPane({
                     }
               }
             >
+              {riskMarksRow(row) && <span className="risk-bar" aria-hidden="true" />}
               {renderRow(row)}
             </div>
           );
@@ -2966,6 +3002,13 @@ export function DiffPane({
           ) : null}
         </div>
       );
+    }
+
+    if (row.type === "risk") {
+      return <div data-testid={`hunk-risk-${row.hunkId}`} className="px-3 py-1 font-sans text-[11px] leading-[18px]" style={{ color: "var(--fg-muted)", background: "var(--bg)" }}>
+        <span className="mr-1.5 rounded px-1 py-px" style={{ color: "var(--risk)", background: "var(--risk-soft)" }}>{row.flag}</span>
+        <InlineMarkdown text={row.why} />
+      </div>;
     }
 
     if (row.type === "heart") {

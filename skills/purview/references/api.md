@@ -100,18 +100,19 @@ The analysis as a portable envelope:
 ```
 version, revision, headSha, mergeBase, exportedAt
 summary      one paragraph
-units[]      { id, title, summary, kind, attention, attentionWhy, riskFlags[],
+units[]      { id, title, summary, kind, attention, attentionWhy,
                order, hunks[], findings[]?, changelog[]? }
 ```
 
 `kind`: `core-logic`, `connective-tissue`, `refactor`, `data`, `wiring`, `ripple`, `tests`,
 `docs` (and a few more; read it as a label). `attention`: `must-read`, `skim`, `skip`.
-`riskFlags`: any of `money`, `auth`, `security`, `migration`, `concurrency`,
-`external-call`. `findings[]`: `{ severity: "warning" | "note", text, evidence }`,
+**`risks`** — place one to four marks `{ "flag": "money", "why": "A retry can charge the customer twice.", "lines": [21, 23] }` on the hunk and new-side inclusive lines concerned. Use only `auth`, `migration`, `concurrency`, `money`, `external-call`, or `security`. Each `why` is one sentence (the same length limit as heart why) saying what is at stake there. Ranges must stay inside the hunk and must not overlap other risk ranges; they may overlap hearts. Omit `lines` for a mark on the whole hunk; whole-hunk marks do not mix with ranged ones on the same hunk. Never mark a skip hunk. Unit `riskFlags` is computed from these marks: do not set it; incoming values are ignored. Legacy units without marks retain their existing flags.
+
+`findings[]`: `{ severity: "warning" | "note", text, evidence }`,
 verified against the code, `evidence` naming the files and lines; a `warning` is
 something that looks wrong. `changelog[]`:
 `{ revision, text }`, what each revision changed in this unit. `hunks[]` entries
-are hunk ids or `{ id, label?, skip?, heart? }`; a `heart` marks the lines the
+are hunk ids or `{ id, label?, skip?, heart?, risks? }`; a `heart` marks the lines the
 analysis says to read first.
 
 ## `POST /prs/<key>/repo-path`  body `{ "path": "/abs/path/to/clone" }`

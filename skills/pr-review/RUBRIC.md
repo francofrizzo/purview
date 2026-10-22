@@ -156,13 +156,15 @@ first "yes":
 3. **Is this hunk mechanical and correct by construction** (pure rename, generated file,
    lockfile, import path fix with no ambiguity)? → `skip`.
 
-**Risk flags override attention upward.** A risk-flagged hunk is never `skip`, and is
+**Hunk risk marks override attention upward.** A risk-flagged hunk is never `skip`, and is
 `must-read` unless you have a specific reason it's merely `skim` (rare — document the
 reason in `attentionWhy` if you downgrade a risk-flagged unit to skim).
 
 ## Risk-flag triggers
 
-Attach a `RiskFlag` to a unit if any of its hunks touch:
+**`risks`** — place one to four marks `{ "flag": "money", "why": "A retry can charge the customer twice.", "lines": [21, 23] }` on the hunk and new-side inclusive lines concerned. Use only `auth`, `migration`, `concurrency`, `money`, `external-call`, or `security`. Each `why` is one sentence (the same length limit as heart why) saying what is at stake there. Ranges must stay inside the hunk and must not overlap other risk ranges; they may overlap hearts. Omit `lines` for a mark on the whole hunk; whole-hunk marks do not mix with ranged ones on the same hunk. Never mark a skip hunk. Unit `riskFlags` is computed from these marks: do not set it; incoming values are ignored. Legacy units without marks retain their existing flags.
+
+Attach a risk mark at the hunk lines that touch:
 
 - **auth** — authentication/authorization checks, session/token handling, permission
   gates, role checks, login/logout flows.
@@ -177,7 +179,7 @@ Attach a `RiskFlag` to a unit if any of its hunks touch:
 - **security** — secrets, crypto (encryption, hashing, signing, key handling), input
   sanitization for injection-prone surfaces (SQL, shell, HTML), CORS/CSP config.
 
-A unit can carry multiple risk flags. Risk flags are about the *surface area touched*, not
+A unit can carry multiple risk flags, computed from its hunk marks. Risk flags are about the *surface area touched*, not
 about whether the diff looks scary — a one-line change to a token expiry constant is
 `auth` and `must-read` even though it "looks trivial."
 

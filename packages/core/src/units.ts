@@ -72,3 +72,9 @@ export function normalizeHunks<T extends WithHunks>(unit: T): T {
   const same = kept.length === unit.hunks.length && kept.every((h, i) => h === unit.hunks[i]);
   return same ? unit : { ...unit, hunks: kept };
 }
+
+/** Legacy units keep their flags until an analysis supplies marks. */
+export function derivedRiskFlags(unit: Pick<ReviewUnit, "hunks" | "riskFlags">): ReviewUnit["riskFlags"] {
+  const marks = unit.hunks.flatMap((h) => h.risks ?? []);
+  return marks.length ? [...new Set(marks.map((m) => m.flag))] : unit.riskFlags;
+}

@@ -821,10 +821,11 @@ const units: ReviewUnit[] = [
     // a1b2c3d4e5f60004 (the migration, new in revision 3) is deliberately in
     // no unit: the sidebar's "Not in any unit" group needs something to show.
     hunks: [
-      { id: "a1b2c3d4e5f60003", heart: [{ why: "`idempotencyKey()` decides what counts as the same charge" }] },
+      { id: "a1b2c3d4e5f60003", risks: [{ flag: "money", why: "A key collision can replay another order’s charge." }], heart: [{ why: "`idempotencyKey()` decides what counts as the same charge" }] },
       {
         id: "a1b2c3d4e5f60001",
         label: "charge() rewired around the ledger",
+        risks: [{ flag: "external-call", why: "A timeout can leave the gateway charge outcome unknown.", lines: [24, 26] }],
         heart: [
           { why: "`charge()` short-circuits on the ledger row before touching the gateway", lines: [21, 23] },
           { why: "A failed charge is recorded in the ledger before the error propagates", lines: [29, 30] },
@@ -861,7 +862,7 @@ const units: ReviewUnit[] = [
       },
     ],
     hunks: [
-      { id: "a1b2c3d4e5f60002", heart: [{ why: "the backoff loop: only `isTransient()` errors retry, and the delay doubles with jitter" }] },
+      { id: "a1b2c3d4e5f60002", risks: [{ flag: "concurrency", why: "Concurrent retries can submit the same charge twice." }], heart: [{ why: "the backoff loop: only `isTransient()` errors retry, and the delay doubles with jitter" }] },
       { id: "a1b2c3d4e5f60008" },
     ],
     order: 2,

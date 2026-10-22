@@ -256,8 +256,7 @@ Produce:
 
 `ReviewUnit` fields: `id` (slug), `title`, `summary` (1-3 sentences), `kind`, `attention`,
 `attentionWhy`, `order` (integer, suggested reading order, starting at 0 or 1 — be
-consistent), plus `riskFlags` and `hunks` (arrays; both default to `[]` if omitted, but
-always write them explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy`
+consistent), plus `hunks` (an array; write it explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy`
 and `order` are required — the schema rejects the payload if any is missing.
 
 `title` is one short noun phrase or clause naming the change, under 50 characters. It sits
@@ -294,7 +293,7 @@ also appear in the overall `summary`, in another unit's `attentionWhy`, or in a 
 unit"), never restate it.
 
 `hunks` is the unit's hunk ids (short ids are fine), in reading order. An entry may be
-a bare id or an object `{"id": "...", "label": "...", "skip": true, "heart": [...]}`
+a bare id or an object `{"id": "...", "label": "...", "skip": true, "heart": [...], "risks": [...]}`
 saying what that hunk is to the unit. Three fields, each optional:
 
 **`label`** — three to six words saying what the hunk *is*, sentence case, no period:
@@ -321,6 +320,8 @@ two to five words giving the reason, shown on the muted hunk: `"adds imports"`,
 - Purview shows these hunks muted, leaves them out of every progress count, and Space
   passes over them, so a wrong skip steers the reviewer past code. When in doubt, leave
   it out.
+
+**`risks`** — place one to four marks `{ "flag": "money", "why": "A retry can charge the customer twice.", "lines": [21, 23] }` on the hunk and new-side inclusive lines concerned. Use only `auth`, `migration`, `concurrency`, `money`, `external-call`, or `security`. Each `why` is one sentence (the same length limit as heart why) saying what is at stake there. Ranges must stay inside the hunk and must not overlap other risk ranges; they may overlap hearts. Omit `lines` for a mark on the whole hunk; whole-hunk marks do not mix with ranged ones on the same hunk. Never mark a skip hunk. Unit `riskFlags` is computed from these marks: do not set it; incoming values are ignored. Legacy units without marks retain their existing flags.
 
 **`heart`** — one to three segments `{"why": "...", "lines": [from, to]}` on a hunk
 where the unit's logic actually lives, as opposed to the call sites, tests, imports and
@@ -535,7 +536,7 @@ CLI reports validation errors, fix the file with the **edit tool** — a targete
 a rewrite — and re-run the same command. Do not hand-wave past a validation failure.
 Common causes: a hunk id of the current revision missing from every unit's
 `hunks` *and* from `"unassigned"` (the error lists the exact ids), a hunk id listed in
-two units (the error names the units), a referenced id that isn't in this revision, an invalid `kind`/`attention`/`riskFlags` enum value, or a missing
+two units (the error names the units), a referenced id that isn't in this revision, an invalid `kind`/`attention`/risk mark `flag` enum value, or a missing
 required field such as `attentionWhy` or `order`.
 
 ## 8. On refresh of an already-analyzed PR

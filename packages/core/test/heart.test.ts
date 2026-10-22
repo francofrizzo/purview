@@ -158,8 +158,8 @@ describe("heart through the reducer", () => {
       units: [
         unit({
           hunks: [
-            { id: "h1", heart: [{ why: "the rule", lines: [3, 9] }, { why: "its helper", lines: [20, 25] }] },
-            { id: "h2", heart: [{ why: "its guard", lines: [1, 2] }] },
+            { id: "h1", risks: [{ flag: "money", why: "Duplicate charge.", lines: [3, 9] }, { flag: "auth", why: "Access leaks.", lines: [20, 25] }], heart: [{ why: "the rule", lines: [3, 9] }, { why: "its helper", lines: [20, 25] }] },
+            { id: "h2", risks: [{ flag: "security", why: "Secret leaks.", lines: [1, 2] }], heart: [{ why: "its guard", lines: [1, 2] }] },
           ],
         }),
       ],
@@ -181,8 +181,8 @@ describe("heart through the reducer", () => {
       { ...(rev(2, ["h1b", "h2"]) as Record<string, unknown>), migration } as unknown as ReviewerEvent,
     ]);
     expect(state.units[0].hunks).toEqual([
-      { id: "h1b", heart: [{ why: "the rule" }] },
-      { id: "h2", heart: [{ why: "its guard", lines: [1, 2] }] },
+      { id: "h1b", risks: [{ flag: "money", why: "Duplicate charge." }, { flag: "auth", why: "Access leaks." }], heart: [{ why: "the rule" }] },
+      { id: "h2", risks: [{ flag: "security", why: "Secret leaks.", lines: [1, 2] }], heart: [{ why: "its guard", lines: [1, 2] }] },
     ]);
   });
 
@@ -279,6 +279,16 @@ describe("heart through the CLI-facing service", () => {
       unit({ id: "beta", hunks: [b1], order: 2 }),
     ],
     unassigned: [],
+  });
+
+  it("derives risk flags for analysis and patches, ignoring sent flags", () => {
+    const risks = [{ flag: "money", why: "A retry can charge twice.", lines: [1, 1] }];
+    const input = payload([{ id: a1, risks }, a2]);
+    input.units[0].riskFlags = ["security"];
+    expect(setAnalysis(key, input, {}, tmp).state.units[0].riskFlags).toEqual(["money"]);
+    expect(setUnit(key, "alpha", { riskFlags: ["security"], addHunks: [{ id: a2, risks: [{ flag: "auth", why: "Access can leak." }] }] }, undefined, tmp).units[0].riskFlags).toEqual(["money", "auth"]);
+    expect(() => setUnit(key, "alpha", { addHunks: [{ id: a1, risks: [{ ...risks[0], lines: [1, 2] }] }] }, undefined, tmp)).toThrow(/bounds/);
+    expect(() => setAnalysis(key, payload([{ id: a1, risks: [{ ...risks[0], lines: [2, 2] }] }, a2]), {}, tmp)).toThrow(/bounds/);
   });
 
   it("set-analysis accepts a heart entry, resolving short ids", () => {

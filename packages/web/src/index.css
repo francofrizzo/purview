@@ -834,3 +834,15 @@ html[data-mode="light"] .logo-for-light {
   z-index: 4;
   pointer-events: none;
 }
+
+/* Leave the heart's left edge free when both marks concern the same lines. */
+[data-risk="true"] > .risk-bar {
+  position: absolute;
+  z-index: 1;
+  left: 5px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--risk);
+  pointer-events: none;
+}

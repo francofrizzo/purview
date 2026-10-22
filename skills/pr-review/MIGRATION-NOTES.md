@@ -84,7 +84,7 @@ first three as "carried".
      **now** (the "now holds" lines in `changes`, or `reviewer-state units <key> <id>`). A
      unit that lost hunks is titled and summarized by what remains, not by what left; the
      history goes in the changelog only;
-   - re-check `kind` / `attention` / `riskFlags` (a correction needs a `note`);
+   - re-check `kind` / `attention` and hunk `risks` (unit `riskFlags` is computed; incoming values are ignored) (a correction needs a `note`);
    - re-check each hunk entry's `label`, `skip` and `heart`: a hunk that left the unit
      took its entry with it; a reworked hunk's `skip`, `label` and heart `lines` are
      already gone (each was a claim about the old body), so a reworked hunk counts again
@@ -116,7 +116,7 @@ first three as "carried".
      {"id": "new-home", "addHunks": ["5e6f7a8b"], "kind": "wiring", "attention": "skim",
       "note": "config plumbing, not logic"},
      {"id": "brand-new", "title": "...", "summary": "...", "kind": "tests", "attention": "skim",
-      "attentionWhy": "...", "order": 12, "riskFlags": [], "hunks": ["9c0d1e2f"]}
+      "attentionWhy": "...", "order": 12, "hunks": ["9c0d1e2f"]}
    ]}
    ```
 
@@ -254,3 +254,5 @@ number.
   list.
 - Never overwrite the whole `units` array with `set-analysis` on a refresh — that command
   is for the initial full analysis only. Use `set-units` (or `set-unit`) for incremental patches.
+
+Risk marks keep flag and why after migration; non-identical matches lose their line ranges and the marks then cover the whole hunk. Re-anchor them when you patch the unit, as you do a collapsed heart.

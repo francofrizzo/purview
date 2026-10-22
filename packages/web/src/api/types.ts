@@ -134,12 +134,17 @@ export interface HeartSegment {
  * the one to three segments the unit's logic lives in. A hunk is never both
  * skip and heart.
  */
+export interface RiskMark extends HeartSegment {
+  flag: RiskFlag;
+}
+
 export interface HunkEntry {
   id: string;
   /** inline markdown */
   label?: string;
   skip?: true;
   heart?: HeartSegment[];
+  risks?: RiskMark[];
 }
 
 export interface ReviewUnit {

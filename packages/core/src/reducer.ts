@@ -371,6 +371,7 @@ export function applyEvent(prev: State, event: ReviewerEvent): State {
               // carrying the first why.
               entry.heart = [{ why: e.heart[0].why }];
             }
+            if (e.risks) entry.risks = identical ? e.risks : e.risks.map(({ flag, why }) => ({ flag, why }));
             return entry;
           });
         };

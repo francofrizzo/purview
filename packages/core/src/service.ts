@@ -54,7 +54,7 @@ import {
   FINDING_TEXT_MAX,
   hunkListIssues,
 } from "./schemas.js";
-import { hunkIdsOf } from "./units.js";
+import { derivedRiskFlags, hunkIdsOf } from "./units.js";
 import { upcastAnalysisPayload } from "./upcast.js";
 
 /**
@@ -639,7 +639,14 @@ export function setAnalysis(
   opts: SetAnalysisOptions = {},
   root = stateRoot(),
 ): { state: State; coverage: AnalysisCoverage } {
-  const analysis = AnalysisSchema.parse(upcastAnalysisPayload(input));
+  const payload = upcastAnalysisPayload(input) as Record<string, unknown>;
+  if (opts.origin !== "import" && Array.isArray(payload.units)) {
+    payload.units = payload.units.map((unit) => {
+      const { riskFlags: _ignored, ...rest } = unit;
+      return rest;
+    });
+  }
+  const analysis = AnalysisSchema.parse(payload);
   const state = loadState(key, root);
   // Short ids in the entries are resolved against the revision before
   // coverage looks at them; an imported analysis (another reader's, possibly
@@ -653,6 +660,11 @@ export function setAnalysis(
       `A unit's hunks list is invalid:\n  ` + problems.map((p) => `${p.unitId}: ${p.problem}`).join("\n  "),
     );
   }
+  for (const unit of analysis.units) {
+    if (opts.origin !== "import") unit.riskFlags = state.units.find((u) => u.id === unit.id)?.riskFlags ?? [];
+    unit.riskFlags = derivedRiskFlags(unit);
+  }
+  validateRiskBounds(analysis.units, readFilesJson(key, state.currentRevision, root).files);
   const coverage = analysisCoverage(state, analysis);
   if (coverage.missing.length > 0) {
     throw new Error(
@@ -739,6 +751,7 @@ export function setUnits(
 ): { state: State; warnings: string[]; unitIds: string[] } {
   const state = loadState(key, root);
   const planned = planUnitPatches(state, requests);
+  validateRiskBounds(planned.events.flatMap((e) => e.type === "unit-updated" && e.patch.hunks ? [{ hunks: e.patch.hunks }] : []), readFilesJson(key, state.currentRevision, root).files);
   const next = appendEvents(key, planned.events, root);
   return { state: next, warnings: planned.warnings, unitIds: planned.unitIds };
 }
@@ -914,4 +927,10 @@ export function syncPr(key: PrKey, root = stateRoot()): SyncResult {
 
   const next = events.length > 0 ? appendEvents(key, events, root) : state;
   return { pushed, drift, state: next };
+}
+
+function validateRiskBounds(units: { hunks: HunkEntry[] }[], files: import("./schemas.js").FileDiff[]): void {
+  const bounds = new Map(files.flatMap((f) => f.hunks.map((h) => [h.id, h] as const)));
+  const issues = units.flatMap((u) => hunkListIssues(u.hunks, { bounds }));
+  if (issues.length) throw new Error(issues.join("\n"));
 }

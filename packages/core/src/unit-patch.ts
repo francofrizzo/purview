@@ -4,7 +4,7 @@ import { GENERATED_UNIT_ID, isGeneratedUnit } from "./generated.js";
 import { hunkListIssues, isRemovedUnit } from "./schemas.js";
 import type { FileDiff, HunkEntry, NewEvent, ReviewUnit, ReviewUnitPatch, ReviewerEvent, State } from "./schemas.js";
 import { NewReviewUnitSchema, ReviewUnitPatchSchema } from "./schemas.js";
-import { heartOf, hunkIdsOf, skipOf, upsertHunks } from "./units.js";
+import { derivedRiskFlags, heartOf, hunkIdsOf, skipOf, upsertHunks } from "./units.js";
 import { upcastUnitPatch } from "./upcast.js";
 
 /**
@@ -113,6 +113,7 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
       existing,
     ) as Record<string, unknown>;
     void _note;
+    delete rest.riskFlags;
     const add = asEntryList(addRaw, "addHunks", unitId, errors);
     const remove = asStringArray(removeRaw, "removeHunkIds", unitId, errors);
     if (rest.hunks !== undefined && (add !== undefined || remove !== undefined)) {
@@ -158,9 +159,9 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
         const entries = resolveList(add, "addHunks entry", revisionIds);
         for (const e of entries) {
           const had = next.find((h) => h.id === e.id);
-          const bare = !e.label && !e.skip && !e.heart;
-          if (had && bare && (had.label || had.skip || had.heart)) {
-            warnings.push(`warning: unit ${unitId} already held ${e.id}; its label, skip and heart were cleared`);
+          const bare = !e.label && !e.skip && !e.heart && !e.risks;
+          if (had && bare && (had.label || had.skip || had.heart || had.risks)) {
+            warnings.push(`warning: unit ${unitId} already held ${e.id}; its label, skip, heart and risks were cleared`);
           } else if (had && bare) warnings.push(`warning: unit ${unitId} already holds ${e.id}`);
         }
         next = upsertHunks(next, entries);
@@ -213,6 +214,7 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
       }
       patch = result.data;
     }
+    patch.riskFlags = derivedRiskFlags({ hunks: patch.hunks ?? existing?.hunks ?? [], riskFlags: existing?.riskFlags ?? [] });
     if (patch.hunks) finalHunks.set(unitId, hunkIdsOf({ hunks: patch.hunks }));
     planned.push({ unitId, patch, existing, note: req.note });
   }
