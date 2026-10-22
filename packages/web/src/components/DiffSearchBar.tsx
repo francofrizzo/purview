@@ -74,38 +74,32 @@ export function DiffSearchBar({
           onClick={search.next}
         />
       </div>
-      <Toggle
+      <Segmented
         testId="search-where"
-        active={search.scope === "all"}
-        tip={
-          search.scope === "all"
-            ? "Searching the whole diff; ⌘F narrows to what's shown"
-            : `Searching ${scopeLabel} only; ⌘⇧F widens to the whole diff`
-        }
-        onClick={() => search.setScope(search.scope === "all" ? "visible" : "all")}
-      >
-        {search.scope === "all" ? "whole diff" : scopeLabel}
-      </Toggle>
+        value={search.scope}
+        options={[
+          { value: "visible", label: scopeLabel, tip: `Search ${scopeLabel} only (⌘F)` },
+          { value: "all", label: "whole diff", tip: "Search the whole diff (⌘⇧F)" },
+        ]}
+        onChange={search.setScope}
+      />
       <Toggle
         testId="search-case"
         active={search.caseSensitive}
-        tip={search.caseSensitive ? "Matching case" : "Ignoring case"}
+        tip={search.caseSensitive ? "Matching case; click to ignore it" : "Ignoring case; click to match it"}
         onClick={() => search.setCaseSensitive(!search.caseSensitive)}
       >
         Aa
       </Toggle>
-      <Toggle
-        testId="search-scope"
-        active={!search.changedOnly}
-        tip={
-          search.changedOnly
-            ? "Searching added and removed lines only; click to include context"
-            : "Searching every line, context included"
-        }
-        onClick={() => search.setChangedOnly(!search.changedOnly)}
-      >
-        {search.changedOnly ? "changed" : "all lines"}
-      </Toggle>
+      <Segmented
+        testId="search-lines"
+        value={search.changedOnly ? "changed" : "all"}
+        options={[
+          { value: "changed", label: "changed", tip: "Added and removed lines only" },
+          { value: "all", label: "all lines", tip: "Every line, context included" },
+        ]}
+        onChange={(v) => search.setChangedOnly(v === "changed")}
+      />
       <button
         type="button"
         className="ml-auto flex-none text-2xs"
@@ -148,6 +142,54 @@ function StepButton({
     >
       <IconCaret up={up} width={12} height={12} />
     </button>
+  );
+}
+
+/**
+ * Two modes side by side, the one in force lit: the reader sees both the
+ * state and the alternative, where a lone toggle with a changing label left
+ * it unclear which of the two words was the mode and which the action.
+ */
+function Segmented<V extends string>({
+  value,
+  options,
+  testId,
+  onChange,
+}: {
+  value: V;
+  options: { value: V; label: string; tip: string }[];
+  testId: string;
+  onChange: (v: V) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      data-testid={testId}
+      className="flex flex-none overflow-hidden rounded text-2xs font-medium"
+      style={{ border: "1px solid var(--border)" }}
+    >
+      {options.map((o) => {
+        const on = o.value === value;
+        return (
+          <button
+            key={o.value}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            data-testid={`${testId}-${o.value}`}
+            data-tip={o.tip}
+            onClick={() => onChange(o.value)}
+            className="px-1.5 py-0.5 transition-colors"
+            style={{
+              background: on ? "var(--accent-soft)" : "var(--bg-inset)",
+              color: on ? "var(--accent)" : "var(--fg-faint)",
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

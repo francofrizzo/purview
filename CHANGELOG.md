@@ -5,6 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Two more unit kinds.** A unit can be "refactor" (restructured, nothing changed) or "data" (schema, seeds, generated files); re-analyze to get them.
+- **Search switches.** The find bar shows both sides of each choice, "this unit | whole diff" and "changed | all lines", with the active one lit. All lines is the default.
+
 ## 2026.10.22.1
 
 - **Thread actions in the comments panel.** Hover a GitHub thread to copy it with the code it points at, reply to it, or resolve it.

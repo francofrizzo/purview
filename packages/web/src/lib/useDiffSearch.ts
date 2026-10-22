@@ -64,7 +64,9 @@ export function useDiffSearch(
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
-  const [changedOnly, setChangedOnly] = useState(true);
+  // Every line by default: a reader looking for a name wants to find it, and a
+  // miss on changed lines alone reads as "not in this PR" when it may well be.
+  const [changedOnly, setChangedOnly] = useState(false);
   const [scope, setScope] = useState<SearchScope>("visible");
   const [index, setIndex] = useState(0);
 
