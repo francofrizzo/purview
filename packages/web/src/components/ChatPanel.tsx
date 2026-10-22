@@ -116,17 +116,17 @@ export function RefChip({
 
 /** What the agent is doing, and under it, smaller, what it is doing it to. */
 function ToolLine({ tool }: { tool: ToolActivity }) {
+  // One line: the name never shrinks or wraps; whatever room is short comes
+  // out of the arguments, as an ellipsis.
   return (
-    <div className="flex items-start gap-1.5 text-xs" style={{ color: "var(--fg-faint)" }} data-testid="chat-tool-line">
+    <div className="flex min-w-0 items-baseline gap-1.5 text-xs" style={{ color: "var(--fg-faint)" }} data-testid="chat-tool-line">
       <span className="flex-none" style={{ color: "var(--accent)" }}>›</span>
-      <span className="min-w-0">
-        <span className="block">{tool.name}</span>
-        {tool.detail ? (
-          <span className="block truncate text-2xs" style={{ color: "var(--fg-faint)", opacity: 0.8 }}>
-            {tool.detail}
-          </span>
-        ) : null}
-      </span>
+      <span className="flex-none whitespace-nowrap">{tool.name}</span>
+      {tool.detail ? (
+        <span className="min-w-0 truncate text-2xs" style={{ color: "var(--fg-faint)", opacity: 0.8 }} title={tool.detail}>
+          {tool.detail}
+        </span>
+      ) : null}
     </div>
   );
 }

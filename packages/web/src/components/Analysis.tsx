@@ -149,11 +149,12 @@ export function splitToolProgress(text: string): { doing: string; target?: strin
 function ProgressText({ text }: { text: string }) {
   if (!isToolProgress(text)) return <>{text}</>;
   const { doing, target } = splitToolProgress(text);
+  // One line: the verb never shrinks or wraps; the target gives way first.
   return (
-    <span className="inline-block min-w-0 align-top" data-testid="analysis-tool-progress">
-      <span className="block">{doing}</span>
+    <span className="inline-flex max-w-full min-w-0 items-baseline gap-1.5 align-top" data-testid="analysis-tool-progress">
+      <span className="flex-none whitespace-nowrap">{doing}</span>
       {target ? (
-        <span className="block break-all text-2xs" style={{ color: "var(--fg-faint)" }}>
+        <span className="min-w-0 truncate text-2xs" style={{ color: "var(--fg-faint)" }} title={target}>
           {target}
         </span>
       ) : null}
