@@ -114,12 +114,19 @@ export function RefChip({
   );
 }
 
+/** What the agent is doing, and under it, smaller, what it is doing it to. */
 function ToolLine({ tool }: { tool: ToolActivity }) {
   return (
-    <div className="flex items-center gap-1.5 font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
-      <span style={{ color: "var(--accent)" }}>›</span>
-      <span>{tool.name}</span>
-      {tool.detail ? <span className="truncate">{tool.detail}</span> : null}
+    <div className="flex items-start gap-1.5 text-xs" style={{ color: "var(--fg-faint)" }} data-testid="chat-tool-line">
+      <span className="flex-none" style={{ color: "var(--accent)" }}>›</span>
+      <span className="min-w-0">
+        <span className="block">{tool.name}</span>
+        {tool.detail ? (
+          <span className="block truncate text-2xs" style={{ color: "var(--fg-faint)", opacity: 0.8 }}>
+            {tool.detail}
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }

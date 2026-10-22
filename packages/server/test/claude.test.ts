@@ -1278,7 +1278,7 @@ describe("chat", () => {
     await chatTurnDone(key);
 
     expect(body).toContain("event: tool");
-    expect(body).toContain('"name":"Read"');
+    expect(body).toContain('"name":"Reading"');
     expect(body).toContain("event: delta");
     expect(body).toContain("event: done");
     expect(body).toContain("rounding change");

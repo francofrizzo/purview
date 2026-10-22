@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analysisStatsRows, archivedSkipText, isToolProgress } from "./Analysis";
+import { analysisStatsRows, archivedSkipText, isToolProgress, splitToolProgress } from "./Analysis";
 
 describe("analysisStatsRows", () => {
   it("lists known stats and orders tool calls by count", () => {
@@ -85,5 +85,13 @@ describe("isToolProgress", () => {
     expect(isToolProgress("fetching the PR head")).toBe(false);
     expect(isToolProgress("starting")).toBe(false);
     expect(isToolProgress("cancelling")).toBe(false);
+  });
+});
+
+describe("splitToolProgress", () => {
+  it("separates what the agent is doing from what it is doing it to, and keeps a one-line text whole", () => {
+    expect(splitToolProgress("Reading the diff\nsrc/a.ts:12")).toEqual({ doing: "Reading the diff", target: "src/a.ts:12" });
+    expect(splitToolProgress("Saving the analysis\n")).toEqual({ doing: "Saving the analysis" });
+    expect(splitToolProgress("Bash grep -rn foo")).toEqual({ doing: "Bash grep -rn foo" });
   });
 });

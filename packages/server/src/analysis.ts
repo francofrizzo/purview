@@ -28,7 +28,7 @@ import {
   GENERATED_UNIT_ID,
 } from "@reviewer/core";
 import { cliEnvironment, getHarness } from "./agent/registry.js";
-import { actionLabel } from "./agent/types.js";
+import { actionGerund, actionLabel } from "./agent/types.js";
 import type { AgentAction, AgentRun, HarnessManifest, ReviewerCommand } from "./agent/types.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 import { readConfig } from "./config.js";
@@ -1086,7 +1086,8 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
         if (latest) {
           writeJob(
             key,
-            { ...latest, progress: `${actionLabel(event.action.name)} ${event.action.summary}`.trim().slice(0, 300) },
+            // What the agent is doing, then on its own line what it is doing it to; the banner splits them.
+            { ...latest, progress: `${actionGerund(event.action.name)}\n${event.action.summary ?? ""}`.trim().slice(0, 300) },
             root,
           );
         }

@@ -468,6 +468,7 @@ const jobSubscribers: Record<string, Set<(job: AnalysisJob) => void>> = {};
 const PROGRESS_STEPS = [
   "reading revision 1 diff (9 hunks, 8 files)…",
   "bucketing files: 3 must-read candidates…",
+  "Reading the diff\nsrc/billing/charge.ts:120 · unit:charge",
   "deep-reading src/billing/charge.ts…",
   "grouping hunks into review units…",
 ];
@@ -696,9 +697,9 @@ notes in [docs/billing.md](https://example.com/docs/billing) for the reconciliat
 job that would sweep reserved-but-unrecorded rows.`;
 
 const TOOL_CALLS: { name: string; detail: string; kind: string; at: number }[] = [
-  { name: "read", detail: "src/billing/charge.ts", kind: "read", at: 0 },
-  { name: "grep", detail: "idempotencyKey — 6 matches", kind: "search", at: 3 },
-  { name: "read", detail: "src/billing/ledger.ts", kind: "read", at: 9 },
+  { name: "Reading code", detail: "src/billing/charge.ts:120", kind: "read", at: 0 },
+  { name: "Searching code", detail: "idempotencyKey, orderId · src/**/*.ts", kind: "search", at: 3 },
+  { name: "Reading code", detail: "src/billing/ledger.ts", kind: "read", at: 9 },
 ];
 
 const encoder = new TextEncoder();

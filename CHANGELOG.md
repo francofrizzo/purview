@@ -8,13 +8,14 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **What each reviewer said, where you decide.** The finish-review panel now shows each reviewer's review text under their verdict, and "N inline comments" takes you to those comments in the diff, one after another.
-- **Fix:** tool calls in the chat and the analysis progress read as plain actions ("Search code src/billing", "Run", "Find files") instead of raw tool names, and a shared tool no longer shows its name twice.
+- **Fix:** tool calls in the chat and the analysis progress say what the agent is doing ("Reading the diff", "Searching code") with what it is doing it to on a smaller line under it, instead of raw tool names repeated twice.
 - **GitHub threads, handled from the comments panel.** Hover a thread there to copy it with the code it points at (for an agent), reply to it, or resolve it, without going to the diff. Copying a GitHub comment in the diff now carries its location and code too.
 - **React to GitHub comments.** Each GitHub comment in the diff shows its reactions; click one to add yours or take it back, or pick from the eight GitHub emoji. The comments panel shows them on each thread too.
 - **Fix:** a whole-file or outdated thread clicked in the comments panel opens in the review unit that holds its file, instead of switching to the Files tab.
 - **Fix:** the floating comment box keeps its controls inside its edges: the audience switch goes icon-only and the formatting row wraps.
 - **"Changed" now means the revisions you picked.** The chip on a unit no longer says it changed since you viewed it; it appears when the revisions lit up in the rev menu touched that unit, so the sidebar shows where to look. The rev menu is wider and says when each revision was fetched.
 - **Emoji in comments.** The comment box has an emoji button: type to search by name or meaning (rocket, thumbs, eyes), Enter or a click puts it where you were writing.
+- **Copy the PR number** from the header, next to the branch name's copy button.
 
 ## 2026.10.21.2
 

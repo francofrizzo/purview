@@ -221,6 +221,7 @@ export function TopBar({
               {meta.owner}/{meta.repo}
               <span style={{ color: "var(--fg-muted)" }}>#{meta.number}</span>
             </span>
+            <CopyPathButton path={String(meta.number)} what="PR number" />
             {meta.author ? (
               <span className="flex items-center gap-1" data-tip={`Opened by ${meta.author}`}>
                 <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />

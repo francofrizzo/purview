@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionLabel } from "../src/agent/types.js";
+import { actionGerund, actionLabel } from "../src/agent/types.js";
 import { describeArgs } from "../src/agent/review-tools/operations.js";
 
 describe("actionLabel", () => {
@@ -15,6 +15,15 @@ describe("actionLabel", () => {
     expect(actionLabel("purview_read_code")).toBe("Read code");
   });
   it("leaves an unknown name alone", () => expect(actionLabel("SomethingElse")).toBe("SomethingElse"));
+});
+
+describe("actionGerund", () => {
+  it("says what the agent is doing, for built-in and shared tools alike", () => {
+    expect(actionGerund("Bash")).toBe("Running a command");
+    expect(actionGerund("mcp__purview__review_diff")).toBe("Reading the diff");
+    expect(actionGerund("set_analysis")).toBe("Saving the analysis");
+  });
+  it("falls back to calling the tool by its reader name", () => expect(actionGerund("purview_frobnicate")).toBe("Calling Frobnicate"));
 });
 
 describe("describeArgs", () => {

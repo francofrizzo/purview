@@ -131,18 +131,32 @@ export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
 
 /**
  * A live job's progress is either a phase ("fetching the PR head") or the tool
- * call running right now ("Bash grep -rn …", "Read /path/…"). Tool calls are
- * code, so they get the code font; phases stay prose.
+ * call running right now: what the agent is doing ("Reading the diff") and,
+ * on a second line, what it is doing it to ("src/billing/charge.ts:120").
  */
 export function isToolProgress(text: string): boolean {
   return /^[A-Z][A-Za-z]+(\s|$)/.test(text);
 }
 
+/** The two lines of a tool progress text; older servers sent one line, which stays whole. */
+export function splitToolProgress(text: string): { doing: string; target?: string } {
+  const at = text.indexOf("\n");
+  if (at === -1) return { doing: text };
+  const target = text.slice(at + 1).trim();
+  return target ? { doing: text.slice(0, at), target } : { doing: text.slice(0, at) };
+}
+
 function ProgressText({ text }: { text: string }) {
   if (!isToolProgress(text)) return <>{text}</>;
+  const { doing, target } = splitToolProgress(text);
   return (
-    <span className="break-all font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
-      {text}
+    <span className="inline-block min-w-0 align-top" data-testid="analysis-tool-progress">
+      <span className="block">{doing}</span>
+      {target ? (
+        <span className="block break-all text-2xs" style={{ color: "var(--fg-faint)" }}>
+          {target}
+        </span>
+      ) : null}
     </span>
   );
 }

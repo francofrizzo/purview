@@ -214,10 +214,62 @@ const ACTION_LABELS: Record<string, string> = {
   checkout: "Checkout",
 };
 
+/**
+ * The same tools as the reader watches them happen: "Reading the diff",
+ * "Searching code". A noun names a tool in the stats; a gerund says what the
+ * agent is doing right now, in the chat and the analysis progress.
+ */
+const ACTION_GERUNDS: Record<string, string> = {
+  Bash: "Running a command",
+  Read: "Reading",
+  Write: "Writing",
+  Edit: "Editing",
+  MultiEdit: "Editing",
+  NotebookEdit: "Editing",
+  Glob: "Finding files",
+  Grep: "Searching",
+  LS: "Listing",
+  WebFetch: "Fetching",
+  WebSearch: "Searching the web",
+  Task: "Delegating",
+  TodoWrite: "Planning",
+  checkout: "Checking out",
+  review_context: "Reading the PR",
+  review_description: "Reading the description",
+  review_changes: "Reading what changed",
+  review_diff: "Reading the diff",
+  review_units: "Reading the units",
+  read_code: "Reading code",
+  read_base_file: "Reading the base",
+  search_code: "Searching code",
+  list_paths: "Listing paths",
+  file_history: "Reading file history",
+  revision_diff: "Comparing revisions",
+  list_comments: "Reading comments",
+  create_draft: "Drafting a comment",
+  edit_draft: "Editing a draft",
+  delete_draft: "Deleting a draft",
+  set_analysis: "Saving the analysis",
+  patch_units: "Patching units",
+  set_revision_summary: "Summarizing the revision",
+};
+
+/** `mcp__purview__review_units` -> `review_units`; a bare name stays as is. */
+function bareToolName(name: string): string {
+  return name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/^purview_/, "");
+}
+
+export function actionGerund(name: string): string {
+  const bare = bareToolName(name);
+  if (ACTION_GERUNDS[bare]) return ACTION_GERUNDS[bare];
+  if (ACTION_GERUNDS[name]) return ACTION_GERUNDS[name];
+  return `Calling ${actionLabel(name)}`;
+}
+
 export function actionLabel(name: string): string {
   if (ACTION_LABELS[name]) return ACTION_LABELS[name];
   // mcp__purview__review_units -> review_units; snake_case -> "Review units"
-  const bare = name.replace(/^mcp__[^_]+(?:_[^_]+)*?__/, "").replace(/^purview_/, "");
+  const bare = bareToolName(name);
   if (/^[a-z0-9]+(_[a-z0-9]+)*$/.test(bare)) {
     const words = bare.split("_").join(" ");
     return words.charAt(0).toUpperCase() + words.slice(1);
