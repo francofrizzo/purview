@@ -644,7 +644,7 @@ program
   .option("--file <json>", 'JSON file with {"text": "..."} instead of --text')
   .option("--rev <n>", "revision to summarize (defaults to the current one; never 1)")
   .description(
-    "record what a revision changed across the whole PR, in the reader's language (replaces an earlier summary of that revision)",
+    "record what a revision changed across the whole PR, in the analysis's language (replaces an earlier summary of that revision)",
   )
   .action((keyArg: string, opts: { text?: string; file?: string; rev?: string }) => {
     const key = requireExistingKey(keyArg);

@@ -206,6 +206,7 @@ const globalConfig: {
   chatAgent: ChatAgentSelection | null;
   editor: GlobalConfig["editor"];
   editorConfirmed: boolean;
+  analysisLanguage: string | null;
   managedCheckouts: boolean;
   aiReviewers: string[];
   extraAuthors: string[];
@@ -215,6 +216,7 @@ const globalConfig: {
   chatAgent: null,
   editor: null,
   editorConfirmed: false,
+  analysisLanguage: null,
   managedCheckouts: true,
   aiReviewers: [],
   // The fixture's bot-opened PR (billing #502) lands under "Your PRs" through this.
@@ -910,6 +912,7 @@ export const mockApi = {
     await delay(180);
     if (patch.analysisAgent !== undefined) globalConfig.analysisAgent = patch.analysisAgent;
     if (patch.chatAgent !== undefined) globalConfig.chatAgent = patch.chatAgent;
+    if (patch.analysisLanguage !== undefined) globalConfig.analysisLanguage = patch.analysisLanguage;
     if (patch.managedCheckouts !== undefined) globalConfig.managedCheckouts = patch.managedCheckouts;
     if (patch.aiReviewers !== undefined) globalConfig.aiReviewers = patch.aiReviewers;
     if (patch.editor !== undefined) globalConfig.editor = patch.editor;

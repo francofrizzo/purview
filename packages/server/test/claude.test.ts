@@ -30,6 +30,7 @@ import {
   readJob,
   reconcileStaleJobs,
 } from "../src/analysis.js";
+import { writeConfig } from "../src/config.js";
 import { chatTurnDone } from "../src/chat-session.js";
 import {
   buildChatPrompt,
@@ -514,6 +515,36 @@ describe("analysis job lifecycle", () => {
     expect(job.status).toBe("done");
     expect(job.fresh).toBe(true);
     expect(job.metrics?.run?.kind).toBe("fresh");
+  });
+
+  it("writes in the configured language from scratch, and keeps the PR's own language on a refresh", async () => {
+    buildFixture(root); // fixture ships an analysis-set event, in English
+    writeConfig({ analysisLanguage: "Spanish" }, root);
+    await app.request(`/api/prs/${encodedKey}/analyze`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fresh: true }),
+    });
+    await analysisIdle();
+    // The reader's choice takes the place of the PR's description; a rubric that names one still wins.
+    expect(claude.promptOf(0)).toContain("in the language a rubric layer above names, if one does; otherwise in Spanish.");
+    expect(claude.promptOf(0)).toContain("enum values");
+    expect(claude.promptOf(0).match(/LANGUAGE:/g)).toHaveLength(1);
+
+    // A refresh does not switch a PR's language halfway: it follows the analysis it extends.
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
+    await analysisIdle();
+    const refresh = claude.promptOf(1);
+    expect(refresh).toContain("in the language this PR's analysis is already written in (it reads like: \"Adds widgets.\")");
+    expect(refresh).not.toContain("Spanish");
+    expect(refresh.match(/LANGUAGE:/g)).toHaveLength(1);
+    // The language rides on the per-run prompt, never the cached system prompt.
+    const argv = claude.runs[1].argv;
+    expect(argv[argv.indexOf("--append-system-prompt") + 1]).not.toContain("LANGUAGE:");
+
+    // Unset, a first analysis follows the PR's own description.
+    writeConfig({ analysisLanguage: null }, root);
+    expect(analysisPrompt(key, root, { incremental: false })).toContain("otherwise in the language of the PR's title and description.");
   });
 
   it("accumulates tool/result events into job.metrics and carries them on analysis-finished", async () => {

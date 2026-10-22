@@ -168,7 +168,7 @@ import {
 } from "./repo-config.js";
 import { agentView, checkAgentSelection, resolveAgent, resolveChatAgent } from "./repo-config.js";
 import { DEFAULT_HARNESS, getHarness, listedHarnessIds, registeredHarnessIds } from "./agent/registry.js";
-import { EditorSelectionSchema, generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
+import { AnalysisLanguageSchema, EditorSelectionSchema, generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
@@ -2108,6 +2108,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     return {
       analysisAgent: config.analysisAgent,
       chatAgent: config.chatAgent,
+      analysisLanguage: config.analysisLanguage,
       managedCheckouts: config.managedCheckouts,
       aiReviewers: config.aiReviewers,
       extraAuthors: config.extraAuthors,
@@ -2134,6 +2135,8 @@ export function createApp(opts: AppOptions = {}): Hono {
     .object({
       analysisAgent: AgentSelectionSchema.strict().nullable().optional(),
       chatAgent: ChatAgentSelectionSchema.strict().nullable().optional(),
+      /** the language new analyses write in; null = the PR description's */
+      analysisLanguage: AnalysisLanguageSchema.nullable().optional(),
       managedCheckouts: z.boolean().optional(),
       /** logins treated as AI reviewers; the whole list, replacing the stored one */
       aiReviewers: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
@@ -2246,6 +2249,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       patch.analysisAgent = checkAgentSelection(body.analysisAgent, "analysisAgent");
     }
     if (body.chatAgent !== undefined) patch.chatAgent = checkAgentSelection(body.chatAgent, "chatAgent");
+    if (body.analysisLanguage !== undefined) patch.analysisLanguage = body.analysisLanguage;
     if (body.managedCheckouts !== undefined) patch.managedCheckouts = body.managedCheckouts;
     // Both login lists are stored as typed, minus case-insensitive duplicates.
     if (body.aiReviewers !== undefined) patch.aiReviewers = dedupeLogins(body.aiReviewers);

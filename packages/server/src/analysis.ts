@@ -268,7 +268,7 @@ export function changesBlock(cmd: string, keyStr: string): string {
     "what is left; there is no need to run `report` afterwards.",
     `REVISION SUMMARY: after the patches land, run \`${cmd} set-revision-summary ${keyStr} --text "<summary>"\` once`,
     "(MIGRATION-NOTES.md step 4): ONE sentence, 25 words at most, on what this revision changed across the PR",
-    "as a whole, in the reader's language — the behavior that moved, not the bookkeeping or the test plumbing;",
+    "as a whole, in the analysis's language — the behavior that moved, not the bookkeeping or the test plumbing;",
     "file paths only when they are the point (\"the stop timeout moved to shared.go\"). Then stop.",
   ].join("\n");
 }
@@ -349,6 +349,30 @@ export function hunksToClassifyNote(
     ...(needs.length > MAX ? [`  … ${needs.length - MAX} more — \`${cmd} show ${keyStr} --needs\` covers them all`] : []),
     `Fetch all of their bodies in ONE call: \`${cmd} show ${keyStr} --needs\` (add any other selectors you need`,
     `to the same call). \`${cmd} triage ${keyStr}\` is still there if you want the whole-PR overview.`,
+  ].join("\n");
+}
+
+/**
+ * Which language the analysis writes in. A first analysis, or one from
+ * scratch, follows rubric.ts `languageRule`: a rubric layer, else the
+ * reader's setting, else the PR's description. A refresh keeps to whatever
+ * the PR's analysis already reads in, quoted from it, so a setting or rubric
+ * changed in between never leaves the guide half in one language and half in
+ * another. Analyze from scratch is how a PR changes language.
+ */
+export function languageNote(
+  state: Pick<State, "summary" | "units">,
+  opts: { incremental: boolean; language?: string | null },
+): string {
+  if (!opts.incremental) return languageRule("analysis", opts.language);
+  const sample = (state.summary || analysisUnits(state)[0]?.title || "").replace(/\s+/g, " ").replace(/"/g, "'").trim();
+  const quoted = sample.length > 120 ? `${sample.slice(0, 119)}…` : sample;
+  return [
+    "LANGUAGE:",
+    "Write everything new or rewritten (titles, summaries, attentionWhy, hunk labels and heart whys, changelog entries,",
+    "findings, the flow and file notes, the revision summary) in the language this PR's analysis is already written in" +
+      `${quoted ? ` (it reads like: "${quoted}")` : ""}, so the guide never mixes two.`,
+    "Code identifiers, paths and quoted code stay as they are; JSON keys and enum values (kind, attention, risk flags…) stay exactly as SKILL.md spells them.",
   ].join("\n");
 }
 
@@ -437,6 +461,8 @@ export function analysisPrompt(
     committed?: CommittedConfig;
     /** the harness's tool names; omitted, the default harness's */
     tools?: HarnessManifest["toolNames"];
+    /** config.json's `analysisLanguage`; omitted or null, the PR description's */
+    language?: string | null;
   },
 ): string {
   const dir = prDir(key, root);
@@ -499,7 +525,7 @@ export function analysisPrompt(
     movedNote(movedCodeSummary(key, state.currentRevision, root)),
     rubric ? "\n" + rubric : "",
     "",
-    languageRule("analysis"),
+    languageNote(state, opts),
     "",
     correctionsNote(state),
     "",
@@ -841,6 +867,7 @@ export function promptVersion(skills = skillDir()): string {
     changesBlock,
     correctionsNote,
     hunksToClassifyNote,
+    languageNote,
     baseNote,
     rubricSection,
     hardRules,
@@ -1066,6 +1093,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
       headSha,
       committed,
       tools: harness.manifest.toolNames,
+      language: readConfig(root).analysisLanguage,
     }),
     cwd,
     readRoots,

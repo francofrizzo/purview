@@ -743,6 +743,12 @@ export interface GlobalConfig {
   /** null = inherit, which at this layer means the harness's own defaults */
   analysisAgent: AgentSelection | null;
   chatAgent: ChatAgentSelection | null;
+  /**
+   * The language a PR's first analysis (or one from scratch) writes in; null =
+   * the PR description's (a rubric that names one wins either way). Absent on
+   * a server that predates it.
+   */
+  analysisLanguage?: string | null;
   /** Purview's own exact checkout of each PR's head for agent runs */
   managedCheckouts: boolean;
   /**
@@ -766,6 +772,7 @@ export interface GlobalConfigPatch {
   editorConfirmed?: boolean;
   analysisAgent?: AgentSelection | null;
   chatAgent?: ChatAgentSelection | null;
+  analysisLanguage?: string | null;
   managedCheckouts?: boolean;
   aiReviewers?: string[];
   extraAuthors?: string[];

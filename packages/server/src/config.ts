@@ -34,6 +34,17 @@ export const DEFAULT_DEV_ORIGINS = ["http://localhost:5179", "http://localhost:5
 export const EditorSelectionSchema = z.object({
   id: z.string().min(1), command: z.string().optional(), name: z.string().optional(),
 }).strict().refine(e => e.id !== "custom" || !!e.command?.includes("{path}"), "Custom command must include {path}");
+/**
+ * A language name as the analysis prompt reads it ("Spanish", "Rioplatense
+ * Spanish", "Português"): letters, spaces and a little punctuation, one line.
+ * It is spliced into the prompt, so nothing that could pass for an instruction.
+ */
+export const AnalysisLanguageSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(40)
+  .regex(/^\p{L}[\p{L}\p{M} '’(),-]*$/u, "a language name: letters, spaces, ( ) , ' -");
 
 export const ConfigSchema = z.object({
   /** Consent for the automatic Claude analysis run on init/refresh. */
@@ -55,6 +66,16 @@ export const ConfigSchema = z.object({
    */
   analysisAgent: AgentSelectionSchema.nullable().default(null),
   chatAgent: ChatAgentSelectionSchema.nullable().default(null),
+  /**
+   * The language the analysis writes its prose in (titles, summaries, labels,
+   * notes), in place of the PR description's; null = no choice, the
+   * description decides. A rubric layer that names one still wins (rubric.ts
+   * `languageRule`). It picks a PR's language at its first analysis, or one
+   * from scratch: a refresh keeps writing in whatever the PR's analysis already
+   * reads in (analysis.ts `languageNote`). A hand-edited value that does not
+   * parse falls back to null instead of voiding the whole file.
+   */
+  analysisLanguage: AnalysisLanguageSchema.nullable().default(null).catch(null),
   /**
    * How many analysis runs may execute at once. Each run is its own agent
    * process, so this multiplies the *rate* of spend, never the total; 2 keeps
