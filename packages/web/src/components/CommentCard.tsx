@@ -9,7 +9,7 @@
  * line's marker and its thread read as one thing.
  */
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useEffect, useState, type ReactNode } from "react";
 import type { ChatRef, CommentAudience, CommentStatus, DraftComment } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
 import { isForAgent, isRange, lineLabel } from "../lib/comments";
@@ -77,7 +77,8 @@ export interface CommentActions {
   moving?: boolean;
   /** post a GitHub draft publicly right now, outside any review */
   onPublish?: (comment: DraftComment) => void;
-  publishing?: boolean;
+  /** the id of the draft whose "publish now" is in flight */
+  publishing?: string | null;
   /** the last action on one comment the server refused, shown under that card */
   error?: CommentActionError | null;
 }
@@ -93,6 +94,7 @@ export function CommentCard({
   anchor,
   clamp,
   notice,
+  highlight,
 }: {
   comment: DraftComment;
   actions: CommentActions;
@@ -102,16 +104,25 @@ export function CommentCard({
   clamp?: boolean;
   /** extra content between header and body (e.g. "outside the diff") */
   notice?: ReactNode;
+  /** pulse once: the list just scrolled here to show where the card went */
+  highlight?: boolean;
 }) {
   const status: CommentStatus = comment.status ?? "draft";
   const forAgent = isForAgent(comment);
   const meta = forAgent ? AGENT_LOOK : COMMENT_STATUS[status];
-  const { onEdit, onDelete, onQuote, exportCtx, onUndoEdit, undoing, onMove, moving, onPublish, publishing } = actions;
+  const { onEdit, onDelete, onQuote, exportCtx, onUndoEdit, undoing, onMove, moving, onPublish } = actions;
   const deleting = actions.deleting === comment.id;
+  const publishing = actions.publishing === comment.id;
   const actionError = actions.error?.id === comment.id ? actions.error.message : null;
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
+  // The confirmation stays up while the post is in flight and says so; it
+  // closed itself on the click before, so for the seconds GitHub took the
+  // card looked like an untouched draft.
+  useEffect(() => {
+    if (!publishing) setConfirmPublish(false);
+  }, [publishing]);
   const canDelete = Boolean(onDelete) && status !== "submitted";
   // Only a draft changes hands; a reply stays with its thread on GitHub.
   const canMove = Boolean(onMove) && status === "draft" && !comment.inReplyTo;
@@ -131,6 +142,8 @@ export function CommentCard({
       data-testid={`comment-card-${comment.id}`}
       data-status={status}
       data-audience={forAgent ? "agent" : "github"}
+      data-publishing={publishing || undefined}
+      data-flash={highlight || undefined}
       className="group/comment rounded-md px-3 pb-2 pt-1.5"
       style={{
         background: "var(--bg-raised)",
@@ -152,8 +165,12 @@ export function CommentCard({
             {anchor.label.slice(anchor.label.lastIndexOf("/") + 1)}
           </button>
         ) : null}
-        <span className="flex-none font-medium" style={{ color: meta.ink }} data-tip={meta.hint}>
-          {meta.label}
+        <span
+          className={`flex-none font-medium${publishing ? " animate-pulse" : ""}`}
+          style={{ color: meta.ink }}
+          data-tip={publishing ? "Posting on GitHub" : meta.hint}
+        >
+          {publishing ? "publishing…" : meta.label}
         </span>
         {/* Inline, the covered lines light up; the words still say so (and
             are all there is when the card sits in a file block or a list
@@ -244,28 +261,30 @@ export function CommentCard({
         suggestion={suggestion}
       />
       <AgentEditNote comment={comment} onUndo={onUndoEdit} busy={undoing} />
-      {confirmPublish ? (
+      {confirmPublish || publishing ? (
         <div
           className="mt-1.5 flex flex-wrap items-center gap-2 rounded px-2 py-1.5 text-2xs"
           style={{ background: "var(--accent-soft)", color: "var(--fg)" }}
           data-testid={`confirm-publish-${comment.id}`}
         >
-          <span className="min-w-0 flex-1">Post it on GitHub now? It is public at once, outside any review.</span>
-          <button type="button" className="btn" onClick={() => setConfirmPublish(false)}>
-            keep
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            data-testid={`publish-inline-${comment.id}`}
-            disabled={publishing}
-            onClick={() => {
-              setConfirmPublish(false);
-              onPublish?.(comment);
-            }}
-          >
-            {publishing ? "publishing…" : "publish"}
-          </button>
+          {publishing ? (
+            <span className="min-w-0 flex-1 animate-pulse">Posting on GitHub…</span>
+          ) : (
+            <>
+              <span className="min-w-0 flex-1">Post it on GitHub now? It is public at once, outside any review.</span>
+              <button type="button" className="btn" onClick={() => setConfirmPublish(false)}>
+                keep
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                data-testid={`publish-inline-${comment.id}`}
+                onClick={() => onPublish?.(comment)}
+              >
+                publish
+              </button>
+            </>
+          )}
         </div>
       ) : null}
       {confirmDelete ? (

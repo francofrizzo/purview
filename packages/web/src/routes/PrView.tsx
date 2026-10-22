@@ -187,6 +187,19 @@ export function PrView() {
   const editComment = useEditComment(prKey);
   const setAudience = useSetCommentAudience(prKey);
   const publishComment = usePublishComment(prKey);
+  // The draft that just went public, for a few seconds: the drawer follows
+  // it to its new group.
+  const [justPublished, setJustPublished] = useState<string | null>(null);
+  const publishNow = useCallback(
+    (id: string) =>
+      publishComment.mutate(id, {
+        onSuccess: ({ comment }) => {
+          setJustPublished(comment.id);
+          window.setTimeout(() => setJustPublished((cur) => (cur === comment.id ? null : cur)), 3000);
+        },
+      }),
+    [publishComment],
+  );
   // The global switch: who new comments are for (web, CLI and chat alike).
   const audienceSwitch = useCommentAudience(prKey);
   const moveComment = useMoveComment(prKey);
@@ -1232,8 +1245,8 @@ export function PrView() {
     undoing: undoCommentEdit.isPending,
     onMove: (c: { id: string }, audience: CommentAudience) => setAudience.mutate({ id: c.id, audience }),
     moving: setAudience.isPending,
-    onPublish: (c: { id: string }) => publishComment.mutate(c.id),
-    publishing: publishComment.isPending,
+    onPublish: (c: { id: string }) => publishNow(c.id),
+    publishing: publishComment.isPending ? (publishComment.variables ?? null) : null,
     error: commentError,
     onReply: (thread: DisplayThread) => {
       const target = replyTarget(thread);
@@ -2192,8 +2205,9 @@ export function PrView() {
             onAudienceChange={audienceSwitch.set}
             onMove={(d, audience) => setAudience.mutate({ id: d.id, audience })}
             moving={setAudience.isPending}
-            onPublish={(d) => publishComment.mutate(d.id)}
-            publishing={publishComment.isPending}
+            onPublish={(d) => publishNow(d.id)}
+            publishing={publishComment.isPending ? (publishComment.variables ?? null) : null}
+            justPublished={justPublished}
             error={commentError}
             chatBusy={chat.busy}
             onSendToChat={(notes) => {

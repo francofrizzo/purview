@@ -78,8 +78,14 @@ test("publish now posts one GitHub draft publicly, after a confirmation", async 
   await page.getByTestId("publish-draft-1").click();
   await expect(page.getByTestId("confirm-publish-draft-1")).toContainText("public at once");
   await page.getByTestId("publish-inline-draft-1").click();
-  await expect(github.getByTestId("drawer-group-submitted").getByTestId("comment-card-draft-1")).toBeVisible();
-  await expect(page.getByTestId("comment-card-draft-1")).toHaveAttribute("data-status", "submitted");
+  // While GitHub takes its time the card says so where the question was.
+  await expect(page.getByTestId("comment-card-draft-1")).toHaveAttribute("data-publishing", "true");
+  await expect(page.getByTestId("confirm-publish-draft-1")).toContainText("Posting on GitHub");
+  const landed = github.getByTestId("drawer-group-submitted").getByTestId("comment-card-draft-1");
+  await expect(landed).toBeVisible();
+  await expect(landed).toHaveAttribute("data-status", "submitted");
+  await expect(landed).toBeInViewport();
+  await expect(page.getByTestId("comment-card-draft-1")).toHaveAttribute("data-flash", "true");
   await expect(page.getByTestId("publish-draft-1")).toHaveCount(0);
 });
 

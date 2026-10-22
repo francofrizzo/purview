@@ -738,6 +738,7 @@ export function DraftsDrawer({
   moving,
   onPublish,
   publishing,
+  justPublished,
   error,
   onSendToChat,
   chatBusy,
@@ -770,7 +771,10 @@ export function DraftsDrawer({
   moving?: boolean;
   /** post one GitHub draft publicly, now */
   onPublish?: (draft: DraftComment) => void;
-  publishing?: boolean;
+  /** the id of the draft whose "publish now" is in flight */
+  publishing?: string | null;
+  /** a draft that just went public: the list scrolls to where it landed */
+  justPublished?: string | null;
   /** the last action on one draft the server refused, shown under its card */
   error?: CommentActionError | null;
   /** hand the notes for the agent to the review chat, as one message */
@@ -808,14 +812,23 @@ export function DraftsDrawer({
     publishing,
     error,
   };
+  // A published draft leaves "Drafts" for "Submitted", often below the fold:
+  // follow it there, or it reads as lost. Keyed on the list too, since the
+  // move happens on the refetch after the success that named the id.
+  const landedRef = useRef<HTMLLIElement>(null);
+  const landedInSubmitted = Boolean(justPublished && submitted.some((d) => d.id === justPublished));
+  useEffect(() => {
+    if (landedInSubmitted) landedRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [landedInSubmitted]);
   const cards = (list: DraftComment[]) => (
     <ul className="flex flex-col gap-1.5">
       {list.map((d) => (
-        <li key={d.id}>
+        <li key={d.id} ref={d.id === justPublished ? landedRef : undefined}>
           <CommentCard
             comment={d}
             anchor={{ label: commentAnchorLabel(d), onJump: () => onJump(d) }}
             actions={cardActions}
+            highlight={d.id === justPublished && d.status === "submitted"}
           />
         </li>
       ))}
