@@ -13,27 +13,60 @@ reader last closed.
 
 When a change is visible to the person using the app, add a bullet under the
 `## Unreleased` heading at the top of `CHANGELOG.md` (create it if missing).
-Write it for the reader of the app: what changed in the review, not which file
-moved. The parser ignores that heading, so unreleased bullets never reach the
-app.
+The parser ignores that heading, so unreleased bullets never reach the app.
+
+### How a bullet is written
+
+Every bullet, unreleased or shipped, follows these rules. They come from the
+changelogs people actually read (Linear, Raycast, Sketch, Zed, Keep a
+Changelog): name the thing, say what you can do with it and where, stop.
+
+1. One bullet per change the reader could notice on their own. Never join two
+   changes with "and" or a semicolon. A fix is its own bullet.
+2. The bold lead-in names the thing, two to five words, the way the UI or a
+   user names it: "Reactions on GitHub comments", "Emoji picker in the comment
+   box". A noun phrase: no verbs, no benefits, no wordplay, no slogans.
+3. The first sentence says what you can now do, present tense, "you" as the
+   reader, and where it is: the button, key, menu, panel or command. Under
+   twenty words.
+4. A second sentence only if the reader needs it to use the feature right: a
+   condition, a limit, a key. Never a third.
+5. A fix reads `**Fix:**` followed by the symptom that no longer happens, in
+   the words the reader would have used to report it. Not the cause, not the
+   file, not what was done.
+6. Banned words: improvements, better, tidier, smoother, enhanced, various,
+   now supports, seamless, we, excited. If a sentence could appear in any
+   product's changelog, replace it with the specific thing in this one.
+7. Test before saving: a reader with the app open must find the change in ten
+   seconds from the bullet alone. If not, the bullet is missing the where.
+
+Wrong (slogan lead-in, three changes, "tidier", no where):
+"**What each revision changed.** A refresh writes one line per revision,
+shown in the rev menu and on the chip. Moved code is tidier: one colour, one
+band per block, a jump to the other end."
+
+Right (three bullets):
+"**Revision summaries.** The rev menu shows one line per revision saying what
+it changed."
+"**Moved-code blocks.** A moved block is one band in one colour, with a jump
+to its other end."
+"**Fix:** the 'since review' chip no longer lists every revision; it shows the
+one line for the latest."
+
+Wrong: "**The app tells you what it is doing.** Chat stop, review submit and
+the summary save show their state." Right: "**Fix:** Stop in the chat, Submit
+in finish review and the summary's Save show a spinner until done, and say
+what failed instead of snapping back."
 
 Do not cut a version on your own. Only when the user says to ship (or release,
 or tag) a version:
 
-1. Curate `## Unreleased` into release notes. The bullets accumulated one per
-   change; the reader wants the version at a glance. Group them into a few
-   themes, one bullet each, biggest change first: a bold lead-in of two to
-   five words, then one or two short sentences, forty words at most. Name
-   what the reader can now do or see and the key that does it; leave out how
-   it looks, where each piece sits and why it was built. Fold a fix into its
-   feature, drop what the reader would not look for. The parser only reads
-   flat bullets with inline markdown under a version heading: no sub-lists,
-   no sub-headings.
-
-   Too long: "In the diff those hunks carry a filled heart, a tinted header,
-   the why right under it and a bar down their left edge; the other hunks
-   stay fully visible and say what they are." Right: "They stand out in the
-   diff; `h` / `H` jump between them."
+1. Order `## Unreleased`: new things first, biggest first; then changes to
+   existing behavior, each saying what to do about it; fixes last. Reread
+   every bullet against the rules above and drop what the reader would not
+   look for. Do not merge bullets into themes. The parser only reads flat
+   bullets with inline markdown under a version heading: no sub-lists, no
+   sub-headings.
 2. Rename `## Unreleased` to the next version: today's date, then the next
    counter for the day (`## 2026.10.14.4`).
 3. Commit, tag it (`git tag -a v2026.10.14.4 -m 2026.10.14.4`) and push with
@@ -41,9 +74,6 @@ or tag) a version:
 
 If `## Unreleased` has bullets at the end of a turn, remind the user in one line
 that there is unreleased work and offer to ship it.
-
-A fix to something already shipped is announced as `**Fix:**` followed by one
-short sentence of what now works, not what was broken.
 
 Internal changes (documentation, tests, refactors, tooling) get no entry and no
 version bump. Neither do small tweaks the reader would not look for in a
