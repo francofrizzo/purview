@@ -20,8 +20,8 @@ export interface DockBadges {
 }
 
 const TABS: { id: DockTab; label: string; icon: ReactNode; key: string }[] = [
-  { id: "comments", label: "Comments", icon: <IconComment width={12} height={12} />, key: "m" },
   { id: "chat", label: "Chat", icon: <IconChat width={12} height={12} />, key: "c" },
+  { id: "comments", label: "Comments", icon: <IconComment width={12} height={12} />, key: "m" },
   { id: "review", label: "Review", icon: <IconCheck width={12} height={12} />, key: "r" },
 ];
 
