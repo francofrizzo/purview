@@ -197,8 +197,8 @@ the path, the mechanical hints (`lock`/`gen`/`docs`/`tests`/`snap`/`mig`), the t
 `@@` header, the +/- size shape, and any `mv-in`/`mv-out` moved-code mark. Using the
 heuristics in `RUBRIC.md` (file path patterns, header keywords, size shape), bucket each
 hunk into a *likely* kind and a *likely* attention. This pass should not require reading
-full hunk bodies for hunks that are obviously wiring/docs/tests/generated/lockfile — a
-hint on the triage line is often enough on its own.
+full hunk bodies for hunks that are obviously wiring/docs/tests/data (generated, lockfile,
+migration) — a hint on the triage line is often enough on its own.
 
 A hunk with at most four changed lines has its body printed right under its triage line
 (`-`/`+` prefixed, indented past the id). That body counts as read: bucket such a hunk
@@ -403,8 +403,13 @@ Rules — the first three are **enforced by the CLI**, which rejects the whole p
   these hunks exist: write the driving unit's `id` as a code span, and Purview renders it as
   a link carrying that unit's title (e.g. "Call-site updates for the `renderTotal` signature
   change in `render-total-currency`"). Do not quote the title; it is long and may be edited.
+- **Refactors** (a move, an extraction, a rename of the thing itself, with the same
+  behavior after) get `kind: "refactor"`: they are a change of their own, not fallout, so
+  they are not ripple. Schema, migrations, seeds, generated files and lockfiles the tool
+  did not catch get `kind: "data"`; a migration keeps its `migration` flag and must-read.
 - `order` should let a reviewer read core-logic and its direct dependents first, then
-  connective-tissue, then wiring/ripple/tests/docs — dependency order, not file order.
+  connective-tissue, then refactor and data, then wiring/ripple/tests/docs — dependency
+  order, not file order.
 - `fileOrder` (optional, a list of the unit's file paths) does the same *inside* a unit:
   the files in the order to read them, the thing being changed before the things that
   react to it (a contract or schema, then the logic, then its callers, then tests and

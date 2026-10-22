@@ -69,6 +69,10 @@
     --kind-core-soft: rgba(160, 120, 255, 0.14);
     --kind-glue: #7ec9d8;
     --kind-glue-soft: rgba(94, 180, 200, 0.14);
+    --kind-refactor: #98b6f3;
+    --kind-refactor-soft: rgba(152, 182, 243, 0.14);
+    --kind-data: #dda7c6;
+    --kind-data-soft: rgba(221, 167, 198, 0.14);
     --kind-wiring: #9aa4b4;
     --kind-wiring-soft: rgba(150, 160, 180, 0.13);
     --kind-ripple: #d8b98a;

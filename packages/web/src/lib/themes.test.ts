@@ -80,7 +80,7 @@ describe("every shipped theme", () => {
       expect(contrast(tokens[key], tokens.bg), key).toBeGreaterThanOrEqual(3);
     }
     // and the chips must not collapse into each other
-    const chips = ["kind-core", "kind-glue", "kind-ripple", "kind-tests", "kind-wiring"] as const;
+    const chips = ["kind-core", "kind-glue", "kind-refactor", "kind-data", "kind-ripple", "kind-tests", "kind-wiring"] as const;
     for (let i = 0; i < chips.length; i++) {
       for (let j = i + 1; j < chips.length; j++) {
         expect(tokens[chips[i]], `${chips[i]} vs ${chips[j]}`).not.toBe(tokens[chips[j]]);

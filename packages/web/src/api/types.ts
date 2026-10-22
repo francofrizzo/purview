@@ -10,6 +10,8 @@
 export type Kind =
   | "core-logic"
   | "connective-tissue"
+  | "refactor"
+  | "data"
   | "wiring"
   | "ripple"
   | "tests"
@@ -28,6 +30,8 @@ export type RiskFlag =
 export const KINDS: Kind[] = [
   "core-logic",
   "connective-tissue",
+  "refactor",
+  "data",
   "wiring",
   "ripple",
   "tests",

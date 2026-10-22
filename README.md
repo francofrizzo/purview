@@ -473,8 +473,8 @@ A **hunk** is identified by its content, not its position:
 `sha256(path + addedLines + removedLines)`, truncated. That single decision is what makes the
 rest work — when a PR is force-pushed, an untouched hunk keeps its id and keeps everything you
 knew about it. A **review unit** is a set of hunks that form one logical change, possibly
-spanning several files, carrying a `kind` (core-logic, connective-tissue, wiring, ripple,
-tests, docs), an `attention` level (must-read, skim, skip) with a one-line justification, and
+spanning several files, carrying a `kind` (core-logic, connective-tissue, refactor, data, wiring,
+ripple, tests, docs), an `attention` level (must-read, skim, skip) with a one-line justification, and
 any risk flags (auth, migration, concurrency, money, external-call, security) that push
 attention upward. You read the PR unit by unit in the suggested order rather than file by
 file, which is what the diff pane is organized around.

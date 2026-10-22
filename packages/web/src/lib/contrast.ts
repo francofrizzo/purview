@@ -96,6 +96,8 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
 
     chip("chip-core", "core", "kind-core", "kind-core-soft"),
     chip("chip-glue", "glue", "kind-glue", "kind-glue-soft"),
+    chip("chip-refactor", "refactor", "kind-refactor", "kind-refactor-soft"),
+    chip("chip-data", "data", "kind-data", "kind-data-soft"),
     chip("chip-wiring", "wiring", "kind-wiring", "kind-wiring-soft"),
     chip("chip-ripple", "ripple", "kind-ripple", "kind-ripple-soft"),
     chip("chip-tests", "tests", "kind-tests", "kind-tests-soft"),

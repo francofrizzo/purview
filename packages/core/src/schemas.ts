@@ -5,6 +5,8 @@ import { z } from "zod";
 export const KindSchema = z.enum([
   "core-logic",
   "connective-tissue",
+  "refactor",
+  "data",
   "wiring",
   "ripple",
   "tests",

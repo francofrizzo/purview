@@ -73,6 +73,10 @@ export const TOKEN_NAMES = [
   "kind-core-soft",
   "kind-glue",
   "kind-glue-soft",
+  "kind-refactor",
+  "kind-refactor-soft",
+  "kind-data",
+  "kind-data-soft",
   "kind-wiring",
   "kind-wiring-soft",
   "kind-ripple",
@@ -231,6 +235,8 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
 
   const kind = (c: string) => text(c, 3.2);
   const neutral = fade(0.42, 3.0);
+  const refactorHue = mix(palette.blue, fg, 0.3);
+  const dataHue = mix(palette.pink ?? mix(palette.red, palette.purple, 0.45), fg, 0.3);
 
   const addAlpha = tintAlpha(palette.green, tint, 0.06);
   const delAlpha = tintAlpha(palette.red, tint, 0.06);
@@ -308,6 +314,14 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "kind-core-soft": rgba(palette.purple, softAlpha),
     "kind-glue": kind(cyan),
     "kind-glue-soft": rgba(cyan, softAlpha),
+    // Refactor: blue pulled toward the foreground, so it reads as "the calm
+    // one" next to the accent rather than as a second accent.
+    "kind-refactor": kind(refactorHue),
+    "kind-refactor-soft": rgba(refactorHue, softAlpha),
+    // Data: a rose dulled toward the foreground, between the heart's pink and
+    // the risk red without being either.
+    "kind-data": kind(dataHue),
+    "kind-data-soft": rgba(dataHue, softAlpha),
     "kind-wiring": neutral,
     "kind-wiring-soft": rgba(neutral, dark ? 0.13 : 0.1),
     "kind-ripple": kind(palette.orange),
@@ -553,6 +567,10 @@ const REVIEWER_DARK: ThemeDef = {
     "kind-core-soft": "rgba(160, 120, 255, 0.14)",
     "kind-glue": "#7ec9d8",
     "kind-glue-soft": "rgba(94, 180, 200, 0.14)",
+    "kind-refactor": "#98b6f3",
+    "kind-refactor-soft": "rgba(152, 182, 243, 0.14)",
+    "kind-data": "#dda7c6",
+    "kind-data-soft": "rgba(221, 167, 198, 0.14)",
     "kind-wiring": "#9aa4b4",
     "kind-wiring-soft": "rgba(150, 160, 180, 0.13)",
     "kind-ripple": "#d8b98a",

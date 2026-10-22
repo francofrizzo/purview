@@ -41,6 +41,18 @@ const KIND_STYLE: Record<Kind, { label: string; color: string; bg: string; tip: 
     bg: "var(--kind-glue-soft)",
     tip: "Connective tissue: glue that makes a small decision while connecting two things, like a mapper with a branch or an adapter.",
   },
+  refactor: {
+    label: "refactor",
+    color: "var(--kind-refactor)",
+    bg: "var(--kind-refactor-soft)",
+    tip: "Refactor: restructured with nothing changed, like a move, an extraction or a rename. Confirm the behavior is the same.",
+  },
+  data: {
+    label: "data",
+    color: "var(--kind-data)",
+    bg: "var(--kind-data-soft)",
+    tip: "Data: schema and migrations, seeds, generated files and lockfiles. Verify against the source rather than trace logic.",
+  },
   wiring: {
     label: "wiring",
     color: "var(--kind-wiring)",

@@ -227,7 +227,7 @@ export function movedNote(pairs: MovePairSummary[]): string {
     ),
     pairs.length > MAX ? `  - … and ${pairs.length - MAX} more pairs` : "",
     "Relocated lines were already reviewed where they lived. A unit that is mostly moved",
-    "code belongs at skim (kind per the rubric — usually ripple or connective-tissue),",
+    "code belongs at skim (kind per the rubric — usually refactor),",
     "with attentionWhy saying so, e.g. \"extraction moved from manager.go; unchanged\".",
     "Must-read attention goes only to lines edited during the move (the detector excludes",
     "those from its runs) and to the seams: call sites, imports, visibility, receivers.",

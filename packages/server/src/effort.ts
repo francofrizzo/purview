@@ -42,6 +42,8 @@ const HEAVY_MODERATE_RISKS = 4;
 const KIND_WEIGHTS: Record<string, number> = {
   "core-logic": 1.0,
   "connective-tissue": 0.4,
+  refactor: 0.3,
+  data: 0.6,
   wiring: 0.3,
   ripple: 0.3,
   tests: 0.25,

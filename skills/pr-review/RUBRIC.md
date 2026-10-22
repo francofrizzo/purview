@@ -3,7 +3,7 @@
 Iterable knowledge file for the pr-review skill. Read this before classifying hunks.
 Update the "Learned corrections" section over time — see bottom.
 
-## The six kinds
+## The eight kinds
 
 ### core-logic
 
@@ -51,6 +51,44 @@ zero decisions.
 **Boundary**: if the "registration" line includes a conditional (`if (env === 'prod')
 register(x)`) that's connective-tissue — the condition is a decision.
 
+### refactor
+
+Behavior-preserving restructure: the thing itself moves, splits, gets a new name or a new
+order, and does the same afterwards. Not fallout of another change in the PR — a refactor
+is its own change, and the reader's job is to confirm nothing moved but the code.
+
+- A function is extracted from a larger one and called from where its body used to be.
+- A file is split in two; the old module re-exports what left so callers keep working.
+- A method is renamed, or two methods swap places in a file, with no edit inside them.
+- A class's fields are reordered, or a long parameter list becomes an options object
+  with the same values.
+
+**Boundary — a "refactor" that changes a branch, a default or an order of operations is
+not one.** If the extracted function drops a guard, the options object introduces a
+default the old signature never had, or the moved statement now runs before a check it
+used to follow, that hunk is core-logic or connective-tissue; the PR's title does not
+decide the kind. The mechanical consequences *of* a refactor elsewhere (import paths at
+call sites, the identifier updated at every caller) are still `ripple`, naming the
+refactor unit as their driver.
+
+### data
+
+Content the code reads rather than logic the code runs: schema and migrations, seeds,
+fixtures that are not tests, generated artifacts the tool did not catch (sqlc output, an
+OpenAPI spec, a compiled `.d.ts`), lockfiles, one-off SQL, business data lists. The
+reading mode is verification against a source — the migration against the model, the
+generated file against its input, the list against where it came from — not tracing.
+
+- A migration adding a column and its backfill statement.
+- A seed file with the initial set of plans, or a country/currency table.
+- A regenerated client the generator produced from a changed spec.
+- A lockfile updated because a dependency moved.
+
+**Boundary — data is the kind, not the attention.** A migration keeps the `migration`
+risk flag and is `must-read`, kind `data`; a seed of prices carries `money`. A generated
+artifact or a lockfile is `data` at `skip`. Code that *interprets* the data (a loader
+with a branch per format, a migration runner) is connective-tissue or core-logic.
+
 ### ripple
 
 Mechanical fallout of a change elsewhere in the same PR: renames at call sites, signature
@@ -93,13 +131,13 @@ Most generated files and lockfiles never reach you: Purview keeps them in its ow
 `generated` unit (see SKILL.md). The two boundaries below are for the ones it did not
 recognize.
 
-**Boundary — generated files are ripple/skip, not docs, even if human-readable.** A
+**Boundary — generated files are data/skip, not docs, even if human-readable.** A
 regenerated OpenAPI spec, a compiled `.d.ts`, a `CHANGELOG.md` entry appended by a release
-tool — these are mechanical fallout of another change. Classify as `ripple` (or fold into
+tool — these are produced from a source, not written. Classify as `data` (or fold into
 the driving unit's hunk list if trivial) with `attention: skip`, not `docs`.
 
-**Boundary — lockfiles are skip, not any of the above as a meaningful category.**
-`package-lock.json`, `pnpm-lock.yaml`, `Cargo.lock`, etc. Classify as `wiring` (they're
+**Boundary — lockfiles are data/skip, not any of the above as a meaningful category.**
+`package-lock.json`, `pnpm-lock.yaml`, `Cargo.lock`, etc. Classify as `data` (they're
 mechanical dependency bookkeeping) with `attention: skip` unless a dependency version bump
 is the actual point of the PR, in which case fold the lockfile hunk into that unit instead
 of giving it its own.

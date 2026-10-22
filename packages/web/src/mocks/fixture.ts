@@ -912,7 +912,7 @@ const units: ReviewUnit[] = [
     title: "Report formatting moved into its own module",
     summary:
       "formatMismatch() and formatReport() leave reconcileReport.ts for a new report.ts unchanged; the old module re-exports formatReport so callers keep working.",
-    kind: "wiring",
+    kind: "refactor",
     attention: "skim",
     attentionWhy: "A verbatim move plus a re-export; nothing changes in what the code does.",
     riskFlags: [],

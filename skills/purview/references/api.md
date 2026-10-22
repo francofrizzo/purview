@@ -104,8 +104,8 @@ units[]      { id, title, summary, kind, attention, attentionWhy, riskFlags[],
                order, hunks[], findings[]?, changelog[]? }
 ```
 
-`kind`: `core-logic`, `connective-tissue`, `wiring`, `ripple`, `tests`, `docs` (and a
-few more; read it as a label). `attention`: `must-read`, `skim`, `skip`.
+`kind`: `core-logic`, `connective-tissue`, `refactor`, `data`, `wiring`, `ripple`, `tests`,
+`docs` (and a few more; read it as a label). `attention`: `must-read`, `skim`, `skip`.
 `riskFlags`: any of `money`, `auth`, `security`, `migration`, `concurrency`,
 `external-call`. `findings[]`: `{ severity: "warning" | "note", text, evidence }`,
 verified against the code, `evidence` naming the files and lines; a `warning` is

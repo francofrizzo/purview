@@ -126,7 +126,7 @@ Context lines excluded. `normalizedPath` = new path (or old path if deleted). Co
 ## Core types (zod schemas in packages/core, exported)
 
 ```ts
-type Kind = "core-logic" | "connective-tissue" | "wiring" | "ripple" | "tests" | "docs";
+type Kind = "core-logic" | "connective-tissue" | "refactor" | "data" | "wiring" | "ripple" | "tests" | "docs";
 type Attention = "must-read" | "skim" | "skip";
 type RiskFlag = "auth" | "migration" | "concurrency" | "money" | "external-call" | "security";
 
