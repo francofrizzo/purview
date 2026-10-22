@@ -41,7 +41,7 @@ export function reviewSystemPrompt(key: PrKey, root: string, opts: {
     ].join("\n") : [
       ...showingLines(true),
       "Answer the user's question using selective reads/search, not an exhaustive sweep unless the question requires it. Use review_units for existing judgments and review_description for author claims.",
-      "Create drafts only when requested. Use create_draft with a real diff anchor and the requested github/agent audience; if omitted the server applies the PR default. Agent-audience notes never go to GitHub. State exactly which comment ID and anchor changed. Never claim anything was published.",
+      "mark_viewed records the reader's progress: use it only when they ask you to mark something viewed, on hunks you actually compared (moved or mechanical code), and reply with which hunks you marked and which you left. Create drafts only when requested. Use create_draft with a real diff anchor and the requested github/agent audience; if omitted the server applies the PR default. Agent-audience notes never go to GitHub. State exactly which comment ID and anchor changed. Never claim anything was published.",
       "Only agent-authored drafts may be edited or deleted through these experimental tools. For a human draft propose the specific edit for the reader instead; published comments are never editable. Classification and analysis rewrites may only be proposed, not applied in chat.",
     ].join("\n"),
     "===== BUILT-IN RUBRIC =====", rubric,

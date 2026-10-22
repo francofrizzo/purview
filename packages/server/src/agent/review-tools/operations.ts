@@ -204,10 +204,10 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   } else {
     // The running server remains the only comment writer: retain anchoring,
     // attachments, broadcasts, history and trash validation of its real routes.
-    async function commentRequest(method: string, suffix: string, body?: unknown) {
+    async function serverRequest(method: string, suffix: string, body?: unknown) {
       check();
       if (!serverUrl || !/^http:\/\/127\.0\.0\.1:\d+$/.test(serverUrl)) failure("no_server", "An explicit local Purview server is required for drafts.");
-      const response = await fetch(`${serverUrl}/api/prs/${encodeURIComponent(core.keyToString(key))}/comments${suffix}`, {
+      const response = await fetch(`${serverUrl}/api/prs/${encodeURIComponent(core.keyToString(key))}${suffix}`, {
         method, headers: { "Content-Type": "application/json", "X-Purview-Actor": "chat", "X-Purview-Agent": harness,
           "X-Purview-Revision": String(revision) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000),
@@ -216,6 +216,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
       if (!response.ok) failure(data.error ?? "comment_error", data.detail ?? "Draft operation failed.");
       return data;
     }
+    const commentRequest = (method: string, suffix: string, body?: unknown) => serverRequest(method, `/comments${suffix}`, body);
     function editable(id: string) {
       const target = readComments(key, root).find(c => c.id === id);
       if (!target) failure("outside_review", "No comment with this ID in the bound PR.");
@@ -232,6 +233,19 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
     }, false);
     add("delete_draft", "Delete an agent-authored draft using Purview's history and trash.", z.object({ id: z.string().min(1) }).strict(), args => {
       editable(args.id); return commentRequest("DELETE", `/${encodeURIComponent(args.id)}`);
+    }, false);
+    // The reader's own progress, written through the server so the open
+    // pane follows: the reply says what was ticked, never the whole state.
+    add("mark_viewed", "Mark hunks viewed (or not) for the reader, by hunk IDs or a whole unit:<id>. Only when the reader asks; say which hunks you marked and why.", z.object({
+      hunkIds: z.array(z.string().min(1)).max(500).optional(), unitId: z.string().min(1).optional(), viewed: z.boolean().default(true),
+    }).strict().refine(a => (a.hunkIds?.length ?? 0) > 0 || a.unitId, { message: "Give hunkIds or a unitId." }), async args => {
+      const state = current();
+      const unit = args.unitId ? state.units.find(u => u.id === args.unitId) : undefined;
+      if (args.unitId && !unit) failure("unknown_unit", `No unit ${args.unitId} in this revision.`);
+      const ids = [...new Set([...(args.hunkIds ?? []), ...(unit?.hunks.map(h => h.id) ?? [])])];
+      const data = await serverRequest("POST", "/hunks/viewed", { hunkIds: ids, viewed: args.viewed }) as { state?: { hunks: Record<string, { viewed: boolean }> } };
+      const hunks = Object.values(data.state?.hunks ?? {});
+      return { marked: ids, viewed: args.viewed, progress: { viewed: hunks.filter(h => h.viewed).length, total: hunks.length } };
     }, false);
   }
   check();

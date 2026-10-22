@@ -249,6 +249,7 @@ const ACTION_GERUNDS: Record<string, string> = {
   create_draft: "Drafting a comment",
   edit_draft: "Editing a draft",
   delete_draft: "Deleting a draft",
+  mark_viewed: "Marking viewed",
   set_analysis: "Saving the analysis",
   patch_units: "Patching units",
   set_revision_summary: "Summarizing the revision",

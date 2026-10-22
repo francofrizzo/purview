@@ -415,19 +415,21 @@ export function createApp(opts: AppOptions = {}): Hono {
   /**
    * Requests from the reviewer-state CLI (they carry the actor header) come
    * from this machine, always; one arriving from the LAN is refused. A chat-
-   * originated request is further confined to the comment routes — the chat
+   * originated request is further confined to the comment routes and to
+   * marking hunks viewed (the reader asks it to tick moved code) — the chat
    * has no business reaching anything else through this API, whatever its
    * Bash allowlist says.
    */
+  const chatMayWrite = /^\/api\/prs\/.+\/(comments(\/|$)|hunks\/(viewed$|[^/]+\/viewed$))/;
   const cliLoopbackOnly = loopbackOnly({ port });
   app.use("/api/*", (c, next) =>
     c.req.header(ACTOR_HEADER) === undefined ? next() : cliLoopbackOnly(c, next),
   );
   app.use("/api/*", async (c, next) => {
     const mutating = !["GET", "HEAD", "OPTIONS"].includes(c.req.method.toUpperCase());
-    if (isAgentActor(actorOf(c)) && mutating && !/^\/api\/prs\/.+\/comments(\/|$)/.test(c.req.path)) {
+    if (isAgentActor(actorOf(c)) && mutating && !chatMayWrite.test(c.req.path)) {
       return c.json(
-        { error: "forbidden_actor", detail: "The review chat may only change draft comments." },
+        { error: "forbidden_actor", detail: "The review chat may only change draft comments and viewed marks." },
         403,
       );
     }

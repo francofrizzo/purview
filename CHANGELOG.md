@@ -9,6 +9,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 - **Risks on the lines they concern.** The diff marks the lines a risk is about with a bar, its flag and one sentence of what is at stake. Re-analyze to get them.
 - **Fable in the model list.** The analysis and chat model pickers offer Fable, Opus, Sonnet and Haiku for both Claude harnesses.
+- **The chat can mark hunks viewed.** Ask it to tick moved or mechanical code and it marks those hunks, in both Claude harnesses, and says which.
 - **Fix:** code in a bold lead-in, such as **`file.go`**, renders as code and links to the diff instead of showing the backticks.
 - **Two more unit kinds.** A unit can be "refactor" (restructured, nothing changed) or "data" (schema, seeds, generated files); re-analyze to get them.
 - **Search switches.** The find bar shows both sides of each choice, "this unit | whole diff" and "changed | all lines", with the active one lit. All lines is the default.

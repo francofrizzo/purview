@@ -136,6 +136,14 @@ it("creates, edits and trashes drafts through the real server, preserving bounda
   await expect(ops.execute("create_draft", { file: "absent.ts", subjectType: "line", line: 2, body: "bad" })).rejects.toMatchObject({ code: "comment_outside_diff" });
   await ops.execute("delete_draft", { id });
   expect(readDeletedComments(key, root).some(c => c.id === id)).toBe(true);
+  const hunkId = Object.keys(loadState(key, root).hunks)[0];
+  const marked = await ops.execute("mark_viewed", { hunkIds: [hunkId] }) as any;
+  expect(marked).toMatchObject({ marked: [hunkId], viewed: true, progress: { viewed: 1 } });
+  expect(loadState(key, root).hunks[hunkId]?.viewed).toBe(true);
+  await ops.execute("mark_viewed", { hunkIds: [hunkId], viewed: false });
+  expect(loadState(key, root).hunks[hunkId]?.viewed).toBe(false);
+  await expect(ops.execute("mark_viewed", { unitId: "nope" })).rejects.toMatchObject({ code: "unknown_unit" });
+  await expect(ops.execute("mark_viewed", { viewed: true })).rejects.toThrow();
   let bodyController: ReadableStreamDefaultController<Uint8Array>;
   const incoming = new Request(`http://127.0.0.1:${port}/api/prs/${encodeURIComponent(keyToString(key))}/comments`, { method: "POST",
     headers: { "Content-Type": "application/json", "X-Purview-Actor": "chat", "X-Purview-Revision": "1" },
