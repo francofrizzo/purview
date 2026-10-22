@@ -1753,7 +1753,7 @@ describe("model selection", () => {
     });
     expect(res.status).toBe(400);
     expect((await res.json()).detail).toBe(
-      'agent.model: "gpt-9" is not one of Claude Code\'s models: sonnet, opus, haiku',
+      'agent.model: "gpt-9" is not one of Claude Code\'s models: fable, opus, sonnet, haiku',
     );
     expect(readChat(key, root).agent).toBeNull();
   });
