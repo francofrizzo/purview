@@ -69,10 +69,17 @@ export interface ChatFailure {
 interface ChatContextValue {
   prKey: string | null;
   open: boolean;
+  /**
+   * Floating, the chat can shrink to a pill without closing. Anything that
+   * opens the chat (the key, quoting, "send to chat") brings it back, so a
+   * quote never lands in a chat the reader cannot see.
+   */
+  minimized: boolean;
   setPrKey: (key: string | null) => void;
   openChat: () => void;
   closeChat: () => void;
   toggleChat: () => void;
+  minimizeChat: () => void;
 
   messages: LocalMessage[];
   loading: boolean;
@@ -173,7 +180,14 @@ function optimisticAgent(cur: AgentState, pin: ChatAgentSelection | null): Resol
 export function ChatProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [prKey, setPrKeyState] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpenState] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  // Every open or close also ends a minimized state: opened, the chat shows;
+  // closed, it comes back full size next time.
+  const setOpen = useCallback((next: boolean | ((cur: boolean) => boolean)) => {
+    setOpenState(next);
+    setMinimized(false);
+  }, []);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState<{ text: string; tools: ToolActivity[] } | null>(null);
@@ -264,10 +278,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     };
   }, [prKey]);
 
-  const attachRef = useCallback((ref: ChatRef, options?: { open?: boolean }) => {
-    setRefs((cur) => addRefTo(cur, ref));
-    if (options?.open !== false) setOpen(true);
-  }, []);
+  const attachRef = useCallback(
+    (ref: ChatRef, options?: { open?: boolean }) => {
+      setRefs((cur) => addRefTo(cur, ref));
+      if (options?.open !== false) setOpen(true);
+    },
+    [setOpen],
+  );
 
   const detachRef = useCallback((key: string) => {
     setRefs((cur) => removeRefFrom(cur, key));
@@ -648,10 +665,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     () => ({
       prKey,
       open,
+      minimized,
       setPrKey,
       openChat: () => setOpen(true),
       closeChat: () => setOpen(false),
       toggleChat: () => setOpen((v) => !v),
+      minimizeChat: () => setMinimized(true),
       messages,
       loading,
       streaming,
@@ -689,6 +708,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setAgent,
       prKey,
       open,
+      minimized,
+      setOpen,
       setPrKey,
       messages,
       loading,

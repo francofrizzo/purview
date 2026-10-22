@@ -19,6 +19,8 @@ import {
   IconTag as TablerTag,
   IconCode as TablerCode,
   IconLayoutSidebarRight,
+  IconPictureInPictureOn,
+  IconMinus,
   IconSend as TablerSend,
   IconBarbell,
   IconBolt as TablerBolt,
@@ -250,6 +252,10 @@ export const IconSwap = wrap(IconArrowsRightLeft);
 export const IconGithub = wrap(TablerBrandGithub);
 export const IconSparkles = wrap(TablerSparkles);
 export const IconDock = wrap(IconLayoutSidebarRight);
+/** A small window over a big one — float a panel over the page. */
+export const IconPopOut = wrap(IconPictureInPictureOn);
+/** A dash — minimize a floating window. */
+export const IconMinimizeWindow = wrap(IconMinus);
 
 export const RISK_META: Record<
   RiskFlag,

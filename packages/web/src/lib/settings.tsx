@@ -28,6 +28,13 @@ import {
 } from "./themes";
 
 export type DiffViewMode = "unified" | "split";
+export type ChatMode = "dock" | "float";
+export interface ChatFloatRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export interface Settings {
   /** Theme id, or "system" to follow prefers-color-scheme (the default). */
@@ -52,6 +59,11 @@ export interface Settings {
   composerFormatting: boolean;
   /** Width of the review chat panel in px (clamped to the range below). */
   chatPanelWidth: number;
+  /** The chat as a tab of the right dock, or a window floating over the page. */
+  chatMode: ChatMode;
+  /** Where the floating chat sits and how big it is; null until first moved
+   *  (it opens in the bottom-right corner). Kept inside the window on use. */
+  chatFloat: ChatFloatRect | null;
   /** Width of the guide column in px, dragged at its edge (clamped below). */
   sidebarWidth: number;
   /** Column-mode sidebar collapsed to nothing. Ignored in drawer mode, where
@@ -105,6 +117,8 @@ export const DEFAULT_SETTINGS: Settings = {
   hideReviewedUnits: false,
   composerFormatting: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
+  chatMode: "dock",
+  chatFloat: null,
   sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   sidebarCollapsed: false,
   requestAgeDays: [1, 3, 7],
@@ -151,6 +165,15 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   if (typeof r.composerFormatting === "boolean") out.composerFormatting = r.composerFormatting;
   if (typeof r.chatPanelWidth === "number" && Number.isFinite(r.chatPanelWidth)) {
     out.chatPanelWidth = clampChatPanelWidth(r.chatPanelWidth);
+  }
+  if (r.chatMode === "dock" || r.chatMode === "float") out.chatMode = r.chatMode;
+  if (r.chatFloat === null) out.chatFloat = null;
+  else if (isRecord(r.chatFloat)) {
+    const { x, y, w, h } = r.chatFloat;
+    const nums = [x, y, w, h];
+    if (nums.every((n) => typeof n === "number" && Number.isFinite(n))) {
+      out.chatFloat = { x: Math.round(x as number), y: Math.round(y as number), w: Math.round(w as number), h: Math.round(h as number) };
+    }
   }
   if (typeof r.sidebarWidth === "number" && Number.isFinite(r.sidebarWidth)) {
     out.sidebarWidth = clampSidebarWidth(r.sidebarWidth);
