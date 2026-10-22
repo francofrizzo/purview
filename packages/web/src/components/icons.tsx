@@ -38,6 +38,7 @@ import {
   IconLayoutRows,
   IconLoader2,
   IconMaximize,
+  IconMoodPlus,
   IconMessage,
   IconMessageFilled,
   IconMessageSparkle,
@@ -221,6 +222,7 @@ export const IconCollapse = wrap(IconMinimize);
 
 /** A hooked arrow — reply to a thread. */
 export const IconReply = wrap(IconArrowBackUp);
+export const IconReact = wrap(IconMoodPlus);
 
 /** A funnel — what a list shows. */
 export const IconFilter = wrap(TablerFilter);

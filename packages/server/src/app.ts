@@ -119,7 +119,7 @@ import {
   type SubmitEvent,
 } from "./github-review.js";
 import { HttpError, classifyError } from "./http-error.js";
-import { loadThreads, normalizeLogin, setThreadResolved } from "./github-threads.js";
+import { loadThreads, normalizeLogin, REACTION_CONTENTS, setReaction, setThreadResolved } from "./github-threads.js";
 import { streamSSE } from "hono/streaming";
 import {
   cancelAnalysis,
@@ -1839,6 +1839,19 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.get("/api/prs/:key/threads", (c) => {
     const key = trackedKey(c);
     return c.json(loadThreads(key, { root, aiReviewers: readConfig(root).aiReviewers }));
+  });
+
+  app.post("/api/prs/:key/comments/:commentId/reactions", async (c) => {
+    const key = trackedKey(c);
+    const { content, on } = z.object({
+      content: z.enum(REACTION_CONTENTS),
+      on: z.boolean(),
+    }).parse(await readJsonBody(c));
+    try {
+      return c.json(setReaction(key, c.req.param("commentId"), content, on, root));
+    } catch (err) {
+      throw classifyError(err);
+    }
   });
 
   for (const action of ["resolve", "unresolve"] as const) {

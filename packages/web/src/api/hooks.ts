@@ -34,6 +34,8 @@ import type {
   PrListEntry,
   ReanchorResult,
   ResolveThreadResult,
+  ReactionContent,
+  ReactResult,
   ThreadsResponse,
   RepoConfig,
   RepoConfigPatch,
@@ -718,6 +720,24 @@ export function useThreads(key: string) {
     refetchOnWindowFocus: true,
     staleTime: 10_000,
     retry: false,
+  });
+}
+
+/** Apply GitHub's fresh counts to every view of the comment. */
+export function useReact(key: string): UseMutationResult<ReactResult, Error, { id: string; content: ReactionContent; on: boolean }> {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, content, on }) => api.setReaction(key, id, content, on),
+    onSuccess: ({ comment }) => {
+      qc.setQueryData<ThreadsResponse>(qk.threads(key), (cur) => cur ? {
+        ...cur,
+        threads: cur.threads.map((t) => ({
+          ...t,
+          comments: t.comments.map((c) => c.id === comment.id ? { ...c, ...comment } : c),
+        })),
+      } : cur);
+    },
+    onSettled: () => void qc.invalidateQueries({ queryKey: qk.threads(key) }),
   });
 }
 

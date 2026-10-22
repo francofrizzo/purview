@@ -1268,7 +1268,18 @@ export interface RemoteAuthor {
 }
 
 /** One comment inside a GitHub review thread. */
+export type ReactionContent = "THUMBS_UP" | "THUMBS_DOWN" | "LAUGH" | "HOORAY" | "CONFUSED" | "HEART" | "ROCKET" | "EYES";
+export interface Reaction {
+  content: ReactionContent;
+  count: number;
+  mine: boolean;
+}
+export interface ReactResult {
+  comment: { id: string; reactions: Reaction[] };
+}
+
 export interface RemoteComment {
+  reactions?: Reaction[];
   /** GraphQL node id */
   id: string;
   databaseId: number;

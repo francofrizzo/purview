@@ -33,9 +33,10 @@ import { IconBot, IconCheck, IconChevron, IconFilter, IconReply } from "./icons"
 import { Markdown, SuggestionContext } from "./Markdown";
 import { anchoredLines } from "../lib/suggestion";
 import type { DiffContext } from "../lib/agentExport";
+import { ReactionError, ReactionPicker, ReactionPills, type ReactionActions } from "./Reactions";
 
 /** What a thread can do, on top of what each of its comments can. */
-export interface ThreadActions {
+export interface ThreadActions extends ReactionActions {
   /** open the composer as a reply to this thread */
   onReply?: (thread: DisplayThread) => void;
   onResolve?: (thread: RemoteThread, resolved: boolean) => void;
@@ -75,7 +76,7 @@ export function BotChip({ tip }: { tip?: string }) {
 }
 
 /** Someone else's comment on GitHub (or the reader's own, written there directly). */
-export function RemoteCommentCard({ comment, thread, exportCtx }: { comment: RemoteComment; thread?: RemoteThread; exportCtx?: DiffContext }) {
+export function RemoteCommentCard({ comment, thread, exportCtx, onReact, reacting, reactionError }: ReactionActions & { comment: RemoteComment; thread?: RemoteThread; exportCtx?: DiffContext }) {
   const author = authorOf({ kind: "remote", comment });
   const { tags, body } = splitReviewTags(cleanRemoteBody(comment.body));
   const created = age(comment.createdAt);
@@ -113,6 +114,7 @@ export function RemoteCommentCard({ comment, thread, exportCtx }: { comment: Rem
           </span>
         ) : null}
         <span className="ml-auto flex flex-none items-center gap-1">
+          {!comment.reactions?.length ? <ReactionPicker comment={comment} onReact={onReact} reacting={reacting} /> : null}
           <CopyForAgentButton
             iconOnly
             testId={`copy-remote-${comment.databaseId}`}
@@ -144,6 +146,8 @@ export function RemoteCommentCard({ comment, thread, exportCtx }: { comment: Rem
       <div className="mt-0.5 max-w-[72ch]" style={{ color: "var(--fg)" }}>
         <Markdown text={body} textClass="text-[13px] leading-[20px]" ink="var(--fg)" />
       </div>
+      <ReactionPills comment={comment} onReact={onReact} reacting={reacting} />
+      <ReactionError comment={comment} reactionError={reactionError} />
     </article>
   );
 }
@@ -254,7 +258,7 @@ export function ThreadView({
     item.kind === "local" ? (
       <CommentCard comment={item.comment} actions={actions} />
     ) : (
-      <RemoteCommentCard comment={item.comment} thread={t} exportCtx={ctx} />
+      <RemoteCommentCard comment={item.comment} thread={t} exportCtx={ctx} onReact={actions.onReact} reacting={actions.reacting} reactionError={actions.reactionError} />
     );
   const busy = actions.resolving === t.id;
   const resolveError = actions.resolveError?.id === t.id ? actions.resolveError.message : null;

@@ -11,6 +11,7 @@ import {
   normalizeConversation,
   normalizeReviews,
   normalizeThreads,
+  normalizeReactions,
   threadsPath,
   type RemoteThread,
   type RawThread,
@@ -191,6 +192,7 @@ describe("normalizeThreads", () => {
       databaseId: 10,
       author: { login: "alice", bot: false, avatarUrl: "https://a/alice" },
       body: "comment 10",
+      reactions: [],
       createdAt: "2026-01-01T00:00:00Z",
       updatedAt: "2026-01-03T00:00:00Z",
       url: "https://github.com/acme/widgets/pull/7#discussion_r10",
@@ -537,5 +539,57 @@ describe("replies", () => {
       (c) => c[1] === "graphql" && c.some((a) => /addPullRequestReviewThread\(/.test(a)),
     );
     expect(newThreads).toHaveLength(0);
+  });
+});
+
+
+describe("comment reactions", () => {
+  it("normalizes groups in canonical order, keeping active and viewer-owned groups", () => {
+    const groups = [
+      { content: "EYES", viewerHasReacted: true, reactors: { totalCount: 1 } },
+      { content: "HEART", viewerHasReacted: true, reactors: { totalCount: 0 } },
+      { content: "LAUGH", viewerHasReacted: false, reactors: { totalCount: 0 } },
+      { content: "THUMBS_UP", viewerHasReacted: false, reactors: { totalCount: 2 } },
+    ];
+    const expected = [
+      { content: "THUMBS_UP", count: 2, mine: false },
+      { content: "HEART", count: 0, mine: true },
+      { content: "EYES", count: 1, mine: true },
+    ];
+    expect(normalizeReactions(groups)).toEqual(expected);
+    expect(normalizeReactions()).toEqual([]);
+    const comment = { ...rawComment("bob"), reactionGroups: groups };
+    expect(normalizeThreads([rawThread("T1", [comment])], { viewerLogin: gh.login })[0].comments[0].reactions).toEqual(expected);
+  });
+
+  it("adds and removes reactions while preserving other reactors and updating the cache", async () => {
+    const comment = {
+      ...rawComment("bob"),
+      reactionGroups: [{ content: "THUMBS_UP", viewerHasReacted: false, reactors: { totalCount: 2 } }],
+    };
+    gh.threads = [rawThread("T1", [comment])];
+    await getThreads();
+    for (const on of [true, true, false, false]) {
+      const response = await app.request(`/api/prs/${encodedKey}/comments/${comment.id}/reactions`, json({ content: "THUMBS_UP", on }));
+      expect(response.status).toBe(200);
+      const reactions = [{ content: "THUMBS_UP", count: on ? 3 : 2, mine: on }];
+      expect(await response.json()).toEqual({ comment: { id: comment.id, reactions } });
+      const cached = JSON.parse(fs.readFileSync(threadsPath(key, root), "utf8"));
+      expect(cached.threads[0].comments[0].reactions).toEqual(reactions);
+      expect((await getThreads()).threads[0].comments[0].reactions).toEqual(reactions);
+    }
+    const url = `/api/prs/${encodedKey}/comments/${comment.id}/reactions`;
+    await app.request(url, json({ content: "HOORAY", on: true }));
+    const removed = await app.request(url, json({ content: "HOORAY", on: false }));
+    expect((await removed.json()).comment.reactions).toEqual([{ content: "THUMBS_UP", count: 2, mine: false }]);
+  });
+
+  it("rejects invalid reaction requests and reports GitHub failures", async () => {
+    const url = `/api/prs/${encodedKey}/comments/PRRC_1/reactions`;
+    for (const body of [{ content: "NOPE", on: true }, { content: "HEART", on: "yes" }, { content: "HEART" }]) {
+      expect((await app.request(url, json(body))).status).toBe(400);
+    }
+    gh.fail("addReaction", "HTTP 502 Bad Gateway");
+    expect((await app.request(url, json({ content: "HEART", on: true }))).status).toBe(502);
   });
 });

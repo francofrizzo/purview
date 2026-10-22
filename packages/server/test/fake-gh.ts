@@ -244,6 +244,24 @@ export function fakeGh(opts: { login?: string } = {}): FakeGh {
         });
       }
 
+      const reactionOp = query.match(/\b(addReaction|removeReaction)\(/)?.[1];
+      if (reactionOp) {
+        const comment = state.threads.flatMap((t) => t.comments?.nodes ?? []).find((c) => c?.id === field("subjectId"));
+        if (!comment) return JSON.stringify({ errors: [{ message: "Could not resolve to a node", type: "NOT_FOUND" }] });
+        const groups = comment.reactionGroups ?? [];
+        const content = field("content")!;
+        let group = groups.find((g) => g.content === content);
+        if (!group) {
+          group = { content, viewerHasReacted: false, reactors: { totalCount: 0 } };
+          groups.push(group);
+        }
+        const on = reactionOp === "addReaction";
+        group.reactors.totalCount += Number(on) - Number(group.viewerHasReacted);
+        group.viewerHasReacted = on;
+        comment.reactionGroups = groups;
+        return JSON.stringify({ data: { [reactionOp]: { reaction: { content }, subject: { reactionGroups: groups } } } });
+      }
+
       // GraphQL: resolveReviewThread / unresolveReviewThread
       const resolveOp = query.match(/\b(resolveReviewThread|unresolveReviewThread)\(/)?.[1];
       if (resolveOp) {

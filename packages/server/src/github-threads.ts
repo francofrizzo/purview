@@ -7,8 +7,8 @@ import { ReviewError, classifyGhReviewError } from "./github-review.js";
 /**
  * The PR's review threads as GitHub has them — everyone's, humans and AI
  * reviewers alike — so the web can show them inline next to Purview's own
- * comments. Read-mostly: the only writes are resolve/unresolve (replies are
- * ordinary drafts with `inReplyTo`, pushed by comment-sync.ts).
+ * comments. Writes cover resolution and reactions; replies are ordinary
+ * drafts with `inReplyTo`, pushed by comment-sync.ts.
  *
  * GraphQL, not REST: only `pullRequest.reviewThreads` groups comments into
  * threads and carries resolution state (`isResolved`, `viewerCanResolve`…);
@@ -22,6 +22,28 @@ import { ReviewError, classifyGhReviewError } from "./github-review.js";
  */
 
 /* ------------------------------------------------------------------ shapes */
+
+export const REACTION_CONTENTS = ["THUMBS_UP", "THUMBS_DOWN", "LAUGH", "HOORAY", "CONFUSED", "HEART", "ROCKET", "EYES"] as const;
+export type ReactionContent = (typeof REACTION_CONTENTS)[number];
+interface RawReactionGroup {
+  content: string;
+  viewerHasReacted: boolean;
+  reactors: { totalCount: number };
+}
+export interface Reaction {
+  content: ReactionContent;
+  count: number;
+  mine: boolean;
+}
+
+export function normalizeReactions(groups: readonly RawReactionGroup[] = []): Reaction[] {
+  return REACTION_CONTENTS.flatMap((content) => {
+    const group = groups.find((g) => g.content === content);
+    return group && (group.reactors.totalCount > 0 || group.viewerHasReacted)
+      ? [{ content, count: group.reactors.totalCount, mine: group.viewerHasReacted }]
+      : [];
+  });
+}
 
 /** Mirrors `RemoteAuthor` in packages/web/src/api/types.ts. */
 export interface RemoteAuthor {
@@ -45,6 +67,7 @@ export interface RemoteComment {
   reviewId?: string;
   isMine: boolean;
   localId?: string;
+  reactions?: Reaction[];
 }
 
 /** Mirrors `RemoteThread` in packages/web/src/api/types.ts. */
@@ -169,6 +192,7 @@ function hostArgs(host: string): string[] {
 }
 
 export interface RawComment {
+  reactionGroups?: RawReactionGroup[];
   id: string;
   databaseId: number;
   body: string;
@@ -227,9 +251,12 @@ export interface RawIssueComment {
   author?: { __typename?: string; login?: string; avatarUrl?: string } | null;
 }
 
+const REACTION_FIELDS = `reactionGroups { content viewerHasReacted reactors { totalCount } }`;
+
 const COMMENT_FIELDS = `id databaseId body createdAt lastEditedAt url
   author{ __typename login avatarUrl }
-  pullRequestReview{ id state }`;
+  pullRequestReview{ id state }
+  ${REACTION_FIELDS}`;
 
 const THREADS_QUERY = `query($owner:String!,$repo:String!,$number:Int!,$after:String){
   viewer{ login }
@@ -409,6 +436,7 @@ export function normalizeThreads(raw: readonly RawThread[], opts: NormalizeOptio
         databaseId: c.databaseId,
         author,
         body: c.body,
+        reactions: normalizeReactions(c.reactionGroups),
         createdAt: c.createdAt,
         ...(c.lastEditedAt ? { updatedAt: c.lastEditedAt } : {}),
         url: c.url,
@@ -747,4 +775,38 @@ export function setThreadResolved(
     writeThreadsCache(key, { ...cached, threads }, root);
   }
   return { thread: result };
+}
+
+
+/** Patch the cache with GitHub's counts so fallback reads retain the change. */
+export function setReaction(key: PrKey, commentId: string, content: ReactionContent, on: boolean, root = stateRoot()) {
+  const field = on ? "addReaction" : "removeReaction";
+  let groups: RawReactionGroup[];
+  try {
+    const data = graphql<Record<string, { subject?: { reactionGroups?: RawReactionGroup[] } } | null>>(
+      key,
+      `mutation($subjectId:ID!,$content:ReactionContent!){
+        ${field}(input:{subjectId:$subjectId,content:$content}){
+          reaction { content }
+          subject { ... on PullRequestReviewComment { ${REACTION_FIELDS} } }
+        }
+      }`,
+      { subjectId: commentId, content },
+    );
+    const fresh = data[field]?.subject?.reactionGroups;
+    if (!fresh) throw new Error("GitHub did not return the comment's reactions");
+    groups = fresh;
+  } catch (err) {
+    throw classifyGhReviewError(err);
+  }
+  const comment = { id: commentId, reactions: normalizeReactions(groups) };
+  const cached = readThreadsCache(key, root);
+  if (cached) {
+    const threads = cached.threads.map((t) => ({
+      ...t,
+      comments: t.comments.map((c) => c.id === commentId ? { ...c, ...comment } : c),
+    }));
+    writeThreadsCache(key, { ...cached, threads }, root);
+  }
+  return { comment };
 }

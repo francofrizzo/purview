@@ -1647,12 +1647,13 @@ export const mockThreads: RemoteThread[] = [
         "With `delay + random() * delay` the wait can reach `2 * delay` *and then* doubles — the third attempt may sit ~1.6s. Cap the backoff, or jitter inside a fixed window?",
         "2026-08-11T14:20:00Z",
         // Submitted with maria's change request (the second review below).
-        { reviewId: "PRR_3100002" },
+        { reviewId: "PRR_3100002", reactions: [{ content: "THUMBS_UP", count: 2, mine: false }, { content: "EYES", count: 1, mine: true }] },
       ),
       remote(
         "dana",
         "Good catch — cap it and use full jitter:\n\n```suggestion\n        if (!isTransient(err) || attempt === MAX_ATTEMPTS - 1) throw err;\n        await sleep(Math.min(MAX_BACKOFF_MS, Math.random() * delay));\n        delay *= 2;\n```",
         "2026-08-11T15:45:00Z",
+        { reactions: [{ content: "HEART", count: 1, mine: false }] },
       ),
     ],
   }),

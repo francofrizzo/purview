@@ -38,6 +38,8 @@ import type {
   SetGeneratedResult,
   RemoteThread,
   ResolveThreadResult,
+  ReactionContent,
+  ReactResult,
   ThreadsResponse,
   RepoPathResult,
   RepoRemovalSummary,
@@ -1302,6 +1304,22 @@ export const mockApi = {
       conversation: mockConversation.map(asServer),
       fetchedAt: new Date().toISOString(),
     };
+  },
+
+  async setReaction(_key: string, commentId: string, content: ReactionContent, on: boolean): Promise<ReactResult> {
+    await delay(250);
+    const comment = threads.flatMap((t) => t.comments).find((c) => c.id === commentId);
+    if (!comment) throw new ApiError("not_found", 404, `No comment "${commentId}"`);
+    const reactions = comment.reactions ?? [];
+    const existing = reactions.find((r) => r.content === content);
+    if (existing) {
+      existing.count += Number(on) - Number(existing.mine);
+      existing.mine = on;
+    } else if (on) {
+      reactions.push({ content, count: 1, mine: true });
+    }
+    comment.reactions = reactions.filter((r) => r.count > 0 || r.mine);
+    return { comment: { id: commentId, reactions: structuredClone(comment.reactions) } };
   },
 
   async setThreadResolved(_key: string, id: string, resolved: boolean): Promise<ResolveThreadResult> {

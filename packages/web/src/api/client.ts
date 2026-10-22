@@ -45,6 +45,8 @@ import type {
   RepoConfigPatch,
   SetGeneratedResult,
   ResolveThreadResult,
+  ReactionContent,
+  ReactResult,
   ThreadsResponse,
   RepoRemovalSummary,
   RepoSummary,
@@ -766,6 +768,11 @@ export const api = {
     if (MOCK) return mockApi.listThreads(key);
     const res = await request<ThreadsResponse>(`/prs/${encodeKey(key)}/threads`);
     return { ...res, threads: res.threads ?? [] };
+  },
+
+  async setReaction(key: string, commentId: string, content: ReactionContent, on: boolean): Promise<ReactResult> {
+    if (MOCK) return mockApi.setReaction(key, commentId, content, on);
+    return post<ReactResult>(`/prs/${encodeKey(key)}/comments/${encodeURIComponent(commentId)}/reactions`, { content, on });
   },
 
   async setThreadResolved(key: string, id: string, resolved: boolean): Promise<ResolveThreadResult> {

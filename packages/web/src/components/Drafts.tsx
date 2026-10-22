@@ -36,7 +36,8 @@ import {
 } from "../lib/comments";
 import { AUDIENCE_HINT, AudienceSwitch } from "./AudienceSwitch";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
-import { IconChat, IconCheck, IconClose, IconReply, IconSend } from "./icons";
+import { IconChat, IconCheck, IconClose, IconReact, IconReply, IconSend } from "./icons";
+import { ReactionError, ReactionPicker, REACTION_EMOJI, type ReactionActions } from "./Reactions";
 import { BotChip, ThreadFilterMenu } from "./Threads";
 import { AttachmentContext, Markdown, SuggestionContext } from "./Markdown";
 import { suggestionSource, type SuggestionSource } from "../lib/suggestion";
@@ -1005,7 +1006,7 @@ function DrawerSectionTitle({ ink, title, count, hint }: { ink: string; title: s
 }
 
 /** What the drawer's "On GitHub" group needs: the threads, the filters, a jump. */
-export interface DrawerThreads {
+export interface DrawerThreads extends ReactionActions {
   threads: RemoteThread[];
   /** authors of the PR's reviews and conversation comments (post-only bots) */
   posts?: readonly RemoteAuthor[];
@@ -1122,6 +1123,10 @@ function GithubThreadRow({ thread, github }: { thread: RemoteThread; github: Dra
   const canResolve = thread.isResolved ? thread.viewerCanUnresolve : thread.viewerCanResolve;
   const resolveError = github.resolveError?.id === thread.id ? github.resolveError.message : null;
   const actions = [
+    <ReactionPicker key="react" comment={root} onReact={github.onReact} reacting={github.reacting}
+      renderButton={(open, disabled) => (
+        <RowAction testId={`react-${root.id}`} tip="Add a reaction on GitHub" disabled={disabled} onClick={open}><IconReact width={11} height={11} /></RowAction>
+      )} />,
     github.exportCtx ? (
       <CopyForAgentButton
         key="copy"
@@ -1170,6 +1175,12 @@ function GithubThreadRow({ thread, github }: { thread: RemoteThread; github: Dra
         <span className="min-w-0 truncate font-mono" style={{ color: "var(--fg-muted)" }}>
           {where}
         </span>
+        {root.reactions?.map((r) => (
+          <span key={r.content} className="flex-none" data-testid={`reaction-${r.content}`} data-mine={String(r.mine)}
+            style={{ color: r.mine ? "var(--accent)" : "var(--fg-muted)" }}>
+            {REACTION_EMOJI[r.content]}{r.count}
+          </span>
+        ))}
         {thread.isOutdated ? (
           <span className="flex-none" style={{ color: "var(--warn)" }}>
             outdated
@@ -1197,6 +1208,7 @@ function GithubThreadRow({ thread, github }: { thread: RemoteThread; github: Dra
           {actions}
         </span>
       ) : null}
+      <ReactionError comment={root} reactionError={github.reactionError} />
       {resolveError ? (
         <p className="px-1 pt-0.5 text-2xs leading-4" role="alert" data-testid={`drawer-thread-error-${thread.id}`} style={{ color: "var(--risk)" }}>
           {resolveError}

@@ -71,3 +71,20 @@ test("a GitHub thread in the drawer can be copied with its code, replied to and 
   await expect(composer).toBeVisible();
   await expect(composer).toContainText("maria");
 });
+
+
+test("a root comment reaction can be added and removed from the drawer", async ({ page }) => {
+  await page.getByTestId("topbar-comments").click();
+  const row = page.getByTestId("drawer-thread-PRRT_charge77_79");
+  const actions = page.getByTestId("drawer-thread-actions-PRRT_charge77_79");
+  await expect(row.getByTestId("reaction-THUMBS_UP")).toContainText("👍2");
+  await expect(row.getByTestId("reaction-EYES")).toHaveAttribute("data-mine", "true");
+  await row.hover();
+  await actions.getByRole("button", { name: "Add a reaction on GitHub" }).click();
+  await page.getByTestId("react-pick-HOORAY").click();
+  await expect(row.getByTestId("reaction-HOORAY")).toHaveAttribute("data-mine", "true");
+  await row.hover();
+  await actions.getByRole("button", { name: "Add a reaction on GitHub" }).click();
+  await page.getByTestId("react-pick-HOORAY").click();
+  await expect(row.getByTestId("reaction-HOORAY")).toHaveCount(0);
+});

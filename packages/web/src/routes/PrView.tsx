@@ -12,7 +12,7 @@ import type {
   ReviewEvent,
   ShareAnalysisResult,
   SubmitReviewResult,
-  SyncResult, CommentAudience } from "../api/types";
+  SyncResult, CommentAudience, ReactionContent } from "../api/types";
 import { isGeneratedUnit, isJobLive } from "../api/types";
 import { baseName } from "../lib/chatRefs";
 import {
@@ -60,6 +60,7 @@ import {
   useSync,
   useThreads,
   useResolveThread,
+  useReact,
 } from "../api/hooks";
 import { errorText } from "../api/errors";
 import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
@@ -159,6 +160,7 @@ export function PrView() {
   const { data: drafts = [] } = useComments(prKey);
   const threadsQuery = useThreads(prKey);
   const resolveThread = useResolveThread(prKey);
+  const react = useReact(prKey);
   const threadFilters = useThreadFilters();
   // Who posted each review and conversation comment: a bot that only ever
   // posts there still gets its own switch in the thread filters.
@@ -1186,7 +1188,16 @@ export function PrView() {
 
   // Everything an inline comment can do, assembled once: the same handlers the
   // drawer and the finish-review panel already use.
+  const reactionActions = {
+    onReact: (comment: { id: string }, content: ReactionContent, on: boolean) =>
+      react.mutate({ id: comment.id, content, on }),
+    reacting: react.isPending ? (react.variables?.id ?? null) : null,
+    reactionError: react.error && react.variables
+      ? { id: react.variables.id, message: `Reaction not changed: ${errorText(react.error)}` }
+      : null,
+  };
   const commentActions = {
+    ...reactionActions,
     onEdit: (input: { id: string; body: string; confirm?: boolean }) =>
       editComment.mutateAsync(input),
     onDelete: (c: { id: string }) => deleteComment.mutate(c.id),
@@ -2190,6 +2201,7 @@ export function PrView() {
                       jumpToComment({ file: t.path, line: t.line, side: t.side });
                       openComposer(remoteReplyTarget(t));
                     },
+                    ...reactionActions,
                     onResolve: (t, resolved) => resolveThread.mutate({ id: t.id, resolved }),
                     resolving: resolveThread.isPending ? (resolveThread.variables?.id ?? null) : null,
                     resolveError,
