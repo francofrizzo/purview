@@ -47,7 +47,7 @@ describe("multi-line targets", async () => {
   });
 
   it("labels and refs a range comment with its lines", () => {
-    const c = { id: "c", file: "src/a.go", line: 18, startLine: 12, side: "LEFT" as const, body: "b" };
+    const c = { revision: 1, id: "c", file: "src/a.go", line: 18, startLine: 12, side: "LEFT" as const, body: "b" };
     expect(commentAnchorLabel(c)).toBe("src/a.go:12–18 (old)");
     expect(commentAnchorLabel({ ...c, startLine: null })).toBe("src/a.go:18 (old)");
     expect(commentRef(c)).toEqual({ kind: "comment", id: "c", path: "src/a.go", start: 12, end: 18, side: "old" });

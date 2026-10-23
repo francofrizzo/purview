@@ -1388,6 +1388,7 @@ export const mockApi = {
     // Like the server: a range starts before its line, on the same side.
     const startLine = !fileLevel && input.startLine !== undefined && input.startLine < input.line ? input.startLine : undefined;
     const draft: DraftComment = {
+      revision: detail.state.currentRevision ?? detail.state.revision,
       id: `draft-${drafts.length + 1}-${Date.now()}`,
       file: input.file,
       body: input.body,
@@ -1618,6 +1619,8 @@ export const mockApi = {
       included: drafts
         .filter((d) => d.status !== "submitted" && !isForAgent(d))
         .map((d) => ({
+          revision: d.revision,
+          outdated: d.outdated,
           id: d.id,
           file: d.file,
           line: d.line,

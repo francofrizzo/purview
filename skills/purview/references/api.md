@@ -157,3 +157,7 @@ also clears the mark. `purview notes <key> --peek` reads without marking.
 ## `POST /prs/<key>/tag`
 
 `{ tag: string | null, stack?: boolean }`: set one tag or clear with null; `stack: true` applies it to every open PR linked to this one through base branches (the whole stack). Returns the updated meta plus `stack`, the keys touched. CLI: `reviewer-state tag <pr> <name>` or `tag <pr> --clear`, with `--stack` (through the server).
+
+### Comment revision anchors
+
+Each comment carries `revision: number`, the PR revision it was written on or last mapped to. Line comments can carry `outdated: { line: number; startLine?: number; revision: number }`, preserving the position before its code disappeared. Replies and file comments carry a revision but are not line-mapped. Refresh maps local display anchors for draft, pushed, and submitted comments; GitHub retains its own anchors.

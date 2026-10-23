@@ -70,7 +70,6 @@ import {
   deleteComment,
   findAnchoringHunk,
   NewCommentSchema,
-  reanchorDraftComments,
   readComments,
   commentEvents,
   pendingAgentNotes,
@@ -172,7 +171,8 @@ import { generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
-import { pruneCheckouts } from "./pr-checkout.js";
+import { reanchorComments } from "./comment-anchors.js";
+import { ensurePrCheckout, pruneCheckouts } from "./pr-checkout.js";
 import { removeRepo, repoRemovalSummary } from "./repo-removal.js";
 import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
 import { fileLinesAtHead } from "./file-content.js";
@@ -574,6 +574,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/refresh", async (c) => {
     const key = keyParam(c);
     log.info("review", `${shortKey(key)}  refresh started`);
+    readComments(key, root); // Stamp legacy anchors before refresh advances the revision.
     let result: Awaited<ReturnType<typeof refreshPrAsync>>;
     try {
       result = await refreshPrAsync(key, root);
@@ -582,13 +583,14 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw err;
     }
     log.info("review", `${shortKey(key)}  ${result.added ? "refresh finished" : "nothing changed"}`, { revision: result.revision });
-    // A migration report means the diff actually changed shape; that's
-    // exactly when a draft comment's hunk can have slid out from under it,
-    // so reconcile drafts here too, not just on push — see comments.ts. A
-    // bug here must never fail a refresh.
-    if (result.report) {
+    // Every new revision can move comment anchors, even without an analysis migration.
+    // Mapping is best effort and must never fail the refresh.
+    if (result.added) {
       try {
-        reanchorDraftComments(key, root);
+        const state = loadState(key, root);
+        const revision = state.revisions.find(r => r.revision === state.currentRevision)!;
+        const checkout = await ensurePrCheckout(key, { root, repoPath: effectiveRepoPath(key, root), ...revision });
+        await reanchorComments(key, root, checkout);
       } catch (err) {
         log.warn("review", `${shortKey(key)}  comment reanchor failed`, { reason: err instanceof Error ? err.message : String(err) });
       }

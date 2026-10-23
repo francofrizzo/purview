@@ -37,7 +37,7 @@ const detail = {
 } as unknown as PrDetail;
 
 const comments: DraftComment[] = [
-  { id: "draft-1", file: "src/billing/ledger.ts", line: 12, side: "RIGHT", body: "hmm" },
+  { revision: 1, id: "draft-1", file: "src/billing/ledger.ts", line: 12, side: "RIGHT", body: "hmm" },
 ];
 
 describe("refKey", () => {
@@ -162,7 +162,7 @@ describe("baseName", () => {
 describe("multi-line comment refs", () => {
   it("labels and titles a range comment with its lines", () => {
     const ctx = refContext(detail, [
-      { id: "r1", file: "src/billing/ledger.ts", line: 18, startLine: 12, side: "RIGHT", body: "range" },
+      { revision: 1, id: "r1", file: "src/billing/ledger.ts", line: 18, startLine: 12, side: "RIGHT", body: "range" },
     ]);
     const ref: ChatRef = { kind: "comment", id: "r1", path: "src/billing/ledger.ts", start: 12, end: 18, side: "new" };
     expect(refLabel(ref, ctx)).toBe("comment @ ledger.ts:12–18");

@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Comments follow the code.** A comment keeps pointing at the same lines after a new revision, pushed or not; one whose line is gone shows an "outdated" chip with where it was written.
 - **Watch your own PRs.** Repo settings → Watch has a second switch that imports and analyzes the PRs you open, drafts included, every 5 minutes, independent of the review-request switch.
 - **Fix:** opening a PR no longer freezes the server for other requests.
 - **Fix:** adding, refreshing and syncing a PR no longer freeze the server for other requests.

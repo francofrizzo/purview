@@ -24,6 +24,7 @@ import {
 
 let seq = 0;
 const local = (over: Partial<DraftComment> = {}): DraftComment => ({
+  revision: 1,
   id: `c${seq++}`,
   file: "src/a.ts",
   line: 3,
