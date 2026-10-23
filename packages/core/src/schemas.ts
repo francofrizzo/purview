@@ -758,6 +758,8 @@ export const RepoConfigSchema = z.object({
    * than through `effectiveConfig`. `null` (the default) is off.
    */
   watchReviews: z.boolean().nullable().default(null),
+  /** Same machine-local semantics; imports PRs by the viewer and extraAuthors. */
+  watchOwn: z.boolean().nullable().default(null),
   /**
    * The whole repo is on the shelf: every PR in it behaves as archived (no
    * automatic analysis, no background lookups, no managed checkout) and the

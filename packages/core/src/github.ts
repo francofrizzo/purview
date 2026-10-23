@@ -651,6 +651,36 @@ export function searchReviewRequestedPrs(
   return parsed.map((p) => ({ number: p.number, title: p.title, updatedAt: p.updatedAt }));
 }
 
+/** Open PRs (including drafts), updated since the given day, for each author. */
+function ownPrSearchArgs(key: RepoKey, sinceIso: string, login: string): string[] {
+  return ["pr", "list", "-R", repoFlagValue(key), "--search",
+    `author:${login} updated:>=${sinceIso.slice(0, 10)}`, "--state", "open",
+    "--json", "number,title,updatedAt", "--limit", "100"];
+}
+
+function ownPrLogins(logins: string[]): string[] {
+  return [...new Set(["@me", ...logins.map((login) => login.trim().toLowerCase()).filter(Boolean)])];
+}
+
+export function searchOwnPrs(key: RepoKey, sinceIso: string, logins: string[]): ReviewRequestedPr[] {
+  const prs = new Map<number, ReviewRequestedPr>();
+  for (const login of ownPrLogins(logins)) {
+    const found = JSON.parse(gh(ownPrSearchArgs(key, sinceIso, login))) as RawSearchPull[];
+    for (const pr of found) prs.set(pr.number, pr);
+  }
+  return [...prs.values()];
+}
+
+/** Non-blocking counterpart for async callers; the existing import path is synchronous. */
+export async function searchOwnPrsAsync(key: RepoKey, sinceIso: string, logins: string[]): Promise<ReviewRequestedPr[]> {
+  const prs = new Map<number, ReviewRequestedPr>();
+  for (const login of ownPrLogins(logins)) {
+    const found = JSON.parse(await ghAsync(ownPrSearchArgs(key, sinceIso, login))) as RawSearchPull[];
+    for (const pr of found) prs.set(pr.number, pr);
+  }
+  return [...prs.values()];
+}
+
 /* ------------------------------------------------------- repo default branch */
 
 /** How long a cached default branch is trusted before it is re-read. */

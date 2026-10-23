@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { initPr, listPrs, setGhRunner, writeRepoConfig, type GhRunner, type RepoKey } from "@reviewer/core";
 import { getWatchStatus, resetWatchStatus, startReviewWatch, type ReviewWatch } from "../src/review-watch.js";
+import { writeConfig } from "../src/config.js";
 import { analysisIdle } from "../src/analysis.js";
 import { fakeClaude, type FakeClaude } from "./fake-claude.js";
 
@@ -176,5 +177,76 @@ describe("startReviewWatch", () => {
     await watch.tick();
 
     expect(getWatchStatus().repos["github.com/acme/widgets"]).toMatchObject({ imported: 0 });
+  });
+});
+
+describe("own PR watch", () => {
+  it.each([[false, false], [true, false], [false, true], [true, true]])(
+    "polls independently: reviews=%s own=%s", async (watchReviews, watchOwn) => {
+      writeRepoConfig(repoA, { watchReviews, watchOwn }, root);
+      writeConfig({ extraAuthors: ["helper"] }, root);
+      const searches: string[] = [];
+      setGhRunner((args) => {
+        if (args[0] === "pr" && args[1] === "list") searches.push(args[args.indexOf("--search") + 1]);
+        return ghFor({})(args);
+      });
+      watch = startReviewWatch(root, { now: () => new Date("2024-01-05T12:00:00Z"), analyzeAllowed: () => false });
+      await watch.tick();
+      expect(searches).toEqual([
+        ...(watchReviews ? ["review-requested:@me updated:>=2024-01-04"] : []),
+        ...(watchOwn ? ["author:@me updated:>=2024-01-04", "author:helper updated:>=2024-01-04"] : []),
+      ]);
+      if (watchOwn) expect(getWatchStatus().repos["github.com/acme/widgets"].own).toEqual({ imported: 0 });
+    },
+  );
+
+  it.each(["review-requested:", "author:"])("isolates a failing %s search", async (failing) => {
+    writeRepoConfig(repoA, { watchReviews: true, watchOwn: true }, root);
+    const searches: string[] = [];
+    setGhRunner((args) => {
+      if (args[0] === "pr" && args[1] === "list") {
+        const query = args[args.indexOf("--search") + 1];
+        searches.push(query);
+        if (query.startsWith(failing)) throw new Error("search failed");
+      }
+      return ghFor({ "acme/widgets": [{ number: 42, title: "Mine", updatedAt: "2024-01-05" }] })(args);
+    });
+    watch = startReviewWatch(root, { analyzeAllowed: () => false });
+    await watch.tick();
+    expect(searches).toHaveLength(2);
+    const status = getWatchStatus().repos["github.com/acme/widgets"];
+    expect(failing === "author:" ? status.own : status).toMatchObject({ imported: 0, error: "search failed" });
+    expect(failing === "author:" ? status : status.own).toMatchObject({ imported: 1 });
+    expect(claude.runs).toHaveLength(0);
+
+  });
+
+  it("analyzes a new own PR once and skips it on later ticks", async () => {
+    writeRepoConfig(repoA, { watchOwn: true }, root);
+    setGhRunner(ghFor({ "acme/widgets": [{ number: 42, title: "Mine", updatedAt: "2024-01-05" }] }));
+    watch = startReviewWatch(root);
+    await watch.tick();
+    await analysisIdle();
+    expect(claude.runs).toHaveLength(1);
+    await watch.tick();
+    expect(claude.runs).toHaveLength(1);
+    expect(getWatchStatus().repos["github.com/acme/widgets"].own).toEqual({ imported: 0 });
+  });
+
+  it("skips both watches for archived repos and deduplicates across loops on resume", async () => {
+    writeRepoConfig(repoA, { watchReviews: true, watchOwn: true, archived: true }, root);
+    const searches: string[][] = [];
+    setGhRunner((args) => {
+      if (args[0] === "pr" && args[1] === "list") searches.push(args);
+      return ghFor({ "acme/widgets": [{ number: 42, title: "Mine", updatedAt: "2024-01-05" }] })(args);
+    });
+    watch = startReviewWatch(root, { analyzeAllowed: () => false });
+    await watch.tick();
+    expect(searches).toHaveLength(0);
+    writeRepoConfig(repoA, { archived: false }, root);
+    await watch.tick();
+    expect(searches).toHaveLength(2);
+    expect(getWatchStatus().repos["github.com/acme/widgets"]).toMatchObject({ imported: 1, own: { imported: 0 } });
+    expect(listPrs(root)).toHaveLength(1);
   });
 });

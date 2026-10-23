@@ -3,10 +3,12 @@ import {
   keyToString,
   listPrs,
   searchReviewRequestedPrs,
+  searchOwnPrs,
   stateRoot,
   type PrKey,
   type RepoKey,
 } from "@reviewer/core";
+import { readConfig } from "./config.js";
 import { HttpError } from "./http-error.js";
 import { startAnalysis } from "./analysis.js";
 import { resolveAutoSharedAnalysis } from "./analysis-share-server.js";
@@ -70,10 +72,22 @@ export function importReviewRequestsSince(
   root = stateRoot(),
   opts: ImportOptions = {},
 ): ImportResult {
+  return importCandidates(repo, searchReviewRequestedPrs(repo, since.toISOString()), root, opts);
+}
+
+export function importOwnPrsSince(
+  repo: RepoKey,
+  since: Date,
+  root = stateRoot(),
+  opts: ImportOptions = {},
+): ImportResult {
+  return importCandidates(repo, searchOwnPrs(repo, since.toISOString(), readConfig(root).extraAuthors), root, opts);
+}
+
+function importCandidates(repo: RepoKey, candidates: { number: number }[], root: string, opts: ImportOptions): ImportResult {
   const result: ImportResult = { imported: [], alreadyTracked: [], failed: [], sharedImports: [] };
   const analyze = opts.analyze ?? true;
 
-  const candidates = searchReviewRequestedPrs(repo, since.toISOString());
   const tracked = trackedNumbers(repo, root);
 
   for (const candidate of candidates) {

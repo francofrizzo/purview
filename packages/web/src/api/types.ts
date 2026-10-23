@@ -577,6 +577,7 @@ export interface PrListEntry {
 
 /** One repo's most recent review-watch poll, from `GET /api/repos`. */
 export interface RepoWatchStatus {
+  own?: { imported: number; error?: string };
   checkedAt: string;
   imported: number;
   error?: string;
@@ -595,6 +596,7 @@ export interface RepoSummary {
   repoPath: string | null;
   /** whether this machine polls the repo for review requests (see repo settings) */
   watchReviews: boolean;
+  watchOwn: boolean;
   /** this repo's most recent poll, or null if the watcher has not reached it yet */
   watch: RepoWatchStatus | null;
   /** the whole repo is archived (absent from an older server) */
@@ -636,6 +638,7 @@ export interface RepoConfig {
      * policy) — `null`/`false` are both "off"; there is no "inherit".
      */
     watchReviews: boolean | null;
+    watchOwn: boolean | null;
     rubric: string;
     chatInstructions: string;
     /** absent from a server predating it; read as two empty lists */
@@ -667,6 +670,7 @@ export interface RepoConfigPatch {
   analysisAgent?: AgentSelection | null;
   chatAgent?: ChatAgentSelection | null;
   watchReviews?: boolean | null;
+  watchOwn?: boolean | null;
   rubric?: string;
   chatInstructions?: string;
   /** written whole */
