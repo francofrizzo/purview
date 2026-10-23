@@ -204,6 +204,8 @@ export const MOCK_AGENTS: AgentsInfo = {
 const globalConfig: {
   analysisAgent: AgentSelection | null;
   chatAgent: ChatAgentSelection | null;
+  editor: GlobalConfig["editor"];
+  editorConfirmed: boolean;
   managedCheckouts: boolean;
   aiReviewers: string[];
   extraAuthors: string[];
@@ -211,6 +213,8 @@ const globalConfig: {
 } = {
   analysisAgent: null,
   chatAgent: null,
+  editor: null,
+  editorConfirmed: false,
   managedCheckouts: true,
   aiReviewers: [],
   // The fixture's bot-opened PR (billing #502) lands under "Your PRs" through this.
@@ -890,6 +894,13 @@ export const mockApi = {
     return structuredClone(MOCK_AGENTS);
   },
 
+  async getEditors() {
+    return [{ id: "code", name: "Visual Studio Code", available: true, command: "code {path}" }];
+  },
+  async openInEditor(key: string) {
+    await delay(1500);
+    return { path: `~/.purview/checkouts/${key.replaceAll("--", "/")}` };
+  },
   async getConfig(): Promise<GlobalConfig> {
     await delay(80);
     return globalPayload();
@@ -901,6 +912,8 @@ export const mockApi = {
     if (patch.chatAgent !== undefined) globalConfig.chatAgent = patch.chatAgent;
     if (patch.managedCheckouts !== undefined) globalConfig.managedCheckouts = patch.managedCheckouts;
     if (patch.aiReviewers !== undefined) globalConfig.aiReviewers = patch.aiReviewers;
+    if (patch.editor !== undefined) globalConfig.editor = patch.editor;
+    if (patch.editorConfirmed !== undefined) globalConfig.editorConfirmed = patch.editorConfirmed;
     if (patch.extraAuthors !== undefined) globalConfig.extraAuthors = patch.extraAuthors;
     if (patch.updateCheck !== undefined) globalConfig.updateCheck = patch.updateCheck;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);

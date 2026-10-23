@@ -157,3 +157,7 @@ also clears the mark. `purview notes <key> --peek` reads without marking.
 ## `POST /prs/<key>/tag`
 
 `{ tag: string | null, stack?: boolean }`: set one tag or clear with null; `stack: true` applies it to every open PR linked to this one through base branches (the whole stack). Returns the updated meta plus `stack`, the keys touched. CLI: `reviewer-state tag <pr> <name>` or `tag <pr> --clear`, with `--stack` (through the server).
+
+## Open in editor
+
+`GET /api/editors` returns cached `{ id, name, available, command }` entries. `POST /api/prs/:key/open-in-editor` prepares Purview's detached checkout at the current PR head, launches the selected editor and returns `{ path }`. It never opens the configured repository path. Errors: `409 no_editor`, `502 checkout_failed`, `500 editor_failed`. Choose via `PUT /api/config` with `editor: { id, command? }` (`custom` requires `{path}`, `none` disables, `null` automatically selects the sole available editor); `editorConfirmed` remembers the confirmation. Commands accept quoted arguments, without shell expansion or operators.

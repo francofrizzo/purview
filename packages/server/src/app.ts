@@ -1,3 +1,5 @@
+import { getEditors, selectedEditor, launchEditor } from "./editors.js";
+import { ensurePrCheckout } from "./pr-checkout.js";
 import { compress, COMPRESSIBLE_CONTENT_TYPE_REGEX } from "hono/compress";
 import { requestLog } from "./request-log.js";
 import { log, shortKey } from "./log.js";
@@ -2108,6 +2110,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       managedCheckouts: config.managedCheckouts,
       aiReviewers: config.aiReviewers,
       extraAuthors: config.extraAuthors,
+      editor: config.editor,
+      editorConfirmed: config.editorConfirmed,
       updateCheck: config.updateCheck,
       /** what this layer resolves to on its own — the end of the inheritance chain */
       effective: {
@@ -2135,10 +2139,28 @@ export function createApp(opts: AppOptions = {}): Hono {
       /** logins whose PRs count as yours on the list; the whole list, replacing the stored one */
       extraAuthors: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
       /** ask origin for newer releases once a day */
+      editor: z.object({ id: z.string().min(1), command: z.string().optional() }).strict().refine(e => e.id !== "custom" || !!e.command?.includes("{path}"), "Custom command must include {path}").nullable().optional(),
+      editorConfirmed: z.boolean().optional(),
       updateCheck: z.boolean().optional(),
       /** what new comments are for: the GitHub review, or notes for an agent */
     })
     .strict();
+
+  app.get("/api/editors", async (c) => c.json(await getEditors()));
+  app.post("/api/prs/:key/open-in-editor", async (c) => {
+    const key = keyParam(c);
+    const meta = readMeta(key, root);
+    const editor = selectedEditor(readConfig(root).editor, await getEditors());
+    if (!editor) throw new HttpError(409, "no_editor", "Choose an editor in Settings → System.");
+    const checkout = await ensurePrCheckout(key, {
+      root, repoPath: effectiveRepoPath(key, root, { meta }), headSha: prHead(key, root).headSha,
+    });
+    if ("error" in checkout) throw new HttpError(502, "checkout_failed", checkout.error);
+    try { await launchEditor(editor, checkout.path); }
+    catch (error) { throw new HttpError(500, "editor_failed", (error as Error).message); }
+    log.info("server", `opened in ${editor.name}`, { path: checkout.path });
+    return c.json({ path: checkout.path });
+  });
 
   app.get("/api/config", (c) => c.json(globalConfigPayload()));
 
@@ -2224,6 +2246,8 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (body.managedCheckouts !== undefined) patch.managedCheckouts = body.managedCheckouts;
     // Both login lists are stored as typed, minus case-insensitive duplicates.
     if (body.aiReviewers !== undefined) patch.aiReviewers = dedupeLogins(body.aiReviewers);
+    if (body.editor !== undefined) patch.editor = body.editor;
+    if (body.editorConfirmed !== undefined) patch.editorConfirmed = body.editorConfirmed;
     if (body.extraAuthors !== undefined) patch.extraAuthors = dedupeLogins(body.extraAuthors);
     if (body.updateCheck !== undefined) patch.updateCheck = body.updateCheck;
     if (Object.keys(patch).length > 0) writeConfig(patch, root);

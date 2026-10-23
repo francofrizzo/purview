@@ -1156,6 +1156,8 @@ describe("/api/config", () => {
       managedCheckouts: true,
       aiReviewers: [],
       extraAuthors: [],
+      editor: null,
+      editorConfirmed: false,
       updateCheck: true,
       effective: {
         // Medium is the harness's default now, not a value every config.json pins.

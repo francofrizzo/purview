@@ -1273,3 +1273,7 @@ export function useSetPrTag(key: string) {
     onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: qk.prs }), qc.invalidateQueries({ queryKey: qk.pr(key) })]),
   });
 }
+
+export function useEditors() {
+  return useQuery({ queryKey: ["editors"], queryFn: api.getEditors, staleTime: Infinity });
+}

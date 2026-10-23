@@ -10,6 +10,7 @@ import {
   IconBrandGithub as TablerBrandGithub,
   IconSparkles as TablerSparkles,
   IconTag as TablerTag,
+  IconCode as TablerCode,
   IconLayoutSidebarRight,
   IconSend as TablerSend,
   IconBarbell,
@@ -250,3 +251,6 @@ export const RISK_META: Record<
 
 /** A luggage tag — set or change the PR's tag. */
 export const IconTag = wrap(TablerTag);
+
+/** Angle brackets — open the code in an editor. */
+export const IconCode = wrap(TablerCode);

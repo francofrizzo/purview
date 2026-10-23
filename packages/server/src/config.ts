@@ -92,6 +92,8 @@ export const ConfigSchema = z.object({
    * viewer login as "mine".
    */
   extraAuthors: z.array(z.string()).default([]),
+  editor: z.object({ id: z.string(), command: z.string().optional() }).nullable().default(null),
+  editorConfirmed: z.boolean().default(false),
   /**
    * The global switch for new comments: part of the GitHub review, or notes
    * for a coding agent (see comments.ts). Read by the web, the CLI and the

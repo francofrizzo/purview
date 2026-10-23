@@ -700,6 +700,8 @@ export interface SetGeneratedResult {
 
 /** GET/PUT /api/config — the machine-wide layer. */
 export interface GlobalConfig {
+  editor?: { id: string; command?: string } | null;
+  editorConfirmed?: boolean;
   /** null = inherit, which at this layer means the harness's own defaults */
   analysisAgent: AgentSelection | null;
   chatAgent: ChatAgentSelection | null;
@@ -722,6 +724,8 @@ export interface GlobalConfig {
 }
 
 export interface GlobalConfigPatch {
+  editor?: { id: string; command?: string } | null;
+  editorConfirmed?: boolean;
   analysisAgent?: AgentSelection | null;
   chatAgent?: ChatAgentSelection | null;
   managedCheckouts?: boolean;
@@ -1449,3 +1453,5 @@ export interface SkillManifest {
 }
 
 export interface PickedUp { at: string; by: string }
+
+export interface Editor { id: string; name: string; available: boolean; command: string }

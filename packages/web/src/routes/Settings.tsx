@@ -1,3 +1,4 @@
+import { EditorSection } from "../components/Editor";
 import { useEffect, useMemo, useState } from "react";
 import { errorText } from "../api/errors";
 import {
@@ -73,6 +74,7 @@ const APP_SETTINGS_NAV: SettingsNavGroup[] = [
     items: [
       { id: "network", title: "Network access" },
       { id: "coding-agents", title: "Coding agents" },
+      { id: "editor", title: "Editor" },
       { id: "about", title: "About" },
     ],
   },
@@ -168,6 +170,7 @@ export function SettingsModal() {
       <YourPrsSection />
       <NetworkSection />
       <CodingAgentsSection />
+      <EditorSection />
       <AboutSection />
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Stored under <span className="font-mono">reviewer.settings</span> in localStorage · active

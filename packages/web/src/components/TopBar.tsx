@@ -1,3 +1,4 @@
+import { useOpenInEditor } from "./Editor";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { TagChip, TagPopover } from "./TagPopover";
@@ -152,6 +153,7 @@ export function TopBar({
   // The tag popover hangs under the chip when there is one, under the ⋯ menu otherwise.
   const tagChipRef = useRef<HTMLButtonElement>(null);
   const tagMenuRef = useRef<HTMLDivElement>(null);
+  const editor = useOpenInEditor(detail.key);
   const [tagOpen, setTagOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const { meta, state } = detail;
@@ -415,6 +417,7 @@ export function TopBar({
         <div ref={tagMenuRef} className="contents">
         <OverflowMenu
           items={[
+            ...editor.items,
             { label: meta.tag ? "Change tag…" : "Tag…", testId: "header-tag-menu", onClick: () => setTagOpen(true) },
             // Phone width: the row keeps chat, comments, refresh and finish;
             // sync moves in here.
@@ -552,6 +555,7 @@ export function TopBar({
           ) : null}
         </button>
       </div>
+      {editor.dialog}
       {tagOpen ? (
         <TagPopover
           prKey={detail.key}
@@ -568,6 +572,7 @@ export interface MenuItem {
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  keepOpen?: boolean;
   /** shown as the item's tooltip, not inline: the menu stays one line per action */
   hint?: string;
   icon?: React.ReactNode;
@@ -661,7 +666,7 @@ export function OverflowMenu({
           } ${item.dividerBefore ? "menu-divider" : ""}`}
           style={{ color: item.danger ? "var(--risk)" : "var(--fg)" }}
           onClick={() => {
-            setOpen(false);
+            if (!item.keepOpen) setOpen(false);
             item.onClick();
           }}
         >

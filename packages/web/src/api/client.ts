@@ -17,6 +17,7 @@ import type {
   ChatAgentSelection,
   AgentsInfo,
   ChatState,
+  Editor,
   GlobalConfig,
   GlobalConfigPatch,
   ChatStreamEvent,
@@ -529,6 +530,14 @@ export const api = {
     return request<AgentsInfo>("/agents");
   },
 
+  async getEditors(): Promise<Editor[]> {
+    if (MOCK) return mockApi.getEditors();
+    return request<Editor[]>("/editors");
+  },
+  async openInEditor(key: string): Promise<{ path: string }> {
+    if (MOCK) return mockApi.openInEditor(key);
+    return post<{ path: string }>(`/prs/${encodeURIComponent(key)}/open-in-editor`, {});
+  },
   async getConfig(): Promise<GlobalConfig> {
     if (MOCK) return mockApi.getConfig();
     return request<GlobalConfig>("/config");
