@@ -541,8 +541,8 @@ export function analysisPrompt(
           "patch just the affected units, all in one `set-units` batch. Never regenerate the whole analysis",
           "with set-analysis on a refresh. Husks (\"Removed units\"; `~` in `units`) are not patched except",
           "to revive one with hunks that genuinely belong to that same decision.",
-          state.flow || state.fileNotes
-            ? "The PR has a shape (file notes, and maybe a flow; SKILL.md, 'The shape of the change'). Only if this revision adds, removes or reroutes something it shows, redraw that view with `set-shape` after `set-units`; otherwise leave it."
+          state.flow || state.fileNotes || state.concepts || state.example
+            ? "The PR has a shape (concepts, an example, file notes, maybe a flow; SKILL.md, 'The shape of the change'). Only if this revision changes something one of them shows (a new concept, a different outcome for the example, a new file, a rerouted call), redraw that view with `set-shape` after `set-units`; otherwise leave it."
             : "",
         ].join(" ") +
         "\n\n" +
@@ -550,7 +550,7 @@ export function analysisPrompt(
       : [
           "This PR has no analysis yet. Produce the full analysis and write it with",
           `\`${cmd} set-analysis ${keyStr} --file <analysis.json>\`.`,
-          "Include its shape (SKILL.md, 'The shape of the change'): `fileNotes` always, a `flow` when the PR adds or reroutes a runtime path.",
+          "Lead the reader in from broad to narrow (SKILL.md, 'Build the analysis'): a plain `summary` with no code, then the shape ('The shape of the change'): `concepts` and an `example` as that section says, `fileNotes` always, a `flow` only when the order of calls is the point.",
           "Every hunk id the triage lists must be covered by a unit or listed in \"unassigned\".",
           "Generated files and lockfiles (triage's GENERATED line) are already in Purview's own",
           `\`${GENERATED_UNIT_ID}\` unit: leave their hunks out, don't read them, and don't use that unit id.`,

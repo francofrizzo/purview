@@ -501,10 +501,61 @@ export const FileNotesSchema = z
   .refine((r) => Object.keys(r).length <= MAX_FILE_NOTES, `at most ${MAX_FILE_NOTES} file notes`);
 export type FileNotes = z.infer<typeof FileNotesSchema>;
 
+/* ------------------------------------------------------------- concepts */
+
+/**
+ * Prose for a reader new to this corner of the code. No code spans in it —
+ * identifiers belong one level down, in the summaries — so a backtick is
+ * refused rather than trusted to the prompt.
+ */
+export const plainText = (max: number) =>
+  z
+    .string()
+    .min(1)
+    .max(max)
+    .refine((s) => !s.includes("`"), "plain words only: no `code` spans here; identifiers belong in the summaries");
+
+/**
+ * A term the PR leans on that a reviewer from outside this area would not
+ * know. Purview lists them before the units and explains each wherever the
+ * guide uses it (the term, or a name in `aka`), so the units can stay exact.
+ */
+export const ConceptSchema = z.object({
+  /** in the reader's words: "Snapshot source", "Pending record" */
+  term: plainText(40),
+  /** one plain sentence: what it is, and for a new one why it exists */
+  means: plainText(200),
+  /** the names the code and the guide use for it (`UNRECONCILED`, `tpk`), matched as written */
+  aka: z.array(z.string().min(2).max(60)).max(6).default([]),
+  /** the PR introduces it */
+  isNew: z.boolean().optional(),
+});
+export type Concept = z.infer<typeof ConceptSchema>;
+export const MAX_CONCEPTS = 8;
+export const ConceptsSchema = z.array(ConceptSchema).min(1).max(MAX_CONCEPTS);
+
+/* -------------------------------------------------------------- example */
+
+/**
+ * One concrete case run through the change: what happened to it before the
+ * PR and what happens now, a few short steps each, in the concepts' words.
+ * A reader follows a case more easily than a drawing of it, so this is the
+ * picture of a change in behavior; the flow stays for the call sequence.
+ */
+export const ExampleSchema = z.object({
+  /** the situation, with toy data: "The same installment arrives in two snapshots in a row" */
+  case: plainText(120),
+  before: z.array(plainText(160)).min(1).max(4),
+  after: z.array(plainText(160)).min(1).max(4),
+});
+export type Example = z.infer<typeof ExampleSchema>;
+
 /** Payload of `set-shape`: each key present replaces that view; `null` drops it. */
 export const ShapeSchema = z.object({
   flow: FlowSchema.nullable().optional(),
   fileNotes: FileNotesSchema.nullable().optional(),
+  concepts: ConceptsSchema.nullable().optional(),
+  example: ExampleSchema.nullable().optional(),
 });
 export type Shape = z.infer<typeof ShapeSchema>;
 
@@ -518,6 +569,10 @@ export const AnalysisSchema = z.object({
   flow: FlowSchema.optional(),
   /** optional: one line per file worth placing (see FileNotesSchema) */
   fileNotes: FileNotesSchema.optional(),
+  /** optional: the terms a reader new to this code needs (see ConceptSchema) */
+  concepts: ConceptsSchema.optional(),
+  /** optional: one case before and after the change (see ExampleSchema) */
+  example: ExampleSchema.optional(),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -550,6 +605,8 @@ export const AnalysisExportSchema = z.object({
   /** additive: exports made before the shape existed have none */
   flow: FlowSchema.optional(),
   fileNotes: FileNotesSchema.optional(),
+  concepts: ConceptsSchema.optional(),
+  example: ExampleSchema.optional(),
 });
 export type AnalysisExport = z.infer<typeof AnalysisExportSchema>;
 
@@ -1198,6 +1255,8 @@ export const AnalysisSetEventSchema = z.object({
   /** the shape of the change; each absent when the analysis drew none */
   flow: FlowSchema.optional(),
   fileNotes: FileNotesSchema.optional(),
+  concepts: ConceptsSchema.optional(),
+  example: ExampleSchema.optional(),
 });
 
 /**
@@ -1211,6 +1270,8 @@ export const ShapeSetEventSchema = z.object({
   revision: z.number().int(),
   flow: FlowSchema.nullable().optional(),
   fileNotes: FileNotesSchema.nullable().optional(),
+  concepts: ConceptsSchema.nullable().optional(),
+  example: ExampleSchema.nullable().optional(),
 });
 
 export const UnitUpdatedEventSchema = z.object({
@@ -1457,6 +1518,10 @@ export const StateSchema = z.object({
   /** the shape of the change, from the analysis or a later `set-shape` */
   flow: FlowSchema.optional(),
   fileNotes: FileNotesSchema.optional(),
+  /** the terms the PR leans on, explained wherever the guide uses them */
+  concepts: ConceptsSchema.optional(),
+  /** one case before and after the change */
+  example: ExampleSchema.optional(),
   /** the revision the shape was last drawn for */
   shapeRevision: z.number().int().optional(),
   units: z.array(ReviewUnitSchema).default([]),

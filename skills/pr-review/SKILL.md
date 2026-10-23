@@ -248,15 +248,43 @@ Produce:
 
 ```json
 {
-  "summary": "short, plain-language overall summary",
+  "summary": "two to four sentences in plain words, no code (see below)",
   "units": [ /* ReviewUnit[] */ ],
   "unassigned": [ /* hunk ids deliberately left out of every unit */ ],
-  "fileNotes": { /* see "The shape of the change" below */ },
+  "concepts": [ /* see "The shape of the change" below */ ],
+  "example": { /* same section */ },
+  "fileNotes": { /* same section */ },
   "flow": { /* optional, same section */ }
 }
 ```
 
-`ReviewUnit` fields: `id` (slug), `title`, `summary` (1-3 sentences), `kind`, `attention`,
+**Lead the reader in from broad to narrow.** Whoever reads this may not live in this
+code. They meet, in order: the overall `summary` (why the PR exists), the `concepts` (the
+words it leans on), the `example` (one case before and after), then the units, and only
+inside a unit the identifiers and the lines. Each level answers one question and is
+readable without the next; none of them repeats another.
+
+**The overall `summary`** is what the PR is about, in **plain words with no `code` spans**
+(the CLI refuses a backtick there): two to four sentences on the problem it solves in the
+system's terms, the idea of the change, and the one or two decisions the reviewer has to
+judge. Use the concepts' terms; identifiers belong in the units.
+
+- Good: `"Snapshot sources used to store a full copy of every installment on each
+  ingestion, even unchanged ones, and the engine had to work out which copy was current.
+  Now each installment is stored once and each ingestion only records which installments
+  it brought. What to judge: how the current set is computed from that, and the one-time
+  cleanup of the old copies."`
+- Bad: `"SNAPSHOT sources stop reinserting the full snapshot: an installment becomes one
+  record per (workflow, source, tpk) and reconciliation_ingestion_records stores the
+  members; persist runs in persistBatchSize batches…"` (the code's vocabulary, no problem,
+  nothing to judge).
+
+What the author wrote that the diff cannot show (why now, a number behind the decision, a
+related PR, a question they leave open) goes in the summary too, said as theirs: `"The
+author notes that 97% of what gets matched is matched within 14 days."`. Skip what an agent
+or a template wrote (sections headed 🤖 or "Agent", checklists): the units already say it.
+
+`ReviewUnit` fields: `id` (slug), `title`, `summary` (one or two sentences, see below), `kind`, `attention`,
 `attentionWhy`, `order` (integer, suggested reading order, starting at 0 or 1 — be
 consistent), plus `hunks` (an array; write it explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy`
 and `order` are required — the schema rejects the payload if any is missing.
@@ -286,6 +314,25 @@ semicolon. For a skim or skip unit, say in the same shape what the glance is for
   concerns in one line; keep the stake, move the rest to findings or drop it).
 - Bad: `"Shape check: the new 503 contract is what the frontend retry keys on."` (a label
   prefix; just say the sentence).
+
+**A unit's `summary`** is one or two sentences. The **first says what changes in the
+system's behavior, in the concepts' words and without `code`**; a second, only if the
+reader needs it, says where in the code. It does not list who is affected or what is at
+stake (that is the `attentionWhy`), and it does not walk the hunks (that is what the
+heart and the labels do).
+
+- Good: `"To decide which installments are current, the engine no longer asks which
+  ingestion brought them: incremental sources count whole, snapshot sources only with what
+  came in the last snapshot. The manual match now refuses an installment that did not."`
+- Bad: `"ApplicableRecordsForConfig replaces the list of ingestion ids with INCREMENTAL keys
+  plus the ids of the SNAPSHOT ingestions used. Used by the engine's working set
+  (GetApplicableRecords, which already brings the source_key), the counts and listing and
+  the manual match…"` (identifiers first, and the consumers belong to the attentionWhy).
+
+**One fact, one place.** The unit `summary` says what changes, the `attentionWhy` what is
+at stake, a heart `why` what those particular lines do, a `label` what one hunk is. If a
+sentence you are about to write is already true of another field, leave it out: the reader
+sees all of them together, and the same fact three times reads as three things to check.
 
 **A concern lives in one place.** Something you noticed — a stale description, a missing
 metric, a caller that may not handle the new path — is a `finding` on the unit that owns it
@@ -343,7 +390,10 @@ under the segment in the diff, so it must read on its own.
 
 A heart `why` and the unit's `attentionWhy` must not overlap: the heart says what the
 code does, the attentionWhy says what is at stake. If writing one makes the other
-redundant, rewrite the attentionWhy, not the heart.
+redundant, rewrite the attentionWhy, not the heart. Nor does a heart `why` restate the
+unit `summary` for one file ("splits the sources: snapshot brings its ingestion ids,
+incremental its key" under a summary that says exactly that): say what these lines do that
+the summary leaves out, the condition, the order, the edge case.
 
 Give every **must-read** unit a heart; give a skim unit one only when one hunk clearly
 carries it. Purview marks these segments in the diff; the rest of the unit stays fully
@@ -377,15 +427,70 @@ pass (step 5). Leave it off entirely here.
 ### The shape of the change
 
 Units cut the PR into decisions; the reader reads them one at a time and loses how the
-pieces fit. Two top-level views give that back, each a compressed projection of the diff
-anchored to the code (real paths, real calls), so the reader can line up with the change
-before opening a unit. Purview draws both; you only write the data, and the CLI checks it
-like the rest of the payload.
+pieces fit. Four top-level views give that back. Two are for a reader new to this code, in
+plain words; two are anchored to the code (real paths, real calls). Purview draws them;
+you only write the data, and the CLI checks it like the rest of the payload.
 
+- **`concepts`** (when the PR leans on terms an outsider would not know): the words to
+  read it with.
+- **`example`** (when the PR changes behavior): one case, before and after.
 - **`fileNotes`** (write it on every analysis): where the change lands, one line per file.
-- **`flow`** (only when it earns its place): how one runtime path now runs, in order.
+  Purview shows them in the Files view.
+- **`flow`** (rarely; see below): the call sequence of one path, shown folded under the
+  example as the view in the code.
 
 Each view costs the reader attention. Draw what this PR needs, not what the format allows.
+
+#### Concepts
+
+Three to five terms the PR leans on that a reviewer from another part of the codebase
+would not know: the fewest that let them follow the summary and the units. Leave
+`concepts` off for a change that needs no vocabulary (a dependency bump, a generic fix).
+
+```json
+"concepts": [
+  { "term": "Charge key", "means": "What makes two charge attempts the same charge: the order, the amount and the currency.", "aka": ["idempotencyKey", "idempotency key"], "isNew": true },
+  { "term": "Charge ledger", "means": "A table that remembers each charge's outcome by its key, so a retry gets the first result back.", "aka": ["charge_ledger"], "isNew": true }
+]
+```
+
+- `term`: the reader's words for it, in the analysis's language, as a colleague would say
+  it; not the identifier.
+- `means`: one plain sentence, under 25 words, on what it is in the system, and for a new
+  one why it exists. No `code` spans (refused).
+- `aka`: one to three names the code and your own text use for it, the ones a reader
+  will actually meet in the units: enum values, table names, abbreviations
+  (`UNRECONCILED`, `tpk`, `working_set`), as written; the most common first. Not every
+  function that touches it. Purview marks
+  them wherever the guide uses them and shows `means` on hover, so the units can stay
+  exact without leaving the reader behind.
+- `isNew`: the PR introduces it.
+- Not general programming terms (cache, migration, retry), and not something only one unit
+  mentions: explain that in the unit.
+
+#### The example
+
+One concrete case run through the change, before and after, in the concepts' words. A
+reader follows a case more easily than a diagram of it, so this is the picture of what
+the PR does. Write it when the PR changes behavior; leave it off for a refactor, a rename,
+docs, config or a dependency bump.
+
+```json
+"example": {
+  "case": "A client retries a charge that already went through",
+  "before": ["The retry reaches the gateway again.", "The card is charged twice."],
+  "after": ["The charge key is already in the ledger.", "The first result comes back; the card is charged once."]
+}
+```
+
+- `case`: one specific situation, with toy values where they help ("The same installment
+  arrives unchanged in Monday's and Tuesday's snapshots"), never a category ("Snapshot
+  ingestion").
+- `before` / `after`: two to four short steps each, the same case on both sides so the
+  difference stands out; only as much `before` as the `after` needs. For a new feature,
+  `before` says what happened without it ("Nothing stops the second charge"). No `code`
+  spans (refused).
+- Pick the case the PR is about: the one whose outcome changes.
 
 #### File notes
 
@@ -412,11 +517,12 @@ each note beside its file, the way a design doc shows where a change lands.
 #### The flow
 
 `flow` is a sequence diagram of one path: who calls whom, in order, and what comes back.
-Draw it when the PR adds or reroutes a path across three or more pieces (a request now
-enqueues instead of running inline, a job now claims before it executes, a charge now
-looks its key up before the gateway). Leave it off for a one-file fix, a rename, a refactor
-that keeps every call where it was, docs, config or a dependency bump: the file notes are
-the whole shape there, and a flow of two boxes and one arrow tells the reader nothing.
+The example already tells what changes; draw a flow only when the order of calls across
+components is itself what the reviewer has to check (a request now enqueues instead of
+running inline, a job now claims before it executes, a charge now looks its key up before
+the gateway). Leave it off for a one-file fix, a rename, a refactor that keeps every call
+where it was, docs, config or a dependency bump, and whenever the example says it all.
+Keep it small: five participants or fewer reads at a glance; seven is the hard limit.
 
 ```json
 "flow": {
@@ -467,11 +573,13 @@ the whole shape there, and a flow of two boxes and one arrow tells the reader no
 - One path per flow. Pick the one the PR is about, usually the happy path; name the
   failure branch in a step label rather than drawing a second path.
 
-On a refresh, `set-shape` replaces either view (`{"flow": …}`, `{"fileNotes": …}`; `null`
-drops one); see the run prompt for when to redraw them.
+On a refresh, `set-shape` replaces any view (`{"concepts": …}`, `{"example": …}`,
+`{"flow": …}`, `{"fileNotes": …}`; `null` drops one); see the run prompt for when to
+redraw them.
 
-Every prose field — the overall `summary`, each unit's `summary`, `attentionWhy`, a
-hunk's `label` and heart `why`, and later the findings — is rendered as markdown. Use `code` spans for identifiers, paths,
+Every prose field — each unit's `summary`, `attentionWhy`, a hunk's `label` and heart
+`why`, and later the findings — is rendered as markdown (the overall `summary`, the
+concepts and the example are plain words, without `code`). Use `code` spans for identifiers, paths,
 values and commands (`charge()`, `src/billing/ledger.ts`, `max_attempts=4`), and **bold**
 or *italics* where they help. No headings, lists or fences inside the one-line fields;
 the overall `summary` may use short paragraphs, nothing else.

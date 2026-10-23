@@ -564,9 +564,9 @@ program
 program
   .command("set-shape")
   .argument("<key>")
-  .requiredOption("--file <json>", 'JSON file with {flow?, fileNotes?} ("-" for stdin)')
+  .requiredOption("--file <json>", 'JSON file with {flow?, fileNotes?, concepts?, example?} ("-" for stdin)')
   .description(
-    "replace the flow or the file notes (a key present replaces that view, null drops it); set-analysis takes them too",
+    "replace the flow, the file notes, the concepts or the example (a key present replaces that view, null drops it); set-analysis takes them too",
   )
   .action((keyArg: string, opts: { file: string }) => {
     const key = requireExistingKey(keyArg);
@@ -574,6 +574,8 @@ program
     const parts = [
       state.flow ? `flow ${state.flow.participants.length} participants / ${state.flow.steps.length} steps` : "no flow",
       state.fileNotes ? `${Object.keys(state.fileNotes).length} file notes` : "no file notes",
+      state.concepts ? `${state.concepts.length} concepts` : "no concepts",
+      state.example ? "an example" : "no example",
     ];
     console.log(`Shape for revision ${state.currentRevision}: ${parts.join(", ")}`);
   });

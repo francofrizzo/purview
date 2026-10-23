@@ -709,7 +709,7 @@ function revisionPaths(key: PrKey, state: State, root: string) {
 }
 
 /**
- * `set-shape`: replace the flow or the file notes without
+ * `set-shape`: replace the flow, the file notes, the concepts or the example without
  * re-sending the analysis (a refresh redraws them this way). Each key present
  * replaces that view; `null` drops it. Units named must be live.
  */
@@ -791,6 +791,15 @@ export function setAnalysis(
       );
     }
     assertShape(analysis, { unitIds: new Set(analysis.units.map((u) => u.id)), ...revisionPaths(key, state, root) });
+    // The summary is the first thing a reviewer reads, often one who does not
+    // live in this code: it says what the PR is about in words. Identifiers
+    // belong one level down, in the units.
+    if (analysis.summary.includes("`")) {
+      throw new Error(
+        "summary: plain words only, no `code` spans. Say what problem the PR solves, its idea and what the " +
+          "reviewer has to judge, in the PR's concepts; identifiers belong in the unit summaries.",
+      );
+    }
   }
   const next = appendEvent(
     key,
@@ -803,6 +812,8 @@ export function setAnalysis(
       origin: opts.origin,
       flow: analysis.flow,
       fileNotes: analysis.fileNotes,
+      concepts: analysis.concepts,
+      example: analysis.example,
     },
     root,
   );

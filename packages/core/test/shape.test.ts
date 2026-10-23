@@ -216,4 +216,37 @@ describe("the shape through the service", () => {
       /fileNotes: "src\/b.ts" is not a file of this revision/,
     );
   });
+
+  const concepts = [
+    { term: "Charge key", means: "What makes two charges the same charge.", aka: ["idempotencyKey"], isNew: true },
+  ];
+  const example = {
+    case: "A client retries a charge that already went through",
+    before: ["The gateway charges the card a second time."],
+    after: ["The ledger has the key, so the first result comes back.", "The card is charged once."],
+  };
+
+  it("keeps the concepts and the example like the other views, and set-shape redraws or drops them", () => {
+    setAnalysis(key, analysis({ concepts, example }), {}, tmp);
+    let state = loadState(key, tmp);
+    expect(state.concepts?.[0]).toMatchObject({ term: "Charge key", aka: ["idempotencyKey"], isNew: true });
+    expect(state.example?.after).toHaveLength(2);
+    expect(state.shapeRevision).toBe(1);
+    setShape(key, { example: null }, tmp);
+    state = loadState(key, tmp);
+    expect(state.example).toBeUndefined();
+    expect(state.concepts).toHaveLength(1);
+  });
+
+  it("keeps the reader's way in free of code: the summary, the concepts and the example", () => {
+    expect(() => setAnalysis(key, analysis({ summary: "Adds `charge_ledger`." }), {}, tmp)).toThrow(/summary: plain words only/);
+    expect(() =>
+      setAnalysis(key, analysis({ concepts: [{ term: "Key", means: "The `idempotencyKey()` value." }] }), {}, tmp),
+    ).toThrow(/plain words only/);
+    expect(() => setShape(key, { example: { ...example, case: "`retry()` twice" } }, tmp)).toThrow(/plain words only/);
+    // The code's own names are where they belong: in `aka`, to be matched in the units.
+    expect(() => setAnalysis(key, analysis({ concepts }), {}, tmp)).not.toThrow();
+    // Another reader's exported analysis is taken as it is.
+    expect(() => setAnalysis(key, analysis({ summary: "Adds `charge_ledger`." }), { origin: "import" }, tmp)).not.toThrow();
+  });
 });

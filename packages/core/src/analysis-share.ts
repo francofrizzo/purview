@@ -135,6 +135,8 @@ export function buildAnalysisExport(key: PrKey, root: string): AnalysisExport {
     units,
     ...(state.flow ? { flow: state.flow } : {}),
     ...(state.fileNotes ? { fileNotes: state.fileNotes } : {}),
+    ...(state.concepts ? { concepts: state.concepts } : {}),
+    ...(state.example ? { example: state.example } : {}),
   });
 }
 
@@ -214,7 +216,8 @@ export function applyAnalysisImport(
 
   const { state: next } = setAnalysis(
     key,
-    { summary: envelope.summary, units, unassigned, flow, fileNotes },
+    // The concepts and the example name no unit or file: they travel as they are.
+    { summary: envelope.summary, units, unassigned, flow, fileNotes, concepts: envelope.concepts, example: envelope.example },
     { origin: "import" },
     root,
   );
