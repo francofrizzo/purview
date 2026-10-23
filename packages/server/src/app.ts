@@ -11,7 +11,7 @@ import {
   buildAnalysisExport,
   discardRevision,
   hunkDiffOfDiffs,
-  initPr,
+  initPrAsync,
   keyToString,
   listPrs,
   listRepos,
@@ -26,7 +26,7 @@ import {
   analysisUnits,
   isGeneratedUnit,
   reclassifyRepo,
-  setGeneratedOverride,
+  setGeneratedOverrideAsync,
   readMeta,
   readLocalChatInstructions,
   readLocalRubric,
@@ -35,7 +35,7 @@ import {
   revisionLineChanges,
   UnknownRevisionError,
   type RevisionLineChanges,
-  refreshPr,
+  refreshPrAsync,
   repoKeyOf,
   repoKeyToString,
   setHunkViewed,
@@ -43,7 +43,7 @@ import {
   setUnit,
   setUnitViewed,
   stateRoot,
-  syncPr,
+  syncPrAsync,
   unitProgress,
   generatedHunkIds,
   hunkIdsOf,
@@ -518,7 +518,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   });
 
   app.post("/api/prs", async (c) => {
-    const body = (await readJsonBody(c)) as { url?: string };
+    const body = await readJsonBody(c) as { url?: string };
     if (!body.url) throw new HttpError(400, "missing_url", "Body must include { url }");
     let key: PrKey;
     try {
@@ -526,7 +526,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     } catch (err) {
       throw classifyError(err);
     }
-    const result = initPr(key, root);
+    const result = await initPrAsync(key, root);
     // Adding a PR you had archived is asking for it back: bring it out of the
     // archive instead of leaving the add looking like it did nothing. (Only
     // this explicit add; the background importer never resurrects one.)
@@ -542,7 +542,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     let job = null as ReturnType<typeof triggerAnalysis>;
     let sharedAnalysis: { author?: string; postedAt: string } | null = null;
     if (analyzeRequested(c, key)) {
-      const auto = resolveAutoSharedAnalysis(key, root);
+      const auto = await resolveAutoSharedAnalysis(key, root);
       if (auto.imported) {
         sharedAnalysis = auto.sharedAnalysis ?? null;
       } else if (!auto.foundDifferentCommit) {
@@ -566,12 +566,12 @@ export function createApp(opts: AppOptions = {}): Hono {
   /* -------------------------------------------------------------- one PR */
 
 
-  app.post("/api/prs/:key/refresh", (c) => {
+  app.post("/api/prs/:key/refresh", async (c) => {
     const key = keyParam(c);
     log.info("review", `${shortKey(key)}  refresh started`);
-    let result: ReturnType<typeof refreshPr>;
+    let result: Awaited<ReturnType<typeof refreshPrAsync>>;
     try {
-      result = refreshPr(key, root);
+      result = await refreshPrAsync(key, root);
     } catch (err) {
       log.error("review", `${shortKey(key)}  refresh failed`, { reason: err instanceof Error ? err.message : String(err) });
       throw err;
@@ -651,7 +651,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     });
   });
 
-  app.get("/api/prs/:key", (c) => {
+  app.get("/api/prs/:key", async (c) => {
     const key = keyParam(c);
     const meta = readMeta(key, root);
     const state = loadState(key, root);
@@ -660,7 +660,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // Resolving here is what makes a stale checkout visible in the UI without
     // waiting for a run to say so; it is additive, so a client that predates
     // the field is unaffected.
-    const checkout = resolveCheckout(
+    const checkout = await resolveCheckout(
       effectiveRepoPath(key, root, { meta }),
       prHead(key, root),
     );
@@ -706,7 +706,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     readMeta(key, root); // 404s an untracked PR
     let res;
     try {
-      res = setGeneratedOverride(key, parsed.data.path, parsed.data.generated, root);
+      res = await setGeneratedOverrideAsync(key, parsed.data.path, parsed.data.generated, root);
     } catch (err) {
       throw new HttpError(400, "invalid_path", (err as Error).message);
     }
@@ -791,7 +791,7 @@ export function createApp(opts: AppOptions = {}): Hono {
    * run's own `set-analysis` call, and this reads the current analysis to
    * build the envelope.
    */
-  app.post("/api/prs/:key/analysis/share-to-pr", (c) => {
+  app.post("/api/prs/:key/analysis/share-to-pr", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
     if (isBusy(key)) {
@@ -801,7 +801,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         `An analysis is currently running for ${keyToString(key)}; try again once it finishes.`,
       );
     }
-    const result = shareAnalysisToPr(key, root);
+    const result = await shareAnalysisToPr(key, root);
     return c.json(result);
   });
 
@@ -810,7 +810,7 @@ export function createApp(opts: AppOptions = {}): Hono {
    * verifying it is for this PR and re-anchoring it exactly as the file
    * import does. 409s mid-run for the same reason `analysis/import` does.
    */
-  app.post("/api/prs/:key/analysis/import-from-pr", (c) => {
+  app.post("/api/prs/:key/analysis/import-from-pr", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
     if (isBusy(key)) {
@@ -820,7 +820,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         `An analysis is currently running for ${keyToString(key)}; try again once it finishes.`,
       );
     }
-    const result = importAnalysisFromPr(key, root);
+    const result = await importAnalysisFromPr(key, root);
     return c.json(result);
   });
 
@@ -831,17 +831,17 @@ export function createApp(opts: AppOptions = {}): Hono {
    * job) — never polled, and never throws: a `gh` failure degrades to
    * `{ found: false, error }` with 200, same idiom as `/staleness`.
    */
-  app.get("/api/prs/:key/analysis/shared", (c) => {
+  app.get("/api/prs/:key/analysis/shared", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
-    return c.json(probeSharedAnalysis(key, root));
+    return c.json(await probeSharedAnalysis(key, root));
   });
 
   app.post("/api/prs/:key/repo-path", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
-    const body = (await readJsonBody(c)) as { path?: unknown };
-    const result = setRepoPath(key, body.path, root);
+    const body = await readJsonBody(c) as { path?: unknown };
+    const result = await setRepoPath(key, body.path, root);
     return c.json({
       ok: true,
       path: result.path,
@@ -854,7 +854,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/tag", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
-    const body = (await readJsonBody(c)) as { tag?: unknown; stack?: unknown };
+    const body = await readJsonBody(c) as { tag?: unknown; stack?: unknown };
     const parsed = TagSchema.nullable().safeParse(body?.tag);
     if (!parsed.success) throw new HttpError(400, "invalid_body", "Tag must be null or 1–24 characters after normalization");
     return c.json(setTagFor(key, parsed.data, root, { stack: body?.stack === true }));
@@ -872,7 +872,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/comment-audience", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
-    const body = (await readJsonBody(c)) as { audience?: unknown };
+    const body = await readJsonBody(c) as { audience?: unknown };
     const parsed = CommentAudienceSchema.nullable().safeParse(body.audience);
     if (!parsed.success) {
       throw new HttpError(400, "invalid_body", 'Body must include { audience: "github" | "agent" | null }');
@@ -883,7 +883,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/archive", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
-    const body = (await readJsonBody(c)) as { archived?: unknown };
+    const body = await readJsonBody(c) as { archived?: unknown };
     if (typeof body.archived !== "boolean") {
       throw new HttpError(400, "invalid_body", "Body must include { archived: boolean }");
     }
@@ -1084,7 +1084,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/chat", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
-    const body = (await readJsonBody(c)) as { text?: string; refs?: unknown };
+    const body = await readJsonBody(c) as { text?: string; refs?: unknown };
     const refs = z.array(ChatRefSchema).default([]).parse(body.refs ?? []);
     const turn = startChatTurn(key, { text: body.text ?? "", refs }, root, { serverPort: port });
     return streamChatTurn(c, turn);
@@ -1110,10 +1110,10 @@ export function createApp(opts: AppOptions = {}): Hono {
    * out local paths, and it only runs on the machine Purview runs on anyway.
    */
   app.use("/api/prs/:key/chat/handoff", loopbackOnly({ port }));
-  app.post("/api/prs/:key/chat/handoff", (c) => {
+  app.post("/api/prs/:key/chat/handoff", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
-    return c.json(chatHandoff(key, root));
+    return c.json(await chatHandoff(key, root));
   });
 
   /**
@@ -1186,7 +1186,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   // so "viewed" is never read as a hunk id.
   app.post("/api/prs/:key/hunks/viewed", async (c) => {
     const key = keyParam(c);
-    const body = (await readJsonBody(c)) as { hunkIds?: unknown; viewed?: unknown };
+    const body = await readJsonBody(c) as { hunkIds?: unknown; viewed?: unknown };
     if (
       !Array.isArray(body.hunkIds) ||
       !body.hunkIds.every((id) => typeof id === "string") ||
@@ -1205,7 +1205,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/hunks/:id/viewed", async (c) => {
     const key = keyParam(c);
     const hunkId = c.req.param("id");
-    const body = (await readJsonBody(c)) as { viewed?: boolean };
+    const body = await readJsonBody(c) as { viewed?: boolean };
     if (typeof body.viewed !== "boolean") {
       throw new HttpError(400, "invalid_body", "Body must include { viewed: boolean }");
     }
@@ -1216,7 +1216,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/units/:id/viewed", async (c) => {
     const key = keyParam(c);
     const unitId = c.req.param("id");
-    const body = (await readJsonBody(c)) as { viewed?: boolean };
+    const body = await readJsonBody(c) as { viewed?: boolean };
     const viewed = body.viewed ?? true;
     const state = setUnitViewed(key, unitId, viewed, root);
     return c.json({ state });
@@ -1225,7 +1225,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/units/:id", async (c) => {
     const key = keyParam(c);
     const unitId = c.req.param("id");
-    const body = (await readJsonBody(c)) as { note?: string } & Record<string, unknown>;
+    const body = await readJsonBody(c) as { note?: string } & Record<string, unknown>;
     const { note, ...patch } = body;
     const state = setUnit(key, unitId, patch, { note }, root);
     return c.json({ state });
@@ -1233,10 +1233,10 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.post("/api/prs/:key/sync", async (c) => {
     const key = keyParam(c);
-    let fileSync: ReturnType<typeof syncPr> | undefined;
+    let fileSync: Awaited<ReturnType<typeof syncPrAsync>> | undefined;
     let fileSyncError: string | undefined;
     try {
-      fileSync = syncPr(key, root);
+      fileSync = await syncPrAsync(key, root);
     } catch (err) {
       fileSyncError = classifyError(err).message + ": " + String((err as Error).message ?? err);
     }
@@ -1453,7 +1453,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/comments/:id/publish", async (c) => {
     const key = keyParam(c);
     const id = c.req.param("id");
-    const body = (await readJsonBody(c)) as { confirm?: unknown };
+    const body = await readJsonBody(c) as { confirm?: unknown };
     const actor = actorOf(c);
     if (isAgentActor(actor)) {
       throw new HttpError(409, "not_allowed", "The review chat may not publish comments; only the reader can.");
@@ -1493,7 +1493,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // rewritten form once GitHub has it.
     let outgoing: string;
     try {
-      outgoing = resolveBodyForGithub(key, target.body, root);
+      outgoing = await resolveBodyForGithub(key, target.body, root);
     } catch (err) {
       throw new HttpError(502, "attachment_upload_failed", err instanceof Error ? err.message : String(err));
     }
@@ -1528,7 +1528,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json({ comment, url: created.htmlUrl });
   });
 
-  app.delete("/api/prs/:key/comments/:id", (c) => {
+  app.delete("/api/prs/:key/comments/:id", async (c) => {
     const key = keyParam(c);
     assertCommentRevision(key, c.req.header("X-Purview-Revision"));
     const id = c.req.param("id");
@@ -1536,7 +1536,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const target = readComments(key, root).find((cc) => cc.id === id);
     if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
     assertChatMayTouch(actor, target, "delete");
-    const result = deleteComment(key, id, root, actor);
+    const result = await deleteComment(key, id, root, actor);
     if (!result.removed) throw new HttpError(404, "not_found", `No comment "${id}"`);
     // Its pictures go with it, unless another comment (or the trash, which
     // can bring a draft back) still refers to them. Local files only.
@@ -1622,7 +1622,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.patch("/api/prs/:key/comments/:id", async (c) => {
     const key = keyParam(c);
     const id = c.req.param("id");
-    const body = (await readJsonBody(c)) as {
+    const body = await readJsonBody(c) as {
       body?: unknown;
       confirm?: boolean;
       line?: unknown;
@@ -1745,7 +1745,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // like a failed remote update — saved locally, GitHub not updated.
     let outgoing: string;
     try {
-      outgoing = resolveBodyForGithub(key, newBody, root);
+      outgoing = await resolveBodyForGithub(key, newBody, root);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       return c.json({ comment: result.comment, remote: { ok: false, reason } });
@@ -1902,7 +1902,7 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.post("/api/prs/:key/review", async (c) => {
     const key = keyParam(c);
-    const body = (await readJsonBody(c)) as { body?: unknown };
+    const body = await readJsonBody(c) as { body?: unknown };
     if (typeof body.body !== "string") {
       throw new HttpError(400, "invalid_body", "Body must include { body: string }");
     }
@@ -1916,7 +1916,7 @@ export function createApp(opts: AppOptions = {}): Hono {
    */
   app.post("/api/prs/:key/review/submit", async (c) => {
     const key = keyParam(c);
-    const body = (await readJsonBody(c)) as {
+    const body = await readJsonBody(c) as {
       event?: string;
       body?: string;
       confirm?: boolean;
@@ -2034,15 +2034,15 @@ export function createApp(opts: AppOptions = {}): Hono {
    * resolved picture (what is stored locally, what the team committed, what
    * the two of them add up to), so a write needs no follow-up read.
    */
-  function repoConfigPayload(repo: RepoKey) {
+  async function repoConfigPayload(repo: RepoKey) {
     const local = readRepoConfig(repo, root);
     const pr = newestPr(repo);
     // Reading the committed config may go to GitHub; it is cached per
     // revision, so this is one fetch per revision and free afterwards.
     const committed = pr
-      ? (() => {
+      ? await (async () => {
           try {
-            return loadCommittedConfig(pr, root);
+            return await loadCommittedConfig(pr, root);
           } catch {
             return cachedCommitted(pr, root);
           }
@@ -2167,7 +2167,7 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /** The reader closed "What's new": remember the version, never go backwards. */
   app.post("/api/version/seen", async (c) => {
-    const body = (await readJsonBody(c)) as { version?: unknown };
+    const body = await readJsonBody(c) as { version?: unknown };
     if (typeof body.version !== "string" || !body.version) {
       throw new HttpError(400, "invalid_body", "Body must include { version: string }");
     }
@@ -2255,8 +2255,8 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json(await lanPayload());
   });
 
-  app.get("/api/repos/:rkey/config", (c) => {
-    return c.json(repoConfigPayload(repoKeyParam(c)));
+  app.get("/api/repos/:rkey/config", async (c) => {
+    return c.json(await repoConfigPayload(repoKeyParam(c)));
   });
 
   const ImportReviewsSchema = z
@@ -2290,7 +2290,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // an explicit import is not consent to spend on them.
     const analyze =
       autoAnalyze && effectiveConfig(repo, root).autoAnalyze.value && !isRepoArchived(repo, root);
-    const result = importReviewRequests(repo, days, root, { analyze });
+    const result = await importReviewRequests(repo, days, root, { analyze });
     return c.json({ ...result, days });
   });
 
@@ -2314,7 +2314,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/repos/:rkey/archive", async (c) => {
     const repo = repoKeyParam(c);
     assertRepoTracked(repo);
-    const body = (await readJsonBody(c)) as { archived?: unknown };
+    const body = await readJsonBody(c) as { archived?: unknown };
     if (typeof body.archived !== "boolean") {
       throw new HttpError(400, "invalid_body", "Body must include { archived: boolean }");
     }
@@ -2425,7 +2425,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       writeLocalChatInstructions(repo, body.chatInstructions, root);
     }
 
-    return c.json(repoConfigPayload(repo));
+    return c.json(await repoConfigPayload(repo));
   });
 
   /* ------------------------------------------------ revision line changes */

@@ -91,7 +91,7 @@ async function tick(root: string, deps: Required<Pick<WatchDeps, "windowMs" | "n
     if (config.archived === true) continue;
 
     try {
-      const result = importReviewRequestsSince(repo, since, root, { analyze });
+      const result = await importReviewRequestsSince(repo, since, root, { analyze });
       if (result.imported.length) log.info("watch", `${rkeyStr}  imported`, { prs: result.imported.length });
       nextRepos[rkeyStr] = { checkedAt: now.toISOString(), imported: result.imported.length };
       if (result.failed.length > 0) {

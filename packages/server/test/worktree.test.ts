@@ -22,61 +22,61 @@ afterEach(() => {
 });
 
 describe("repoToplevel", () => {
-  it("resolves from a subdirectory of the checkout", () => {
+  it("resolves from a subdirectory of the checkout", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
     const sub = path.join(repo.path, "src", "deep");
     fs.mkdirSync(sub, { recursive: true });
-    expect(repoToplevel(sub)).toBe(fs.realpathSync(repo.path));
+    expect(await repoToplevel(sub)).toBe(fs.realpathSync(repo.path));
   });
 
-  it("resolves from inside a worktree, whose .git is a file not a directory", () => {
+  it("resolves from inside a worktree, whose .git is a file not a directory", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
     const wt = addWorktree(repo.path, path.join(dir, "feature"), "feature-x");
     expect(fs.statSync(path.join(wt.path, ".git")).isFile()).toBe(true);
-    expect(repoToplevel(wt.path)).toBe(fs.realpathSync(wt.path));
+    expect(await repoToplevel(wt.path)).toBe(fs.realpathSync(wt.path));
   });
 
-  it("returns undefined for a plain directory", () => {
+  it("returns undefined for a plain directory", async () => {
     const plain = path.join(dir, "plain");
     fs.mkdirSync(plain);
-    expect(repoToplevel(plain)).toBeUndefined();
+    expect(await repoToplevel(plain)).toBeUndefined();
   });
 });
 
 describe("listWorktrees", () => {
-  it("lists the main checkout and every worktree with its branch", () => {
+  it("lists the main checkout and every worktree with its branch", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
     addWorktree(repo.path, path.join(dir, "feature"), "feature-x");
-    const entries = listWorktrees(repo.path);
+    const entries = await listWorktrees(repo.path);
     expect(entries).toHaveLength(2);
     expect(entries.map((e) => e.branch).sort()).toEqual(["feature-x", "main"]);
     expect(entries.every((e) => !!e.head)).toBe(true);
   });
 
-  it("is empty rather than throwing outside a repo", () => {
-    expect(listWorktrees(dir)).toEqual([]);
+  it("is empty rather than throwing outside a repo", async () => {
+    expect(await listWorktrees(dir)).toEqual([]);
   });
 });
 
 describe("resolveCheckout", () => {
-  it("picks the worktree whose branch is the PR head, given the main checkout", () => {
+  it("picks the worktree whose branch is the PR head, given the main checkout", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
     const wt = addWorktree(repo.path, path.join(dir, "feature"), "feature-x");
-    const res = resolveCheckout(repo.path, { headRef: "feature-x", headSha: wt.headSha });
+    const res = await resolveCheckout(repo.path, { headRef: "feature-x", headSha: wt.headSha });
     expect(res.path).toBe(fs.realpathSync(wt.path));
     expect(res.resolvedWorktree).toBe(true);
     expect(res.mismatch).toBeUndefined();
   });
 
-  it("picks the same worktree when the reader pasted the worktree itself", () => {
+  it("picks the same worktree when the reader pasted the worktree itself", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
     const wt = addWorktree(repo.path, path.join(dir, "feature"), "feature-x");
-    const res = resolveCheckout(wt.path, { headRef: "feature-x" });
+    const res = await resolveCheckout(wt.path, { headRef: "feature-x" });
     expect(res.path).toBe(fs.realpathSync(wt.path));
     expect(res.mismatch).toBeUndefined();
   });
 
-  it("matches on head sha when no branch name matches (detached worktree)", () => {
+  it("matches on head sha when no branch name matches (detached worktree)", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
     const prSha = repo.headSha;
     // Move main on, so only the detached worktree sits on the PR's head.
@@ -86,13 +86,13 @@ describe("resolveCheckout", () => {
 
     const detached = addDetachedWorktree(repo.path, path.join(dir, "detached"), prSha);
     expect(detached.headSha).toBe(prSha);
-    const res = resolveCheckout(repo.path, { headRef: "renamed-on-github", headSha: prSha });
+    const res = await resolveCheckout(repo.path, { headRef: "renamed-on-github", headSha: prSha });
     expect(res.path).toBe(fs.realpathSync(detached.path));
   });
 
-  it("falls back to the stored checkout and reports the mismatch when nothing matches", () => {
+  it("falls back to the stored checkout and reports the mismatch when nothing matches", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
-    const res = resolveCheckout(repo.path, { headRef: "feature-x", headSha: "deadbeef" });
+    const res = await resolveCheckout(repo.path, { headRef: "feature-x", headSha: "deadbeef" });
     expect(res.path).toBe(fs.realpathSync(repo.path));
     expect(res.resolvedWorktree).toBe(false);
     expect(res.mismatch).toEqual({
@@ -102,27 +102,27 @@ describe("resolveCheckout", () => {
     });
   });
 
-  it("reports an error instead of a path when the checkout was deleted", () => {
+  it("reports an error instead of a path when the checkout was deleted", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
     fs.rmSync(repo.path, { recursive: true, force: true });
-    const res = resolveCheckout(repo.path, { headRef: "feature-x" });
+    const res = await resolveCheckout(repo.path, { headRef: "feature-x" });
     expect(res.path).toBeUndefined();
     expect(res.error).toContain("no longer exists");
   });
 
-  it("reports an error when the path is no longer a git repository", () => {
+  it("reports an error when the path is no longer a git repository", async () => {
     const plain = path.join(dir, "plain");
     fs.mkdirSync(plain);
-    const res = resolveCheckout(plain, { headRef: "feature-x" });
+    const res = await resolveCheckout(plain, { headRef: "feature-x" });
     expect(res.path).toBeUndefined();
     expect(res.error).toContain("not a git repository");
   });
 
-  it("skips a worktree whose directory was removed behind git's back", () => {
+  it("skips a worktree whose directory was removed behind git's back", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
     const wt = addWorktree(repo.path, path.join(dir, "feature"), "feature-x");
     fs.rmSync(wt.path, { recursive: true, force: true }); // still listed, gone on disk
-    const res = resolveCheckout(repo.path, { headRef: "feature-x" });
+    const res = await resolveCheckout(repo.path, { headRef: "feature-x" });
     expect(res.path).toBe(fs.realpathSync(repo.path));
     expect(res.mismatch).toEqual({
       checkedOutBranch: "main",
@@ -131,17 +131,17 @@ describe("resolveCheckout", () => {
     });
   });
 
-  it("degrades to no checkout when git itself fails", () => {
+  it("degrades to no checkout when git itself fails", async () => {
     const repo = makeRepo(path.join(dir, "repo"), { origin: "git@github.com:acme/widgets.git" });
     setGitRunner(() => {
       throw new Error("git: command not found");
     });
-    const res = resolveCheckout(repo.path, { headRef: "feature-x" });
+    const res = await resolveCheckout(repo.path, { headRef: "feature-x" });
     expect(res.path).toBeUndefined();
     expect(res.error).toContain("not a git repository");
   });
 
-  it("does nothing when no path is stored", () => {
-    expect(resolveCheckout(undefined, { headRef: "x" })).toEqual({ resolvedWorktree: false });
+  it("does nothing when no path is stored", async () => {
+    expect(await resolveCheckout(undefined, { headRef: "x" })).toEqual({ resolvedWorktree: false });
   });
 });

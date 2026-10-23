@@ -428,7 +428,7 @@ describe("effectiveConfig precedence", () => {
 /* ------------------------------------------------------- committed config */
 
 describe("committed .purview/ config", () => {
-  it("reads config and rubric out of a local checkout, without touching gh", () => {
+  it("reads config and rubric out of a local checkout, without touching gh", async () => {
     const gh = ghFor();
     const checkout = makeRepo(path.join(root, "checkout"), {
       origin: "git@github.com:acme/widgets.git",
@@ -443,7 +443,7 @@ describe("committed .purview/ config", () => {
     fs.writeFileSync(path.join(checkout.path, ".purview/CHAT.md"), "# Team chat rules\n");
     writeRepoConfig(repo, { repoPath: checkout.path }, root);
 
-    const committed = loadCommittedConfig(key, root);
+    const committed = await loadCommittedConfig(key, root);
 
     expect(committed.source).toBe("checkout");
     expect(committed.present).toBe(true);
@@ -455,7 +455,7 @@ describe("committed .purview/ config", () => {
     expect(autoAnalyzeAllowed(key, root)).toBe(false);
   });
 
-  it("falls back to the contents API at the head sha, and caches per revision", () => {
+  it("falls back to the contents API at the head sha, and caches per revision", async () => {
     const gh = ghFor({
       contents: {
         ".purview/config.json": JSON.stringify({ autoAnalyze: true }),
@@ -464,7 +464,7 @@ describe("committed .purview/ config", () => {
       },
     });
 
-    const first = loadCommittedConfig(key, root);
+    const first = await loadCommittedConfig(key, root);
     expect(first.source).toBe("github");
     expect(first.config).toEqual({ autoAnalyze: true });
     expect(first.rubric).toBe("# Committed rubric\n");
@@ -479,17 +479,17 @@ describe("committed .purview/ config", () => {
     );
 
     // Cached: a second load is free.
-    loadCommittedConfig(key, root);
+    await loadCommittedConfig(key, root);
     expect(fetches()).toBe(afterFirst);
     expect(readTeamConfigCache(key, 1, root)?.present).toBe(true);
     expect(readTeamConfigCache(key, 1, root)?.chatInstructions).toBe("# Committed chat\n");
 
     // ...unless it is explicitly refreshed.
-    loadCommittedConfig(key, root, { refresh: true });
+    await loadCommittedConfig(key, root, { refresh: true });
     expect(fetches()).toBeGreaterThan(afterFirst);
   });
 
-  it("reads CHAT.md from GitHub even when the checkout has only RUBRIC.md/config.json", () => {
+  it("reads CHAT.md from GitHub even when the checkout has only RUBRIC.md/config.json", async () => {
     // The checkout-preferred path only skips gh entirely when it found
     // *something*; when it found something but not CHAT.md, the checkout is
     // still the source of truth and an absent CHAT.md there stays absent —
@@ -502,14 +502,14 @@ describe("committed .purview/ config", () => {
     fs.writeFileSync(path.join(checkout.path, ".purview/RUBRIC.md"), "# Team rules\n");
     writeRepoConfig(repo, { repoPath: checkout.path }, root);
 
-    const committed = loadCommittedConfig(key, root);
+    const committed = await loadCommittedConfig(key, root);
     expect(committed.source).toBe("checkout");
     expect(committed.chatInstructions).toBeNull();
   });
 
-  it("treats a repo with no .purview/ as simply unconfigured", () => {
+  it("treats a repo with no .purview/ as simply unconfigured", async () => {
     ghFor();
-    const committed = loadCommittedConfig(key, root);
+    const committed = await loadCommittedConfig(key, root);
     expect(committed).toMatchObject({
       present: false,
       config: null,
@@ -556,11 +556,11 @@ describe("committed .purview/ config", () => {
 /* ------------------------------------------------------------------ rubric */
 
 describe("rubric layering", () => {
-  it("concatenates built-in, then committed team, then local overlay", () => {
+  it("concatenates built-in, then committed team, then local overlay", async () => {
     ghFor({
       contents: { ".purview/RUBRIC.md": "TEAM RUBRIC BODY" },
     });
-    loadCommittedConfig(key, root);
+    await loadCommittedConfig(key, root);
     writeLocalRubric(repo, "LOCAL RUBRIC BODY", root);
 
     const layers = rubricLayers(key, root);
@@ -604,11 +604,11 @@ describe("rubric layering", () => {
 /* -------------------------------------------------------- chat instructions */
 
 describe("chat instructions layering", () => {
-  it("concatenates committed team chat instructions, then local overlay", () => {
+  it("concatenates committed team chat instructions, then local overlay", async () => {
     ghFor({
       contents: { ".purview/CHAT.md": "TEAM CHAT BODY" },
     });
-    loadCommittedConfig(key, root);
+    await loadCommittedConfig(key, root);
     writeLocalChatInstructions(repo, "LOCAL CHAT BODY", root);
 
     const layers = chatInstructionsLayers(key, root);
@@ -637,21 +637,21 @@ describe("chat instructions layering", () => {
     expect(chatInstructionsSection(key, root)).toContain("LOCAL ONLY");
   });
 
-  it("does not appear in the analysis rubric prompt", () => {
+  it("does not appear in the analysis rubric prompt", async () => {
     ghFor({ contents: { ".purview/CHAT.md": "TEAM CHAT BODY" } });
-    loadCommittedConfig(key, root);
+    await loadCommittedConfig(key, root);
     writeLocalChatInstructions(repo, "LOCAL CHAT BODY", root);
     expect(rubricSection(key, root)).not.toContain("CHAT");
   });
 
-  it("appears in the chat system prompt, after the rubric stack", () => {
+  it("appears in the chat system prompt, after the rubric stack", async () => {
     ghFor({
       contents: {
         ".purview/RUBRIC.md": "TEAM RUBRIC BODY",
         ".purview/CHAT.md": "TEAM CHAT BODY",
       },
     });
-    const committed = loadCommittedConfig(key, root);
+    const committed = await loadCommittedConfig(key, root);
     writeLocalRubric(repo, "LOCAL RUBRIC BODY", root);
     writeLocalChatInstructions(repo, "LOCAL CHAT BODY", root);
 
@@ -841,7 +841,7 @@ describe("GET /api/repos", () => {
       body: JSON.stringify({ archived: true }),
     });
     ghFor({ contents: { ".purview/config.json": JSON.stringify({ autoAnalyze: false }) } });
-    loadCommittedConfig(key, root);
+    await loadCommittedConfig(key, root);
 
     const after = await (await app.request("/api/repos")).json();
     expect(after.repos[0]).toMatchObject({
@@ -1321,7 +1321,7 @@ describe("/api/agents", () => {
 
 describe("GET /api/prs authoredByYou", () => {
   const listEntry = async () => {
-    const body = (await (await app.request("/api/prs")).json()) as { prs: { authoredByYou: boolean }[] };
+    const body = await (await app.request("/api/prs")).json() as { prs: { authoredByYou: boolean }[] };
     expect(body.prs).toHaveLength(1);
     return body.prs[0];
   };

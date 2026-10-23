@@ -7,6 +7,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Fix:** adding, refreshing and syncing a PR no longer freeze the server for other requests.
+
 - **Fix:** opening a PR no longer freezes the server for other requests.
 - **Fix:** a PR no longer loads its diff twice when opened.
 

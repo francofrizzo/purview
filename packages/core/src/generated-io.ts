@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import {
   MARKER_LINES,
@@ -12,7 +12,7 @@ import {
   withGeneratedOverride,
   type GeneratedFacts,
 } from "./generated.js";
-import { fetchFileHeads, fetchGitattributes } from "./github.js";
+import { fetchFileHeads, fetchFileHeadsAsync, fetchGitattributes, fetchGitattributesAsync } from "./github.js";
 import { prCheckoutPath, repoKeyOf, stateRoot, type PrKey, type RepoKey } from "./paths.js";
 import {
   appendEvent,
@@ -243,4 +243,161 @@ export function setGeneratedOverride(
   const res = reclassifyGenerated(key, root, { fetch: true });
   reclassifyRepo(repo, root, key);
   return res;
+}
+
+// Non-blocking counterparts used by server request paths.
+async function catFilesAsync(dir: string, sha: string, paths: string[]): Promise<Map<string, Buffer>> {
+  const out = new Map<string, Buffer>();
+  if (paths.length === 0) return out;
+  const buf = await execGit("git", ["-C", dir, "cat-file", "--batch"], {
+    input: paths.map((p) => `${sha}:${p}`).join("\n") + "\n",
+    stdio: ["pipe", "pipe", "ignore"],
+    maxBuffer: 512 * 1024 * 1024,
+  });
+  let pos = 0;
+  for (const p of paths) {
+    const nl = buf.indexOf(0x0a, pos);
+    if (nl === -1) break;
+    const header = buf.subarray(pos, nl).toString("utf8");
+    pos = nl + 1;
+    const m = /^[0-9a-f]+ (\w+) (\d+)$/.exec(header);
+    if (!m) continue; // "<name> missing" / "ambiguous"
+    const size = Number(m[2]);
+    if (m[1] === "blob") out.set(p, buf.subarray(pos, pos + size));
+    pos += size + 1;
+  }
+  return out;
+}
+
+async function localRepoWithAsync(key: PrKey, sha: string, root: string): Promise<string | undefined> {
+  const dirs: (string | null | undefined)[] = [prCheckoutPath(key, root)];
+  try {
+    dirs.push(readMeta(key, root).repoPath);
+  } catch {
+    /* no meta yet */
+  }
+  dirs.push(readRepoConfig(repoKeyOf(key), root).repoPath);
+  for (const dir of dirs) {
+    if (!dir || !fs.existsSync(dir)) continue;
+    try {
+      await execGit("git", ["-C", dir, "cat-file", "-e", `${sha}^{commit}`], { stdio: "ignore" });
+      return dir;
+    } catch {
+      /* not this one */
+    }
+  }
+  return undefined;
+}
+
+export async function gatherGeneratedFactsAsync(
+  key: PrKey,
+  files: FileDiff[],
+  headSha: string | undefined,
+  root = stateRoot(),
+  opts: { network?: boolean } = {},
+): Promise<GeneratedFacts> {
+  const facts: GeneratedFacts = {
+    headSha,
+    fetchedAt: new Date().toISOString(),
+    gitattributes: null,
+    markers: markersFromHunks(files),
+    partial: false,
+  };
+  if (opts.network === false || !headSha) {
+    facts.partial = true;
+    return facts;
+  }
+  const local = await localRepoWithAsync(key, headSha, root);
+  if (local) {
+    try {
+      const attrs = (await catFilesAsync(local, headSha, [".gitattributes"])).get(".gitattributes");
+      facts.gitattributes = attrs ? attrs.toString("utf8") : null;
+      const candidates = markerCandidates(files, facts.gitattributes).map((f) => f.path);
+      for (const [p, buf] of await catFilesAsync(local, headSha, candidates)) {
+        const m = buf.length <= 2 * 1024 * 1024 ? markerIn(headLines(buf) ?? []) : undefined;
+        if (m) facts.markers[p] = m;
+      }
+      return facts;
+    } catch {
+      // fall through to GitHub
+    }
+  }
+  const attrs = await fetchGitattributesAsync(key, headSha);
+  facts.gitattributes = attrs.text;
+  if (!attrs.ok) facts.partial = true;
+  const candidates = markerCandidates(files, facts.gitattributes).map((f) => f.path);
+  if (candidates.length > MAX_MARKER_READS) facts.partial = true;
+  const heads = await fetchFileHeadsAsync(key, headSha, candidates.slice(0, MAX_MARKER_READS), MARKER_LINES);
+  if (!heads.ok) facts.partial = true;
+  for (const [p, lines] of heads.heads) {
+    const m = markerIn(lines);
+    if (m) facts.markers[p] = m;
+  }
+  return facts;
+}
+
+export async function reclassifyGeneratedAsync(
+  key: PrKey,
+  root = stateRoot(),
+  opts: { fetch?: boolean } = {},
+): Promise<ReclassifyResult> {
+  const state = loadState(key, root);
+  const revision = state.currentRevision;
+  const current = (s: State) => s.generated.map((g) => g.path);
+  let filesJson;
+  try {
+    filesJson = readFilesJson(key, revision, root);
+  } catch {
+    return { state, generated: current(state), changed: false };
+  }
+  let facts = readGeneratedFacts(key, revision, root);
+  if (opts.fetch && (!facts || facts.partial)) {
+    const headSha = filesJson.headSha ?? state.revisions.find((r) => r.revision === revision)?.headSha;
+    facts = await gatherGeneratedFactsAsync(key, filesJson.files, headSha, root);
+    writeGeneratedFacts(key, revision, facts, root);
+  }
+  if (!facts) return { state, generated: current(state), changed: false };
+
+  const files = classifyFiles(key, filesJson.files, facts, root);
+  const next: GeneratedFile[] = generatedFilesOf(files);
+  const fileChanged = files.some(
+    (f, i) => JSON.stringify(f.generated ?? null) !== JSON.stringify(filesJson.files[i].generated ?? null),
+  );
+  if (fileChanged) rewriteFilesJson(key, { ...filesJson, files }, root);
+  // An old revision-added carries no classification at all; an empty one
+  // still has to be recorded so the state says "classified, none".
+  if (state.generatedRevision === revision && sameGeneratedFiles(state.generated, next)) {
+    return { state, generated: current(state), changed: false };
+  }
+  const after = appendEvent(key, { type: "generated-classified", revision, files: next }, root);
+  return { state: after, generated: current(after), changed: true };
+}
+
+export async function setGeneratedOverrideAsync(
+  key: PrKey,
+  filePath: string,
+  generated: boolean,
+  root = stateRoot(),
+): Promise<ReclassifyResult> {
+  const state = loadState(key, root);
+  const file = readFilesJson(key, state.currentRevision, root).files.find((f) => f.path === filePath);
+  if (!file) throw new Error(`${filePath} is not a file of revision ${state.currentRevision}`);
+  if (file.binary && generated) throw new Error(`${filePath} is binary; binary files are never treated as generated`);
+  const repo = repoKeyOf(key);
+  const patterns = readRepoConfig(repo, root).generated;
+  writeRepoConfig(repo, { generated: withGeneratedOverride(patterns, filePath, generated) }, root);
+  const res = await reclassifyGeneratedAsync(key, root, { fetch: true });
+  reclassifyRepo(repo, root, key);
+  return res;
+}
+
+function execGit(file: string, args: string[], opts: { input?: string; maxBuffer?: number; stdio?: unknown }): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(file, args, { encoding: "buffer", maxBuffer: opts.maxBuffer }, (err, stdout) => {
+      if (err) reject(err);
+      else resolve(stdout);
+    });
+    child.stdin?.on("error", () => { /* execFile reports process failures */ });
+    child.stdin?.end(opts.input);
+  });
 }

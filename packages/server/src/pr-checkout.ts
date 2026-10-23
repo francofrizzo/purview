@@ -222,7 +222,7 @@ async function ensureUnlocked(key: PrKey, opts: EnsurePrCheckoutOptions): Promis
 
     const targetReal = fs.existsSync(target) ? realpath(target) : undefined;
     const registered = targetReal
-      ? listWorktrees(repoPath).find((w) => !w.bare && realpath(w.path) === targetReal)
+      ? (await listWorktrees(repoPath)).find((w) => !w.bare && realpath(w.path) === targetReal)
       : undefined;
 
     if (registered) {

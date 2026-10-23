@@ -68,15 +68,15 @@ export function resolveRepoPathInput(input: unknown): string {
  * specific layer. The repo-level default is written by
  * `PUT /api/repos/:rkey/config` instead.
  */
-export function setRepoPath(key: PrKey, input: unknown, root: string): RepoPathResult {
+export async function setRepoPath(key: PrKey, input: unknown, root: string): Promise<RepoPathResult> {
   const repoPath = resolveRepoPathInput(input);
 
-  const top = repoToplevel(repoPath);
+  const top = await repoToplevel(repoPath);
   let warning: string | undefined;
   if (!top) {
     warning = `${repoPath} is not a git repository; it will still be readable, but it may not be the PR's code.`;
   } else {
-    const remote = originUrl(top);
+    const remote = await originUrl(top);
     const expected = `${key.owner}/${key.repo}`.toLowerCase();
     const actual = remote ? ownerRepoFromRemote(remote) : undefined;
     if (!remote) {
@@ -93,7 +93,7 @@ export function setRepoPath(key: PrKey, input: unknown, root: string): RepoPathR
   // Report which checkout this path resolves to *right now*, so the reader
   // finds out immediately if no worktree has the PR's branch — even though the
   // real resolution happens again at run time.
-  const resolution = resolveCheckout(repoPath, prHead(key, root));
+  const resolution = await resolveCheckout(repoPath, prHead(key, root));
   if (resolution.resolvedWorktree && resolution.path) {
     warning =
       (warning ? warning + " " : "") +

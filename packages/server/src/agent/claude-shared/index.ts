@@ -1,4 +1,5 @@
-import { spawn, execFileSync } from "node:child_process";
+import { promisify } from "node:util";
+import { spawn, execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
@@ -88,7 +89,7 @@ function run(request: AgentRunRequest) {
       const resume = typeof request.session === "object" ? request.session : undefined;
       if (resume && !canResume(resume, request)) throw new Error("Incompatible Claude shared-tools session");
       const env = environment();
-      const reported = execFileSync(executable(), ["--version"], { env, encoding: "utf8", timeout: 5000, stdio: ["ignore", "pipe", "pipe"] }).trim();
+      const reported = (await promisify(execFile)(executable(), ["--version"], { env, encoding: "utf8", timeout: 5000 })).stdout.trim();
       const version = acceptedClaudeVersion(reported);
       if (!version) throw new Error(`Requires Claude Code ${MIN_VERSION} or newer; found "${reported.slice(0, 40)}"`);
       // Stable per logical cwd so cold resume finds the same transcript, but

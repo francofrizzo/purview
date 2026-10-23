@@ -1,5 +1,6 @@
 import { log, shortKey, duration } from "./log.js";
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
@@ -34,6 +35,8 @@ import {
 } from "./chat.js";
 import { HttpError } from "./http-error.js";
 import { reviewSystemPrompt, checkoutGuidance } from "./agent/review-tools/prompts.js";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * A chat turn runs independently of the HTTP request that started it: the SSE
@@ -159,9 +162,6 @@ export function startChatTurn(
   const state = loadState(key, root);
   const revisionInfo = state.revisions.find((r) => r.revision === state.currentRevision);
   const headSha = revisionInfo?.headSha;
-  // Cached per revision; the chat sees the same layered rubric as the analysis.
-  const committed = loadCommittedConfig(key, root);
-
   const emitter = new EventEmitter();
   emitter.setMaxListeners(0);
   const backlog: ChatStreamEvent[] = [];
@@ -198,6 +198,8 @@ export function startChatTurn(
     let completed = false;
     let session = stored;
     try {
+      // Cached per revision; the chat sees the same layered rubric as the analysis.
+      const committed = await loadCommittedConfig(key, root);
       // Resolved per turn: the managed checkout follows the current head, and
       // a reader worktree for this PR's branch may have appeared or vanished.
       const checkout = await resolveRunCheckout(key, root, {
@@ -370,11 +372,11 @@ function realOrSelf(p: string): string {
  * continues from the cwd it was started in, so that cwd is the truth
  * here — not whatever a fresh turn would resolve to.
  */
-function sessionCheckout(
+async function sessionCheckout(
   key: PrKey,
   root: string,
   cwd: string,
-): { resolution: CheckoutResolution; headSha?: string } | undefined {
+): Promise<{ resolution: CheckoutResolution; headSha?: string } | undefined> {
   const real = realOrSelf(cwd);
   if (real === realOrSelf(prDir(key, root))) return undefined; // ran without a checkout
 
@@ -386,7 +388,7 @@ function sessionCheckout(
     // it can trail a revision that arrived since.
     let headSha = revisionHead ?? "";
     try {
-      headSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" }).trim();
+      headSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" })).stdout.trim();
     } catch {
       /* keep the revision's head */
     }
@@ -401,7 +403,7 @@ function sessionCheckout(
   } catch {
     /* no meta */
   }
-  const resolved = resolveCheckout(effectiveRepoPath(key, root, { meta }), {
+  const resolved = await resolveCheckout(effectiveRepoPath(key, root, { meta }), {
     headRef: meta?.headRef,
     headSha: revisionHead,
   });
@@ -417,7 +419,7 @@ function sessionCheckout(
  * analysis) and return the harness's one-liner that continues the session
  * with it.
  */
-export function chatHandoff(key: PrKey, root = stateRoot()): ChatHandoff {
+export async function chatHandoff(key: PrKey, root = stateRoot()): Promise<ChatHandoff> {
   const chat = readChat(key, root);
   // The session's own harness continues it; before there is one, the harness
   // the next turn would use names things.
@@ -462,8 +464,8 @@ export function chatHandoff(key: PrKey, root = stateRoot()): ChatHandoff {
   }
 
   const context = terminalContext(key, root, {
-    checkout: sessionCheckout(key, root, session.cwd),
-    committed: loadCommittedConfig(key, root),
+    checkout: await sessionCheckout(key, root, session.cwd),
+    committed: await loadCommittedConfig(key, root),
     harness: harness.manifest,
   });
   const contextPath = terminalContextPath(key, root);
