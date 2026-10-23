@@ -1,10 +1,10 @@
 import { log } from "./log.js";
 import { listRepos, readRepoConfig, repoKeyToString, stateRoot } from "@reviewer/core";
-import { importReviewRequestsSince } from "./review-import.js";
+import { importOwnPrsSince, importReviewRequestsSince } from "./review-import.js";
 import { sweepPrStatuses } from "./status-sweep.js";
 
 /**
- * Per-repo polling for review requests. Opt-in (`repo.json`'s `watchReviews`,
+ * Per-repo polling for review requests and own PRs. Opt-in (`repo.json` flags,
  * a machine-local setting — see schemas.ts), and deliberately dumb: every
  * tick re-lists every tracked repo and re-reads its config fresh off disk, so
  * flipping the checkbox in the UI takes effect on the next tick with no
@@ -32,6 +32,7 @@ export interface WatchRepoStatus {
   checkedAt: string;
   imported: number;
   error?: string;
+  own?: { imported: number; error?: string };
 }
 
 export interface WatchStatus {
@@ -59,8 +60,8 @@ export function forgetWatchStatus(rkey: string): void {
 }
 
 /**
- * One pass over every tracked repo: import review requests for whichever ones
- * have `watchReviews` on and are not archived. A single repo's `gh` failure
+ * One pass over every tracked repo: independently import review requests and
+ * own PRs when their watch flags are on and the repo is not archived. A single repo's `gh` failure
  * (or anything else that goes wrong reading/importing it) is caught and
  * recorded against that repo alone — it must never take the other repos'
  * polling, or the loop itself, down with it.
@@ -84,29 +85,34 @@ async function tick(root: string, deps: Required<Pick<WatchDeps, "windowMs" | "n
       log.warn("watch", `${rkeyStr}: could not read config: ${(err as Error).message}`);
       continue;
     }
-    if (config.watchReviews !== true) continue;
     // An archived repo is on the shelf as a whole: importing new PRs into it
-    // would bring it back behind the reader's back. Its `watchReviews` stays
-    // as it was, so unarchiving resumes polling on the next tick.
-    if (config.archived === true) continue;
-
-    try {
-      const result = await importReviewRequestsSince(repo, since, root, { analyze });
-      if (result.imported.length) log.info("watch", `${rkeyStr}  imported`, { prs: result.imported.length });
-      nextRepos[rkeyStr] = { checkedAt: now.toISOString(), imported: result.imported.length };
-      if (result.failed.length > 0) {
-        log.warn("watch",
-          `${rkeyStr}: ${result.failed.length} PR(s) failed to import: ` +
-            result.failed.map((f) => `${f.key} (${f.error})`).join(", "),
-        );
+    // would bring it back behind the reader's back. Its switches stay as they
+    // were, so unarchiving resumes polling on the next tick.
+    if (config.archived === true || (config.watchReviews !== true && config.watchOwn !== true)) {
+      delete nextRepos[rkeyStr];
+      continue;
+    }
+    const repoStatus: WatchRepoStatus = { checkedAt: now.toISOString(), imported: 0 };
+    nextRepos[rkeyStr] = repoStatus;
+    for (const [enabled, kind, importPrs] of [
+      [config.watchReviews, "review requests", importReviewRequestsSince],
+      [config.watchOwn, "own PRs", importOwnPrsSince],
+    ] as const) {
+      if (enabled !== true) continue;
+      const loopStatus: { imported: number; error?: string } =
+        kind === "own PRs" ? (repoStatus.own = { imported: 0 }) : repoStatus;
+      try {
+        const result = await importPrs(repo, since, root, { analyze });
+        loopStatus.imported = result.imported.length;
+        if (result.imported.length) log.info("watch", `${rkeyStr} ${kind} imported`, { prs: result.imported.length });
+        if (result.failed.length) {
+          loopStatus.error = result.failed.map((f) => `${f.key} (${f.error})`).join(", ");
+          log.warn("watch", `${rkeyStr} ${kind}: ${loopStatus.error}`);
+        }
+      } catch (err) {
+        loopStatus.error = (err as Error).message;
+        log.warn("watch", `${rkeyStr} ${kind}: ${loopStatus.error}`);
       }
-    } catch (err) {
-      nextRepos[rkeyStr] = {
-        checkedAt: now.toISOString(),
-        imported: 0,
-        error: (err as Error).message,
-      };
-      log.warn("watch", `${rkeyStr}: ${(err as Error).message}`);
     }
   }
 

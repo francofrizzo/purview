@@ -7,9 +7,9 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Fix:** adding, refreshing and syncing a PR no longer freeze the server for other requests.
-
+- **Watch your own PRs.** Repo settings → Watch has a second switch that imports and analyzes the PRs you open, drafts included, every 5 minutes, independent of the review-request switch.
 - **Fix:** opening a PR no longer freezes the server for other requests.
+- **Fix:** adding, refreshing and syncing a PR no longer freeze the server for other requests.
 - **Fix:** a PR no longer loads its diff twice when opened.
 
 ## 2026.10.23.2

@@ -703,6 +703,7 @@ describe("init and refresh capture", () => {
       analysisAgent: null,
       chatAgent: null,
       watchReviews: null,
+      watchOwn: null,
       archived: null,
       generated: { include: [], exclude: [] },
     });
@@ -859,6 +860,23 @@ describe("GET /api/repos", () => {
     expect(gh.calls).toHaveLength(0);
   });
 
+  it("round trips the two watch settings independently", async () => {
+    ensureRepoConfig(repo, root);
+    const expected = { watchOwn: null as boolean | null, watchReviews: null as boolean | null };
+    for (const patch of [{ watchOwn: true }, { watchReviews: true }, { watchOwn: null }, { watchReviews: false }]) {
+      Object.assign(expected, patch);
+      const response = await app.request(`/api/repos/${encodedRepo}/config`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+      });
+      expect(response.status).toBe(200);
+      const config = await (await app.request(`/api/repos/${encodedRepo}/config`)).json();
+      expect(config.local).toMatchObject(expected);
+      const saved = readRepoConfig(repo, root);
+      const listing = await (await app.request("/api/repos")).json();
+      expect(listing.repos[0]).toMatchObject({ watchOwn: saved.watchOwn === true, watchReviews: saved.watchReviews === true });
+    }
+  });
+
   it("reports watchReviews and the watch status per repo", async () => {
     ensureRepoConfig(repo, root);
     const off = await (await app.request("/api/repos")).json();
@@ -947,6 +965,7 @@ describe("/api/repos/:rkey/config", () => {
       analysisAgent: null,
       chatAgent: null,
       watchReviews: null,
+      watchOwn: null,
       generated: { include: [], exclude: [] },
       rubric: "",
       chatInstructions: "",
@@ -996,6 +1015,7 @@ describe("/api/repos/:rkey/config", () => {
       analysisAgent: null,
       chatAgent: null,
       watchReviews: null,
+      watchOwn: null,
       generated: { include: [], exclude: [] },
       rubric: "# Local\n",
       chatInstructions: "# Local chat\n",

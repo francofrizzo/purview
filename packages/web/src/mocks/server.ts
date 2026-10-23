@@ -386,6 +386,7 @@ function syncRepoCounts() {
         hasCommittedConfig: false,
         repoPath: null,
         watchReviews: false,
+        watchOwn: false,
         watch: null,
       };
       repos.push(summary);
@@ -396,6 +397,7 @@ function syncRepoCounts() {
           analysisAgent: null,
           chatAgent: null,
           watchReviews: null,
+          watchOwn: null,
           rubric: "",
           chatInstructions: "",
         },
@@ -972,6 +974,7 @@ export const mockApi = {
     if (patch.analysisAgent !== undefined) config.local.analysisAgent = patch.analysisAgent;
     if (patch.chatAgent !== undefined) config.local.chatAgent = patch.chatAgent;
     if (patch.watchReviews !== undefined) config.local.watchReviews = patch.watchReviews;
+    if (patch.watchOwn !== undefined) config.local.watchOwn = patch.watchOwn;
     if (patch.rubric !== undefined) config.local.rubric = patch.rubric;
     if (patch.chatInstructions !== undefined) config.local.chatInstructions = patch.chatInstructions;
     if (patch.generated !== undefined) config.local.generated = structuredClone(patch.generated);
@@ -980,12 +983,14 @@ export const mockApi = {
     if (summary) {
       summary.repoPath = config.effective.repoPath;
       summary.watchReviews = config.local.watchReviews === true;
+      summary.watchOwn = config.local.watchOwn === true;
       summary.hasLocalConfig =
         config.local.autoAnalyze !== null ||
         Boolean(config.local.repoPath) ||
         Boolean(config.local.analysisAgent) ||
         Boolean(config.local.chatAgent) ||
         config.local.watchReviews !== null ||
+        config.local.watchOwn !== null ||
         Boolean(config.local.rubric.trim()) ||
         Boolean(config.local.chatInstructions.trim()) ||
         Boolean(config.local.generated?.include.length || config.local.generated?.exclude.length);

@@ -306,7 +306,7 @@ function WatchSection({ config, save }: { config: RepoConfig; save: Save }) {
     <Section
       id="watch"
       title="Watch"
-      hint="Poll GitHub in the background for PRs assigned to you for review, and import the new ones automatically."
+      hint="Choose which PRs to import automatically from GitHub."
     >
       <label className="flex items-start gap-2">
         <input
@@ -327,6 +327,27 @@ function WatchSection({ config, save }: { config: RepoConfig; save: Save }) {
           <span className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
             Checks GitHub every 5 minutes for open PRs assigned to you for review in the last 24
             hours, imports the new ones and analyzes them automatically.
+          </span>
+        </span>
+      </label>
+      <label className="mt-3 flex items-start gap-2">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          data-testid="watch-own-checkbox"
+          checked={config.local.watchOwn === true}
+          disabled={save.isPending}
+          onChange={(e) =>
+            save.mutate(
+              { watchOwn: e.target.checked ? true : null },
+              { onSuccess: () => setFlash() },
+            )
+          }
+        />
+        <span className="flex flex-col gap-0.5">
+          <span className="text-xs">watch for my own PRs</span>
+          <span className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+            Checks GitHub every 5 minutes for open PRs you opened in the last 24 hours, drafts included, imports the new ones and analyzes them automatically. PRs by the extra logins in Settings count as yours.
           </span>
         </span>
       </label>

@@ -1273,6 +1273,7 @@ export const mockRepos: RepoSummary[] = [
     hasCommittedConfig: false,
     repoPath: "/Users/dana/code/billing",
     watchReviews: true,
+    watchOwn: true,
     watch: { checkedAt: new Date(Date.now() - 3 * 60_000).toISOString(), imported: 0 },
   },
   {
@@ -1285,6 +1286,7 @@ export const mockRepos: RepoSummary[] = [
     hasCommittedConfig: false,
     repoPath: null,
     watchReviews: false,
+    watchOwn: false,
     watch: null,
   },
   {
@@ -1297,6 +1299,7 @@ export const mockRepos: RepoSummary[] = [
     hasCommittedConfig: true,
     repoPath: null,
     watchReviews: false,
+    watchOwn: false,
     watch: null,
   },
 ];
@@ -1324,6 +1327,7 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
       analysisAgent: { harness: "claude-code", model: "opus" },
       chatAgent: null,
       watchReviews: true,
+      watchOwn: true,
       rubric: LOCAL_BILLING_RUBRIC,
       chatInstructions: LOCAL_BILLING_CHAT_INSTRUCTIONS,
       generated: { include: ["fixtures/recorded/**"], exclude: [] },
@@ -1344,6 +1348,7 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
       analysisAgent: null,
       chatAgent: null,
       watchReviews: null,
+      watchOwn: null,
       rubric: "",
       chatInstructions: "",
     },
@@ -1363,6 +1368,7 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
       analysisAgent: null,
       chatAgent: null,
       watchReviews: null,
+      watchOwn: null,
       rubric: "",
       chatInstructions: "",
     },

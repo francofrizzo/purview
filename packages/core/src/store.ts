@@ -350,6 +350,7 @@ export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
     analysisAgent: AgentSelectionSchema.safeParse(obj.analysisAgent).data ?? null,
     chatAgent: ChatAgentSelectionSchema.safeParse(obj.chatAgent).data ?? null,
     watchReviews: typeof obj.watchReviews === "boolean" ? obj.watchReviews : null,
+    watchOwn: typeof obj.watchOwn === "boolean" ? obj.watchOwn : null,
     archived: typeof obj.archived === "boolean" ? obj.archived : null,
     generated: GeneratedPatternsSchema.safeParse(obj.generated).data ?? { include: [], exclude: [] },
   };

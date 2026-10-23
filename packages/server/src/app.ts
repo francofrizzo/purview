@@ -1995,6 +1995,7 @@ export function createApp(opts: AppOptions = {}): Hono {
           local.analysisAgent !== null ||
           local.chatAgent !== null ||
           local.watchReviews !== null ||
+          local.watchOwn !== null ||
           readLocalRubric(repo, root).trim() !== "" ||
           readLocalChatInstructions(repo, root).trim() !== "",
         hasCommittedConfig: cachedCommittedConfigForRepo(repo, root)?.present ?? false,
@@ -2002,6 +2003,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         // Machine-local, not layered (see schemas.ts): the raw setting is the
         // whole story, so no `effectiveConfig` resolution is involved.
         watchReviews: local.watchReviews === true,
+        watchOwn: local.watchOwn === true,
         watch: getWatchStatus().repos[repoKeyToString(repo)] ?? null,
       };
     });
@@ -2068,6 +2070,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         analysisAgent: local.analysisAgent,
         chatAgent: local.chatAgent,
         watchReviews: local.watchReviews,
+        watchOwn: local.watchOwn,
         generated: local.generated,
         rubric: readLocalRubric(repo, root),
         chatInstructions: readLocalChatInstructions(repo, root),
@@ -2372,6 +2375,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       analysisAgent: AgentSelectionSchema.strict().nullable().optional(),
       chatAgent: ChatAgentSelectionSchema.strict().nullable().optional(),
       watchReviews: z.boolean().nullable().optional(),
+      watchOwn: z.boolean().nullable().optional(),
       /** either list replaces the stored one; blank lines are dropped */
       generated: z
         .object({
@@ -2405,6 +2409,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
     if (body.chatAgent !== undefined) patch.chatAgent = checkAgentSelection(body.chatAgent, "chatAgent");
     if ("watchReviews" in body) patch.watchReviews = body.watchReviews ?? null;
+    if ("watchOwn" in body) patch.watchOwn = body.watchOwn ?? null;
     let generatedChanged = false;
     if (body.generated) {
       const current = readRepoConfig(repo, root).generated;

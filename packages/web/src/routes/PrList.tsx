@@ -353,14 +353,12 @@ function RepoSection({
             archived
           </span>
         ) : null}
-        {repo?.watchReviews && !repoArchived ? (
+        {(repo?.watchReviews || repo?.watchOwn) && !repoArchived ? (
           <span
             className="flex flex-none items-center gap-1 text-2xs"
             style={{ color: "var(--fg-faint)" }}
             data-tip={
-              repo.watch
-                ? `Polling for review requests; last checked ${formatFullTimestamp(repo.watch.checkedAt)}`
-                : "Polling for review requests; no check yet"
+              `Polling for ${[repo.watchReviews && "review requests", repo.watchOwn && "your PRs"].filter(Boolean).join(" and ")}; ${repo.watch ? `last checked ${formatFullTimestamp(repo.watch.checkedAt)}` : "no check yet"}${repo.watchReviews && repo.watch?.error ? `; review requests failed: ${repo.watch.error}` : ""}${repo.watchOwn && repo.watch?.own?.error ? `; your PRs failed: ${repo.watch.own.error}` : ""}`
             }
           >
             <span

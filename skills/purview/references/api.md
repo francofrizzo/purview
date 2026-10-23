@@ -131,7 +131,7 @@ state }`.
 ## `GET /repos`
 
 `{ repos: [{ host, owner, repo, prCount, archivedCount, archived, repoPath,
-hasLocalConfig, watchReviews }] }`.
+hasLocalConfig, watchReviews, watchOwn }] }`.
 
 ## `GET /version`
 

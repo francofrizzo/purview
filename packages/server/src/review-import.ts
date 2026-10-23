@@ -2,11 +2,13 @@ import {
   initPrAsync,
   keyToString,
   listPrs,
+  searchOwnPrsAsync,
   searchReviewRequestedPrsAsync,
   stateRoot,
   type PrKey,
   type RepoKey,
 } from "@reviewer/core";
+import { readConfig } from "./config.js";
 import { HttpError } from "./http-error.js";
 import { startAnalysis } from "./analysis.js";
 import { resolveAutoSharedAnalysis } from "./analysis-share-server.js";
@@ -70,10 +72,29 @@ export async function importReviewRequestsSince(
   root = stateRoot(),
   opts: ImportOptions = {},
 ): Promise<ImportResult> {
+  return importCandidates(repo, await searchReviewRequestedPrsAsync(repo, since.toISOString()), root, opts);
+}
+
+/** The same import for the PRs you (or the extra logins in Settings) opened. */
+export async function importOwnPrsSince(
+  repo: RepoKey,
+  since: Date,
+  root = stateRoot(),
+  opts: ImportOptions = {},
+): Promise<ImportResult> {
+  const candidates = await searchOwnPrsAsync(repo, since.toISOString(), readConfig(root).extraAuthors);
+  return importCandidates(repo, candidates, root, opts);
+}
+
+async function importCandidates(
+  repo: RepoKey,
+  candidates: { number: number }[],
+  root: string,
+  opts: ImportOptions,
+): Promise<ImportResult> {
   const result: ImportResult = { imported: [], alreadyTracked: [], failed: [], sharedImports: [] };
   const analyze = opts.analyze ?? true;
 
-  const candidates = await searchReviewRequestedPrsAsync(repo, since.toISOString());
   const tracked = trackedNumbers(repo, root);
 
   for (const candidate of candidates) {
