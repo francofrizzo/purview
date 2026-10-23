@@ -866,7 +866,7 @@ function ReviewThreadsSection({
                     key={b}
                     type="button"
                     className="chip"
-                    style={{ background: "var(--bot-soft)", color: "var(--bot)" }}
+                    style={{ color: "var(--fg-muted)", background: "transparent", boxShadow: "inset 0 0 0 1px var(--border-strong)" }}
                     data-tip={`Show ${b}'s threads again`}
                     onClick={() => update({ hiddenBots: settings.hiddenBots.filter((x) => x !== b) })}
                   >

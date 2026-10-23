@@ -1,22 +1,24 @@
-import { useMemo } from "react";
-import type { PrDetail, RemoteConversationComment, RemoteReview, ReviewUnit } from "../api/types";
+import { useMemo, useState } from "react";
+import type { Concept, Example, Flow, PrDetail, RemoteConversationComment, RemoteReview, ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
 import { workUnits } from "../lib/generated";
 import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/reviews";
 import type { ThreadFilters } from "../lib/threads";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
-import { FileLegend, FileShape, FlowLegend, FlowView } from "./Shape";
+import { FlowLegend, FlowView } from "./Shape";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { InlineMarkdown, Markdown } from "./Markdown";
 import { ReviewTimeline, ReviewerVerdicts } from "./Reviews";
 import { withoutHeadings } from "./SummaryStrip";
-import { IconArrowRight } from "./icons";
+import { IconArrowRight, IconChevron } from "./icons";
 
 /**
- * The PR before its parts: what it does (the analysis's summary), its shape
- * (how its path runs, where each file lands), what to read closely, then
- * the author's description and what reviewers said. One calm column; everything
- * here is a way into the guide.
+ * The PR before its parts, from broad to narrow: why it exists (the
+ * analysis's summary, in plain words, with what the author added that the
+ * diff cannot show), the words the PR leans on, one case before and after,
+ * then what to read closely; the author's description, whole, and what
+ * reviewers said close it. One calm column; everything here is a way into the
+ * guide. Where each file lands is in the Files view, beside each file.
  */
 export function Overview({
   detail,
@@ -27,7 +29,6 @@ export function Overview({
   filters,
   revisions,
   onOpenUnit,
-  onOpenFile,
 }: {
   detail: PrDetail;
   summary: string;
@@ -37,8 +38,6 @@ export function Overview({
   filters?: ThreadFilters;
   revisions?: RevisionContext;
   onOpenUnit: (unitId: string) => void;
-  /** a file in the tree opens in the Files view */
-  onOpenFile?: (path: string) => void;
 }) {
   const { meta, state } = detail;
   const ordered = useMemo(() => unitDisplayOrder(state.units), [state.units]);
@@ -78,9 +77,14 @@ export function Overview({
           </section>
         ) : null}
 
-        {/* The shape of the change, anchored to the code: how the path the PR
-            is about now runs, then where each file sits in it. */}
-        {state.flow ? (
+        {state.concepts?.length ? <ConceptList concepts={state.concepts} /> : null}
+
+        {/* One case through the change; the call sequence, when drawn, is the
+            same story told in the code, so it folds under it. Without an
+            example (analyses from before it) the flow stands on its own. */}
+        {state.example ? (
+          <ExampleView example={state.example} flow={state.flow} units={work} onOpenUnit={onOpenUnit} />
+        ) : state.flow ? (
           <section data-testid="overview-flow" className="wide">
             <div className="mx-auto max-w-[54rem]">
               <SectionHead title="How it runs">
@@ -95,15 +99,6 @@ export function Overview({
             <div className="pane rounded-lg px-3 py-4" style={{ background: "var(--bg-raised)" }}>
               <FlowView flow={state.flow} units={work} onOpenUnit={onOpenUnit} />
             </div>
-          </section>
-        ) : null}
-
-        {state.fileNotes ? (
-          <section data-testid="overview-files">
-            <SectionHead title="Where it lands">
-              <FileLegend files={detail.files.files} />
-            </SectionHead>
-            <FileShape files={detail.files.files} notes={state.fileNotes} onOpenFile={onOpenFile} />
           </section>
         ) : null}
 
@@ -178,6 +173,125 @@ export function Overview({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * The words the PR leans on, each with its meaning; the same meanings show on
+ * hover wherever the guide uses them. The code's own names for a concept sit
+ * faint beside it, so the reader can recognize them in the units.
+ */
+function ConceptList({ concepts }: { concepts: Concept[] }) {
+  return (
+    <section data-testid="overview-concepts">
+      <SectionHead title="Concepts" />
+      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-[minmax(8rem,auto)_1fr]">
+        {concepts.map((c) => (
+          <div key={c.term} className="contents" data-testid="concept">
+            <dt className="flex flex-wrap items-baseline gap-x-1.5 text-[13px] font-medium leading-5" style={{ color: "var(--fg)" }}>
+              {c.term}
+              {c.isNew ? (
+                <span className="chip" style={{ color: "var(--accent)", background: "var(--accent-soft)" }} data-testid="concept-new">
+                  new
+                </span>
+              ) : null}
+            </dt>
+            <dd className="-mt-2 text-[13px] leading-5 sm:mt-0" style={{ color: "var(--fg-muted)" }}>
+              {c.means}
+              {/* The first names are enough to recognize it in the units;
+                  the rest only feed the hover. */}
+              {c.aka.length ? (
+                <span className="ml-1.5 font-mono text-2xs" style={{ color: "var(--fg-faint)" }} data-tip="As the code and the guide call it">
+                  {c.aka.slice(0, 2).join(" · ")}
+                </span>
+              ) : null}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/**
+ * One case before and after the change, side by side so the difference is
+ * what stands out. The flow, when the analysis drew one, is the same change
+ * in the code: one click away, not in the way.
+ */
+function ExampleView({
+  example,
+  flow,
+  units,
+  onOpenUnit,
+}: {
+  example: Example;
+  flow?: Flow;
+  units: ReviewUnit[];
+  onOpenUnit: (unitId: string) => void;
+}) {
+  const [calls, setCalls] = useState(false);
+  const column = (label: string, steps: string[], now: boolean) => (
+    <div
+      className="rounded-lg px-4 py-3"
+      style={{
+        background: now ? "var(--bg-raised)" : "transparent",
+        border: `1px solid ${now ? "var(--border-strong)" : "var(--border)"}`,
+      }}
+      data-testid={now ? "example-after" : "example-before"}
+    >
+      <p className="mb-2 text-2xs font-medium uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
+        {label}
+      </p>
+      <ol className="flex list-decimal flex-col gap-1.5 pl-4 text-[13px] leading-5" style={{ color: now ? "var(--fg)" : "var(--fg-muted)" }}>
+        {steps.map((step, i) => (
+          <li key={i}>{step}</li>
+        ))}
+      </ol>
+    </div>
+  );
+  return (
+    <section data-testid="overview-example" className={calls ? "wide" : undefined}>
+      <div className="mx-auto max-w-[54rem]">
+        <SectionHead title="An example" />
+        <p className="mb-3 text-[13px] font-medium leading-5" style={{ color: "var(--fg)" }} data-testid="example-case">
+          {example.case}
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {column("Before", example.before, false)}
+          {column("Now", example.after, true)}
+        </div>
+        {flow ? (
+          <button
+            type="button"
+            className="mt-3 flex items-center gap-1 text-xs transition-colors hover:text-[var(--fg)]"
+            style={{ color: "var(--fg-faint)" }}
+            aria-expanded={calls}
+            data-testid="example-calls-toggle"
+            onClick={() => setCalls((v) => !v)}
+          >
+            <IconChevron open={calls} width={10} height={10} />
+            The calls, in the code
+          </button>
+        ) : null}
+      </div>
+      {flow && calls ? (
+        <div className="mt-3" data-testid="overview-flow">
+          <div className="mx-auto mb-2 flex max-w-[54rem] items-baseline gap-3">
+            {flow.caption ? (
+              <p className="text-xs leading-[19px]" style={{ color: "var(--fg-muted)" }}>
+                <InlineMarkdown text={flow.caption} />
+              </p>
+            ) : null}
+            <span className="ml-auto flex-none">
+              <FlowLegend flow={flow} />
+            </span>
+          </div>
+          <div className="pane rounded-lg px-3 py-4" style={{ background: "var(--bg-raised)" }}>
+            <FlowView flow={flow} units={units} onOpenUnit={onOpenUnit} />
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

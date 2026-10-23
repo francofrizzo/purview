@@ -181,6 +181,25 @@ export interface Flow {
 /** One line per file the analysis placed: what it is for, or what the PR does to it. */
 export type FileNotes = Record<string, string>;
 
+/** A term the PR leans on, explained wherever the guide uses it (core's ConceptSchema). */
+export interface Concept {
+  /** in the reader's words */
+  term: string;
+  /** one plain sentence */
+  means: string;
+  /** the names the code and the guide use for it, matched as written */
+  aka: string[];
+  /** the PR introduces it */
+  isNew?: boolean;
+}
+
+/** One concrete case before and after the change (core's ExampleSchema). */
+export interface Example {
+  case: string;
+  before: string[];
+  after: string[];
+}
+
 export interface ReviewUnit {
   id: string;
   title: string;
@@ -439,6 +458,8 @@ export interface PrState {
   /** The shape of the change, when the analysis drew it. */
   flow?: Flow;
   fileNotes?: FileNotes;
+  concepts?: Concept[];
+  example?: Example;
   hunks: Record<string, HunkState>;
   files?: Record<string, FileRollup>;
   baseOnly?: boolean;

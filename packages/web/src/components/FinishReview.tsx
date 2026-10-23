@@ -235,15 +235,15 @@ export function FinishReviewPanel({
               />
             ) : (
               <div className="flex flex-col gap-2">
-                {/* The verdict is a choice, not three buttons that each post. Each
-                    option is as wide as its label plus an even share of the
-                    rest, so the long one doesn't run to the edge; at the
-                    panel's narrowest it wraps rather than overflow. */}
+                {/* The verdict is a choice, not three buttons that each post:
+                    three equal segments on one track, so none runs to the
+                    edge; at the panel's narrowest a label wraps inside its
+                    own segment rather than overflow. */}
                 <div
                   role="radiogroup"
                   aria-label="Verdict"
-                  className="flex gap-0.5 rounded-md p-0.5"
-                  style={{ background: "var(--bg-inset)" }}
+                  className="grid grid-cols-3 gap-0.5 rounded-md border p-0.5"
+                  style={{ background: "var(--bg-inset)", borderColor: "var(--border)" }}
                 >
                   {EVENTS.map((e) => {
                     const on = e.event === verdict;
@@ -257,7 +257,7 @@ export function FinishReviewPanel({
                         data-tip={e.blurb}
                         disabled={submitting}
                         onClick={() => setVerdict(e.event)}
-                        className="flex flex-auto items-center justify-center gap-1.5 rounded px-2 py-1 text-center text-xs leading-4 transition-colors"
+                        className="flex min-w-0 items-center justify-center gap-1.5 rounded px-1.5 py-1 text-center text-xs leading-4 transition-colors hover:text-[var(--fg)]"
                         style={
                           on
                             ? { background: "var(--bg-raised)", color: "var(--fg)", boxShadow: "0 0 0 1px var(--border)" }

@@ -17,13 +17,16 @@ test("compose on a line: type, bold with the chord, preview, save shows the mark
   await page.keyboard.press(`${MOD}+b`);
   await expect(textarea).toHaveValue("**needs a test**");
 
-  // Write / Preview, by the chord and back by the button.
+  // Preview by the chord; the one button then reads "Edit" and goes back.
+  await expect(page.getByTestId("composer-mode-preview")).toHaveText("Preview");
   await page.keyboard.press(`${MOD}+Shift+p`);
-  await expect(page.getByTestId("composer-mode-preview")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("composer-mode-write")).toHaveText("Edit");
+  await expect(page.getByTestId("composer-mode-write")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("composer-preview").locator("strong")).toHaveText("needs a test");
   await expect(textarea).toBeHidden();
   await page.getByTestId("composer-mode-write").click();
   await expect(textarea).toBeVisible();
+  await expect(page.getByTestId("composer-mode-preview")).toHaveText("Preview");
   await expect(textarea).toHaveValue("**needs a test**");
 
   await page.getByTestId("composer-save").click();

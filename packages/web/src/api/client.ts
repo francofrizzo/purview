@@ -8,6 +8,8 @@ import type {
   AddCommentInput,
   AnalysisImportReport,
   Attachment,
+  Concept,
+  Example,
   FileNotes,
   Flow,
   AnalysisJob,
@@ -203,7 +205,7 @@ interface WireFileRollup {
   syncedToGithub?: boolean;
 }
 
-interface WireState {
+export interface WireState {
   pr?: unknown;
   currentRevision: number;
   revisions: RevisionInfo[];
@@ -214,6 +216,8 @@ interface WireState {
   unassignedHunkIds: string[];
   flow?: Flow;
   fileNotes?: FileNotes;
+  concepts?: Concept[];
+  example?: Example;
 }
 
 interface WirePrDetail {
@@ -306,7 +310,8 @@ interface WireReviewStatus {
 
 /* ----------------------------------------------------------- adapters --- */
 
-function adaptState(s: WireState): PrState {
+/** The server's state as the app reads it. Fields are picked, not spread: one the app should see must be named here. */
+export function adaptState(s: WireState): PrState {
   const files: Record<string, FileRollup> = {};
   for (const f of s.files ?? []) {
     files[f.path] = {
@@ -327,6 +332,8 @@ function adaptState(s: WireState): PrState {
     removedUnits: (s.units ?? []).filter(isRemovedUnit),
     ...(s.flow ? { flow: s.flow } : {}),
     ...(s.fileNotes ? { fileNotes: s.fileNotes } : {}),
+    ...(s.concepts ? { concepts: s.concepts } : {}),
+    ...(s.example ? { example: s.example } : {}),
     hunks: s.hunks ?? {},
     files,
     baseOnly: s.revisions?.find((r) => r.revision === s.currentRevision)?.baseOnly ?? false,

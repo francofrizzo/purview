@@ -75,6 +75,9 @@ test("s opens the overview; a piece of the flow leads to the unit that changes i
   await expect(page.getByTestId("reading-rest")).toHaveText("Then 2 to skim and 2 to skip.");
 
   // How it runs: the path in order, the cut call still drawn beside the new one.
+  // The example tells the change first; the calls fold under it.
+  await expect(page.getByTestId("flow-view")).toHaveCount(0);
+  await page.getByTestId("example-calls-toggle").click();
   const flow = page.getByTestId("flow-view");
   await expect(flow).toContainText("findByKey(key)");
   await expect(flow).toContainText("authorize(charge)");
@@ -140,21 +143,37 @@ test("space / shift+space step between the hunks still to read, skipping viewed 
   await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
 });
 
-test("where it lands: the files as a tree with their notes, a file opens in the Files view", async ({ page }) => {
+test("where it lands: each file's note sits under its header in the Files view", async ({ page }) => {
   await page.keyboard.press("s");
-  // The key says what the marks are: new files, the rest changed.
-  await expect(page.getByTestId("file-legend")).toContainText(/\+\s*\d+ new/);
-  await expect(page.getByTestId("file-legend")).toContainText("changed");
-  const files = page.getByTestId("file-shape");
-  await expect(files).toContainText("Derives the charge key from order id");
-  await expect(files).toContainText("generated files");
-  await page.getByTestId("file-shape-src/billing/ledger.ts").click();
-  await expect(page.getByTestId("overview")).toHaveCount(0);
-  await expect(page.getByTestId("view-files")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("overview")).toBeVisible();
+  // The Overview is about the change, not the file tree.
+  await expect(page.getByTestId("file-shape")).toHaveCount(0);
+  await page.keyboard.press("f");
+  await page.locator("aside, nav").getByText("idempotency.ts").first().click();
+  await expect(page.getByTestId("file-note")).toHaveText("Derives the charge key from order id, amount and currency.");
+});
+
+test("the overview leads in: the concepts, then one case before and after", async ({ page }) => {
+  await page.keyboard.press("s");
+  const concepts = page.getByTestId("overview-concepts");
+  await expect(concepts.getByTestId("concept")).toHaveCount(3);
+  await expect(concepts).toContainText("Charge ledger");
+  await expect(concepts.getByTestId("concept-new")).toHaveCount(2);
+  await expect(page.getByTestId("example-case")).toContainText("retries a payment after a timeout");
+  await expect(page.getByTestId("example-before")).toContainText("charged twice");
+  await expect(page.getByTestId("example-after")).toContainText("charged once");
+});
+
+test("a concept the guide names is explained on hover, once per block", async ({ page }) => {
+  // The charge unit's text names the ledger by its table: the mark carries the meaning.
+  await openUnit(page, UNITS.charge);
+  const mark = page.getByTestId("unit-brief").getByTestId("concept-mark").first();
+  await expect(mark).toHaveAttribute("data-tip", /^Charge (key|ledger) \(new in this PR\): /);
 });
 
 test("a step of the flow says which unit it opens, and opens it; one that names none is inert", async ({ page }) => {
   await page.keyboard.press("s");
+  await page.getByTestId("example-calls-toggle").click();
   // findByKey(key): a new step, made by the idempotent charge path.
   const step = page.locator('[data-flow-step="2"]');
   await expect(step).toHaveAttribute("data-tip", /^Opens \d+\. Idempotent charge path/);
@@ -179,10 +198,28 @@ test("the view tabs stay put when switching views, so the pointer doesn't have t
   await expect(page.getByTestId("layout-unified")).toHaveCount(0);
 });
 
-test("a risk shows on the row only where the analysis says to skim or skip", async ({ page }) => {
+test("a risk is on a row where it changes what the reader does: any on a skim, an uncommon one on a must-read", async ({ page }) => {
   // The reconciliation unit is a skim that makes an external call: worth knowing before skimming it.
   await expect(page.getByTestId("unit-risk-ledger-reconciliation")).toHaveText("external call");
   await expect(page.getByTestId("unit-risk-ledger-reconciliation")).toHaveAttribute("data-tip", "Skim, but a risk surface: external call");
-  // A must-read unit gets read anyway, and its why says the risk in words.
-  await expect(page.getByTestId("unit-risk-idempotent-charge-path")).toHaveCount(0);
+  // A must-read unit shows a risk only when it sets the unit apart: money is
+  // on one unit of this PR, not most (a flag most units share stays off, see lib/risks.ts).
+  await expect(page.getByTestId("unit-risk-idempotent-charge-path")).toHaveText("money");
+  await expect(page.getByTestId("unit-risk-idempotent-charge-path")).toHaveAttribute("data-tip", /Sets this unit apart/);
+});
+
+test("a second click on the open unit folds its brief to the row, and another opens it", async ({ page }) => {
+  const row = page.getByTestId("unit-row-ledger-reconciliation");
+  await expect(page.getByTestId("unit-brief")).toBeVisible();
+  await row.click();
+  await expect(page.getByTestId("unit-brief")).toHaveCount(0);
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  // Still the open unit: the diff did not move.
+  await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile.slice(0, 30));
+  await row.click();
+  await expect(page.getByTestId("unit-brief")).toBeVisible();
+  // Folded, then another unit: it opens with its brief.
+  await row.click();
+  await openUnit(page, UNITS.charge);
+  await expect(page.getByTestId("unit-brief")).toBeVisible();
 });

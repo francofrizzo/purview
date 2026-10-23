@@ -9,12 +9,15 @@ const SUPPORT = "a1b2c3d4e5f60005";
 
 test("heart hunks are marked, and h/H walk them", async ({ page }) => {
   await openPr(page);
-  // The header carries no mark; the captions and the segment rows do.
-  for (const id of HEART) {
-    await expect(page.getByTestId(`hunk-header-${id}`).locator("xpath=..")).not.toHaveAttribute("data-heart", "true");
-    await expect(page.getByTestId(`hunk-heart-${id}`).first()).toBeVisible();
-    await expect(page.getByTestId(`hunk-heart-${id}`).first().locator("xpath=..")).toHaveAttribute("data-heart", "true");
-  }
+  // An open heart hunk: the header carries no mark; the captions and the
+  // segment rows do. A folded one (0001, read) folds its captions with its
+  // code and keeps a heart on its header, the whys on hover.
+  await expect(page.getByTestId(`hunk-header-${HEART[0]}`).locator("xpath=..")).not.toHaveAttribute("data-heart", "true");
+  await expect(page.getByTestId(`hunk-heart-${HEART[0]}`).first()).toBeVisible();
+  await expect(page.getByTestId(`hunk-heart-${HEART[0]}`).first().locator("xpath=..")).toHaveAttribute("data-heart", "true");
+  await expect(page.getByTestId(`hunk-header-${HEART[1]}`)).toHaveAttribute("data-collapsed", "true");
+  await expect(page.getByTestId(`hunk-heart-${HEART[1]}`)).toHaveCount(0);
+  await expect(page.getByTestId(`hunk-heart-mark-${HEART[1]}`)).toHaveAttribute("data-tip", /short-circuits on the ledger row/);
   await expect(page.getByTestId(`hunk-header-${SUPPORT}`).locator("xpath=..")).not.toHaveAttribute("data-heart", "true");
   await expect(page.getByTestId(`hunk-heart-${SUPPORT}`)).toHaveCount(0);
 
@@ -64,8 +67,8 @@ test("a heart with a line range bars only those rows, and its brief entry names 
   await expect(page.locator("[data-index]", { hasText: "throw new ChargeFailed(res.code);" }).nth(1)).toHaveAttribute("data-heart-end", "true");
   await expect(row("const res = await this.gateway.charge(order.total, order.currency);")).not.toHaveAttribute("data-heart-end", "true");
   await expect(row("await this.ledger.recordFailure(key, res.code)")).not.toHaveAttribute("data-heart-end", "true");
-  await expect(page.getByTestId(`heart-jump-${HEART[1]}`).first()).toContainText("charge.ts:21-23");
-  await expect(page.getByTestId(`heart-jump-${HEART[1]}`).nth(1)).toContainText("charge.ts:29-30");
+  await expect(page.getByTestId(`heart-jump-${HEART[1]}`).first()).toContainText("charge.ts 21–23");
+  await expect(page.getByTestId(`heart-jump-${HEART[1]}`).nth(1)).toContainText("charge.ts 29–30");
   // Each why sits right above its segment's first marked row (for the first,
   // the deleted line the range replaces), not under the header rows up.
   const captionIdx = Number(await page.getByTestId(`hunk-heart-${HEART[1]}`).first().locator("xpath=..").getAttribute("data-index"));
@@ -85,8 +88,14 @@ test("the unit brief lists the heart, and a jump focuses that hunk", async ({ pa
   await openPr(page);
   const brief = page.getByTestId("unit-heart");
   await expect(brief).toBeVisible();
-  // Three segments across two hunks: one row each.
+  // Three segments across two hunks: one place each. Their whys are on the
+  // lines in the diff; here only on hover, not written out a second time.
   await expect(brief.getByRole("button")).toHaveCount(3);
+  await expect(page.getByTestId(`heart-jump-${HEART[1]}`).nth(1)).toHaveAttribute(
+    "data-tip",
+    "A failed charge is recorded in the ledger before the error propagates",
+  );
+  await expect(page.getByTestId("unit-brief")).not.toContainText("A failed charge is recorded in the ledger");
   await page.getByTestId(`heart-jump-${HEART[1]}`).first().click();
   await expect(page.getByTestId(`hunk-header-${HEART[1]}`)).toHaveAttribute("data-focused", "true");
   await expect(page.getByTestId(`hunk-header-${HEART[1]}`)).toBeInViewport();

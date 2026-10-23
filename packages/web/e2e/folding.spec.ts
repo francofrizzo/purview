@@ -101,3 +101,24 @@ test.describe("folding keeps the header where the reader sees it", () => {
     await expect(page.getByTestId("gap-src/billing/charge.ts:a1b2c3d4e5f60002")).toContainText("more of the file below");
   });
 });
+
+test("the first click on a hunk's header focuses it, the next folds and unfolds it", async ({ page }) => {
+  await openPr(page);
+  await openUnit(page, UNITS.reconcile);
+  // A is where the unit opens: focused and open.
+  await expect(hunkHeader(page, A)).toHaveAttribute("data-focused", "true");
+  await expect(hunkHeader(page, A)).toHaveAttribute("data-collapsed", "false");
+  await hunkHeader(page, A).click({ position: { x: 400, y: 8 } });
+  await expect(hunkHeader(page, A)).toHaveAttribute("data-collapsed", "true");
+  await hunkHeader(page, A).click({ position: { x: 400, y: 8 } });
+  await expect(hunkHeader(page, A)).toHaveAttribute("data-collapsed", "false");
+
+  // Another hunk's header: the first click only moves the focus there.
+  await hunkHeader(page, B).click({ position: { x: 400, y: 8 } });
+  await expect(hunkHeader(page, B)).toHaveAttribute("data-focused", "true");
+  await expect(hunkHeader(page, B)).toHaveAttribute("data-collapsed", "false");
+
+  // The header's own buttons stay theirs: the viewed box marks, it does not also fold back open.
+  await hunkHeader(page, B).getByRole("button", { name: "Mark as viewed" }).click();
+  await expect(hunkHeader(page, B)).toHaveAttribute("data-collapsed", "true");
+});

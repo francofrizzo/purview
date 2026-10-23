@@ -30,6 +30,10 @@ export async function openPr(page: Page) {
 
 /** Select a review unit from the sidebar column (1280px wide: no drawer). */
 export async function openUnit(page: Page, title: string) {
+  // Already the open unit: a click on its row would fold its brief away. The
+  // row alone, not its brief, which may name other units by title.
+  const open = page.locator('[data-testid^="unit-row-"][aria-current="true"]');
+  if ((await open.count()) && ((await open.textContent()) ?? "").includes(title.slice(0, 30))) return;
   const nav = page.locator("nav");
   const unit = nav.getByText(title).first();
   // The "skip" group starts folded; its units are only there once it opens.

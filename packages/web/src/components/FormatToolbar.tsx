@@ -30,7 +30,6 @@ import {
   type TextEdit,
 } from "../lib/composerFormat";
 import { insertSuggestion, type SuggestionSource } from "../lib/suggestion";
-import { EmojiPicker } from "./EmojiPicker";
 
 /**
  * Markdown formatting for a comment textarea: the toolbar's buttons and the
@@ -228,7 +227,6 @@ export function FormatRow({ fmt, disabled = false, testId = "format" }: { fmt: C
           </button>
         );
       })}
-      <EmojiPicker onPick={fmt.insert} disabled={disabled} testId={`${testId}-emoji`} />
     </div>
   );
 }

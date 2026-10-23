@@ -277,6 +277,12 @@ export function StackedOnChip({ link }: { link: StackedOnLink | null }) {
   );
 }
 
+/** A kind's short word and what it asks of the reader, for places that name it without a chip. */
+export function kindMeta(kind: Kind): { label: string; tip: string } {
+  const s = KIND_STYLE[kind] ?? KIND_STYLE.wiring;
+  return { label: s.label, tip: s.tip };
+}
+
 export function KindChip({ kind }: { kind: Kind }) {
   const s = KIND_STYLE[kind] ?? KIND_STYLE.wiring;
   return (
@@ -432,6 +438,22 @@ export function Progress({ viewed, total, stacked = false }: { viewed: number; t
  * or all viewed. Drawn on its own raised ground with a visible edge, so it
  * reads on any row behind it, focused or tinted.
  */
+/**
+ * Every viewed box in the app (a unit's row, a file's header, a hunk's) looks
+ * the same: what is still to read is an empty box asking for a click; what is
+ * read is a check on a soft tint, clear but quiet. A read PR is many checks,
+ * and solid green on each of them made the done state the loudest thing on
+ * screen when it should recede (Linear's rule: emphasis is earned).
+ */
+export function viewedBoxStyle(state: "none" | "some" | "all"): React.CSSProperties {
+  if (state === "none") return { borderColor: "var(--fg-faint)", background: "var(--bg-raised)", color: "var(--ok)" };
+  return {
+    borderColor: state === "all" ? "transparent" : "var(--ok)",
+    background: "var(--ok-soft)",
+    color: "var(--ok)",
+  };
+}
+
 export function ViewedBox({
   state,
   onToggle,
@@ -464,11 +486,7 @@ export function ViewedBox({
         onToggle();
       }}
       className="flex h-4 w-4 flex-none items-center justify-center rounded-[4px] border transition-colors hover:brightness-110"
-      style={{
-        borderColor: state === "none" ? "var(--fg-faint)" : "var(--ok)",
-        background: state === "all" ? "var(--ok)" : "var(--bg-raised)",
-        color: "var(--bg)",
-      }}
+      style={viewedBoxStyle(state)}
     >
       {state === "all" ? (
         <IconCheck width={11} height={11} />

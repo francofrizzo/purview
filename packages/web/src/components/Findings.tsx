@@ -114,7 +114,7 @@ export function UnitFindings({ unitId, findings }: { unitId: string; findings: F
             <span className="min-w-0">
               <span style={{ color: "var(--fg-muted)" }}>
                 <InlineMarkdown text={f.text} />
-              </span>{" "}
+              </span>
               <Evidence text={f.evidence} />
             </span>
           </li>
@@ -134,23 +134,43 @@ export function UnitFindings({ unitId, findings }: { unitId: string; findings: F
 function Evidence({ text }: { text: string }) {
   const linkFor = useContext(CodeLinkContext);
   return (
-    <span className="font-mono" style={{ color: "var(--fg-faint)" }} data-testid="finding-evidence">
+    // Its own line under the finding, each place whole: a path broken across
+    // lines (with its comma left on the next) reads as noise.
+    <span className="mt-0.5 block font-mono" style={{ color: "var(--fg-faint)" }} data-testid="finding-evidence">
       {evidenceParts(text).map((part, i) => {
-        const link = part.ref ? linkFor?.(part.text) : null;
-        if (!link) return part.text;
+        if (!part.ref) return part.text;
+        const link = linkFor?.(part.text);
+        const place = shortPlace(part.text);
+        if (!link) {
+          return (
+            <span key={i} className="whitespace-nowrap" data-tip={part.text}>
+              {place}
+            </span>
+          );
+        }
         return (
           <button
             key={i}
             type="button"
-            className="inline rounded underline decoration-dotted underline-offset-2 transition-colors hover:bg-[var(--accent-soft)]"
+            aria-label={part.text}
+            className="inline whitespace-nowrap rounded underline decoration-dotted underline-offset-2 transition-colors hover:bg-[var(--accent-soft)]"
             style={{ color: "var(--accent)" }}
-            data-tip={link.title}
+            data-tip={`${part.text}: ${link.title}`}
             onClick={link.onOpen}
           >
-            {part.text}
+            {place}
           </button>
         );
       })}
     </span>
   );
+}
+
+/** "internal/x/engine.go:837–848" as "engine.go 837–848": the file and where; the folders are on hover. */
+function shortPlace(ref: string): string {
+  const colon = ref.indexOf(":", ref.lastIndexOf("/") + 1);
+  const path = colon === -1 ? ref : ref.slice(0, colon);
+  const at = colon === -1 ? "" : ref.slice(colon + 1);
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return at ? `${name} ${at}` : name;
 }

@@ -9,7 +9,7 @@ import { attentionColor } from "./Chips";
 import { UnitFindings } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconCheck, IconHeart } from "./icons";
+import { IconCheck, IconChevron, IconHeart } from "./icons";
 
 const ATTENTION_WORD: Record<ReviewUnit["attention"], string> = {
   "must-read": "Must read.",
@@ -74,8 +74,9 @@ export function LineDelta({ added: a, removed: r }: { added: number; removed: nu
  * One container only: the row's tint says this belongs to that unit, and
  * nothing in here draws a box or a rule of its own. Everything aligns to the
  * title's text column. What every review needs (the summary, why it matters,
- * where the logic lives, the files) is open; what only some reviews need
- * (checks, revisions) is one line that opens.
+ * where the logic lives) is open; what only some reviews need (the files,
+ * findings, revisions) is one line that opens. Nothing here says what another
+ * part already says: the heart's whys are on the lines they explain.
  */
 export function UnitBrief({
   detail,
@@ -123,49 +124,60 @@ export function UnitBrief({
       ) : null}
 
       {heartOf(unit).length ? (
-        <UnitHeart
-          segments={heartSegments(unit)}
-          files={detail.files.files}
-          showFile={files.length > 1}
-          onJump={onJumpHunk}
-        />
+        <UnitHeart segments={heartSegments(unit)} files={detail.files.files} onJump={onJumpHunk} />
       ) : null}
 
       {files.length && !generated ? (
-        <ul className="-mx-1.5 flex flex-col" data-testid="unit-files">
-          {files.map((f) => {
-            const slash = f.path.lastIndexOf("/");
-            const name = f.path.slice(slash + 1);
-            const dir = slash > 0 ? f.path.slice(0, slash) : "";
-            const read = f.hunks > 0 && f.viewed === f.hunks;
-            return (
-              <li key={f.path}>
-                <button
-                  type="button"
-                  onClick={() => onJumpHunk(f.firstHunkId)}
-                  data-tip={detail.state.fileNotes?.[f.path] ? `${f.path} — ${detail.state.fileNotes[f.path]}` : f.path}
-                  className="flex w-full items-baseline gap-2 rounded px-1.5 py-0.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
-                >
-                  <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                    <span
-                      className="flex-none font-mono text-[11.5px]"
-                      style={{ color: f.status === "added" ? "var(--ok)" : read ? "var(--fg-muted)" : "var(--fg)" }}
-                    >
-                      {name}
+        <div>
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-2xs transition-colors hover:text-[var(--fg-muted)]"
+            style={{ color: "var(--fg-faint)" }}
+            aria-expanded={settings.unitFilesOpen}
+            data-testid="unit-files-toggle"
+            onClick={() => update({ unitFilesOpen: !settings.unitFilesOpen })}
+          >
+            <IconChevron open={settings.unitFilesOpen} width={9} height={9} />
+            {files.length} {files.length === 1 ? "file" : "files"}
+            <LineDelta added={files.reduce((n, f) => n + f.added, 0)} removed={files.reduce((n, f) => n + f.removed, 0)} />
+          </button>
+          {settings.unitFilesOpen ? (
+          <ul className="-mx-1.5 flex flex-col" data-testid="unit-files">
+            {files.map((f) => {
+              const slash = f.path.lastIndexOf("/");
+              const name = f.path.slice(slash + 1);
+              const dir = slash > 0 ? f.path.slice(0, slash) : "";
+              const read = f.hunks > 0 && f.viewed === f.hunks;
+              return (
+                <li key={f.path}>
+                  <button
+                    type="button"
+                    onClick={() => onJumpHunk(f.firstHunkId)}
+                    data-tip={detail.state.fileNotes?.[f.path] ? `${f.path} — ${detail.state.fileNotes[f.path]}` : f.path}
+                    className="flex w-full items-baseline gap-2 rounded px-1.5 py-0.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
+                  >
+                    <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                      <span
+                        className="flex-none font-mono text-[11.5px]"
+                        style={{ color: f.status === "added" ? "var(--ok)" : read ? "var(--fg-muted)" : "var(--fg)" }}
+                      >
+                        {name}
+                      </span>
+                      <span className="min-w-0 truncate font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+                        {dir}
+                      </span>
                     </span>
-                    <span className="min-w-0 truncate font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
-                      {dir}
-                    </span>
-                  </span>
-                  <LineDelta added={f.added} removed={f.removed} />
-                  {read ? (
-                    <IconCheck width={11} height={11} style={{ color: "var(--ok)" }} className="flex-none self-center" />
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                    <LineDelta added={f.added} removed={f.removed} />
+                    {read ? (
+                      <IconCheck width={11} height={11} style={{ color: "var(--ok)" }} className="flex-none self-center" />
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          ) : null}
+        </div>
       ) : null}
 
       {skipped > 0 ? (
@@ -237,58 +249,47 @@ export function UnitBrief({
 }
 
 /**
- * The unit's heart: the segments its logic lives in, each with the analysis's
- * why, in full. The diff repeats the why above the segment itself; here it
- * orients before the reader gets there. A segment names its file when the
- * unit spans several, and its lines when it is part of a hunk.
+ * The unit's heart: where its logic lives, as places to jump to. Each place's
+ * why is on its tooltip and, in full, right above those lines in the diff;
+ * written out here too it only restated the summary file by file.
  */
 export function UnitHeart({
   segments,
   files,
-  showFile,
   onJump,
 }: {
   segments: (HeartSegment & { id: string })[];
   files: FileEntry[];
-  showFile: boolean;
   onJump: (hunkId: string, line?: number) => void;
 }) {
   const pathOf = (hunkId: string) => files.find((f) => f.hunks.some((h) => h.id === hunkId))?.path;
   return (
-    <div className="text-xs" data-testid="unit-heart">
-      <div className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
+    <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-testid="unit-heart">
+      <span className="flex items-center gap-1.5 self-center text-2xs" style={{ color: "var(--fg-faint)" }}>
         <IconHeart width={11} height={11} className="flex-none" style={{ color: "var(--heart)" }} />
-        <span>Where the logic lives</span>
-      </div>
-      <ol className="-mx-1.5 mt-1 flex flex-col">
-        {segments.map((h, i) => {
-          const path = pathOf(h.id);
-          const range = h.lines ? `${h.lines[0]}-${h.lines[1]}` : null;
-          const place = path && showFile ? `${baseName(path)}${range ? `:${range}` : ""}` : range ? `lines ${range}` : null;
-          return (
-            <li key={`${h.id}:${i}`}>
-              <button
-                type="button"
-                data-testid={`heart-jump-${h.id}`}
-                data-segment={i}
-                className="block w-full rounded px-1.5 py-0.5 text-left leading-[18px] transition-colors hover:bg-[var(--bg-hover)]"
-                onClick={() => onJump(h.id, h.lines?.[0])}
-                data-tip={path ? `Go to this ${range ? "segment" : "hunk"} in ${path}` : "Go to this hunk"}
-              >
-                {place ? (
-                  <span className="mr-1.5 font-mono text-2xs" style={{ color: "var(--accent)" }}>
-                    {place}
-                  </span>
-                ) : null}
-                <span style={{ color: "var(--fg)" }}>
-                  <InlineMarkdown text={h.why} />
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
+        Where the logic lives
+      </span>
+      {segments.map((h, i) => {
+        const path = pathOf(h.id);
+        // A range when the heart is part of a hunk; a whole hunk is its file.
+        const lines = h.lines ? `${h.lines[0]}–${h.lines[1]}` : "";
+        return (
+          <button
+            key={`${h.id}:${i}`}
+            type="button"
+            data-testid={`heart-jump-${h.id}`}
+            data-segment={i}
+            className="rounded px-1 font-mono text-2xs transition-colors hover:bg-[var(--bg-hover)]"
+            style={{ color: "var(--accent)" }}
+            onClick={() => onJump(h.id, h.lines?.[0])}
+            data-tip={h.why.replace(/`/g, "")}
+          >
+            {path ? baseName(path) : "hunk"}
+            {lines ? <span style={{ opacity: 0.75 }}> {lines}</span> : null}
+          </button>
+        );
+      })}
+    </p>
   );
 }
 

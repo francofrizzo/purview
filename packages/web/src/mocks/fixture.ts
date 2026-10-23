@@ -1,5 +1,7 @@
 import type { Ci } from "../api/types";
 import type {
+  Concept,
+  Example,
   FileNotes,
   Flow,
   ConfigSource,
@@ -986,6 +988,30 @@ export const mockFileNotes: FileNotes = {
   "src/jobs/reconcileNightly.ts": "Runs the reconciliation nightly and raises an alert on mismatches.",
 };
 
+/** The words #482 leans on, for a reviewer who does not live in billing. */
+export const mockConcepts: Concept[] = [
+  {
+    term: "Charge key",
+    means: "What makes two charge attempts the same charge: the order, the amount and the currency.",
+    aka: ["idempotency key", "idempotencyKey"],
+    isNew: true,
+  },
+  {
+    term: "Charge ledger",
+    means: "A table that remembers each charge's outcome by its key, so a retry gets the first result back.",
+    aka: ["charge_ledger"],
+    isNew: true,
+  },
+  { term: "Gateway", means: "The payment provider that actually charges the card.", aka: [] },
+];
+
+/** One case through #482, before and after. */
+export const mockExample: Example = {
+  case: "A customer's app retries a payment after a timeout, but the first attempt went through",
+  before: ["The retry reaches the gateway again.", "The card is charged twice."],
+  after: ["The charge key is already in the ledger.", "The first result comes back; the card is charged once."],
+};
+
 const state: PrState = {
   revision: 3,
   revisions: [
@@ -1009,6 +1035,8 @@ const state: PrState = {
   removedUnits,
   flow: mockFlow,
   fileNotes: mockFileNotes,
+  concepts: mockConcepts,
+  example: mockExample,
   hunks: {
     a1b2c3d4e5f60001: { viewed: true, viewedAtRevision: 2, changedSinceViewed: true, migration: "fuzzy", predecessorId: "a1b2c3d4e5f6ff01" },
     a1b2c3d4e5f60002: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false, migration: "identical" },

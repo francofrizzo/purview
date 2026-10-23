@@ -37,7 +37,7 @@ import {
 } from "../lib/comments";
 import { AUDIENCE_HINT, AudienceSwitch } from "./AudienceSwitch";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
-import { IconChat, IconCheck, IconClose, IconGithub, IconReact, IconReply, IconSend, IconSparkles } from "./icons";
+import { IconChat, IconCheck, IconClose, IconGithub, IconReact, IconReply, IconSend, IconTerminal } from "./icons";
 import { ReactionError, ReactionPicker, REACTION_EMOJI, type ReactionActions } from "./Reactions";
 import { BotChip } from "./Threads";
 import { AttachmentContext, Markdown, SuggestionContext } from "./Markdown";
@@ -45,6 +45,7 @@ import { suggestionSource, type SuggestionSource } from "../lib/suggestion";
 import { AttachButton, AttachmentStrip, DropHint, useAttachmentEditor } from "./Attachments";
 import { ComposerPreview, useWritePreview, WritePreviewToggle } from "./WritePreview";
 import { FormatRow, FormattingToggle, SuggestButton, useComposerFormat } from "./FormatToolbar";
+import { EmojiPicker } from "./EmojiPicker";
 import { CommentCard, type CommentActionError } from "./CommentCard";
 
 /**
@@ -281,7 +282,7 @@ export function CommentComposer({
         data-testid="composer-textarea"
         placeholder={
           reply
-            ? "Reply…"
+            ? `Reply ${target.replyTo ? `to ${target.replyTo}` : "to the thread"}…`
             : `${forAgent ? "Note for the agent on" : "Comment on"} ${fileLevel ? "this file" : `${ranged ? "lines" : "line"} ${lines}`}…`
         }
         value={body}
@@ -322,6 +323,8 @@ export function CommentComposer({
           onToggle={() => updateSettings({ composerFormatting: !settings.composerFormatting })}
           testId="composer-format-toggle"
         />
+        {/* An emoji is not formatting: it stays out from behind Aa. */}
+        <EmojiPicker onPick={fmt.insert} disabled={!wp.writing} testId="composer-format-emoji" />
         {prKey ? <AttachButton editor={attach} testId="composer-attach" disabled={!wp.writing} /> : null}
         <SuggestButton fmt={fmt} disabled={!wp.writing} testId="composer-format-suggestion" />
         <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} />
@@ -331,10 +334,12 @@ export function CommentComposer({
             <AudienceSwitch value={audience} onChange={onAudienceChange} testId="composer-audience" compact={floating} />
           ) : null}
           {onSendToChat ? (
+            // An icon: a second way out, quieter than the one that saves.
             <button
               type="button"
-              className="btn"
+              className="btn px-1.5"
               data-testid="composer-send-to-chat"
+              aria-label={chatBusy ? "Queue for the chat" : "Ask the chat"}
               disabled={!body.trim()}
               data-tip={
                 chatBusy
@@ -344,8 +349,7 @@ export function CommentComposer({
               data-tip-key="⌘⇧↵"
               onClick={() => onSendToChat(body.trim())}
             >
-              <IconChat width={11} height={11} />
-              {chatBusy ? "queue for chat" : "ask chat"}
+              <IconChat width={12} height={12} />
             </button>
           ) : null}
           <button
@@ -933,7 +937,7 @@ export function DraftsDrawer({
             {notes.length ? (
               <section data-testid="drawer-section-agent" className="flex flex-col gap-2">
                 <DrawerSectionTitle
-                  icon={<IconSparkles width={12} height={12} style={{ color: "var(--agent)" }} />}
+                  icon={<IconTerminal width={12} height={12} style={{ color: "var(--agent)" }} />}
                   title="For agent"
                   count={notes.length}
                   hint="Never sent to GitHub"
@@ -1043,7 +1047,7 @@ function GithubThreadsSection({ github }: { github: DrawerThreads }) {
           return (
             <div key={g.key} data-testid={`drawer-threads-${g.key}`}>
               <div className="mb-1 flex items-center gap-1.5 px-0.5 text-2xs">
-                <span className="font-medium" style={{ color: g.bot ? "var(--bot)" : "var(--fg-muted)" }}>
+                <span className="font-medium" style={{ color: "var(--fg-muted)" }}>
                   {g.label}
                 </span>
                 {g.bot ? <BotChip /> : null}
@@ -1151,7 +1155,11 @@ function GithubThreadRow({ thread, github }: { thread: RemoteThread; github: Dra
         background: "var(--bg)",
         opacity: thread.isResolved ? 0.7 : undefined,
       }}
-      data-tip={`${thread.path}${line !== null && thread.subjectType !== "file" ? `:${lines}` : ""}; show it in the diff`}
+      data-tip={
+        thread.isOutdated
+          ? `${thread.path}: outdated, the line it was on has changed since. It waits at the top of the file in the diff`
+          : `${thread.path}${line !== null && thread.subjectType !== "file" ? `:${lines}` : ""}; show it in the diff`
+      }
       onClick={() => github.onJump(thread)}
     >
       <span className="flex items-center gap-1.5 text-2xs">

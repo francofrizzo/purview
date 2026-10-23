@@ -55,6 +55,8 @@ export interface Settings {
   foldSkippableHunks: boolean;
   /** Drop fully-viewed units out of the sidebar (except the selected one). */
   hideReviewedUnits: boolean;
+  /** The open unit's brief lists its files (otherwise one line that opens them). */
+  unitFilesOpen: boolean;
   /** The comment box shows its formatting buttons ("Aa"); the chords work either way. */
   composerFormatting: boolean;
   /** Width of the review chat panel in px (clamped to the range below). */
@@ -115,6 +117,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoCollapseViewedHunks: true,
   foldSkippableHunks: false,
   hideReviewedUnits: false,
+  unitFilesOpen: false,
   composerFormatting: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
   chatMode: "dock",
@@ -162,6 +165,7 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   }
   if (typeof r.foldSkippableHunks === "boolean") out.foldSkippableHunks = r.foldSkippableHunks;
   if (typeof r.hideReviewedUnits === "boolean") out.hideReviewedUnits = r.hideReviewedUnits;
+  if (typeof r.unitFilesOpen === "boolean") out.unitFilesOpen = r.unitFilesOpen;
   if (typeof r.composerFormatting === "boolean") out.composerFormatting = r.composerFormatting;
   if (typeof r.chatPanelWidth === "number" && Number.isFinite(r.chatPanelWidth)) {
     out.chatPanelWidth = clampChatPanelWidth(r.chatPanelWidth);

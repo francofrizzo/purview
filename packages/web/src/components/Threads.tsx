@@ -9,7 +9,7 @@
  * delete (they aren't the reader's to change).
  */
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 import type { RemoteAuthor, RemoteComment, RemoteThread } from "../api/types";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
@@ -28,7 +28,7 @@ import {
 import { AuthorAvatar } from "./AuthorAvatar";
 import { CommentCard, type CommentActions } from "./CommentCard";
 import { CopyForAgentButton } from "./CopyForAgent";
-import { IconBot, IconCheck, IconChevron, IconReply } from "./icons";
+import { IconCheck, IconChevron, IconReply } from "./icons";
 import { Markdown, SuggestionContext } from "./Markdown";
 import { anchoredLines } from "../lib/suggestion";
 import type { DiffContext } from "../lib/agentExport";
@@ -45,6 +45,8 @@ export interface ThreadActions extends ReactionActions {
   resolveError?: { id: string; message: string } | null;
   /** the thread being replied to: its composer renders at the end of it */
   replyingTo?: string | null;
+  /** the last jump from the comments panel, as `threadId#nonce`: that thread opens, even resolved */
+  focusId?: string | null;
   renderReplyComposer?: () => ReactNode;
 }
 
@@ -62,14 +64,15 @@ export function age(iso: string | undefined): string | null {
 /** "AI" chip for an AI reviewer: distinct from the "by Claude" chip of the review chat. */
 export function BotChip({ tip }: { tip?: string }) {
   return (
+    // GitHub's own mark for an automated account: the word, in the quiet
+    // outline every other label here uses. No face, no colour of its own.
     <span
       className="chip flex-none"
       data-testid="bot-chip"
-      style={{ background: "var(--bot-soft)", color: "var(--bot)" }}
+      style={{ color: "var(--fg-muted)", background: "transparent", boxShadow: "inset 0 0 0 1px var(--border-strong)" }}
       data-tip={tip ?? "An AI reviewer on GitHub"}
     >
-      <IconBot width={10} height={10} />
-      AI
+      bot
     </span>
   );
 }
@@ -198,6 +201,15 @@ export function ThreadView({
 }) {
   const [open, setOpen] = useState(false);
   const t = thread.remote;
+  // A jump from the panel landed here: open it once, even resolved, so the
+  // reader finds the comment they came for rather than a one-line summary.
+  // After that it is the reader's to collapse again; the next jump here
+  // (a new `focusId`, see DiffPane) opens it again. Before paint, so it
+  // never shows folded first.
+  const landing = t && actions.focusId?.startsWith(`${t.id}#`) ? actions.focusId : null;
+  useLayoutEffect(() => {
+    if (landing) setOpen(true);
+  }, [landing]);
   const replying = Boolean(t && actions.replyingTo === t.id);
   // What the thread's ```suggestion blocks would replace: its lines on the
   // new side, as the diff shows them now. An outdated thread's lines are

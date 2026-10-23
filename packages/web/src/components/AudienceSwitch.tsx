@@ -1,5 +1,5 @@
 import type { CommentAudience } from "../api/types";
-import { IconGithub, IconSparkles } from "./icons";
+import { IconGithub, IconTerminal } from "./icons";
 
 /**
  * The global switch: who new comments are for. "GitHub" means part of your
@@ -31,7 +31,9 @@ export function AudienceSwitch({
 }) {
   const options: { id: CommentAudience; icon: JSX.Element }[] = [
     { id: "github", icon: <IconGithub width={11} height={11} /> },
-    { id: "agent", icon: <IconSparkles width={11} height={11} /> },
+    // Where a coding agent lives: a terminal, not a sparkle (which reads as
+    // "something special" to most people, rarely as an agent).
+    { id: "agent", icon: <IconTerminal width={11} height={11} /> },
   ];
   return (
     <div

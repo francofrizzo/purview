@@ -4,13 +4,13 @@ import { unitProgress } from "../lib/diffModel";
 import { useSettings } from "../lib/settings";
 import { filterUnits, hiddenHint } from "../lib/unitFilter";
 import { workUnits } from "../lib/generated";
+import { commonRiskFlags } from "../lib/risks";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { attentionColor, ChangedBadge, ViewedBox } from "./Chips";
+import { attentionColor, kindMeta, ViewedBox } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
 import { IconChevron, IconGenerated, RISK_META } from "./icons";
-import { LineDelta, unitFiles } from "./UnitBrief";
 import { InlineMarkdown } from "./Markdown";
 
 export const UNPLACED_TITLE =
@@ -66,8 +66,16 @@ export function UnitSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUnitId]);
 
+  // A second click on the open unit folds its brief down to the row, so the
+  // list can be scanned while its diff stays on screen; another click opens
+  // it again. Another unit always opens with its brief.
+  const [briefFolded, setBriefFolded] = useState(false);
+  useEffect(() => setBriefFolded(false), [selectedUnitId]);
+
   // Reading order: by attention bucket, `order` within it, the generated unit last.
   const units = unitDisplayOrder(detail.state.units);
+  // Measured among the units to read closely: that is where a row's risk competes.
+  const commonRisks = commonRiskFlags(workUnits(units).filter((u) => u.attention === "must-read"));
   // The generated unit is built before any analysis runs, so it alone does not
   // mean the PR has review units.
   const analyzed = workUnits(units).length > 0;
@@ -173,10 +181,12 @@ export function UnitSidebar({
                     unit={u}
                     number={displayNumber.get(u.id) ?? u.order}
                     selected={u.id === selectedUnitId}
-                    onSelect={() => onSelect(u.id)}
+                    onSelect={() => (u.id === selectedUnitId ? setBriefFolded((v) => !v) : onSelect(u.id))}
+                    briefOpen={u.id === selectedUnitId && !briefFolded}
+                    commonRisks={commonRisks}
                     matches={matchCounts?.get(u.id)}
                     changedTip={changedUnits?.ids.has(u.id) ? changedUnits.tip : undefined}
-                    brief={u.id === selectedUnitId && renderBrief ? renderBrief(u) : null}
+                    brief={u.id === selectedUnitId && renderBrief && !briefFolded ? renderBrief(u) : null}
                     onToggleViewed={onToggleUnitViewed ? (viewed) => onToggleUnitViewed(u, viewed) : undefined}
                     marking={markingUnitId === u.id}
                   />
@@ -335,6 +345,8 @@ const UnitRow = memo(function UnitRow({
   matches,
   changedTip,
   brief,
+  briefOpen = false,
+  commonRisks,
   onToggleViewed,
   marking = false,
 }: {
@@ -347,6 +359,10 @@ const UnitRow = memo(function UnitRow({
   /** set when the highlighted revisions touched this unit: the badge's tip */
   changedTip?: string;
   brief?: ReactNode;
+  /** the open unit's brief is showing (a second click on the row folds it) */
+  briefOpen?: boolean;
+  /** risk flags most of the PR's units carry: not news on a must-read row */
+  commonRisks: ReadonlySet<string>;
   /** mark every hunk of the unit viewed (true) or not (false) */
   onToggleViewed?: (viewed: boolean) => void;
   marking?: boolean;
@@ -357,27 +373,50 @@ const UnitRow = memo(function UnitRow({
   const generated = isGeneratedUnit(unit);
   const done = p.total > 0 && p.viewed === p.total;
   const warnings = (unit.findings ?? []).filter((f) => f.severity === "warning").length;
-  const files = unitFiles(detail, unit);
-  const delta = files.reduce((acc, f) => ({ a: acc.a + f.added, r: acc.r + f.removed }), { a: 0, r: 0 });
   // Kind and risk surfaces are classification detail: on the number, on hover.
   const facts = [
     KIND_WORD[unit.kind],
     ...unit.riskFlags.map((f) => RISK_META[f]?.label ?? f),
   ].join(" · ");
-  // Except a risk on a unit the analysis says to skim or skip: that is the one
-  // place a risk changes what the reader does, so it is on the row, in words.
-  const risks =
-    unit.attention !== "must-read" && !generated ? unit.riskFlags.map((f) => RISK_META[f]?.label ?? f) : [];
+  // A risk is on the row where it changes what the reader does: on a unit to
+  // skim or skip, any risk; on one to read closely, only a risk that sets it
+  // apart from the rest of the PR (lib/risks.ts), in words.
+  const risks = generated
+    ? []
+    : unit.riskFlags
+        .filter((f) => unit.attention !== "must-read" || !commonRisks.has(f))
+        .map((f) => RISK_META[f]?.label ?? f);
   const riskWords = risks.length ? (
     <span
       className="flex-none text-2xs"
       style={{ color: "var(--risk)" }}
-      data-tip={`${unit.attention === "skip" ? "Skip" : "Skim"}, but a risk surface: ${risks.join(" and ")}`}
+      data-tip={
+        unit.attention === "must-read"
+          ? `Sets this unit apart from the PR's other close reads: ${risks.join(" and ")}`
+          : `${unit.attention === "skip" ? "Skip" : "Skim"}, but a risk surface: ${risks.join(" and ")}`
+      }
       data-testid={`unit-risk-${unit.id}`}
     >
       {risks.join(" · ")}
     </span>
   ) : null;
+  // The kind, where it changes how to read the unit and nothing else on the
+  // row says it: not core logic (most units are), not glue, wiring or ripple
+  // (jargon that changes little), not when the title names it, and not beside
+  // a risk: one mark per row.
+  const kindNamed = KIND_WORDS_IN_TITLE[unit.kind];
+  const title = unit.title.toLowerCase();
+  const kindWord =
+    !generated && !risks.length && kindNamed && !kindNamed.some((w) => title.includes(w)) ? (
+      <span
+        className="flex-none text-2xs"
+        style={{ color: "var(--fg-faint)" }}
+        data-tip={kindMeta(unit.kind).tip}
+        data-testid={`unit-kind-${unit.id}`}
+      >
+        {kindMeta(unit.kind).label}
+      </span>
+    ) : null;
   const rowRef = useRef<HTMLLIElement>(null);
   // The open unit's brief can run long: keep its title in view when picked
   // from elsewhere (J/K, a link, the map).
@@ -390,7 +429,8 @@ const UnitRow = memo(function UnitRow({
       ref={rowRef}
       className="group relative mx-1.5 rounded-md transition-colors"
       data-selected={selected ? "true" : undefined}
-      data-testid={selected && brief ? "unit-header" : undefined}
+      // The open unit's row is its header, brief showing or folded away.
+      data-testid={selected && (brief || !briefOpen) ? "unit-header" : undefined}
       // The open unit is a tint and nothing else: one cue for "this is inside it".
       style={selected ? { background: "var(--bg-inset)" } : undefined}
     >
@@ -404,9 +444,10 @@ const UnitRow = memo(function UnitRow({
           type="button"
           onClick={onSelect}
           aria-current={selected ? "true" : undefined}
+          aria-expanded={selected ? briefOpen : undefined}
           data-testid={`unit-row-${unit.id}`}
           className={`sidebar-row-btn flex min-w-0 flex-1 flex-col gap-1 pl-2 text-left ${selected ? "py-2" : "py-1.5"}`}
-          data-tip={selected ? undefined : unit.title}
+          data-tip={selected ? (briefOpen ? "Fold the brief" : "Show the brief") : unit.title}
         >
           <span className="flex w-full items-start gap-2">
             {generated ? (
@@ -438,9 +479,11 @@ const UnitRow = memo(function UnitRow({
             >
               <InlineMarkdown text={unit.title} />
             </span>
-            {!selected && (riskWords || changedTip || warnings > 0 || matches) ? (
+            {/* What asks for the reader, on the title's line on every row, open or not. */}
+            {riskWords || kindWord || changedTip || warnings > 0 || matches ? (
               <span className="flex h-[18px] flex-none items-center gap-1.5">
                 {riskWords}
+                {kindWord}
                 {changedTip ? (
                   <span
                     className="h-1.5 w-1.5 rounded-full"
@@ -454,34 +497,21 @@ const UnitRow = memo(function UnitRow({
               </span>
             ) : null}
           </span>
-          {/* The open unit: its size, then what asks for the reader. */}
-          {selected ? (
-          <span
-            className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pl-[26px] text-2xs"
-            style={{ color: "var(--fg-faint)" }}
-          >
-            <span>
-              {files.length} {files.length === 1 ? "file" : "files"}
-            </span>
-            <LineDelta added={delta.a} removed={delta.r} />
-            {riskWords}
-            {changedTip ? <ChangedBadge tip={changedTip} testId={`unit-changed-${unit.id}`} /> : null}
-            {warnings > 0 ? <FindingsBadge unit={unit} /> : null}
-            {matches ? <MatchBadge count={matches} /> : null}
-          </span>
-          ) : null}
         </button>
         {/* Its own column: the box to mark the whole unit is on its row,
             wherever the brief scrolls. */}
         <span className={`flex flex-none items-center gap-1.5 pl-1.5 pr-3 ${selected ? "h-[34px]" : "h-[30px]"}`}>
-          <span
-            className="text-2xs tabular-nums"
-            style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}
-            data-tip={`${p.viewed} of ${p.total} hunks viewed`}
-            data-testid="hunk-progress"
-          >
-            {p.viewed}/{p.total}
-          </span>
+          {/* Done, the ticked box says it; the count is for what is left. */}
+          {done ? null : (
+            <span
+              className="text-2xs tabular-nums"
+              style={{ color: "var(--fg-faint)" }}
+              data-tip={`${p.viewed} of ${p.total} hunks viewed`}
+              data-testid="hunk-progress"
+            >
+              {p.viewed}/{p.total}
+            </span>
+          )}
           {onToggleViewed && p.total > 0 ? (
             <ViewedBox
               state={done ? "all" : p.viewed > 0 ? "some" : "none"}
@@ -498,6 +528,14 @@ const UnitRow = memo(function UnitRow({
     </li>
   );
 });
+
+/** Kinds worth a word on the row, and the words that, in a title, already say it. */
+const KIND_WORDS_IN_TITLE: Partial<Record<ReviewUnit["kind"], string[]>> = {
+  refactor: ["refactor"],
+  data: ["data", "dato", "schema", "esquema", "migra", "seed"],
+  tests: ["test"],
+  docs: ["doc"],
+};
 
 const KIND_WORD: Record<ReviewUnit["kind"], string> = {
   "core-logic": "core logic",

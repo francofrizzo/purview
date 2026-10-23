@@ -85,8 +85,6 @@ export const TOKEN_NAMES = [
   "kind-tests-soft",
   "kind-docs",
   "kind-docs-soft",
-  "bot",
-  "bot-soft",
   "shadow-1",
   "shadow-2",
   "shadow-3",
@@ -197,6 +195,7 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
   // Moved-code tint: derived from purple the same way add/del derive from
   // green/red, text() gets it the same contrast floor as accent/ok/risk.
   const moved = text(palette.purple, 3.6, dark ? 0.14 : 0.1);
+  const agentInk = text(cyan, 3.6, dark ? 0.14 : 0.1);
   const heart = text(palette.pink ?? mix(palette.red, palette.purple, 0.45), 3.6, dark ? 0.14 : 0.1);
   const warn = text(
     // yellow on a light background is hopeless; prefer orange there
@@ -259,9 +258,11 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
 
     accent,
     "accent-soft": rgba(accent, dark ? 0.14 : 0.1),
-    // Comments for a coding agent: violet, like the moved-code tint.
-    agent: moved,
-    "agent-soft": rgba(moved, dark ? 0.14 : 0.1),
+    // Comments for a coding agent: the theme's teal. Not violet, which is the
+    // moved-code tint (the two have nothing to do with each other), and not
+    // the accent, which is GitHub's side of the same switch.
+    agent: agentInk,
+    "agent-soft": rgba(agentInk, dark ? 0.14 : 0.1),
     // The heart of a unit: pink, the one hue nothing else in the diff uses.
     heart,
     "heart-soft": rgba(heart, dark ? 0.14 : 0.1),
@@ -334,8 +335,6 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     // AI reviewers on GitHub threads (CodeRabbit, Copilot…): a violet leaning
     // toward the neutrals, so a bot's marker and chip read as "machine" without
     // competing with the accent the reader's own comments use.
-    bot: text(mix(palette.purple, fg, 0.2), 3.6),
-    "bot-soft": rgba(palette.purple, softAlpha),
 
     // Elevation. One scale for the whole app: 1 = resting card, 2 = popover /
     // floating pill, 3 = modal / drawer. Dark surfaces need much stronger
@@ -540,8 +539,8 @@ const REVIEWER_DARK: ThemeDef = {
     "fg-faint": "#6b7280",
     accent: "#7aa2f7",
     "accent-soft": "rgba(122, 162, 247, 0.14)",
-    agent: "#a371f7",
-    "agent-soft": "rgba(163, 113, 247, 0.14)",
+    agent: "#56c2c9",
+    "agent-soft": "rgba(86, 194, 201, 0.14)",
     heart: "#f778ba",
     "heart-soft": "rgba(247, 120, 186, 0.14)",
     "add-bg": "rgba(63, 185, 80, 0.1)",
@@ -609,8 +608,8 @@ const REVIEWER_LIGHT: ThemeDef = {
     "fg-muted": "#5b6270",
     accent: "#2f6feb",
     "accent-soft": "rgba(47, 111, 235, 0.1)",
-    agent: "#8250df",
-    "agent-soft": "rgba(130, 80, 223, 0.1)",
+    agent: "#0f7b83",
+    "agent-soft": "rgba(15, 123, 131, 0.1)",
     "add-bg": "rgba(34, 134, 58, 0.09)",
     "add-bg-strong": "rgba(34, 134, 58, 0.22)",
     "add-gutter": "rgba(34, 134, 58, 0.13)",

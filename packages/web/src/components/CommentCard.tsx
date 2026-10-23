@@ -27,7 +27,7 @@ import {
   IconEdit,
   IconGithub,
   IconSend,
-  IconSparkles,
+  IconTerminal,
   IconSwap,
   IconTrash,
 } from "./icons";
@@ -162,7 +162,7 @@ export function CommentCard({
           data-tip={forAgent ? AGENT_LOOK.hint : "Part of your GitHub review"}
           data-testid="comment-audience-mark"
         >
-          {forAgent ? <IconSparkles width={12} height={12} /> : <IconGithub width={12} height={12} />}
+          {forAgent ? <IconTerminal width={12} height={12} /> : <IconGithub width={12} height={12} />}
         </span>
         {comment.outdated && <span data-testid="comment-outdated" className="rounded px-1 font-medium" style={{ color: "var(--warn)", background: "var(--warn-soft)" }} data-tip={outdatedCommentTip(comment)}>outdated</span>}
         {anchor ? (
@@ -406,7 +406,7 @@ function IconAction({
  */
 export const REMOTE_LOOK: Record<"remote" | "bot", { ink: string; tint: string; hint: string }> = {
   remote: { ink: "var(--fg-muted)", tint: "var(--bg-inset)", hint: "On GitHub" },
-  bot: { ink: "var(--bot)", tint: "var(--bot-soft)", hint: "From an AI reviewer on GitHub" },
+  bot: { ink: "var(--fg-faint)", tint: "var(--bg-inset)", hint: "From an AI reviewer on GitHub" },
 };
 
 function markerLook(look: MarkerLook): { ink: string; tint: string } {

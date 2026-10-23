@@ -13,6 +13,7 @@ import {
   heartRowIndices,
   hunkLabel,
   hunkPlace,
+  scopeName,
   languageFor,
   type CharRange,
   type DiffRow,
@@ -65,7 +66,7 @@ import {
 import { useTokensForHunks } from "../lib/useHunkTokens";
 import { useSettings, type DiffViewMode } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
-import { attentionColor, ChangedBadge } from "./Chips";
+import { attentionColor, ChangedBadge, viewedBoxStyle } from "./Chips";
 import { QuoteButton } from "./ChatPanel";
 import {
   COMMENT_COL_WIDTH,
@@ -271,6 +272,8 @@ export interface DiffPaneProps {
     showComments?: boolean;
     /** land on the file's header with its whole-file comments open, not on the hunk */
     fileComments?: boolean;
+    /** the thread the reader came for: shown open where it lands */
+    threadId?: string;
   } | null;
   /**
    * The selected unit's heart (hunk id -> its segments): those hunks are
@@ -834,6 +837,7 @@ export function DiffPane({
   // The jump request not yet landed on (see the jumpToHunk effect further
   // down), readable from the seed effect above it without a dependency.
   const jumpedNonce = useRef<number | null>(null);
+  const [focusThreadId, setFocusThreadId] = useState<string | null>(null);
   const pendingJumpRef = useRef<typeof jumpToHunk>(null);
   pendingJumpRef.current = jumpToHunk && jumpedNonce.current !== jumpToHunk.nonce ? jumpToHunk : null;
 
@@ -1247,8 +1251,9 @@ export function DiffPane({
           nextCaption++;
         }
       };
-      if (marks?.length && captions === null) marks.forEach((m, seg) => out.push(heartRow(seg, m.why)));
-      if (!open) risks.forEach((m) => out.push(riskRow(m)));
+      // Folded, the captions fold with the code they explain; the header
+      // keeps a mark of each, its words on hover (see the hunk header).
+      if (open && marks?.length && captions === null) marks.forEach((m, seg) => out.push(heartRow(seg, m.why)));
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
       }
@@ -1804,7 +1809,9 @@ export function DiffPane({
   const setSignature = entries.map((e) => e.hunk.id).join(",");
   const activeMatchRef = useRef(activeMatch);
   activeMatchRef.current = activeMatch;
-  useEffect(() => {
+  // Before paint, not after: a read hunk of a newly shown file or unit must
+  // first appear folded, not open for a frame and then snap shut.
+  useLayoutEffect(() => {
     const target = activeMatchRef.current;
     if (!(target && entries.some((e) => e.hunk.id === target.hunkId))) {
       scrollRef.current?.scrollTo({ top: 0 });
@@ -2161,6 +2168,8 @@ export function DiffPane({
       }
     }
     jumpedNonce.current = jumpToHunk.nonce;
+    // The thread the reader came for opens where it lands, even resolved.
+    if (jumpToHunk.threadId) setFocusThreadId(`${jumpToHunk.threadId}#${jumpToHunk.nonce}`);
     onFocusHunk(jumpToHunk.hunkId);
     // The hunk's rows follow its header contiguously; walk them for the
     // requested line (unified rows carry it directly, split rows on their
@@ -2224,6 +2233,7 @@ export function DiffPane({
     ...commentActions,
     replyingTo: replying ? (composeTarget?.inReplyTo ?? null) : null,
     renderReplyComposer: renderComposer,
+    focusId: focusThreadId,
   });
 
   const composingLine = (path: string, line: number, side: "LEFT" | "RIGHT") =>
@@ -2367,6 +2377,9 @@ export function DiffPane({
               : (at - 1 + stops.length) % stops.length;
         const stop = stops[nextIdx];
         heartStopRef.current = nextIdx;
+        // `h` is "take me to what matters": a heart folded shut (read, most
+        // likely) opens, or there would be nothing to land on but its header.
+        if (isCollapsed(collapsed, stop.id)) setCollapsedState((prev) => setCollapsed(prev, stop.id, false));
         onFocusHunk(stop.id);
         // A ranged segment's caption row is the target; a whole-hunk heart
         // (or a folded hunk) glides to the header like any hunk.
@@ -2455,6 +2468,7 @@ export function DiffPane({
     skip,
     heart,
     rows,
+    collapsed,
     glideToHunk,
     virtualizer,
   ]);
@@ -2946,12 +2960,8 @@ export function DiffPane({
                     ? `Mark the ${shownIds.length} hunk${shownIds.length === 1 ? "" : "s"} ${scope} as not viewed`
                     : `Mark the ${shownIds.length} hunk${shownIds.length === 1 ? "" : "s"} ${scope} as viewed`
                 }
-                className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
-                style={{
-                  borderColor: allViewed || someViewed ? "var(--ok)" : "var(--fg-faint)",
-                  background: allViewed ? "var(--ok)" : "var(--bg-raised)",
-                  color: allViewed ? "var(--bg)" : "var(--ok)",
-                }}
+                className="flex h-4 w-4 flex-none items-center justify-center rounded-[4px] border transition-colors hover:brightness-110"
+                style={viewedBoxStyle(allViewed ? "all" : someViewed ? "some" : "none")}
               >
                 {allViewed ? (
                   <IconCheck width={11} height={11} />
@@ -3124,8 +3134,10 @@ export function DiffPane({
     }
 
     if (row.type === "risk") {
-      return <div data-testid={`hunk-risk-${row.hunkId}`} className="px-3 py-1 font-sans text-[11px] leading-[18px]" style={{ color: "var(--fg-muted)", background: "var(--bg)" }}>
-        <span className="mr-1.5 rounded px-1 py-px" style={{ color: "var(--risk)", background: "var(--risk-soft)" }}>{row.flag}</span>
+      // One caption style for both marks: a quiet row, the colour only in the
+      // mark itself (the heart, the flag), so the code around stays the loudest.
+      return <div data-testid={`hunk-risk-${row.hunkId}`} className="px-3 py-1 font-sans text-xs leading-[18px]" style={{ color: "var(--fg-muted)", background: "var(--bg)" }}>
+        <span className="mr-1.5 rounded px-1 py-px text-[11px]" style={{ color: "var(--risk)", background: "var(--risk-soft)" }}>{row.flag}</span>
         <InlineMarkdown text={row.why} />
       </div>;
     }
@@ -3135,10 +3147,7 @@ export function DiffPane({
         <div
           data-testid={`hunk-heart-${row.hunkId}`}
           className="px-3 py-1 font-sans text-xs leading-[18px]"
-          style={{
-            background: "linear-gradient(var(--heart-soft), var(--heart-soft)), var(--bg-hover)",
-            color: "var(--fg)",
-          }}
+          style={{ background: "var(--bg)", color: "var(--fg)" }}
         >
           <IconHeart
             width={12}
@@ -3197,9 +3206,15 @@ export function DiffPane({
             boxShadow: row.seam ? "inset 0 1px 0 var(--border-strong)" : undefined,
             color: "var(--fg-muted)",
           }}
-          data-tip="Focus this hunk"
-          data-tip-key="j k"
-          onClick={() => onFocusHunk(row.hunkId)}
+          data-tip={focused ? (folded ? "Expand hunk" : "Collapse hunk") : "Focus this hunk"}
+          data-tip-key={focused ? undefined : "j k"}
+          // The first click focuses the hunk, the next folds or unfolds it:
+          // a header is where the reader reaches for it. A click on one of
+          // the header's own buttons is that button's.
+          onClick={(e) => {
+            if (focused && !(e.target as HTMLElement).closest("button, a")) toggleHunkCollapsed(row.hunkId);
+            else onFocusHunk(row.hunkId);
+          }}
         >
           <span className="row-head-fixed flex min-w-0 items-center gap-2">
           <button
@@ -3231,14 +3246,9 @@ export function DiffPane({
             data-tip={st.viewed ? "Mark as not viewed" : "Mark as viewed"}
             data-tip-key="v"
             aria-label={st.viewed ? "Mark as not viewed" : "Mark as viewed"}
-            className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
-            // Its own ground and a visible edge: it has to read on a focused,
-            // heart-tinted or highlighted header alike.
-            style={{
-              borderColor: st.viewed ? "var(--ok)" : "var(--fg-faint)",
-              background: st.viewed ? "var(--ok)" : "var(--bg-raised)",
-              color: "var(--bg)",
-            }}
+            className="flex h-4 w-4 flex-none items-center justify-center rounded-[4px] border transition-colors hover:brightness-110"
+            // The same box as a unit's and a file's: unread asks, read recedes.
+            style={viewedBoxStyle(st.viewed ? "all" : "none")}
           >
             {st.viewed ? <IconCheck width={11} height={11} /> : null}
           </button>
@@ -3256,7 +3266,8 @@ export function DiffPane({
                   : "What this hunk is, in the analysis's words"
               }
             >
-              {title}
+              {/* Markdown like every field the analysis writes: a `name` is code, not backticks. */}
+              <InlineMarkdown text={title} />
             </span>
           ) : null}
           {/* Where the hunk is: its first line and its scope. The raw range
@@ -3272,10 +3283,35 @@ export function DiffPane({
                 <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
                   {place.heading ? place.line : `line ${place.line}`}
                 </span>
-                {place.heading ? <span className="ml-2">{place.heading}</span> : null}
+                {/* The declaration's name, as git's own hunk header means it;
+                    the whole signature is on hover with the range. */}
+                {place.heading ? <span className="ml-2">{scopeName(place.heading)}</span> : null}
               </span>
             );
           })()}
+          {folded && atHeart ? (
+            <span
+              className="flex flex-none items-center"
+              data-testid={`hunk-heart-mark-${row.hunkId}`}
+              data-tip={(heart?.get(row.hunkId) ?? []).map((m) => m.why.replace(/`/g, "")).join("\n")}
+              aria-label="At the heart of the unit"
+            >
+              <IconHeart width={11} height={11} style={{ color: "var(--heart)" }} />
+            </span>
+          ) : null}
+          {folded
+            ? (riskMarks.get(row.hunkId) ?? []).map((m) => (
+                <span
+                  key={m.index}
+                  className="flex-none rounded px-1 text-2xs"
+                  style={{ color: "var(--risk)", background: "var(--risk-soft)" }}
+                  data-testid={`hunk-risk-mark-${row.hunkId}`}
+                  data-tip={m.why.replace(/`/g, "")}
+                >
+                  {m.flag}
+                </span>
+              ))
+            : null}
           {skipWhy !== undefined ? (
             <span
               className="chip flex-none"
@@ -3518,6 +3554,7 @@ export function DiffPane({
         tokens={tokens[row.hunkId]?.[row.lineIdx]}
         marks={marksFor(row.hunkId, row.lineIdx)}
         moved={movedAt(row.hunkId, row.entry.hunk, row.lineIdx, line.type)}
+        wholeFileAdded={row.entry.file.status === "added"}
         changed={markedByHunk.get(row.hunkId)?.has(row.lineIdx) ?? false}
         removedAbove={removalTitle(removal?.above, removal?.aboveIn)}
         removedBelow={removalTitle(removal?.below, removal?.belowIn)}

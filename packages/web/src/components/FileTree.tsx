@@ -48,6 +48,11 @@ function buildTree(paths: TreeFile[]): TreeNode {
   return collapse(root);
 }
 
+/** A row's hover: its path, and what the analysis says about it when it does. */
+function fileTip(path: string, note?: string): string {
+  return note ? `${path}\n${note.replace(/`/g, "")}` : path;
+}
+
 export function FileTree({
   detail,
   selectedPath,
@@ -127,7 +132,7 @@ export function FileTree({
             }}
           >
             <IconFile width={10} height={10} style={{ opacity: generated ? 0.4 : 0.6, flex: "none" }} />
-            <MiddleTruncate text={kid.name} tail={13} tip={kid.file.path} />
+            <MiddleTruncate text={kid.name} tail={13} tip={fileTip(kid.file.path, detail.state.fileNotes?.[kid.file.path])} />
             {generated ? <GeneratedTag generated={generated} /> : null}
             {matchCounts?.get(kid.file.path) ? (
               <MatchBadge count={matchCounts.get(kid.file.path)!} />

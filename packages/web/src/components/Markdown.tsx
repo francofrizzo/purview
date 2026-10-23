@@ -11,6 +11,8 @@ import { createContext, memo, useContext, useEffect, useRef, useState } from "re
 import { parseInline, parseMarkdown, type MdBlock, type MdInline } from "../lib/markdown";
 import { cachedTokens, tokenizeLines, type Tok } from "../lib/highlight";
 import { renderMermaid } from "../lib/mermaid";
+import { conceptTip, type Glossary } from "../lib/glossary";
+import type { Concept } from "../api/types";
 import { useSettings } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 import { IconCheck, IconChevron, IconCopy, IconExpand, IconWrap } from "./icons";
@@ -61,6 +63,27 @@ export interface CodeLink {
  * no links.
  */
 export const CodeLinkContext = createContext<((text: string) => CodeLink | null) | null>(null);
+
+/**
+ * The PR's concepts (lib/glossary.ts): prose under a provider marks the first
+ * place in each block that names one, and the mark explains it on hover. No
+ * provider, plain prose.
+ */
+export const GlossaryContext = createContext<Glossary | null>(null);
+
+/** A word the PR's concepts explain: underlined with dots, its meaning on hover. */
+function ConceptMark({ concept, children }: { concept: Concept; children: React.ReactNode }) {
+  return (
+    <span
+      className="concept-mark"
+      data-testid="concept-mark"
+      data-concept={concept.term}
+      data-tip={conceptTip(concept)}
+    >
+      {children}
+    </span>
+  );
+}
 
 /**
  * A picture the page may draw itself: the local copy of a comment attachment,
@@ -147,9 +170,32 @@ function MediaNode({ href, alt, local }: { href?: string; alt?: string; local: L
   ) : null;
 }
 
-function Inline({ nodes }: { nodes: MdInline[] }) {
+function Inline({ nodes, marked: shared }: { nodes: MdInline[]; marked?: Set<Concept> }) {
   const linkFor = useContext(CodeLinkContext);
   const mediaFor = useContext(AttachmentContext)?.resolve;
+  const glossary = useContext(GlossaryContext);
+  // Once per concept per block: the first use is explained, the rest read
+  // plain. A bold or an italic inside the block shares the block's count.
+  const marked = shared ?? new Set<Concept>();
+  const markOnce = (c: Concept | null): c is Concept => (c && !marked.has(c) ? (marked.add(c), true) : false);
+  const withConcepts = (text: string) => {
+    if (!glossary) return text;
+    const out: React.ReactNode[] = [];
+    let at = 0;
+    for (const hit of glossary.find(text)) {
+      if (!markOnce(hit.concept)) continue;
+      if (hit.start > at) out.push(text.slice(at, hit.start));
+      out.push(
+        <ConceptMark key={hit.start} concept={hit.concept}>
+          {text.slice(hit.start, hit.end)}
+        </ConceptMark>,
+      );
+      at = hit.end;
+    }
+    if (!out.length) return text;
+    if (at < text.length) out.push(text.slice(at));
+    return out;
+  };
   return (
     <>
       {nodes.map((node, i) => {
@@ -214,7 +260,8 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
           );
         }
         if (node.type === "code") {
-          return (
+          const concept = glossary?.forCode(node.text) ?? null;
+          const code = (
             <code
               key={i}
               className="rounded px-1 py-px font-mono"
@@ -234,16 +281,23 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
               {node.text}
             </code>
           );
+          return markOnce(concept) ? (
+            <ConceptMark key={i} concept={concept}>
+              {code}
+            </ConceptMark>
+          ) : (
+            code
+          );
         }
         if (node.type === "strong") {
           return (
             <strong key={i} style={{ color: "var(--fg)" }}>
-              {node.children ? <Inline nodes={node.children} /> : node.text}
+              {node.children ? <Inline nodes={node.children} marked={marked} /> : node.text}
             </strong>
           );
         }
         if (node.type === "em") {
-          return <em key={i}>{node.children ? <Inline nodes={node.children} /> : node.text}</em>;
+          return <em key={i}>{node.children ? <Inline nodes={node.children} marked={marked} /> : node.text}</em>;
         }
         if (node.type === "link") {
           return (
@@ -259,7 +313,7 @@ function Inline({ nodes }: { nodes: MdInline[] }) {
             </a>
           );
         }
-        return <span key={i}>{node.text}</span>;
+        return <span key={i}>{withConcepts(node.text)}</span>;
       })}
     </>
   );

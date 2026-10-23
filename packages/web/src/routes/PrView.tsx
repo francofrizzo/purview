@@ -142,7 +142,8 @@ import { latestVerdicts } from "../lib/reviews";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
 import { stalenessTooltip } from "../lib/staleness";
-import { AttachmentContext, CodeLinkContext, InlineMarkdown } from "../components/Markdown";
+import { AttachmentContext, CodeLinkContext, GlossaryContext, InlineMarkdown } from "../components/Markdown";
+import { buildGlossary } from "../lib/glossary";
 import { useAttachmentScope } from "../components/Attachments";
 
 /** No changelog highlight; one shared array, so nothing downstream sees a new one each render. */
@@ -498,6 +499,9 @@ export function PrView() {
     () => (detail ? [...detail.state.units].sort((a, b) => a.order - b.order) : []),
     [detail],
   );
+  // The PR's concepts, explained wherever the guide, the diff or the chat names them.
+  const concepts = detail?.state.concepts;
+  const glossary = useMemo(() => buildGlossary(concepts), [concepts]);
   // The units that are review work: all but the generated-files unit, which
   // Purview builds before any analysis runs. "Has this PR been analyzed?",
   // "all units viewed" and the next-unit hop all ask about these.
@@ -822,7 +826,7 @@ export function PrView() {
     (
       hunkId: string,
       path: string,
-      target?: { line?: number; side?: "LEFT" | "RIGHT"; addedIndex?: number; showComments?: boolean; fileComments?: boolean },
+      target?: { line?: number; side?: "LEFT" | "RIGHT"; addedIndex?: number; showComments?: boolean; fileComments?: boolean; threadId?: string },
     ) => {
       if (tab === "units") {
         const unit = unitForHunk(units, hunkId);
@@ -850,11 +854,11 @@ export function PrView() {
    * level, or on a line outside every hunk) opens the file instead.
    */
   const jumpToComment = useCallback(
-    (c: { file: string; line?: number | null; side?: "LEFT" | "RIGHT" | null }) => {
+    (c: { file: string; line?: number | null; side?: "LEFT" | "RIGHT" | null; threadId?: string }) => {
       const side = c.side ?? "RIGHT";
       const hunkId = detail && c.line != null ? hunkForLine(detail.files, c.file, c.line, side) : null;
       if (hunkId) {
-        jumpToDiffHunk(hunkId, c.file, { line: c.line!, side, showComments: true });
+        jumpToDiffHunk(hunkId, c.file, { line: c.line!, side, showComments: true, threadId: c.threadId });
         return;
       }
       // The diff has no line to land on (file-level, or outdated): in the
@@ -868,7 +872,7 @@ export function PrView() {
               ?.hunks.find((h) => unitForHunk(units, h.id) || unplacedSet.has(h.id))
           : undefined;
       if (fileHunk) {
-        jumpToDiffHunk(fileHunk.id, c.file, { fileComments: true });
+        jumpToDiffHunk(fileHunk.id, c.file, { fileComments: true, threadId: c.threadId });
         return;
       }
       setTab("files");
@@ -1567,6 +1571,7 @@ export function PrView() {
     ) : null;
   return (
     <AttachmentContext.Provider value={attachmentScope}>
+    <GlossaryContext.Provider value={glossary}>
     <div className="flex h-full flex-col">
       <TopBar
         detail={detail}
@@ -1807,7 +1812,6 @@ export function PrView() {
                 filters={threadFilters.filters}
                 revisions={revisionContext}
                 onOpenUnit={openUnitFromText}
-                onOpenFile={openFileFromText}
               />
             </CodeLinkContext.Provider>
           </main>
@@ -2012,6 +2016,12 @@ export function PrView() {
                 {selectedFile ? generatedMenuFor(selectedFile) : null}
               </div>
             </div>
+          {/* What the analysis says this file is for, or what the PR does to it. */}
+          {detail.state.fileNotes?.[selectedPath] && !headerCollapsed ? (
+            <p className="-mt-1 px-2 pb-2 text-xs leading-[18px]" style={{ color: "var(--fg-muted)" }} data-testid="file-note">
+              <InlineMarkdown text={detail.state.fileNotes[selectedPath]} />
+            </p>
+          ) : null}
           {/* The pane below is virtualized and shows no file row in this tab,
               so the file's own comments hang off the header instead. */}
           {fileCommentsOpen && fileComments?.length ? (
@@ -2163,12 +2173,12 @@ export function PrView() {
                     onShowResolved: threadFilters.setShowResolved,
                     onShowAiReviewers: threadFilters.setShowAiReviewers,
                     onBotHidden: threadFilters.setBotHidden,
-                    onJump: (t) => jumpToComment({ file: t.path, line: t.line, side: t.side }),
+                    onJump: (t) => jumpToComment({ file: t.path, line: t.line, side: t.side, threadId: t.id }),
                     exportCtx,
                     // The composer opens at the thread in the diff, where the
                     // reply reads in context; the jump brings it into view.
                     onReply: (t) => {
-                      jumpToComment({ file: t.path, line: t.line, side: t.side });
+                      jumpToComment({ file: t.path, line: t.line, side: t.side, threadId: t.id });
                       openComposer(remoteReplyTarget(t));
                     },
                     ...reactionActions,
@@ -2199,7 +2209,7 @@ export function PrView() {
               revisions: revisionContext,
             })}
             threads={threadsQuery.data?.threads}
-            onJumpToThread={(t) => jumpToComment({ file: t.path, line: t.line, side: t.side })}
+            onJumpToThread={(t) => jumpToComment({ file: t.path, line: t.line, side: t.side, threadId: t.id })}
             unresolvedThreads={threadsQuery.data?.threads.filter((t) => !t.isResolved).length ?? 0}
             loading={review.isLoading}
             error={review.error as Error | null}
@@ -2253,7 +2263,9 @@ export function PrView() {
       </div>
       {showShortcuts ? (
         <Modal title="Keyboard shortcuts" maxWidth={760} onClose={() => setShowShortcuts(false)} testId="shortcuts-popover">
-          <div className="grid grid-cols-1 gap-x-10 gap-y-4 p-4 sm:grid-cols-[repeat(3,max-content)]">
+          {/* The groups wrap onto a new row rather than run past the card:
+              nothing here should need a sideways scroll. */}
+          <div className="flex flex-wrap items-start gap-x-10 gap-y-5 p-4">
             <ShortcutGroup
               title="Reading"
               rows={[
@@ -2263,7 +2275,7 @@ export function PrView() {
                 [["v"], "mark hunk viewed"],
                 [["V"], "mark unit viewed"],
                 [["space", "⇧ space"], "next / previous unviewed hunk"],
-                [["z"], "fold / unfold"],
+                [["z"], "show / hide hidden lines"],
                 [["Z"], "fold / show skippable hunks"],
                 [["n"], "comment (then a line number)"],
                 [["a"], "comments for GitHub / for agent"],
@@ -2300,6 +2312,7 @@ export function PrView() {
         </Modal>
       ) : null}
     </div>
+    </GlossaryContext.Provider>
     </AttachmentContext.Provider>
   );
 }
