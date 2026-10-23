@@ -50,6 +50,8 @@ pnpm -r build
 pnpm start        # build if sources changed, (re)start the server on http://localhost:4779
 ```
 
+Server logs go to stderr; set `PURVIEW_LOG=json` for JSON lines or `PURVIEW_DEBUG=1` for request polling and agent progress details.
+
 `pnpm start` detects stale builds, rebuilds what changed, stops a previously running
 Purview server on the port, and starts the new one. Use it both for first runs and
 after `git pull` — it is always safe to re-run.

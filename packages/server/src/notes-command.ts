@@ -1,7 +1,7 @@
 export async function runNotesCommand(args: string[], options: {
   port: number; fetch?: typeof fetch; print?: (line: string) => void; sleep?: (ms: number) => Promise<void>;
 }): Promise<number> {
-  const print = options.print ?? console.log;
+  const print = options.print ?? ((text: string) => process.stdout.write(text + "\n"));
   const usage = "Usage: purview notes <pr> [--wait] [--agent <name>] [--peek]";
   if (args.includes("--help")) { print(usage); return 0; }
   let pr: string | undefined;

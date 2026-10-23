@@ -1,3 +1,4 @@
+import { log, shortKey, duration } from "./log.js";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -668,6 +669,7 @@ export function startAnalysis(
     /* ignore */
   }
   const slot: Slot = { keyStr: keyToString(key), key, root, cancelled: false, fresh: opts.fresh === true };
+  log.info("analysis", `${shortKey(key)}  queued`, { revision: state.currentRevision });
   pending.push(slot);
   queueMicrotask(() => void pump(opts));
   return job;
@@ -709,6 +711,8 @@ function finish(
   metrics?: AnalysisMetrics,
 ): AnalysisJob {
   const previous = readJob(key, root);
+  const elapsed = previous?.startedAt ? duration(Date.now() - Date.parse(previous.startedAt)) : undefined;
+  log[status === "failed" ? "error" : "info"]("analysis", `${shortKey(key)}  ${status === "done" ? "finished" : status}`, { duration: elapsed, cost: metrics?.costUsd === undefined ? undefined : `$${metrics.costUsd.toFixed(2)}`, units: (() => { try { return analysisUnits(loadState(key, root)).length; } catch { return undefined; } })(), reason: error });
   const job = writeJob(
     key,
     {
@@ -1008,7 +1012,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   const committed = loadCommittedConfig(key, root);
   if (checkout.path) readRoots.push(checkout.path);
   if (checkout.error) {
-    console.warn(`[analysis] ${keyToString(key)}: ${checkout.error}; running without a checkout`);
+    log.warn("analysis", `${shortKey(key)}  checkout unavailable`, { reason: checkout.error });
   }
 
   // "none" (pinnable at any layer) means "set no effort at all"; the harness
@@ -1038,6 +1042,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   // Wall-clock bracket of the child process: `durationMs` (the CLI's own
   // number) has been seen to miss long stalls, e.g. 1.3 min reported for a
   // run that took 21.8.
+  log.info("analysis", `${shortKey(key)}  started`, { model, effort, units: analysisUnits(state).length, revision });
   const wallStart = Date.now();
   metrics.run.startedAt = new Date(wallStart).toISOString();
   const run = harness.run({
@@ -1079,6 +1084,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
           harnessVersion: event.harnessVersion,
         };
       } else if (event.type === "action") {
+        log.debug("analysis", `${shortKey(key)}  progress`, { action: event.action.name, detail: event.action.summary });
         actionIndex++;
         recordAction(metrics, actionIndex, event.action, metricsCtx);
         // Progress is cosmetic: if the record vanished under us, keep running.

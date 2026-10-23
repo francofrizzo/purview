@@ -1,3 +1,4 @@
+import { log, shortKey } from "./log.js";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -154,11 +155,10 @@ export function loadCommittedConfig(
       if (rawConfig !== null || rubric !== null || chatInstructions !== null) source = "github";
     } catch (err) {
       // Reading the team config is an enhancement; never let it break a run.
-      console.warn(
-        `[team-config] ${keyToString(key)}: could not read ${TEAM_CONFIG_FILE}: ${
-          (err as Error).message
-        }`,
-      );
+      log.warn("config", `${shortKey(key)}  team config unavailable`, {
+        path: TEAM_CONFIG_FILE,
+        reason: (err as Error).message,
+      });
     }
   }
 

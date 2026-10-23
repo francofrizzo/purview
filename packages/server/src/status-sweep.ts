@@ -1,3 +1,4 @@
+import { log, shortKey } from "./log.js";
 import {
   fetchPrStatuses,
   ciChanged,
@@ -112,11 +113,12 @@ export async function sweepPrStatuses(root = stateRoot()): Promise<SweepResult> 
         const patch = statusPatch(readMeta(key, root), upstream);
         if (!patch) continue;
         updateMeta(key, patch, root);
+        log.info("watch", `${shortKey(key)}  updated`, { fields: Object.keys(patch).join(", ") });
         result.updated.push(`${rkey}#${key.number}`);
       }
     } catch (err) {
       result.errors[rkey] = (err as Error).message;
-      console.warn(`[watch] ${rkey}: status sweep failed: ${(err as Error).message}`);
+      log.warn("watch", `${rkey}: status sweep failed: ${(err as Error).message}`);
     }
   }
   return result;

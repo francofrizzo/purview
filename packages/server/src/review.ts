@@ -1,3 +1,4 @@
+import { log, shortKey } from "./log.js";
 import {
   appendEvent,
   fetchReviewDecision,
@@ -225,6 +226,7 @@ export function submitReview(
     root,
   );
 
+  log.info("github", `${shortKey(key)}  review submitted`);
   refreshAfterReview(key, root);
 
   return { ok: true, event: input.event, url, commentCount: ids.length, push, draft };
@@ -247,7 +249,7 @@ export function refreshAfterReview(key: PrKey, root?: string): void {
     if (decision !== null && decision !== meta.reviewDecision) patch.reviewDecision = decision;
     updateMeta(key, patch, root);
   } catch (err) {
-    console.warn(`[review] could not refresh status after submitting: ${(err as Error).message}`);
+    log.warn("review", `${shortKey(key)}  status refresh failed`, { reason: (err as Error).message });
   }
 }
 

@@ -1,5 +1,8 @@
+import { log } from "./log.js";
+import os from "node:os";
+import { readChangelog } from "./changelog.js";
 import { serve } from "@hono/node-server";
-import { migrateStateDirOnStartup, stateRoot } from "@reviewer/core";
+import { listRepos, listPrs, migrateStateDirOnStartup, stateRoot } from "@reviewer/core";
 import { createApp, DEFAULT_PORT } from "./app.js";
 import { autoAnalyzeEnvAllows, lanEnabled, lanToken, readConfig } from "./config.js";
 import { LAN_WARNING, lanHostnames, lanQrTerminal, lanUrl } from "./lan.js";
@@ -56,13 +59,13 @@ export async function main(opts: MainOptions = {}): Promise<void> {
   // which is why nothing reaches it from there without the token (security.ts).
   const hostname = lan ? "0.0.0.0" : "127.0.0.1";
   const server = serve({ fetch: app.fetch, port: PORT, hostname }, (info) => {
-    console.log(`@reviewer/server listening on http://localhost:${info.port}`);
+    log.info("server", `purview ${readChangelog()[0]?.version ?? "unknown"} · http://localhost:${info.port} · state ${ROOT.startsWith(os.homedir() + "/") ? "~" + ROOT.slice(os.homedir().length) : ROOT} · ${listRepos(ROOT).length} repos · ${listPrs(ROOT).length} PRs`);
     if (lan) void announceLan(lan.hosts, info.port, lan.token);
     // Managed checkouts of PRs that were merged, closed, archived or dropped
     // while the server was down. After listen, and never awaited: removing a
     // large worktree takes a while and must not delay serving.
     void pruneCheckouts(ROOT).catch((err: unknown) =>
-      console.warn(`[checkouts] prune failed: ${(err as Error).message}`),
+      log.warn("checkout", "prune failed", { reason: (err as Error).message }),
     );
   });
 
@@ -72,7 +75,7 @@ export async function main(opts: MainOptions = {}): Promise<void> {
   // gives no hint that it's just "something else is already on this port".
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE") {
-      console.error(
+      log.error("server",
         `Port ${PORT} is already in use — another Purview server is probably running.\n` +
           `Set PURVIEW_PORT to run this one on a different port.`,
       );
@@ -99,14 +102,14 @@ export async function main(opts: MainOptions = {}): Promise<void> {
 async function announceLan(hosts: string[], port: number, token: string): Promise<void> {
   const url = lanUrl(hosts, port, token);
   if (!url) {
-    console.log("--lan: this machine has no non-loopback address to serve on.");
+    log.info("server", "--lan: this machine has no non-loopback address to serve on.");
     return;
   }
-  console.log(`LAN access is on — open ${url} on another device`);
+  log.info("server", `LAN · ${url}`);
   try {
-    console.log(await lanQrTerminal(url));
+    process.stdout.write(await lanQrTerminal(url));
   } catch {
     /* the URL above is the real payload; the QR is a convenience */
   }
-  console.log(LAN_WARNING);
+  log.info("server", LAN_WARNING);
 }

@@ -1,3 +1,4 @@
+import { log } from "./log.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -130,7 +131,7 @@ export function readConfig(root = stateRoot()): ReviewerConfig {
   // Files from before agent selections carry `analysisModel` & co.
   const parsed = ConfigSchema.safeParse(migrateAgentFields(raw));
   if (!parsed.success) {
-    console.warn(`[config] ignoring invalid ${file}: ${parsed.error.issues[0]?.message ?? "invalid"}`);
+    log.warn("config", "invalid config ignored", { path: file, reason: parsed.error.issues[0]?.message });
     return { ...DEFAULT_CONFIG };
   }
   return parsed.data;

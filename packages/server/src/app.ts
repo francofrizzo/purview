@@ -1,3 +1,5 @@
+import { requestLog } from "./request-log.js";
+import { log, shortKey } from "./log.js";
 import fs from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
@@ -386,7 +388,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     try {
       return startAnalysis(key, root, { timeoutMs: opts.analysisTimeoutMs });
     } catch (err) {
-      console.warn(`[analysis] not started for ${keyToString(key)}: ${(err as Error).message}`);
+      log.warn("analysis", `${shortKey(key)}  not started`, { reason: (err as Error).message });
       return null;
     }
   };
@@ -411,6 +413,7 @@ export function createApp(opts: AppOptions = {}): Hono {
   // attacking cross-origin. With LAN access on it covers everything, because
   // the token check has to apply to the app shell and its assets too — a
   // device without the cookie must not get the page either.
+  app.use("/api/*", requestLog());
   app.use(lan ? "/*" : "/api/*", localOnlyGuard({ port, devOrigins: opts.devOrigins, lan }));
 
   /**
@@ -508,7 +511,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       try {
         scheduleReviewRequestRefresh(metas, root, opts.reviewRequestRefresh ?? {});
       } catch (err) {
-        console.warn(`[review-request] not scheduled: ${(err as Error).message}`);
+        log.warn("watch", "review requests not scheduled", { reason: (err as Error).message });
       }
     }
     return c.json({ prs });
@@ -565,7 +568,15 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.post("/api/prs/:key/refresh", (c) => {
     const key = keyParam(c);
-    const result = refreshPr(key, root);
+    log.info("review", `${shortKey(key)}  refresh started`);
+    let result: ReturnType<typeof refreshPr>;
+    try {
+      result = refreshPr(key, root);
+    } catch (err) {
+      log.error("review", `${shortKey(key)}  refresh failed`, { reason: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
+    log.info("review", `${shortKey(key)}  ${result.added ? "refresh finished" : "nothing changed"}`, { revision: result.revision });
     // A migration report means the diff actually changed shape; that's
     // exactly when a draft comment's hunk can have slid out from under it,
     // so reconcile drafts here too, not just on push — see comments.ts. A
@@ -574,10 +585,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       try {
         reanchorDraftComments(key, root);
       } catch (err) {
-        console.warn(
-          `[refresh] reanchorDraftComments failed for ${key.owner}/${key.repo}#${key.number}: ` +
-            (err instanceof Error ? err.message : String(err)),
-        );
+        log.warn("review", `${shortKey(key)}  comment reanchor failed`, { reason: err instanceof Error ? err.message : String(err) });
       }
     }
     // We just fetched the truth; any cached "this PR moved" answer is now
@@ -884,7 +892,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // background (the response never waits on a worktree removal).
     if (meta.archived) {
       void pruneCheckouts(root).catch((err: unknown) =>
-        console.warn(`[checkouts] prune failed: ${(err as Error).message}`),
+        log.warn("checkout", "prune failed", { reason: (err as Error).message }),
       );
     }
     return c.json({ ok: true, archived: meta.archived === true });
@@ -1505,6 +1513,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     let created;
     try {
       created = createStandaloneReviewComment(key, commitId, input);
+      log.info("github", `${shortKey(key)}  comment published`, { id: created.databaseId });
     } catch (err) {
       const e = classifyGhReviewError(err);
       throw new HttpError(e.status ?? 502, e.code, e.message);
@@ -1861,7 +1870,9 @@ export function createApp(opts: AppOptions = {}): Hono {
       on: z.boolean(),
     }).parse(await readJsonBody(c));
     try {
-      return c.json(setReaction(key, c.req.param("commentId"), content, on, root));
+      const result = setReaction(key, c.req.param("commentId"), content, on, root);
+      log.info("github", `${shortKey(key)}  reaction toggled`, { content, on });
+      return c.json(result);
     } catch (err) {
       throw classifyError(err);
     }
@@ -1872,7 +1883,9 @@ export function createApp(opts: AppOptions = {}): Hono {
       const key = trackedKey(c);
       const id = c.req.param("id");
       try {
-        return c.json(setThreadResolved(key, id, action === "resolve", root));
+        const result = setThreadResolved(key, id, action === "resolve", root);
+        log.info("github", `${shortKey(key)}  thread ${action === "resolve" ? "resolved" : "unresolved"}`, { id });
+        return c.json(result);
       } catch (err) {
         throw classifyError(err);
       }
@@ -2310,7 +2323,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // Same as a PR archive: its managed checkouts are no longer needed.
     if (local.archived) {
       void pruneCheckouts(root).catch((err: unknown) =>
-        console.warn(`[checkouts] prune failed: ${(err as Error).message}`),
+        log.warn("checkout", "prune failed", { reason: (err as Error).message }),
       );
     }
     return c.json({ ok: true, archived: local.archived === true });

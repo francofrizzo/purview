@@ -17,7 +17,7 @@ export function runSkillCommand(args: string[], options: {
   source?: string;
   print?: (line: string) => void;
 }): number {
-  const print = options.print ?? console.log;
+  const print = options.print ?? ((text: string) => process.stdout.write(text + "\n"));
   if (!args.length || args.includes("--help")) { print(usage); return 0; }
   if (args[0] === "prompt" && args.length === 1) { print(installPrompt(options.port)); return 0; }
   if (args[0] !== "install") { print(`Unknown skill command: ${args.join(" ")}\n${usage}`); return 1; }

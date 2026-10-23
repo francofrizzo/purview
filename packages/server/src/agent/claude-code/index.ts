@@ -1,3 +1,4 @@
+import { log } from "../../log.js";
 import { createHash, randomUUID } from "node:crypto";
 import { cliCommand } from "../../skill-paths.js";
 import { spawnProcess, superviseProcess, type ChildProcessLike, type ProcessExit } from "../process-runner.js";
@@ -137,9 +138,8 @@ function run(request: AgentRunRequest): AgentRun {
     resumeSessionId: resume?.id,
   });
   const label = LABELS[request.task.kind];
-  if (!process.env.VITEST) {
-    console.log(`[claude:${label}] spawn (cwd=${request.cwd}) ` + loggableArgv(argv).join(" "));
-  }
+  log.info("claude", "spawn", { model: request.model, effort: request.effort, cwd: request.cwd, task: label });
+  log.debug("claude", "argv\n" + loggableArgv(argv).join(" "));
 
   const proc = superviseProcess({
     spawn: (_command, args, opts) => spawner(args, opts),
@@ -168,7 +168,7 @@ function run(request: AgentRunRequest): AgentRun {
     for await (const event of proc.events) {
       if (event.type === "exit") {
         const error = exitError(event.exit, resultError);
-        if (!error && resultError) console.warn(`[claude:${label}] exited 0 after an error result: ${resultError}`);
+        if (!error && resultError) log.warn("claude", "failed despite exit 0", { task: label, reason: resultError });
         yield { type: "completed", ok: !error, error, session };
         return;
       }

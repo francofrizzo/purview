@@ -1,3 +1,4 @@
+import { log, shortKey } from "./log.js";
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -234,6 +235,7 @@ async function ensureUnlocked(key: PrKey, opts: EnsurePrCheckoutOptions): Promis
         );
         if (!moved.ok) return { error: `could not move ${target} to ${headSha.slice(0, 12)}: ${moved.err}` };
       }
+      if (registered.head !== headSha) log.info("checkout", `${shortKey(key)}  moved`, { path: targetReal, head: headSha.slice(0, 12) });
       return { path: targetReal!, headSha, baseRef };
     }
 
@@ -258,6 +260,7 @@ async function ensureUnlocked(key: PrKey, opts: EnsurePrCheckoutOptions): Promis
       repoPath,
     );
     if (!added.ok) return { error: `git worktree add failed: ${added.err}` };
+    log.info("checkout", `${shortKey(key)}  created`, { path: target });
     return { path: realpath(target), headSha, baseRef };
   });
 }
@@ -308,7 +311,7 @@ export async function resolveRunCheckout(
     onStep: input.onStep,
   });
   if ("error" in result) {
-    console.warn(`[${label}] ${keyToString(key)}: managed checkout unavailable (${result.error}); falling back`);
+    log.warn("checkout", `${shortKey(key)}  managed checkout unavailable`, { task: label, reason: result.error });
     return fallback();
   }
   return {
@@ -350,7 +353,7 @@ export async function pruneCheckouts(root = stateRoot()): Promise<string[]> {
           const dir = prCheckoutPath(key, root);
           await withLock(`pr:${keyToString(key)}`, () => removeCheckout(dir, base));
           if (!fs.existsSync(dir)) {
-            console.log(`[checkouts] removed ${dir} (${why})`);
+            log.info("checkout", "removed", { path: dir, reason: why });
             removed.push(dir);
           }
         }
@@ -396,7 +399,7 @@ export async function removeRepoCheckouts(
     if (!fs.existsSync(dir)) continue;
     await withLock(`pr:${keyToString(key)}`, () => removeCheckout(dir, base));
     if (!fs.existsSync(dir)) {
-      console.log(`[checkouts] removed ${dir} (repo removed)`);
+      log.info("checkout", "removed", { path: dir, reason: "repo removed" });
       removed.push(dir);
     }
   }

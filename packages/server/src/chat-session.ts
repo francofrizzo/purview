@@ -1,3 +1,4 @@
+import { log, shortKey, duration } from "./log.js";
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
@@ -172,6 +173,9 @@ export function startChatTurn(
   // `stop()` may arrive before the child exists (the checkout is still being
   // resolved): the flag makes the turn skip the run altogether, and the run
   // handle lets a later stop reach the child.
+  const turnStarted = Date.now();
+  let toolsUsed = 0;
+  log.info("chat", `${shortKey(key)}  turn started`, { model: agent.model });
   let stopped = false;
   let run: AgentRun | undefined;
   const stop = () => {
@@ -203,7 +207,7 @@ export function startChatTurn(
         onStep: (detail) => emit({ type: "tool", name: "checkout", detail }),
       });
       if (checkout.error) {
-        console.warn(`[chat] ${keyStr}: ${checkout.error}; running without a checkout`);
+        log.warn("chat", `${shortKey(key)}  checkout unavailable`, { reason: checkout.error });
       }
       let cwd = stateDir;
       const readRoots = [skillDir()];
@@ -269,6 +273,7 @@ export function startChatTurn(
             if (!streamed) emit({ type: "delta", text: event.text });
             break;
           case "action":
+            toolsUsed++;
             // Text before an action is narration ("Git is denied, I'll read
             // the files directly"), not the answer: the saved reply is what
             // the agent wrote after its last action. The narration is kept
@@ -296,6 +301,7 @@ export function startChatTurn(
       if (!(err instanceof StoppedBeforeRun)) failure = (err as Error).message;
     }
 
+    log[failure && !stopped ? "error" : "info"]("chat", `${shortKey(key)}  ${stopped && !completed ? "stopped" : failure ? "failed" : "turn finished"}`, { duration: duration(Date.now() - turnStarted), tools: toolsUsed, reason: stopped ? undefined : failure });
     const ts = new Date().toISOString();
     const persisted = { session: session ?? null };
     if (stopped && !completed) {

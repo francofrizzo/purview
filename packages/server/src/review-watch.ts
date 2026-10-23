@@ -1,3 +1,4 @@
+import { log } from "./log.js";
 import { listRepos, readRepoConfig, repoKeyToString, stateRoot } from "@reviewer/core";
 import { importReviewRequestsSince } from "./review-import.js";
 import { sweepPrStatuses } from "./status-sweep.js";
@@ -80,7 +81,7 @@ async function tick(root: string, deps: Required<Pick<WatchDeps, "windowMs" | "n
         imported: 0,
         error: (err as Error).message,
       };
-      console.warn(`[watch] ${rkeyStr}: could not read config: ${(err as Error).message}`);
+      log.warn("watch", `${rkeyStr}: could not read config: ${(err as Error).message}`);
       continue;
     }
     if (config.watchReviews !== true) continue;
@@ -91,10 +92,11 @@ async function tick(root: string, deps: Required<Pick<WatchDeps, "windowMs" | "n
 
     try {
       const result = importReviewRequestsSince(repo, since, root, { analyze });
+      if (result.imported.length) log.info("watch", `${rkeyStr}  imported`, { prs: result.imported.length });
       nextRepos[rkeyStr] = { checkedAt: now.toISOString(), imported: result.imported.length };
       if (result.failed.length > 0) {
-        console.warn(
-          `[watch] ${rkeyStr}: ${result.failed.length} PR(s) failed to import: ` +
+        log.warn("watch",
+          `${rkeyStr}: ${result.failed.length} PR(s) failed to import: ` +
             result.failed.map((f) => `${f.key} (${f.error})`).join(", "),
         );
       }
@@ -104,7 +106,7 @@ async function tick(root: string, deps: Required<Pick<WatchDeps, "windowMs" | "n
         imported: 0,
         error: (err as Error).message,
       };
-      console.warn(`[watch] ${rkeyStr}: ${(err as Error).message}`);
+      log.warn("watch", `${rkeyStr}: ${(err as Error).message}`);
     }
   }
 
@@ -113,7 +115,7 @@ async function tick(root: string, deps: Required<Pick<WatchDeps, "windowMs" | "n
   try {
     await sweepPrStatuses(root);
   } catch (err) {
-    console.warn(`[watch] status sweep: ${(err as Error).message}`);
+    log.warn("watch", `status sweep: ${(err as Error).message}`);
   }
 
   status = { lastTickAt: now.toISOString(), repos: nextRepos };

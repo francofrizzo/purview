@@ -1,3 +1,4 @@
+import { log } from "../../log.js";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readSync, realpathSync, rmSync } from "node:fs";
@@ -144,6 +145,7 @@ function run(request: AgentRunRequest) {
       check();
       const acceptedVersion = acceptedCodexVersion(version);
       if (!acceptedVersion) throw new Error(`Requires native Codex ${MIN_VERSION} or newer`);
+      log.info("codex", "spawn", { model: request.model, effort: request.effort, cwd: request.cwd });
       child = spawner(binary, ["app-server", "--listen", "stdio://", ...Object.entries(config).flatMap(([k, v]) => ["-c", `${k}=${toml(v)}`])], { cwd: neutral, env, detached: true, stdio: ["pipe", "pipe", "pipe"] });
       closed = new Promise(resolve => child!.once("close", resolve));
       child.stderr.resume(); // Never surface native auth/RPC diagnostics.

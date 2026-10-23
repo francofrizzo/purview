@@ -1,3 +1,4 @@
+import { log, shortKey } from "./log.js";
 import { loadState, type PrKey } from "@reviewer/core";
 import {
   commentCounts,
@@ -156,10 +157,7 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
   try {
     reanchorDraftComments(key, root);
   } catch (err) {
-    console.warn(
-      `[comment-sync] reanchorDraftComments failed for ${key.owner}/${key.repo}#${key.number}: ` +
-        (err instanceof Error ? err.message : String(err)),
-    );
+    log.warn("github", `${shortKey(key)}  comment reanchor failed`, { reason: err instanceof Error ? err.message : String(err) });
   }
 
   // Anything reconciliation couldn't fix (the commented hunk itself changed

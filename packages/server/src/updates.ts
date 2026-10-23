@@ -1,3 +1,4 @@
+import { log } from "./log.js";
 import { execFile } from "node:child_process";
 import { compareVersions } from "./changelog.js";
 import { repoRoot } from "./skill-paths.js";
@@ -87,7 +88,9 @@ export function createUpdateChecker(deps: UpdateCheckerDeps = {}): UpdateChecker
     if (inFlight) return inFlight;
     inFlight = lsRemote()
       .then((out) => {
-        remoteNewest = newestReleaseTag(out);
+        const latest = newestReleaseTag(out);
+        if (latest && latest !== remoteNewest && remoteNewest !== null) log.info("updates", "release found", { version: latest });
+        remoteNewest = latest;
       })
       .catch(() => {
         // Offline, no `origin`, not a checkout: nothing to say until tomorrow.
