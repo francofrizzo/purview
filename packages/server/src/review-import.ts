@@ -1,8 +1,8 @@
 import {
-  initPr,
+  initPrAsync,
   keyToString,
   listPrs,
-  searchReviewRequestedPrs,
+  searchReviewRequestedPrsAsync,
   stateRoot,
   type PrKey,
   type RepoKey,
@@ -64,16 +64,16 @@ function trackedNumbers(repo: RepoKey, root: string): Set<number> {
  * archived ones) are skipped and reported, not resurrected. One PR's failure
  * is isolated — the caller gets a partial result rather than a thrown error.
  */
-export function importReviewRequestsSince(
+export async function importReviewRequestsSince(
   repo: RepoKey,
   since: Date,
   root = stateRoot(),
   opts: ImportOptions = {},
-): ImportResult {
+): Promise<ImportResult> {
   const result: ImportResult = { imported: [], alreadyTracked: [], failed: [], sharedImports: [] };
   const analyze = opts.analyze ?? true;
 
-  const candidates = searchReviewRequestedPrs(repo, since.toISOString());
+  const candidates = await searchReviewRequestedPrsAsync(repo, since.toISOString());
   const tracked = trackedNumbers(repo, root);
 
   for (const candidate of candidates) {
@@ -84,11 +84,11 @@ export function importReviewRequestsSince(
       continue;
     }
     try {
-      initPr(key, root);
+      await initPrAsync(key, root);
       if (analyze) {
         // Cost-avoidance: a shared analysis already on the PR for this exact
         // revision is free to import and replaces the paid run entirely.
-        const auto = resolveAutoSharedAnalysis(key, root);
+        const auto = await resolveAutoSharedAnalysis(key, root);
         if (auto.imported) {
           result.sharedImports.push({
             key: keyStr,
@@ -116,12 +116,12 @@ export function importReviewRequestsSince(
 }
 
 /** Days-based convenience wrapper: `since = now - days*24h`. */
-export function importReviewRequests(
+export async function importReviewRequests(
   repo: RepoKey,
   days: number,
   root = stateRoot(),
   opts: ImportOptions = {},
-): ImportResult {
+): Promise<ImportResult> {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-  return importReviewRequestsSince(repo, since, root, opts);
+  return await importReviewRequestsSince(repo, since, root, opts);
 }

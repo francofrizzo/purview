@@ -78,7 +78,7 @@ describe("ensurePrCheckout", () => {
     expect(res).toEqual({ path: real(managedPath()), headSha: remote.headSha, baseRef: remote.baseSha });
     expect(headOf(managedPath())).toBe(remote.headSha);
     expect(fs.readFileSync(path.join(managedPath(), "pricing.ts"), "utf8")).toContain("0.2");
-    const entry = listWorktrees(user).find((w) => w.path === real(managedPath()));
+    const entry = (await listWorktrees(user)).find((w) => w.path === real(managedPath()));
     expect(entry?.detached).toBe(true);
     // Lives under checkouts/, never inside the PR state dir.
     expect(managedPath().startsWith(checkoutsRoot(root))).toBe(true);
@@ -88,14 +88,14 @@ describe("ensurePrCheckout", () => {
   it("reuses the worktree and moves it to a new head on refresh", async () => {
     const user = cloneRepo(remote.path, path.join(work, "user"));
     await ensure(user);
-    const before = listWorktrees(user).length;
+    const before = (await listWorktrees(user)).length;
 
     const next = pushPrHead(remote.path, key.number, "export const rate = 0.3;\n");
     const res = await ensure(user, next);
     expect("path" in res && res.path).toBe(real(managedPath()));
     expect(headOf(managedPath())).toBe(next);
     expect(fs.readFileSync(path.join(managedPath(), "pricing.ts"), "utf8")).toContain("0.3");
-    expect(listWorktrees(user)).toHaveLength(before);
+    expect(await listWorktrees(user)).toHaveLength(before);
   });
 
   it("works when the configured path is a worktree of a bare repo, and the bare repo itself", async () => {
@@ -104,7 +104,7 @@ describe("ensurePrCheckout", () => {
 
     const viaWorktree = await ensure(path.join(work, "core-main"));
     expect(viaWorktree).toMatchObject({ path: real(managedPath()), headSha: remote.headSha });
-    expect(listWorktrees(bare).map((w) => w.path)).toContain(real(managedPath()));
+    expect((await listWorktrees(bare)).map((w) => w.path)).toContain(real(managedPath()));
 
     // Same repo reached through the bare dir: the existing worktree is reused.
     const viaBare = await ensure(bare);
@@ -156,7 +156,7 @@ describe("ensurePrCheckout", () => {
     const [a, b] = await Promise.all([ensure(user), ensure(user)]);
     expect(a).toEqual(b);
     expect("path" in a).toBe(true);
-    const managed = listWorktrees(user).filter((w) => w.path.startsWith(real(checkoutsRoot(root))));
+    const managed = (await listWorktrees(user)).filter((w) => w.path.startsWith(real(checkoutsRoot(root))));
     expect(managed).toHaveLength(1);
   });
 
@@ -218,7 +218,7 @@ describe("pruneCheckouts", () => {
     track(pr(10), { prState: "closed" });
     // pr(11) is never tracked.
     for (const n of [7, 8, 9, 10, 11]) {
-      expect("path" in (await ensure(user, remote.headSha, pr(n)))).toBe(true);
+      expect("path" in await ensure(user, remote.headSha, pr(n))).toBe(true);
     }
     // Things prune must never touch: a non-PR entry inside checkouts/, the
     // PR state dirs, and the reader's repo.
@@ -234,7 +234,7 @@ describe("pruneCheckouts", () => {
     expect(fs.existsSync(path.join(notes, "keep.txt"))).toBe(true);
     for (const n of [7, 8, 9, 10]) expect(fs.existsSync(prDir(pr(n), root))).toBe(true);
     // git forgot the removed worktrees; the reader's clone is intact.
-    const paths = listWorktrees(user).map((w) => w.path);
+    const paths = (await listWorktrees(user)).map((w) => w.path);
     expect(paths).toEqual([real(user), real(managedPath(pr(7)))]);
     expect(fs.readFileSync(path.join(user, "pricing.ts"), "utf8")).toContain("0.1");
   });
@@ -246,7 +246,7 @@ describe("pruneCheckouts", () => {
     const listed = () => git(["worktree", "list", "--porcelain"], user);
 
     track(pr(7), { prState: "closed" });
-    expect("path" in (await ensure(user, remote.headSha, pr(7)))).toBe(true);
+    expect("path" in await ensure(user, remote.headSha, pr(7))).toBe(true);
     const managed = real(managedPath(pr(7)));
     // Break the checkout's link so `git worktree remove` fails and the rm
     // fallback runs, while the admin entry in the reader's repo remains.

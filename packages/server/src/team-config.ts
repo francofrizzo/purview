@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   TeamConfigSchema,
-  fetchRepoFile,
+  fetchRepoFileAsync,
   keyToString,
   loadState,
   readTeamConfigCache,
@@ -111,11 +111,11 @@ export function cachedCommitted(key: PrKey, root = stateRoot()): CommittedConfig
   }
 }
 
-export function loadCommittedConfig(
+export async function loadCommittedConfig(
   key: PrKey,
   root = stateRoot(),
   opts: { refresh?: boolean } = {},
-): CommittedConfig {
+): Promise<CommittedConfig> {
   let revision: number;
   let headSha: string | undefined;
   try {
@@ -136,7 +136,7 @@ export function loadCommittedConfig(
   let rubric: string | null = null;
   let chatInstructions: string | null = null;
 
-  const checkout = resolveCheckout(effectiveRepoPath(key, root), prHead(key, root));
+  const checkout = await resolveCheckout(effectiveRepoPath(key, root), prHead(key, root));
   if (checkout.path) {
     const fromDisk = readFromCheckout(checkout.path);
     if (fromDisk.config !== null || fromDisk.rubric !== null || fromDisk.chatInstructions !== null) {
@@ -149,9 +149,9 @@ export function loadCommittedConfig(
 
   if (source === "none") {
     try {
-      rawConfig = fetchRepoFile(key, TEAM_CONFIG_FILE, headSha);
-      rubric = fetchRepoFile(key, TEAM_RUBRIC_FILE, headSha);
-      chatInstructions = fetchRepoFile(key, TEAM_CHAT_FILE, headSha);
+      rawConfig = await fetchRepoFileAsync(key, TEAM_CONFIG_FILE, headSha);
+      rubric = await fetchRepoFileAsync(key, TEAM_RUBRIC_FILE, headSha);
+      chatInstructions = await fetchRepoFileAsync(key, TEAM_CHAT_FILE, headSha);
       if (rawConfig !== null || rubric !== null || chatInstructions !== null) source = "github";
     } catch (err) {
       // Reading the team config is an enhancement; never let it break a run.

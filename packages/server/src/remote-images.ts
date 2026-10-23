@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { gh, prDir, stateRoot, type PrKey } from "@reviewer/core";
+import { ghAsync, prDir, stateRoot, type PrKey } from "@reviewer/core";
 import { HttpError } from "./http-error.js";
 
 /**
@@ -81,19 +81,17 @@ export function allowedRemoteImageUrl(raw: string, host = "github.com"): URL | n
  * is what gh itself sends; a host gh is not logged into yields null and the
  * fetch goes out without credentials (public pictures still load).
  */
-const tokens = new Map<string, string | null>();
+const tokens = new Map<string, Promise<string | null>>();
 
-export function githubToken(host: string): string | null {
+export function githubToken(host: string): Promise<string | null> {
   const h = (host || "github.com").toLowerCase();
-  if (tokens.has(h)) return tokens.get(h)!;
-  let token: string | null;
-  try {
-    token = gh(["auth", "token", ...(h !== "github.com" ? ["--hostname", h] : [])]).trim() || null;
-  } catch {
-    token = null;
+  let pending = tokens.get(h);
+  if (!pending) {
+    pending = ghAsync(["auth", "token", ...(h !== "github.com" ? ["--hostname", h] : [])])
+      .then(token => token.trim() || null, () => null);
+    tokens.set(h, pending);
   }
-  tokens.set(h, token);
-  return token;
+  return pending;
 }
 
 export function resetGithubTokenCache(): void {
@@ -161,7 +159,7 @@ function extFor(mime: string): string {
 
 export interface RemoteImageDeps {
   fetch: typeof fetch;
-  token: (host: string) => string | null;
+  token: (host: string) => string | null | Promise<string | null>;
 }
 
 const defaultDeps: RemoteImageDeps = {
@@ -201,7 +199,7 @@ export async function fetchRemoteImage(
 }
 
 async function download(key: PrKey, url: URL, root: string, deps: RemoteImageDeps): Promise<RemoteImage> {
-  const token = deps.token(key.host);
+  const token = await deps.token(key.host);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 30_000);
   let res: Response;

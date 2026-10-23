@@ -1,12 +1,12 @@
 import { log, shortKey } from "./log.js";
 import {
   appendEvent,
-  fetchReviewDecision,
+  fetchReviewDecisionAsync,
   lastReviewSubmission,
   loadState,
   readiness,
   readMeta,
-  reviewRequestPatch,
+  reviewRequestPatchAsync,
   updateMeta,
   type Meta,
   type PrKey,
@@ -227,7 +227,7 @@ export async function submitReview(
   );
 
   log.info("github", `${shortKey(key)}  review submitted`);
-  refreshAfterReview(key, root);
+  await refreshAfterReview(key, root);
 
   return { ok: true, event: input.event, url, commentCount: ids.length, push, draft };
 }
@@ -239,13 +239,13 @@ export async function submitReview(
  * catch up on the next background poll. Best-effort: the review is already
  * posted, and nothing here may turn that into an error.
  */
-export function refreshAfterReview(key: PrKey, root?: string): void {
+export async function refreshAfterReview(key: PrKey, root?: string): Promise<void> {
   try {
     const meta = readMeta(key, root);
-    const patch: Partial<Meta> = reviewRequestPatch(key, meta.prState, root);
+    const patch: Partial<Meta> = await reviewRequestPatchAsync(key, meta.prState, root);
     // `null` from the decision query means "unknown" (see staleness.ts): it
     // never clears a decision already recorded.
-    const decision = fetchReviewDecision(key);
+    const decision = await fetchReviewDecisionAsync(key);
     if (decision !== null && decision !== meta.reviewDecision) patch.reviewDecision = decision;
     updateMeta(key, patch, root);
   } catch (err) {

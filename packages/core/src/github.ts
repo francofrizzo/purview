@@ -1530,3 +1530,264 @@ export async function findOpenPrByHeadAsync(key: RepoKey, head: string): Promise
     return undefined;
   }
 }
+
+// Non-blocking counterparts used by server request paths.
+export async function fetchPullDiffAsync(key: PrKey): Promise<string> {
+  return await ghAsync([
+    "api",
+    ...hostArgs(key.host),
+    `repos/${key.owner}/${key.repo}/pulls/${key.number}`,
+    "-H",
+    "Accept: application/vnd.github.v3.diff",
+  ]);
+}
+
+export async function fetchMergeBaseAsync(
+  key: PrKey,
+  baseSha: string,
+  headSha: string,
+): Promise<string> {
+  const raw = await ghJsonAsync<{ merge_base_commit: { sha: string } }>(key.host, [
+    `repos/${key.owner}/${key.repo}/compare/${baseSha}...${headSha}`,
+  ]);
+  return raw.merge_base_commit?.sha ?? baseSha;
+}
+
+export async function fetchRemoteViewedStateAsync(key: PrKey): Promise<RemoteViewedState> {
+  const files: Record<string, string> = {};
+  let cursor: string | null = null;
+  let pullRequestId = "";
+  for (;;) {
+    const args = [
+      "api",
+      "graphql",
+      ...hostArgs(key.host),
+      "-f",
+      `query=${VIEWED_STATE_QUERY}`,
+      "-F",
+      `owner=${key.owner}`,
+      "-F",
+      `repo=${key.repo}`,
+      "-F",
+      `number=${key.number}`,
+    ];
+    if (cursor) args.push("-F", `cursor=${cursor}`);
+    const res = JSON.parse(await ghAsync(args)) as {
+      data: {
+        repository: {
+          pullRequest: {
+            id: string;
+            files: {
+              pageInfo: { hasNextPage: boolean; endCursor: string };
+              nodes: { path: string; viewerViewedState: string }[];
+            };
+          };
+        };
+      };
+    };
+    const pr = res.data.repository.pullRequest;
+    pullRequestId = pr.id;
+    for (const n of pr.files.nodes) files[n.path] = n.viewerViewedState;
+    if (!pr.files.pageInfo.hasNextPage) break;
+    cursor = pr.files.pageInfo.endCursor;
+  }
+  return { pullRequestId, files };
+}
+
+export async function setFileViewedOnGithubAsync(
+  key: PrKey,
+  pullRequestId: string,
+  file: string,
+  viewed: boolean,
+): Promise<void> {
+  await ghAsync([
+    "api",
+    "graphql",
+    ...hostArgs(key.host),
+    "-f",
+    `query=${viewed ? MARK_VIEWED : UNMARK_VIEWED}`,
+    "-F",
+    `pullRequestId=${pullRequestId}`,
+    "-F",
+    `path=${file}`,
+  ]);
+}
+
+export async function fetchReviewDecisionAsync(key: PrKey): Promise<ReviewDecision | null> {
+  return (await fetchReviewStatusAsync(key)).reviewDecision;
+}
+
+export async function fetchRepoFileAsync(
+  key: PrKey,
+  filePath: string,
+  ref?: string,
+): Promise<string | null> {
+  const suffix = ref ? `?ref=${encodeURIComponent(ref)}` : "";
+  try {
+    const raw = JSON.parse(
+      await ghAsync([
+        "api",
+        ...hostArgs(key.host),
+        `repos/${key.owner}/${key.repo}/contents/${filePath}${suffix}`,
+      ]),
+    ) as RawContents;
+    if (!raw || raw.type === "dir" || typeof raw.content !== "string") return null;
+    if (raw.encoding && raw.encoding !== "base64") return raw.content;
+    return Buffer.from(raw.content, "base64").toString("utf8");
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchGitattributesAsync(key: PrKey, sha: string): Promise<{ text: string | null; ok: boolean }> {
+  try {
+    const raw = JSON.parse(
+      await ghAsync(["api", ...hostArgs(key.host), `repos/${key.owner}/${key.repo}/contents/.gitattributes?ref=${encodeURIComponent(sha)}`]),
+    ) as RawContents;
+    if (!raw || raw.type === "dir" || typeof raw.content !== "string") return { text: null, ok: true };
+    const text = raw.encoding && raw.encoding !== "base64" ? raw.content : Buffer.from(raw.content, "base64").toString("utf8");
+    return { text, ok: true };
+  } catch (err) {
+    return { text: null, ok: /HTTP 404|Not Found/i.test((err as Error).message) };
+  }
+}
+
+export async function fetchFileHeadsAsync(
+  key: PrKey,
+  sha: string,
+  paths: string[],
+  lines: number,
+): Promise<{ heads: Map<string, string[]>; ok: boolean }> {
+  const heads = new Map<string, string[]>();
+  let ok = true;
+  const query = (batch: string[], fields: string) =>
+    "query($owner:String!,$repo:String!){repository(owner:$owner,name:$repo){" +
+    batch
+      .map((p, i) => `f${i}:object(expression:${JSON.stringify(`${sha}:${p}`)}){... on Blob{${fields}}}`)
+      .join(" ") +
+    "}}";
+  const run = async (batch: string[], fields: string): Promise<Record<string, { byteSize?: number; isBinary?: boolean; text?: string | null } | null>> => {
+    const res = JSON.parse(
+      await ghAsync([
+        "api",
+        "graphql",
+        ...hostArgs(key.host),
+        "-f",
+        `query=${query(batch, fields)}`,
+        "-F",
+        `owner=${key.owner}`,
+        "-F",
+        `repo=${key.repo}`,
+      ]),
+    ) as { data?: { repository?: Record<string, never> } };
+    return res.data?.repository ?? {};
+  };
+  const small: string[] = [];
+  for (let i = 0; i < paths.length; i += BLOB_SIZE_BATCH) {
+    const batch = paths.slice(i, i + BLOB_SIZE_BATCH);
+    try {
+      const repo = await run(batch, "byteSize isBinary");
+      batch.forEach((p, j) => {
+        const blob = repo[`f${j}`];
+        if (blob && !blob.isBinary && (blob.byteSize ?? Infinity) <= HEAD_BLOB_MAX_BYTES) small.push(p);
+      });
+    } catch {
+      ok = false;
+    }
+  }
+  for (let i = 0; i < small.length; i += BLOB_TEXT_BATCH) {
+    const batch = small.slice(i, i + BLOB_TEXT_BATCH);
+    try {
+      const repo = await run(batch, "text");
+      batch.forEach((p, j) => {
+        const text = repo[`f${j}`]?.text;
+        if (typeof text === "string") heads.set(p, text.split("\n").slice(0, lines));
+      });
+    } catch {
+      ok = false;
+    }
+  }
+  return { heads, ok };
+}
+
+export async function searchReviewRequestedPrsAsync(
+  key: RepoKey,
+  sinceIso: string,
+): Promise<ReviewRequestedPr[]> {
+  const day = sinceIso.slice(0, 10);
+  const raw = await ghAsync([
+    "pr",
+    "list",
+    "-R",
+    repoFlagValue(key),
+    "--search",
+    `review-requested:@me updated:>=${day}`,
+    "--state",
+    "open",
+    "--json",
+    "number,title,updatedAt",
+    "--limit",
+    "100",
+  ]);
+  const parsed = JSON.parse(raw) as RawSearchPull[];
+  return parsed.map((p) => ({ number: p.number, title: p.title, updatedAt: p.updatedAt }));
+}
+
+export async function listIssueCommentsAsync(key: PrKey): Promise<IssueComment[]> {
+  const raw = await ghJsonAsync<RawIssueComment[]>(key.host, [
+    "--paginate",
+    `repos/${key.owner}/${key.repo}/issues/${key.number}/comments`,
+  ]);
+  return raw.map((c) => ({
+    id: c.id,
+    body: c.body ?? "",
+    htmlUrl: c.html_url,
+    author: c.user?.login ?? undefined,
+    createdAt: c.created_at,
+    updatedAt: c.updated_at,
+  }));
+}
+
+export async function postIssueCommentAsync(key: PrKey, body: string): Promise<IssueComment> {
+  const raw = await ghJsonAsync<RawIssueComment>(
+    key.host,
+    [
+      "--method",
+      "POST",
+      `repos/${key.owner}/${key.repo}/issues/${key.number}/comments`,
+      "--input",
+      "-",
+    ],
+    JSON.stringify({ body }),
+  );
+  return {
+    id: raw.id,
+    body: raw.body ?? "",
+    htmlUrl: raw.html_url,
+    author: raw.user?.login ?? undefined,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
+
+export async function updateIssueCommentAsync(key: PrKey, commentId: number, body: string): Promise<IssueComment> {
+  const raw = await ghJsonAsync<RawIssueComment>(
+    key.host,
+    [
+      "--method",
+      "PATCH",
+      `repos/${key.owner}/${key.repo}/issues/comments/${commentId}`,
+      "--input",
+      "-",
+    ],
+    JSON.stringify({ body }),
+  );
+  return {
+    id: raw.id,
+    body: raw.body ?? "",
+    htmlUrl: raw.html_url,
+    author: raw.user?.login ?? undefined,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}

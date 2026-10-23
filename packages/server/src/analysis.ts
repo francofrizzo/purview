@@ -1004,12 +1004,13 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
       if (latest) writeJob(key, { ...latest, progress: detail }, root);
     },
   });
+  // One read per revision (cached in the revision dir); best-effort.
+  const committed = await loadCommittedConfig(key, root);
   if (slot.cancelled) {
     finish(key, root, revision, "cancelled");
     return;
   }
-  // One read per revision (cached in the revision dir); best-effort.
-  const committed = loadCommittedConfig(key, root);
+
   if (checkout.path) readRoots.push(checkout.path);
   if (checkout.error) {
     log.warn("analysis", `${shortKey(key)}  checkout unavailable`, { reason: checkout.error });

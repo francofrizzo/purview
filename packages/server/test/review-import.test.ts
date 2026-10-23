@@ -94,31 +94,31 @@ afterEach(async () => {
 });
 
 describe("importReviewRequestsSince", () => {
-  it("imports every untracked review-requested PR and skips already-tracked ones", () => {
+  it("imports every untracked review-requested PR and skips already-tracked ones", async () => {
     ghFor({ candidates: [{ number: 1, title: "One", updatedAt: "2024-01-01T00:00:00Z" }, { number: 2, title: "Two", updatedAt: "2024-01-02T00:00:00Z" }] });
     // PR 1 is already tracked before the import runs.
     initPr({ ...repo, number: 1 }, root);
 
-    const result = importReviewRequestsSince(repo, new Date(0), root, { analyze: false });
+    const result = await importReviewRequestsSince(repo, new Date(0), root, { analyze: false });
 
     expect(result.alreadyTracked).toEqual([keyToString({ ...repo, number: 1 })]);
     expect(result.imported).toEqual([keyToString({ ...repo, number: 2 })]);
     expect(result.failed).toEqual([]);
   });
 
-  it("treats an archived PR as tracked, never resurrecting it", () => {
+  it("treats an archived PR as tracked, never resurrecting it", async () => {
     ghFor({ candidates: [{ number: 5, title: "Archived one", updatedAt: "2024-01-01T00:00:00Z" }] });
     initPr({ ...repo, number: 5 }, root);
     // Archive it out of the active list.
     updateMeta({ ...repo, number: 5 }, { archived: true }, root);
 
-    const result = importReviewRequestsSince(repo, new Date(0), root, { analyze: false });
+    const result = await importReviewRequestsSince(repo, new Date(0), root, { analyze: false });
 
     expect(result.alreadyTracked).toEqual([keyToString({ ...repo, number: 5 })]);
     expect(result.imported).toEqual([]);
   });
 
-  it("isolates one PR's failure from the rest of the batch", () => {
+  it("isolates one PR's failure from the rest of the batch", async () => {
     ghFor({
       candidates: [
         { number: 10, title: "Good", updatedAt: "2024-01-01T00:00:00Z" },
@@ -128,7 +128,7 @@ describe("importReviewRequestsSince", () => {
       failNumbers: [11],
     });
 
-    const result = importReviewRequestsSince(repo, new Date(0), root, { analyze: false });
+    const result = await importReviewRequestsSince(repo, new Date(0), root, { analyze: false });
 
     expect(result.imported.sort()).toEqual(
       [keyToString({ ...repo, number: 10 }), keyToString({ ...repo, number: 12 })].sort(),
@@ -155,7 +155,7 @@ describe("importReviewRequestsSince", () => {
     claude = fakeClaude({ hang: true });
     claude.install();
 
-    const result = importReviewRequestsSince(repo, new Date(0), root, { analyze: true });
+    const result = await importReviewRequestsSince(repo, new Date(0), root, { analyze: true });
 
     expect(result.imported).toEqual([
       keyToString({ ...repo, number: 20 }),
@@ -168,10 +168,10 @@ describe("importReviewRequestsSince", () => {
     cancelAnalysis({ ...repo, number: 20 }, root);
   });
 
-  it("days -> since math: importReviewRequests searches from now - days*24h", () => {
+  it("days -> since math: importReviewRequests searches from now - days*24h", async () => {
     const gh = ghFor({ candidates: [] });
     const before = Date.now();
-    importReviewRequests(repo, 3, root, { analyze: false });
+    await importReviewRequests(repo, 3, root, { analyze: false });
     const after = Date.now();
 
     expect(gh.searchCalls).toHaveLength(1);

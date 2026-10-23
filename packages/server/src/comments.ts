@@ -8,7 +8,7 @@ import {
   commentsPath,
   computeHunkId,
   disambiguate,
-  gh,
+  ghAsync,
   loadState,
   priorRevisions,
   readFilesJson,
@@ -403,12 +403,12 @@ function hostArgs(host: string): string[] {
  * reader can discard the pending review). The remote outcome is reported, not
  * thrown.
  */
-export function deleteComment(
+export async function deleteComment(
   key: PrKey,
   id: string,
   root = stateRoot(),
   actor: CommentActor = "you",
-): DeleteCommentResult {
+): Promise<DeleteCommentResult> {
   const comments = readComments(key, root);
   const target = comments.find((c) => c.id === id);
   if (!target) return { removed: false };
@@ -418,7 +418,7 @@ export function deleteComment(
   // and deleting it silently on a local delete would be a surprise.
   if (target.status === "pushed" && target.githubCommentId !== undefined) {
     try {
-      gh([
+      await ghAsync([
         "api",
         "--method",
         "DELETE",

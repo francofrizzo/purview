@@ -65,8 +65,8 @@ const toLineInput = (c: Comment): LineReviewCommentInput => ({
  * local body is only replaced once GitHub has accepted it (`markPushed`).
  * Throws when an upload fails; the draft then stays as it was.
  */
-function withGithubBody(key: PrKey, draft: Comment, root?: string): Comment {
-  const body = resolveBodyForGithub(key, draft.body, root);
+async function withGithubBody(key: PrKey, draft: Comment, root?: string): Promise<Comment> {
+  const body = await resolveBodyForGithub(key, draft.body, root);
   return body === draft.body ? draft : { ...draft, body };
 }
 
@@ -105,7 +105,7 @@ async function appendDrafts(
     // and stops the push here, like any failed append.
     let outgoing: Comment;
     try {
-      outgoing = withGithubBody(key, draft, root);
+      outgoing = await withGithubBody(key, draft, root);
     } catch (err) {
       return { pushed, failure: uploadFailure(draft, err) };
     }
@@ -242,7 +242,7 @@ export async function pushDraftComments(key: PrKey, root?: string): Promise<Comm
       let uploadFailed: ReviewError | undefined;
       for (const draft of drafts.filter((c) => c.subjectType === "line" && !c.inReplyTo)) {
         try {
-          lineDrafts.push(withGithubBody(key, draft, root));
+          lineDrafts.push(await withGithubBody(key, draft, root));
         } catch (err) {
           uploadFailed ??= uploadFailure(draft, err);
         }

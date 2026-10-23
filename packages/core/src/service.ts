@@ -1,5 +1,11 @@
 import fs from "node:fs";
 import {
+  fetchMergeBaseAsync,
+  fetchPullDiffAsync,
+  fetchPullRequestAsync,
+  fetchRemoteViewedStateAsync,
+  fetchReviewStatusAsync,
+  setFileViewedOnGithubAsync,
   fetchDefaultBranch,
   fetchDefaultBranchAsync,
   findOpenPrByHeadAsync,
@@ -17,7 +23,7 @@ import {
 } from "./github.js";
 import { migrate, toRevisionFiles } from "./migration.js";
 import { GENERATED_UNIT_ID, generatedFilesOf, isGeneratedUnit } from "./generated.js";
-import { classifyFiles, gatherGeneratedFacts, reclassifyGenerated } from "./generated-io.js";
+import { classifyFiles, gatherGeneratedFacts, gatherGeneratedFactsAsync, reclassifyGenerated, reclassifyGeneratedAsync } from "./generated-io.js";
 import { parseDiff } from "./parse-diff.js";
 import { analysisJobPath, commentsPath, repoKeyOf, stateRoot, type PrKey } from "./paths.js";
 import { nextRevisionNumber, priorRevisions } from "./reducer.js";
@@ -990,4 +996,198 @@ export async function reviewRequestPatchAsync(
     // best-effort
   }
   return patch;
+}
+
+// Non-blocking counterparts used by server request paths.
+export async function initPrAsync(key: PrKey, root = stateRoot()): Promise<InitResult> {
+  const created = !prExists(key, root);
+  const pr = await fetchPullRequestAsync(key);
+  const now = new Date().toISOString();
+
+  // The repo's own config file is created with the first PR of that repo, so
+  // it is discoverable (and editable) from the moment the repo is tracked.
+  ensureRepoConfig(repoKeyOf(key), root);
+
+  if (created) {
+    writeMeta(
+      key,
+      {
+        host: key.host,
+        owner: key.owner,
+        repo: key.repo,
+        number: key.number,
+        url: pr.url,
+        title: pr.title,
+        author: pr.author,
+        authorAvatarUrl: pr.authorAvatarUrl,
+        body: pr.body,
+        headRef: pr.headRef,
+        baseRef: pr.baseRef,
+        prState: pr.prState,
+        ...await fetchReviewStatusAsync(key),
+        archived: false,
+        createdAt: now,
+      },
+      root,
+    );
+    appendEvent(
+      key,
+      {
+        type: "pr-initialized",
+        host: key.host,
+        owner: key.owner,
+        repo: key.repo,
+        number: key.number,
+        url: pr.url,
+        title: pr.title,
+      },
+      root,
+    );
+  }
+
+  const res = await refreshPrAsync(key, root);
+  return { key, state: res.state, revision: res.revision, created };
+}
+
+export async function refreshPrAsync(key: PrKey, root = stateRoot()): Promise<RefreshResult> {
+  const meta = readMeta(key, root); // ensures the PR was initialized
+  const pr = await fetchPullRequestAsync(key);
+  // The head branch can be renamed (or was never recorded, on older state), and
+  // worktree resolution keys off it, so keep it current on every refresh.
+  // State, review decision and CI also ride along on explicit refreshes.
+  // A failed GraphQL query leaves the previous CI intact.
+  const { reviewDecision, ci, reviewers } = await fetchReviewStatusAsync(key);
+  const metaPatch: Partial<Meta> = {};
+  if (ciChanged(meta.ci, ci)) metaPatch.ci = ci;
+  if (reviewersChanged(meta.reviewers, reviewers)) {
+    metaPatch.reviewers = reviewers;
+    metaPatch.reviewersCheckedAt = new Date().toISOString();
+  }
+  // What the list compares the stored revision against to say "needs
+  // update"; the refresh is about to hold this head, so the mark clears.
+  if (pr.headSha && meta.upstreamHeadSha !== pr.headSha) metaPatch.upstreamHeadSha = pr.headSha;
+  if (meta.headRef !== pr.headRef) metaPatch.headRef = pr.headRef;
+  // Same for the base branch, plus the PR it is stacked on (when it targets
+  // anything but the default branch) — the prompts tell Claude about it.
+  Object.assign(metaPatch, await resolveBaseMetaAsync(key, meta, pr.baseRef, root));
+  // Backfills state written before the author was recorded.
+  if (pr.author && meta.author !== pr.author) metaPatch.author = pr.author;
+  if (pr.authorAvatarUrl && meta.authorAvatarUrl !== pr.authorAvatarUrl) {
+    metaPatch.authorAvatarUrl = pr.authorAvatarUrl;
+  }
+  if (meta.prState !== pr.prState) metaPatch.prState = pr.prState;
+  // The author edits these as the PR evolves; the prompts and the PR view
+  // read them from meta.
+  if (pr.title && meta.title !== pr.title) metaPatch.title = pr.title;
+  if (meta.body !== pr.body) metaPatch.body = pr.body;
+  if ((meta.reviewDecision ?? null) !== reviewDecision) {
+    metaPatch.reviewDecision = reviewDecision;
+  }
+  // Whether the user's review is still being waited on, and since when.
+  Object.assign(metaPatch, await reviewRequestPatchAsync(key, pr.prState, root));
+  if (Object.keys(metaPatch).length > 0) updateMeta(key, metaPatch, root);
+  const mergeBase = await fetchMergeBaseAsync(key, pr.baseSha, pr.headSha);
+  const state = loadState(key, root);
+  const current = state.revisions.find(
+    (r) => r.revision === state.currentRevision,
+  );
+
+  if (
+    current &&
+    current.headSha === pr.headSha &&
+    current.mergeBase === mergeBase &&
+    current.baseSha === pr.baseSha
+  ) {
+    // Same revision: re-apply the generated-file classification, which
+    // backfills a revision recorded before it existed (or whose facts read
+    // failed) and picks up repo-setting changes. Appends only on a change.
+    const re = await reclassifyGeneratedAsync(key, root, { fetch: true });
+    return {
+      state: re.state,
+      revision: current.revision,
+      added: false,
+      baseOnly: current.baseOnly,
+    };
+  }
+
+  const patch = await fetchPullDiffAsync(key);
+  const parsed = parseDiff(patch);
+  // Not current + 1: a discarded revision's number is never handed out again.
+  // The migration below still diffs against `current`, the revision in force.
+  const revision = nextRevisionNumber(readEvents(key, root));
+  const baseOnly = !!current && current.headSha === pr.headSha;
+
+  // Generated files and lockfiles are decided here, before anything reads the
+  // revision: files.json, the triage and the event all carry the verdict.
+  const facts = await gatherGeneratedFactsAsync(key, parsed, pr.headSha, root);
+  const files = classifyFiles(key, parsed, facts, root);
+
+  writeRevision(
+    key,
+    revision,
+    patch,
+    files,
+    { baseSha: pr.baseSha, headSha: pr.headSha, mergeBase },
+    root,
+  );
+
+  let report: MigrationReport | undefined;
+  if (current) {
+    report = migrate({
+      revision,
+      previousRevision: current.revision,
+      previousFiles: readFilesJson(key, current.revision, root).files,
+      nextFiles: files,
+      hunkStates: state.hunks,
+      baseOnly,
+    });
+    writeMigrationReport(key, report, root);
+  }
+  writeGeneratedFacts(key, revision, facts, root);
+
+  const next = appendEvent(
+    key,
+    {
+      type: "revision-added",
+      revision,
+      baseSha: pr.baseSha,
+      headSha: pr.headSha,
+      mergeBase,
+      baseOnly,
+      files: toRevisionFiles(files),
+      migration: report,
+      generated: generatedFilesOf(files),
+    },
+    root,
+  );
+
+  return { state: next, revision, added: true, baseOnly, report };
+}
+
+export async function syncPrAsync(key: PrKey, root = stateRoot()): Promise<SyncResult> {
+  const state = loadState(key, root);
+  const remote = await fetchRemoteViewedStateAsync(key);
+  const pushed: SyncResult["pushed"] = [];
+  const drift: SyncResult["drift"] = [];
+  const events: NewEvent[] = [];
+
+  for (const file of state.files) {
+    const remoteState = remote.files[file.path];
+    const remoteViewed = remoteState === "VIEWED";
+    if (remoteState && remoteViewed !== file.viewed) {
+      drift.push({ file: file.path, local: file.viewed, remote: remoteState });
+    }
+    // GitHub already matches the local projection (unknown remote == unviewed).
+    if (remoteViewed === file.viewed) continue;
+    await setFileViewedOnGithubAsync(key, remote.pullRequestId, file.path, file.viewed);
+    pushed.push({ file: file.path, viewed: file.viewed });
+    events.push({
+      type: "file-synced-github",
+      file: file.path,
+      viewed: file.viewed,
+    });
+  }
+
+  const next = events.length > 0 ? appendEvents(key, events, root) : state;
+  return { pushed, drift, state: next };
 }

@@ -1,5 +1,8 @@
-import { execFileSync } from "node:child_process";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import fs from "node:fs";
+
+const execFileAsync = promisify(execFile);
 
 /**
  * Git checkout resolution.
@@ -14,15 +17,14 @@ import fs from "node:fs";
  * de-gitted must degrade to "no local checkout", never to a failed run.
  */
 
-export type GitRunner = (args: string[], cwd: string) => string;
+export type GitRunner = (args: string[], cwd: string) => string | Promise<string>;
 
-const defaultRunner: GitRunner = (args, cwd) =>
-  execFileSync("git", args, {
+const defaultRunner: GitRunner = async (args, cwd) =>
+  (await execFileAsync("git", args, {
     cwd,
     encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 32 * 1024 * 1024,
-  });
+  })).stdout;
 
 let runner: GitRunner = defaultRunner;
 
@@ -31,9 +33,9 @@ export function setGitRunner(next: GitRunner | null): void {
   runner = next ?? defaultRunner;
 }
 
-function git(args: string[], cwd: string): string | undefined {
+async function git(args: string[], cwd: string): Promise<string | undefined> {
   try {
-    return runner(args, cwd).trim();
+    return (await runner(args, cwd)).trim();
   } catch {
     return undefined;
   }
@@ -43,21 +45,21 @@ function git(args: string[], cwd: string): string | undefined {
  * The top of the working tree containing `p` — works from any subdirectory,
  * and works in a worktree, where `.git` is a *file* rather than a directory.
  */
-export function repoToplevel(p: string): string | undefined {
+export async function repoToplevel(p: string): Promise<string | undefined> {
   if (!fs.existsSync(p)) return undefined;
-  return git(["-C", p, "rev-parse", "--show-toplevel"], p);
+  return await git(["-C", p, "rev-parse", "--show-toplevel"], p);
 }
 
 /** Shared git dir of the whole repo — identical across all of its worktrees. */
-export function repoCommonDir(p: string): string | undefined {
-  const dir = git(["-C", p, "rev-parse", "--path-format=absolute", "--git-common-dir"], p);
+export async function repoCommonDir(p: string): Promise<string | undefined> {
+  const dir = await git(["-C", p, "rev-parse", "--path-format=absolute", "--git-common-dir"], p);
   // --path-format landed in git 2.31; fall back to the relative form.
   if (dir) return dir;
-  return git(["-C", p, "rev-parse", "--git-common-dir"], p);
+  return await git(["-C", p, "rev-parse", "--git-common-dir"], p);
 }
 
-export function originUrl(p: string): string | undefined {
-  return git(["-C", p, "remote", "get-url", "origin"], p);
+export async function originUrl(p: string): Promise<string | undefined> {
+  return await git(["-C", p, "remote", "get-url", "origin"], p);
 }
 
 export interface WorktreeEntry {
@@ -70,8 +72,8 @@ export interface WorktreeEntry {
 }
 
 /** `git worktree list --porcelain`, parsed. Empty when git can't answer. */
-export function listWorktrees(p: string): WorktreeEntry[] {
-  const out = git(["-C", p, "worktree", "list", "--porcelain"], p);
+export async function listWorktrees(p: string): Promise<WorktreeEntry[]> {
+  const out = await git(["-C", p, "worktree", "list", "--porcelain"], p);
   if (!out) return [];
   const entries: WorktreeEntry[] = [];
   let current: WorktreeEntry | null = null;
@@ -131,10 +133,10 @@ export interface CheckoutResolution {
  *      checkout of the PR, and a branch renamed on GitHub) -> that worktree;
  *   5. otherwise                 -> the stored checkout, flagged as a mismatch.
  */
-export function resolveCheckout(
+export async function resolveCheckout(
   storedPath: string | undefined,
   pr: { headRef?: string; headSha?: string },
-): CheckoutResolution {
+): Promise<CheckoutResolution> {
   if (!storedPath) return { resolvedWorktree: false };
   if (!fs.existsSync(storedPath)) {
     return {
@@ -142,7 +144,7 @@ export function resolveCheckout(
       error: `configured checkout ${storedPath} no longer exists`,
     };
   }
-  const top = repoToplevel(storedPath);
+  const top = await repoToplevel(storedPath);
   if (!top) {
     return {
       resolvedWorktree: false,
@@ -150,7 +152,7 @@ export function resolveCheckout(
     };
   }
 
-  const worktrees = listWorktrees(top).filter((w) => !w.bare && fs.existsSync(w.path));
+  const worktrees = (await listWorktrees(top)).filter((w) => !w.bare && fs.existsSync(w.path));
   const byBranch = pr.headRef
     ? worktrees.find((w) => w.branch === pr.headRef)
     : undefined;
@@ -167,7 +169,7 @@ export function resolveCheckout(
   // what it is actually sitting on, since that is the thing a reader needs to
   // know when the surrounding code looks wrong.
   const self =
-    worktrees.find((w) => w.path === top) ?? listWorktrees(top).find((w) => w.path === top);
+    worktrees.find((w) => w.path === top) ?? (await listWorktrees(top)).find((w) => w.path === top);
   const checkedOutBranch =
     self?.branch ?? (self?.head ? `detached at ${self.head.slice(0, 12)}` : "unknown");
   return {

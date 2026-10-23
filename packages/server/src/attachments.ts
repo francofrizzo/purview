@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { gh, prDir, stateRoot, type PrKey } from "@reviewer/core";
+import { ghAsync, prDir, stateRoot, type PrKey } from "@reviewer/core";
 import { HttpError } from "./http-error.js";
 
 /**
@@ -272,9 +272,9 @@ export function uploadEndpoint(host: string): string {
 }
 
 /** `gh api repos/{o}/{r}` -> `id`, remembered in the index. */
-function repositoryId(key: PrKey, index: AttachmentIndex): number {
+async function repositoryId(key: PrKey, index: AttachmentIndex): Promise<number> {
   if (index.repositoryId) return index.repositoryId;
-  const raw = JSON.parse(gh(["api", ...hostArgs(key.host), `repos/${key.owner}/${key.repo}`])) as {
+  const raw = JSON.parse(await ghAsync(["api", ...hostArgs(key.host), `repos/${key.owner}/${key.repo}`])) as {
     id?: unknown;
   };
   if (typeof raw.id !== "number" || raw.id <= 0) {
@@ -323,14 +323,14 @@ function explainUploadFailure(name: string, raw: string): string {
  * Not retried on failure and never re-run for an attachment that already has
  * a `githubUrl`: an upload cannot be undone.
  */
-export function uploadAttachmentToGithub(key: PrKey, id: string, root = stateRoot()): Attachment {
+export async function uploadAttachmentToGithub(key: PrKey, id: string, root = stateRoot()): Promise<Attachment> {
   const index = readIndex(key, root);
   const target = index.attachments.find((a) => a.id === id);
   if (!target) throw new Error(`No attachment "${id}"`);
   if (target.githubUrl) return target;
 
   const endpoint = uploadEndpoint(key.host);
-  const repoId = repositoryId(key, index);
+  const repoId = await repositoryId(key, index);
   // The repo id is worth keeping even if the upload below fails.
   writeIndex(key, index, root);
 
@@ -343,7 +343,7 @@ export function uploadAttachmentToGithub(key: PrKey, id: string, root = stateRoo
   });
   let out: string;
   try {
-    out = gh([
+    out = await ghAsync([
       "api",
       ...hostArgs(key.host),
       "--method",
@@ -382,11 +382,11 @@ export function uploadAttachmentToGithub(key: PrKey, id: string, root = stateRoo
  * first upload that fails, with nothing rewritten: the caller keeps the
  * local body and reports the error.
  */
-export function resolveBodyForGithub(key: PrKey, body: string, root = stateRoot()): string {
+export async function resolveBodyForGithub(key: PrKey, body: string, root = stateRoot()): Promise<string> {
   const refs = attachmentRefs(body);
   if (refs.length === 0) return body;
   const uploaded = new Map<string, Attachment>();
-  for (const id of refs) uploaded.set(id, uploadAttachmentToGithub(key, id, root));
+  for (const id of refs) uploaded.set(id, await uploadAttachmentToGithub(key, id, root));
   return body.replace(REF_RE, (whole, alt: string, id: string) => {
     const a = uploaded.get(id);
     if (!a?.githubUrl) return whole;

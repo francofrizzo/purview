@@ -3,11 +3,11 @@ import {
   buildAnalysisExport,
   extractAnalysisFromComment,
   keyToString,
-  listIssueComments,
+  listIssueCommentsAsync,
   loadState,
-  postIssueComment,
+  postIssueCommentAsync,
   renderAnalysisComment,
-  updateIssueComment,
+  updateIssueCommentAsync,
   type AnalysisExport,
   type AnalysisImportReport,
   type IssueComment,
@@ -36,8 +36,8 @@ export interface MarkedComment {
  * -edited, a future/older format) is skipped rather than failing the scan —
  * same tolerance `extractAnalysisFromComment` itself has.
  */
-function markedComments(key: PrKey): MarkedComment[] {
-  return listIssueComments(key)
+async function markedComments(key: PrKey): Promise<MarkedComment[]> {
+  return (await listIssueCommentsAsync(key))
     .map((comment) => {
       const envelope = extractAnalysisFromComment(comment.body);
       return envelope ? { comment, envelope } : null;
@@ -50,9 +50,9 @@ type Resolved =
   | { ok: false; error: string };
 
 /** Tolerant wrapper: a `gh` failure here must never propagate as a thrown error. */
-function resolveMarked(key: PrKey): Resolved {
+async function resolveMarked(key: PrKey): Promise<Resolved> {
   try {
-    return { ok: true, comments: markedComments(key) };
+    return { ok: true, comments: await markedComments(key) };
   } catch (err) {
     return { ok: false, error: (err as Error).message };
   }
@@ -72,18 +72,18 @@ export interface ShareResult {
  * accumulates more than one purview-analysis comment. When more than one
  * somehow exists (a very unlucky race), the newest is treated as canonical.
  */
-export function shareAnalysisToPr(key: PrKey, root: string): ShareResult {
+export async function shareAnalysisToPr(key: PrKey, root: string): Promise<ShareResult> {
   const envelope = buildAnalysisExport(key, root);
   const body = renderAnalysisComment(envelope);
-  const existing = listIssueComments(key)
+  const existing = (await listIssueCommentsAsync(key))
     .map((comment) => ({ comment, marked: extractAnalysisFromComment(comment.body) !== null }))
     .filter((c) => c.marked);
   const target = existing[existing.length - 1];
   if (target) {
-    const updated = updateIssueComment(key, target.comment.id, body);
+    const updated = await updateIssueCommentAsync(key, target.comment.id, body);
     return { commentUrl: updated.htmlUrl, updated: true };
   }
-  const created = postIssueComment(key, body);
+  const created = await postIssueCommentAsync(key, body);
   return { commentUrl: created.htmlUrl, updated: false };
 }
 
@@ -102,8 +102,8 @@ export interface ImportFromPrResult {
  * expected to have already checked `isBusy` (see app.ts) — mid-run imports
  * would race the run's own `set-analysis` call.
  */
-export function importAnalysisFromPr(key: PrKey, root: string): ImportFromPrResult {
-  const resolved = resolveMarked(key);
+export async function importAnalysisFromPr(key: PrKey, root: string): Promise<ImportFromPrResult> {
+  const resolved = await resolveMarked(key);
   if (!resolved.ok) {
     throw new HttpError(
       502,
@@ -146,8 +146,8 @@ export interface SharedProbeResult {
  * failure degrades to `{ found: false, error }`, exactly like the staleness
  * probe this mirrors.
  */
-export function probeSharedAnalysis(key: PrKey, root: string): SharedProbeResult {
-  const resolved = resolveMarked(key);
+export async function probeSharedAnalysis(key: PrKey, root: string): Promise<SharedProbeResult> {
+  const resolved = await resolveMarked(key);
   if (!resolved.ok) return { found: false, error: resolved.error };
   const newest = resolved.comments[resolved.comments.length - 1];
   if (!newest) return { found: false };
@@ -188,8 +188,8 @@ export interface AutoSharedAnalysisResult {
  * to "nothing to import," so the caller can proceed exactly as it would have
  * before this feature existed.
  */
-export function resolveAutoSharedAnalysis(key: PrKey, root: string): AutoSharedAnalysisResult {
-  const resolved = resolveMarked(key);
+export async function resolveAutoSharedAnalysis(key: PrKey, root: string): Promise<AutoSharedAnalysisResult> {
+  const resolved = await resolveMarked(key);
   if (!resolved.ok) return { imported: false, foundDifferentCommit: false };
   const newest = resolved.comments[resolved.comments.length - 1];
   if (!newest) return { imported: false, foundDifferentCommit: false };

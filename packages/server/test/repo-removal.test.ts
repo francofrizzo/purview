@@ -263,7 +263,7 @@ describe("removing a repo's managed checkouts", () => {
     expect(fs.existsSync(prCheckoutPath(key, root))).toBe(false);
     expect(fs.existsSync(notes)).toBe(true);
 
-    const paths = listWorktrees(user).map((w) => w.path);
+    const paths = (await listWorktrees(user)).map((w) => w.path);
     expect(paths).toContain(fs.realpathSync(user));
     expect(paths).toContain(fs.realpathSync(mine.path));
     expect(paths.some((p) => p.includes(checkoutsRoot(root)) || p.includes("checkouts"))).toBe(false);
@@ -277,7 +277,7 @@ describe("removing a repo's managed checkouts", () => {
     expect("path" in (await ensure(user, key))).toBe(true);
     expect(await removeRepoCheckouts(repo, [key.number], root)).toEqual([prCheckoutPath(key, root)]);
     expect(fs.existsSync(path.join(checkoutsRoot(root), repo.host))).toBe(false);
-    expect(listWorktrees(user).map((w) => w.path)).toEqual([fs.realpathSync(user)]);
+    expect((await listWorktrees(user)).map((w) => w.path)).toEqual([fs.realpathSync(user)]);
   });
 });
 
