@@ -279,11 +279,6 @@ judge. Use the concepts' terms; identifiers belong in the units.
   members; persist runs in persistBatchSize batches…"` (the code's vocabulary, no problem,
   nothing to judge).
 
-What the author wrote that the diff cannot show (why now, a number behind the decision, a
-related PR, a question they leave open) goes in the summary too, said as theirs: `"The
-author notes that 97% of what gets matched is matched within 14 days."`. Skip what an agent
-or a template wrote (sections headed 🤖 or "Agent", checklists): the units already say it.
-
 `ReviewUnit` fields: `id` (slug), `title`, `summary` (one or two sentences, see below), `kind`, `attention`,
 `attentionWhy`, `order` (integer, suggested reading order, starting at 0 or 1 — be
 consistent), plus `hunks` (an array; write it explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy`

@@ -58,7 +58,6 @@ app, not for git: say what changed in the review, not which file moved.
 - **Agent notes in teal.** Notes for a coding agent carry a terminal icon and teal, instead of a sparkle and the violet of moved code.
 - **Bot label on AI reviewers.** CodeRabbit, Copilot and other AI reviewers carry a plain "bot" label, as on GitHub.
 - **Plain new files.** A file the PR adds whole reads on the plain background, its gutter still green, so a heart or a risk in it stands out.
-- **Author's context in the summary.** The Overview's summary carries what the author wrote that the diff cannot show, such as a number or a related PR, said as theirs. Analyze from scratch to get it.
 - **Fix:** switching files in the Files view no longer flashes a read hunk open before it folds.
 - **Fix:** an outdated or whole-file thread clicked in the comments panel now opens at the top of its file, even resolved, instead of folded to one line.
 - **Fix:** the keyboard shortcuts list no longer needs a sideways scroll.

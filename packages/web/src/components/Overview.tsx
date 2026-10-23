@@ -14,10 +14,9 @@ import { IconArrowRight, IconChevron } from "./icons";
 
 /**
  * The PR before its parts, from broad to narrow: why it exists (the
- * analysis's summary, in plain words, with what the author added that the
- * diff cannot show), the words the PR leans on, one case before and after,
- * then what to read closely; the author's description, whole, and what
- * reviewers said close it. One calm column; everything here is a way into the
+ * analysis's summary, in plain words), the words the PR leans on, one case
+ * before and after, then what to read closely; the author's description, in
+ * their own words and whole, and what reviewers said close it. One calm column; everything here is a way into the
  * guide. Where each file lands is in the Files view, beside each file.
  */
 export function Overview({
