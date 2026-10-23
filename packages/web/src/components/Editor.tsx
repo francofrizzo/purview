@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import { useEditors, useGlobalConfig, useSaveGlobalConfig } from "../api/hooks";
-import { editorAvailable, editorMenuText } from "../lib/editor";
+import { editorAvailable, editorMenuText, effectiveEditor } from "../lib/editor";
 import { errorText } from "../api/errors";
 import { Modal } from "./Modal";
 import { IconCode, IconSpinner } from "./icons";
@@ -26,16 +26,19 @@ export function useOpenInEditor(prKey: string) {
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); setConfirm(false); }
   }
+  const editor = effectiveEditor(config.data, editors.data);
   return {
     items: editorAvailable(config.data, editors.data) ? [{
-      ...editorMenuText(busy), disabled: busy, keepOpen: config.data?.editorConfirmed === true,
+      ...editorMenuText(busy, editor?.name), disabled: busy, keepOpen: config.data?.editorConfirmed === true,
       testId: "menu-open-editor", icon: busy ? <IconSpinner width={12} height={12} /> : <IconCode width={12} height={12} />,
       onClick: () => config.data?.editorConfirmed ? void open() : setConfirm(true),
     }] : [],
     dialog: confirm || error ? <Modal title={error ? "Could not open editor" : "Open in editor"} maxWidth={520} onClose={() => { setConfirm(false); setError(undefined); }} testId="editor-confirm">
-      {error ? <p role="alert">{error}</p> : <>
-        <p>This opens Purview's own copy of the PR, detached at its head commit. Edits there are on no branch.</p>
-        <label className="my-3 flex gap-2"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />Don't ask again</label>
+      {error ? <p role="alert" className="text-xs" style={{ color: "var(--risk)" }}>{error}</p> : <>
+        <p className="text-xs leading-5">
+          This opens Purview's own copy of the PR in {editor?.name ?? "your editor"}, detached at its head commit. Edits there are on no branch.
+        </p>
+        <label className="my-3 flex items-center gap-2 text-xs"><input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />Don't ask again</label>
         <div className="flex items-center gap-2">
           <button className="btn" disabled={busy} onClick={() => setConfirm(false)}>Cancel</button>
           <button className="btn btn-primary" disabled={busy} onClick={() => void open()}>{busy ? "Preparing checkout…" : "Open"}</button>

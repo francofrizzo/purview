@@ -10,9 +10,22 @@ export function editorAvailable(config: GlobalConfig | undefined, editors: Edito
 export function automaticEditor(editors: Editor[] = []): Editor | undefined {
   return editors.find(e => e.available);
 }
-export function editorMenuText(preparing: boolean) {
+/** The editor the button will open: the chosen one, or the first found. */
+export function effectiveEditor(config: GlobalConfig | undefined, editors: Editor[] = []): Editor | undefined {
+  if (!config) return undefined;
+  if (config.editor?.id === "custom") {
+    return config.editor.command?.includes("{path}")
+      ? { id: "custom", name: "your editor", available: true, command: config.editor.command }
+      : undefined;
+  }
+  if (config.editor) return editors.find((e) => e.id === config.editor!.id && e.available);
+  return automaticEditor(editors);
+}
+
+/** The menu item names the editor, so the reader knows what will open. */
+export function editorMenuText(preparing: boolean, editorName = "editor") {
   return {
-    label: preparing ? "preparing checkout…" : "open in editor",
-    hint: "Purview's own copy of this PR, detached at its head commit",
+    label: preparing ? "preparing checkout…" : `open in ${editorName}`,
+    hint: `Purview's own copy of this PR, detached at its head commit, in ${editorName}`,
   };
 }
