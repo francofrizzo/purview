@@ -181,8 +181,17 @@ function fromAnalysis<T extends { origin?: unknown }>(unit: T): Omit<T, "origin"
 
 /** Apply one event to a state, returning a new state (input is not mutated). */
 export function applyEvent(prev: State, event: ReviewerEvent): State {
-  const state: State = structuredClone(prev);
+  return applyEvents(prev, [event]);
+}
 
+/** Apply a batch without mutating either the snapshot or its event payloads. */
+export function applyEvents(prev: State, events: ReviewerEvent[]): State {
+  const [state, ownedEvents] = structuredClone([prev, events]) as [State, ReviewerEvent[]];
+  return ownedEvents.reduce(applyEventInPlace, state);
+}
+
+/** Private mutable step: callers must own the state and event payloads. */
+function applyEventInPlace(state: State, event: ReviewerEvent): State {
   switch (event.type) {
     case "pr-initialized": {
       state.pr = {
@@ -659,7 +668,7 @@ export function nextRevisionNumber(events: ReviewerEvent[]): number {
  */
 export function fold(events: ReviewerEvent[]): State {
   const current = events.map((e) => upcastEvent(e) as ReviewerEvent);
-  return withoutDiscarded(current).reduce(applyEvent, initialState());
+  return applyEvents(initialState(), withoutDiscarded(current));
 }
 
 /**

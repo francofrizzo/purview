@@ -26,7 +26,7 @@ import type {
   State,
   TeamConfigCache,
 } from "./schemas.js";
-import { fold } from "./reducer.js";
+import { applyEvents, fold } from "./reducer.js";
 import { upcastEvent } from "./upcast.js";
 import {
   CHECKOUTS_DIR_NAME,
@@ -131,12 +131,19 @@ export function appendEvents(
   const file = eventsPath(key, root);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const ts = new Date().toISOString();
-  const lines = events
-    .map((e) => EventSchema.parse({ ts, ...e } as ReviewerEvent))
-    .map((e) => JSON.stringify(e))
-    .join("\n");
-  fs.appendFileSync(file, lines + "\n", "utf8");
-  return rebuildState(key, root);
+  const parsed = events.map((e) => EventSchema.parse({ ts, ...e } as ReviewerEvent));
+  // Load before appending: a missing/old snapshot must replay only the old log.
+  // Discard is an undo of earlier events, so it still needs the whole history.
+  const state = parsed.some((e) => e.type === "revision-discarded")
+    ? null
+    : applyEvents(loadState(key, root), parsed);
+  // A crash or failed snapshot write after the append must not leave a valid
+  // but stale snapshot. A missing snapshot is rebuilt from the append-only log.
+  fs.rmSync(statePath(key, root), { force: true });
+  fs.appendFileSync(file, parsed.map((e) => JSON.stringify(e)).join("\n") + "\n", "utf8");
+  if (!state) return rebuildState(key, root);
+  writeJson(statePath(key, root), state);
+  return state;
 }
 
 /** state.json is derived: always foldable from events.jsonl alone. */

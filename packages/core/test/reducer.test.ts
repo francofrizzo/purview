@@ -2,6 +2,8 @@ import { hunkIdsOf } from "../src/units.js";
 import { describe, expect, it } from "vitest";
 import {
   fold,
+  applyEvent,
+  initialState,
   lastReviewSubmission,
   liveUnits,
   readiness,
@@ -519,4 +521,19 @@ describe("husks: units whose every hunk left the PR", () => {
     ]);
     expect(s.units.find((u) => u.id === "wire")!.removedAtRevision).toBeUndefined();
   });
+});
+
+
+it("fold matches pure event-by-event application without changing its inputs", () => {
+  const history: ReviewerEvent[] = [...events,
+    { ts, type: "hunk-viewed", hunkId: "h1", revision: 1 },
+    { ts, type: "unit-updated", unitId: "u1", patch: { title: "Renamed" } },
+    { ts, type: "pr-retitled", title: "Retitled" },
+  ];
+  const original = structuredClone(history);
+  const state = initialState();
+  const before = structuredClone(state);
+  expect(fold(history)).toEqual(history.reduce(applyEvent, state));
+  expect(state).toEqual(before);
+  expect(history).toEqual(original);
 });
