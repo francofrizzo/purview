@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Comments follow the code.** A comment keeps pointing at the same lines after a new revision, pushed or not; one whose line is gone shows an "outdated" chip with where it was written.
 - **Open in editor.** The PR header's ⋯ menu opens Purview's own copy of the PR, at its head commit, in your editor. Pick the editor in Settings → System.
 - **Watch your own PRs.** Repo settings → Watch has a second switch that imports and analyzes the PRs you open, drafts included, every 5 minutes, independent of the review-request switch.
 - **Fix:** opening a PR no longer freezes the server for other requests.

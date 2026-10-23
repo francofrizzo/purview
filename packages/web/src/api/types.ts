@@ -851,6 +851,8 @@ export type CommentAudience = "github" | "agent";
 export type CommentSubject = "line" | "file";
 
 export interface DraftComment {
+  revision: number;
+  outdated?: { line: number; startLine?: number; revision: number };
   id: string;
   file: string;
   /** null for file-level comments; on a multi-line comment, the LAST line of the range */
@@ -1010,6 +1012,8 @@ export interface ReviewStatus {
   counts: { draft: number; pushed: number; submitted: number; agent?: number };
   /** everything a submit would carry, in file order */
   included: {
+    revision: number;
+    outdated?: DraftComment["outdated"];
     id: string;
     file: string;
     line: number | null;

@@ -1394,6 +1394,7 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
 
 export const mockDrafts: DraftComment[] = [
   {
+    revision: 2,
     id: "draft-1",
     file: "src/billing/charge.ts",
     line: 24,
@@ -1405,7 +1406,9 @@ export const mockDrafts: DraftComment[] = [
   },
   // A note for a coding agent on the same line: never goes to GitHub.
   {
+    revision: 2,
     id: "draft-agent-1",
+    outdated: { line: 24, revision: 1 },
     file: "src/billing/charge.ts",
     line: 24,
     side: "RIGHT",
@@ -1418,6 +1421,7 @@ export const mockDrafts: DraftComment[] = [
   // Three on one line, one of each status: the bubble must paint itself with
   // the most advanced one (submitted) rather than the first one it meets.
   {
+    revision: 2,
     id: "draft-2",
     file: "src/billing/idempotency.ts",
     line: 9,
@@ -1430,6 +1434,7 @@ export const mockDrafts: DraftComment[] = [
     githubThreadId: "PRRT_idem9_pending",
   },
   {
+    revision: 2,
     id: "draft-5",
     file: "src/billing/idempotency.ts",
     line: 9,
@@ -1440,6 +1445,7 @@ export const mockDrafts: DraftComment[] = [
     status: "draft",
   },
   {
+    revision: 2,
     id: "draft-6",
     file: "src/billing/idempotency.ts",
     line: 9,
@@ -1452,6 +1458,7 @@ export const mockDrafts: DraftComment[] = [
     githubThreadId: "PRRT_idem9_public",
   },
   {
+    revision: 2,
     id: "draft-3",
     file: "src/billing/ledger.ts",
     line: 12,
@@ -1463,6 +1470,7 @@ export const mockDrafts: DraftComment[] = [
     status: "pushed",
   },
   {
+    revision: 2,
     id: "draft-4",
     file: "src/api/routes/orders.ts",
     line: 46,
@@ -1477,6 +1485,7 @@ export const mockDrafts: DraftComment[] = [
   // A reply to @maria's thread on the retry wrapper, not sent yet: it shows at
   // the end of that thread, not as a comment of its own.
   {
+    revision: 2,
     id: "draft-9",
     file: "src/billing/charge.ts",
     line: 25,
@@ -1489,6 +1498,7 @@ export const mockDrafts: DraftComment[] = [
   },
   // Multi-line: covers the whole `if (!res.ok)` block, marker on its last line.
   {
+    revision: 2,
     id: "draft-10",
     file: "src/billing/charge.ts",
     line: 31,
@@ -1502,6 +1512,7 @@ export const mockDrafts: DraftComment[] = [
   },
   // A suggestion: GitHub renders the fenced block as a one-click change over line 33.
   {
+    revision: 2,
     id: "draft-11",
     file: "src/billing/charge.ts",
     line: 33,
@@ -1513,6 +1524,7 @@ export const mockDrafts: DraftComment[] = [
   },
   // Anchored to the OLD side: in split view its bubble belongs on the left half.
   {
+    revision: 2,
     id: "draft-8",
     file: "src/billing/charge.ts",
     line: 22,
@@ -1524,6 +1536,7 @@ export const mockDrafts: DraftComment[] = [
   },
   // File-level: no line, no side.
   {
+    revision: 2,
     id: "draft-7",
     file: "src/billing/charge.ts",
     line: null,

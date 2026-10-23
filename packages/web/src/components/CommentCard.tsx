@@ -12,7 +12,7 @@
 import { useMemo, useEffect, useState, type ReactNode } from "react";
 import type { ChatRef, CommentAudience, CommentStatus, DraftComment } from "../api/types";
 import { formatComment, type DiffContext } from "../lib/agentExport";
-import { isForAgent, isRange, lineLabel } from "../lib/comments";
+import { isForAgent, isRange, lineLabel, outdatedCommentTip } from "../lib/comments";
 import { pendingAttachmentCount } from "../lib/attachments";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
@@ -152,6 +152,7 @@ export function CommentCard({
       }}
     >
       <header className="flex min-h-[22px] items-center gap-2 text-2xs">
+        {comment.outdated && <span data-testid="comment-outdated" className="rounded px-1 font-medium" style={{ color: "var(--warn)", background: "var(--warn-soft)" }} data-tip={outdatedCommentTip(comment)}>outdated</span>}
         {anchor ? (
           <button
             type="button"

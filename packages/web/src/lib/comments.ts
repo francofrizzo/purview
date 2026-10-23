@@ -156,6 +156,7 @@ export function statusColors(status: CommentStatus): { fg: string; bg: string } 
  */
 export function isCommentAnchored(files: FilesJson, comment: DraftComment): boolean {
   if (isFileComment(comment)) return true;
+  if (comment.outdated) return false;
   const side = comment.side ?? "RIGHT";
   const line = comment.line as number;
   return isRange(comment)
@@ -281,4 +282,9 @@ export function audienceOf(c: { audience?: CommentAudience }): CommentAudience {
 
 export function isForAgent(c: { audience?: CommentAudience }): boolean {
   return audienceOf(c) === "agent";
+}
+
+export function outdatedCommentTip(comment: Pick<DraftComment, "outdated">): string | undefined {
+  const at = comment.outdated;
+  return at ? `Written on rev ${at.revision} at line ${at.line}; that line is no longer in the diff` : undefined;
 }

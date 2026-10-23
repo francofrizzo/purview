@@ -101,6 +101,8 @@ commentEvents.setMaxListeners(0);
 
 const CommentObjectSchema = z.object({
   id: z.string(),
+  revision: z.number().int(),
+  outdated: z.object({ line: z.number().int(), startLine: z.number().int().optional(), revision: z.number().int() }).optional(),
   file: z.string(),
   subjectType: CommentSubjectTypeSchema,
   /** Absent on file-level comments. On a multi-line comment, the LAST line of the range. */
@@ -261,9 +263,11 @@ export function isFileLevel(c: Pick<Comment, "subjectType">): boolean {
  * the "submitted" status through a read.
  */
 const StoredCommentSchema = CommentObjectSchema.omit({
+  revision: true,
   status: true,
   subjectType: true,
 }).extend({
+  revision: z.number().int().optional(),
   status: z.string(),
   /** Absent in every comments.json written before file-level comments existed. */
   subjectType: CommentSubjectTypeSchema.optional(),
@@ -306,7 +310,8 @@ export const NewCommentSchema = z
   .superRefine(subjectInvariant);
 export type NewComment = z.infer<typeof NewCommentSchema>;
 
-function normalize(raw: z.infer<typeof StoredCommentSchema>): Comment {
+function normalize(raw: z.infer<typeof StoredCommentSchema>, currentRevision: number): Comment {
+  const revision = raw.revision ?? currentRevision;
   let status: CommentStatus;
   if (raw.status === "submitted") {
     // Legacy value unless the submit path actually stamped a timestamp.
@@ -330,7 +335,7 @@ function normalize(raw: z.infer<typeof StoredCommentSchema>): Comment {
   if (audience === "agent") status = "draft";
   if (subjectType === "file") {
     const { line: _line, side: _side, startLine: _start, startSide: _startSide, ...rest } = raw;
-    return { ...rest, subjectType, status, audience };
+    return { ...rest, revision, subjectType, status, audience };
   }
   const side = raw.side ?? "RIGHT";
   // A range that does not precede its line is unrepresentable (GitHub rejects
@@ -339,6 +344,7 @@ function normalize(raw: z.infer<typeof StoredCommentSchema>): Comment {
   const startLine = rawStart !== undefined && rawStart < raw.line! ? rawStart : undefined;
   return {
     ...rest,
+    revision,
     subjectType,
     line: raw.line,
     side,
@@ -352,7 +358,11 @@ export function readComments(key: PrKey, root = stateRoot()): Comment[] {
   const file = commentsPath(key, root);
   if (!fs.existsSync(file)) return [];
   const raw = JSON.parse(fs.readFileSync(file, "utf8"));
-  return z.array(StoredCommentSchema).parse(raw).map(normalize);
+  const stored = z.array(StoredCommentSchema).parse(raw);
+  const revision = stored.some(c => c.revision === undefined) ? loadState(key, root).currentRevision : 0;
+  const comments = stored.map(c => normalize(c, revision));
+  if (stored.some(c => c.revision === undefined)) writeComments(key, comments, root);
+  return comments;
 }
 
 export function writeComments(key: PrKey, comments: Comment[], root = stateRoot()): void {
@@ -371,6 +381,7 @@ export function addComment(
 ): Comment {
   const parsed = NewCommentSchema.parse(input);
   const comment: Comment = {
+    revision: loadState(key, root).currentRevision,
     id: randomUUID(),
     ...parsed,
     audience: parsed.audience ?? defaultAudience,
@@ -633,7 +644,7 @@ export function updateCommentPosition(
   const target = comments[idx];
   const line = patch.line ?? target.line;
   const file = patch.file ?? target.file;
-  if (line === target.line && file === target.file) {
+  if (line === target.line && file === target.file && !target.outdated) {
     return { found: true, changed: false, comment: target };
   }
   // A range moves as a whole: its first line shifts by the same amount as its
@@ -642,7 +653,7 @@ export function updateCommentPosition(
     target.startLine !== undefined && line !== undefined && target.line !== undefined
       ? target.startLine + (line - target.line)
       : target.startLine;
-  const updated: Comment = { ...target, line, file, ...(startLine !== undefined ? { startLine } : {}) };
+  const updated: Comment = { ...target, revision: loadState(key, root).currentRevision, outdated: undefined, line, file, ...(startLine !== undefined ? { startLine } : {}) };
   const next = [...comments];
   next[idx] = updated;
   writeComments(key, next, root);
@@ -938,7 +949,7 @@ export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftComm
   // Replies are anchored by their thread, not by a line (see `inReplyTo`).
   // Both audiences: a fresh anchor helps the agent bundle as much as a push.
   const drafts = comments.filter(
-    (c) => c.status === "draft" && c.subjectType === "line" && !c.inReplyTo,
+    (c) => c.status === "draft" && c.subjectType === "line" && !c.inReplyTo && !c.outdated,
   );
   if (drafts.length === 0) return [];
 
@@ -998,6 +1009,7 @@ export function reanchorDraftComments(key: PrKey, root = stateRoot()): DraftComm
 
     byId.set(draft.id, {
       ...draft,
+      revision: currentRevision,
       line: toLine,
       file: toFile ?? draft.file,
       ...(range.toStartLine !== undefined ? { startLine: range.toStartLine } : {}),
@@ -1033,7 +1045,7 @@ export function unanchoredDraftLineComments(key: PrKey, root = stateRoot()): Com
   } catch {
     return [];
   }
-  return drafts.filter((c) => !anchoringHunkOf(currentFiles, c));
+  return drafts.filter((c) => c.outdated || !anchoringHunkOf(currentFiles, c));
 }
 
 export function pendingAgentNotes(comments: Comment[]): Comment[] {

@@ -39,6 +39,8 @@ export interface ReviewStatus {
     counts: ReturnType<typeof commentCounts>;
     /** everything that would ride along on a submit, in file order */
     included: {
+      revision: number;
+      outdated?: { line: number; startLine?: number; revision: number };
       id: string;
       file: string;
       /** "file" comments carry no line/side. */
@@ -100,6 +102,8 @@ export async function reviewStatus(
         // about the file as a whole.
         .sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? -1) - (b.line ?? -1))
         .map((c) => ({
+          revision: c.revision,
+          outdated: c.outdated,
           id: c.id,
           file: c.file,
           subjectType: c.subjectType,

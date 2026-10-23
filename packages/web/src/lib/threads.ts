@@ -199,12 +199,14 @@ export function buildThreadGroups({
     for (const c of comments) {
       if (c.inReplyTo === t.id && take(c)) items.push({ kind: "local", comment: c });
     }
+    const localRoot = items[0]?.kind === "local" ? items[0].comment : undefined;
+    const display = localRoot && !localRoot.inReplyTo ? { ...t, path: localRoot.file, line: localRoot.line, startLine: localRoot.startLine ?? null, isOutdated: !!localRoot.outdated } : t;
     remoteThreads.push({
       key: t.id,
-      remote: t,
+      remote: display,
       items,
       resolved: t.isResolved,
-      placement: placementOf(t, inDiff),
+      placement: placementOf(display, inDiff),
       author: authorOf(items[0]),
     });
   }
@@ -238,10 +240,10 @@ export function buildThreadGroups({
       remote: null,
       items: [{ kind: "local", comment: c }],
       resolved: false,
-      placement: isFileComment(c) ? "file" : "line",
+      placement: isFileComment(c) ? "file" : c.outdated ? "outdated" : "line",
       author: { kind: "you", name: "you" },
     };
-    if (isFileComment(c)) push(byFile, c.file, thread);
+    if (isFileComment(c) || c.outdated) push(byFile, c.file, thread);
     // Defensive: a line comment without a side is anchored the way GitHub
     // anchors context lines.
     else push(byLine, lineAnchor(c.file, c.line as number, c.side ?? "RIGHT"), thread);

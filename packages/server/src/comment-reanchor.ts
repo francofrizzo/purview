@@ -152,13 +152,13 @@ export async function proposeCommentReanchor(
   let currentFiles: FileDiff[];
   try {
     const state = loadState(key, root);
-    prior = priorRevisions(state);
+    prior = comment.outdated ? [comment.outdated.revision] : priorRevisions(state);
     currentFiles = readFilesJson(key, state.currentRevision, root).files;
   } catch (err) {
     return { ok: false, reason: `Could not read the current diff: ${(err as Error).message}` };
   }
 
-  const line = comment.line!;
+  const line = comment.outdated?.line ?? comment.line!;
   const side = comment.side!;
 
   let previousContext: string | undefined;

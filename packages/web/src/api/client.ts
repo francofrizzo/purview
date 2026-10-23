@@ -263,6 +263,8 @@ interface WireSync {
 }
 
 interface WireComment {
+  revision: number;
+  outdated?: DraftComment["outdated"];
   id: string;
   file: string;
   line: number | null;
