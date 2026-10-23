@@ -98,7 +98,7 @@ export interface RepoGroup {
   mine: PrListEntry[];
   /** the other unarchived PRs, most recently added first */
   prs: PrListEntry[];
-  /** archived PRs, most recently added first */
+  /** archived PRs, newest first: the shelf is browsed from the top, the queue from the bottom */
   archived: PrListEntry[];
   /** the newest `addedAt` in the group, archived rows included */
   latestAddedAt: string;
@@ -170,7 +170,7 @@ export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
     g.needsReview.sort(byRequestAtAsc);
     g.mine.sort(byAddedAtAsc);
     g.prs.sort(byAddedAtAsc);
-    g.archived.sort(byAddedAtAsc);
+    g.archived.sort((a, b) => byAddedAtAsc(b, a));
   }
   out.sort(
     (a, b) =>

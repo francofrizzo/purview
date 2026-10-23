@@ -172,6 +172,10 @@ describe("groupPrsByRepo — pending review requests", () => {
     expect(billing.prs).toEqual([]);
   });
 
+  it("lists archived rows newest first", () => {
+    const rows = [1, 2, 3].map((n) => pr(`github.com/acme/repo/${n}`, "acme", "repo", ago(n), true));
+    expect(groupPrsByRepo(rows)[0].archived.map((p) => p.meta.number)).toEqual([1, 2, 3]);
+  });
   it("keeps an archived PR of yours in the archived disclosure", () => {
     const mine = { ...prs[4], authoredByYou: true, archived: true };
     const [group] = groupPrsByRepo([mine]);

@@ -338,8 +338,8 @@ export function PrView() {
   // open flag (lib/chat.tsx, which attachRef and the composer flip) stays the
   // source of truth for its tab; the other two live here.
   const [dockTab, setDockTab] = useState<"comments" | "review" | null>(null);
-  // The top bar's one toggle reopens whatever was on top last.
-  const [lastDockTab, setLastDockTab] = useState<DockTab>("comments");
+  // The top bar's one toggle reopens whatever was on top last; the first time, the first tab.
+  const [lastDockTab, setLastDockTab] = useState<DockTab>("chat");
   const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(null);
   // The text lives here, not in the composer: drawn inline, the composer is a
   // virtualized row and unmounts when scrolled away.

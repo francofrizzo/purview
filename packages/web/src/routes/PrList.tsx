@@ -307,6 +307,8 @@ function RepoSection({
   repo?: RepoSummary;
 }) {
   const [showArchived, setShowArchived] = useState(false);
+  // The shelf opens on its newest page; "show more" walks back in time.
+  const [archivedShown, setArchivedShown] = useState(ARCHIVED_PAGE);
   const finishedKeys = finishedPrKeys(group);
   const [importOpen, setImportOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -472,12 +474,26 @@ function RepoSection({
       ) : null}
       {group.archived.length && showArchived ? (
         <ul style={{ borderTop: "1px solid var(--border)" }}>
-          {group.archived.map((pr) => (
+          {group.archived.slice(0, archivedShown).map((pr) => (
             <PrRow
               key={pr.key}
               row={{ pr, depth: 0, guides: [], last: true, hasChildren: false }}
             />
           ))}
+          {group.archived.length > archivedShown ? (
+            <li className="border-t" style={{ borderColor: "var(--border)" }}>
+              <button
+                type="button"
+                className="w-full px-3 py-2 text-left text-2xs hover:bg-[var(--bg-hover)]"
+                style={{ color: "var(--fg-muted)" }}
+                data-testid={`archived-more-${group.key}`}
+                onClick={() => setArchivedShown((n) => n + ARCHIVED_PAGE)}
+              >
+                show {Math.min(ARCHIVED_PAGE, group.archived.length - archivedShown)} more of{" "}
+                {group.archived.length - archivedShown} older
+              </button>
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </section>
@@ -719,6 +735,8 @@ function ImportReviewsForm({
 }
 
 const ARCHIVE_HINT = "local only, nothing changes on GitHub";
+/** Archived rows shown per click of "show more". */
+const ARCHIVED_PAGE = 10;
 
 /**
  * One PR. The title line carries only what is out of the ordinary: "open" and

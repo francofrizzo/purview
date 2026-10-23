@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { MOD, UNITS, lineRow, newGutter, openComposerOnLine, openPr, openUnit } from "./helpers";
+import { MOD, UNITS, lineRow, newGutter, openComments, openComposerOnLine, openPr, openUnit } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await openPr(page);
@@ -139,7 +139,7 @@ test("a delete the server refuses says so under that card", async ({ page }) => 
   await page.getByTestId("composer-save").click();
   await expect(page.getByTestId("comment-composer")).toHaveCount(0);
 
-  await page.getByTestId("topbar-comments").click();
+  await openComments(page);
   const drafts = page.getByTestId("drawer-group-drafts");
   const card = drafts.locator("[data-testid^=comment-card-]", { hasText: "keep this draft" });
   await expect(card).toBeVisible();

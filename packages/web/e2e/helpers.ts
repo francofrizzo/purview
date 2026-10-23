@@ -161,3 +161,14 @@ export async function openComposerOnLine(page: Page, newNo: number) {
   await expect(page.getByTestId("comment-composer")).toBeVisible();
   return row;
 }
+
+/**
+ * Opens the comments tab of the right dock from the header's one toggle.
+ * The toggle opens the chat (the first tab) on a fresh page, so the tests
+ * that want the drawer pick it explicitly.
+ */
+export async function openComments(page: Page): Promise<void> {
+  await page.getByTestId("topbar-comments").click();
+  await page.getByTestId("dock-tab-comments").click();
+  await expect(page.getByTestId("comments-panel")).toBeVisible();
+}

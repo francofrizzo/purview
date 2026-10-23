@@ -1,12 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { openComposerOnLine, openPr, openUnit, UNITS } from "./helpers";
+import { UNITS, openComments, openComposerOnLine, openPr, openUnit } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await openPr(page);
 });
 
 test("the drawer files comments by audience; a draft moves between the two", async ({ page }) => {
-  await page.getByTestId("topbar-comments").click();
+  await openComments(page);
   const github = page.getByTestId("drawer-section-github");
   const agent = page.getByTestId("drawer-section-agent");
   await expect(github).toBeVisible();
@@ -53,7 +53,7 @@ test("the switch decides what a new comment is for; `a` flips it", async ({ page
   await page.getByTestId("composer-save").click();
   await expect(composer).toHaveCount(0);
 
-  await page.getByTestId("topbar-comments").click();
+  await openComments(page);
   const agent = page.getByTestId("drawer-section-agent");
   await expect(agent).toContainText("rename this before merging");
   await expect(page.getByTestId("copy-bundle-drawer")).toContainText("(2)");
@@ -73,7 +73,7 @@ test("your own PR defaults to notes for the agent; the flip sticks to the PR", a
 });
 
 test("publish now posts one GitHub draft publicly, after a confirmation", async ({ page }) => {
-  await page.getByTestId("topbar-comments").click();
+  await openComments(page);
   const github = page.getByTestId("drawer-section-github");
   await page.getByTestId("publish-draft-1").click();
   await expect(page.getByTestId("confirm-publish-draft-1")).toContainText("public at once");
@@ -90,7 +90,7 @@ test("publish now posts one GitHub draft publicly, after a confirmation", async 
 });
 
 test("send to chat hands the notes to the review chat", async ({ page }) => {
-  await page.getByTestId("topbar-comments").click();
+  await openComments(page);
   await page.getByTestId("drawer-send-to-chat").click();
   const chat = page.getByTestId("chat-panel");
   await expect(chat).toBeVisible();

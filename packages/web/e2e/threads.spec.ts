@@ -1,12 +1,12 @@
 import { test, expect } from "@playwright/test";
-import { openPr } from "./helpers";
+import { openComments, openPr } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await openPr(page);
 });
 
 test("the comment drawer opens and lists the drafts by stage", async ({ page }) => {
-  await page.getByTestId("topbar-comments").click();
+  await openComments(page);
   const drafts = page.getByTestId("drawer-group-drafts");
   await expect(drafts).toBeVisible();
   await expect(drafts).toContainText("Drafts");
@@ -16,6 +16,7 @@ test("the comment drawer opens and lists the drafts by stage", async ({ page }) 
   await expect(page.getByTestId("drawer-group-submitted").getByTestId("comment-card-draft-4")).toBeVisible();
   await expect(page.getByTestId("drawer-group-github")).toBeVisible();
 
+  // The header's toggle closes it again.
   await page.getByTestId("topbar-comments").click();
   await expect(drafts).toHaveCount(0);
 });
@@ -46,7 +47,7 @@ test("the finish-review panel shows the drafts going out and what is on GitHub s
 
 test("a GitHub thread in the drawer can be copied with its code, replied to and resolved from there", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await page.getByTestId("topbar-comments").click();
+  await openComments(page);
   const row = page.getByTestId("drawer-thread-PRRT_charge77_79");
   await expect(row).toBeVisible();
   await row.hover();
@@ -74,7 +75,7 @@ test("a GitHub thread in the drawer can be copied with its code, replied to and 
 
 
 test("a root comment reaction can be added and removed from the drawer", async ({ page }) => {
-  await page.getByTestId("topbar-comments").click();
+  await openComments(page);
   const row = page.getByTestId("drawer-thread-PRRT_charge77_79");
   const actions = page.getByTestId("drawer-thread-actions-PRRT_charge77_79");
   await expect(row.getByTestId("reaction-THUMBS_UP")).toContainText("👍2");
@@ -90,7 +91,7 @@ test("a root comment reaction can be added and removed from the drawer", async (
 });
 
 test("a whole-file or outdated thread clicked in the drawer opens in the unit that holds the file, not the files tab", async ({ page }) => {
-  await page.getByTestId("topbar-comments").click();
+  await openComments(page);
   await page.getByTestId("drawer-thread-PRRT_docs_file").click();
   await expect(page.getByTestId("unit-header")).toBeVisible();
   await expect(page.getByTestId("thread-PRRT_docs_file")).toBeVisible();

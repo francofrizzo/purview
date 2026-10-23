@@ -8,8 +8,14 @@ test.beforeEach(async ({ page }) => {
 test("one dock on the right: comments, chat and review are its tabs, one at a time", async ({ page }) => {
   await expect(page.getByTestId("right-dock")).toHaveCount(0);
 
-  await page.keyboard.press("m");
+  // The header's toggle opens the first tab, the chat, on a fresh page.
+  await page.getByTestId("topbar-comments").click();
   const dock = page.getByTestId("right-dock");
+  await expect(dock).toHaveAttribute("data-tab", "chat");
+  await page.getByTestId("topbar-comments").click();
+  await expect(page.getByTestId("right-dock")).toHaveCount(0);
+
+  await page.keyboard.press("m");
   await expect(dock).toHaveAttribute("data-tab", "comments");
   await expect(page.getByTestId("comments-panel")).toBeVisible();
 

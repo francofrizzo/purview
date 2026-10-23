@@ -5,6 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## 2026.10.23.2
+
+- **Archived list, newest first.** A repo's archived PRs open with the ten most recently added on top, and "show 10 more" walks back.
+- **Fix:** the dock button in the PR header opens the chat, the first tab, instead of comments the first time.
+
 ## 2026.10.23.1
 
 - **Tags on PRs.** Hover a row on the home page and click the tag icon, or use the PR header's ⋯ menu, to give a PR one tag; each block of the home page groups its PRs by tag, in the tag's colour. A PR in a stack tags the whole stack unless you untick "Whole stack".
