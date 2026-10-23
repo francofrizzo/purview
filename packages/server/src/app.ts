@@ -153,6 +153,7 @@ import { reviewEffort } from "./effort.js";
 import { diffSize } from "./diff-size.js";
 import { compareVersions, entriesSince, headSha, readChangelog } from "./changelog.js";
 import { createUpdateChecker, noUpdateChecker, type UpdateChecker } from "./updates.js";
+import { TagSchema, setTagFor } from "./tag.js";
 import { authoredByYou, commentAudienceFor, setCommentAudienceFor } from "./comment-audience.js";
 import {
   autoAnalyzeAllowed,
@@ -839,6 +840,16 @@ export function createApp(opts: AppOptions = {}): Hono {
       warning: result.warning,
       checkoutMismatch: result.checkoutMismatch ?? null,
     });
+  });
+
+  /** One local tag per PR; null removes it. */
+  app.post("/api/prs/:key/tag", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const body = (await readJsonBody(c)) as { tag?: unknown };
+    const parsed = TagSchema.nullable().safeParse(body?.tag);
+    if (!parsed.success) throw new HttpError(400, "invalid_body", "Tag must be null or 1–24 characters after normalization");
+    return c.json(setTagFor(key, parsed.data, root));
   });
 
   /**

@@ -317,6 +317,7 @@ export interface Reviewer {
 }
 
 export interface PrMeta {
+  tag?: string;
   ci?: Ci;
   /** `[]` = GitHub said nobody is on it; absent = not fetched yet. */
   reviewers?: Reviewer[];

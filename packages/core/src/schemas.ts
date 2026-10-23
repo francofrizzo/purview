@@ -632,6 +632,8 @@ export const MetaSchema = z.object({
    * out of the automatic analysis triggers, which cost money).
    */
   archived: z.boolean().default(false),
+  /** One global, reader-defined tag; optional metadata needs no event upcast. */
+  tag: z.string().transform((s) => s.trim().toLowerCase().replace(/\s+/g, " ")).pipe(z.string().min(1).max(24)).optional(),
   /**
    * Who new comments on this PR are for, when the reader flipped the switch:
    * "github" (part of the review) or "agent" (notes for a coding agent).

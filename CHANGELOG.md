@@ -7,6 +7,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Tags on PRs.** Hover a row on the home page and click the tag icon, or use the PR header's ⋯ menu, to give a PR one tag; each block of the home page groups its PRs by tag, in the tag's colour.
+- **Stacked PRs in the list.** A PR stacked on another PR in the same block hangs under it as a tree on the home page.
 - **Threads, CI and blame in the chat.** Ask the chat which threads are open or yours, what reviewers said, whether checks pass, or who last touched a line. It can draft a reply to a thread.
 - **Risks on the lines they concern.** The diff marks the lines a risk is about with a bar, its flag and one sentence of what is at stake. Re-analyze to get them.
 - **Fable in the model list.** The analysis and chat model pickers offer Fable, Opus, Sonnet and Haiku for both Claude harnesses.

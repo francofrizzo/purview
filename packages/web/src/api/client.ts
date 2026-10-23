@@ -534,6 +534,11 @@ export const api = {
 
   /** Local-only: nothing about the PR on GitHub changes. */
   /** Flip who new comments on this PR are for; null goes back to the default by author. */
+  async setPrTag(key: string, tag: string | null): Promise<unknown> {
+    if (MOCK) return mockApi.setPrTag(key, tag);
+    return post(`/prs/${encodeKey(key)}/tag`, { tag });
+  },
+
   async setPrCommentAudience(
     key: string,
     audience: CommentAudience | null,

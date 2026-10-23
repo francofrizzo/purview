@@ -1238,3 +1238,29 @@ export function useDiscardPendingReview(
     },
   });
 }
+
+/** Update both places that display a tag immediately, rolling back on failure. */
+export function useSetPrTag(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tag: string | null) => api.setPrTag(key, tag),
+    onMutate: async (tag) => {
+      await Promise.all([qc.cancelQueries({ queryKey: qk.prs }), qc.cancelQueries({ queryKey: qk.pr(key) })]);
+      const list = qc.getQueryData<PrListEntry[]>(qk.prs);
+      const detail = qc.getQueryData<PrDetail>(qk.pr(key));
+      const meta = (m: PrDetail["meta"]) => {
+        const { tag: _drop, ...rest } = m;
+        return tag === null ? rest : { ...rest, tag };
+      };
+      if (list) qc.setQueryData(qk.prs, list.map((p) => p.key === key ? { ...p, meta: meta(p.meta) } : p));
+      if (detail) qc.setQueryData(qk.pr(key), { ...detail, meta: meta(detail.meta) });
+      return { list, detail };
+    },
+    onError: (_error, _tag, ctx) => {
+      // Restore just this PR's tag, preserving other concurrent row changes.
+      qc.setQueryData<PrListEntry[]>(qk.prs, (list) => list?.map((p) => p.key === key ? { ...p, meta: { ...p.meta, tag: ctx?.list?.find((old) => old.key === key)?.meta.tag } } : p));
+      if (ctx?.detail) qc.setQueryData<PrDetail>(qk.pr(key), (d) => d ? { ...d, meta: { ...d.meta, tag: ctx.detail!.meta.tag } } : d);
+    },
+    onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: qk.prs }), qc.invalidateQueries({ queryKey: qk.pr(key) })]),
+  });
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PrListEntry } from "../api/types";
 import {
+  arrangeBlock,
   applyArchive,
   applyRepoArchive,
   formatAbsoluteDate,
@@ -310,5 +311,47 @@ describe("diffTotals", () => {
         { hunks: [{ addedLines: ["p", "q"], removedLines: [] }] },
       ]),
     ).toEqual({ files: 2, additions: 5, deletions: 3 });
+  });
+});
+
+describe("arrangeBlock", () => {
+  const row = (n: number, tag?: string, base?: number) => {
+    const p = pr(`github.com/acme/repo/${n}`, "acme", "repo", ago(n));
+    p.meta.tag = tag;
+    if (base) p.meta.basePr = { number: base, title: "base", url: `https://github.com/acme/repo/pull/${base}` };
+    return p;
+  };
+  const shape = (rows: PrListEntry[]) => arrangeBlock(rows).map((g) => ({ tag: g.tag, rows: g.prs.map(({ pr, depth }) => [pr.meta.number, depth]) }));
+  it("sorts tags, preserves group order and puts untagged last", () => {
+    expect(shape([row(1), row(2, "z"), row(3, "a"), row(4, "z"), row(5)])).toEqual([
+      { tag: "a", rows: [[3, 0]] }, { tag: "z", rows: [[2, 0], [4, 0]] }, { tag: null, rows: [[1, 0], [5, 0]] },
+    ]);
+    expect(arrangeBlock([])).toEqual([]);
+  });
+  it("orders a chain at its base position with stable siblings", () => {
+    expect(shape([row(3, "a", 2), row(4, "a"), row(2, "a", 1), row(1, "a"), row(5, "a", 1)])).toEqual([
+      { tag: "a", rows: [[4, 0], [1, 0], [2, 1], [3, 2], [5, 1]] },
+    ]);
+  });
+  it("leaves bases outside the group at depth zero", () => {
+    expect(shape([row(2, "a", 1), row(1, "b"), row(3, "a", 99)])).toEqual([
+      { tag: "a", rows: [[2, 0], [3, 0]] }, { tag: "b", rows: [[1, 0]] },
+    ]);
+  });
+  it("tells each row how to draw its tree: guides for continuing ancestors, elbow kind, children", () => {
+    // 1 ─┬ 2 ─ 3 (3 is 2's only child; 2 continues to sibling 4)
+    //    └ 4
+    const rows = arrangeBlock([row(1, "a"), row(2, "a", 1), row(3, "a", 2), row(4, "a", 1)])[0]!.prs;
+    expect(rows.map((r) => [r.pr.meta.number, r.depth, r.guides, r.last, r.hasChildren])).toEqual([
+      [1, 0, [], true, true],
+      [2, 1, [], false, true],
+      [3, 2, [true], true, false],
+      [4, 1, [], true, false],
+    ]);
+  });
+  it("breaks cycles without omitting or duplicating rows", () => {
+    expect(shape([row(1, undefined, 2), row(2, undefined, 1), row(3, undefined, 3)])).toEqual([
+      { tag: null, rows: [[1, 0], [2, 1], [3, 0]] },
+    ]);
   });
 });

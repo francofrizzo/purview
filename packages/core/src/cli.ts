@@ -231,6 +231,19 @@ program
     console.log("Nothing on GitHub was changed.");
   });
 
+program.command("tag")
+  .argument("<pr>", "host/owner/repo/number or a PR URL")
+  .argument("[name]", "one global tag, up to 24 characters")
+  .option("--clear", "remove the tag")
+  .action(async (pr: string, name: string | undefined, opts: { clear?: boolean }) => {
+    if ((!opts.clear && name === undefined) || (opts.clear && name !== undefined)) {
+      throw new Error("Supply a tag name or --clear");
+    }
+    const key = requireExistingKey(pr);
+    const result = await callServer("POST", `${serverBaseUrl()}/api/prs/${encodeURIComponent(keyToString(key))}/tag`, { tag: opts.clear ? null : name });
+    console.log(JSON.stringify(result));
+  });
+
 program.command("threads").argument("<key>")
   .option("--mine", "threads containing your comments")
   .option("--unresolved", "unresolved threads")

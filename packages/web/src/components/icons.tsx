@@ -9,6 +9,7 @@ import {
   IconArrowsRightLeft,
   IconBrandGithub as TablerBrandGithub,
   IconSparkles as TablerSparkles,
+  IconTag as TablerTag,
   IconLayoutSidebarRight,
   IconSend as TablerSend,
   IconBarbell,
@@ -246,3 +247,6 @@ export const RISK_META: Record<
   "external-call": { icon: IconExternal, label: "external call" },
   security: { icon: IconShield, label: "security" },
 };
+
+/** A luggage tag — set or change the PR's tag. */
+export const IconTag = wrap(TablerTag);

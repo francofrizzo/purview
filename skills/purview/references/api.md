@@ -34,6 +34,7 @@ summary          the analysis's one-paragraph summary, "" before an analysis
 progress         { hunks: {viewed,total}, units: {complete,total}, files: {viewed,total} }
 analysisJob      job (below) or null
 diffSize         { additions, deletions } or null
+meta.tag         optional global tag, lowercase, normalized spaces, 1–24 characters
 meta             { url, title, author, headRef, baseRef, createdAt, prState, ... }
 ```
 
@@ -152,3 +153,7 @@ for an untracked PR. The CLI takes the key or the PR URL.
 Each delivered comment carries `pickedUp: {at: "<ISO timestamp>", by: "<agent name>"}`.
 Editing its body clears that mark, making it pending again; moving it to GitHub
 also clears the mark. `purview notes <key> --peek` reads without marking.
+
+## `POST /prs/<key>/tag`
+
+`{ tag: string | null }`: set one tag or clear with null; returns updated meta. CLI: `reviewer-state tag <pr> <name>` or `tag <pr> --clear` (through the server).

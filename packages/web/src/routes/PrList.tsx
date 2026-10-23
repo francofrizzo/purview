@@ -1,7 +1,18 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { TagChip, TagPopover } from "../components/TagPopover";
+import { arrangeBlock, type ArrangedRow } from "../lib/prList";
 import { MOCK } from "../api/client";
-import { useAddPr, useImportReviews, useMarkVersionSeen, usePrs, useRefresh, useRepos, useSetArchived, useVersion } from "../api/hooks";
+import {
+  useAddPr,
+  useImportReviews,
+  useMarkVersionSeen,
+  usePrs,
+  useRefresh,
+  useRepos,
+  useSetArchived,
+  useVersion,
+} from "../api/hooks";
 import type { PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
@@ -17,7 +28,15 @@ import {
 import { useModalBackground } from "../components/Modal";
 import { UpdateAvailable } from "../components/UpdateAvailable";
 import { WhatsNew } from "../components/WhatsNew";
-import { IconArchive, IconChevron, IconPlus, IconRefresh, IconSettings, IconSpinner } from "../components/icons";
+import {
+  IconArchive,
+  IconChevron,
+  IconPlus,
+  IconRefresh,
+  IconSettings,
+  IconSpinner,
+  IconTag,
+} from "../components/icons";
 import { ReviewersMark, showsReviewers } from "../components/Reviewers";
 import { errorText } from "../api/errors";
 import { rollbackMessage } from "../lib/rollback";
@@ -43,15 +62,27 @@ import logoLight from "../assets/logo-light.png";
  * jumped and jumped back) can be reported once at the top rather than lost
  * in the row it happened on.
  */
-const ArchiveContext = createContext<ReturnType<typeof useSetArchived> | null>(null);
+type TagEditor = { pr: PrListEntry; anchor: HTMLElement };
+const TagContext = createContext<(editor: TagEditor) => void>(() => {});
+
+const ArchiveContext = createContext<ReturnType<typeof useSetArchived> | null>(
+  null,
+);
 
 export function PrList() {
+  const [tagEditor, setTagEditor] = useState<TagEditor | null>(null);
+  const tagEditorAnchor = useMemo(
+    () => ({ current: tagEditor?.anchor ?? null }),
+    [tagEditor],
+  );
   const { data: prs = [], isLoading, error } = usePrs();
   const { data: repos = [] } = useRepos();
   const background = useModalBackground();
   const addPr = useAddPr();
   const setArchived = useSetArchived();
-  const archiveError = rollbackMessage([{ label: "archiving the PR", error: setArchived.error }]);
+  const archiveError = rollbackMessage([
+    { label: "archiving the PR", error: setArchived.error },
+  ]);
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
   // First open after an update: the unseen changelog entries float over the
@@ -80,7 +111,9 @@ export function PrList() {
         // analysis was imported rather than looking suspiciously instant.
         if (entry?.key)
           navigate(`/pr/${entry.key}`, {
-            state: entry.sharedAnalysis ? { sharedAnalysis: entry.sharedAnalysis } : undefined,
+            state: entry.sharedAnalysis
+              ? { sharedAnalysis: entry.sharedAnalysis }
+              : undefined,
           });
       },
     });
@@ -88,121 +121,172 @@ export function PrList() {
 
   return (
     <ArchiveContext.Provider value={setArchived}>
-    <div className="mx-auto flex h-full max-w-3xl flex-col px-6 py-10">
-      {unseen.length && version.data?.version && !markSeen.isPending ? (
-        <WhatsNew
-          entries={unseen}
-          version={version.data.version}
-          onClose={() => markSeen.mutate(version.data!.version!)}
-        />
-      ) : null}
-      <header className="mb-6 flex items-start">
-        <div className="min-w-0 flex-1">
-          <h1>
-            {/* Two inks, one shown per theme (see index.css); the h1's name is the alt. */}
-            <img src={logoLight} alt="Purview" width={110} height={24} className="logo-for-dark h-6 w-auto" />
-            <img src={logoDark} alt="Purview" width={110} height={24} className="logo-for-light h-6 w-auto" />
-          </h1>
-          {MOCK ? (
-            <p className="mt-0.5 text-xs" style={{ color: "var(--warn)" }}>
-              mock mode — no server, fixture data
-            </p>
+      <TagContext.Provider value={setTagEditor}>
+        <div className="mx-auto flex h-full max-w-3xl flex-col px-6 py-10">
+          {unseen.length && version.data?.version && !markSeen.isPending ? (
+            <WhatsNew
+              entries={unseen}
+              version={version.data.version}
+              onClose={() => markSeen.mutate(version.data!.version!)}
+            />
           ) : null}
-        </div>
-        <div className="flex flex-none items-center gap-2">
-          <UpdateAvailable />
-          <Link to="/settings" state={{ background }} className="btn" data-tip="Settings">
-            <IconSettings width={12} height={12} />
-            settings
-          </Link>
-        </div>
-      </header>
+          <header className="mb-6 flex items-start">
+            <div className="min-w-0 flex-1">
+              <h1>
+                {/* Two inks, one shown per theme (see index.css); the h1's name is the alt. */}
+                <img
+                  src={logoLight}
+                  alt="Purview"
+                  width={110}
+                  height={24}
+                  className="logo-for-dark h-6 w-auto"
+                />
+                <img
+                  src={logoDark}
+                  alt="Purview"
+                  width={110}
+                  height={24}
+                  className="logo-for-light h-6 w-auto"
+                />
+              </h1>
+              {MOCK ? (
+                <p className="mt-0.5 text-xs" style={{ color: "var(--warn)" }}>
+                  mock mode — no server, fixture data
+                </p>
+              ) : null}
+            </div>
+            <div className="flex flex-none items-center gap-2">
+              <UpdateAvailable />
+              <Link
+                to="/settings"
+                state={{ background }}
+                className="btn"
+                data-tip="Settings"
+              >
+                <IconSettings width={12} height={12} />
+                settings
+              </Link>
+            </div>
+          </header>
 
-      <form onSubmit={submit} className="mb-6 flex gap-2">
-        <input
-          className="input font-mono text-xs"
-          placeholder="https://github.com/owner/repo/pull/123"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-        />
-        <button type="submit" className="btn btn-primary flex-none" disabled={addPr.isPending}>
-          {addPr.isPending ? "fetching…" : "add PR"}
-        </button>
-      </form>
+          <form onSubmit={submit} className="mb-6 flex gap-2">
+            <input
+              className="input font-mono text-xs"
+              placeholder="https://github.com/owner/repo/pull/123"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
+            <button
+              type="submit"
+              className="btn btn-primary flex-none"
+              disabled={addPr.isPending}
+            >
+              {addPr.isPending ? "fetching…" : "add PR"}
+            </button>
+          </form>
 
-      {addPr.error ? (
-        <div
-          className="mb-4 rounded px-3 py-2 text-xs"
-          style={{ background: "var(--risk-soft)", color: "var(--risk)" }}
-        >
-          {(addPr.error as Error).message}
-        </div>
-      ) : null}
-      {archiveError ? (
-        <div
-          className="mb-4 rounded px-3 py-2 text-xs"
-          data-testid="rollback-error"
-          style={{ background: "var(--risk-soft)", color: "var(--risk)" }}
-        >
-          {archiveError}
-        </div>
-      ) : null}
+          {addPr.error ? (
+            <div
+              className="mb-4 rounded px-3 py-2 text-xs"
+              style={{ background: "var(--risk-soft)", color: "var(--risk)" }}
+            >
+              {(addPr.error as Error).message}
+            </div>
+          ) : null}
+          {archiveError ? (
+            <div
+              className="mb-4 rounded px-3 py-2 text-xs"
+              data-testid="rollback-error"
+              style={{ background: "var(--risk-soft)", color: "var(--risk)" }}
+            >
+              {archiveError}
+            </div>
+          ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        {isLoading ? (
-          <p className="surface flex items-center gap-2 rounded-md p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
-            <IconSpinner width={12} height={12} />
-            Loading…
-          </p>
-        ) : error ? (
-          <p className="surface rounded-md p-4 text-xs" style={{ color: "var(--risk)" }}>
-            {(error as Error).message}
-          </p>
-        ) : groups.length === 0 ? (
-          <p
-            className="surface rounded-md p-4 text-xs leading-5"
-            style={{ color: "var(--fg-faint)" }}
-          >
-            No pull requests tracked yet. Paste a GitHub PR URL above; the server fetches it with{" "}
-            <span className="font-mono">gh</span> and creates the local state directory.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-3 pb-6">
-            {tiers.active.map((group) => (
-              <RepoSection key={group.key} group={group} repo={repoByKey.get(group.key)} />
-            ))}
-            {tiers.active.length === 0 ? (
+          <div className="min-h-0 flex-1 overflow-auto">
+            {isLoading ? (
+              <p
+                className="surface flex items-center gap-2 rounded-md p-4 text-xs"
+                style={{ color: "var(--fg-faint)" }}
+              >
+                <IconSpinner width={12} height={12} />
+                Loading…
+              </p>
+            ) : error ? (
+              <p
+                className="surface rounded-md p-4 text-xs"
+                style={{ color: "var(--risk)" }}
+              >
+                {(error as Error).message}
+              </p>
+            ) : groups.length === 0 ? (
               <p
                 className="surface rounded-md p-4 text-xs leading-5"
                 style={{ color: "var(--fg-faint)" }}
               >
-                Every repo is archived. Unarchive one below, or paste a PR URL above.
+                No pull requests tracked yet. Paste a GitHub PR URL above; the
+                server fetches it with <span className="font-mono">gh</span> and
+                creates the local state directory.
               </p>
-            ) : null}
-            {tiers.archived.length ? (
-              <div className="flex flex-col gap-3">
-                <button
-                  type="button"
-                  onClick={() => setShowArchivedRepos((v) => !v)}
-                  data-testid="archived-repos-toggle"
-                  aria-expanded={showArchivedRepos}
-                  className="flex items-center gap-1.5 self-start rounded px-1 py-0.5 text-2xs transition-colors hover:bg-[var(--bg-hover)]"
-                  style={{ color: "var(--fg-faint)" }}
-                >
-                  <IconChevron open={showArchivedRepos} width={10} height={10} />
-                  Archived repos ({tiers.archived.length})
-                </button>
-                {showArchivedRepos
-                  ? tiers.archived.map((group) => (
-                      <RepoSection key={group.key} group={group} repo={repoByKey.get(group.key)} />
-                    ))
-                  : null}
+            ) : (
+              <div className="flex flex-col gap-3 pb-6">
+                {tiers.active.map((group) => (
+                  <RepoSection
+                    key={group.key}
+                    group={group}
+                    repo={repoByKey.get(group.key)}
+                  />
+                ))}
+                {tiers.active.length === 0 ? (
+                  <p
+                    className="surface rounded-md p-4 text-xs leading-5"
+                    style={{ color: "var(--fg-faint)" }}
+                  >
+                    Every repo is archived. Unarchive one below, or paste a PR
+                    URL above.
+                  </p>
+                ) : null}
+                {tiers.archived.length ? (
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowArchivedRepos((v) => !v)}
+                      data-testid="archived-repos-toggle"
+                      aria-expanded={showArchivedRepos}
+                      className="flex items-center gap-1.5 self-start rounded px-1 py-0.5 text-2xs transition-colors hover:bg-[var(--bg-hover)]"
+                      style={{ color: "var(--fg-faint)" }}
+                    >
+                      <IconChevron
+                        open={showArchivedRepos}
+                        width={10}
+                        height={10}
+                      />
+                      Archived repos ({tiers.archived.length})
+                    </button>
+                    {showArchivedRepos
+                      ? tiers.archived.map((group) => (
+                          <RepoSection
+                            key={group.key}
+                            group={group}
+                            repo={repoByKey.get(group.key)}
+                          />
+                        ))
+                      : null}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+            )}
           </div>
-        )}
-      </div>
-    </div>
+        </div>
+        {tagEditor ? (
+          <TagPopover
+            prKey={tagEditor.pr.key}
+            current={tagEditor.pr.meta.tag}
+            anchorRef={tagEditorAnchor}
+            onClose={() => setTagEditor(null)}
+          />
+        ) : null}
+      </TagContext.Provider>
     </ArchiveContext.Provider>
   );
 }
@@ -215,7 +299,13 @@ export function PrList() {
  * them from. A whole archived repo renders the same way, dimmed and without
  * the import entry, and its ⋯ offers the unarchive.
  */
-function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) {
+function RepoSection({
+  group,
+  repo,
+}: {
+  group: RepoGroup;
+  repo?: RepoSummary;
+}) {
   const [showArchived, setShowArchived] = useState(false);
   const finishedKeys = finishedPrKeys(group);
   const [importOpen, setImportOpen] = useState(false);
@@ -223,9 +313,12 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
   const repoArchived = group.repoArchived;
-  const openCount = group.needsReview.length + group.mine.length + group.prs.length;
+  const openCount =
+    group.needsReview.length + group.mine.length + group.prs.length;
   // Labels only earn their place once there is more than one block to tell apart.
-  const labeled = [group.needsReview, group.mine, group.prs].filter((b) => b.length).length > 1;
+  const labeled =
+    [group.needsReview, group.mine, group.prs].filter((b) => b.length).length >
+    1;
 
   return (
     <section
@@ -235,7 +328,9 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
     >
       <header className="flex items-center gap-2 py-2 pl-3 pr-2">
         <span className="truncate text-[13px] font-semibold">
-          <span style={{ color: "var(--fg-muted)", fontWeight: 400 }}>{group.owner}/</span>
+          <span style={{ color: "var(--fg-muted)", fontWeight: 400 }}>
+            {group.owner}/
+          </span>
           {group.repo}
         </span>
         {group.host !== "github.com" ? (
@@ -266,11 +361,17 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
                 : "Polling for review requests; no check yet"
             }
           >
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--ok)" }} />
+            <span
+              className="h-1.5 w-1.5 rounded-full"
+              style={{ background: "var(--ok)" }}
+            />
             watching
           </span>
         ) : null}
-        <span className="ml-auto flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+        <span
+          className="ml-auto flex-none text-2xs tabular-nums"
+          style={{ color: "var(--fg-faint)" }}
+        >
           {openCount} {openCount === 1 ? "PR" : "PRs"}
         </span>
         {repoArchived ? null : (
@@ -298,13 +399,22 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
         >
           <IconSettings width={12} height={12} />
         </Link>
-        <RepoMenu repo={group} archived={repoArchived} onImport={repoArchived ? undefined : () => setImportOpen(true)} />
+        <RepoMenu
+          repo={group}
+          archived={repoArchived}
+          onImport={repoArchived ? undefined : () => setImportOpen(true)}
+        />
       </header>
 
-      {addOpen && !repoArchived ? <AddByNumberForm repo={group} onClose={() => setAddOpen(false)} /> : null}
+      {addOpen && !repoArchived ? (
+        <AddByNumberForm repo={group} onClose={() => setAddOpen(false)} />
+      ) : null}
 
       {importOpen && !repoArchived ? (
-        <ImportReviewsForm rkey={group.key} onClose={() => setImportOpen(false)} />
+        <ImportReviewsForm
+          rkey={group.key}
+          onClose={() => setImportOpen(false)}
+        />
       ) : null}
 
       {group.needsReview.length ? (
@@ -335,7 +445,10 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
       )}
 
       {group.archived.length || finishedKeys.length ? (
-        <div className="flex items-center border-t" style={{ borderColor: "var(--border)" }}>
+        <div
+          className="flex items-center border-t"
+          style={{ borderColor: "var(--border)" }}
+        >
           {group.archived.length ? (
             <button
               type="button"
@@ -352,13 +465,18 @@ function RepoSection({ group, repo }: { group: RepoGroup; repo?: RepoSummary }) 
             <span className="flex-1" />
           )}
           {/* The cleanup sits by the list it feeds, not in the ⋯ menu. */}
-          {repoArchived ? null : <AutoArchiveButton repo={group} finishedKeys={finishedKeys} />}
+          {repoArchived ? null : (
+            <AutoArchiveButton repo={group} finishedKeys={finishedKeys} />
+          )}
         </div>
       ) : null}
       {group.archived.length && showArchived ? (
         <ul style={{ borderTop: "1px solid var(--border)" }}>
           {group.archived.map((pr) => (
-            <PrRow key={pr.key} pr={pr} />
+            <PrRow
+              key={pr.key}
+              row={{ pr, depth: 0, guides: [], last: true, hasChildren: false }}
+            />
           ))}
         </ul>
       ) : null}
@@ -390,11 +508,32 @@ function PrBlock({
           {label}
         </GroupLabel>
       ) : null}
-      <ul className={label ? undefined : "border-t"} style={{ borderColor: "var(--border)" }}>
-        {prs.map((pr) => (
-          <PrRow key={pr.key} pr={pr} waiting={waiting} />
-        ))}
-      </ul>
+      {arrangeBlock(prs).map((group, i) => (
+        <div
+          key={group.tag ?? ""}
+          data-testid="pr-tag-group"
+          data-tag={group.tag ?? ""}
+        >
+          {group.tag ? (
+            <div
+              data-testid="pr-tag-heading"
+              className="flex items-baseline gap-1.5 border-t px-3 pb-1 pt-2 text-2xs"
+              style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
+            >
+              <TagChip tag={group.tag} />
+              <span className="tabular-nums">{group.prs.length}</span>
+            </div>
+          ) : null}
+          <ul
+            className={group.tag || (label && i === 0) ? undefined : "border-t"}
+            style={{ borderColor: "var(--border)" }}
+          >
+            {group.prs.map((row) => (
+              <PrRow key={row.pr.key} row={row} waiting={waiting} />
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
@@ -412,10 +551,17 @@ function GroupLabel({
   return (
     <div
       className="flex items-baseline gap-1.5 border-y px-3 py-1.5 text-2xs font-medium"
-      style={{ borderColor: "var(--border)", background: "var(--bg-inset)", color }}
+      style={{
+        borderColor: "var(--border)",
+        background: "var(--bg-inset)",
+        color,
+      }}
     >
       {children}
-      <span className="tabular-nums" style={{ color: "var(--fg-faint)", fontWeight: 400 }}>
+      <span
+        className="tabular-nums"
+        style={{ color: "var(--fg-faint)", fontWeight: 400 }}
+      >
         {count}
       </span>
     </div>
@@ -448,7 +594,9 @@ function AddByNumberForm({
         onClose();
         if (entry?.key)
           navigate(`/pr/${entry.key}`, {
-            state: entry.sharedAnalysis ? { sharedAnalysis: entry.sharedAnalysis } : undefined,
+            state: entry.sharedAnalysis
+              ? { sharedAnalysis: entry.sharedAnalysis }
+              : undefined,
           });
       },
     });
@@ -461,7 +609,10 @@ function AddByNumberForm({
       style={{ borderColor: "var(--border)" }}
       data-testid={`add-by-number-${repo.key}`}
     >
-      <label className="flex items-center gap-1" style={{ color: "var(--fg-faint)" }}>
+      <label
+        className="flex items-center gap-1"
+        style={{ color: "var(--fg-faint)" }}
+      >
         #
         <input
           autoFocus
@@ -480,7 +631,12 @@ function AddByNumberForm({
       <button type="submit" className="btn" disabled={!url || addPr.isPending}>
         {addPr.isPending ? "fetching…" : "add"}
       </button>
-      <button type="button" className="btn" disabled={addPr.isPending} onClick={onClose}>
+      <button
+        type="button"
+        className="btn"
+        disabled={addPr.isPending}
+        onClick={onClose}
+      >
         cancel
       </button>
       {addPr.error ? (
@@ -492,7 +648,13 @@ function AddByNumberForm({
   );
 }
 
-function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => void }) {
+function ImportReviewsForm({
+  rkey,
+  onClose,
+}: {
+  rkey: string;
+  onClose: () => void;
+}) {
   const [days, setDays] = useState(7);
   const importReviews = useImportReviews(rkey);
 
@@ -515,7 +677,8 @@ function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => voi
         disabled={importReviews.isPending}
         onChange={(e) => {
           const n = Number(e.target.value);
-          if (Number.isFinite(n)) setDays(Math.min(90, Math.max(1, Math.round(n))));
+          if (Number.isFinite(n))
+            setDays(Math.min(90, Math.max(1, Math.round(n))));
         }}
       />
       <span style={{ color: "var(--fg-faint)" }}>days</span>
@@ -527,13 +690,26 @@ function ImportReviewsForm({ rkey, onClose }: { rkey: string; onClose: () => voi
       >
         {importReviews.isPending ? "importing…" : "import"}
       </button>
-      <button type="button" className="btn" disabled={importReviews.isPending} onClick={onClose}>
+      <button
+        type="button"
+        className="btn"
+        disabled={importReviews.isPending}
+        onClick={onClose}
+      >
         cancel
       </button>
       {importReviews.error ? (
-        <span style={{ color: "var(--risk)" }}>{errorText(importReviews.error)}</span>
+        <span style={{ color: "var(--risk)" }}>
+          {errorText(importReviews.error)}
+        </span>
       ) : importReviews.data ? (
-        <span style={{ color: importReviews.data.failed.length ? "var(--risk)" : "var(--fg-faint)" }}>
+        <span
+          style={{
+            color: importReviews.data.failed.length
+              ? "var(--risk)"
+              : "var(--fg-faint)",
+          }}
+        >
           {formatImportResult(importReviews.data)}
         </span>
       ) : null}
@@ -550,17 +726,37 @@ const ARCHIVE_HINT = "local only, nothing changes on GitHub";
  * decision only once it is approved or has changes requested. `waiting` marks
  * a row of the "waiting on your review" block with the warm left rule.
  */
-function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) {
+function PrRow({
+  row,
+  waiting = false,
+}: {
+  row: ArrangedRow;
+  waiting?: boolean;
+}) {
+  const { pr, depth, hasChildren } = row;
+  const openTag = useContext(TagContext);
+  const tagButtonRef = useRef<HTMLButtonElement>(null);
   const setArchived = useContext(ArchiveContext)!;
   const archived = pr.archived;
   const meta = pr.meta;
+  const edit = (anchor: HTMLElement | null) => {
+    if (anchor) openTag({ pr, anchor });
+  };
 
   return (
     <li
       className="group relative flex items-center gap-3 border-b pr-3 transition-colors last:border-b-0 hover:bg-[var(--bg-hover)]"
-      style={{ borderColor: "var(--border)", opacity: archived ? 0.55 : 1 }}
+      style={{
+        borderColor: "var(--border)",
+        opacity: archived ? 0.55 : 1,
+        paddingLeft: depth * STACK_INDENT,
+        // A base and its stack read as one block: the tree joins them, no rule between.
+        ...(hasChildren ? { borderBottomWidth: 0 } : {}),
+      }}
       data-testid={`pr-row-${pr.key}`}
+      data-depth={depth || undefined}
     >
+      {depth > 0 ? <StackTree row={row} /> : null}
       {waiting ? (
         <span
           aria-hidden
@@ -573,7 +769,10 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
           <span className="truncate text-[13px] font-medium">
             {pr.title ?? meta?.title ?? pr.key}
           </span>
-          <span className="flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+          <span
+            className="flex-none text-2xs tabular-nums"
+            style={{ color: "var(--fg-faint)" }}
+          >
             #{meta?.number}
           </span>
         </div>
@@ -582,27 +781,59 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
           style={{ color: "var(--fg-faint)" }}
         >
           {meta?.author ? (
-            <span className="flex items-center gap-1" data-tip={`Opened by ${meta.author}`}>
-              <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
+            <span
+              className="flex items-center gap-1"
+              data-tip={`Opened by ${meta.author}`}
+            >
+              <AuthorAvatar
+                author={meta.author}
+                url={meta.authorAvatarUrl}
+                size={14}
+              />
               {meta.author}
+            </span>
+          ) : null}
+          {depth === 0 && meta?.basePr ? (
+            <span
+              data-testid="pr-stacked-on"
+              data-tip={`Targets #${meta.basePr.number}: ${meta.basePr.title}`}
+            >
+              stacked on #{meta.basePr.number}
             </span>
           ) : null}
           {visibleReviewRequest(pr.reviewRequest, pr.state) ? (
             <ReviewRequestAge request={pr.reviewRequest} state={pr.state} />
           ) : null}
-          <span data-tip={formatFullTimestamp(pr.addedAt)}>added {formatAddedAt(pr.addedAt)}</span>
+          <span data-tip={formatFullTimestamp(pr.addedAt)}>
+            added {formatAddedAt(pr.addedAt)}
+          </span>
           <DiffSizeStat size={pr.diffSize} files={false} />
           <CiMark ci={pr.ci} />
-          {showsReviewers(pr.authoredByYou, pr.state) ? <ReviewersMark reviewers={pr.reviewers} /> : null}
+          {showsReviewers(pr.authoredByYou, pr.state) ? (
+            <ReviewersMark reviewers={pr.reviewers} />
+          ) : null}
         </div>
         <RowStatus pr={pr} className="mt-1.5 flex flex-wrap sm:hidden" />
       </Link>
 
       <RowStatus pr={pr} className="hidden flex-none sm:flex" />
 
+      {/* Hover-only, like archive. The tag itself is the group heading above. */}
+      <button
+        ref={tagButtonRef}
+        type="button"
+        className="flex-none rounded p-1.5 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
+        data-testid={`tag-${pr.key}`}
+        data-tip={meta?.tag ? `Tagged ${meta.tag}; change it` : "Tag this PR"}
+        aria-label={meta?.tag ? "Change the tag" : "Tag this PR"}
+        onClick={() => edit(tagButtonRef.current)}
+        style={{ color: "var(--fg-faint)", background: "var(--bg-hover)" }}
+      >
+        <IconTag width={12} height={12} />
+      </button>
       <button
         type="button"
-        className="absolute right-2 top-1/2 flex-none -translate-y-1/2 rounded p-1.5 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
+        className="flex-none rounded p-1.5 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
         data-testid={`archive-${pr.key}`}
         disabled={setArchived.isPending}
         data-tip={`${archived ? "Unarchive" : "Archive"}; ${ARCHIVE_HINT}`}
@@ -613,6 +844,60 @@ function PrRow({ pr, waiting = false }: { pr: PrListEntry; waiting?: boolean }) 
         <IconArchive out={archived} width={12} height={12} />
       </button>
     </li>
+  );
+}
+
+/** How far each level of a stack steps in, in px. */
+const STACK_INDENT = 20;
+/** Where a level's guide line sits inside its indent: under the base title's first letter. */
+const STACK_LINE = 12;
+/** The elbow meets the row at its title line, not the row's middle. */
+const STACK_ELBOW_Y = 20;
+/** The row above's bottom padding: the line starts right under its text. */
+const STACK_RISE = 10;
+
+/**
+ * The tree beside a stacked row: one guide line per ancestor that continues
+ * below this row, and at the parent's level an elbow into this row, which
+ * closes (└) on the last child and carries on (├) otherwise.
+ */
+function StackTree({ row }: { row: ArrangedRow }) {
+  const { depth, guides, last } = row;
+  const x = (level: number) => level * STACK_INDENT + STACK_LINE;
+  const line = "1px solid var(--fg-faint)";
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute inset-y-0 left-0"
+      data-testid="stack-tree"
+    >
+      {guides.map((continues, level) =>
+        continues ? (
+          <span
+            key={level}
+            className="absolute inset-y-0"
+            style={{ left: x(level), borderLeft: line }}
+          />
+        ) : null,
+      )}
+      <span
+        className="absolute top-0"
+        style={{
+          left: x(depth - 1),
+          width: STACK_INDENT - STACK_LINE,
+          height: STACK_ELBOW_Y + STACK_RISE,
+          borderLeft: line,
+          borderBottom: line,
+          borderBottomLeftRadius: 5,
+        }}
+      />
+      {last ? null : (
+        <span
+          className="absolute inset-y-0"
+          style={{ left: x(depth - 1), borderLeft: line }}
+        />
+      )}
+    </span>
   );
 }
 
@@ -631,7 +916,11 @@ function UpdateButton({ prKey }: { prKey: string }) {
       className="chip px-0 font-normal disabled:opacity-60"
       style={{ color: "var(--warn)", background: "transparent" }}
       data-testid="update-button"
-      data-tip={error ? `Refresh failed: ${error}` : "New commits on GitHub · refresh this PR"}
+      data-tip={
+        error
+          ? `Refresh failed: ${error}`
+          : "New commits on GitHub · refresh this PR"
+      }
       aria-label="Refresh this PR"
       disabled={refresh.isPending}
       onClick={(e) => {
@@ -640,7 +929,11 @@ function UpdateButton({ prKey }: { prKey: string }) {
         refresh.mutate();
       }}
     >
-      <IconRefresh width={10} height={10} className={refresh.isPending ? "animate-spin" : undefined} />
+      <IconRefresh
+        width={10}
+        height={10}
+        className={refresh.isPending ? "animate-spin" : undefined}
+      />
       update
     </button>
   );
@@ -652,18 +945,29 @@ function UpdateButton({ prKey }: { prKey: string }) {
  * the row on wide screens, under the meta line at phone width.
  */
 function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
-  const decision = pr.reviewDecision === "review_required" ? null : pr.reviewDecision;
+  const decision =
+    pr.reviewDecision === "review_required" ? null : pr.reviewDecision;
   return (
     <div className={`items-center gap-2 ${className}`}>
-      {pr.needsUpdate && (pr.state === "open" || pr.state === "draft") ? <UpdateButton prKey={pr.key} /> : null}
+      {pr.needsUpdate && (pr.state === "open" || pr.state === "draft") ? (
+        <UpdateButton prKey={pr.key} />
+      ) : null}
       {pr.state !== "open" ? <PrStateChip state={pr.state} /> : null}
       <ReviewDecisionChip decision={decision} />
       <AnalysisChip job={pr.analysisJob} />
       <EffortChip effort={pr.effort} />
-      <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="unit-count">
-        {pr.unitCount ? `${pr.unitCount} ${pr.unitCount === 1 ? "unit" : "units"}` : "not analyzed"}
+      <span
+        className="text-2xs tabular-nums"
+        style={{ color: "var(--fg-faint)" }}
+        data-testid="unit-count"
+      >
+        {pr.unitCount
+          ? `${pr.unitCount} ${pr.unitCount === 1 ? "unit" : "units"}`
+          : "not analyzed"}
       </span>
-      {pr.totalHunks ? <Progress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} stacked /> : null}
+      {pr.totalHunks ? (
+        <Progress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} stacked />
+      ) : null}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { TagChip, TagPopover } from "./TagPopover";
 import { Link, useNavigate } from "react-router-dom";
 import type { AnalysisJob, CommentAudience, PrDetail, RevisionInfo } from "../api/types";
 import { isJobLive } from "../api/types";
@@ -148,6 +149,10 @@ export function TopBar({
   /** archive state of the PR's whole repo (`detail.repoArchived`) */
   onSetRepoArchived?: (archived: boolean) => void;
 }) {
+  // The tag popover hangs under the chip when there is one, under the ⋯ menu otherwise.
+  const tagChipRef = useRef<HTMLButtonElement>(null);
+  const tagMenuRef = useRef<HTMLDivElement>(null);
+  const [tagOpen, setTagOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const { meta, state } = detail;
   const live = isJobLive(analysisJob);
@@ -230,6 +235,19 @@ export function TopBar({
             ) : null}
           </span>
           <DiffSizeStat size={diffTotals(detail.files.files)} />
+          {meta.tag ? (
+            <button
+              ref={tagChipRef}
+              type="button"
+              className="flex-none rounded transition-opacity hover:opacity-80"
+              data-testid="header-tag"
+              data-tip="Change the tag"
+              aria-label={`Tag: ${meta.tag}. Change it`}
+              onClick={() => setTagOpen(true)}
+            >
+              <TagChip tag={meta.tag} />
+            </button>
+          ) : null}
           <CiMark ci={meta.ci} interactive />
           {showsReviewers(detail.authoredByYou, meta.prState) ? (
             <ReviewersMark reviewers={meta.reviewers} className="flex-none" ring="var(--bg-raised)" />
@@ -394,8 +412,10 @@ export function TopBar({
             if (file) onImportFilePicked(file);
           }}
         />
+        <div ref={tagMenuRef} className="contents">
         <OverflowMenu
           items={[
+            { label: meta.tag ? "Change tag…" : "Tag…", testId: "header-tag-menu", onClick: () => setTagOpen(true) },
             // Phone width: the row keeps chat, comments, refresh and finish;
             // sync moves in here.
             {
@@ -506,6 +526,7 @@ export function TopBar({
             },
           ]}
         />
+        </div>
         <button
           type="button"
           className="btn flex-none font-semibold hover:brightness-110"
@@ -531,6 +552,14 @@ export function TopBar({
           ) : null}
         </button>
       </div>
+      {tagOpen ? (
+        <TagPopover
+          prKey={detail.key}
+          current={meta.tag}
+          anchorRef={meta.tag ? tagChipRef : tagMenuRef}
+          onClose={() => setTagOpen(false)}
+        />
+      ) : null}
     </header>
   );
 }

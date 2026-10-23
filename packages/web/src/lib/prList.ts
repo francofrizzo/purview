@@ -33,11 +33,16 @@ const MONTHS = [
  * delegated to `toLocaleDateString` so the same input always renders the same
  * string, whatever locale the browser (or the test runner) is in.
  */
-export function formatAbsoluteDate(iso: string, now: Date = new Date()): string {
+export function formatAbsoluteDate(
+  iso: string,
+  now: Date = new Date(),
+): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const stem = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
-  return d.getFullYear() === now.getFullYear() ? stem : `${stem}, ${d.getFullYear()}`;
+  return d.getFullYear() === now.getFullYear()
+    ? stem
+    : `${stem}, ${d.getFullYear()}`;
 }
 
 /**
@@ -109,7 +114,8 @@ const time = (iso: string | undefined) => {
 // Oldest first everywhere: the list is a queue, and what has waited longest
 // sits on top. Added time for the PRs you opened and the rest, request time
 // for the ones waiting on your review.
-const byAddedAtAsc = (a: PrListEntry, b: PrListEntry) => time(a.addedAt) - time(b.addedAt);
+const byAddedAtAsc = (a: PrListEntry, b: PrListEntry) =>
+  time(a.addedAt) - time(b.addedAt);
 
 export const groupKeyOf = (pr: PrListEntry): string =>
   `${pr.meta?.host ?? "github.com"}/${pr.meta?.owner ?? "?"}/${pr.meta?.repo ?? "?"}`;
@@ -156,7 +162,8 @@ export function groupPrsByRepo(prs: PrListEntry[]): RepoGroup[] {
     }
     bucketOf(group, pr).push(pr);
     if (pr.repoArchived) group.repoArchived = true;
-    if (time(pr.addedAt) > time(group.latestAddedAt)) group.latestAddedAt = pr.addedAt;
+    if (time(pr.addedAt) > time(group.latestAddedAt))
+      group.latestAddedAt = pr.addedAt;
   }
   const out = [...groups.values()];
   for (const g of out) {
@@ -212,7 +219,9 @@ export function applyRepoArchive(
   rkey: string,
   archived: boolean,
 ): PrListEntry[] {
-  return prs.map((p) => (groupKeyOf(p) === rkey ? { ...p, repoArchived: archived } : p));
+  return prs.map((p) =>
+    groupKeyOf(p) === rkey ? { ...p, repoArchived: archived } : p,
+  );
 }
 
 /**
@@ -229,7 +238,9 @@ export function prUrlForNumber(
 }
 
 /** A repo's merged or closed PRs that are not archived yet: what auto-archive sweeps. */
-export function finishedPrKeys(group: Pick<RepoGroup, "needsReview" | "mine" | "prs">): string[] {
+export function finishedPrKeys(
+  group: Pick<RepoGroup, "needsReview" | "mine" | "prs">,
+): string[] {
   return [...group.needsReview, ...group.mine, ...group.prs]
     .filter((pr) => pr.state === "merged" || pr.state === "closed")
     .map((pr) => pr.key);
@@ -248,7 +259,11 @@ export function diffTotals(
   files: readonly {
     additions?: number | null;
     deletions?: number | null;
-    hunks?: readonly { lines?: string[]; addedLines?: string[]; removedLines?: string[] }[];
+    hunks?: readonly {
+      lines?: string[];
+      addedLines?: string[];
+      removedLines?: string[];
+    }[];
   }[],
 ): { files: number; additions: number; deletions: number } {
   let additions = 0;
@@ -273,4 +288,84 @@ export function diffTotals(
     }
   }
   return { files: files.length, additions, deletions };
+}
+
+/** Tags partition a block; stable depth-first trees keep each base and its descendants together. */
+/** One row of an arranged block: its PR, how deep it sits in a stack, and how to draw the tree beside it. */
+export interface ArrangedRow {
+  pr: PrListEntry;
+  /** 0 for a PR whose base is not in the group; +1 per PR it is stacked on inside the group */
+  depth: number;
+  /** for each ancestor level above the parent, whether that ancestor has later siblings (a guide line continues past this row) */
+  guides: boolean[];
+  /** the last child of its base: the elbow closes instead of continuing down */
+  last: boolean;
+  /** the next row is stacked on this one: no rule between them, the tree joins them */
+  hasChildren: boolean;
+}
+
+/**
+ * Lays out one block of the home list: tagged PRs first, grouped by tag in
+ * alphabetical order, the untagged ones last. Inside a group a PR stacked on
+ * another PR of the same group hangs under its base as a tree, in the base's
+ * position; a PR whose base sits elsewhere stays at depth 0. Order inside a
+ * level is the block's own. A cycle is broken at its first row.
+ */
+export function arrangeBlock(
+  prs: PrListEntry[],
+): Array<{ tag: string | null; prs: ArrangedRow[] }> {
+  const groups = new Map<string | null, PrListEntry[]>();
+  for (const pr of prs) {
+    const tag = pr.meta?.tag ?? null;
+    const group = groups.get(tag) ?? [];
+    group.push(pr);
+    groups.set(tag, group);
+  }
+  return [...groups.keys()]
+    .sort((a, b) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b)))
+    .map((tag) => {
+      const group = groups.get(tag)!;
+      const byKey = new Map(group.map((pr) => [pr.key, pr]));
+      const parentKey = (pr: PrListEntry) =>
+        pr.meta?.basePr ? `${groupKeyOf(pr)}/${pr.meta.basePr.number}` : "";
+      const children = new Map<string, PrListEntry[]>();
+      for (const pr of group) {
+        const key = parentKey(pr);
+        children.set(key, [...(children.get(key) ?? []), pr]);
+      }
+      const visited = new Set<string>();
+      const arranged: ArrangedRow[] = [];
+      const visit = (
+        pr: PrListEntry,
+        depth: number,
+        guides: boolean[],
+        last: boolean,
+      ) => {
+        if (visited.has(pr.key)) return;
+        visited.add(pr.key);
+        const kids = (children.get(pr.key) ?? []).filter(
+          (k) => !visited.has(k.key),
+        );
+        arranged.push({
+          pr,
+          depth,
+          guides,
+          last,
+          hasChildren: kids.length > 0,
+        });
+        kids.forEach((child, i) =>
+          visit(
+            child,
+            depth + 1,
+            depth === 0 ? [] : [...guides, !last],
+            i === kids.length - 1,
+          ),
+        );
+      };
+      for (const pr of group)
+        if (!byKey.has(parentKey(pr))) visit(pr, 0, [], true);
+      // A component with no root is a cycle: break it at its first row.
+      for (const pr of group) visit(pr, 0, [], true);
+      return { tag, prs: arranged };
+    });
 }
