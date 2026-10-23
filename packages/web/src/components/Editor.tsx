@@ -6,7 +6,7 @@ import { effectiveEditor } from "../lib/editor";
 import { errorText } from "../api/errors";
 import { Modal } from "./Modal";
 import { FloatingPanel } from "./FloatingPanel";
-import { IconCheck, IconCode, IconSpinner } from "./icons";
+import { IconCode, IconSpinner } from "./icons";
 import { Section } from "./SettingsSections";
 
 type Selection = NonNullable<GlobalConfig["editor"]>;
@@ -23,7 +23,10 @@ export function useOpenInEditor(prKey: string) {
     setBusy(true);
     setError(undefined);
     try {
-      await save.mutateAsync({ editor, ...(remember ? { editorConfirmed: true } : {}) });
+      // A pick is not a default: only Settings → Editor sets one. A custom
+      // command is stored, though, since that is what keeps it in the list.
+      const patch = { ...(editor.id === "custom" ? { editor } : {}), ...(remember && !config.data?.editorConfirmed ? { editorConfirmed: true } : {}) };
+      if (Object.keys(patch).length) await save.mutateAsync(patch);
       await api.openInEditor(prKey, editor);
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); setConfirm(false); }
@@ -70,7 +73,6 @@ export function EditorButton({ prKey }: { prKey: string }) {
   const [panel, setPanel] = useState(false);
   const [custom, setCustom] = useState(false);
   const available = editors.data?.filter(e => e.available) ?? [];
-  const selected = effectiveEditor(config.data, editors.data);
   const customEditor = config.data?.editor?.id === "custom" ? effectiveEditor(config.data, []) : undefined;
   const choices = customEditor ? [...available, customEditor] : available;
   const choose = (editor: Selection, name: string) => { setPanel(false); flow.pick(editor, name); };
@@ -84,8 +86,8 @@ export function EditorButton({ prKey }: { prKey: string }) {
         <CustomEditorForm initial={config.data?.editor} busy={flow.busy || !config.data} onSave={editor => choose(editor, editor.name || "your editor")} />
         {choices.length > 0 && <button className="btn mt-2" onClick={() => setCustom(false)}>Back</button>}
       </> : <>
-        {choices.map(editor => <button key={editor.id} type="button" className="flex w-full items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-[var(--bg-inset)]" data-testid={`editor-pick-${editor.id}`} aria-pressed={selected?.id === editor.id} onClick={() => choose(editor.id === "custom" ? { id: editor.id, name: editor.name, command: editor.command } : { id: editor.id }, editor.name)}>
-          {editor.name}{selected?.id === editor.id && <IconCheck width={12} height={12} />}
+        {choices.map(editor => <button key={editor.id} type="button" className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--bg-inset)]" data-testid={`editor-pick-${editor.id}`} onClick={() => choose(editor.id === "custom" ? { id: editor.id, name: editor.name, command: editor.command } : { id: editor.id }, editor.name)}>
+          {editor.name}
         </button>)}
         <div className="my-1 border-t border-[var(--border)]" />
         <button className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--bg-inset)]" onClick={() => setCustom(true)}>Custom command…</button>

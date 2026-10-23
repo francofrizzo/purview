@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { openPr } from "./helpers";
 
-test("header picker confirms, prepares and remembers the editor", async ({ page }) => {
+test("header picker confirms once, then opens the picked editor directly", async ({ page }) => {
   await openPr(page);
   const button = page.getByTestId("topbar-editor");
   await expect(button).toHaveAttribute("data-tip", "Open in editor: Purview's own copy of this PR, detached at its head commit");
@@ -16,7 +16,6 @@ test("header picker confirms, prepares and remembers the editor", async ({ page 
   await expect(confirm).toHaveCount(0);
   await expect(button).toHaveAttribute("aria-label", "open in editor");
   await button.click();
-  await expect(page.getByTestId("editor-pick-code")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("editor-pick-code").click();
   await expect(confirm).toHaveCount(0);
   await expect(button).toBeDisabled();
@@ -38,7 +37,6 @@ test("a named custom command opens and appears in the picker", async ({ page }) 
   await expect(confirm).toHaveCount(0);
   await button.click();
   await expect(page.getByTestId("editor-pick-custom")).toHaveText("Nova");
-  await expect(page.getByTestId("editor-pick-custom")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("editor-pick-custom").click();
   await expect(confirm).toHaveCount(0);
   await expect(button).toBeDisabled();
