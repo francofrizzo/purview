@@ -1,13 +1,13 @@
 import {
-  fetchPullRequest,
-  fetchReviewStatus,
+  fetchPullRequestAsync,
+  fetchReviewStatusAsync,
   ciChanged,
   reviewersChanged,
   keyToString,
   loadState,
   readMeta,
-  resolveBaseMeta,
-  reviewRequestPatch,
+  resolveBaseMetaAsync,
+  reviewRequestPatchAsync,
   stateRoot,
   updateMeta,
   type Meta,
@@ -130,11 +130,11 @@ export function needsUpdate(
  * is refreshed (at most every `REVIEW_REQUEST_POLL_MS`). Revisions, hunks and the
  * event log are never touched here — that is `refreshPr`'s job.
  */
-export function checkStaleness(
+export async function checkStaleness(
   key: PrKey,
   root = stateRoot(),
   opts: StalenessOptions = {},
-): StalenessResult {
+): Promise<StalenessResult> {
   const now = opts.now ?? Date.now;
   const cacheKey = cacheKeyFor(key, root);
   const at = now();
@@ -153,14 +153,14 @@ export function checkStaleness(
 
   let result: StalenessResult;
   try {
-    const pr = fetchPullRequest(key);
+    const pr = await fetchPullRequestAsync(key);
     // Best-effort, and `null` from it is indistinguishable from a failed
     // query — see the guard below.
     const {
       reviewDecision: upstreamReviewDecision,
       ci: upstreamCi,
       reviewers: upstreamReviewers,
-    } = fetchReviewStatus(key);
+    } = await fetchReviewStatusAsync(key);
     const ciMoved = ciChanged(meta.ci, upstreamCi);
     const reviewersMoved = reviewersChanged(meta.reviewers, upstreamReviewers);
 
@@ -213,7 +213,7 @@ export function checkStaleness(
     // `gh` call; best-effort, it never turns into a staleness error.
     if (meta.baseRef !== pr.baseRef || meta.basePr === undefined) {
       try {
-        Object.assign(patch, resolveBaseMeta(key, meta, pr.baseRef, root));
+        Object.assign(patch, await resolveBaseMetaAsync(key, meta, pr.baseRef, root));
       } catch {
         // leave the base fields for the next check
       }
@@ -221,7 +221,7 @@ export function checkStaleness(
     // Keep "requested 3d ago" honest for the open page; rate-limited on its
     // own stamp, and best-effort like everything else here.
     if (reviewRequestDue(meta.reviewRequestCheckedAt, at, REVIEW_REQUEST_POLL_MS)) {
-      Object.assign(patch, reviewRequestPatch(key, pr.prState, root, at));
+      Object.assign(patch, await reviewRequestPatchAsync(key, pr.prState, root, at));
     }
     if (Object.keys(patch).length > 0) updateMeta(key, patch, root);
   } catch (err) {

@@ -1231,7 +1231,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json({ state });
   });
 
-  app.post("/api/prs/:key/sync", (c) => {
+  app.post("/api/prs/:key/sync", async (c) => {
     const key = keyParam(c);
     let fileSync: ReturnType<typeof syncPr> | undefined;
     let fileSyncError: string | undefined;
@@ -1240,7 +1240,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     } catch (err) {
       fileSyncError = classifyError(err).message + ": " + String((err as Error).message ?? err);
     }
-    const commentSync = syncCommentsToGithub(key, root);
+    const commentSync = await syncCommentsToGithub(key, root);
     return c.json({
       files: fileSync
         ? { ok: true, pushed: fileSync.pushed, drift: fileSync.drift }
@@ -1512,7 +1512,7 @@ export function createApp(opts: AppOptions = {}): Hono {
           };
     let created;
     try {
-      created = createStandaloneReviewComment(key, commitId, input);
+      created = await createStandaloneReviewComment(key, commitId, input);
       log.info("github", `${shortKey(key)}  comment published`, { id: created.databaseId });
     } catch (err) {
       const e = classifyGhReviewError(err);
@@ -1725,7 +1725,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     // up (see comment-sync.ts).
     let nodeId = target.githubCommentNodeId;
     if (nodeId === undefined) {
-      nodeId = recoverCommentNodeId(key, target, root);
+      nodeId = await recoverCommentNodeId(key, target, root);
       if (nodeId) setCommentNodeId(key, id, nodeId, root);
     }
     if (nodeId === undefined) {
@@ -1751,7 +1751,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       return c.json({ comment: result.comment, remote: { ok: false, reason } });
     }
     try {
-      updatePullRequestReviewCommentBody(key, nodeId, outgoing);
+      await updatePullRequestReviewCommentBody(key, nodeId, outgoing);
       if (outgoing !== newBody) setCommentBody(key, id, outgoing, root);
       return c.json({
         comment: { ...result.comment, body: outgoing, githubCommentNodeId: nodeId },
@@ -1858,9 +1858,9 @@ export function createApp(opts: AppOptions = {}): Hono {
     return key;
   }
 
-  app.get("/api/prs/:key/threads", (c) => {
+  app.get("/api/prs/:key/threads", async (c) => {
     const key = trackedKey(c);
-    return c.json(loadThreads(key, { root, aiReviewers: readConfig(root).aiReviewers }));
+    return c.json(await loadThreads(key, { root, aiReviewers: readConfig(root).aiReviewers }));
   });
 
   app.post("/api/prs/:key/comments/:commentId/reactions", async (c) => {
@@ -1870,7 +1870,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       on: z.boolean(),
     }).parse(await readJsonBody(c));
     try {
-      const result = setReaction(key, c.req.param("commentId"), content, on, root);
+      const result = await setReaction(key, c.req.param("commentId"), content, on, root);
       log.info("github", `${shortKey(key)}  reaction toggled`, { content, on });
       return c.json(result);
     } catch (err) {
@@ -1879,11 +1879,11 @@ export function createApp(opts: AppOptions = {}): Hono {
   });
 
   for (const action of ["resolve", "unresolve"] as const) {
-    app.post(`/api/prs/:key/threads/:id/${action}`, (c) => {
+    app.post(`/api/prs/:key/threads/:id/${action}`, async (c) => {
       const key = trackedKey(c);
       const id = c.req.param("id");
       try {
-        const result = setThreadResolved(key, id, action === "resolve", root);
+        const result = await setThreadResolved(key, id, action === "resolve", root);
         log.info("github", `${shortKey(key)}  thread ${action === "resolve" ? "resolved" : "unresolved"}`, { id });
         return c.json(result);
       } catch (err) {
@@ -1894,10 +1894,10 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   /* -------------------------------------------------------------- review */
 
-  app.get("/api/prs/:key/review", (c) => {
+  app.get("/api/prs/:key/review", async (c) => {
     const key = keyParam(c);
     const remote = c.req.query("remote") !== "0";
-    return c.json(reviewStatus(key, root, { checkRemote: remote }));
+    return c.json(await reviewStatus(key, root, { checkRemote: remote }));
   });
 
   app.post("/api/prs/:key/review", async (c) => {
@@ -1935,7 +1935,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         "Submitting a review is public and irreversible; resend with { confirm: true }",
       );
     }
-    const result = submitReview(
+    const result = await submitReview(
       key,
       { event: body.event as SubmitEvent, body: body.body },
       root,
@@ -1945,9 +1945,9 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json({ ...result, state: loadState(key, root) });
   });
 
-  app.delete("/api/prs/:key/review/pending", (c) => {
+  app.delete("/api/prs/:key/review/pending", async (c) => {
     const key = keyParam(c);
-    return c.json(discardPendingReview(key, root));
+    return c.json(await discardPendingReview(key, root));
   });
 
   /* --------------------------------------------------------------- repos */
@@ -2476,10 +2476,10 @@ export function createApp(opts: AppOptions = {}): Hono {
    * cached per PR (see staleness.ts), answering 200 even when `gh` fails so a
    * polling client can never break the view.
    */
-  app.get("/api/prs/:key/staleness", (c) => {
+  app.get("/api/prs/:key/staleness", async (c) => {
     const key = keyParam(c);
     readMeta(key, root); // 404s for an unknown PR before spending a gh call
-    return c.json(checkStaleness(key, root));
+    return c.json(await checkStaleness(key, root));
   });
 
   app.get("/api/prs/:key/coverage", (c) => {

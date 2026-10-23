@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { commentsPath, gh, stateRoot, type PrKey } from "@reviewer/core";
+import { commentsPath, ghAsync, stateRoot, type PrKey } from "@reviewer/core";
 import { readComments, type Comment } from "./comments.js";
 import { ReviewError, classifyGhReviewError } from "./github-review.js";
 
@@ -310,19 +310,19 @@ type GraphqlResponse<T> = { data?: T; errors?: { message?: string; type?: string
  * One GraphQL call. Strings go through `-f` (never coerced), Ints through
  * `-F`, matching github-review.ts. A response carrying `errors` throws.
  */
-function graphql<T>(
+async function graphql<T>(
   key: PrKey,
   query: string,
   strings: Record<string, string | undefined>,
   ints: Record<string, number> = {},
-): T {
+): Promise<T> {
   const args = ["api", "graphql", ...hostArgs(key.host), "-f", `query=${query}`];
   for (const [name, value] of Object.entries(strings)) {
     // An absent cursor is simply left out, i.e. null — the first page.
     if (value !== undefined) args.push("-f", `${name}=${value}`);
   }
   for (const [name, value] of Object.entries(ints)) args.push("-F", `${name}=${value}`);
-  const res = JSON.parse(gh(args)) as GraphqlResponse<T>;
+  const res = JSON.parse(await ghAsync(args)) as GraphqlResponse<T>;
   if (res.errors?.length) {
     throw new Error(res.errors.map((e) => e.message).join("; "));
   }
@@ -331,11 +331,11 @@ function graphql<T>(
 }
 
 /** A thread's comments beyond what the threads page carried (rare: >100 in one thread). */
-function remainingComments(key: PrKey, threadId: string, after: string): RawComment[] {
+async function remainingComments(key: PrKey, threadId: string, after: string): Promise<RawComment[]> {
   const out: RawComment[] = [];
   let cursor: string | undefined = after;
   while (cursor) {
-    const data: { node?: { comments?: RawConnection<RawComment> } | null } = graphql(
+    const data: { node?: { comments?: RawConnection<RawComment> } | null } = await graphql(
       key,
       THREAD_COMMENTS_QUERY,
       { id: threadId, after: cursor },
@@ -360,7 +360,7 @@ export interface RawThreadsPage {
  * Every review thread on the PR, every comment in each — paginated by 100 —
  * plus the first page of reviews and conversation comments from the same call.
  */
-export function fetchRawThreads(key: PrKey): RawThreadsPage {
+export async function fetchRawThreads(key: PrKey): Promise<RawThreadsPage> {
   const threads: RawThread[] = [];
   let reviews: RawReview[] = [];
   let conversation: RawIssueComment[] = [];
@@ -368,7 +368,7 @@ export function fetchRawThreads(key: PrKey): RawThreadsPage {
   let after: string | undefined;
   do {
     const firstPage = after === undefined;
-    const data = graphql<{
+    const data = await graphql<{
       viewer?: { login?: string };
       repository?: {
         pullRequest?: {
@@ -396,7 +396,7 @@ export function fetchRawThreads(key: PrKey): RawThreadsPage {
       const cpage = t.comments?.pageInfo;
       if (cpage?.hasNextPage && cpage.endCursor) {
         t.comments = {
-          nodes: [...(t.comments?.nodes ?? []), ...remainingComments(key, t.id, cpage.endCursor)],
+          nodes: [...(t.comments?.nodes ?? []), ...await remainingComments(key, t.id, cpage.endCursor)],
         };
       }
       threads.push(t);
@@ -656,10 +656,10 @@ function writeThreadsCache(key: PrKey, cache: ThreadsCache, root = stateRoot()):
  * gh fails — never a thrown error: threads are an overlay on the diff, and an
  * unreachable GitHub must not break the PR page.
  */
-export function loadThreads(
+export async function loadThreads(
   key: PrKey,
   opts: { root?: string; aiReviewers?: readonly string[] } = {},
-): ThreadsResponse {
+): Promise<ThreadsResponse> {
   const root = opts.root ?? stateRoot();
   let local: Comment[] = [];
   try {
@@ -668,7 +668,7 @@ export function loadThreads(
     // An unreadable comments.json only costs the dedup links.
   }
   try {
-    const raw = fetchRawThreads(key);
+    const raw = await fetchRawThreads(key);
     const threads = normalizeThreads(raw.threads, {
       viewerLogin: raw.viewerLogin,
       aiReviewers: opts.aiReviewers,
@@ -735,12 +735,12 @@ export function classifyThreadError(err: unknown): ReviewError {
  * GraphQL `resolveReviewThread` / `unresolveReviewThread`, then the same
  * change patched into threads.json so a fallback read doesn't undo it.
  */
-export function setThreadResolved(
+export async function setThreadResolved(
   key: PrKey,
   threadId: string,
   resolved: boolean,
   root = stateRoot(),
-): ResolveThreadResult {
+): Promise<ResolveThreadResult> {
   const field = resolved ? "resolveReviewThread" : "unresolveReviewThread";
   let thread: {
     id?: string;
@@ -750,7 +750,7 @@ export function setThreadResolved(
     viewerCanUnresolve?: boolean;
   } | null | undefined;
   try {
-    const data = graphql<Record<string, { thread?: typeof thread } | null>>(key, RESOLVE(field), {
+    const data = await graphql<Record<string, { thread?: typeof thread } | null>>(key, RESOLVE(field), {
       threadId,
     });
     thread = data[field]?.thread;
@@ -779,11 +779,11 @@ export function setThreadResolved(
 
 
 /** Patch the cache with GitHub's counts so fallback reads retain the change. */
-export function setReaction(key: PrKey, commentId: string, content: ReactionContent, on: boolean, root = stateRoot()) {
+export async function setReaction(key: PrKey, commentId: string, content: ReactionContent, on: boolean, root = stateRoot()) {
   const field = on ? "addReaction" : "removeReaction";
   let groups: RawReactionGroup[];
   try {
-    const data = graphql<Record<string, { subject?: { reactionGroups?: RawReactionGroup[] } } | null>>(
+    const data = await graphql<Record<string, { subject?: { reactionGroups?: RawReactionGroup[] } } | null>>(
       key,
       `mutation($subjectId:ID!,$content:ReactionContent!){
         ${field}(input:{subjectId:$subjectId,content:$content}){

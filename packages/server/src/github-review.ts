@@ -1,4 +1,4 @@
-import { gh, type PrKey } from "@reviewer/core";
+import { ghAsync, type PrKey } from "@reviewer/core";
 
 /**
  * Every GitHub call involved in the "pending review -> submitted review"
@@ -31,8 +31,8 @@ function hostArgs(host: string): string[] {
   return host && host !== "github.com" ? ["--hostname", host] : [];
 }
 
-function ghJson<T>(key: PrKey, args: string[], input?: string): T {
-  return JSON.parse(gh(["api", ...hostArgs(key.host), ...args], input)) as T;
+async function ghJson<T>(key: PrKey, args: string[], input?: string): Promise<T> {
+  return JSON.parse(await ghAsync(["api", ...hostArgs(key.host), ...args], input)) as T;
 }
 
 /* ------------------------------------------------------------ error shapes */
@@ -145,10 +145,10 @@ export function classifyGhReviewError(err: unknown): ReviewError {
 let cachedLogin: { host: string; login: string } | undefined;
 
 /** `gh api user` -> login. Cached per host for the life of the process. */
-export function viewerLogin(key: PrKey): string {
+export async function viewerLogin(key: PrKey): Promise<string> {
   if (cachedLogin && cachedLogin.host === key.host) return cachedLogin.login;
   try {
-    const user = ghJson<{ login?: string }>(key, ["user"]);
+    const user = await ghJson<{ login?: string }>(key, ["user"]);
     if (!user.login) {
       throw new ReviewError(
         "not_authenticated",
@@ -190,14 +190,14 @@ interface RawReview {
 }
 
 /** The viewer's PENDING review on this PR, if there is one. */
-export function findPendingReview(key: PrKey): PendingReview | undefined {
-  const login = viewerLogin(key);
+export async function findPendingReview(key: PrKey): Promise<PendingReview | undefined> {
+  const login = await viewerLogin(key);
   let reviews: RawReview[];
   try {
     // No --paginate: gh emits one JSON array per page, which is not parseable
     // as a whole. 100 reviews is far beyond what a PR under review has, and
     // the viewer's pending review is always the newest.
-    reviews = ghJson<RawReview[]>(key, [
+    reviews = await ghJson<RawReview[]>(key, [
       `repos/${key.owner}/${key.repo}/pulls/${key.number}/reviews?per_page=100`,
     ]);
   } catch (err) {
@@ -250,11 +250,11 @@ export interface StandaloneComment {
  * review-create payload this endpoint does take `subject_type`, so a
  * whole-file comment goes through the same call.
  */
-export function createStandaloneReviewComment(
+export async function createStandaloneReviewComment(
   key: PrKey,
   commitId: string,
   comment: ReviewCommentInput,
-): StandaloneComment {
+): Promise<StandaloneComment> {
   const payload =
     comment.subjectType === "file"
       ? { commit_id: commitId, path: comment.path, body: comment.body, subject_type: "file" }
@@ -269,7 +269,7 @@ export function createStandaloneReviewComment(
             : {}),
         };
   try {
-    const raw = ghJson<{ id: number; node_id: string; html_url?: string }>(
+    const raw = await ghJson<{ id: number; node_id: string; html_url?: string }>(
       key,
       ["--method", "POST", `repos/${key.owner}/${key.repo}/pulls/${key.number}/comments`, "--input", "-"],
       JSON.stringify(payload),
@@ -301,13 +301,13 @@ export interface CreatedReview {
  * express them) after the review exists. Passing an empty `comments` array is
  * fine — it creates an empty pending review to append into.
  */
-export function createPendingReview(
+export async function createPendingReview(
   key: PrKey,
   commitId: string,
   comments: LineReviewCommentInput[],
-): CreatedReview {
+): Promise<CreatedReview> {
   try {
-    const raw = ghJson<{ id: number; node_id: string; html_url?: string; state?: string }>(
+    const raw = await ghJson<{ id: number; node_id: string; html_url?: string; state?: string }>(
       key,
       ["--method", "POST", `repos/${key.owner}/${key.repo}/pulls/${key.number}/reviews`, "--input", "-"],
       JSON.stringify({
@@ -366,11 +366,11 @@ export interface AppendedComment {
  * review, and (see `createPendingReview`) the only API that can place a
  * whole-file comment inside a review at all.
  */
-export function appendCommentToPendingReview(
+export async function appendCommentToPendingReview(
   key: PrKey,
   reviewNodeId: string,
   comment: ReviewCommentInput,
-): AppendedComment {
+): Promise<AppendedComment> {
   let res: {
     data?: {
       addPullRequestReviewThread?: {
@@ -386,7 +386,7 @@ export function appendCommentToPendingReview(
     // -f keeps values as strings (paths and bodies must never be magically
     // coerced); -F is used only where GraphQL wants a real Int.
     res = JSON.parse(
-      gh([
+      await ghAsync([
         "api",
         "graphql",
         ...hostArgs(key.host),
@@ -440,12 +440,12 @@ const ADD_REPLY = `mutation($reviewId:ID!,$threadId:ID!,$body:String!){
  * with the rest of it on submit. The thread keeps its own anchor; a reply
  * carries no path/line of its own.
  */
-export function appendReplyToPendingReview(
+export async function appendReplyToPendingReview(
   key: PrKey,
   reviewNodeId: string,
   threadNodeId: string,
   body: string,
-): AppendedComment {
+): Promise<AppendedComment> {
   let res: {
     data?: {
       addPullRequestReviewThreadReply?: {
@@ -456,7 +456,7 @@ export function appendReplyToPendingReview(
   };
   try {
     res = JSON.parse(
-      gh([
+      await ghAsync([
         "api",
         "graphql",
         ...hostArgs(key.host),
@@ -502,9 +502,9 @@ export interface RemoteReviewComment {
  * the PR-wide comment listing, but they are here. Read-only; used to backfill
  * REST + GraphQL ids after creating a review (whose response carries neither).
  */
-export function listReviewComments(key: PrKey, reviewDatabaseId: number): RemoteReviewComment[] {
+export async function listReviewComments(key: PrKey, reviewDatabaseId: number): Promise<RemoteReviewComment[]> {
   try {
-    return ghJson(key, [
+    return await ghJson(key, [
       `repos/${key.owner}/${key.repo}/pulls/${key.number}/reviews/${reviewDatabaseId}/comments?per_page=100`,
     ]);
   } catch {
@@ -520,9 +520,9 @@ export function listReviewComments(key: PrKey, reviewDatabaseId: number): Remote
  * read-only fallback for recovering a submitted comment's GraphQL node id
  * when the push-time backfill missed it.
  */
-export function listPullRequestComments(key: PrKey): RemoteReviewComment[] {
+export async function listPullRequestComments(key: PrKey): Promise<RemoteReviewComment[]> {
   try {
-    return ghJson(key, [
+    return await ghJson(key, [
       `repos/${key.owner}/${key.repo}/pulls/${key.number}/comments?per_page=100`,
     ]);
   } catch {
@@ -553,11 +553,11 @@ export interface UpdatedReviewComment {
  * `githubCommentNodeId` (backfilled at push time — see comment-sync.ts for
  * how, and its known gap when backfill fails).
  */
-export function updatePullRequestReviewCommentBody(
+export async function updatePullRequestReviewCommentBody(
   key: PrKey,
   commentNodeId: string,
   body: string,
-): UpdatedReviewComment {
+): Promise<UpdatedReviewComment> {
   let res: {
     data?: {
       updatePullRequestReviewComment?: {
@@ -568,7 +568,7 @@ export function updatePullRequestReviewCommentBody(
   };
   try {
     res = JSON.parse(
-      gh([
+      await ghAsync([
         "api",
         "graphql",
         ...hostArgs(key.host),
@@ -593,14 +593,14 @@ export function updatePullRequestReviewCommentBody(
 export type SubmitEvent = "APPROVE" | "REQUEST_CHANGES" | "COMMENT";
 
 /** `POST /pulls/{n}/reviews/{id}/events` — submits an existing pending review. */
-export function submitPendingReview(
+export async function submitPendingReview(
   key: PrKey,
   reviewDatabaseId: number,
   event: SubmitEvent,
   body?: string,
-): CreatedReview {
+): Promise<CreatedReview> {
   try {
-    const raw = ghJson<{ id: number; node_id: string; html_url?: string; state?: string }>(
+    const raw = await ghJson<{ id: number; node_id: string; html_url?: string; state?: string }>(
       key,
       [
         "--method",
@@ -618,14 +618,14 @@ export function submitPendingReview(
 }
 
 /** `POST /pulls/{n}/reviews` with an `event` — create and submit in one shot. */
-export function createAndSubmitReview(
+export async function createAndSubmitReview(
   key: PrKey,
   event: SubmitEvent,
   body: string | undefined,
   commitId: string | undefined,
-): CreatedReview {
+): Promise<CreatedReview> {
   try {
-    const raw = ghJson<{ id: number; node_id: string; html_url?: string; state?: string }>(
+    const raw = await ghJson<{ id: number; node_id: string; html_url?: string; state?: string }>(
       key,
       ["--method", "POST", `repos/${key.owner}/${key.repo}/pulls/${key.number}/reviews`, "--input", "-"],
       JSON.stringify({
@@ -641,9 +641,9 @@ export function createAndSubmitReview(
 }
 
 /** `DELETE /pulls/{n}/reviews/{id}` — discards a pending review and its comments. */
-export function deletePendingReview(key: PrKey, reviewDatabaseId: number): void {
+export async function deletePendingReview(key: PrKey, reviewDatabaseId: number): Promise<void> {
   try {
-    gh([
+    await ghAsync([
       "api",
       "--method",
       "DELETE",

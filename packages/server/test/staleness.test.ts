@@ -90,9 +90,9 @@ function clock(start = 1_700_000_000_000) {
 }
 
 describe("staleness reasons", () => {
-  it("reports nothing when head, base and state all match", () => {
+  it("reports nothing when head, base and state all match", async () => {
     updateMeta(key, { prState: "open" }, root);
-    const res = checkStaleness(key, root);
+    const res = await checkStaleness(key, root);
     expect(res.stale).toBe(false);
     expect(res.reasons).toEqual([]);
     expect(res.upstreamHeadSha).toBe("head1");
@@ -101,26 +101,26 @@ describe("staleness reasons", () => {
     expect(res.checkedAt).toBeTruthy();
   });
 
-  it("reports new-commits when the head sha moved", () => {
+  it("reports new-commits when the head sha moved", async () => {
     upstream.headSha = "head2";
-    const res = checkStaleness(key, root);
+    const res = await checkStaleness(key, root);
     expect(res.stale).toBe(true);
     expect(res.reasons).toEqual(["new-commits"]);
     expect(res.upstreamHeadSha).toBe("head2");
     expect(res.localHeadSha).toBe("head1");
   });
 
-  it("reports base-moved when the base sha moved", () => {
+  it("reports base-moved when the base sha moved", async () => {
     upstream.baseSha = "base2";
-    const res = checkStaleness(key, root);
+    const res = await checkStaleness(key, root);
     expect(res.reasons).toEqual(["base-moved"]);
   });
 
-  it("records a PR state change itself instead of calling the PR stale", () => {
+  it("records a PR state change itself instead of calling the PR stale", async () => {
     updateMeta(key, { prState: "open" }, root);
     upstream.state = "closed";
     upstream.merged = true;
-    const res = checkStaleness(key, root);
+    const res = await checkStaleness(key, root);
     expect(res.stale).toBe(false);
     expect(res.reasons).toEqual([]);
     expect(res.metaUpdated).toBe(true);
@@ -128,86 +128,86 @@ describe("staleness reasons", () => {
     expect(res.localState).toBe("open");
     expect(readMeta(key, root).prState).toBe("merged");
     // Once recorded, the next check has nothing to report.
-    expect(checkStaleness(key, root, { force: true }).metaUpdated).toBe(false);
+    expect((await checkStaleness(key, root, { force: true })).metaUpdated).toBe(false);
   });
 
-  it("records a review decision change the same way", () => {
+  it("records a review decision change the same way", async () => {
     updateMeta(key, { prState: "open", reviewDecision: null }, root);
     upstream.reviewDecision = "APPROVED";
-    const res = checkStaleness(key, root);
+    const res = await checkStaleness(key, root);
     expect(res.stale).toBe(false);
     expect(res.metaUpdated).toBe(true);
     expect(res.upstreamReviewDecision).toBe("approved");
   });
 
-  it("combines every reason that applies", () => {
+  it("combines every reason that applies", async () => {
     updateMeta(key, { prState: "open" }, root);
     upstream.headSha = "head2";
     upstream.baseSha = "base2";
     upstream.state = "closed";
-    const res = checkStaleness(key, root);
+    const res = await checkStaleness(key, root);
     expect(res.reasons).toEqual(["new-commits", "base-moved"]);
     expect(res.stale).toBe(true);
     expect(res.metaUpdated).toBe(true);
   });
 
-  it("never reports a state change off a meta that never recorded a state", () => {
+  it("never reports a state change off a meta that never recorded a state", async () => {
     // Pre-`prState` state dirs: unknown is not a difference.
     expect(readMeta(key, root).prState).toBeUndefined();
     upstream.state = "closed";
-    expect(checkStaleness(key, root).metaUpdated).toBe(false);
+    expect((await checkStaleness(key, root)).metaUpdated).toBe(false);
   });
 
-  it("treats a null upstream review decision as unknown, not as cleared", () => {
+  it("treats a null upstream review decision as unknown, not as cleared", async () => {
     // `fetchReviewDecision` reports a failed query as `null`, so a null can
     // never be allowed to look like "the approval went away".
     updateMeta(key, { prState: "open", reviewDecision: "approved" }, root);
     upstream.reviewDecision = null;
-    const res = checkStaleness(key, root);
+    const res = await checkStaleness(key, root);
     expect(res.reasons).toEqual([]);
     expect(readMeta(key, root).reviewDecision).toBe("approved");
   });
 });
 
 describe("staleness cache", () => {
-  it("reuses one answer for the whole TTL window, then re-checks", () => {
+  it("reuses one answer for the whole TTL window, then re-checks", async () => {
     const c = clock();
     upstream.headSha = "head2";
-    const first = checkStaleness(key, root, { now: c.now });
+    const first = await checkStaleness(key, root, { now: c.now });
     expect(pullCalls()).toBe(1);
 
     c.advance(STALENESS_TTL_MS - 1);
-    const cached = checkStaleness(key, root, { now: c.now });
+    const cached = await checkStaleness(key, root, { now: c.now });
     expect(pullCalls()).toBe(1);
     expect(cached).toBe(first);
     expect(cached.checkedAt).toBe(first.checkedAt);
 
     c.advance(2);
-    const fresh = checkStaleness(key, root, { now: c.now });
+    const fresh = await checkStaleness(key, root, { now: c.now });
     expect(pullCalls()).toBe(2);
     expect(fresh.checkedAt).not.toBe(first.checkedAt);
   });
 
-  it("caches failures too, so a broken gh is not hammered", () => {
+  it("caches failures too, so a broken gh is not hammered", async () => {
     const c = clock();
     ghFailure = "HTTP 503";
-    checkStaleness(key, root, { now: c.now });
-    checkStaleness(key, root, { now: c.now });
+    await checkStaleness(key, root, { now: c.now });
+    await checkStaleness(key, root, { now: c.now });
     expect(pullCalls()).toBe(1);
   });
 
-  it("`force` skips the cache", () => {
+  it("`force` skips the cache", async () => {
     const c = clock();
-    checkStaleness(key, root, { now: c.now });
-    checkStaleness(key, root, { now: c.now, force: true });
+    await checkStaleness(key, root, { now: c.now });
+    await checkStaleness(key, root, { now: c.now, force: true });
     expect(pullCalls()).toBe(2);
   });
 });
 
 describe("gh failure tolerance", () => {
-  it("answers a non-stale result carrying the error instead of throwing", () => {
+  it("answers a non-stale result carrying the error instead of throwing", async () => {
     ghFailure = "gh: command not found";
-    const res = checkStaleness(key, root);
+    const res = await checkStaleness(key, root);
     expect(res.stale).toBe(false);
     expect(res.reasons).toEqual([]);
     expect(res.upstreamHeadSha).toBeNull();
@@ -226,18 +226,18 @@ describe("gh failure tolerance", () => {
 });
 
 describe("opportunistic meta update", () => {
-  it("writes the moved state and decision into meta", () => {
+  it("writes the moved state and decision into meta", async () => {
     updateMeta(key, { prState: "open", reviewDecision: null }, root);
     upstream.state = "closed";
     upstream.merged = true;
     upstream.reviewDecision = "CHANGES_REQUESTED";
-    checkStaleness(key, root);
+    await checkStaleness(key, root);
     const meta = readMeta(key, root);
     expect(meta.prState).toBe("merged");
     expect(meta.reviewDecision).toBe("changes_requested");
   });
 
-  it("leaves revisions, hunks and the diff completely alone", () => {
+  it("leaves revisions, hunks and the diff completely alone", async () => {
     updateMeta(key, { prState: "open" }, root);
     const before = loadState(key, root);
     const revDir = path.join(root, key.host, key.owner, key.repo, String(key.number), "revisions");
@@ -249,7 +249,7 @@ describe("opportunistic meta update", () => {
 
     upstream.state = "closed";
     upstream.headSha = "head2";
-    checkStaleness(key, root);
+    await checkStaleness(key, root);
 
     const after = loadState(key, root);
     expect(after.currentRevision).toBe(before.currentRevision);
@@ -264,7 +264,7 @@ describe("opportunistic meta update", () => {
     ).toBe(eventsBefore);
   });
 
-  it("writes nothing when nothing moved", () => {
+  it("writes nothing when nothing moved", async () => {
     // baseRef/basePr already resolved, and the review request just checked,
     // so there is nothing to backfill or re-read either.
     updateMeta(
@@ -289,7 +289,7 @@ describe("opportunistic meta update", () => {
       "meta.json",
     );
     const before = fs.readFileSync(metaFile, "utf8");
-    checkStaleness(key, root);
+    await checkStaleness(key, root);
     expect(fs.readFileSync(metaFile, "utf8")).toBe(before);
   });
 });
@@ -332,7 +332,7 @@ it("persists CI-only changes, exposes them on both endpoints, and ignores timest
   upstream.commits = { nodes: [{ commit: { oid: "head1", statusCheckRollup: { contexts: { nodes: [
     { __typename: "CheckRun", name: "Tests", status: "COMPLETED", conclusion: "FAILURE", detailsUrl: "https://example.com/run" },
   ] } } } }] };
-  const result = checkStaleness(key, root);
+  const result = await checkStaleness(key, root);
   expect(result.metaUpdated).toBe(true);
   expect(result.stale).toBe(false);
   expect(readMeta(key, root).ci?.state).toBe("failure");
@@ -340,7 +340,7 @@ it("persists CI-only changes, exposes them on both endpoints, and ignores timest
   expect(detail.meta.ci.checks[0].name).toBe("Tests");
   const list = await (await app.request("/api/prs")).json();
   expect(list.prs[0].ci.state).toBe("failure");
-  expect(checkStaleness(key, root, { force: true }).metaUpdated).toBe(false);
+  expect((await checkStaleness(key, root, { force: true })).metaUpdated).toBe(false);
 });
 
 describe("reviewers and the upstream head", () => {
@@ -360,7 +360,7 @@ describe("reviewers and the upstream head", () => {
       reviewRequests: { nodes: [{ requestedReviewer: { __typename: "User", login: "dana", avatarUrl: null } }] },
       latestReviews: { nodes: [] },
     };
-    const result = checkStaleness(key, root);
+    const result = await checkStaleness(key, root);
     expect(result.stale).toBe(true);
     expect(result.metaUpdated).toBe(true);
     const meta = readMeta(key, root);
@@ -371,7 +371,7 @@ describe("reviewers and the upstream head", () => {
     expect(list.prs[0]).toMatchObject({ needsUpdate: true, reviewers: [{ login: "dana" }] });
     // Same answer again: nothing to write, and a missing field never clears the list.
     upstream.reviewers = undefined;
-    expect(checkStaleness(key, root, { force: true }).metaUpdated).toBe(false);
+    expect((await checkStaleness(key, root, { force: true })).metaUpdated).toBe(false);
     expect(readMeta(key, root).reviewers).toHaveLength(1);
   });
 });

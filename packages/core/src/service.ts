@@ -1,6 +1,9 @@
 import fs from "node:fs";
 import {
   fetchDefaultBranch,
+  fetchDefaultBranchAsync,
+  findOpenPrByHeadAsync,
+  resolveReviewRequestAsync,
   fetchMergeBase,
   findOpenPrByHead,
   fetchPullDiff,
@@ -933,4 +936,58 @@ function validateRiskBounds(units: { hunks: HunkEntry[] }[], files: import("./sc
   const bounds = new Map(files.flatMap((f) => f.hunks.map((h) => [h.id, h] as const)));
   const issues = units.flatMap((u) => hunkListIssues(u.hunks, { bounds }));
   if (issues.length) throw new Error(issues.join("\n"));
+}
+
+// Non-blocking counterparts for server request paths; synchronous exports remain for the CLI.
+export async function resolveBaseMetaAsync(
+  key: PrKey,
+  meta: Pick<Meta, "baseRef" | "basePr">,
+  baseRef: string,
+  root = stateRoot(),
+): Promise<Partial<Meta>> {
+  const patch: Partial<Meta> = {};
+  const moved = meta.baseRef !== baseRef;
+  if (moved) patch.baseRef = baseRef;
+  const previous = moved ? undefined : meta.basePr;
+
+  let next: BasePr | null | undefined = previous;
+  const defaultBranch = await fetchDefaultBranchAsync(repoKeyOf(key), root);
+  if (defaultBranch !== null) {
+    if (baseRef === defaultBranch) {
+      next = null;
+    } else {
+      const local = findTrackedPrByHead(key, baseRef, root);
+      if (local) {
+        next = local;
+      } else {
+        const remote = await findOpenPrByHeadAsync(repoKeyOf(key), baseRef);
+        // `undefined` = the lookup failed: keep what we knew.
+        if (remote !== undefined) next = remote;
+      }
+    }
+  }
+  if (next === undefined) {
+    // Unresolved: only a moved base needs its stale basePr dropped.
+    if (meta.basePr !== undefined) patch.basePr = undefined;
+  } else if (!sameBasePr(next, meta.basePr) || meta.basePr === undefined) {
+    patch.basePr = next;
+  }
+  return patch;
+}
+
+export async function reviewRequestPatchAsync(
+  key: PrKey,
+  prState: string | undefined,
+  root = stateRoot(),
+  now: number = Date.now(),
+): Promise<Partial<Meta>> {
+  if (prState === "merged" || prState === "closed") return {};
+  const patch: Partial<Meta> = { reviewRequestCheckedAt: new Date(now).toISOString() };
+  try {
+    const next = await resolveReviewRequestAsync(key, root);
+    if (next !== undefined) patch.reviewRequest = next;
+  } catch {
+    // best-effort
+  }
+  return patch;
 }

@@ -41,12 +41,20 @@ export function gh(args: string[], input?: string): string {
   return runner(args, input);
 }
 
+export type GhAsyncRunner = (args: string[], input?: string) => Promise<string>;
+let asyncRunner: GhAsyncRunner | null = null;
+
+/** Async test seam, including calls that stay pending while other requests run. */
+export function setGhAsyncRunner(next: GhAsyncRunner | null): void {
+  asyncRunner = next;
+}
+
 /**
- * The non-blocking twin of `gh`, for background work that must not stall the
- * server's event loop. An injected runner (tests) is honoured, still resolved
- * asynchronously so callers see the same shape either way.
+ * Non-blocking gh for requests and background work. The async test runner
+ * takes precedence; legacy synchronous test stubs remain supported.
  */
 export function ghAsync(args: string[], input?: string): Promise<string> {
+  if (asyncRunner) return asyncRunner(args, input);
   if (runner !== defaultRunner) {
     const injected = runner;
     return Promise.resolve().then(() => injected(args, input));
@@ -1380,4 +1388,145 @@ export function fetchFileHeads(
     }
   }
   return { heads, ok };
+}
+
+// Non-blocking counterparts for server request paths; synchronous exports remain for the CLI.
+async function ghJsonAsync<T>(host: string, args: string[], input?: string): Promise<T> {
+  return JSON.parse(await ghAsync(["api", ...hostArgs(host), ...args], input)) as T;
+}
+
+export async function fetchPullRequestAsync(key: PrKey): Promise<PullRequestInfo> {
+  const raw = await ghJsonAsync<RawPull>(key.host, [
+    `repos/${key.owner}/${key.repo}/pulls/${key.number}`,
+  ]);
+  return {
+    nodeId: raw.node_id,
+    number: raw.number,
+    title: raw.title,
+    url: raw.html_url,
+    state: raw.state,
+    draft: !!raw.draft,
+    merged: !!(raw.merged || raw.merged_at),
+    prState: collapsePrState(raw),
+    author: raw.user?.login ?? undefined,
+    authorAvatarUrl: raw.user?.avatar_url ?? undefined,
+    body: normalizeBody(raw.body),
+    baseRef: raw.base.ref,
+    headRef: raw.head.ref,
+    baseSha: raw.base.sha,
+    headSha: raw.head.sha,
+  };
+}
+
+export async function fetchReviewStatusAsync(key: PrKey): Promise<{
+  reviewDecision: ReviewDecision | null;
+  ci?: Ci;
+  reviewers?: Reviewer[];
+}> {
+  try {
+    const res = JSON.parse(
+      await ghAsync([
+        "api",
+        "graphql",
+        ...hostArgs(key.host),
+        "-f",
+        `query=${REVIEW_DECISION_QUERY}`,
+        "-F",
+        `owner=${key.owner}`,
+        "-F",
+        `repo=${key.repo}`,
+        "-F",
+        `number=${key.number}`,
+      ]),
+    ) as {
+      data?: { repository?: { pullRequest?: RawPrStatus } };
+    };
+    const raw = res.data?.repository?.pullRequest;
+    return {
+      reviewDecision: normalizeDecision(raw?.reviewDecision),
+      ci: ciFromPr(raw),
+      reviewers: reviewersFromPr(raw),
+    };
+  } catch {
+    return { reviewDecision: null };
+  }
+}
+
+export async function fetchDefaultBranchAsync(
+  key: RepoKey,
+  root = stateRoot(),
+  now: number = Date.now(),
+): Promise<string | null> {
+  const mk = memoKey(key, root);
+  const hit = defaultBranchMemo.get(mk) ?? readDefaultBranchFile(key, root);
+  if (hit) {
+    defaultBranchMemo.set(mk, hit);
+    if (hit.defaultBranch && now - hit.fetchedAt < DEFAULT_BRANCH_TTL_MS) return hit.defaultBranch;
+    if (hit.failedAt !== undefined && now - hit.failedAt < DEFAULT_BRANCH_FAILURE_TTL_MS) {
+      return hit.defaultBranch;
+    }
+  }
+  try {
+    const raw = await ghJsonAsync<{ default_branch?: unknown }>(key.host, [
+      `repos/${key.owner}/${key.repo}`,
+    ]);
+    const branch = raw?.default_branch;
+    if (typeof branch !== "string" || branch === "") throw new Error("no default_branch");
+    const entry = { defaultBranch: branch, fetchedAt: now };
+    defaultBranchMemo.set(mk, entry);
+    try {
+      const file = repoGithubCachePath(key, root);
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(
+        file,
+        JSON.stringify({ defaultBranch: branch, fetchedAt: new Date(now).toISOString() }, null, 2) +
+          "\n",
+        "utf8",
+      );
+    } catch {
+      // An unwritable cache only costs a re-read next time.
+    }
+    return branch;
+  } catch {
+    // Remember the failure briefly so a broken `gh` isn't hammered, and keep
+    // serving the last known (if stale) value meanwhile.
+    const stale = hit?.defaultBranch ?? null;
+    defaultBranchMemo.set(mk, {
+      defaultBranch: stale,
+      fetchedAt: hit?.fetchedAt ?? 0,
+      failedAt: now,
+    });
+    return stale;
+  }
+}
+
+export async function findOpenPrByHeadAsync(key: RepoKey, head: string): Promise<BasePr | null | undefined> {
+  try {
+    const raw = await ghAsync([
+      "pr",
+      "list",
+      "--repo",
+      repoFlagValue(key),
+      "--head",
+      head,
+      "--state",
+      "open",
+      "--json",
+      "number,title,url",
+      "--limit",
+      "1",
+    ]);
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return undefined;
+    const first = parsed[0] as { number?: unknown; title?: unknown; url?: unknown } | undefined;
+    if (!first) return null;
+    if (typeof first.number !== "number" || typeof first.url !== "string") return undefined;
+    return {
+      number: first.number,
+      title: typeof first.title === "string" ? first.title : "",
+      url: first.url,
+    };
+  } catch {
+    return undefined;
+  }
 }

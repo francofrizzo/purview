@@ -151,7 +151,7 @@ describe("the base line in the prompts", () => {
 });
 
 describe("staleness backfills baseRef/basePr on old meta", () => {
-  it("fills them in on the next poll, then stops asking", () => {
+  it("fills them in on the next poll, then stops asking", async () => {
     const calls: string[][] = [];
     const runner: GhRunner = (args) => {
       calls.push([...args]);
@@ -171,12 +171,12 @@ describe("staleness backfills baseRef/basePr on old meta", () => {
     setGhRunner(runner);
     expect(readMeta(key, root).baseRef).toBeUndefined();
 
-    checkStaleness(key, root, { force: true });
+    await checkStaleness(key, root, { force: true });
     expect(readMeta(key, root)).toMatchObject({ baseRef: STACKED_REF, basePr: BASE_PR });
     expect(chatSystemPrompt(key, root)).toContain(STACKED_PR);
 
     const before = calls.length;
-    checkStaleness(key, root, { force: true });
+    await checkStaleness(key, root, { force: true });
     const extra = calls.slice(before).filter((c) => c[0] === "pr" || c[1] === "repos/acme/widgets");
     expect(extra).toHaveLength(0);
   });

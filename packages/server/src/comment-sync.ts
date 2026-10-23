@@ -93,12 +93,12 @@ const toInput = (c: Comment): ReviewCommentInput =>
  * github-review.ts). A reply (`inReplyTo`) joins its existing thread rather
  * than opening a new one; its `githubThreadId` is that thread.
  */
-function appendDrafts(
+async function appendDrafts(
   key: PrKey,
   reviewNodeId: string,
   drafts: Comment[],
   root?: string,
-): { pushed: number; failure?: ReviewError } {
+): Promise<{ pushed: number; failure?: ReviewError }> {
   let pushed = 0;
   for (const draft of drafts) {
     // Attachments go up first: a failed upload leaves the draft untouched
@@ -111,8 +111,8 @@ function appendDrafts(
     }
     try {
       const res = outgoing.inReplyTo
-        ? appendReplyToPendingReview(key, reviewNodeId, outgoing.inReplyTo, outgoing.body)
-        : appendCommentToPendingReview(key, reviewNodeId, toInput(outgoing));
+        ? await appendReplyToPendingReview(key, reviewNodeId, outgoing.inReplyTo, outgoing.body)
+        : await appendCommentToPendingReview(key, reviewNodeId, toInput(outgoing));
       markPushed(
         key,
         [
@@ -149,7 +149,7 @@ function appendDrafts(
  * Either way the review's ids are persisted to review.json so the submit and
  * discard paths do not have to rediscover them.
  */
-export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult {
+export async function pushDraftComments(key: PrKey, root?: string): Promise<CommentSyncResult> {
   // Best-effort reconciliation: a draft comment left over from a prior
   // revision (the PR moved, its commented hunk slid) is re-anchored here
   // before we ever talk to GitHub. A bug in the reconciler must never block
@@ -184,7 +184,7 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
 
   let pending: PendingReview | undefined;
   try {
-    pending = findPendingReview(key);
+    pending = await findPendingReview(key);
   } catch (err) {
     const e = classifyGhReviewError(err);
     return { ok: false, pushed: 0, error: e.message, errorCode: e.code };
@@ -247,7 +247,7 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
           uploadFailed ??= uploadFailure(draft, err);
         }
       }
-      const created = createPendingReview(key, commitId, lineDrafts.map(toLineInput));
+      const created = await createPendingReview(key, commitId, lineDrafts.map(toLineInput));
       // The create response carries no per-comment ids; this read backfills
       // both the REST databaseId (githubCommentId) and the GraphQL node id
       // (githubCommentNodeId — REST comment payloads carry it as `node_id`)
@@ -259,7 +259,7 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       // spot was deleted upstream), and reusing the same remote comment for
       // both would silently mis-attribute one of them. Removing each match
       // as it's used keeps the pairing 1:1 even when path+line repeats.
-      const remote = listReviewComments(key, created.databaseId);
+      const remote = await listReviewComments(key, created.databaseId);
       // File-level remote comments can never be the match for a line draft,
       // and carry no line to match on anyway — exclude them explicitly so a
       // null line never pairs with a line draft by accident.
@@ -295,7 +295,7 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       );
       const appended = uploadFailed
         ? { pushed: 0, failure: uploadFailed }
-        : appendDrafts(key, created.nodeId, appendLater, root);
+        : await appendDrafts(key, created.nodeId, appendLater, root);
       return {
         ok: !appended.failure,
         pushed: lineDrafts.length + appended.pushed,
@@ -309,7 +309,7 @@ export function pushDraftComments(key: PrKey, root?: string): CommentSyncResult 
       };
     }
 
-    const { pushed, failure } = appendDrafts(key, pending.nodeId, drafts, root);
+    const { pushed, failure } = await appendDrafts(key, pending.nodeId, drafts, root);
     patchReviewDraft(key, { lastSyncedAt: new Date().toISOString() }, root);
     return {
       ok: !failure,
@@ -344,29 +344,29 @@ export const syncCommentsToGithub = pushDraftComments;
  * Returns undefined if recovery isn't possible (no databaseId to match on,
  * no pending review on record, or the id genuinely isn't found).
  */
-export function recoverCommentNodeId(
+export async function recoverCommentNodeId(
   key: PrKey,
   comment: Comment,
   root?: string,
-): string | undefined {
+): Promise<string | undefined> {
   if (comment.githubCommentId === undefined) return undefined;
 
   if (comment.status === "pushed") {
     let reviewDatabaseId = readReviewDraft(key, root).pendingReviewDatabaseId;
     if (reviewDatabaseId === undefined) {
       try {
-        reviewDatabaseId = findPendingReview(key)?.databaseId;
+        reviewDatabaseId = (await findPendingReview(key))?.databaseId;
       } catch {
         return undefined;
       }
     }
     if (reviewDatabaseId === undefined) return undefined;
-    return listReviewComments(key, reviewDatabaseId).find((r) => r.id === comment.githubCommentId)
+    return (await listReviewComments(key, reviewDatabaseId)).find((r) => r.id === comment.githubCommentId)
       ?.node_id;
   }
 
   if (comment.status === "submitted") {
-    return listPullRequestComments(key).find((r) => r.id === comment.githubCommentId)?.node_id;
+    return (await listPullRequestComments(key)).find((r) => r.id === comment.githubCommentId)?.node_id;
   }
 
   return undefined;

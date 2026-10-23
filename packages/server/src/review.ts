@@ -68,11 +68,11 @@ export interface ReviewStatus {
  * is best-effort: an offline or rate-limited `gh` should still let the panel
  * render everything local.
  */
-export function reviewStatus(
+export async function reviewStatus(
   key: PrKey,
   root?: string,
   opts: { checkRemote?: boolean } = {},
-): ReviewStatus {
+): Promise<ReviewStatus> {
   const draft = readReviewDraft(key, root);
   const comments = readComments(key, root);
   const state = loadState(key, root);
@@ -80,7 +80,7 @@ export function reviewStatus(
   let pending: ReviewStatus["pending"] = { known: false, exists: false };
   if (opts.checkRemote !== false) {
     try {
-      const found = findPendingReview(key);
+      const found = await findPendingReview(key);
       pending = found
         ? { known: true, exists: true, databaseId: found.databaseId, nodeId: found.nodeId }
         : { known: true, exists: false };
@@ -144,14 +144,14 @@ export interface SubmitResult {
  * the cached id and retry exactly once, which turns the common "I discarded it
  * in the GitHub UI" case into a create-and-submit instead of an error.
  */
-export function submitReview(
+export async function submitReview(
   key: PrKey,
   input: { event: SubmitEvent; body?: string },
   root?: string,
-): SubmitResult {
+): Promise<SubmitResult> {
   const bodyText = input.body ?? readReviewDraft(key, root).body;
 
-  const push = pushDraftComments(key, root);
+  const push = await pushDraftComments(key, root);
   if (!push.ok) {
     throw new ReviewError(
       (push.errorCode as ReviewError["code"]) ?? "gh_failed",
@@ -165,15 +165,15 @@ export function submitReview(
     .filter((c) => c.status === "pushed")
     .map((c) => c.id);
 
-  const run = (attempt: number): { url?: string } => {
+  const run = async (attempt: number): Promise<{ url?: string }> => {
     const draft = readReviewDraft(key, root);
     const reviewId = draft.pendingReviewDatabaseId ?? push.pendingReviewDatabaseId;
     try {
       if (reviewId !== undefined) {
-        return { url: submitPendingReview(key, reviewId, input.event, bodyText).htmlUrl };
+        return { url: (await submitPendingReview(key, reviewId, input.event, bodyText)).htmlUrl };
       }
       return {
-        url: createAndSubmitReview(key, input.event, bodyText, headShaOf(key, root)).htmlUrl,
+        url: (await createAndSubmitReview(key, input.event, bodyText, headShaOf(key, root))).htmlUrl,
       };
     } catch (err) {
       const e = classifyGhReviewError(err);
@@ -182,7 +182,7 @@ export function submitReview(
         // branch. Anything we thought was pushed is gone with the review.
         clearPendingReview(key, root);
         resetPushedToDraft(key, root);
-        const repush = pushDraftComments(key, root);
+        const repush = await pushDraftComments(key, root);
         if (!repush.ok) {
           throw new ReviewError(
             (repush.errorCode as ReviewError["code"]) ?? "gh_failed",
@@ -197,7 +197,7 @@ export function submitReview(
     }
   };
 
-  const { url } = run(0);
+  const { url } = await run(0);
 
   const ids = pushedIds.length
     ? pushedIds
@@ -263,18 +263,18 @@ export interface DiscardResult {
  * Throw away the pending review on GitHub and pull its comments back into the
  * local drafts, so nothing the reader wrote is lost.
  */
-export function discardPendingReview(key: PrKey, root?: string): DiscardResult {
+export async function discardPendingReview(key: PrKey, root?: string): Promise<DiscardResult> {
   const draft = readReviewDraft(key, root);
   let reviewId = draft.pendingReviewDatabaseId;
   if (reviewId === undefined) {
-    reviewId = findPendingReview(key)?.databaseId;
+    reviewId = (await findPendingReview(key))?.databaseId;
   }
   if (reviewId === undefined) {
     clearPendingReview(key, root);
     return { ok: true, discarded: false, resetToDraft: resetPushedToDraft(key, root) };
   }
   try {
-    deletePendingReview(key, reviewId);
+    await deletePendingReview(key, reviewId);
   } catch (err) {
     const e = classifyGhReviewError(err);
     // Already gone is the outcome we wanted; anything else is a real failure.

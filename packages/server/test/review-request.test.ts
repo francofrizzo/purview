@@ -127,21 +127,21 @@ describe("refresh", () => {
 });
 
 describe("staleness poll", () => {
-  it("fills reviewRequest, at most once per poll interval", () => {
+  it("fills reviewRequest, at most once per poll interval", async () => {
     let t = 1_800_000_000_000;
     const now = () => t;
-    checkStaleness(key, root, { now });
+    await checkStaleness(key, root, { now });
     expect(readMeta(key, root).reviewRequest).toEqual(EXPECTED);
     expect(timelineCalls()).toBe(1);
 
     // A forced re-check inside the interval spends no timeline call…
     t += REVIEW_REQUEST_POLL_MS - 1;
-    checkStaleness(key, root, { now, force: true });
+    await checkStaleness(key, root, { now, force: true });
     expect(timelineCalls()).toBe(1);
 
     // …the next poll does.
     t += 1;
-    checkStaleness(key, root, { now, force: true });
+    await checkStaleness(key, root, { now, force: true });
     expect(timelineCalls()).toBe(2);
   });
 });
