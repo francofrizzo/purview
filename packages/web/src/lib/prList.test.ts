@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PrListEntry } from "../api/types";
 import {
   arrangeBlock,
+  stackOf,
   applyArchive,
   applyRepoArchive,
   formatAbsoluteDate,
@@ -311,6 +312,25 @@ describe("diffTotals", () => {
         { hunks: [{ addedLines: ["p", "q"], removedLines: [] }] },
       ]),
     ).toEqual({ files: 2, additions: 5, deletions: 3 });
+  });
+});
+
+describe("stackOf", () => {
+  const row = (n: number, base?: number, archived = false) => {
+    const p = pr(`github.com/acme/repo/${n}`, "acme", "repo", ago(n));
+    p.archived = archived;
+    if (base) p.meta.basePr = { number: base, title: "base", url: `https://github.com/acme/repo/pull/${base}` };
+    return p;
+  };
+  it("walks base links both ways inside the repo, skipping archived rows", () => {
+    const other = pr("github.com/acme/else/1", "acme", "else", ago(1));
+    other.meta.basePr = { number: 1, title: "base", url: "" };
+    const prs = [row(1), row(2, 1), row(3, 2), row(4, 1, true), row(5), other];
+    const keys = (n: number) => stackOf(prs, `github.com/acme/repo/${n}`).map((k) => Number(k.split("/").pop())).sort();
+    expect(keys(2)).toEqual([1, 2, 3]);
+    expect(keys(1)).toEqual([1, 2, 3]);
+    expect(keys(5)).toEqual([5]);
+    expect(stackOf(prs, "github.com/acme/repo/99")).toEqual(["github.com/acme/repo/99"]);
   });
 });
 

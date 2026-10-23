@@ -156,4 +156,4 @@ also clears the mark. `purview notes <key> --peek` reads without marking.
 
 ## `POST /prs/<key>/tag`
 
-`{ tag: string | null }`: set one tag or clear with null; returns updated meta. CLI: `reviewer-state tag <pr> <name>` or `tag <pr> --clear` (through the server).
+`{ tag: string | null, stack?: boolean }`: set one tag or clear with null; `stack: true` applies it to every open PR linked to this one through base branches (the whole stack). Returns the updated meta plus `stack`, the keys touched. CLI: `reviewer-state tag <pr> <name>` or `tag <pr> --clear`, with `--stack` (through the server).

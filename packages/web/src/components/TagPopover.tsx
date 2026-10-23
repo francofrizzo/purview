@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { usePrs, useSetPrTag } from "../api/hooks";
 import { errorText } from "../api/errors";
+import { stackOf } from "../lib/prList";
 import { normalizeTag, TAG_COLORS, tagSlot } from "../lib/tags";
 import { FloatingPanel } from "./FloatingPanel";
 
@@ -40,12 +41,17 @@ export function TagPopover({
   const { data: prs = [] } = usePrs();
   const save = useSetPrTag(prKey);
   const used = [...new Set(prs.flatMap((pr) => (pr.meta.tag ? [pr.meta.tag] : [])))].sort();
+  // A PR in a stack tags the whole stack unless told otherwise: a stack is
+  // one piece of work, and a tag that split it would also split the tree.
+  const stack = stackOf(prs, prKey);
+  const [wholeStack, setWholeStack] = useState(true);
   const normalized = normalizeTag(value);
   const tooLong = normalized.length > 24;
   const submit = (tag: string | null) => {
     if (save.isPending) return;
-    if ((tag ?? undefined) === current) return onClose();
-    save.mutate(tag, { onSuccess: onClose });
+    const applyToStack = stack.length > 1 && wholeStack;
+    if ((tag ?? undefined) === current && !applyToStack) return onClose();
+    save.mutate({ tag, stack: applyToStack }, { onSuccess: onClose });
   };
 
   useEffect(() => {
@@ -108,6 +114,22 @@ export function TagPopover({
             </button>
           ))}
         </div>
+      ) : null}
+      {stack.length > 1 ? (
+        <label
+          className="mt-2 flex cursor-pointer items-center gap-1.5 px-0.5 text-2xs"
+          style={{ color: "var(--fg-muted)" }}
+          data-tip="The PRs stacked on this one and the ones it stacks on get the same tag"
+        >
+          <input
+            type="checkbox"
+            data-testid="tag-whole-stack"
+            checked={wholeStack}
+            disabled={save.isPending}
+            onChange={(e) => setWholeStack(e.target.checked)}
+          />
+          Whole stack ({stack.length} PRs)
+        </label>
       ) : null}
       <div className="mt-2 flex items-center justify-between px-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
         <span>{save.isPending ? "Saving…" : "Enter saves"}</span>

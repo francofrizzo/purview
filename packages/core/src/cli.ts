@@ -235,12 +235,13 @@ program.command("tag")
   .argument("<pr>", "host/owner/repo/number or a PR URL")
   .argument("[name]", "one global tag, up to 24 characters")
   .option("--clear", "remove the tag")
-  .action(async (pr: string, name: string | undefined, opts: { clear?: boolean }) => {
+  .option("--stack", "apply to every PR stacked with this one")
+  .action(async (pr: string, name: string | undefined, opts: { clear?: boolean; stack?: boolean }) => {
     if ((!opts.clear && name === undefined) || (opts.clear && name !== undefined)) {
       throw new Error("Supply a tag name or --clear");
     }
     const key = requireExistingKey(pr);
-    const result = await callServer("POST", `${serverBaseUrl()}/api/prs/${encodeURIComponent(keyToString(key))}/tag`, { tag: opts.clear ? null : name });
+    const result = await callServer("POST", `${serverBaseUrl()}/api/prs/${encodeURIComponent(keyToString(key))}/tag`, { tag: opts.clear ? null : name, stack: opts.stack === true });
     console.log(JSON.stringify(result));
   });
 

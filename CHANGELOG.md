@@ -5,21 +5,18 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.23.1
 
-- **Tags on PRs.** Hover a row on the home page and click the tag icon, or use the PR header's ⋯ menu, to give a PR one tag; each block of the home page groups its PRs by tag, in the tag's colour.
+- **Tags on PRs.** Hover a row on the home page and click the tag icon, or use the PR header's ⋯ menu, to give a PR one tag; each block of the home page groups its PRs by tag, in the tag's colour. A PR in a stack tags the whole stack unless you untick "Whole stack".
 - **Stacked PRs in the list.** A PR stacked on another PR in the same block hangs under it as a tree on the home page.
 - **Threads, CI and blame in the chat.** Ask the chat which threads are open or yours, what reviewers said, whether checks pass, or who last touched a line. It can draft a reply to a thread.
 - **Risks on the lines they concern.** The diff marks the lines a risk is about with a bar, its flag and one sentence of what is at stake. Re-analyze to get them.
-- **Fable in the model list.** The analysis and chat model pickers offer Fable, Opus, Sonnet and Haiku for both Claude harnesses.
 - **The chat can mark hunks viewed.** Ask it to tick moved or mechanical code and it marks those hunks, in both Claude harnesses, and says which.
-- **Fix:** hunks the chat marks viewed, and drafts it writes with the shared tools, show in the diff and the comments panel as soon as the call finishes.
-- **Fix:** the chat's model picker lists every model when the chat runs on a harness the settings do not offer, instead of only the default.
-- **Fix:** code in a bold lead-in, such as **`file.go`**, renders as code and links to the diff instead of showing the backticks.
 - **Two more unit kinds.** A unit can be "refactor" (restructured, nothing changed) or "data" (schema, seeds, generated files); re-analyze to get them.
+- **Fable in the model list.** The analysis and chat model pickers offer Fable, Opus, Sonnet and Haiku for both Claude harnesses.
 - **Search switches.** The find bar shows both sides of each choice, "this unit | whole diff" and "changed | all lines", with the active one lit. All lines is the default.
 - **Fix:** "Publish now" shows "publishing…" on the card while GitHub takes it, then the comments panel scrolls to the card under Submitted and flashes it.
-- **Fix:** tool calls in the chat and the analysis banner fit one line; the arguments truncate, never the name.
+- **Fix:** code in a bold lead-in, such as **`file.go`**, renders as code and links to the diff instead of showing the backticks.
 
 ## 2026.10.22.1
 

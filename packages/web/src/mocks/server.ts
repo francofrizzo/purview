@@ -1,3 +1,4 @@
+import { stackOf } from "../lib/prList";
 import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import { isFileComment, isGeneratedUnit } from "../api/types";
@@ -788,17 +789,21 @@ export const mockApi = {
   },
 
   /** Local-only, exactly as the tooltip in the UI claims. */
-  async setPrTag(key: string, tag: string | null) {
+  async setPrTag(key: string, tag: string | null, stack = false) {
     await delay(80);
     const normalized = tag === null ? null : tag.trim().toLowerCase().replace(/\s+/g, " ");
     if (normalized !== null && (!normalized.length || normalized.length > 24)) throw new Error("Tag must be 1–24 characters");
     const entry = list.find((p) => p.key === key);
     if (!entry) throw new Error(`No PR "${key}" in the fixture.`);
-    for (const meta of [entry.meta, details[key]?.meta].filter(Boolean)) {
-      if (normalized === null) delete meta!.tag;
-      else meta!.tag = normalized;
+    const keys = stack ? stackOf(list, key) : [key];
+    for (const k of keys) {
+      const row = list.find((p) => p.key === k)!;
+      for (const meta of [row.meta, details[k]?.meta].filter(Boolean)) {
+        if (normalized === null) delete meta!.tag;
+        else meta!.tag = normalized;
+      }
     }
-    return structuredClone(entry.meta);
+    return { ...structuredClone(entry.meta), stack: keys };
   },
 
   async setPrCommentAudience(

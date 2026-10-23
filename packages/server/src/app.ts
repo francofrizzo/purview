@@ -850,14 +850,14 @@ export function createApp(opts: AppOptions = {}): Hono {
     });
   });
 
-  /** One local tag per PR; null removes it. */
+  /** One local tag per PR; null removes it. `stack: true` applies it to every PR stacked with this one. */
   app.post("/api/prs/:key/tag", async (c) => {
     const key = keyParam(c);
     readMeta(key, root);
-    const body = (await readJsonBody(c)) as { tag?: unknown };
+    const body = (await readJsonBody(c)) as { tag?: unknown; stack?: unknown };
     const parsed = TagSchema.nullable().safeParse(body?.tag);
     if (!parsed.success) throw new HttpError(400, "invalid_body", "Tag must be null or 1–24 characters after normalization");
-    return c.json(setTagFor(key, parsed.data, root));
+    return c.json(setTagFor(key, parsed.data, root, { stack: body?.stack === true }));
   });
 
   /**

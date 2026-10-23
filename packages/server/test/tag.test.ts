@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { readMeta } from "@reviewer/core";
+import { readMeta, writeMeta } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { buildFixture, key } from "./fixtures.js";
 let root: string;
@@ -30,4 +30,20 @@ it("normalizes, persists, exposes and clears tags preserving other metadata", as
 it("rejects invalid tags and accepts the length boundary", async () => {
   for (const body of [{}, null, { tag: "  " }, { tag: "x".repeat(25) }, { tag: 3 }]) expect((await post(body)).status).toBe(400);
   expect((await post({ tag: "x".repeat(24) })).status).toBe(200);
+});
+it("with stack: true tags every PR linked through bases, skipping archived ones", async () => {
+  const base = readMeta(key, root);
+  const sibling = { ...base, number: 8, url: base.url.replace(/\d+$/, "8"), basePr: { number: key.number, title: "Add widgets", url: base.url } };
+  const top = { ...base, number: 9, url: base.url.replace(/\d+$/, "9"), basePr: { number: 8, title: "eight", url: sibling.url } };
+  const shelved = { ...base, number: 10, url: base.url.replace(/\d+$/, "10"), archived: true, basePr: { number: key.number, title: "Add widgets", url: base.url } };
+  const unrelated = { ...base, number: 11, url: base.url.replace(/\d+$/, "11") };
+  for (const m of [sibling, top, shelved, unrelated]) writeMeta({ ...key, number: m.number }, m, root);
+  const res = await app.request(`${route.replace(/\d+$/, "8")}/tag`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tag: "stacked", stack: true }) });
+  expect(res.status).toBe(200);
+  expect((await res.json()).stack.map((k: string) => Number(k.split("/").pop())).sort()).toEqual([key.number, 8, 9]);
+  for (const n of [key.number, 8, 9]) expect(readMeta({ ...key, number: n }, root).tag).toBe("stacked");
+  for (const n of [10, 11]) expect(readMeta({ ...key, number: n }, root).tag).toBeUndefined();
+  // Without the flag only the one PR changes.
+  await post({ tag: "alone" });
+  expect(readMeta({ ...key, number: 8 }, root).tag).toBe("stacked");
 });

@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { api } from "./client";
 import { skippedHunkIds } from "../lib/diffModel";
-import { applyArchive, applyRepoArchive } from "../lib/prList";
+import { applyArchive, applyRepoArchive, stackOf } from "../lib/prList";
 import { stalenessPollInterval } from "../lib/staleness";
 import type {
   AnalysisImportReport,
@@ -1240,26 +1240,35 @@ export function useDiscardPendingReview(
 }
 
 /** Update both places that display a tag immediately, rolling back on failure. */
+/**
+ * Sets or clears a PR's tag; with `stack` the whole stack's (the keys come
+ * from `stackOf` over the cached list, the same walk the server does).
+ * Optimistic on the list and the detail, rolled back per key on failure.
+ */
 export function useSetPrTag(key: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (tag: string | null) => api.setPrTag(key, tag),
-    onMutate: async (tag) => {
+    mutationFn: ({ tag, stack }: { tag: string | null; stack?: boolean }) => api.setPrTag(key, tag, stack === true),
+    onMutate: async ({ tag, stack }) => {
       await Promise.all([qc.cancelQueries({ queryKey: qk.prs }), qc.cancelQueries({ queryKey: qk.pr(key) })]);
       const list = qc.getQueryData<PrListEntry[]>(qk.prs);
       const detail = qc.getQueryData<PrDetail>(qk.pr(key));
+      const keys = new Set(stack && list ? stackOf(list, key) : [key]);
       const meta = (m: PrDetail["meta"]) => {
         const { tag: _drop, ...rest } = m;
         return tag === null ? rest : { ...rest, tag };
       };
-      if (list) qc.setQueryData(qk.prs, list.map((p) => p.key === key ? { ...p, meta: meta(p.meta) } : p));
+      if (list) qc.setQueryData(qk.prs, list.map((p) => (keys.has(p.key) ? { ...p, meta: meta(p.meta) } : p)));
       if (detail) qc.setQueryData(qk.pr(key), { ...detail, meta: meta(detail.meta) });
-      return { list, detail };
+      return { list, detail, keys };
     },
-    onError: (_error, _tag, ctx) => {
-      // Restore just this PR's tag, preserving other concurrent row changes.
-      qc.setQueryData<PrListEntry[]>(qk.prs, (list) => list?.map((p) => p.key === key ? { ...p, meta: { ...p.meta, tag: ctx?.list?.find((old) => old.key === key)?.meta.tag } } : p));
-      if (ctx?.detail) qc.setQueryData<PrDetail>(qk.pr(key), (d) => d ? { ...d, meta: { ...d.meta, tag: ctx.detail!.meta.tag } } : d);
+    onError: (_error, _vars, ctx) => {
+      // Restore just the touched tags, preserving other concurrent row changes.
+      const before = new Map(ctx?.list?.map((p) => [p.key, p.meta.tag]) ?? []);
+      qc.setQueryData<PrListEntry[]>(qk.prs, (list) =>
+        list?.map((p) => (ctx?.keys.has(p.key) ? { ...p, meta: { ...p.meta, tag: before.get(p.key) } } : p)),
+      );
+      if (ctx?.detail) qc.setQueryData<PrDetail>(qk.pr(key), (d) => (d ? { ...d, meta: { ...d.meta, tag: ctx.detail!.meta.tag } } : d));
     },
     onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: qk.prs }), qc.invalidateQueries({ queryKey: qk.pr(key) })]),
   });

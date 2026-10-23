@@ -501,6 +501,7 @@ function PrBlock({
   waiting?: boolean;
   testId?: string;
 }) {
+  const groups = arrangeBlock(prs);
   return (
     <div data-testid={testId}>
       {label ? (
@@ -508,24 +509,24 @@ function PrBlock({
           {label}
         </GroupLabel>
       ) : null}
-      {arrangeBlock(prs).map((group, i) => (
+      {groups.map((group, i) => (
         <div
           key={group.tag ?? ""}
           data-testid="pr-tag-group"
           data-tag={group.tag ?? ""}
         >
-          {group.tag ? (
+          {group.tag || groups.length > 1 ? (
             <div
               data-testid="pr-tag-heading"
               className="flex items-baseline gap-1.5 border-t px-3 pb-1 pt-2 text-2xs"
               style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
             >
-              <TagChip tag={group.tag} />
+              {group.tag ? <TagChip tag={group.tag} /> : <span className="chip">untagged</span>}
               <span className="tabular-nums">{group.prs.length}</span>
             </div>
           ) : null}
           <ul
-            className={group.tag || (label && i === 0) ? undefined : "border-t"}
+            className={group.tag || groups.length > 1 || (label && i === 0) ? undefined : "border-t"}
             style={{ borderColor: "var(--border)" }}
           >
             {group.prs.map((row) => (
@@ -818,31 +819,33 @@ function PrRow({
 
       <RowStatus pr={pr} className="hidden flex-none sm:flex" />
 
-      {/* Hover-only, like archive. The tag itself is the group heading above. */}
-      <button
-        ref={tagButtonRef}
-        type="button"
-        className="flex-none rounded p-1.5 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
-        data-testid={`tag-${pr.key}`}
-        data-tip={meta?.tag ? `Tagged ${meta.tag}; change it` : "Tag this PR"}
-        aria-label={meta?.tag ? "Change the tag" : "Tag this PR"}
-        onClick={() => edit(tagButtonRef.current)}
-        style={{ color: "var(--fg-faint)", background: "var(--bg-hover)" }}
-      >
-        <IconTag width={12} height={12} />
-      </button>
-      <button
-        type="button"
-        className="flex-none rounded p-1.5 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
-        data-testid={`archive-${pr.key}`}
-        disabled={setArchived.isPending}
-        data-tip={`${archived ? "Unarchive" : "Archive"}; ${ARCHIVE_HINT}`}
-        aria-label={archived ? "Unarchive" : "Archive"}
-        onClick={() => setArchived.mutate({ key: pr.key, archived: !archived })}
-        style={{ color: "var(--fg-faint)", background: "var(--bg-hover)" }}
-      >
-        <IconArchive out={archived} width={12} height={12} />
-      </button>
+      {/* Hover-only, a column the row's two lines leave room for: tag over archive. The tag itself is the group heading above. */}
+      <span className="-ml-1 flex flex-none flex-col items-center gap-0.5">
+        <button
+          ref={tagButtonRef}
+          type="button"
+          className="rounded p-1 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
+          data-testid={`tag-${pr.key}`}
+          data-tip={meta?.tag ? `Tagged ${meta.tag}; change it` : "Tag this PR"}
+          aria-label={meta?.tag ? "Change the tag" : "Tag this PR"}
+          onClick={() => edit(tagButtonRef.current)}
+          style={{ color: "var(--fg-faint)", background: "var(--bg-hover)" }}
+        >
+          <IconTag width={12} height={12} />
+        </button>
+        <button
+          type="button"
+          className="rounded p-1 opacity-0 transition hover:!bg-[var(--bg-inset)] focus-visible:opacity-100 group-hover:opacity-100"
+          data-testid={`archive-${pr.key}`}
+          disabled={setArchived.isPending}
+          data-tip={`${archived ? "Unarchive" : "Archive"}; ${ARCHIVE_HINT}`}
+          aria-label={archived ? "Unarchive" : "Archive"}
+          onClick={() => setArchived.mutate({ key: pr.key, archived: !archived })}
+          style={{ color: "var(--fg-faint)", background: "var(--bg-hover)" }}
+        >
+          <IconArchive out={archived} width={12} height={12} />
+        </button>
+      </span>
     </li>
   );
 }
@@ -956,18 +959,21 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
       <ReviewDecisionChip decision={decision} />
       <AnalysisChip job={pr.analysisJob} />
       <EffortChip effort={pr.effort} />
-      <span
-        className="text-2xs tabular-nums"
-        style={{ color: "var(--fg-faint)" }}
-        data-testid="unit-count"
-      >
-        {pr.unitCount
-          ? `${pr.unitCount} ${pr.unitCount === 1 ? "unit" : "units"}`
-          : "not analyzed"}
+      {/* The unit count sits over the bar: one narrow column for the two numbers of the review's size. */}
+      <span className="inline-flex flex-none flex-col items-end gap-0.5">
+        <span
+          className="text-2xs leading-none tabular-nums"
+          style={{ color: "var(--fg-faint)" }}
+          data-testid="unit-count"
+        >
+          {pr.unitCount
+            ? `${pr.unitCount} ${pr.unitCount === 1 ? "unit" : "units"}`
+            : "not analyzed"}
+        </span>
+        {pr.totalHunks ? (
+          <Progress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} stacked />
+        ) : null}
       </span>
-      {pr.totalHunks ? (
-        <Progress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} stacked />
-      ) : null}
     </div>
   );
 }

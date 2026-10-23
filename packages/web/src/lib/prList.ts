@@ -291,6 +291,40 @@ export function diffTotals(
 }
 
 /** Tags partition a block; stable depth-first trees keep each base and its descendants together. */
+/**
+ * The PRs linked to `key` through base branches, in its repo and not
+ * archived: the stack the tag editor offers to tag as one. Always holds
+ * `key`. Mirrors the server's `stackOf`.
+ */
+export function stackOf(prs: PrListEntry[], key: string): string[] {
+  const me = prs.find((p) => p.key === key);
+  if (!me) return [key];
+  const repo = groupKeyOf(me);
+  const sameRepo = prs.filter((p) => !p.archived && groupKeyOf(p) === repo);
+  const byNumber = new Map(sameRepo.map((p) => [p.meta.number, p]));
+  const edges = new Map<string, Set<string>>();
+  const link = (a: string, b: string) => {
+    if (!edges.has(a)) edges.set(a, new Set());
+    edges.get(a)!.add(b);
+  };
+  for (const p of sameRepo) {
+    const base = p.meta.basePr ? byNumber.get(p.meta.basePr.number) : undefined;
+    if (!base) continue;
+    link(p.key, base.key);
+    link(base.key, p.key);
+  }
+  const seen = new Set([key]);
+  const queue = [key];
+  while (queue.length) {
+    const k = queue.shift()!;
+    for (const m of edges.get(k) ?? []) if (!seen.has(m)) {
+      seen.add(m);
+      queue.push(m);
+    }
+  }
+  return sameRepo.filter((p) => seen.has(p.key)).map((p) => p.key);
+}
+
 /** One row of an arranged block: its PR, how deep it sits in a stack, and how to draw the tree beside it. */
 export interface ArrangedRow {
   pr: PrListEntry;

@@ -31,6 +31,10 @@ test("tags group rows, stacks hang under their base, and edits persist", async (
   await child.getByTestId(`tag-${childKey}`).click();
   const input = page.getByTestId("tag-input");
   await expect(input).toHaveValue("payments");
+  // In a stack the editor offers to tag the whole stack, on by default; this
+  // test wants the child alone.
+  await expect(page.getByTestId("tag-whole-stack")).toBeChecked();
+  await page.getByTestId("tag-whole-stack").uncheck();
   await input.fill("  Alpha  ");
   await input.press("Enter");
   await expect(input).toHaveCount(0);
@@ -52,11 +56,24 @@ test("tags group rows, stacks hang under their base, and edits persist", async (
   await expect(page.getByTestId("tag-input")).toHaveCount(0);
   await expect(child).toHaveAttribute("data-depth", "1");
 
+  // Tag the base with "whole stack" on: both rows move to the new group, still a tree.
+  await base.hover();
+  await base.getByTestId(`tag-${baseKey}`).click();
+  await expect(page.getByText(/Whole stack \(3 PRs\)/)).toBeVisible();
+  await page.getByTestId("tag-input").fill("ledger");
+  await page.getByTestId("tag-input").press("Enter");
+  await expect(page.getByTestId("tag-input")).toHaveCount(0);
+  await expect(block.getByTestId("pr-tag-heading").getByTestId("pr-tag")).toHaveText(["ledger"]);
+  await expect(child).toHaveAttribute("data-depth", "1");
+
   // Remove the tag: the row joins the untagged rows at the end of the block.
   await child.hover();
   await child.getByTestId(`tag-${childKey}`).click();
+  await page.getByTestId("tag-whole-stack").uncheck();
   await page.getByTestId("tag-remove").click();
   await expect(page.getByTestId("tag-input")).toHaveCount(0);
-  await expect(block.getByTestId("pr-tag-group").last()).toHaveAttribute("data-tag", "");
-  await expect(block.getByTestId("pr-tag-group").last().getByTestId(`pr-row-${childKey}`)).toBeVisible();
+  const untagged = block.getByTestId("pr-tag-group").last();
+  await expect(untagged).toHaveAttribute("data-tag", "");
+  await expect(untagged.getByTestId("pr-tag-heading")).toHaveText(/untagged\s*1/);
+  await expect(untagged.getByTestId(`pr-row-${childKey}`)).toBeVisible();
 });
