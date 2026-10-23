@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Fix:** a Mermaid diagram in the chat no longer stays as raw code until you reload the page.
+
 ## 2026.10.23.3
 
 - **Comments follow the code.** A comment keeps pointing at the same lines after a new revision, pushed or not; one whose line is gone shows an "outdated" chip with where it was written.

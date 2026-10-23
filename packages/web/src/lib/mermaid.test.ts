@@ -52,15 +52,27 @@ describe("renderMermaid", () => {
     expect(result).toEqual({ status: "error" });
   });
 
-  it("resolves to error when the mermaid module itself fails to load", async () => {
+  it("does not cache a render failure: the next call renders again", async () => {
+    render.mockRejectedValueOnce(new Error("parse error"));
+    const { renderMermaid } = await import("./mermaid");
+    expect(await renderMermaid("graph TD\n  A --> B", false, OPTS)).toEqual({ status: "error" });
+    expect((await renderMermaid("graph TD\n  A --> B", false, OPTS)).status).toBe("ok");
+    expect(render).toHaveBeenCalledTimes(2);
+  });
+
+  it("resolves to unavailable when the mermaid module fails to load, and imports again next time", async () => {
+    let loads = 0;
     vi.doMock("mermaid", () => {
-      throw new Error("network error");
+      loads += 1;
+      if (loads === 1) throw new Error("404 while rebuilding");
+      return { default: { initialize, render } };
     });
     vi.resetModules();
     const { renderMermaid, resetMermaidForTests } = await import("./mermaid");
     resetMermaidForTests();
-    const result = await renderMermaid("graph TD\n  A --> B", false, OPTS);
-    expect(result).toEqual({ status: "error" });
+    expect(await renderMermaid("graph TD\n  A --> B", false, OPTS)).toEqual({ status: "unavailable" });
+    expect((await renderMermaid("graph TD\n  A --> B", false, OPTS)).status).toBe("ok");
+    expect(loads).toBe(2);
     vi.doUnmock("mermaid");
     vi.resetModules();
   });

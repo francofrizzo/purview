@@ -418,25 +418,37 @@ function SuggestionBlock({ code }: { code: string }) {
  * The same raw-code render is also the error fallback: a parse/render
  * failure never leaves a blank diagram.
  */
+const MERMAID_RETRIES = 3;
+const MERMAID_RETRY_MS = 3000;
+
 function MermaidBlock({ code, open }: { code: string; open: boolean }) {
   const { appearance } = useSettings();
   const dark = appearance.theme.mode === "dark";
   const fontFamily = appearance.uiFont;
-  const [result, setResult] = useState<{ status: "pending" | "ok" | "error"; svg?: string }>({
+  const [result, setResult] = useState<{ status: "pending" | "ok" | "error" | "unavailable"; svg?: string }>({
     status: "pending",
   });
   const [enlarged, setEnlarged] = useState(false);
+  // Counts the retries after the module failed to load (see lib/mermaid.ts):
+  // a few, spaced out, cover the rebuild window without hammering the server.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     setResult({ status: "pending" });
     void renderMermaid(code, open, { dark, fontFamily }).then((r) => {
-      if (alive) setResult(r);
+      if (!alive) return;
+      setResult(r);
+      if (r.status === "unavailable" && attempt < MERMAID_RETRIES) {
+        timer = setTimeout(() => setAttempt((n) => n + 1), MERMAID_RETRY_MS * (attempt + 1));
+      }
     });
     return () => {
       alive = false;
+      if (timer) clearTimeout(timer);
     };
-  }, [code, open, dark, fontFamily]);
+  }, [code, open, dark, fontFamily, attempt]);
 
   if (result.status !== "ok" || !result.svg) return <CodeBlock code={code} lang="mermaid" />;
   // mermaid runs under securityLevel "strict": no script/foreignObject
