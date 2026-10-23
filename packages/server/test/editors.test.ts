@@ -9,10 +9,11 @@ import { execFile } from "node:child_process";
 
 const editor = { id: "code", name: "VS Code", available: true, command: "code {path}" };
 describe("editor choice", () => {
-  it("defaults only to a sole available editor", () => {
+  it("defaults to the first available editor in list order", () => {
     expect(selectedEditor(null, [editor])).toEqual(editor);
     expect(selectedEditor(null, [])).toBeUndefined();
-    expect(selectedEditor(null, [editor, { ...editor, id: "zed" }])).toBeUndefined();
+    expect(selectedEditor(null, [{ ...editor, available: false }, { ...editor, id: "zed" }])?.id).toBe("zed");
+    expect(selectedEditor(null, [editor, { ...editor, id: "zed" }])?.id).toBe("code");
     expect(selectedEditor({ id: "none" }, [editor])).toBeUndefined();
     expect(selectedEditor({ id: "code" }, [{ ...editor, available: false }])).toBeUndefined();
     expect(selectedEditor({ id: "custom", command: "tool {path}" }, [])?.command).toBe("tool {path}");

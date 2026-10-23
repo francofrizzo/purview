@@ -54,7 +54,7 @@ export function EditorSection() {
   const [choosingCustom, setChoosingCustom] = useState(false);
   const available = editors.data?.filter(e => e.available) ?? [];
   const selected = config.data?.editor;
-  const value = choosingCustom ? "custom" : selected?.id ?? (available.length === 1 ? available[0].id : "");
+  const value = choosingCustom ? "custom" : selected?.id ?? "";
   const custom = command ?? (selected?.id === "custom" ? selected.command ?? "" : "");
   return <Section id="editor" title="Editor">
     {editors.isLoading ? <p>Finding editors…</p> : <>
@@ -64,7 +64,7 @@ export function EditorSection() {
         setChoosingCustom(id === "custom");
         if (id !== "custom") save.mutate({ editor: id ? { id } : null });
       }}>
-        <option value="">{available.length === 1 ? `Automatic (${available[0].name})` : "Choose an editor…"}</option>
+        <option value="">{available[0] ? `Automatic (${available[0].name})` : "Choose an editor…"}</option>
         {available.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         <option value="custom">Custom command…</option><option value="none">None</option>
       </select>

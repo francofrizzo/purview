@@ -63,8 +63,9 @@ export function selectedEditor(selection: ReviewerConfig["editor"], editors: Edi
   if (selection?.id === "custom") return selection.command?.includes("{path}")
     ? { id: "custom", name: "custom editor", available: true, command: selection.command } : undefined;
   if (selection) return editors.find(e => e.id === selection.id && e.available);
-  const available = editors.filter(e => e.available);
-  return available.length === 1 ? available[0] : undefined;
+  // Nothing chosen: the first editor found, in the list's order of
+  // preference, so the button works out of the box on a machine with several.
+  return editors.find(e => e.available);
 }
 export async function launchEditor(editor: Editor, checkout: string): Promise<void> {
   const [command, ...args] = commandArgs(editor.command).map(arg => arg.replaceAll("{path}", () => checkout));

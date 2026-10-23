@@ -3,7 +3,12 @@ export function editorAvailable(config: GlobalConfig | undefined, editors: Edito
   if (!config) return false;
   if (config.editor?.id === "custom") return !!config.editor.command?.includes("{path}");
   if (config.editor) return editors.some(e => e.id === config.editor!.id && e.available);
-  return editors.filter(e => e.available).length === 1;
+  return editors.some(e => e.available);
+}
+
+/** The editor the button will use when nothing is chosen: the first one found. */
+export function automaticEditor(editors: Editor[] = []): Editor | undefined {
+  return editors.find(e => e.available);
 }
 export function editorMenuText(preparing: boolean) {
   return {
