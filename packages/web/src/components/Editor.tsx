@@ -75,9 +75,8 @@ export function EditorButton({ prKey }: { prKey: string }) {
   const choices = customEditor ? [...available, customEditor] : available;
   const choose = (editor: Selection, name: string) => { setPanel(false); flow.pick(editor, name); };
   return <>
-    <button ref={anchor} type="button" className="btn" data-testid="topbar-editor" aria-label={flow.busy ? "preparing checkout…" : "open in editor"} aria-haspopup="dialog" aria-expanded={panel} disabled={flow.busy} data-tip="Open Purview's own copy of this PR, detached at its head commit" onClick={() => { setCustom(false); setPanel(!panel); }}>
+    <button ref={anchor} type="button" className="btn" data-testid="topbar-editor" aria-label={flow.busy ? "preparing checkout…" : "open in editor"} aria-haspopup="dialog" aria-expanded={panel} disabled={flow.busy} data-tip={flow.busy ? "Preparing checkout…" : "Open in editor: Purview's own copy of this PR, detached at its head commit"} onClick={() => { setCustom(false); setPanel(!panel); }}>
       {flow.busy ? <IconSpinner width={12} height={12} /> : <IconCode width={12} height={12} />}
-      <span className="hidden lg:inline">{flow.busy ? "preparing checkout…" : "open in editor"}</span>
     </button>
     {panel && <FloatingPanel anchorRef={anchor} onClose={() => setPanel(false)} label="Open in editor" className="w-80 max-w-[calc(100vw-16px)] p-2">
       {editors.isLoading || config.isLoading ? <p className="text-xs">Finding editors…</p> : custom || choices.length === 0 ? <>

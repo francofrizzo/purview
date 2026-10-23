@@ -398,7 +398,7 @@ export function Progress({ viewed, total, stacked = false }: { viewed: number; t
   const done = total > 0 && viewed === total;
   return (
     <span
-      className={stacked ? "inline-flex flex-col items-end gap-1" : "inline-flex items-center gap-1.5"}
+      className={stacked ? "inline-flex flex-col items-end gap-0.5" : "inline-flex items-center gap-1.5"}
       data-tip={`${viewed} of ${total} hunks viewed`}
       data-testid="hunk-progress"
     >

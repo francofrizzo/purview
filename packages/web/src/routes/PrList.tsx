@@ -976,7 +976,7 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
       <AnalysisChip job={pr.analysisJob} />
       <EffortChip effort={pr.effort} />
       {/* The unit count sits over the bar: one narrow column for the two numbers of the review's size. */}
-      <span className="inline-flex flex-none flex-col items-end gap-0.5">
+      <span className="inline-flex flex-none flex-col items-end gap-1.5">
         <span
           className="text-2xs leading-none tabular-nums"
           style={{ color: "var(--fg-faint)" }}
