@@ -1,3 +1,4 @@
+import { initializeMockApi } from "./api/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TooltipLayer } from "./components/Tooltip";
 import React from "react";
@@ -23,15 +24,18 @@ const queryClient = new QueryClient({
   },
 });
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <SettingsProvider>
-        <BrowserRouter>
-          <App />
-          <TooltipLayer />
-        </BrowserRouter>
-      </SettingsProvider>
-    </QueryClientProvider>
-  </React.StrictMode>,
-);
+function renderApp() {
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <QueryClientProvider client={queryClient}>
+        <SettingsProvider>
+          <BrowserRouter>
+            <App />
+            <TooltipLayer />
+          </BrowserRouter>
+        </SettingsProvider>
+      </QueryClientProvider>
+    </React.StrictMode>,
+  );
+}
+void initializeMockApi().then(renderApp);

@@ -4,6 +4,7 @@ import {
   readFilesJson,
   stateRoot,
   type PrKey,
+  type State,
   analysisUnits,
   hunkIdsOf,
   skipOf,
@@ -102,8 +103,7 @@ export function clearEffortCache(): void {
  * revisions are appended independently, so a hunk id briefly outliving the
  * files.json it came from is expected, not corrupt state.
  */
-export function reviewEffort(key: PrKey, root = stateRoot()): ReviewEffort | null {
-  const state = loadState(key, root);
+export function reviewEffort(key: PrKey, root = stateRoot(), state: State = loadState(key, root)): ReviewEffort | null {
   // Husks (units whose hunks all left the PR) have no lines to read and no
   // bearing on the remaining effort; generated files and lockfiles are not
   // read at all.

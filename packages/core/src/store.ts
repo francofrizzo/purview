@@ -53,7 +53,18 @@ import {
 import { renderTriage } from "./triage.js";
 import { GeneratedFactsSchema, type GeneratedFacts } from "./generated.js";
 
+// Bounded to avoid retaining snapshots of every PR ever visited by a long-lived server.
+const stateCache = new Map<string, { stamp: string; state: State }>();
+const MAX_CACHED_STATES = 512;
+function stateStamp(file: string): string {
+  const stat = fs.statSync(file, { bigint: true });
+  // ctime catches direct same-size writes even when tests restore mtime;
+  // nanoseconds avoid rounding rapid writes down to the same millisecond.
+  return `${stat.mtimeNs}:${stat.ctimeNs}:${stat.size}:${stat.ino}`;
+}
+
 function writeJson(file: string, value: unknown): void {
+  stateCache.delete(path.resolve(file));
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, JSON.stringify(value, null, 2) + "\n", "utf8");
 }
@@ -154,15 +165,23 @@ export function rebuildState(key: PrKey, root = stateRoot()): State {
 }
 
 /**
- * Reads the snapshot if present, otherwise rebuilds it from the event log.
+ * Reads a shared snapshot if present, otherwise rebuilds it from the event log.
+ * Treat the returned snapshot as read-only; reducers clone before changing it.
  * A snapshot written by an older reducer (its `shapeVersion` is behind
  * STATE_SHAPE_VERSION, or absent) is re-folded too: the log is the source of
  * truth, and a new reducer rule must reach stored PRs on their next read, not
  * only once something appends an event to them.
  */
 export function loadState(key: PrKey, root = stateRoot()): State {
-  const file = statePath(key, root);
-  if (!fs.existsSync(file)) return rebuildState(key, root);
+  const file = path.resolve(statePath(key, root));
+  let stamp: string;
+  try { stamp = stateStamp(file); } catch {
+    stateCache.delete(file);
+    return rebuildState(key, root);
+  }
+  const hit = stateCache.get(file);
+  if (hit?.stamp === stamp) return hit.state;
+  stateCache.delete(file);
   let state: State;
   try {
     state = StateSchema.parse(JSON.parse(fs.readFileSync(file, "utf8")));
@@ -170,6 +189,11 @@ export function loadState(key: PrKey, root = stateRoot()): State {
     return rebuildState(key, root);
   }
   if ((state.shapeVersion ?? 0) < STATE_SHAPE_VERSION) return rebuildState(key, root);
+  // Cache only a stable read: a concurrent writer may have changed the file.
+  if (stateStamp(file) === stamp) {
+    if (stateCache.size >= MAX_CACHED_STATES) stateCache.delete(stateCache.keys().next().value!);
+    stateCache.set(file, { stamp, state });
+  }
   return state;
 }
 

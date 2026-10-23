@@ -1,5 +1,6 @@
-import { mockApi } from "../mocks/server";
-import { skippedHunkIds, hunkBodyLines } from "../lib/diffModel";
+import { hydrateFiles, type WireFile } from "../lib/hunkBodies";
+import type { mockApi as MockApi } from "../mocks/server";
+import { skippedHunkIds } from "../lib/diffModel";
 import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
 import { isGeneratedUnit, isRemovedUnit, TOOL_KINDS } from "./types";
@@ -29,9 +30,7 @@ import type {
   EditCommentResult,
   CommentAudience,
   PublishCommentResult,
-  FileEntry,
   FileRollup,
-  Hunk,
   ImportFromPrResult,
   ImportReviewsResult,
   LanAccess,
@@ -40,6 +39,7 @@ import type {
   PrDetail,
   PrGithubState,
   PrListEntry,
+  PrMeta,
   PrState,
   RepoConfig,
   RepoConfigPatch,
@@ -75,6 +75,12 @@ import type {
 } from "./types";
 
 export const MOCK = import.meta.env.VITE_MOCK === "1";
+
+let mockApi: typeof MockApi;
+/** Resolve before rendering, including synchronous image and SSE helpers. */
+export async function initializeMockApi(): Promise<void> {
+  if (import.meta.env.VITE_MOCK === "1") mockApi = (await import("../mocks/server")).mockApi;
+}
 
 export { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT, errorText, isConfirmRequired } from "./errors";
 
@@ -205,26 +211,12 @@ interface WireState {
   unassignedHunkIds: string[];
 }
 
-interface WireHunk extends Omit<Hunk, "lines"> {
-  /** raw hunk body without the @@ header, newline-joined */
-  text?: string;
-}
-
-interface WireFile {
-  path: string;
-  oldPath?: string;
-  status: FileEntry["status"];
-  binary?: boolean;
-  generated?: FileEntry["generated"];
-  hunks: WireHunk[];
-}
-
 interface WirePrDetail {
   state: WireState;
   /** a bare array — NOT wrapped in a `{ files }` envelope */
   files: WireFile[];
   diff: string;
-  meta: PrListEntry["meta"];
+  meta: PrMeta;
   analysisJob?: AnalysisJob | null;
   basePrTracked?: boolean;
   reviewRequest?: ReviewRequest | null;
@@ -307,34 +299,6 @@ interface WireReviewStatus {
 
 /* ----------------------------------------------------------- adapters --- */
 
-function adaptHunk(h: WireHunk): Hunk {
-  // core stores the body as a single newline-joined string; the renderer wants
-  // one entry per line. An empty body must stay empty, not [""].
-  return { ...h, lines: hunkBodyLines(h.text) };
-}
-
-function adaptFile(f: WireFile): FileEntry {
-  const hunks = f.hunks.map(adaptHunk);
-  // core doesn't carry per-file stats; they're a cheap fold over the hunks.
-  let additions = 0;
-  let deletions = 0;
-  for (const h of f.hunks) {
-    additions += h.addedLines?.length ?? 0;
-    deletions += h.removedLines?.length ?? 0;
-  }
-  return {
-    path: f.path,
-    oldPath: f.oldPath,
-    status: f.status,
-    binary: f.binary,
-    // Only ever present when set: an absent key keeps old fixtures/snapshots equal.
-    ...(f.generated ? { generated: f.generated } : {}),
-    additions,
-    deletions,
-    hunks,
-  };
-}
-
 function adaptState(s: WireState): PrState {
   const files: Record<string, FileRollup> = {};
   for (const f of s.files ?? []) {
@@ -372,7 +336,7 @@ function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
     key,
     meta: raw.meta,
     state: adaptState(raw.state),
-    files: { files: (raw.files ?? []).map(adaptFile) },
+    files: { files: hydrateFiles(raw.files ?? [], raw.diff ?? "") },
     diff: raw.diff ?? "",
     analysisJob: raw.analysisJob ?? null,
     basePrTracked: raw.basePrTracked === true,
@@ -494,7 +458,7 @@ export const api = {
       ci: e.ci,
       reviewers: e.reviewers,
       needsUpdate: Boolean(e.needsUpdate),
-      reviewRequest: e.reviewRequest !== undefined ? e.reviewRequest : e.meta?.reviewRequest,
+      reviewRequest: e.reviewRequest,
       authoredByYou: Boolean(e.authoredByYou),
       addedAt: e.addedAt ?? e.meta?.createdAt ?? new Date(0).toISOString(),
       archived: Boolean(e.archived),

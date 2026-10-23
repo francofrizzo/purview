@@ -52,8 +52,7 @@ export interface Hunk {
   /**
    * Raw patch body for the hunk (the lines after the @@ header, each still
    * carrying its leading ' ', '+' or '-'). Derived by `client.ts` from the
-   * `text` field core writes into files.json; only absent for hunks that
-   * predate that field, in which case we recover it from the raw diff text.
+   * response's raw diff. Persisted files.json still stores its original text.
    */
   lines?: string[];
   /** Content lines only, as core computed hunk identity from. */
@@ -537,6 +536,11 @@ export interface DiffSize {
   deletions: number;
 }
 
+export type PrListMeta = Pick<PrMeta,
+  "host" | "owner" | "repo" | "number" | "url" | "title" | "author" | "authorAvatarUrl" |
+  "basePr" | "tag" | "headRef" | "baseRef" | "createdAt" | "prState"
+>;
+
 export interface PrListEntry {
   ci?: Ci;
   /** See `PrMeta.reviewers`. Absent from an older server. */
@@ -546,14 +550,14 @@ export interface PrListEntry {
   key: string;
   /** Absent from an older server; `null` until the revision's files are stored. */
   diffSize?: DiffSize | null;
-  meta: PrMeta;
+  meta: PrListMeta;
   title?: string;
   currentRevision?: number;
   summary?: string;
   unitCount?: number;
   viewedHunks?: number;
   totalHunks?: number;
-  analysisJob?: AnalysisJob | null;
+  analysisJob?: Omit<AnalysisJob, "metrics"> | null;
   effort?: ReviewEffort | null;
   /** GitHub lifecycle state, as of the last fetch. */
   state: PrGithubState;

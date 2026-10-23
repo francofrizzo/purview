@@ -1,3 +1,4 @@
+import { compress, COMPRESSIBLE_CONTENT_TYPE_REGEX } from "hono/compress";
 import { requestLog } from "./request-log.js";
 import { log, shortKey } from "./log.js";
 import fs from "node:fs";
@@ -344,11 +345,15 @@ export function refreshLeavesWork(
 
 export function createApp(opts: AppOptions = {}): Hono {
   const app = new Hono();
+  // SSE must flush immediately (both analysis events and streaming chat).
+  app.use("*", compress({ contentTypeFilter: (type) =>
+    !type.startsWith("text/event-stream") && COMPRESSIBLE_CONTENT_TYPE_REGEX.test(type),
+  }));
   const root = opts.stateDir ?? stateRoot();
   // A failure to compute effort must never break the PR list.
-  const safeEffort = (key: PrKey) => {
+  const safeEffort = (key: PrKey, state: State) => {
     try {
-      return reviewEffort(key, root);
+      return reviewEffort(key, root, state);
     } catch {
       return null;
     }
@@ -474,9 +479,9 @@ export function createApp(opts: AppOptions = {}): Hono {
       const state = loadState(key, root);
       return {
         key: keyToString(key),
-        meta,
+        meta: listMeta(meta),
         // Flattened onto the item because the list UI sorts and filters on
-        // them; `meta` keeps carrying the same values for older clients.
+        // them without needing the full PR metadata.
         title: meta.title ?? state.pr?.title ?? "",
         state: meta.prState ?? "open",
         reviewDecision: meta.reviewDecision ?? null,
@@ -496,10 +501,10 @@ export function createApp(opts: AppOptions = {}): Hono {
         currentRevision: state.currentRevision,
         summary: state.summary,
         progress: progressOf(state),
-        analysisJob: readJob(key, root),
+        analysisJob: listJob(readJob(key, root)),
         // Best-effort: a broken computation for one PR must never take the
         // whole list down.
-        effort: safeEffort(key),
+        effort: safeEffort(key, state),
         // GitHub's "+120 −34" for the row; null until the revision's files exist.
         diffSize: diffSize(key, state.currentRevision, root),
       };
@@ -666,7 +671,10 @@ export function createApp(opts: AppOptions = {}): Hono {
     );
     return c.json({
       state,
-      files: filesJson.files,
+      files: filesJson.files.map((file) => ({
+        ...file,
+        hunks: file.hunks.map(({ text, addedLines, removedLines, ...hunk }) => hunk),
+      })),
       diff,
       meta,
       analysisJob: readJob(key, root),
@@ -2504,7 +2512,12 @@ export function createApp(opts: AppOptions = {}): Hono {
         : path.join(webDist, "index.html");
       const data = fs.readFileSync(target);
       const type = contentType(target);
-      return c.body(data as unknown as ArrayBuffer, 200, { "Content-Type": type });
+      return c.body(data as unknown as ArrayBuffer, 200, {
+        "Content-Type": type,
+        "Cache-Control": target === path.join(webDist, "index.html")
+          ? "no-cache"
+          : reqPath.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache",
+      });
     });
   } else {
     app.get("/", (c) => c.text("web not built — run `pnpm --filter @reviewer/web build`", 200));
@@ -2537,4 +2550,17 @@ function contentType(file: string): string {
     default:
       return "application/octet-stream";
   }
+}
+
+/** Only metadata used by the home page and the HTTP skill. */
+function listMeta(meta: Meta) {
+  const { host, owner, repo, number, url, title, author, authorAvatarUrl,
+    basePr, tag, headRef, baseRef, createdAt, prState } = meta;
+  return { host, owner, repo, number, url, title, author, authorAvatarUrl,
+    basePr, tag, headRef, baseRef, createdAt, prState };
+}
+function listJob(job: ReturnType<typeof readJob>) {
+  if (!job) return null;
+  const { metrics, ...summary } = job;
+  return summary;
 }

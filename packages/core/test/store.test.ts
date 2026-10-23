@@ -124,3 +124,32 @@ describe("updateMeta", () => {
     expect(readEvents(key, tmp)).toEqual([]);
   });
 });
+
+describe("snapshot cache", () => {
+  it("reuses unchanged snapshots and detects same-size direct writes with restored mtime", () => {
+    const state = loadState(key, tmp);
+    const file = statePath(key, tmp);
+    fs.writeFileSync(file, JSON.stringify({ ...state, summary: "first" }));
+    const fixedTime = new Date("2026-01-01T00:00:00Z");
+    fs.utimesSync(file, fixedTime, fixedTime);
+    const first = loadState(key, tmp);
+    expect(loadState(key, tmp)).toBe(first);
+    const stat = fs.statSync(file, { bigint: true });
+    fs.writeFileSync(file, JSON.stringify({ ...state, summary: "other" }));
+    fs.utimesSync(file, fixedTime, fixedTime);
+    const changed = fs.statSync(file, { bigint: true });
+    expect(changed.mtimeNs).toBe(stat.mtimeNs);
+    expect(changed.size).toBe(stat.size);
+    expect(loadState(key, tmp).summary).toBe("other");
+  });
+
+  it("invalidates after append and rebuilds a deleted or corrupt snapshot", () => {
+    loadState(key, tmp);
+    appendEvent(key, { type: "pr-initialized", ...key, url: "https://github.com/acme/widgets/pull/1", title: "fresh" }, tmp);
+    expect(loadState(key, tmp).pr?.title).toBe("fresh");
+    fs.writeFileSync(statePath(key, tmp), "broken");
+    expect(loadState(key, tmp).pr?.title).toBe("fresh");
+    fs.rmSync(statePath(key, tmp));
+    expect(loadState(key, tmp).pr?.title).toBe("fresh");
+  });
+});

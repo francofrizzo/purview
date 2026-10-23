@@ -1,3 +1,4 @@
+import { hydrateFiles } from "../lib/hunkBodies";
 import { stackOf } from "../lib/prList";
 import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
@@ -746,6 +747,8 @@ export const mockApi = {
     return structuredClone(
       list.map((p) => ({
         ...p,
+        meta: listMeta(p.meta),
+        analysisJob: p.analysisJob ? listJob(p.analysisJob) : null,
         // as the server: yours when you opened it, or a login in extraAuthors did
         authoredByYou: p.authoredByYou || loginListed(p.meta?.author, globalConfig.extraAuthors),
         repoArchived: archivedRepos.has(repoKeyOfPr(p.key)),
@@ -1031,7 +1034,13 @@ export const mockApi = {
     target.meta = { ...target.meta, archived: entry?.archived ?? false, reviewers: entry?.reviewers };
     target.repoArchived = archivedRepos.has(`${host}/${owner}/${repo}`);
     target.analysisPending = analysisPending[key] ?? null;
-    return withAudience(structuredClone(target));
+    // Exercise the same slim detail wire shape and hydration as the real server.
+    const result = structuredClone(target);
+    result.files.files = hydrateFiles(result.files.files.map((file) => ({
+      ...file,
+      hunks: file.hunks.map(({ lines, addedLines, removedLines, ...hunk }) => hunk),
+    })), result.diff);
+    return withAudience(result);
   },
 
   /**
@@ -2167,3 +2176,14 @@ export const mockApi = {
 };
 
 const isLive = (job?: AnalysisJob | null) => job?.status === "queued" || job?.status === "running";
+
+function listMeta(meta: PrListEntry["meta"]) {
+  const { host, owner, repo, number, url, title, author, authorAvatarUrl,
+    basePr, tag, headRef, baseRef, createdAt, prState } = meta;
+  return { host, owner, repo, number, url, title, author, authorAvatarUrl,
+    basePr, tag, headRef, baseRef, createdAt, prState };
+}
+function listJob(job: AnalysisJob) {
+  const { metrics, ...summary } = job;
+  return summary;
+}

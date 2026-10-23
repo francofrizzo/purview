@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { isGeneratedUnit, type Attention, type ChatRef, type PrDetail, type ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
 import { heartOf } from "../lib/units";
@@ -197,9 +197,9 @@ export function UnitSidebar({
                     unit={u}
                     number={displayNumber.get(u.id) ?? u.order}
                     selected={u.id === selectedUnitId}
-                    onSelect={() => onSelect(u.id)}
-                    onReclassify={(patch) => onReclassify(u.id, patch)}
-                    onQuote={onQuote ? () => onQuote({ kind: "unit", id: u.id }) : undefined}
+                    onSelect={onSelect}
+                    onReclassify={onReclassify}
+                    onQuote={onQuote}
                     matches={matchCounts?.get(u.id)}
                     changedTip={changedUnits?.ids.has(u.id) ? changedUnits.tip : undefined}
                   />
@@ -351,7 +351,7 @@ function RemovedRow({ unit }: { unit: ReviewUnit }) {
   );
 }
 
-function UnitRow({
+const UnitRow = memo(function UnitRow({
   detail,
   unit,
   number,
@@ -366,9 +366,9 @@ function UnitRow({
   unit: ReviewUnit;
   number: number;
   selected: boolean;
-  onSelect: () => void;
-  onReclassify: (patch: Partial<ReviewUnit>) => void;
-  onQuote?: () => void;
+  onSelect: (unitId: string) => void;
+  onReclassify: (unitId: string, patch: Partial<ReviewUnit>) => void;
+  onQuote?: (ref: ChatRef) => void;
   matches?: number;
   /** set when the highlighted revisions touched this unit: the badge's tip */
   changedTip?: string;
@@ -383,7 +383,7 @@ function UnitRow({
     <li className="group relative">
       <button
         type="button"
-        onClick={onSelect}
+        onClick={() => onSelect(unit.id)}
         className="sidebar-row-btn w-full border-l-2 px-2.5 py-2 text-left transition-colors"
         style={{
           borderColor: selected ? "var(--accent)" : "transparent",
@@ -467,17 +467,17 @@ function UnitRow({
       {popover && !generated ? (
         <ReclassifyPopover
           unit={unit}
-          onAskAgent={onQuote}
+          onAskAgent={onQuote ? () => onQuote({ kind: "unit", id: unit.id }) : undefined}
           onClose={() => setPopover(false)}
           onApply={(patch) => {
-            onReclassify(patch);
+            onReclassify(unit.id, patch);
             setPopover(false);
           }}
         />
       ) : null}
     </li>
   );
-}
+});
 
 /** Search-hit count for a sidebar row. Only rendered when there are hits. */
 export function MatchBadge({ count }: { count: number }) {

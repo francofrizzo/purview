@@ -1072,7 +1072,6 @@ export const mockList: PrListEntry[] = [
     key: "github.com/acme/billing/491",
     ci: passingCi,
     meta: {
-      ci: passingCi,
       host: "github.com",
       owner: "acme",
       repo: "billing",

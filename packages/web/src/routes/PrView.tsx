@@ -10,6 +10,7 @@ import type {
   MigrationReport,
   PrDetail,
   ReviewEvent,
+  ReviewUnit,
   ShareAnalysisResult,
   SubmitReviewResult,
   SyncResult, CommentAudience, ReactionContent } from "../api/types";
@@ -225,6 +226,11 @@ export function PrView() {
   useAnalysisEvents(prKey);
   const analysisJob = useAnalysisJob(prKey);
   const chat = useChatFor(prKey);
+  const quote = useCallback((ref: ChatRef) => chat.attachRef(ref), [chat.attachRef]);
+  const reclassifyUnit = useCallback(
+    (unitId: string, patch: Partial<ReviewUnit>) => patchUnit.mutate({ unitId, patch }),
+    [patchUnit.mutate],
+  );
 
   // Dismissing the hint bar is remembered against the upstream head sha it was
   // raised for, so the bar comes back the next time the PR really moves.
@@ -1178,7 +1184,6 @@ export function PrView() {
     detail.meta.archived === true ? "pr" : detail.repoArchived ? "repo" : null;
   const showArchivedSkipBanner =
     !!skipNote && skipNote.reason === "archived" && archiveScope !== null && !analysisPending;
-  const quote = (ref: ChatRef) => chat.attachRef(ref);
 
   const noLocalAnalysis = analyzedUnits.length === 0;
   const showSharedAnalysisBanner =
@@ -1404,7 +1409,7 @@ export function PrView() {
               detail={detail}
               selectedUnitId={selectedUnitId}
               onSelect={selectUnitFromSidebar}
-              onReclassify={(unitId, patch) => patchUnit.mutate({ unitId, patch })}
+              onReclassify={reclassifyUnit}
               onQuote={quote}
               matchCounts={unitMatchCounts}
               onlyUnitIds={sinceUnitIds}
