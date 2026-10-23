@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { isGeneratedUnit, type Attention, type PrDetail, type ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
 import { useSettings } from "../lib/settings";
@@ -75,7 +75,19 @@ export function UnitSidebar({
   // Reading order: by attention bucket, `order` within it, the generated unit last.
   const units = unitDisplayOrder(detail.state.units);
   // Measured among the units to read closely: that is where a row's risk competes.
-  const commonRisks = commonRiskFlags(workUnits(units).filter((u) => u.attention === "must-read"));
+  const commonRisks = useMemo(
+    () => commonRiskFlags(workUnits(detail.state.units).filter((u) => u.attention === "must-read")),
+    [detail.state.units],
+  );
+  // Rows are memoized (a search keystroke must not redraw every one), so what
+  // they get stays the same object across renders: a click reads the current
+  // selection from a ref instead of a callback rebuilt on every selection.
+  const selectedRef = useRef(selectedUnitId);
+  selectedRef.current = selectedUnitId;
+  const selectRow = useCallback(
+    (unitId: string) => (unitId === selectedRef.current ? setBriefFolded((v) => !v) : onSelect(unitId)),
+    [onSelect],
+  );
   // The generated unit is built before any analysis runs, so it alone does not
   // mean the PR has review units.
   const analyzed = workUnits(units).length > 0;
@@ -181,13 +193,13 @@ export function UnitSidebar({
                     unit={u}
                     number={displayNumber.get(u.id) ?? u.order}
                     selected={u.id === selectedUnitId}
-                    onSelect={() => (u.id === selectedUnitId ? setBriefFolded((v) => !v) : onSelect(u.id))}
+                    onSelect={selectRow}
                     briefOpen={u.id === selectedUnitId && !briefFolded}
                     commonRisks={commonRisks}
                     matches={matchCounts?.get(u.id)}
                     changedTip={changedUnits?.ids.has(u.id) ? changedUnits.tip : undefined}
                     brief={u.id === selectedUnitId && renderBrief && !briefFolded ? renderBrief(u) : null}
-                    onToggleViewed={onToggleUnitViewed ? (viewed) => onToggleUnitViewed(u, viewed) : undefined}
+                    onToggleViewed={onToggleUnitViewed}
                     marking={markingUnitId === u.id}
                   />
                 ))}
@@ -354,7 +366,7 @@ const UnitRow = memo(function UnitRow({
   unit: ReviewUnit;
   number: number;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (unitId: string) => void;
   matches?: number;
   /** set when the highlighted revisions touched this unit: the badge's tip */
   changedTip?: string;
@@ -364,7 +376,7 @@ const UnitRow = memo(function UnitRow({
   /** risk flags most of the PR's units carry: not news on a must-read row */
   commonRisks: ReadonlySet<string>;
   /** mark every hunk of the unit viewed (true) or not (false) */
-  onToggleViewed?: (viewed: boolean) => void;
+  onToggleViewed?: (unit: ReviewUnit, viewed: boolean) => void;
   marking?: boolean;
 }) {
   const p = unitProgress(detail, unit);
@@ -442,7 +454,7 @@ const UnitRow = memo(function UnitRow({
       >
         <button
           type="button"
-          onClick={onSelect}
+          onClick={() => onSelect(unit.id)}
           aria-current={selected ? "true" : undefined}
           aria-expanded={selected ? briefOpen : undefined}
           data-testid={`unit-row-${unit.id}`}
@@ -518,7 +530,7 @@ const UnitRow = memo(function UnitRow({
               tip={done ? "Mark the unit as not viewed" : "Mark the whole unit viewed"}
               kbd={selected ? "V" : undefined}
               testId={`unit-viewed-${unit.id}`}
-              onToggle={() => onToggleViewed(!done)}
+              onToggle={() => onToggleViewed(unit, !done)}
               busy={marking}
             />
           ) : null}

@@ -178,6 +178,13 @@ export function PrView() {
   const setHunkViewed = useSetHunkViewed(prKey);
   const setHunksViewed = useSetHunksViewed(prKey);
   const setUnitViewed = useSetUnitViewed(prKey);
+  // The guide's rows are memoized: they get one function for good, which
+  // calls the current handler (set below, once markUnitViewed exists).
+  const toggleUnitViewedRef = useRef<(unit: ReviewUnit, viewed: boolean) => void>(() => {});
+  const toggleUnitViewed = useCallback(
+    (unit: ReviewUnit, viewed: boolean) => toggleUnitViewedRef.current(unit, viewed),
+    [],
+  );
   const patchUnit = usePatchUnit(prKey);
   const setGenerated = useSetGenerated(prKey);
   const refresh = useRefresh(prKey);
@@ -1391,6 +1398,12 @@ export function PrView() {
   const unitNumbers = unitDisplayNumbers(unitDisplayOrder(detail.state.units));
   const markUnitViewed = (unitId: string) =>
     setUnitViewed.mutate(unitId, { onSuccess: () => advanceAfterUnitViewed(unitId) });
+  toggleUnitViewedRef.current = (u, viewed) =>
+    viewed
+      ? u.id === selectedUnitId
+        ? markUnitViewed(u.id)
+        : setUnitViewed.mutate(u.id)
+      : setHunksViewed.mutate({ hunkIds: hunkIdsOf(u), viewed: false });
   // A ranged heart segment lands on its first line, not the hunk's top.
   const jumpToHeartHunk = (hunkId: string, line?: number) => {
     setFocusedHunkId(hunkId);
@@ -1514,13 +1527,7 @@ export function PrView() {
               onlyUnitIds={sinceUnitIds}
               changedUnits={changedUnits}
               renderBrief={renderBrief}
-              onToggleUnitViewed={(u, viewed) =>
-                viewed
-                  ? u.id === selectedUnitId
-                    ? markUnitViewed(u.id)
-                    : setUnitViewed.mutate(u.id)
-                  : setHunksViewed.mutate({ hunkIds: hunkIdsOf(u), viewed: false })
-              }
+              onToggleUnitViewed={toggleUnitViewed}
               markingUnitId={setUnitViewed.isPending ? setUnitViewed.variables : null}
             />
           </CodeLinkContext.Provider>
