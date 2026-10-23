@@ -1680,6 +1680,86 @@ export function DiffPane({
     }
   }, [grouped]);
 
+  /* ------------------------- keeping the reader in place around the composer */
+  // Closing the composer drops its row; the saved comment then adds its card
+  // under the line, first at an estimate, then measured and opened. When the
+  // composer sat above the pane's top edge (the reader scrolled on while
+  // writing), each of those moves everything under their eye by the row's
+  // height: the virtualizer corrects a measured item's growth, never a row
+  // that comes or goes. So: note the row under the top edge after every
+  // commit and, for the rows changes that follow a close, put it back where
+  // it was. Absolute, so the virtualizer's own correction is not counted
+  // twice; skipped while a j/k glide owns the scroll. The window is short,
+  // so a later fold or jump is not second-guessed.
+  const topRow = useRef<{ key: string; offset: number } | null>(null);
+  const holdTopRowUntil = useRef(0);
+  // While holding, the anchor is frozen (so the card's arrival is measured
+  // against where the reader was, not against our own correction) and a
+  // scroll that is not ours — wheel, j/k — ends the hold: the reader moved on.
+  const ownScroll = useRef(false);
+  const lastComposeKey = useRef<string | null>(null);
+  const totalSize = virtualizer.getTotalSize();
+  useLayoutEffect(() => {
+    if (composeKey === null && lastComposeKey.current !== null) {
+      holdTopRowUntil.current = performance.now() + 2000;
+      // The composer's textarea had the keyboard; without this it falls to
+      // <body>. Unless something else (the chat's box) already took it.
+      const active = document.activeElement;
+      if (!active || active === document.body) scrollRef.current?.focus({ preventScroll: true });
+    } else if (composeKey !== null) {
+      holdTopRowUntil.current = 0;
+    }
+    lastComposeKey.current = composeKey;
+  }, [composeKey]);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const anchor = topRow.current;
+    if (!el || !anchor || performance.now() > holdTopRowUntil.current || glideFrame.current !== null) return;
+    const idx = rows.findIndex((r) => r.key === anchor.key);
+    if (idx === -1) return;
+    // getVirtualItems() brings the measurements up to date with what the
+    // rows mounted in this commit measured (the card's real height).
+    virtualizer.getVirtualItems();
+    const m = virtualizer.measurementsCache[idx];
+    if (!m) return;
+    const want = m.start - anchor.offset;
+    if (Math.abs(el.scrollTop - want) > 1) {
+      ownScroll.current = true;
+      el.scrollTop = want;
+    }
+    // Total size, too: the card's markdown can measure taller a beat after
+    // it mounted (a ResizeObserver tick), which moves the rows under it the
+    // same way a new row would.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, totalSize]);
+  const recordTopRow = useCallback((event?: Event) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (performance.now() < holdTopRowUntil.current) {
+      if (event && !ownScroll.current) holdTopRowUntil.current = 0;
+      else {
+        if (event) ownScroll.current = false;
+        return;
+      }
+    }
+    let item = virtualizer.getVirtualItemForOffset(el.scrollTop);
+    // The composer's own row is the one that goes: anchor on the row after it.
+    if (item && rowsRef.current[item.index]?.type === "compose") item = virtualizer.measurementsCache[item.index + 1];
+    topRow.current = item ? { key: String(item.key), offset: item.start - el.scrollTop } : null;
+  }, [virtualizer]);
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  // After every commit (a scroll re-renders too), and on the scroll itself.
+  useLayoutEffect(() => {
+    recordTopRow();
+  });
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", recordTopRow, { passive: true });
+    return () => el.removeEventListener("scroll", recordTopRow);
+  }, [recordTopRow]);
+
   // Before paint, so a composer that can't go inline floats without a frame
   // of both (two composers fighting over focus).
   useLayoutEffect(() => {
@@ -2505,7 +2585,10 @@ export function DiffPane({
       <div
         ref={scrollRef}
         data-diff-scroller=""
-        className={`min-h-0 flex-1 overflow-auto${wrap ? "" : " diff-nowrap"}`}
+        // Focusable (not tabbable) so the keyboard has somewhere to land
+        // when the composer closes; see the composeKey effect above.
+        tabIndex={-1}
+        className={`min-h-0 flex-1 overflow-auto outline-none${wrap ? "" : " diff-nowrap"}`}
         style={{ background: "var(--bg)" }}
       >
         <div

@@ -13,6 +13,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **Fix:** opening a PR no longer freezes the server for other requests.
 - **Fix:** adding, refreshing and syncing a PR no longer freeze the server for other requests.
 - **Fix:** a PR no longer loads its diff twice when opened.
+- **Fix:** saving a comment no longer scrolls the diff away from where you were reading; the keyboard stays on the diff.
 
 ## 2026.10.23.2
 
