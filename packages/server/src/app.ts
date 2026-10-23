@@ -932,7 +932,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       try {
         await stream.writeSSE({
           event: "analysis-job",
-          data: JSON.stringify({ type: "analysis-job", job: readJob(key, root) }),
+          data: JSON.stringify({ type: "analysis-job", job: readJob(key, root), replay: true }),
         });
 
         while (!closed) {

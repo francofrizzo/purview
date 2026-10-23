@@ -1096,11 +1096,11 @@ export function useAnalysisEvents(key: string) {
   useEffect(() => {
     if (!key) return;
     previous.current = qc.getQueryData<AnalysisJob | null>(qk.analysisJob(key))?.status ?? null;
-    const unsubscribe = api.subscribeAnalysis(key, (job) => {
+    const unsubscribe = api.subscribeAnalysis(key, (job, replay) => {
       qc.setQueryData(qk.analysisJob(key), job);
       const was = previous.current;
       previous.current = job.status;
-      if (job.status === "done" && was !== "done") {
+      if (!replay && job.status === "done" && was !== "done") {
         void qc.invalidateQueries({ queryKey: qk.pr(key) });
         void qc.invalidateQueries({ queryKey: qk.prs });
       }

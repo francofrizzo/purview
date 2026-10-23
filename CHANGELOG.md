@@ -5,6 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Fix:** opening a PR no longer freezes the server for other requests.
+- **Fix:** a PR no longer loads its diff twice when opened.
+
 ## 2026.10.23.2
 
 - **Archived list, newest first.** A repo's archived PRs open with the ten most recently added on top, and "show 10 more" walks back.

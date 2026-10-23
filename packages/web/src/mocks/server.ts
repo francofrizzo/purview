@@ -1740,8 +1740,9 @@ export const mockApi = {
     return structuredClone(cancelled);
   },
 
-  subscribeAnalysis(key: string, onJob: (job: AnalysisJob) => void): () => void {
+  subscribeAnalysis(key: string, onJob: (job: AnalysisJob, replay?: boolean) => void): () => void {
     (jobSubscribers[key] ??= new Set()).add(onJob);
+    if (jobs[key]) onJob(structuredClone(jobs[key]!), true);
     return () => {
       jobSubscribers[key]?.delete(onJob);
     };

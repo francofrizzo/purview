@@ -1911,6 +1911,7 @@ describe("GET /events", () => {
     const first = decoder.decode((await reader.read()).value);
     expect(first).toContain("event: analysis-job");
     expect(first).toContain('"job":null');
+    expect(first).toContain('"replay":true');
 
     await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
     // Transitions can coalesce into one chunk, so keep everything seen so far.
