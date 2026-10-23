@@ -31,6 +31,10 @@ import {
  */
 export const DEFAULT_DEV_ORIGINS = ["http://localhost:5179", "http://localhost:5173"];
 
+export const EditorSelectionSchema = z.object({
+  id: z.string().min(1), command: z.string().optional(), name: z.string().optional(),
+}).strict().refine(e => e.id !== "custom" || !!e.command?.includes("{path}"), "Custom command must include {path}");
+
 export const ConfigSchema = z.object({
   /** Consent for the automatic Claude analysis run on init/refresh. */
   autoAnalyze: z.boolean().default(true),
@@ -92,7 +96,7 @@ export const ConfigSchema = z.object({
    * viewer login as "mine".
    */
   extraAuthors: z.array(z.string()).default([]),
-  editor: z.object({ id: z.string(), command: z.string().optional() }).nullable().default(null),
+  editor: EditorSelectionSchema.nullable().default(null),
   editorConfirmed: z.boolean().default(false),
   /**
    * The global switch for new comments: part of the GitHub review, or notes

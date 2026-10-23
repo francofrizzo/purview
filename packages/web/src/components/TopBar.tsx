@@ -1,4 +1,4 @@
-import { useOpenInEditor } from "./Editor";
+import { EditorButton } from "./Editor";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { TagChip, TagPopover } from "./TagPopover";
@@ -36,6 +36,7 @@ import {
   IconUpload,
   IconDock,
   IconSpinner,
+  IconTag,
 } from "./icons";
 
 export function TopBar({
@@ -153,7 +154,6 @@ export function TopBar({
   // The tag popover hangs under the chip when there is one, under the ⋯ menu otherwise.
   const tagChipRef = useRef<HTMLButtonElement>(null);
   const tagMenuRef = useRef<HTMLDivElement>(null);
-  const editor = useOpenInEditor(detail.key);
   const [tagOpen, setTagOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
   const { meta, state } = detail;
@@ -329,6 +329,7 @@ export function TopBar({
             <AudienceSwitch value={audience} onChange={onAudienceChange} testId="topbar-audience" />
           </span>
         ) : null}
+        <EditorButton prKey={detail.key} />
         {/* The right dock (comments, chat, review) has one toggle; its tabs
             take over once it is open. The badge is the unsent comments. */}
         <button
@@ -417,8 +418,7 @@ export function TopBar({
         <div ref={tagMenuRef} className="contents">
         <OverflowMenu
           items={[
-            ...editor.items,
-            { label: meta.tag ? "change tag…" : "tag…", testId: "header-tag-menu", onClick: () => setTagOpen(true) },
+            { label: meta.tag ? "change tag…" : "tag…", testId: "header-tag-menu", icon: <IconTag width={12} height={12} />, onClick: () => setTagOpen(true) },
             // Phone width: the row keeps chat, comments, refresh and finish;
             // sync moves in here.
             {
@@ -555,7 +555,6 @@ export function TopBar({
           ) : null}
         </button>
       </div>
-      {editor.dialog}
       {tagOpen ? (
         <TagPopover
           prKey={detail.key}

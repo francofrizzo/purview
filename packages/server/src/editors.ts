@@ -61,7 +61,7 @@ let cached: Promise<Editor[]> | undefined;
 export const getEditors = () => cached ??= probeEditors();
 export function selectedEditor(selection: ReviewerConfig["editor"], editors: Editor[]): Editor | undefined {
   if (selection?.id === "custom") return selection.command?.includes("{path}")
-    ? { id: "custom", name: "custom editor", available: true, command: selection.command } : undefined;
+    ? { id: "custom", name: selection.name || "your editor", available: true, command: selection.command } : undefined;
   if (selection) return editors.find(e => e.id === selection.id && e.available);
   // Nothing chosen: the first editor found, in the list's order of
   // preference, so the button works out of the box on a machine with several.

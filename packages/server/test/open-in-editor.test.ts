@@ -69,8 +69,22 @@ describe("open-in-editor route and target", () => {
     const res = await app.request(url, { method: "POST" });
     expect(res.status).toBe(500); expect(await res.json()).toMatchObject({ detail: "ENOENT" });
   });
+  it("launches an explicit editor without saving config first", async () => {
+    writeConfig({ editor: { id: "none" } }, root);
+    const res = await app.request(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ editor: { id: "custom", name: "Nova", command: "nova {path}" } }) });
+    expect(res.status).toBe(200);
+    expect(spawn).toHaveBeenCalledWith("nova", [target], { detached: true, stdio: "ignore" });
+    expect(await (await app.request("/api/config")).json()).toMatchObject({ editor: { id: "none" } });
+  });
+  it.each([{ id: "custom", command: "nova" }, { id: "custom", command: "nova {path}", name: 12 }])("rejects invalid editor selections consistently: %j", async editor => {
+    for (const endpoint of [url, "/api/config"]) {
+      const res = await app.request(endpoint, { method: endpoint === url ? "POST" : "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ editor }) });
+      expect(res.status).toBe(400);
+    }
+    expect(ensurePrCheckout).not.toHaveBeenCalled();
+  });
   it("round trips selection and confirmation through config", async () => {
-    const patch = { editor: { id: "custom", command: 'code "{path}"' }, editorConfirmed: true };
+    const patch = { editor: { id: "custom", name: "Nova", command: 'code "{path}"' }, editorConfirmed: true };
     const res = await app.request("/api/config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
     expect(res.status).toBe(200); expect(await res.json()).toMatchObject(patch);
     expect(await (await app.request("/api/config")).json()).toMatchObject(patch);

@@ -168,7 +168,7 @@ import {
 } from "./repo-config.js";
 import { agentView, checkAgentSelection, resolveAgent, resolveChatAgent } from "./repo-config.js";
 import { DEFAULT_HARNESS, getHarness, listedHarnessIds, registeredHarnessIds } from "./agent/registry.js";
-import { generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
+import { EditorSelectionSchema, generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import { importReviewRequests } from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
@@ -2140,7 +2140,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       /** logins whose PRs count as yours on the list; the whole list, replacing the stored one */
       extraAuthors: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
       /** ask origin for newer releases once a day */
-      editor: z.object({ id: z.string().min(1), command: z.string().optional() }).strict().refine(e => e.id !== "custom" || !!e.command?.includes("{path}"), "Custom command must include {path}").nullable().optional(),
+      editor: EditorSelectionSchema.nullable().optional(),
       editorConfirmed: z.boolean().optional(),
       updateCheck: z.boolean().optional(),
       /** what new comments are for: the GitHub review, or notes for an agent */
@@ -2151,7 +2151,9 @@ export function createApp(opts: AppOptions = {}): Hono {
   app.post("/api/prs/:key/open-in-editor", async (c) => {
     const key = keyParam(c);
     const meta = readMeta(key, root);
-    const editor = selectedEditor(readConfig(root).editor, await getEditors());
+    const parsed = z.object({ editor: EditorSelectionSchema.optional() }).strict().safeParse(await readJsonBody(c));
+    if (!parsed.success) throw new HttpError(400, "invalid_body", parsed.error.issues[0].message);
+    const editor = selectedEditor(parsed.data.editor ?? readConfig(root).editor, await getEditors());
     if (!editor) throw new HttpError(409, "no_editor", "Choose an editor in Settings → System.");
     const checkout = await ensurePrCheckout(key, {
       root, repoPath: effectiveRepoPath(key, root, { meta }), headSha: prHead(key, root).headSha,

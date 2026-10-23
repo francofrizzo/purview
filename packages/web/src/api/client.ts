@@ -536,9 +536,9 @@ export const api = {
     if (MOCK) return mockApi.getEditors();
     return request<Editor[]>("/editors");
   },
-  async openInEditor(key: string): Promise<{ path: string }> {
-    if (MOCK) return mockApi.openInEditor(key);
-    return post<{ path: string }>(`/prs/${encodeURIComponent(key)}/open-in-editor`, {});
+  async openInEditor(key: string, editor?: NonNullable<GlobalConfig["editor"]>): Promise<{ path: string }> {
+    if (MOCK) return mockApi.openInEditor(key, editor);
+    return post<{ path: string }>(`/prs/${encodeURIComponent(key)}/open-in-editor`, { editor });
   },
   async getConfig(): Promise<GlobalConfig> {
     if (MOCK) return mockApi.getConfig();

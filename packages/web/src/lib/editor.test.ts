@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { editorAvailable, editorMenuText } from "./editor";
+import { editorAvailable, effectiveEditor } from "./editor";
 import type { GlobalConfig } from "../api/types";
 describe("editor menu", () => {
-  it("maps idle and preparation labels to the same ownership tooltip", () => {
-    expect(editorMenuText(false, "Cursor")).toEqual({ label: "open in Cursor", hint: "Purview's own copy of this PR, detached at its head commit, in Cursor" });
-    expect(editorMenuText(true, "Cursor")).toEqual({ ...editorMenuText(false, "Cursor"), label: "preparing checkout…" });
-    expect(editorMenuText(false).label).toBe("open in editor");
+  it("uses the custom name with a fallback for older selections", () => {
+    const editor = { id: "custom", command: "nova {path}" };
+    expect(effectiveEditor({ editor } as GlobalConfig)?.name).toBe("your editor");
+    expect(effectiveEditor({ editor: { ...editor, name: "Nova" } } as GlobalConfig)?.name).toBe("Nova");
   });
   it("shows a selected available editor, or any found one when nothing is chosen", () => {
     const config = { editor: null } as GlobalConfig;

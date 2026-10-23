@@ -16,7 +16,7 @@ describe("editor choice", () => {
     expect(selectedEditor(null, [editor, { ...editor, id: "zed" }])?.id).toBe("code");
     expect(selectedEditor({ id: "none" }, [editor])).toBeUndefined();
     expect(selectedEditor({ id: "code" }, [{ ...editor, available: false }])).toBeUndefined();
-    expect(selectedEditor({ id: "custom", command: "tool {path}" }, [])?.command).toBe("tool {path}");
+    expect(selectedEditor({ id: "custom", name: "Nova", command: "tool {path}" }, [])).toMatchObject({ name: "Nova", command: "tool {path}" });
   });
   it("parses quotes without evaluating shell syntax", () => {
     expect(commandArgs(`'/some editor/code' --folder "{path}"`)).toEqual(["/some editor/code", "--folder", "{path}"]);

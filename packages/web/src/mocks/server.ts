@@ -897,7 +897,7 @@ export const mockApi = {
   async getEditors() {
     return [{ id: "code", name: "Visual Studio Code", available: true, command: "code {path}" }];
   },
-  async openInEditor(key: string) {
+  async openInEditor(key: string, _editor?: NonNullable<GlobalConfig["editor"]>) {
     await delay(1500);
     return { path: `~/.purview/checkouts/${key.replaceAll("--", "/")}` };
   },
