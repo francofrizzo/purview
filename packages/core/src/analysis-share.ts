@@ -1,6 +1,6 @@
 import { keyToString, type PrKey } from "./paths.js";
 import { loadState, readFilesJson, readMeta } from "./store.js";
-import { setAnalysis } from "./service.js";
+import { foldersOf, setAnalysis } from "./service.js";
 import { analysisUnits } from "./reducer.js";
 import { isGeneratedUnit } from "./generated.js";
 import { AnalysisExportSchema, type AnalysisExport, type State } from "./schemas.js";
@@ -133,10 +133,8 @@ export function buildAnalysisExport(key: PrKey, root: string): AnalysisExport {
     exportedAt: new Date().toISOString(),
     summary: state.summary,
     units,
-    ...(state.flow ? { flow: state.flow } : {}),
     ...(state.fileNotes ? { fileNotes: state.fileNotes } : {}),
     ...(state.concepts ? { concepts: state.concepts } : {}),
-    ...(state.example ? { example: state.example } : {}),
   });
 }
 
@@ -199,25 +197,17 @@ export function applyAnalysisImport(
 
   const unassigned = [...currentIds].filter((id) => !matched.has(id));
 
-  // The flow keeps only the units that made it across.
-  const kept = new Set(units.map((u) => u.id));
-  const flow = envelope.flow
-    ? {
-        ...envelope.flow,
-        participants: envelope.flow.participants.map((p) => ({ ...p, units: p.units.filter((u) => kept.has(u)) })),
-        steps: envelope.flow.steps.map((s) => ({ ...s, units: s.units.filter((u) => kept.has(u)) })),
-      }
-    : undefined;
-  // Notes on files this revision no longer has would be refused: keep the rest.
-  const here = new Set(readFilesJson(key, loadState(key, root).currentRevision, root).files.map((f) => f.path));
+  // Notes on files or folders this revision no longer has would be refused: keep the rest.
+  const files = readFilesJson(key, loadState(key, root).currentRevision, root).files.map((f) => f.path);
+  const here = new Set([...files, ...foldersOf(files)]);
   const fileNotes = envelope.fileNotes
     ? Object.fromEntries(Object.entries(envelope.fileNotes).filter(([p]) => here.has(p)))
     : undefined;
 
   const { state: next } = setAnalysis(
     key,
-    // The concepts and the example name no unit or file: they travel as they are.
-    { summary: envelope.summary, units, unassigned, flow, fileNotes, concepts: envelope.concepts, example: envelope.example },
+    // The concepts name no unit or file: they travel as they are.
+    { summary: envelope.summary, units, unassigned, fileNotes, concepts: envelope.concepts },
     { origin: "import" },
     root,
   );

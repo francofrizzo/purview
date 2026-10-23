@@ -10,6 +10,7 @@ import { UnitFindings } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
 import { UnitChangelog } from "./UnitChangelog";
 import { IconCheck, IconChevron, IconHeart } from "./icons";
+import { noteFor } from "../lib/shape";
 
 const ATTENTION_WORD: Record<ReviewUnit["attention"], string> = {
   "must-read": "Must read.",
@@ -153,7 +154,7 @@ export function UnitBrief({
                   <button
                     type="button"
                     onClick={() => onJumpHunk(f.firstHunkId)}
-                    data-tip={detail.state.fileNotes?.[f.path] ? `${f.path} — ${detail.state.fileNotes[f.path]}` : f.path}
+                    data-tip={noteFor(detail.state.fileNotes, f.path) ? `${f.path} — ${noteFor(detail.state.fileNotes, f.path)}` : f.path}
                     className="flex w-full items-baseline gap-2 rounded px-1.5 py-0.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
                   >
                     <span className="flex min-w-0 flex-1 items-baseline gap-1.5">

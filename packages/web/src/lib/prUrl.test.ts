@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { prPageTitle, unitFromSearch, withUnitParam } from "./prUrl";
+import { fileFromSearch, prPageTitle, unitFromSearch, viewFromSearch, withUnitParam, withViewParams } from "./prUrl";
 import { UNPLACED_ID } from "./unplaced";
 
 describe("prPageTitle", () => {
@@ -27,5 +27,24 @@ describe("unit URL param", () => {
   it("removes the param for no selection and reads nothing when absent", () => {
     expect(withUnitParam("?unit=x", null)).toBe("");
     expect(unitFromSearch("")).toBeNull();
+  });
+});
+
+describe("view URL params", () => {
+  it("round-trips each view, the Files view with its file, and keeps the unit", () => {
+    const files = withViewParams("?unit=u1", "files", "src/billing/charge.ts");
+    expect(files).toBe("?unit=u1&view=files&file=src%2Fbilling%2Fcharge.ts");
+    expect(viewFromSearch(files)).toBe("files");
+    expect(fileFromSearch(files)).toBe("src/billing/charge.ts");
+    const guide = withViewParams(files, "units", "src/billing/charge.ts");
+    expect(guide).toBe("?unit=u1&view=guide");
+    expect(viewFromSearch(guide)).toBe("units");
+    expect(viewFromSearch(withViewParams(guide, "overview", null))).toBe("overview");
+  });
+
+  it("reads nothing from an absent or unknown view", () => {
+    expect(viewFromSearch("")).toBeNull();
+    expect(viewFromSearch("?view=diff")).toBeNull();
+    expect(fileFromSearch("?file=")).toBeNull();
   });
 });

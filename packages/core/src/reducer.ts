@@ -4,9 +4,7 @@ import { hunkIdsOf, normalizeHunks, skipOf, toHunkEntry, upsertHunks } from "./u
 import { upcastEvent } from "./upcast.js";
 import type {
   Concept,
-  Example,
   FileNotes,
-  Flow,
   ReviewUnit,
   ReviewUnitPatch,
   ReviewerEvent,
@@ -189,13 +187,9 @@ function fromAnalysis<T extends { origin?: unknown }>(unit: T): Omit<T, "origin"
  */
 function applyShape(
   state: State,
-  shape: { flow?: Flow | null; fileNotes?: FileNotes | null; concepts?: Concept[] | null; example?: Example | null },
+  shape: { fileNotes?: FileNotes | null; concepts?: Concept[] | null },
   revision: number,
 ): void {
-  if (shape.flow !== undefined) {
-    if (shape.flow) state.flow = shape.flow;
-    else delete state.flow;
-  }
   if (shape.fileNotes !== undefined) {
     if (shape.fileNotes) state.fileNotes = shape.fileNotes;
     else delete state.fileNotes;
@@ -204,11 +198,7 @@ function applyShape(
     if (shape.concepts) state.concepts = shape.concepts;
     else delete state.concepts;
   }
-  if (shape.example !== undefined) {
-    if (shape.example) state.example = shape.example;
-    else delete state.example;
-  }
-  if (state.flow || state.fileNotes || state.concepts || state.example) state.shapeRevision = revision;
+  if (state.fileNotes || state.concepts) state.shapeRevision = revision;
   else delete state.shapeRevision;
 }
 
@@ -472,10 +462,8 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
       applyShape(
         state,
         {
-          flow: event.flow ?? null,
           fileNotes: event.fileNotes ?? null,
           concepts: event.concepts ?? null,
-          example: event.example ?? null,
         },
         event.revision,
       );

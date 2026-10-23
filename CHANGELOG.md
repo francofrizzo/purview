@@ -5,6 +5,52 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Overview, Guide, Files.** Three ways to read a PR, in the top bar: `s` for the summary, the concepts, where the change lands and what to read closely, `g` for the guide, `f` for files. The top bar holds still between them.
+- **Plain-language PR summary.** The Overview opens with why the PR exists and what to judge, in words, without code. Analyze from scratch to get it on a PR you already have.
+- **Concepts in the Overview.** The Overview lists the terms the PR leans on, each with what it means; new ones are marked.
+- **Where it lands.** The Overview shows the folders and files the change touches as a short tree, each with what it does in the change; click a file to open it. Analyze from scratch to get it by folder.
+- **The view in the URL.** A reload or a copied link opens on the same view, Overview, Guide or Files, and in Files on the same file.
+- **Concept hover.** Hover a word with a dotted underline in the guide, the diff or the chat to read what that concept means.
+- **The guide reads beside the diff.** The open unit unfolds in the sidebar with its summary, why, where the logic lives and findings; its title stays pinned while you scroll it, and the other units take one line each.
+- **Floating chat.** The chat pops out of the side panel into a window you drag anywhere, resize from any edge or minimize to a pill; it reopens where you left it, and `c` still shows and hides it.
+- **Analysis language setting.** Settings → Agents picks the language new analyses write in, in place of the PR description's; a language the repo's rubric names still wins, and a refresh keeps the PR's own.
+- **Graphite themes.** Dark and light on neutral grays, in Settings → Appearance.
+- **Mark a unit from its row.** Each unit in the guide has a box: a dash while partly read, a click marks every hunk viewed (or none). `V` still does it for the open unit.
+- **The end of a unit says what is next.** Past its last hunk: mark it viewed and go on, the next unit to read, or finish the review.
+- **One submit button.** Pick Comment, Approve or Request changes, then submit; the review asks again only while must-read units are unread.
+- **What a refresh brought, in one line.** "Revision 2: 33 new hunks, 11 changed, 15 gone", then the analysis's summary of the revision once it is written, with a per-file breakdown on demand instead of the hunk-by-hunk report.
+- **File notes in the Files view.** The analysis's note on a file, or on its folder, sits under the file's header in the Files view and on its row's tooltip.
+- **Heart places in the brief.** Where the logic lives is a row of places to jump to; hover one for its why, which also sits above those lines in the diff.
+- **Unit files on demand.** The "N files" line in a unit's brief opens its file list, and stays open if you leave it so.
+- **Fold from the hunk header.** Click the header of the focused hunk to fold or unfold it; the first click on another hunk focuses it.
+- **Fold the open unit's brief.** Click the open unit's row in the guide to fold its brief to one line; click it again to open it.
+- **Analysis that reads one way.** The analysis uses one name for each thing, the active voice and one idea per sentence, after Simplified Technical English. Analyze from scratch to get it.
+- **Shorter unit summaries.** A unit's summary opens with what changes, in words, and no longer repeats its why or its heart. Analyze from scratch to get them.
+- **Short finding places.** A finding's places show as file and lines on a line of their own; the full path is on hover.
+- **Function names in hunk headers.** A hunk's header names the function or type it sits in; the full signature is on hover.
+- **Marks on folded hunks.** A folded hunk keeps a heart and its risks on its header instead of their captions; hover one for its words, and `h` opens it.
+- **Risks on must-read rows.** A must-read unit's row in the guide shows a risk that sets it apart from the PR's other close reads, such as auth or migration.
+- **Kind on unit rows.** A unit's row in the guide names its kind when it changes how you read it, such as data or refactor, and the title does not already say so.
+- **Quiet viewed boxes.** A read hunk, file or unit shows a soft check instead of a solid green box; what is left to read stays an empty box.
+- **Agent notes in teal.** Notes for a coding agent carry a terminal icon and teal, instead of a sparkle and the violet of moved code.
+- **Bot label on AI reviewers.** CodeRabbit, Copilot and other AI reviewers carry a plain "bot" label, as on GitHub.
+- **Plain new files.** A file the PR adds whole reads on the plain background, its gutter still green, so a heart or a risk in it stands out.
+- **The diff stops scrolling where the last hunk reaches the top.** The room past the end is just what that takes (none for a tall hunk), so the code can't be scrolled away into a screenful of blank.
+- **A lighter comment box.** Under its line it has no header: the placeholder names the line and who the comment is for. Formatting sits behind **Aa**, and Preview / Edit is one button.
+- **No hidden-lines rows between folded hunks.** Context rows only appear next to a hunk that is open, so a unit you have mostly read is a compact list of headers instead of every other row saying "3 hidden lines".
+- **A quieter screen.** Refresh, sync and full screen moved to the ⋯ menu; layout, wrapping and thread filters to one view-options button; `?` lists the shortcuts. Hunk and file headers, and comment cards, show their buttons on hover.
+- **The open unit's actions are in its brief.** Ask Claude about it, or move it to another group, at the end of the unit's text instead of a menu on every row. The chat's settings panel became a ⋯ menu.
+- **A flat workspace, with a guide column you can widen.** The guide, the diff and the right panel sit side by side, one rule between each; drag the guide's edge to resize it (double-click for the default).
+- **Calmer home rows.** A PR's state is an icon and its progress a ring with its count; units and effort are in the ring's tooltip.
+- **Fix:** switching files in the Files view no longer flashes a read hunk open before it folds.
+- **Fix:** an outdated or whole-file thread clicked in the comments panel now opens at the top of its file, even resolved, instead of folded to one line.
+- **Fix:** the keyboard shortcuts list no longer needs a sideways scroll.
+- **Fix:** a reviewer in the Review panel reads on one line, with the stale-commit note and inline comments under it, instead of breaking mid-phrase.
+- **Fix:** a hunk label that names code shows it as code, not with backticks.
+- **Fix:** a diagram that cannot be drawn shows its source, with nothing left at the bottom of the page.
+
 ## 2026.10.23.4
 
 - **Fix:** a Mermaid diagram in the chat no longer stays as raw code until you reload the page.
@@ -36,48 +82,6 @@ app, not for git: say what changed in the review, not which file moved.
 - **Search switches.** The find bar shows both sides of each choice, "this unit | whole diff" and "changed | all lines", with the active one lit. All lines is the default.
 - **Fix:** "Publish now" shows "publishing…" on the card while GitHub takes it, then the comments panel scrolls to the card under Submitted and flashes it.
 - **Fix:** code in a bold lead-in, such as **`file.go`**, renders as code and links to the diff instead of showing the backticks.
-- **Analysis language setting.** Settings → Agents picks the language new analyses write in, in place of the PR description's; a language the repo's rubric names still wins, and a refresh keeps the PR's own.
-- **Floating chat.** The chat pops out of the side panel into a window you drag anywhere, resize from any edge or minimize to a pill; it reopens where you left it, and `c` still shows and hides it.
-- **Plain-language PR summary.** The Overview opens with why the PR exists and what to judge, in words, without code. Analyze from scratch to get it on a PR you already have.
-- **Concepts in the Overview.** The Overview lists the terms the PR leans on, each with what it means; new ones are marked.
-- **Concept hover.** Hover a word with a dotted underline in the guide, the diff or the chat to read what that concept means.
-- **Before-and-after example.** The Overview walks one case through the change, before and now, side by side.
-- **Call diagram in the Overview.** When a PR reroutes a runtime path, "The calls, in the code" under the example draws its real calls in order, cut ones struck out. Click a step to open the unit that makes it.
-- **File notes in the Files view.** The analysis's note on a file sits under its header in the Files view and on its row's tooltip.
-- **Heart places in the brief.** Where the logic lives is a row of places to jump to; hover one for its why, which also sits above those lines in the diff.
-- **Unit files on demand.** The "N files" line in a unit's brief opens its file list, and stays open if you leave it so.
-- **Shorter unit summaries.** A unit's summary opens with what changes, in words, and no longer repeats its why or its heart. Analyze from scratch to get them.
-- **Fold from the hunk header.** Click the header of the focused hunk to fold or unfold it; the first click on another hunk focuses it.
-- **Fold the open unit's brief.** Click the open unit's row in the guide to fold its brief to one line; click it again to open it.
-- **Short finding places.** A finding's places show as file and lines on a line of their own; the full path is on hover.
-- **Function names in hunk headers.** A hunk's header names the function or type it sits in; the full signature is on hover.
-- **Marks on folded hunks.** A folded hunk keeps a heart and its risks on its header instead of their captions; hover one for its words, and `h` opens it.
-- **Risks on must-read rows.** A must-read unit's row in the guide shows a risk that sets it apart from the PR's other close reads, such as auth or migration.
-- **Kind on unit rows.** A unit's row in the guide names its kind when it changes how you read it, such as data or refactor, and the title does not already say so.
-- **Quiet viewed boxes.** A read hunk, file or unit shows a soft check instead of a solid green box; what is left to read stays an empty box.
-- **Agent notes in teal.** Notes for a coding agent carry a terminal icon and teal, instead of a sparkle and the violet of moved code.
-- **Bot label on AI reviewers.** CodeRabbit, Copilot and other AI reviewers carry a plain "bot" label, as on GitHub.
-- **Plain new files.** A file the PR adds whole reads on the plain background, its gutter still green, so a heart or a risk in it stands out.
-- **Fix:** switching files in the Files view no longer flashes a read hunk open before it folds.
-- **Fix:** an outdated or whole-file thread clicked in the comments panel now opens at the top of its file, even resolved, instead of folded to one line.
-- **Fix:** the keyboard shortcuts list no longer needs a sideways scroll.
-- **Fix:** a reviewer in the Review panel reads on one line, with the stale-commit note and inline comments under it, instead of breaking mid-phrase.
-- **Fix:** a hunk label that names code shows it as code, not with backticks.
-- **Overview, Guide, Files.** Three ways to read a PR, in the top bar: `s` for the summary, the concepts, an example and what to read closely, `g` for the guide, `f` for files. The top bar holds still between them.
-- **The diff stops scrolling where the last hunk reaches the top.** The room past the end is just what that takes (none for a tall hunk), so the code can't be scrolled away into a screenful of blank.
-- **A lighter comment box.** Under its line it has no header: the placeholder names the line and who the comment is for. Formatting sits behind **Aa**, and Preview / Edit is one button.
-- **No hidden-lines rows between folded hunks.** Context rows only appear next to a hunk that is open, so a unit you have mostly read is a compact list of headers instead of every other row saying "3 hidden lines".
-- **The guide reads beside the diff.** The open unit unfolds in the sidebar with its summary, why, where the logic lives and findings; its title stays pinned while you scroll it, and the other units take one line each.
-- **A quieter screen.** Refresh, sync and full screen moved to the ⋯ menu; layout, wrapping and thread filters to one view-options button; `?` lists the shortcuts. Hunk and file headers, and comment cards, show their buttons on hover.
-- **Mark a unit from its row.** Each unit in the guide has a box: a dash while partly read, a click marks every hunk viewed (or none). `V` still does it for the open unit.
-- **The end of a unit says what is next.** Past its last hunk: mark it viewed and go on, the next unit to read, or finish the review.
-- **One submit button.** Pick Comment, Approve or Request changes, then submit; the review asks again only while must-read units are unread.
-- **The open unit's actions are in its brief.** Ask Claude about it, or move it to another group, at the end of the unit's text instead of a menu on every row. The chat's settings panel became a ⋯ menu.
-- **What a refresh brought, in one line.** "Revision 2: 33 new hunks, 11 changed, 15 gone", then the analysis's summary of the revision once it is written, with a per-file breakdown on demand instead of the hunk-by-hunk report.
-- **A flat workspace, with a guide column you can widen.** The guide, the diff and the right panel sit side by side, one rule between each; drag the guide's edge to resize it (double-click for the default).
-- **Calmer home rows.** A PR's state is an icon and its progress a ring with its count; units and effort are in the ring's tooltip.
-- **Graphite themes.** Dark and light on neutral grays, in Settings → Appearance.
-- **Fix:** a diagram that cannot be drawn shows its source, with nothing left at the bottom of the page.
 
 ## 2026.10.22.1
 

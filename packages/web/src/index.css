@@ -850,12 +850,6 @@ html[data-mode="light"] .logo-for-light {
   pointer-events: none;
 }
 
-/* The flow (components/Shape.tsx): a step or a box that opens a unit says
-   so under the pointer. The labels carry inline fills, hence !important. */
-.flow-link:hover text {
-  fill: var(--accent) !important;
-}
-
 /* Panes that scroll (the guide column, the dock): the scrollbar shows while
    the pointer is over them, so at rest the pane's edge is its only line. */
 .quiet-scroll {

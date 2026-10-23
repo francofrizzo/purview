@@ -9,9 +9,7 @@ import type {
   AnalysisImportReport,
   Attachment,
   Concept,
-  Example,
   FileNotes,
-  Flow,
   AnalysisJob,
   ChatMessage,
   ChatRef,
@@ -214,10 +212,8 @@ export interface WireState {
   hunks: PrState["hunks"];
   files: WireFileRollup[];
   unassignedHunkIds: string[];
-  flow?: Flow;
   fileNotes?: FileNotes;
   concepts?: Concept[];
-  example?: Example;
 }
 
 interface WirePrDetail {
@@ -330,10 +326,8 @@ export function adaptState(s: WireState): PrState {
     // Units pass through whole: optional fields (findings, changelog) ride along.
     units: (s.units ?? []).filter((u) => !isRemovedUnit(u)),
     removedUnits: (s.units ?? []).filter(isRemovedUnit),
-    ...(s.flow ? { flow: s.flow } : {}),
     ...(s.fileNotes ? { fileNotes: s.fileNotes } : {}),
     ...(s.concepts ? { concepts: s.concepts } : {}),
-    ...(s.example ? { example: s.example } : {}),
     hunks: s.hunks ?? {},
     files,
     baseOnly: s.revisions?.find((r) => r.revision === s.currentRevision)?.baseOnly ?? false,

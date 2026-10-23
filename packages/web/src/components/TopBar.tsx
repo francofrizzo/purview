@@ -35,6 +35,7 @@ import {
   IconDock,
   IconTag,
 } from "./icons";
+import type { PrViewMode } from "../lib/prUrl";
 
 export function TopBar({
   detail,
@@ -586,7 +587,6 @@ export function TopBar({
   );
 }
 
-export type PrViewMode = "overview" | "units" | "files";
 
 const VIEW_TABS: { id: PrViewMode; label: string; key: string; tip: string }[] = [
   { id: "overview", label: "Overview", key: "s", tip: "Summary, shape and what to read closely" },

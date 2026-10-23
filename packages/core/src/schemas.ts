@@ -429,76 +429,26 @@ export type ReviewUnitPatch = z.infer<typeof ReviewUnitPatchSchema>;
 /* ------------------------------------------------------------------- shape */
 
 /**
- * The shape of the change: two compressed projections of the diff the reader
- * takes in before opening a unit — where the change lands (file notes) and
- * how it runs (the flow). Both are drawn by Purview; the analysis writes data.
- * `status` says what the PR does to a piece of the flow.
+ * The shape of the change: what the reader takes in before opening a unit.
+ * Where the change lands is drawn by Purview from the file notes; the
+ * concepts (below) are the analysis's own words.
  */
-export const ShapeStatusSchema = z.enum(["added", "changed", "removed", "context"]);
-export type ShapeStatus = z.infer<typeof ShapeStatusSchema>;
-
-const shapeId = z
-  .string()
-  .regex(/^[A-Za-z][A-Za-z0-9_-]{0,39}$/, "ids are letters, digits, - and _, starting with a letter, at most 40");
-
-/* -------------------------------------------------------------------- flow */
-
-/**
- * The flow: one runtime path the PR adds or changes, as a sequence diagram —
- * who calls whom, in order, and what comes back. Drawn only when the change
- * is a path across components (a request through handlers into storage).
- */
-export const FLOW_MAX_PARTICIPANTS = 7;
-export const FLOW_MAX_STEPS = 18;
-
-export const FlowParticipantSchema = z.object({
-  id: shapeId,
-  label: z.string().min(1).max(40),
-  status: ShapeStatusSchema.default("context"),
-  units: z.array(z.string()).default([]),
-});
-export type FlowParticipant = z.infer<typeof FlowParticipantSchema>;
-
-export const FlowStepSchema = z.object({
-  from: z.string(),
-  to: z.string(),
-  /** the message: a call with its key argument, or what comes back */
-  label: z.string().min(1).max(80),
-  /** `return` is drawn dashed, back toward the caller */
-  kind: z.enum(["call", "return"]).default("call"),
-  status: ShapeStatusSchema.default("context"),
-  units: z.array(z.string()).default([]),
-});
-export type FlowStep = z.infer<typeof FlowStepSchema>;
-
-export const FlowPhaseSchema = z.object({
-  label: z.string().min(1).max(60),
-  /** index of the phase's first step */
-  at: z.number().int().min(0),
-});
-export type FlowPhase = z.infer<typeof FlowPhaseSchema>;
-
-export const FlowSchema = z.object({
-  /** one sentence: what this path is and when it runs */
-  caption: z.string().max(300).optional(),
-  participants: z.array(FlowParticipantSchema).min(2).max(FLOW_MAX_PARTICIPANTS),
-  steps: z.array(FlowStepSchema).min(1).max(FLOW_MAX_STEPS),
-  phases: z.array(FlowPhaseSchema).max(5).default([]),
-});
-export type Flow = z.infer<typeof FlowSchema>;
 
 /* -------------------------------------------------------------- file notes */
 
 /**
- * One line per file the reader should place: what a new file is for, or
- * what the PR does to an existing one. Purview draws the tree; the analysis
- * only writes the notes, keyed by path.
+ * Where the change lands, as a shallow tree: one line on what a folder does
+ * in the change (when its files share that role) or what a file does (when
+ * it has a role of its own: a new file, the heart of the change). Keyed by a
+ * path of the revision, a file's or a folder's; Purview draws the tree.
  */
 export const FILE_NOTE_MAX = 140;
 export const MAX_FILE_NOTES = 40;
 export const FileNotesSchema = z
   .record(z.string(), z.string().min(1).max(FILE_NOTE_MAX))
-  .refine((r) => Object.keys(r).length <= MAX_FILE_NOTES, `at most ${MAX_FILE_NOTES} file notes`);
+  .refine((r) => Object.keys(r).length <= MAX_FILE_NOTES, `at most ${MAX_FILE_NOTES} file notes`)
+  // A folder is keyed without its trailing slash, however the analysis wrote it.
+  .transform((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.replace(/\/+$/, ""), v])));
 export type FileNotes = z.infer<typeof FileNotesSchema>;
 
 /* ------------------------------------------------------------- concepts */
@@ -534,28 +484,10 @@ export type Concept = z.infer<typeof ConceptSchema>;
 export const MAX_CONCEPTS = 8;
 export const ConceptsSchema = z.array(ConceptSchema).min(1).max(MAX_CONCEPTS);
 
-/* -------------------------------------------------------------- example */
-
-/**
- * One concrete case run through the change: what happened to it before the
- * PR and what happens now, a few short steps each, in the concepts' words.
- * A reader follows a case more easily than a drawing of it, so this is the
- * picture of a change in behavior; the flow stays for the call sequence.
- */
-export const ExampleSchema = z.object({
-  /** the situation, with toy data: "The same installment arrives in two snapshots in a row" */
-  case: plainText(120),
-  before: z.array(plainText(160)).min(1).max(4),
-  after: z.array(plainText(160)).min(1).max(4),
-});
-export type Example = z.infer<typeof ExampleSchema>;
-
 /** Payload of `set-shape`: each key present replaces that view; `null` drops it. */
 export const ShapeSchema = z.object({
-  flow: FlowSchema.nullable().optional(),
   fileNotes: FileNotesSchema.nullable().optional(),
   concepts: ConceptsSchema.nullable().optional(),
-  example: ExampleSchema.nullable().optional(),
 });
 export type Shape = z.infer<typeof ShapeSchema>;
 
@@ -565,14 +497,10 @@ export const AnalysisSchema = z.object({
   units: z.array(ReviewUnitSchema),
   /** hunk ids deliberately left out of every unit */
   unassigned: z.array(z.string()).default([]),
-  /** optional: the runtime path the change adds or reroutes (see FlowSchema) */
-  flow: FlowSchema.optional(),
-  /** optional: one line per file worth placing (see FileNotesSchema) */
+  /** optional: one line per folder or file worth placing (see FileNotesSchema) */
   fileNotes: FileNotesSchema.optional(),
   /** optional: the terms a reader new to this code needs (see ConceptSchema) */
   concepts: ConceptsSchema.optional(),
-  /** optional: one case before and after the change (see ExampleSchema) */
-  example: ExampleSchema.optional(),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -603,10 +531,8 @@ export const AnalysisExportSchema = z.object({
   summary: z.string(),
   units: z.array(ReviewUnitSchema),
   /** additive: exports made before the shape existed have none */
-  flow: FlowSchema.optional(),
   fileNotes: FileNotesSchema.optional(),
   concepts: ConceptsSchema.optional(),
-  example: ExampleSchema.optional(),
 });
 export type AnalysisExport = z.infer<typeof AnalysisExportSchema>;
 
@@ -1253,14 +1179,12 @@ export const AnalysisSetEventSchema = z.object({
    */
   origin: z.literal("import").optional(),
   /** the shape of the change; each absent when the analysis drew none */
-  flow: FlowSchema.optional(),
   fileNotes: FileNotesSchema.optional(),
   concepts: ConceptsSchema.optional(),
-  example: ExampleSchema.optional(),
 });
 
 /**
- * `set-shape`: the flow or the file notes, without re-sending the
+ * `set-shape`: the file notes or the concepts, without re-sending the
  * analysis (how a refresh redraws them). A key that is present replaces that
  * view whole; `null` drops it; an absent key leaves it as it was.
  */
@@ -1268,10 +1192,8 @@ export const ShapeSetEventSchema = z.object({
   ...base,
   type: z.literal("shape-set"),
   revision: z.number().int(),
-  flow: FlowSchema.nullable().optional(),
   fileNotes: FileNotesSchema.nullable().optional(),
   concepts: ConceptsSchema.nullable().optional(),
-  example: ExampleSchema.nullable().optional(),
 });
 
 export const UnitUpdatedEventSchema = z.object({
@@ -1516,12 +1438,9 @@ export const StateSchema = z.object({
   /** provenance of the current analysis; absent = produced by a normal Claude run */
   analysisOrigin: z.literal("import").optional(),
   /** the shape of the change, from the analysis or a later `set-shape` */
-  flow: FlowSchema.optional(),
   fileNotes: FileNotesSchema.optional(),
   /** the terms the PR leans on, explained wherever the guide uses them */
   concepts: ConceptsSchema.optional(),
-  /** one case before and after the change */
-  example: ExampleSchema.optional(),
   /** the revision the shape was last drawn for */
   shapeRevision: z.number().int().optional(),
   units: z.array(ReviewUnitSchema).default([]),

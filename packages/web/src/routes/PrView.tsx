@@ -127,7 +127,7 @@ import {
   type RevisionHighlight,
 } from "../lib/revisionHighlight";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { prPageTitle, unitFromSearch, withUnitParam } from "../lib/prUrl";
+import { fileFromSearch, prPageTitle, unitFromSearch, viewFromSearch, withUnitParam, withViewParams } from "../lib/prUrl";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
@@ -145,6 +145,7 @@ import { stalenessTooltip } from "../lib/staleness";
 import { AttachmentContext, CodeLinkContext, GlossaryContext, InlineMarkdown } from "../components/Markdown";
 import { buildGlossary } from "../lib/glossary";
 import { useAttachmentScope } from "../components/Attachments";
+import { noteFor } from "../lib/shape";
 
 /** No changelog highlight; one shared array, so nothing downstream sees a new one each render. */
 const NO_REVISIONS: number[] = [];
@@ -251,13 +252,16 @@ export function PrView() {
   // Upstream moved: the top bar's refresh button says so, nothing else does.
   const stale = staleness.data?.stale === true;
 
-  const [tab, setTab] = useState<"units" | "files">("units");
-  // Seeded from `?unit=` so a unit link opens on that unit; validated against
-  // the real units once they load (see the effect below).
+  // Seeded from `?view=`, `?unit=` and `?file=` so a reload or a link opens
+  // where it was; the unit and the file are validated against the real ones
+  // once they load (see the effect below).
+  const [tab, setTab] = useState<"units" | "files">(() =>
+    viewFromSearch(location.search) === "files" ? "files" : "units",
+  );
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(() =>
     unitFromSearch(location.search),
   );
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(() => fileFromSearch(location.search));
 
   // --- sidebar: collapsible column, or a floating drawer on a narrow/iPad
   // viewport ---------------------------------------------------------------
@@ -325,9 +329,11 @@ export function PrView() {
   const [standalone] = useState(isStandalone);
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
   // The overview (summary, shape, reading order) in place of the workspace. It
-  // opens by itself on a PR with nothing read yet, unless a link named a unit.
-  const [overview, setOverview] = useState(false);
-  const overviewDecided = useRef<string | null>(null);
+  // opens by itself on a PR with nothing read yet, unless the link named a
+  // view or a unit.
+  const [overview, setOverview] = useState(() => viewFromSearch(location.search) === "overview");
+  // The PR whose first view is picked; state, not a ref, so the URL follows that pick.
+  const [viewDecidedFor, setViewDecidedFor] = useState<string | null>(null);
   // The right dock: comments, chat or review, one at a time. The chat's own
   // open flag (lib/chat.tsx, which attachRef and the composer flip) stays the
   // source of truth for its tab; the other two live here.
@@ -629,7 +635,9 @@ export function PrView() {
     setSelectedUnitId((cur) =>
       cur && (cur === UNPLACED_ID || units.some((u) => u.id === cur)) ? cur : (units[0]?.id ?? null),
     );
-    setSelectedPath((cur) => cur ?? detail.files.files[0]?.path ?? null);
+    setSelectedPath((cur) =>
+      cur && detail.files.files.some((f) => f.path === cur) ? cur : (detail.files.files[0]?.path ?? null),
+    );
   }, [detail, units]);
 
   useEffect(() => {
@@ -653,18 +661,23 @@ export function PrView() {
     };
   }, [detail]);
 
-  // Per-unit URLs: `?unit=<id>` follows the selection (replace, not push, so
-  // j/k through units doesn't bury the back button), and a copied URL opens
-  // on that unit. Only while this page is the real location — never while a
-  // settings modal sits over it, where navigating would close the modal.
+  // The URL follows what is on screen: `?view=` (overview, guide, files),
+  // the Guide's `?unit=` and the Files view's `?file=` (replace, not push, so
+  // j/k through units doesn't bury the back button), and a reload or a copied
+  // URL opens on it. Only while this page is the real location — never while
+  // a settings modal sits over it, where navigating would close the modal.
   const navigate = useNavigate();
+  const view = overview ? "overview" : tab;
   useEffect(() => {
-    if (!detail || tab !== "units") return;
+    if (!detail) return;
     if (!window.location.pathname.startsWith("/pr/")) return;
-    const next = withUnitParam(location.search, selectedUnitId);
+    // Not before the first visit picks its view (see below): that choice is the one to keep.
+    if (viewDecidedFor !== prKey) return;
+    let next = withViewParams(location.search, view, selectedPath);
+    if (view === "units") next = withUnitParam(next, selectedUnitId);
     if (next === location.search) return;
     navigate({ pathname: location.pathname, search: next, hash: location.hash }, { replace: true, state: location.state });
-  }, [detail, tab, selectedUnitId, location.pathname, location.search, location.hash, location.state, navigate]);
+  }, [detail, prKey, viewDecidedFor, view, selectedUnitId, selectedPath, location.pathname, location.search, location.hash, location.state, navigate]);
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId) ?? null;
   const unplacedSelected = selectedUnitId === UNPLACED_ID && !unplacedEmpty;
@@ -1057,12 +1070,12 @@ export function PrView() {
 
   // First visit to an analyzed PR with nothing read: start on the overview.
   useEffect(() => {
-    if (!detail || overviewDecided.current === prKey) return;
-    overviewDecided.current = prKey;
+    if (!detail || viewDecidedFor === prKey) return;
+    setViewDecidedFor(prKey);
     const anyViewed = Object.values(detail.state.hunks).some((h) => h.viewed);
     const hasOverview = Boolean(detail.state.summary?.trim());
-    if (!anyViewed && hasOverview && !unitFromSearch(location.search)) setOverview(true);
-  }, [detail, prKey, location.search]);
+    if (!anyViewed && hasOverview && !unitFromSearch(location.search) && !viewFromSearch(location.search)) setOverview(true);
+  }, [detail, prKey, viewDecidedFor, location.search]);
 
   // Any jump into the diff (a link, a heart, a comment) leaves the overview.
   useEffect(() => {
@@ -1306,6 +1319,7 @@ export function PrView() {
   const selectedFile = selectedPath
     ? detail.files.files.find((f) => f.path === selectedPath) ?? null
     : null;
+  const selectedNote = selectedPath ? noteFor(detail.state.fileNotes, selectedPath) : undefined;
 
   const jumpToFile = (file: string) => {
     setTab("files");
@@ -1819,6 +1833,7 @@ export function PrView() {
                 filters={threadFilters.filters}
                 revisions={revisionContext}
                 onOpenUnit={openUnitFromText}
+                onOpenFile={openFileFromText}
               />
             </CodeLinkContext.Provider>
           </main>
@@ -2023,10 +2038,10 @@ export function PrView() {
                 {selectedFile ? generatedMenuFor(selectedFile) : null}
               </div>
             </div>
-          {/* What the analysis says this file is for, or what the PR does to it. */}
-          {detail.state.fileNotes?.[selectedPath] && !headerCollapsed ? (
+          {/* What the analysis says this file, or its folder, does in the change. */}
+          {selectedNote && !headerCollapsed ? (
             <p className="-mt-1 px-2 pb-2 text-xs leading-[18px]" style={{ color: "var(--fg-muted)" }} data-testid="file-note">
-              <InlineMarkdown text={detail.state.fileNotes[selectedPath]} />
+              <InlineMarkdown text={selectedNote} />
             </p>
           ) : null}
           {/* The pane below is virtualized and shows no file row in this tab,

@@ -61,7 +61,7 @@ test("Shift+J / Shift+K step between units in sidebar order", async ({ page }) =
   await expect(hunkHeader(page, "a1b2c3d4e5f60008")).toHaveAttribute("data-focused", "true");
 });
 
-test("s opens the overview; a piece of the flow leads to the unit that changes it", async ({ page }) => {
+test("s opens the overview; a file in where it lands opens in the Files view", async ({ page }) => {
   await page.keyboard.press("s");
   const overview = page.getByTestId("overview");
   await expect(overview).toBeVisible();
@@ -74,16 +74,16 @@ test("s opens the overview; a piece of the flow leads to the unit that changes i
   await expect(reading).not.toContainText(UNITS.reconcile);
   await expect(page.getByTestId("reading-rest")).toHaveText("Then 2 to skim and 2 to skip.");
 
-  // How it runs: the path in order, the cut call still drawn beside the new one.
-  // The example tells the change first; the calls fold under it.
-  await expect(page.getByTestId("flow-view")).toHaveCount(0);
-  await page.getByTestId("example-calls-toggle").click();
-  const flow = page.getByTestId("flow-view");
-  await expect(flow).toContainText("findByKey(key)");
-  await expect(flow).toContainText("authorize(charge)");
-  await page.locator('[data-flow-participant="retry"]').click();
+  // Where it lands: a noted folder is one line, its note covering the files
+  // it does not draw; only its new and separately noted files sit under it.
+  const tree = page.getByTestId("file-shape");
+  await expect(page.getByTestId("file-shape-dir-src/billing")).toHaveText("billing/");
+  await expect(tree).toContainText("Charges once per key");
+  await expect(page.getByTestId("file-shape-src/billing/ledger.ts")).toHaveCount(0);
+  await expect(page.getByTestId("file-shape-foot")).toHaveText("Not drawn: 3 generated");
+  await page.getByTestId("file-shape-src/billing/idempotency.ts").click();
   await expect(overview).toHaveCount(0);
-  await expect(page.getByTestId("unit-header")).toContainText(UNITS.retry);
+  await expect(page.getByTestId("file-note")).toHaveText("Derives the charge key from order id, amount and currency.");
 
   await page.keyboard.press("s");
   await expect(overview).toBeVisible();
@@ -143,25 +143,20 @@ test("space / shift+space step between the hunks still to read, skipping viewed 
   await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
 });
 
-test("where it lands: each file's note sits under its header in the Files view", async ({ page }) => {
-  await page.keyboard.press("s");
-  await expect(page.getByTestId("overview")).toBeVisible();
-  // The Overview is about the change, not the file tree.
-  await expect(page.getByTestId("file-shape")).toHaveCount(0);
+test("where it lands: a file without a note of its own shows its folder's in the Files view", async ({ page }) => {
   await page.keyboard.press("f");
-  await page.locator("aside, nav").getByText("idempotency.ts").first().click();
-  await expect(page.getByTestId("file-note")).toHaveText("Derives the charge key from order id, amount and currency.");
+  await page.locator("aside, nav").getByText("ledger.ts").first().click();
+  await expect(page.getByTestId("file-note")).toHaveText(
+    "Charges once per key: looks it up before the gateway, records the outcome.",
+  );
 });
 
-test("the overview leads in: the concepts, then one case before and after", async ({ page }) => {
+test("the overview leads in with the concepts the PR leans on", async ({ page }) => {
   await page.keyboard.press("s");
   const concepts = page.getByTestId("overview-concepts");
   await expect(concepts.getByTestId("concept")).toHaveCount(3);
   await expect(concepts).toContainText("Charge ledger");
   await expect(concepts.getByTestId("concept-new")).toHaveCount(2);
-  await expect(page.getByTestId("example-case")).toContainText("retries a payment after a timeout");
-  await expect(page.getByTestId("example-before")).toContainText("charged twice");
-  await expect(page.getByTestId("example-after")).toContainText("charged once");
 });
 
 test("a concept the guide names is explained on hover, once per block", async ({ page }) => {
@@ -171,17 +166,23 @@ test("a concept the guide names is explained on hover, once per block", async ({
   await expect(mark).toHaveAttribute("data-tip", /^Charge (key|ledger) \(new in this PR\): /);
 });
 
-test("a step of the flow says which unit it opens, and opens it; one that names none is inert", async ({ page }) => {
+test("the URL keeps the view, and the Files view's file, so a reload opens where it was", async ({ page }) => {
   await page.keyboard.press("s");
-  await page.getByTestId("example-calls-toggle").click();
-  // findByKey(key): a new step, made by the idempotent charge path.
-  const step = page.locator('[data-flow-step="2"]');
-  await expect(step).toHaveAttribute("data-tip", /^Opens \d+\. Idempotent charge path/);
-  // The gateway's answer is as before and names no unit: no tip to repeat its label.
-  await expect(page.locator('[data-flow-step="7"]')).not.toHaveAttribute("data-tip", /.*/);
-  await step.click();
-  await expect(page.getByTestId("overview")).toHaveCount(0);
-  await expect(page.getByTestId("unit-header")).toContainText(UNITS.charge);
+  await expect(page).toHaveURL(/view=overview/);
+  await page.reload();
+  await expect(page.getByTestId("overview")).toBeVisible();
+  await page.keyboard.press("f");
+  await page.locator("aside, nav").getByText("ledger.ts").first().click();
+  await expect(page).toHaveURL(/view=files/);
+  await expect(page).toHaveURL(/file=src%2Fbilling%2Fledger\.ts/);
+  await page.reload();
+  await expect(page.getByTestId("view-files")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("file-note")).toHaveText(
+    "Charges once per key: looks it up before the gateway, records the outcome.",
+  );
+  await page.keyboard.press("g");
+  await expect(page).toHaveURL(/view=guide/);
+  await expect(page).not.toHaveURL(/file=/);
 });
 
 test("the view tabs stay put when switching views, so the pointer doesn't have to chase them", async ({ page }) => {

@@ -148,37 +148,7 @@ export interface HunkEntry {
 
 /* ------------------------------------------------------------------ shape */
 
-/** What the PR does to a piece of the flow (see core's ShapeStatusSchema). */
-export type ShapeStatus = "added" | "changed" | "removed" | "context";
-
-/** One lifeline of a flow: a piece the path passes through. */
-export interface FlowParticipant {
-  id: string;
-  label: string;
-  status: ShapeStatus;
-  units: string[];
-}
-
-/** One message along a flow, in time order. */
-export interface FlowStep {
-  from: string;
-  to: string;
-  label: string;
-  kind: "call" | "return";
-  status: ShapeStatus;
-  units: string[];
-}
-
-/** A runtime path the PR adds or reroutes, as a sequence (core's FlowSchema). */
-export interface Flow {
-  caption?: string;
-  participants: FlowParticipant[];
-  steps: FlowStep[];
-  /** named stretches of the path, each starting at the index of its first step */
-  phases: { label: string; at: number }[];
-}
-
-/** One line per file the analysis placed: what it is for, or what the PR does to it. */
+/** One line per folder or file the analysis placed: what it does in the change (core's FileNotesSchema). */
 export type FileNotes = Record<string, string>;
 
 /** A term the PR leans on, explained wherever the guide uses it (core's ConceptSchema). */
@@ -191,13 +161,6 @@ export interface Concept {
   aka: string[];
   /** the PR introduces it */
   isNew?: boolean;
-}
-
-/** One concrete case before and after the change (core's ExampleSchema). */
-export interface Example {
-  case: string;
-  before: string[];
-  after: string[];
 }
 
 export interface ReviewUnit {
@@ -456,10 +419,8 @@ export interface PrState {
   /** Husks, shown only in the sidebar's "Removed" group. Absent = none. */
   removedUnits?: ReviewUnit[];
   /** The shape of the change, when the analysis drew it. */
-  flow?: Flow;
   fileNotes?: FileNotes;
   concepts?: Concept[];
-  example?: Example;
   hunks: Record<string, HunkState>;
   files?: Record<string, FileRollup>;
   baseOnly?: boolean;

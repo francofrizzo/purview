@@ -1,9 +1,7 @@
 import type { Ci } from "../api/types";
 import type {
   Concept,
-  Example,
   FileNotes,
-  Flow,
   ConfigSource,
   ResolvedAgent,
   DraftComment,
@@ -948,39 +946,10 @@ const removedUnits: ReviewUnit[] = [
   },
 ];
 
-/** The charge path on a first attempt: what #482 puts in front of the gateway. */
-export const mockFlow: Flow = {
-  caption: "A charge request on its first attempt: the key is looked up before the gateway is ever called.",
-  participants: [
-    { id: "route", label: "POST /orders/:id/pay", status: "changed", units: ["wiring-and-docs"] },
-    { id: "charge", label: "charge()", status: "changed", units: ["idempotent-charge-path"] },
-    { id: "ledger", label: "charge_ledger", status: "added", units: ["idempotent-charge-path"] },
-    { id: "retry", label: "retry()", status: "added", units: ["transient-retry-backoff"] },
-    { id: "gateway", label: "Payment gateway", status: "context", units: [] },
-  ],
-  phases: [
-    { label: "Look the key up first", at: 1 },
-    { label: "Charge once, through the backoff", at: 4 },
-  ],
-  steps: [
-    { from: "route", to: "charge", label: "charge(order, amount, currency)", kind: "call", status: "changed", units: ["wiring-and-docs"] },
-    { from: "charge", to: "charge", label: "idempotencyKey(order, amount, currency)", kind: "call", status: "added", units: ["idempotent-charge-path"] },
-    { from: "charge", to: "ledger", label: "findByKey(key)", kind: "call", status: "added", units: ["idempotent-charge-path"] },
-    { from: "ledger", to: "charge", label: "no row yet", kind: "return", status: "added", units: ["idempotent-charge-path"] },
-    { from: "charge", to: "gateway", label: "authorize(charge)", kind: "call", status: "removed", units: ["transient-retry-backoff"] },
-    { from: "charge", to: "retry", label: "retry(authorize)", kind: "call", status: "added", units: ["transient-retry-backoff"] },
-    { from: "retry", to: "gateway", label: "authorize, up to 4 tries", kind: "call", status: "added", units: ["transient-retry-backoff"] },
-    { from: "gateway", to: "retry", label: "authorization", kind: "return", status: "context", units: [] },
-    { from: "charge", to: "ledger", label: "record(key, result)", kind: "call", status: "added", units: ["idempotent-charge-path"] },
-    { from: "charge", to: "route", label: "ChargeResult", kind: "return", status: "context", units: [] },
-  ],
-};
-
-/** What each file of #482 does in the change. */
+/** Where #482 lands: what each folder or file does in the change. */
 export const mockFileNotes: FileNotes = {
-  "src/billing/charge.ts": "Looks the key up before the gateway and records failures too.",
+  "src/billing": "Charges once per key: looks it up before the gateway, records the outcome.",
   "src/billing/idempotency.ts": "Derives the charge key from order id, amount and currency.",
-  "src/billing/ledger.ts": "Finds and records charge outcomes by key.",
   "migrations/0042_charge_ledger.sql": "Creates `charge_ledger`, unique on the key.",
   "src/container.ts": "Hands the ledger to `ChargeService`.",
   "src/api/routes/orders.ts": "Passes the order's currency through to `charge()`.",
@@ -1005,13 +974,6 @@ export const mockConcepts: Concept[] = [
   { term: "Gateway", means: "The payment provider that actually charges the card.", aka: [] },
 ];
 
-/** One case through #482, before and after. */
-export const mockExample: Example = {
-  case: "A customer's app retries a payment after a timeout, but the first attempt went through",
-  before: ["The retry reaches the gateway again.", "The card is charged twice."],
-  after: ["The charge key is already in the ledger.", "The first result comes back; the card is charged once."],
-};
-
 const state: PrState = {
   revision: 3,
   revisions: [
@@ -1033,10 +995,8 @@ const state: PrState = {
     "Payment charges become replay-safe. A key derived from (orderId, amount, currency) is recorded in a new charge_ledger table before the gateway call, so retries — whether from the client, the queue, or the new backoff wrapper — return the original result instead of charging twice. Two things deserve real attention: the key derivation (it must not include anything volatile) and the interaction between the retry loop and the ledger write ordering.",
   units,
   removedUnits,
-  flow: mockFlow,
   fileNotes: mockFileNotes,
   concepts: mockConcepts,
-  example: mockExample,
   hunks: {
     a1b2c3d4e5f60001: { viewed: true, viewedAtRevision: 2, changedSinceViewed: true, migration: "fuzzy", predecessorId: "a1b2c3d4e5f6ff01" },
     a1b2c3d4e5f60002: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false, migration: "identical" },

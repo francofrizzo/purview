@@ -129,7 +129,7 @@ export function rubricSection(
  */
 export function languageRule(kind: "analysis" | "chat", language?: string | null): string {
   const written = kind === "analysis"
-    ? "unit titles, summaries, attentionWhy, hunk labels and heart whys, findings, the flow and file notes, and revision summaries"
+    ? "unit titles, summaries, attentionWhy, hunk labels and heart whys, findings, the concepts and the file notes, and revision summaries"
     : "comment drafts";
   const otherwise = kind === "analysis" && language ? language : "the language of the PR's title and description";
   return [
