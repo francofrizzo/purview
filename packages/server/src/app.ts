@@ -1,5 +1,4 @@
 import { getEditors, selectedEditor, launchEditor } from "./editors.js";
-import { ensurePrCheckout } from "./pr-checkout.js";
 import { compress, COMPRESSIBLE_CONTENT_TYPE_REGEX } from "hono/compress";
 import { requestLog } from "./request-log.js";
 import { log, shortKey } from "./log.js";
