@@ -418,7 +418,7 @@ export function TopBar({
         <OverflowMenu
           items={[
             ...editor.items,
-            { label: meta.tag ? "Change tag…" : "Tag…", testId: "header-tag-menu", onClick: () => setTagOpen(true) },
+            { label: meta.tag ? "change tag…" : "tag…", testId: "header-tag-menu", onClick: () => setTagOpen(true) },
             // Phone width: the row keeps chat, comments, refresh and finish;
             // sync moves in here.
             {

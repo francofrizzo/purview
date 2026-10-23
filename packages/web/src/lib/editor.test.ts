@@ -3,8 +3,8 @@ import { editorAvailable, editorMenuText } from "./editor";
 import type { GlobalConfig } from "../api/types";
 describe("editor menu", () => {
   it("maps idle and preparation labels to the same ownership tooltip", () => {
-    expect(editorMenuText(false)).toEqual({ label: "Open in editor", hint: "Purview's own copy of this PR, detached at its head commit" });
-    expect(editorMenuText(true)).toEqual({ ...editorMenuText(false), label: "Preparing checkout…" });
+    expect(editorMenuText(false)).toEqual({ label: "open in editor", hint: "Purview's own copy of this PR, detached at its head commit" });
+    expect(editorMenuText(true)).toEqual({ ...editorMenuText(false), label: "preparing checkout…" });
   });
   it("shows a selected available editor, or any found one when nothing is chosen", () => {
     const config = { editor: null } as GlobalConfig;

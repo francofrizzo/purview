@@ -12,7 +12,7 @@ export function automaticEditor(editors: Editor[] = []): Editor | undefined {
 }
 export function editorMenuText(preparing: boolean) {
   return {
-    label: preparing ? "Preparing checkout…" : "Open in editor",
+    label: preparing ? "preparing checkout…" : "open in editor",
     hint: "Purview's own copy of this PR, detached at its head commit",
   };
 }
