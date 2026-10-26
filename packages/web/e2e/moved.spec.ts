@@ -52,12 +52,25 @@ test("clicking a band expands it: the rows carry the moved tint, and the fold co
   await expect(page.getByTestId(`refold-${IN_REGION}`)).toBeVisible();
 });
 
-test("the moved tint is the same color on both sides", async ({ page }) => {
+test("a moved row keeps its side's tint, faded, and swaps +/- for a direction arrow", async ({ page }) => {
   await page.getByTestId(band(OUT_REGION)).click();
   await page.getByTestId(band(IN_REGION)).click();
   const bg = (loc: ReturnType<typeof movedRows>) =>
     loc.first().evaluate((el) => getComputedStyle(el).backgroundColor);
-  expect(await bg(movedRows(page, "del"))).toBe(await bg(movedRows(page, "add")));
+  const alpha = (rgba: string) => Number(rgba.match(/[\d.]+(?=\)$)/)?.[0] ?? 1);
+  const out = await bg(movedRows(page, "del"));
+  const into = await bg(movedRows(page, "add"));
+  // Red on the way out, green on the way in, not one shared hue.
+  expect(out).not.toBe(into);
+  // Fainter than an ordinary added row (the re-export under the block).
+  const plainAdd = await page.locator('[data-type="add"]:not([data-moved])').first().evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(alpha(into)).toBeLessThan(alpha(plainAdd));
+  // The marker says it is a move: → for code that left, ← for code that arrived.
+  await expect(movedRows(page, "del").first().locator(".diff-marker")).toHaveText("→");
+  await expect(movedRows(page, "add").first().locator(".diff-marker")).toHaveText("←");
+  // A verbatim move never carries a word-level highlight, even when the diff
+  // zips it with an unrelated line next to it (the re-export under the block).
+  await expect(movedRows(page, "del").locator(".intra")).toHaveCount(0);
 });
 
 test("the band's \"go to\" lands on the other end of the move", async ({ page }) => {

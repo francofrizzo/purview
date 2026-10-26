@@ -3329,8 +3329,8 @@ export function DiffPane({
                 data-testid={`moved-badge-${row.hunkId}`}
                 className="chip"
                 style={{
-                  background: "var(--moved-bg)",
-                  color: "var(--moved-fg)",
+                  background: "var(--bg-inset)",
+                  color: "var(--fg-muted)",
                   cursor: reachable ? "pointer" : "default",
                 }}
                 data-tip={title}
@@ -3470,6 +3470,10 @@ export function DiffPane({
         tokens={tokens[row.hunkId]?.[row.lineIdx]}
         marks={marksFor(row.hunkId, row.lineIdx)}
         moved={movedAt(row.hunkId, row.entry.hunk, row.lineIdx, line.type)}
+        pairMoved={
+          line.pairedWith !== undefined &&
+          movedAt(row.hunkId, row.entry.hunk, line.pairedWith, lineRows[line.pairedWith].type)
+        }
         changed={markedByHunk.get(row.hunkId)?.has(row.lineIdx) ?? false}
         removedAbove={removalTitle(removal?.above, removal?.aboveIn)}
         removedBelow={removalTitle(removal?.below, removal?.belowIn)}

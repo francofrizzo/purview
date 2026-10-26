@@ -92,6 +92,21 @@ describe("buildSplitRows", () => {
     }
   });
 
+  it("records which line each row's intra ranges were computed against", () => {
+    // A moved-out block zipped with the re-export under it: the pair is
+    // positional, so the pane needs to know who paired with whom to drop the
+    // ranges once it learns one side is a move.
+    const rows = buildRows(hunk(["-export function formatReport(report: Report) {", "-}", '+export { formatReport } from "./report";']), "");
+    expect(rows[0].intra?.length).toBeGreaterThan(0);
+    expect(rows[0].pairedWith).toBe(2);
+    expect(rows[2].pairedWith).toBe(0);
+    // the unpaired second removal, and a pair too different to highlight
+    expect(rows[1].pairedWith).toBeUndefined();
+    const far = buildRows(hunk(["-const a = 1;", "+return fetchEverything(now)"]), "");
+    expect(far[0].intra).toBeUndefined();
+    expect(far[0].pairedWith).toBeUndefined();
+  });
+
   it("reuses the word-level intra ranges from the unified rows", () => {
     const rows = buildSplitRows(hunk(["-const a = 1;", "+const a = 2;"]), "");
     const left = rows[0].left!.row;

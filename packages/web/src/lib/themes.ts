@@ -29,6 +29,9 @@ export interface Palette {
   pink?: string;
 }
 
+/** How much of its side's row tint a moved row keeps. */
+const MOVED_FADE = 0.45;
+
 /** CSS custom property names (without the leading `--`) the app reads. */
 export const TOKEN_NAMES = [
   "bg",
@@ -52,10 +55,10 @@ export const TOKEN_NAMES = [
   "del-bg",
   "del-bg-strong",
   "del-gutter",
-  "moved-bg",
-  "moved-bg-strong",
-  "moved-gutter",
-  "moved-fg",
+  "moved-add-bg",
+  "moved-add-gutter",
+  "moved-del-bg",
+  "moved-del-gutter",
   "search-match",
   "search-active",
   "changed-in-bar",
@@ -194,9 +197,8 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
   const accent = text(palette.blue, 3.6, dark ? 0.14 : 0.1);
   const ok = text(palette.green, 3.4);
   const risk = text(palette.red, 3.6);
-  // Moved-code tint: derived from purple the same way add/del derive from
-  // green/red, text() gets it the same contrast floor as accent/ok/risk.
-  const moved = text(palette.purple, 3.6, dark ? 0.14 : 0.1);
+  // Notes for a coding agent: violet, the one text hue the diff never uses.
+  const agent = text(palette.purple, 3.6, dark ? 0.14 : 0.1);
   const heart = text(palette.pink ?? mix(palette.red, palette.purple, 0.45), 3.6, dark ? 0.14 : 0.1);
   const warn = text(
     // yellow on a light background is hopeless; prefer orange there
@@ -259,9 +261,8 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
 
     accent,
     "accent-soft": rgba(accent, dark ? 0.14 : 0.1),
-    // Comments for a coding agent: violet, like the moved-code tint.
-    agent: moved,
-    "agent-soft": rgba(moved, dark ? 0.14 : 0.1),
+    agent,
+    "agent-soft": rgba(agent, dark ? 0.14 : 0.1),
     // The heart of a unit: pink, the one hue nothing else in the diff uses.
     heart,
     "heart-soft": rgba(heart, dark ? 0.14 : 0.1),
@@ -274,13 +275,13 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     "del-bg-strong": rgba(palette.red, tintAlpha(palette.red, tintStrong, 0.12, 4.0, delRow)),
     "del-gutter": rgba(palette.red, tintGutter),
 
-    // One hue for both sides of a move: the rows only say "this code is a
-    // move"; the fold band's words and the header badge's arrow say which
-    // way it went.
-    "moved-bg": rgba(palette.purple, tintAlpha(palette.purple, tint, 0.06)),
-    "moved-bg-strong": rgba(palette.purple, tintAlpha(palette.purple, tintStrong, 0.14)),
-    "moved-gutter": rgba(palette.purple, tintGutter),
-    "moved-fg": moved,
+    // Moved code keeps its side's hue, faded: the reader sees it is a
+    // removal or an addition and that it is one to skip. The rows' arrow
+    // marker and the fold band say it is a move.
+    "moved-add-bg": rgba(palette.green, addAlpha * MOVED_FADE),
+    "moved-add-gutter": rgba(palette.green, tintGutter * MOVED_FADE),
+    "moved-del-bg": rgba(palette.red, delAlpha * MOVED_FADE),
+    "moved-del-gutter": rgba(palette.red, tintGutter * MOVED_FADE),
 
     // Laid over an add/del row, so the body text must read through both.
     "search-match": rgba(searchTint, tintAlpha(searchTint, dark ? 0.24 : 0.28, 0.12, 4.0, addRow)),
@@ -550,10 +551,10 @@ const REVIEWER_DARK: ThemeDef = {
     "del-bg": "rgba(248, 81, 73, 0.1)",
     "del-bg-strong": "rgba(248, 81, 73, 0.26)",
     "del-gutter": "rgba(248, 81, 73, 0.16)",
-    "moved-bg": "rgba(163, 113, 247, 0.1)",
-    "moved-bg-strong": "rgba(163, 113, 247, 0.26)",
-    "moved-gutter": "rgba(163, 113, 247, 0.16)",
-    "moved-fg": "#c4a7ff",
+    "moved-add-bg": "rgba(63, 185, 80, 0.045)",
+    "moved-add-gutter": "rgba(63, 185, 80, 0.072)",
+    "moved-del-bg": "rgba(248, 81, 73, 0.045)",
+    "moved-del-gutter": "rgba(248, 81, 73, 0.072)",
     "search-match": "rgba(227, 179, 65, 0.22)",
     "search-active": "rgba(255, 166, 87, 0.55)",
     "changed-in-bar": "#e3b341",
@@ -617,10 +618,10 @@ const REVIEWER_LIGHT: ThemeDef = {
     "del-bg": "rgba(203, 36, 49, 0.08)",
     "del-bg-strong": "rgba(203, 36, 49, 0.2)",
     "del-gutter": "rgba(203, 36, 49, 0.12)",
-    "moved-bg": "rgba(130, 80, 223, 0.09)",
-    "moved-bg-strong": "rgba(130, 80, 223, 0.22)",
-    "moved-gutter": "rgba(130, 80, 223, 0.13)",
-    "moved-fg": "#6b3fd4",
+    "moved-add-bg": "rgba(34, 134, 58, 0.04)",
+    "moved-add-gutter": "rgba(34, 134, 58, 0.06)",
+    "moved-del-bg": "rgba(203, 36, 49, 0.036)",
+    "moved-del-gutter": "rgba(203, 36, 49, 0.054)",
     "search-match": "rgba(226, 168, 22, 0.3)",
     "search-active": "rgba(247, 148, 30, 0.6)",
     "changed-in-bar": "#a06a08",

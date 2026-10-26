@@ -5,6 +5,12 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Moved-code rows.** A moved block shows in a faded red or green, the side it left or arrived on, with a → or ← in place of +/- on each line. Violet now means only an agent note.
+- **Fix:** an expanded moved block no longer looks like an ordinary change; its lines keep the band's coloured edge and the arrow markers.
+- **Fix:** a moved line no longer shows a word-level highlight against an unrelated line next to it.
+
 ## 2026.10.23.4
 
 - **Fix:** a Mermaid diagram in the chat no longer stays as raw code until you reload the page.

@@ -173,15 +173,15 @@ export function renderContent(
 }
 
 /**
- * `moved` overrides the add/del tint with the same violet used everywhere
- * else for a code move (see lib/moveDetection.ts + lib/themes.ts) — it never
- * applies to context lines, which are shared, unmoved code either way.
+ * `moved` fades the add/del tint and swaps the +/- marker for an arrow (see
+ * lib/moveDetection.ts + lib/themes.ts) — it never applies to context lines,
+ * which are shared, unmoved code either way.
  */
 function bgFor(type: DiffRow["type"], moved?: boolean) {
-  // One hue either way: the fold band's words and the badge's arrow carry
-  // the direction, so a removed moved row tints the same as an added one.
-  if (type === "add") return moved ? "var(--moved-bg)" : "var(--add-bg)";
-  if (type === "del") return moved ? "var(--moved-bg)" : "var(--del-bg)";
+  // A moved row keeps its side's hue, faded: still a removal or an addition,
+  // but one to skip. The arrow marker and the fold band say it is a move.
+  if (type === "add") return moved ? "var(--moved-add-bg)" : "var(--add-bg)";
+  if (type === "del") return moved ? "var(--moved-del-bg)" : "var(--del-bg)";
   return "transparent";
 }
 /** Row background, with the "changed in rN" tint layered over it when marked. */
@@ -190,9 +190,19 @@ function rowBackground(type: DiffRow["type"], moved?: boolean, changed?: boolean
   return changed ? `linear-gradient(var(--changed-in-bg), var(--changed-in-bg)), ${base}` : base;
 }
 function gutterBgFor(type: DiffRow["type"], moved?: boolean) {
-  if (type === "add") return moved ? "var(--moved-gutter)" : "var(--add-gutter)";
-  if (type === "del") return moved ? "var(--moved-gutter)" : "var(--del-gutter)";
+  if (type === "add") return moved ? "var(--moved-add-gutter)" : "var(--add-gutter)";
+  if (type === "del") return moved ? "var(--moved-del-gutter)" : "var(--del-gutter)";
   return "transparent";
+}
+/**
+ * The gutter marker: +/- as usual, an arrow on a moved row. Removed code went
+ * out to another place (→); added code came in from one (←). The arrows match
+ * the fold band's "go to" and the hunk header's badge.
+ */
+function markerFor(type: DiffRow["type"], moved?: boolean) {
+  if (type === "add") return moved ? "←" : "+";
+  if (type === "del") return moved ? "→" : "-";
+  return " ";
 }
 function markerColor(type: DiffRow["type"]) {
   return type === "add" ? "var(--ok)" : type === "del" ? "var(--risk)" : "var(--fg-faint)";
@@ -370,8 +380,11 @@ export interface DiffLineProps extends GutterSelectProps, LineCommentProps, Remo
   onComment?: () => void;
   /** search hits on this row, if a search is running */
   marks?: LineMarks;
-  /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
+  /** true when this row is part of a detected move (see lib/moveDetection.ts) */
   moved?: boolean;
+  /** true when the line this row's word-level ranges were computed against is
+   *  a moved line: the pair was positional, not a real edit, so no highlight */
+  pairMoved?: boolean;
   /** a control overlaid on the gutter — the "fold back up" button on the
    *  first line of an opened moved-code region */
   foldAction?: ReactNode;
@@ -398,6 +411,7 @@ export const DiffLine = memo(function DiffLine({
   selectedOld,
   selectedNew,
   moved,
+  pairMoved,
   foldAction,
   changed,
   removedAbove,
@@ -405,12 +419,8 @@ export const DiffLine = memo(function DiffLine({
   onDefinitionClick,
   isDefinedInDiff,
 }: DiffLineProps) {
-  const intraBg = moved
-    ? "var(--moved-bg-strong)"
-    : row.type === "add"
-      ? "var(--add-bg-strong)"
-      : "var(--del-bg-strong)";
-  const marker = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
+  const intraBg = row.type === "add" ? "var(--add-bg-strong)" : "var(--del-bg-strong)";
+  const marker = markerFor(row.type, moved);
   const gutterBg = gutterBgFor(row.type, moved);
   const selected = Boolean(selectedOld || selectedNew);
 
@@ -456,7 +466,7 @@ export const DiffLine = memo(function DiffLine({
           commentLabel={commentLabel}
           commentVisible={commentVisible}
         />
-        <span className="diff-marker" style={{ color: markerColor(row.type) }}>
+        <span className="diff-marker" data-moved={moved ? "true" : undefined} style={{ color: markerColor(row.type) }}>
           {marker}
         </span>
       </span>
@@ -465,7 +475,7 @@ export const DiffLine = memo(function DiffLine({
         onClick={(e) => handleDefinitionClick(e, onDefinitionClick, isDefinedInDiff)}
       >
         <RemovalMarkers removedAbove={removedAbove} removedBelow={removedBelow} />
-        {renderContent(row.content, tokens, row.intra, marks)}
+        {renderContent(row.content, tokens, moved || pairMoved ? undefined : row.intra, marks)}
       </span>
     </div>
   );
@@ -481,8 +491,11 @@ export interface SplitHalfProps extends LineCommentProps, RemovalMarkerProps {
   selected?: boolean;
   onSelectDown?: GutterSelectProps["onSelectDown"];
   onSelectEnter?: GutterSelectProps["onSelectEnter"];
-  /** true when this row's hunk is a detected move (see lib/moveDetection.ts) */
+  /** true when this row is part of a detected move (see lib/moveDetection.ts) */
   moved?: boolean;
+  /** true when the line this row's word-level ranges were computed against is
+   *  a moved line: the pair was positional, not a real edit, so no highlight */
+  pairMoved?: boolean;
   foldAction?: ReactNode;
   changed?: boolean;
   onDefinitionClick?: OnDefinitionClick;
@@ -507,6 +520,7 @@ function SplitHalf({
   onSelectDown,
   onSelectEnter,
   moved,
+  pairMoved,
   foldAction,
   changed,
   removedAbove,
@@ -528,12 +542,8 @@ function SplitHalf({
       </div>
     );
   }
-  const intraBg = moved
-    ? "var(--moved-bg-strong)"
-    : row.type === "add"
-      ? "var(--add-bg-strong)"
-      : "var(--del-bg-strong)";
-  const marker = row.type === "add" ? "+" : row.type === "del" ? "-" : " ";
+  const intraBg = row.type === "add" ? "var(--add-bg-strong)" : "var(--del-bg-strong)";
+  const marker = markerFor(row.type, moved);
   return (
     <div
       className="diff-half group/half"
@@ -568,7 +578,7 @@ function SplitHalf({
           commentLabel={commentLabel}
           commentVisible={commentVisible}
         />
-        <span className="diff-marker" style={{ color: markerColor(row.type) }}>
+        <span className="diff-marker" data-moved={moved ? "true" : undefined} style={{ color: markerColor(row.type) }}>
           {marker}
         </span>
       </span>
@@ -577,7 +587,7 @@ function SplitHalf({
         onClick={(e) => handleDefinitionClick(e, onDefinitionClick, isDefinedInDiff)}
       >
         <RemovalMarkers removedAbove={removedAbove} removedBelow={removedBelow} />
-        {renderContent(row.content, tokens, row.intra, marks)}
+        {renderContent(row.content, tokens, moved || pairMoved ? undefined : row.intra, marks)}
       </span>
     </div>
   );
@@ -692,6 +702,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}
         moved={movedLeft}
+        pairMoved={movedRight}
         foldAction={foldActionLeft}
         changed={changedLeft}
         removedAbove={removedAboveLeft}
@@ -717,6 +728,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectDown={onSelectDown}
         onSelectEnter={onSelectEnter}
         moved={movedRight}
+        pairMoved={movedLeft}
         foldAction={foldActionRight}
         changed={changedRight}
         onDefinitionClick={onDefinitionClick}

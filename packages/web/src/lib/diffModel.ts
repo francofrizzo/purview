@@ -18,6 +18,8 @@ export interface DiffRow {
   newNumber?: number;
   /** char ranges (into `content`) that differ from the paired line */
   intra?: CharRange[];
+  /** index (into the hunk's rows) of the line `intra` was computed against */
+  pairedWith?: number;
 }
 
 const CACHE = new Map<string, DiffRow[]>();
@@ -120,14 +122,18 @@ function annotateIntraLine(rows: DiffRow[]) {
     const adds = rows.slice(d, a);
     const pairs = Math.min(dels.length, adds.length);
     for (let p = 0; p < pairs; p++) {
-      pairLines(dels[p], adds[p]);
+      if (pairLines(dels[p], adds[p])) {
+        dels[p].pairedWith = d + p;
+        adds[p].pairedWith = i + p;
+      }
     }
     i = a > i ? a : i + 1;
   }
 }
 
-function pairLines(del: DiffRow, add: DiffRow) {
-  if (!del.content.trim() || !add.content.trim()) return;
+/** True when the pair was similar enough to get word-level ranges. */
+function pairLines(del: DiffRow, add: DiffRow): boolean {
+  if (!del.content.trim() || !add.content.trim()) return false;
   const parts = diffWordsWithSpace(del.content, add.content);
   const delRanges: CharRange[] = [];
   const addRanges: CharRange[] = [];
@@ -151,9 +157,10 @@ function pairLines(del: DiffRow, add: DiffRow) {
   }
   const total = del.content.length + add.content.length;
   // Everything changed → highlighting the whole line is noise.
-  if (total === 0 || changed / total > 0.8) return;
+  if (total === 0 || changed / total > 0.8) return false;
   del.intra = delRanges;
   add.intra = addRanges;
+  return true;
 }
 
 /**
