@@ -613,13 +613,23 @@ export interface ReviewRequestedPr {
   number: number;
   title: string;
   updatedAt: string;
+  /** The PR author's login, when the search returned it. */
+  author?: string;
 }
 
 interface RawSearchPull {
   number: number;
   title: string;
   updatedAt: string;
+  author?: { login?: string } | null;
 }
+
+const searchPull = (p: RawSearchPull): ReviewRequestedPr => ({
+  number: p.number,
+  title: p.title,
+  updatedAt: p.updatedAt,
+  ...(p.author?.login ? { author: p.author.login } : {}),
+});
 
 /**
  * Open PRs in `repo` where the authenticated user's review is requested,
@@ -655,7 +665,7 @@ export function searchReviewRequestedPrs(
 function ownPrSearchArgs(key: RepoKey, sinceIso: string, login: string): string[] {
   return ["pr", "list", "-R", repoFlagValue(key), "--search",
     `author:${login} updated:>=${sinceIso.slice(0, 10)}`, "--state", "open",
-    "--json", "number,title,updatedAt", "--limit", "100"];
+    "--json", "number,title,updatedAt,author", "--limit", "100"];
 }
 
 function ownPrLogins(logins: string[]): string[] {
@@ -666,7 +676,7 @@ export function searchOwnPrs(key: RepoKey, sinceIso: string, logins: string[]): 
   const prs = new Map<number, ReviewRequestedPr>();
   for (const login of ownPrLogins(logins)) {
     const found = JSON.parse(gh(ownPrSearchArgs(key, sinceIso, login))) as RawSearchPull[];
-    for (const pr of found) prs.set(pr.number, pr);
+    for (const pr of found) prs.set(pr.number, searchPull(pr));
   }
   return [...prs.values()];
 }
@@ -676,7 +686,7 @@ export async function searchOwnPrsAsync(key: RepoKey, sinceIso: string, logins: 
   const prs = new Map<number, ReviewRequestedPr>();
   for (const login of ownPrLogins(logins)) {
     const found = JSON.parse(await ghAsync(ownPrSearchArgs(key, sinceIso, login))) as RawSearchPull[];
-    for (const pr of found) prs.set(pr.number, pr);
+    for (const pr of found) prs.set(pr.number, searchPull(pr));
   }
   return [...prs.values()];
 }
@@ -1755,12 +1765,12 @@ export async function searchReviewRequestedPrsAsync(
     "--state",
     "open",
     "--json",
-    "number,title,updatedAt",
+    "number,title,updatedAt,author",
     "--limit",
     "100",
   ]);
   const parsed = JSON.parse(raw) as RawSearchPull[];
-  return parsed.map((p) => ({ number: p.number, title: p.title, updatedAt: p.updatedAt }));
+  return parsed.map(searchPull);
 }
 
 export async function listIssueCommentsAsync(key: PrKey): Promise<IssueComment[]> {

@@ -237,6 +237,17 @@ export function prUrlForNumber(
   return `https://${repo.host}/${repo.owner}/${repo.repo}/pull/${Number(m[1])}`;
 }
 
+/**
+ * Open PRs someone else opened that you already reviewed and nobody asked you
+ * to review again: the other half of what auto-archive sweeps. A PR waiting
+ * on you sits in `needsReview`, and yours in `mine`, so only `prs` is read.
+ */
+export function reviewedPrKeys(group: Pick<RepoGroup, "prs">): string[] {
+  return group.prs
+    .filter((pr) => pr.reviewedByYou === true && pr.state !== "merged" && pr.state !== "closed")
+    .map((pr) => pr.key);
+}
+
 /** A repo's merged or closed PRs that are not archived yet: what auto-archive sweeps. */
 export function finishedPrKeys(
   group: Pick<RepoGroup, "needsReview" | "mine" | "prs">,

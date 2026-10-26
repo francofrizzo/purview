@@ -16,7 +16,7 @@ describe("own PR search", () => {
       expect(result.map((pr) => pr.number)).toEqual([1, 2]);
       expect(calls).toEqual(["@me", "helper"].map((login) => [
         "pr", "list", "-R", "acme/widgets", "--search", `author:${login} updated:>=2024-01-04`,
-        "--state", "open", "--json", "number,title,updatedAt", "--limit", "100",
+        "--state", "open", "--json", "number,title,updatedAt,author", "--limit", "100",
       ]));
     });
   }

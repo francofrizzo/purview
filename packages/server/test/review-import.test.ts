@@ -10,7 +10,14 @@ import {
   type GhRunner,
   type RepoKey,
 } from "@reviewer/core";
-import { importReviewRequests, importReviewRequestsSince } from "../src/review-import.js";
+import {
+  findImportCandidates,
+  importReviewRequests,
+  importReviewRequestsSince,
+  importSelectedPrs,
+  mergeImportResults,
+} from "../src/review-import.js";
+import { readMeta } from "@reviewer/core";
 import { analysisIdle, cancelAnalysis } from "../src/analysis.js";
 import { fakeClaude, type FakeClaude } from "./fake-claude.js";
 
@@ -34,14 +41,23 @@ function ghFor(opts: {
   candidates: Candidate[];
   /** PR numbers whose `initPr` should throw, simulating a fetch failure. */
   failNumbers?: number[];
+  /** what `--search author:` returns (your own PRs); default: nothing */
+  own?: Candidate[];
+  /** issue-timeline events per PR, for the review-request lookup */
+  timeline?: Record<number, object[]>;
 }): GhRunner & { searchCalls: string[][] } {
   const searchCalls: string[][] = [];
   const runner = ((args: string[]) => {
     const joined = args.join(" ");
     if (args[0] === "pr" && args[1] === "list") {
       searchCalls.push([...args]);
+      if (joined.includes("author:")) return JSON.stringify(opts.own ?? []);
       return JSON.stringify(opts.candidates);
     }
+    if (args[0] === "api" && args[args.length - 1] === "user") return JSON.stringify({ login: "me" });
+    if (joined.includes("user/teams")) return "";
+    const timeline = /issues\/(\d+)\/timeline/.exec(joined);
+    if (timeline) return (opts.timeline?.[Number(timeline[1])] ?? []).map((e) => JSON.stringify(e)).join("\n");
     if (args[1] === "graphql") {
       return JSON.stringify({ data: { repository: { pullRequest: { reviewDecision: null } } } });
     }
@@ -184,5 +200,108 @@ describe("importReviewRequestsSince", () => {
     // Either day is fine — the test runs in well under a day, but this avoids
     // flaking across a UTC midnight boundary.
     expect([expectedEarliest, expectedLatest]).toContain(sentDay);
+  });
+});
+
+describe("an archived PR asked for your review again", () => {
+  const key = { ...repo, number: 7 };
+  const requested = (at: string) => ({
+    event: "review_requested",
+    created_at: at,
+    requested_reviewer: { login: "me" },
+    review_requester: { login: "dana" },
+  });
+
+  it("comes back when the request is newer than the archiving", async () => {
+    ghFor({ candidates: [{ number: 7, title: "Seven", updatedAt: "2026-01-02T00:00:00Z" }], timeline: { 7: [requested("2026-01-02T10:00:00Z")] } });
+    initPr(key, root);
+    updateMeta(key, { archived: true, archivedAt: "2026-01-01T00:00:00.000Z", reviewRequestCheckedAt: undefined }, root);
+
+    const result = await importReviewRequestsSince(repo, new Date(0), root, { analyze: false });
+
+    expect(result.unarchived).toEqual([keyToString(key)]);
+    expect(readMeta(key, root).archived).toBe(false);
+    expect(readMeta(key, root).archivedAt).toBeUndefined();
+    expect(readMeta(key, root).reviewRequest?.at).toBe("2026-01-02T10:00:00Z");
+  });
+
+  it("stays archived when you archived it with that request already pending", async () => {
+    ghFor({ candidates: [{ number: 7, title: "Seven", updatedAt: "2026-01-03T00:00:00Z" }], timeline: { 7: [requested("2026-01-02T10:00:00Z")] } });
+    initPr(key, root);
+    updateMeta(key, { archived: true, archivedAt: "2026-01-03T00:00:00.000Z", reviewRequestCheckedAt: undefined }, root);
+
+    const result = await importReviewRequestsSince(repo, new Date(0), root, { analyze: false });
+
+    expect(result.unarchived).toEqual([]);
+    expect(readMeta(key, root).archived).toBe(true);
+  });
+
+  it("archiving stamps when, so a PR archived without the stamp is never brought back by an old request", async () => {
+    ghFor({ candidates: [] });
+    initPr(key, root);
+    const before = Date.now();
+    updateMeta(key, { archived: true }, root);
+    expect(Date.parse(readMeta(key, root).archivedAt ?? "")).toBeGreaterThanOrEqual(before);
+    updateMeta(key, { archived: false }, root);
+    expect(readMeta(key, root).archivedAt).toBeUndefined();
+  });
+});
+
+describe("findImportCandidates", () => {
+  it("merges both searches by number, marking the source and what is tracked or archived", async () => {
+    ghFor({
+      candidates: [
+        { number: 1, title: "Asked", updatedAt: "2026-01-01T00:00:00Z" },
+        { number: 3, title: "Both", updatedAt: "2026-01-03T00:00:00Z" },
+      ],
+      own: [
+        { number: 2, title: "Mine", updatedAt: "2026-01-02T00:00:00Z" },
+        { number: 3, title: "Both", updatedAt: "2026-01-03T00:00:00Z" },
+      ],
+    });
+    initPr({ ...repo, number: 1 }, root);
+    initPr({ ...repo, number: 2 }, root);
+    updateMeta({ ...repo, number: 2 }, { archived: true }, root);
+
+    const found = await findImportCandidates(repo, 7, ["requests", "own"], root);
+
+    expect(found.map((c) => [c.number, c.sources, c.tracked, c.archived])).toEqual([
+      [3, ["requests", "own"], false, false],
+      [2, ["own"], true, true],
+      [1, ["requests"], true, false],
+    ]);
+  });
+
+  it("runs only the searches asked for", async () => {
+    const gh = ghFor({ candidates: [], own: [{ number: 2, title: "Mine", updatedAt: "2026-01-02T00:00:00Z" }] });
+    const found = await findImportCandidates(repo, 7, ["own"], root);
+    expect(found.map((c) => c.number)).toEqual([2]);
+    expect(gh.searchCalls.some((a) => a.join(" ").includes("review-requested"))).toBe(false);
+  });
+});
+
+describe("importSelectedPrs", () => {
+  it("imports exactly the picked PRs and brings a picked archived one back", async () => {
+    ghFor({ candidates: [] });
+    initPr({ ...repo, number: 4 }, root);
+    updateMeta({ ...repo, number: 4 }, { archived: true }, root);
+
+    const result = await importSelectedPrs(repo, [4, 8, 8], root, { analyze: false });
+
+    expect(result.imported).toEqual([keyToString({ ...repo, number: 8 })]);
+    expect(result.unarchived).toEqual([keyToString({ ...repo, number: 4 })]);
+    expect(readMeta({ ...repo, number: 4 }, root).archived).toBe(false);
+  });
+});
+
+describe("mergeImportResults", () => {
+  it("does not call a PR the first search imported 'already tracked' by the second", () => {
+    const base = { failed: [], sharedImports: [], unarchived: [] };
+    const merged = mergeImportResults(
+      { ...base, imported: ["a"], alreadyTracked: ["b"] },
+      { ...base, imported: [], alreadyTracked: ["a", "b"] },
+    );
+    expect(merged.imported).toEqual(["a"]);
+    expect(merged.alreadyTracked).toEqual(["b"]);
   });
 });

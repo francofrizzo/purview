@@ -27,7 +27,10 @@ import type {
   HarnessManifest,
   GlobalConfigPatch,
   ImportFromPrResult,
+  ImportCandidatesResult,
+  ImportReviewsRequest,
   ImportReviewsResult,
+  ImportSource,
   LanAccess,
   MigrationReport,
   PrDetail,
@@ -315,16 +318,25 @@ export function useSaveRepoConfig(rkey: string) {
   });
 }
 
+/** Look up what an import would find; on demand, so it is a mutation. */
+export function useImportCandidates(
+  rkey: string,
+): UseMutationResult<ImportCandidatesResult, Error, { days: number; sources: ImportSource[] }> {
+  return useMutation({
+    mutationFn: ({ days, sources }) => api.getImportCandidates(rkey, days, sources),
+  });
+}
+
 /**
- * Bulk-import review-requested PRs for a repo. Invalidates the PR list (new
- * rows appear) and the repo list (prCount/archivedCount move).
+ * Bulk-import PRs for a repo. Invalidates the PR list (new rows appear) and
+ * the repo list (prCount/archivedCount move).
  */
 export function useImportReviews(
   rkey: string,
-): UseMutationResult<ImportReviewsResult, Error, number> {
+): UseMutationResult<ImportReviewsResult, Error, ImportReviewsRequest> {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (days: number) => api.importReviews(rkey, days),
+    mutationFn: (body: ImportReviewsRequest) => api.importReviews(rkey, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: qk.prs });
       void qc.invalidateQueries({ queryKey: qk.repos });

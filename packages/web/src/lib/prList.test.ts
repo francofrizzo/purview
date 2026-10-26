@@ -13,6 +13,7 @@ import {
   groupPrsByRepo,
   finishedPrKeys,
   partitionRepoGroups,
+  reviewedPrKeys,
   prUrlForNumber,
 } from "./prList";
 
@@ -377,5 +378,16 @@ describe("arrangeBlock", () => {
     expect(shape([row(1, undefined, 2), row(2, undefined, 1), row(3, undefined, 3)])).toEqual([
       { tag: null, rows: [[1, 0], [2, 1], [3, 0]] },
     ]);
+  });
+});
+
+describe("reviewedPrKeys", () => {
+  it("picks the open PRs you already reviewed, never a finished one", () => {
+    const pr = (key: string, state: string, reviewedByYou?: boolean) => ({ key, state, reviewedByYou }) as PrListEntry;
+    expect(
+      reviewedPrKeys({
+        prs: [pr("a", "open", true), pr("b", "draft", true), pr("c", "open"), pr("d", "merged", true)],
+      }),
+    ).toEqual(["a", "b"]);
   });
 });

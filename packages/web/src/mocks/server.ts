@@ -24,7 +24,11 @@ import type {
   DraftComment,
   EditCommentResult,
   ImportFromPrResult,
+  ImportCandidate,
+  ImportCandidatesResult,
+  ImportReviewsRequest,
   ImportReviewsResult,
+  ImportSource,
   MigrationReport,
   PrDetail,
   PrListEntry,
@@ -737,6 +741,42 @@ const analysisPending: Record<string, AnalysisPending> = {};
 /** Mirrors repo.json's `archived`: repo keys whose whole repo is on the shelf. */
 const archivedRepos = new Set<string>();
 
+/** Untracked PRs the mock's import search finds, per repo. */
+const IMPORT_POOL: Record<string, Omit<ImportCandidate, "tracked" | "archived">[]> = {
+  "github.com/acme/billing": [
+    { number: 505, title: "Reject refunds above the captured amount", updatedAt: new Date(Date.now() - 3 * 3_600_000).toISOString(), author: "dana", sources: ["requests"] },
+    { number: 507, title: "Bump the ledger client to 4.2", updatedAt: new Date(Date.now() - 26 * 3_600_000).toISOString(), author: "you", sources: ["own"] },
+  ],
+};
+
+/** What the mock's import search finds: the pool, plus tracked rows that match. */
+function importCandidatesFor(rkey: string, sources: ImportSource[]): ImportCandidate[] {
+  const out = new Map<number, ImportCandidate>();
+  for (const c of IMPORT_POOL[rkey] ?? []) {
+    const hits = c.sources.filter((s) => sources.includes(s));
+    if (!hits.length) continue;
+    const tracked = list.find((p) => p.key === `${rkey}/${c.number}`);
+    out.set(c.number, { ...c, sources: hits, tracked: Boolean(tracked), archived: tracked?.archived ?? false });
+  }
+  for (const p of list) {
+    if (!p.key.startsWith(`${rkey}/`) || (p.state !== "open" && p.state !== "draft")) continue;
+    const hits: ImportSource[] = [];
+    if (sources.includes("requests") && p.reviewRequest) hits.push("requests");
+    if (sources.includes("own") && p.authoredByYou) hits.push("own");
+    if (!hits.length || !p.meta) continue;
+    out.set(p.meta.number, {
+      number: p.meta.number,
+      title: p.title ?? p.meta.title ?? "",
+      updatedAt: p.addedAt,
+      author: p.meta.author,
+      sources: hits,
+      tracked: true,
+      archived: p.archived,
+    });
+  }
+  return [...out.values()].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt));
+}
+
 export const mockApi = {
   async getSkillManifest(): Promise<SkillManifest> {
     return {
@@ -1012,14 +1052,54 @@ export const mockApi = {
   },
 
   /**
-   * A tiny stand-in for the real search: "imports" nothing (the fixture data
-   * has no separate pool of untracked review-requested PRs to draw from), but
-   * exercises the same shape and timing the UI codes against.
+   * The real search's stand-in: a small pool of untracked PRs per repo, plus
+   * the tracked rows that would match (waiting on you, or yours).
    */
-  async importReviews(rkey: string, days: number): Promise<ImportReviewsResult> {
+  async getImportCandidates(rkey: string, days: number, sources: ImportSource[]): Promise<ImportCandidatesResult> {
+    await delay(200);
+    if (!repoConfigs[rkey]) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
+    return { candidates: importCandidatesFor(rkey, sources), days, sources };
+  },
+
+  async importReviews(rkey: string, body: ImportReviewsRequest): Promise<ImportReviewsResult> {
     await delay(250);
     if (!repoConfigs[rkey]) throw new ApiError("not_found", 404, `No repo "${rkey}" is tracked locally.`);
-    return { imported: [], alreadyTracked: [], failed: [], sharedImports: [], days };
+    const picked = body.numbers
+      ? body.numbers
+      : importCandidatesFor(rkey, body.sources ?? ["requests"]).map((c) => c.number);
+    const result: ImportReviewsResult = { imported: [], alreadyTracked: [], failed: [], sharedImports: [], unarchived: [], days: body.days };
+    const [host, owner, repo] = rkey.split("/");
+    for (const number of picked) {
+      const key = `${rkey}/${number}`;
+      const existing = list.find((p) => p.key === key);
+      if (existing) {
+        result.alreadyTracked.push(key);
+        if (existing.archived && body.numbers) {
+          existing.archived = false;
+          result.unarchived!.push(key);
+        }
+        continue;
+      }
+      const found = IMPORT_POOL[rkey]?.find((c) => c.number === number);
+      const title = found?.title ?? `${repo}#${number}`;
+      list.unshift({
+        key,
+        meta: { host, owner, repo, number, url: `https://${host}/${owner}/${repo}/pull/${number}`, title, author: found?.author },
+        title,
+        unitCount: 0,
+        viewedHunks: 0,
+        totalHunks: 0,
+        effort: null,
+        state: "open",
+        reviewDecision: null,
+        authoredByYou: found?.sources.includes("own") ?? false,
+        addedAt: new Date().toISOString(),
+        archived: false,
+      });
+      result.imported.push(key);
+    }
+    syncRepoCounts();
+    return result;
   },
 
   async getPr(key: string): Promise<PrDetail> {

@@ -5,6 +5,7 @@ import { arrangeBlock, type ArrangedRow } from "../lib/prList";
 import { MOCK } from "../api/client";
 import {
   useAddPr,
+  useImportCandidates,
   useImportReviews,
   useMarkVersionSeen,
   usePrs,
@@ -13,7 +14,7 @@ import {
   useSetArchived,
   useVersion,
 } from "../api/hooks";
-import type { PrListEntry, RepoSummary } from "../api/types";
+import type { ImportCandidate, ImportSource, PrListEntry, RepoSummary } from "../api/types";
 import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
 import {
@@ -48,6 +49,7 @@ import {
   groupPrsByRepo,
   finishedPrKeys,
   partitionRepoGroups,
+  reviewedPrKeys,
   prUrlForNumber,
   type RepoGroup,
 } from "../lib/prList";
@@ -310,6 +312,7 @@ function RepoSection({
   // The shelf opens on its newest page; "show more" walks back in time.
   const [archivedShown, setArchivedShown] = useState(ARCHIVED_PAGE);
   const finishedKeys = finishedPrKeys(group);
+  const reviewedKeys = reviewedPrKeys(group);
   const [importOpen, setImportOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const background = useModalBackground();
@@ -413,6 +416,7 @@ function RepoSection({
       {importOpen && !repoArchived ? (
         <ImportReviewsForm
           rkey={group.key}
+          repo={repo}
           onClose={() => setImportOpen(false)}
         />
       ) : null}
@@ -444,7 +448,7 @@ function RepoSection({
         </p>
       )}
 
-      {group.archived.length || finishedKeys.length ? (
+      {group.archived.length || finishedKeys.length || reviewedKeys.length ? (
         <div
           className="flex items-center border-t"
           style={{ borderColor: "var(--border)" }}
@@ -466,7 +470,7 @@ function RepoSection({
           )}
           {/* The cleanup sits by the list it feeds, not in the ⋯ menu. */}
           {repoArchived ? null : (
-            <AutoArchiveButton repo={group} finishedKeys={finishedKeys} />
+            <AutoArchiveButton repo={group} finishedKeys={finishedKeys} reviewedKeys={reviewedKeys} />
           )}
         </div>
       ) : null}
@@ -583,11 +587,6 @@ function GroupLabel({
   );
 }
 
-/**
- * Inline "import review requests…" form: one numeric input, an import
- * button, and a transient result line. Collapses back into the header's
- * toggle button when the reader cancels or closes it.
- */
 /** "#[123] add" under a repo's header: the PR URL is built from the repo. */
 function AddByNumberForm({
   repo,
@@ -663,72 +662,208 @@ function AddByNumberForm({
   );
 }
 
+/**
+ * Inline "import PRs…" form, in two steps. First what to look for: how many
+ * days back, and which searches (PRs that want your review, PRs you opened;
+ * they start as the repo's watch settings). Then the PRs found, each with a
+ * checkbox: new ones start ticked, an archived one can be ticked to bring it
+ * back, and one already on the list is shown but cannot be picked.
+ */
 function ImportReviewsForm({
   rkey,
+  repo,
   onClose,
 }: {
   rkey: string;
+  repo?: RepoSummary;
   onClose: () => void;
 }) {
   const [days, setDays] = useState(7);
+  const [picked, setPicked] = useState<ImportSource[] | null>(null);
+  const sources: ImportSource[] = picked ?? defaultImportSources(repo);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const find = useImportCandidates(rkey);
   const importReviews = useImportReviews(rkey);
+  const busy = find.isPending || importReviews.isPending;
+  const candidates = find.data?.candidates;
 
-  const submit = () => {
-    importReviews.mutate(days);
+  const toggleSource = (source: ImportSource, on: boolean) => {
+    const next = on ? [...new Set([...sources, source])] : sources.filter((s) => s !== source);
+    setPicked(next);
+    find.reset();
   };
+  const search = () => {
+    importReviews.reset();
+    find.mutate(
+      { days, sources },
+      {
+        onSuccess: (data) =>
+          setSelected(new Set(data.candidates.filter((c) => !c.tracked).map((c) => c.number))),
+      },
+    );
+  };
+  const submit = () => {
+    importReviews.mutate(
+      { days, numbers: [...selected] },
+      { onSuccess: () => find.reset() },
+    );
+  };
+  const toggle = (n: number, on: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(n);
+      else next.delete(n);
+      return next;
+    });
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-2xs"
+      className="border-t px-3 py-2 text-2xs"
       style={{ borderColor: "var(--border)" }}
+      data-testid={`import-form-${rkey}`}
     >
-      <span style={{ color: "var(--fg-faint)" }}>last</span>
-      <input
-        type="number"
-        min={1}
-        max={90}
-        className="input w-14 px-1.5 py-0.5 text-2xs"
-        value={days}
-        disabled={importReviews.isPending}
-        onChange={(e) => {
-          const n = Number(e.target.value);
-          if (Number.isFinite(n))
-            setDays(Math.min(90, Math.max(1, Math.round(n))));
-        }}
-      />
-      <span style={{ color: "var(--fg-faint)" }}>days</span>
-      <button
-        type="button"
-        className="btn"
-        disabled={importReviews.isPending}
-        onClick={submit}
-      >
-        {importReviews.isPending ? "importing…" : "import"}
-      </button>
-      <button
-        type="button"
-        className="btn"
-        disabled={importReviews.isPending}
-        onClick={onClose}
-      >
-        cancel
-      </button>
-      {importReviews.error ? (
-        <span style={{ color: "var(--risk)" }}>
-          {errorText(importReviews.error)}
-        </span>
-      ) : importReviews.data ? (
-        <span
-          style={{
-            color: importReviews.data.failed.length
-              ? "var(--risk)"
-              : "var(--fg-faint)",
+      <div className="flex flex-wrap items-center gap-2">
+        <span style={{ color: "var(--fg-faint)" }}>last</span>
+        <input
+          type="number"
+          min={1}
+          max={90}
+          className="input w-14 px-1.5 py-0.5 text-2xs"
+          value={days}
+          disabled={busy}
+          onChange={(e) => {
+            const n = Number(e.target.value);
+            if (Number.isFinite(n)) setDays(Math.min(90, Math.max(1, Math.round(n))));
+            find.reset();
           }}
+        />
+        <span style={{ color: "var(--fg-faint)" }}>days:</span>
+        {(
+          [
+            ["requests", "review requests"],
+            ["own", "your PRs"],
+          ] as const
+        ).map(([source, label]) => (
+          <label key={source} className="flex items-center gap-1">
+            <input
+              type="checkbox"
+              data-testid={`import-source-${source}`}
+              checked={sources.includes(source)}
+              disabled={busy}
+              onChange={(e) => toggleSource(source, e.target.checked)}
+            />
+            {label}
+          </label>
+        ))}
+        <button
+          type="button"
+          className="btn"
+          data-testid="import-find"
+          disabled={busy || !sources.length}
+          onClick={search}
         >
-          {formatImportResult(importReviews.data)}
-        </span>
+          {find.isPending ? "looking…" : "find PRs"}
+        </button>
+        <button type="button" className="btn" disabled={busy} onClick={onClose}>
+          {importReviews.data ? "close" : "cancel"}
+        </button>
+        {find.error ? (
+          <span style={{ color: "var(--risk)" }}>{errorText(find.error)}</span>
+        ) : importReviews.error ? (
+          <span style={{ color: "var(--risk)" }}>{errorText(importReviews.error)}</span>
+        ) : importReviews.data ? (
+          <span
+            data-testid="import-result"
+            style={{ color: importReviews.data.failed.length ? "var(--risk)" : "var(--fg-faint)" }}
+          >
+            {formatImportResult(importReviews.data)}
+          </span>
+        ) : null}
+      </div>
+
+      {candidates ? (
+        candidates.length ? (
+          <div className="mt-2">
+            <ul className="flex flex-col" data-testid="import-candidates">
+              {candidates.map((c) => (
+                <ImportCandidateRow
+                  key={c.number}
+                  candidate={c}
+                  checked={selected.has(c.number)}
+                  disabled={busy}
+                  onChange={(on) => toggle(c.number, on)}
+                />
+              ))}
+            </ul>
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                className="btn"
+                data-testid="import-submit"
+                disabled={busy || !selected.size}
+                onClick={submit}
+              >
+                {importReviews.isPending ? "importing…" : `import ${selected.size}`}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2" style={{ color: "var(--fg-faint)" }} data-testid="import-none">
+            No open PRs found in the last {days} day{days === 1 ? "" : "s"}.
+          </p>
+        )
       ) : null}
     </div>
+  );
+}
+
+/** The searches the import form starts with: the repo's watch settings, or review requests. */
+function defaultImportSources(repo: RepoSummary | undefined): ImportSource[] {
+  const out: ImportSource[] = [];
+  if (repo?.watchReviews) out.push("requests");
+  if (repo?.watchOwn) out.push("own");
+  return out.length ? out : ["requests"];
+}
+
+function ImportCandidateRow({
+  candidate: c,
+  checked,
+  disabled,
+  onChange,
+}: {
+  candidate: ImportCandidate;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  const onList = c.tracked && !c.archived;
+  const why = c.sources.map((s) => (s === "requests" ? "wants your review" : "yours")).join(", ");
+  return (
+    <li>
+      <label
+        className="flex items-baseline gap-2 rounded px-1 py-0.5 hover:bg-[var(--bg-hover)]"
+        style={{ opacity: onList ? 0.55 : 1 }}
+        data-testid={`import-candidate-${c.number}`}
+      >
+        <input
+          type="checkbox"
+          checked={onList || checked}
+          disabled={disabled || onList}
+          onChange={(e) => onChange(e.target.checked)}
+        />
+        <span className="flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
+          #{c.number}
+        </span>
+        <span className="min-w-0 truncate" style={{ color: "var(--fg)" }}>
+          {c.title}
+        </span>
+        <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
+          {c.author ? `${c.author} · ` : ""}
+          {why}
+          {onList ? " · already on the list" : c.archived ? " · archived, brings it back" : ""}
+        </span>
+      </label>
+    </li>
   );
 }
 

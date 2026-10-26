@@ -93,7 +93,12 @@ export function updateMeta(
   patch: Partial<Meta>,
   root = stateRoot(),
 ): Meta {
-  const merged = MetaSchema.parse({ ...readMeta(key, root), ...patch });
+  const previous = readMeta(key, root);
+  const next: Partial<Meta> = { ...previous, ...patch };
+  // Archiving stamps when; unarchiving forgets it (see `Meta.archivedAt`).
+  if (patch.archived === true && !previous.archived) next.archivedAt = patch.archivedAt ?? new Date().toISOString();
+  if (patch.archived === false) delete next.archivedAt;
+  const merged = MetaSchema.parse(next);
   writeJson(metaPath(key, root), merged);
   // The state's copy of the title follows meta's: a refresh, the page's
   // staleness check and the background sweep all land their title here.

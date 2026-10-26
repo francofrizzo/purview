@@ -632,6 +632,12 @@ export const MetaSchema = z.object({
    * out of the automatic analysis triggers, which cost money).
    */
   archived: z.boolean().default(false),
+  /**
+   * When the PR was last archived (ISO); absent while it is not, and on PRs
+   * archived before this was kept. The review watch brings an archived PR
+   * back when a review request newer than this arrives.
+   */
+  archivedAt: z.string().optional(),
   /** One global, reader-defined tag; optional metadata needs no event upcast. */
   tag: z.string().transform((s) => s.trim().toLowerCase().replace(/\s+/g, " ")).pipe(z.string().min(1).max(24)).optional(),
   /**

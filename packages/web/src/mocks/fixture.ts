@@ -1130,6 +1130,30 @@ export const mockList: PrListEntry[] = [
     archived: false,
   },
   {
+    key: "github.com/acme/billing/479",
+    meta: {
+      host: "github.com",
+      owner: "acme",
+      repo: "billing",
+      number: 479,
+      url: "https://github.com/acme/billing/pull/479",
+      title: "Log ledger drift per currency",
+      author: "sam",
+    },
+    title: "Log ledger drift per currency",
+    unitCount: 1,
+    viewedHunks: 3,
+    totalHunks: 3,
+    state: "open",
+    reviewDecision: "approved",
+    // Still open, but you approved it and nobody asked again: the archive
+    // sweep under the list offers to clear it.
+    reviewers: [{ login: "you", avatarUrl: null, kind: "user", state: "approved" }],
+    reviewedByYou: true,
+    addedAt: ago(5 * DAY),
+    archived: false,
+  },
+  {
     key: "github.com/acme/billing/474",
     meta: {
       host: "github.com",

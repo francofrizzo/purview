@@ -157,7 +157,7 @@ import { diffSize } from "./diff-size.js";
 import { compareVersions, entriesSince, headSha, readChangelog } from "./changelog.js";
 import { createUpdateChecker, noUpdateChecker, type UpdateChecker } from "./updates.js";
 import { TagSchema, setTagFor } from "./tag.js";
-import { authoredByYou, commentAudienceFor, setCommentAudienceFor } from "./comment-audience.js";
+import { authoredByYou, commentAudienceFor, reviewedByYou, setCommentAudienceFor } from "./comment-audience.js";
 import {
   autoAnalyzeAllowed,
   autoAnalyzeBlocker,
@@ -170,7 +170,14 @@ import { agentView, checkAgentSelection, resolveAgent, resolveChatAgent } from "
 import { DEFAULT_HARNESS, getHarness, listedHarnessIds, registeredHarnessIds } from "./agent/registry.js";
 import { EditorSelectionSchema, generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
-import { importReviewRequests } from "./review-import.js";
+import {
+  findImportCandidates,
+  importOwnPrs,
+  importReviewRequests,
+  importSelectedPrs,
+  mergeImportResults,
+  type ImportSource,
+} from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
 import { reanchorComments } from "./comment-anchors.js";
 import { ensurePrCheckout, pruneCheckouts } from "./pr-checkout.js";
@@ -494,6 +501,8 @@ export function createApp(opts: AppOptions = {}): Hono {
         // Absent (not `null`) until first looked up: `null` means "nothing pending".
         reviewRequest: meta.reviewRequest,
         authoredByYou: authoredByYou(meta.author, loginOf(key.host), extraAuthors),
+        // You left a review GitHub still shows, and are not asked again.
+        reviewedByYou: reviewedByYou(meta.reviewers, loginOf(key.host)),
         addedAt: meta.createdAt,
         // The PR's own flag. `repoArchived` is its repo's, kept apart so that
         // unarchiving the repo restores each PR exactly as it was.
@@ -2298,12 +2307,41 @@ export function createApp(opts: AppOptions = {}): Hono {
   });
 
   const ImportReviewsSchema = z
-    .object({ days: z.number().int().min(1).max(90).default(7) })
+    .object({
+      days: z.number().int().min(1).max(90).default(7),
+      /** which searches to run; ignored when `numbers` is given */
+      sources: z.array(z.enum(["requests", "own"])).min(1).default(["requests"]),
+      /** import exactly these PRs (picked from `import-candidates`) */
+      numbers: z.array(z.number().int().positive()).min(1).max(200).optional(),
+    })
     .strict();
 
   /**
-   * Bulk-import every open, review-requested PR of this repo updated in the
-   * last `days` days, exactly as `POST /api/prs` would for each one. Mirrors
+   * What `import-reviews` would bring in over the last `days`, without
+   * importing anything: `?days=7&sources=requests,own`. Each candidate says
+   * which search found it and whether it is already tracked or archived, so
+   * the reader can pick.
+   */
+  app.get("/api/repos/:rkey/import-candidates", async (c) => {
+    const repo = repoKeyParam(c);
+    const days = Number(c.req.query("days") ?? 7);
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      throw new HttpError(400, "invalid_query", "days must be an integer from 1 to 90");
+    }
+    const raw = (c.req.query("sources") ?? "requests").split(",").map((s) => s.trim()).filter(Boolean);
+    if (!raw.length || raw.some((s) => s !== "requests" && s !== "own")) {
+      throw new HttpError(400, "invalid_query", 'sources must list "requests" and/or "own"');
+    }
+    const sources = [...new Set(raw)] as ImportSource[];
+    const candidates = await findImportCandidates(repo, days, sources, root);
+    return c.json({ candidates, days, sources });
+  });
+
+  /**
+   * Bulk-import the open PRs of this repo updated in the last `days` days
+   * that want your review (`sources: ["requests"]`, the default) and/or that
+   * you opened (`"own"`), exactly as `POST /api/prs` would for each one. With
+   * `numbers`, imports exactly those PRs instead (an archived one comes back). Mirrors
    * that endpoint's auto-analyze gating: the process-wide switch, then the
    * per-repo/committed/global layering via `autoAnalyzeAllowed` — evaluated
    * once here (a bulk import is one request; the layers do not change hunk to
@@ -2320,7 +2358,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         `${issue.path.join(".") || "(body)"}: ${issue.message}`,
       );
     }
-    const { days } = parsed.data;
+    const { days, sources, numbers } = parsed.data;
     // Repo-scoped, not PR-scoped, so there is no `meta.archived` to check —
     // `autoAnalyzeAllowed`'s archive guard only applies once a PR exists.
     // Each newly imported PR is untracked by definition, so only its repo can
@@ -2328,7 +2366,15 @@ export function createApp(opts: AppOptions = {}): Hono {
     // an explicit import is not consent to spend on them.
     const analyze =
       autoAnalyze && effectiveConfig(repo, root).autoAnalyze.value && !isRepoArchived(repo, root);
-    const result = await importReviewRequests(repo, days, root, { analyze });
+    let result;
+    if (numbers) {
+      result = await importSelectedPrs(repo, numbers, root, { analyze });
+    } else {
+      const runs = [];
+      if (sources.includes("requests")) runs.push(await importReviewRequests(repo, days, root, { analyze }));
+      if (sources.includes("own")) runs.push(await importOwnPrs(repo, days, root, { analyze }));
+      result = runs.reduce(mergeImportResults);
+    }
     return c.json({ ...result, days });
   });
 

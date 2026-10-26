@@ -326,7 +326,8 @@ function WatchSection({ config, save }: { config: RepoConfig; save: Save }) {
           <span className="text-xs">watch for review requests</span>
           <span className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
             Checks GitHub every 5 minutes for open PRs assigned to you for review in the last 24
-            hours, imports the new ones and analyzes them automatically.
+            hours, imports the new ones and analyzes them automatically. A PR you archived comes
+            back when your review is asked for again.
           </span>
         </span>
       </label>

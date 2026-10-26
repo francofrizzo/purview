@@ -64,10 +64,10 @@ export function RepoMenu({
         ...(onImport
           ? [
               {
-                label: "import review requests…",
+                label: "import PRs…",
                 icon: <IconInbox width={12} height={12} />,
                 testId: `import-reviews-toggle-${rkey}`,
-                hint: "Add the PRs where your review was requested in the last few days.",
+                hint: "Pick from the recent PRs that want your review or that you opened.",
                 onClick: onImport,
               },
             ]
@@ -96,26 +96,43 @@ export function RepoMenu({
 
 /**
  * The one-click cleanup, out of the menu and next to the archived list it
- * feeds: moves this repo's merged and closed PRs into the archive. Renders
- * nothing when there is nothing to sweep.
+ * feeds: moves this repo's merged and closed PRs, and the open ones you
+ * already reviewed, into the archive. Renders nothing when there is nothing
+ * to sweep.
  */
-export function AutoArchiveButton({ repo, finishedKeys }: { repo: RepoRef; finishedKeys: string[] }) {
+export function AutoArchiveButton({
+  repo,
+  finishedKeys,
+  reviewedKeys = [],
+}: {
+  repo: RepoRef;
+  finishedKeys: string[];
+  reviewedKeys?: string[];
+}) {
   const archiveMany = useArchiveMany();
   const rkey = rkeyOf(repo);
-  if (!finishedKeys.length) return null;
   const n = finishedKeys.length;
+  const r = reviewedKeys.length;
+  if (!n && !r) return null;
+  const label = [n ? `${n} merged & closed` : "", r ? `${r} reviewed` : ""].filter(Boolean).join(", ");
+  const tip = [
+    n ? `the ${n} merged or closed PR${n === 1 ? "" : "s"}` : "",
+    r ? `the ${r} open PR${r === 1 ? "" : "s"} you already reviewed` : "",
+  ]
+    .filter(Boolean)
+    .join(" and ");
   return (
     <button
       type="button"
       data-testid={`repo-auto-archive-${rkey}`}
       disabled={archiveMany.isPending}
-      data-tip={`Move the ${n} merged or closed PR${n === 1 ? "" : "s"} to this repo's archived list; local only`}
-      onClick={() => archiveMany.mutate(finishedKeys)}
+      data-tip={`Move ${tip} to this repo's archived list; local only.${r ? " A new review request brings one back." : ""}`}
+      onClick={() => archiveMany.mutate([...finishedKeys, ...reviewedKeys])}
       className="flex flex-none items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50"
       style={{ color: "var(--fg-muted)" }}
     >
       <IconArchive width={11} height={11} />
-      archive {n} merged &amp; closed
+      archive {label}
     </button>
   );
 }

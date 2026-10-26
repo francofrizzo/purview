@@ -8,8 +8,11 @@ import type { ImportReviewsResult } from "../api/types";
 
 export function formatImportResult(result: ImportReviewsResult): string {
   const parts = [`imported ${result.imported.length}`];
-  if (result.alreadyTracked.length > 0) {
-    parts.push(`${result.alreadyTracked.length} already tracked`);
+  const back = result.unarchived?.length ?? 0;
+  if (back > 0) parts.push(`${back} back from the archive`);
+  const tracked = result.alreadyTracked.length - back;
+  if (tracked > 0) {
+    parts.push(`${tracked} already tracked`);
   }
   if (result.failed.length > 0) {
     parts.push(`${result.failed.length} failed`);

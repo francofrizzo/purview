@@ -24,4 +24,10 @@ describe("formatImportResult", () => {
       formatImportResult({ imported: [], alreadyTracked: ["a"], failed: [], days: 7 }),
     ).toBe("imported 0 · 1 already tracked");
   });
+
+  it("counts PRs brought back from the archive apart from the already-tracked ones", () => {
+    expect(
+      formatImportResult({ imported: ["a"], alreadyTracked: ["b", "c"], unarchived: ["b"], failed: [], days: 7 }),
+    ).toBe("imported 1 · 1 back from the archive · 1 already tracked");
+  });
 });

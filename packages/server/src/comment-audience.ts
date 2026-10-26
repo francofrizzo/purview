@@ -1,4 +1,4 @@
-import { cachedViewerLogin, readMeta, stateRoot, writeMeta, type PrKey } from "@reviewer/core";
+import { cachedViewerLogin, readMeta, stateRoot, writeMeta, type PrKey, type Reviewer } from "@reviewer/core";
 import type { CommentAudience } from "./comments.js";
 import { readConfig } from "./config.js";
 
@@ -30,6 +30,21 @@ export const authoredByYou = (
   const a = norm(author);
   if (login && a === norm(login)) return true;
   return extraAuthors.some((x) => norm(x) === a);
+};
+
+/**
+ * Whether you left a review GitHub still shows on the PR (approved, changes
+ * requested or commented) and are not asked for another one: a re-requested
+ * reviewer is listed as "requested" again, whatever they said before.
+ */
+export const reviewedByYou = (
+  reviewers: readonly Pick<Reviewer, "login" | "state" | "kind">[] | undefined,
+  login: string | null | undefined,
+): boolean => {
+  if (!reviewers || !login) return false;
+  const me = login.toLowerCase();
+  const mine = reviewers.find((r) => r.kind === "user" && r.login.toLowerCase() === me);
+  return mine !== undefined && (mine.state === "approved" || mine.state === "changes_requested" || mine.state === "commented");
 };
 
 export function commentAudienceFor(key: PrKey, root = stateRoot()): CommentAudienceInfo {

@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { commentsPath, githubUserCachePath, keyToString, readMeta, setGhRunner, writeMeta } from "@reviewer/core";
 import { createApp } from "../src/app.js";
+import { reviewedByYou } from "../src/comment-audience.js";
 import {
   CommentNotDraftError,
   addComment,
@@ -243,5 +244,22 @@ describe("POST /api/prs/:key/comments/:id/publish", () => {
     const res = await publish(c.id);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe("reply_not_publishable");
+  });
+});
+
+describe("reviewedByYou", () => {
+  const r = (login: string, state: "requested" | "approved" | "changes_requested" | "commented" | "dismissed", kind: "user" | "team" = "user") =>
+    ({ login, state, kind });
+  it("is true for a review GitHub still shows from you, case-insensitively", () => {
+    expect(reviewedByYou([r("Dana", "approved"), r("Me", "commented")], "me")).toBe(true);
+    expect(reviewedByYou([r("me", "changes_requested")], "me")).toBe(true);
+  });
+  it("is false when you are asked again, were dismissed, never reviewed, or the login is unknown", () => {
+    expect(reviewedByYou([r("me", "requested")], "me")).toBe(false);
+    expect(reviewedByYou([r("me", "dismissed")], "me")).toBe(false);
+    expect(reviewedByYou([r("dana", "approved")], "me")).toBe(false);
+    expect(reviewedByYou([r("me", "approved", "team")], "me")).toBe(false);
+    expect(reviewedByYou(undefined, "me")).toBe(false);
+    expect(reviewedByYou([r("me", "approved")], null)).toBe(false);
   });
 });

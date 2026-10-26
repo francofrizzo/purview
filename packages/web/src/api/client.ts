@@ -33,7 +33,10 @@ import type {
   PublishCommentResult,
   FileRollup,
   ImportFromPrResult,
+  ImportCandidatesResult,
+  ImportReviewsRequest,
   ImportReviewsResult,
+  ImportSource,
   LanAccess,
   MigrationReport,
   MigrationReportItem,
@@ -613,10 +616,17 @@ export const api = {
     await del(`/repos/${encodeURIComponent(rkey)}`);
   },
 
-  /** Bulk-import review-requested PRs updated in the last `days` days. */
-  async importReviews(rkey: string, days: number): Promise<ImportReviewsResult> {
-    if (MOCK) return mockApi.importReviews(rkey, days);
-    return post<ImportReviewsResult>(`/repos/${encodeURIComponent(rkey)}/import-reviews`, { days });
+  /** What an import over the last `days` would find, nothing imported yet. */
+  async getImportCandidates(rkey: string, days: number, sources: ImportSource[]): Promise<ImportCandidatesResult> {
+    if (MOCK) return mockApi.getImportCandidates(rkey, days, sources);
+    const q = new URLSearchParams({ days: String(days), sources: sources.join(",") });
+    return request<ImportCandidatesResult>(`/repos/${encodeURIComponent(rkey)}/import-candidates?${q}`);
+  },
+
+  /** Bulk-import PRs: a search's worth (`days` + `sources`), or exactly `numbers`. */
+  async importReviews(rkey: string, body: ImportReviewsRequest): Promise<ImportReviewsResult> {
+    if (MOCK) return mockApi.importReviews(rkey, body);
+    return post<ImportReviewsResult>(`/repos/${encodeURIComponent(rkey)}/import-reviews`, body);
   },
 
   async getPr(key: string): Promise<PrDetail> {

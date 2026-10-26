@@ -566,6 +566,11 @@ export interface PrListEntry {
   reviewRequest?: ReviewRequest | null;
   /** You opened it (its author is the `gh` user). Absent from an older server. */
   authoredByYou?: boolean;
+  /**
+   * You left a review GitHub still shows (approved, changes requested or
+   * commented) and are not asked again. Absent from an older server.
+   */
+  reviewedByYou?: boolean;
   /** ISO timestamp of when this PR was added locally. */
   addedAt: string;
   /** Local-only: hides the PR behind the repo group's archived disclosure. */
@@ -1240,6 +1245,38 @@ export interface ImportReviewsResult {
    * older server (or a test fixture predating this) simply never populates it.
    */
   sharedImports?: { key: string; author?: string; postedAt: string }[];
+  /** Archived PRs the import brought back. Absent from an older server. */
+  unarchived?: string[];
+}
+
+/** Which search found an import candidate: your review requests, or PRs you opened. */
+export type ImportSource = "requests" | "own";
+
+/** One PR an import could bring in (GET /api/repos/:rkey/import-candidates). */
+export interface ImportCandidate {
+  number: number;
+  title: string;
+  updatedAt: string;
+  author?: string;
+  sources: ImportSource[];
+  /** already in Purview, archived or not */
+  tracked: boolean;
+  /** tracked and archived */
+  archived: boolean;
+}
+
+/** GET /api/repos/:rkey/import-candidates */
+export interface ImportCandidatesResult {
+  candidates: ImportCandidate[];
+  days: number;
+  sources: ImportSource[];
+}
+
+/** POST /api/repos/:rkey/import-reviews: a search to run, or the PRs picked from one. */
+export interface ImportReviewsRequest {
+  days: number;
+  sources?: ImportSource[];
+  numbers?: number[];
 }
 
 /* --------------------------------------------- PR-comment analysis sharing */
