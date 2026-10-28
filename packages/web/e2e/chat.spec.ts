@@ -117,3 +117,16 @@ test("a reply follows the bottom only while you are there: scrolling up a little
   await expect(page.getByTestId("chat-stop")).toHaveCount(0, { timeout: 20_000 });
   expect(await distance()).toBeLessThanOrEqual(4);
 });
+
+test("a diagram that does not parse shows its source in the reply and nothing outside it", async ({ page }) => {
+  await page.getByTestId("chat-input").fill("Draw me a broken diagram.");
+  await page.getByTestId("chat-send").click();
+  await expect(page.getByTestId("chat-stop")).toHaveCount(0, { timeout: 20_000 });
+  const transcript = page.getByTestId("chat-transcript");
+  await expect(transcript).toContainText("A[new order] -->> B{ledger row?");
+  await expect(transcript).toContainText("The rest of the reply stays in place.");
+  // Give mermaid's lazy chunk time to load and fail.
+  await page.waitForTimeout(1500);
+  await expect(page.locator('body > [id^="dmmd-"]')).toHaveCount(0);
+  await expect(page.getByText("Syntax error in text")).toHaveCount(0);
+});

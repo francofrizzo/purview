@@ -34,7 +34,7 @@ describe("renderMermaid", () => {
     expect(result.status).toBe("ok");
     expect(result).toMatchObject({ svg: expect.stringContaining("A --> B") });
     expect(initialize).toHaveBeenCalledWith(
-      expect.objectContaining({ securityLevel: "strict", theme: "dark" }),
+      expect.objectContaining({ securityLevel: "strict", suppressErrorRendering: true, theme: "dark" }),
     );
   });
 
@@ -50,6 +50,18 @@ describe("renderMermaid", () => {
     const { renderMermaid } = await import("./mermaid");
     const result = await renderMermaid("not a diagram", false, OPTS);
     expect(result).toEqual({ status: "error" });
+  });
+
+  it("removes the temporary element mermaid leaves on <body> when a render fails", async () => {
+    const leftover = { remove: vi.fn() };
+    const getElementById = vi.fn((id: string) => (id.startsWith("dmmd-") ? leftover : null));
+    vi.stubGlobal("document", { getElementById });
+    render.mockRejectedValueOnce(new Error("parse error"));
+    const { renderMermaid } = await import("./mermaid");
+    expect(await renderMermaid("graph TD\n  A -->> ", false, OPTS)).toEqual({ status: "error" });
+    expect(getElementById).toHaveBeenCalledWith(`d${render.mock.calls[0][0]}`);
+    expect(leftover.remove).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
   });
 
   it("does not cache a render failure: the next call renders again", async () => {

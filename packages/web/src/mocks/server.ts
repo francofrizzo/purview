@@ -709,6 +709,16 @@ than a *double* charge, which is the tradeoff you want on money paths. See the
 notes in [docs/billing.md](https://example.com/docs/billing) for the reconciliation
 job that would sweep reserved-but-unrecorded rows.`;
 
+/** Sent for a message that mentions a "broken diagram": a mermaid fence that does not parse. */
+const BROKEN_DIAGRAM_REPLY = `This one does not parse:
+
+\`\`\`mermaid
+flowchart LR
+  A[new order] -->> B{ledger row?
+\`\`\`
+
+The rest of the reply stays in place.`;
+
 const TOOL_CALLS: { name: string; detail: string; kind: string; at: number }[] = [
   { name: "Reading code", detail: "src/billing/charge.ts:120", kind: "read", at: 0 },
   { name: "Searching code", detail: "idempotencyKey, orderId · src/**/*.ts", kind: "search", at: 3 },
@@ -2107,7 +2117,9 @@ export const mockApi = {
    * The reply arrives as a real `text/event-stream` byte stream, so mock mode
    * exercises the same parser (lib/sse.ts) as the server does. Sending a
    * message containing "fail" streams an `error` event instead, which is how
-   * the composer's retry row is reachable without a broken backend.
+   * the composer's retry row is reachable without a broken backend. One
+   * containing "broken diagram" gets a reply with a mermaid fence that does
+   * not parse.
    */
   streamChat(
     key: string,
@@ -2123,7 +2135,7 @@ export const mockApi = {
     });
 
     const shouldFail = /\bfail\b/i.test(input.text);
-    const chunks = chunkReply(CANNED_REPLY);
+    const chunks = chunkReply(/\bbroken diagram\b/i.test(input.text) ? BROKEN_DIAGRAM_REPLY : CANNED_REPLY);
     let cancelled = false;
     let finish!: (message: ChatMessage | null) => void;
     const live = {
