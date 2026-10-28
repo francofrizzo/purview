@@ -332,23 +332,85 @@ export function ChatPanel({
 
   /* ---------------------------------------------------------- scrolling */
 
-  const atBottom = () => {
-    const el = scrollRef.current;
-    return !el || el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-  };
+  // Following new text is only right while the reader sits at the very
+  // bottom. The ref is the truth the layout effect reads: state lags a
+  // render behind, and deltas arrive many times a second.
+  const pinnedRef = useRef(true);
+  /** scrollHeight after the last update, to measure where the reader was before this one */
+  const lastHeight = useRef(0);
+  const pin = useCallback((on: boolean) => {
+    pinnedRef.current = on;
+    setPinned(on);
+  }, []);
+
+  // "jump to latest" scrolls smoothly; the frames on the way down are not
+  // the reader scrolling up.
+  const jumping = useRef(false);
+
+  /** Within a few pixels of the bottom: subpixel rounding, not a reader's scroll. */
+  const PIN_SLACK = 4;
+  const distanceFromBottom = (el: HTMLElement, height = el.scrollHeight) => height - el.scrollTop - el.clientHeight;
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior });
   }, []);
 
-  // Deltas arrive many times a second; following them is only right while the
-  // reader has not scrolled up to re-read something.
   useLayoutEffect(() => {
-    if (pinned) scrollToBottom();
-  }, [chat.messages, chat.streaming, pinned, scrollToBottom]);
+    const el = scrollRef.current;
+    if (!el) return;
+    if (pinnedRef.current) {
+      // Measured against the height before this update: scrollTop is already
+      // wherever the reader moved it, even when their scroll event has not
+      // fired yet, so a delta can never yank them back down mid-scroll.
+      const before = lastHeight.current || el.scrollHeight;
+      if (jumping.current || distanceFromBottom(el, before) <= PIN_SLACK) el.scrollTop = el.scrollHeight;
+      else pin(false);
+    }
+    lastHeight.current = el.scrollHeight;
+  }, [chat.messages, chat.streaming, pinned, pin]);
 
-  const onScroll = () => setPinned(atBottom());
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    lastHeight.current = el.scrollHeight;
+    const atBottom = distanceFromBottom(el) <= PIN_SLACK;
+    if (jumping.current) {
+      if (atBottom) jumping.current = false;
+      return;
+    }
+    pin(atBottom);
+  };
+
+  // The pane shrinks when the composer grows or the window resizes; that
+  // hides the last lines without the reader moving, so stay at the bottom.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (!pinnedRef.current) return;
+      el.scrollTop = el.scrollHeight;
+      lastHeight.current = el.scrollHeight;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Scrolling up is intent enough: let go at once, before the scroll lands.
+  const scrollable = () => {
+    const el = scrollRef.current;
+    return !!el && el.scrollHeight > el.clientHeight;
+  };
+  const letGo = () => {
+    jumping.current = false;
+    pin(false);
+  };
+  const onWheel = (e: { deltaY: number }) => {
+    if (e.deltaY < 0 && scrollable()) letGo();
+  };
+  const onTranscriptKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    if ((e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home") && scrollable()) letGo();
+  };
 
   /* ---------------------------------------------------------- composing */
 
@@ -388,7 +450,7 @@ export function ChatPanel({
     }
     setDraft("");
     setPreEditDraft(null);
-    setPinned(true);
+    pin(true);
     requestAnimationFrame(() => scrollToBottom());
   };
 
@@ -443,6 +505,8 @@ export function ChatPanel({
       <div
         ref={scrollRef}
         onScroll={onScroll}
+        onWheel={onWheel}
+        onKeyDown={onTranscriptKey}
         className="min-h-0 flex-1 overflow-y-auto"
         data-testid="chat-transcript"
       >
@@ -556,7 +620,8 @@ export function ChatPanel({
         <button
           type="button"
           onClick={() => {
-            setPinned(true);
+            jumping.current = true;
+            pin(true);
             scrollToBottom("smooth");
           }}
           className="absolute bottom-24 left-1/2 z-20 inline-flex -translate-x-1/2 items-center gap-1 rounded-full px-2 py-1 text-2xs elev-2"

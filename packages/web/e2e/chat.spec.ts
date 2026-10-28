@@ -47,3 +47,38 @@ test("a clear or rewind that fails says so and leaves the transcript alone", asy
   await expect(error).toContainText("The conversation was not cleared");
   await expect(page.getByTestId("chat-panel")).toContainText("keep this one");
 });
+
+test("a reply follows the bottom only while you are there: scrolling up a little stays put", async ({ page }) => {
+  const transcript = page.getByTestId("chat-transcript");
+  const send = async (text: string) => {
+    await page.getByTestId("chat-input").fill(text);
+    await page.getByTestId("chat-send").click();
+  };
+  const distance = () =>
+    transcript.evaluate((el) => el.scrollHeight - el.scrollTop - el.clientHeight);
+  // Enough history to scroll.
+  for (const q of ["What is the riskiest change?", "And the second riskiest?"]) {
+    await send(q);
+    await expect(page.getByTestId("chat-stop")).toHaveCount(0, { timeout: 20_000 });
+  }
+  expect(await transcript.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  // Pinned: a reply keeps the bottom in view as it streams.
+  expect(await distance()).toBeLessThanOrEqual(4);
+
+  await send("Walk me through the retry wrapper.");
+  await expect(page.getByTestId("chat-stop")).toBeVisible();
+  await transcript.hover();
+  await page.mouse.wheel(0, -30);
+  await page.waitForTimeout(150);
+  const top = await transcript.evaluate((el) => el.scrollTop);
+  await page.waitForTimeout(800);
+  // Deltas keep arriving, the view does not move.
+  expect(await transcript.evaluate((el) => el.scrollTop)).toBe(top);
+  await expect(page.getByRole("button", { name: "jump to latest" })).toBeVisible();
+
+  // Back to the bottom, it follows again.
+  await page.getByRole("button", { name: "jump to latest" }).click();
+  await expect(page.getByRole("button", { name: "jump to latest" })).toHaveCount(0);
+  await expect(page.getByTestId("chat-stop")).toHaveCount(0, { timeout: 20_000 });
+  expect(await distance()).toBeLessThanOrEqual(4);
+});

@@ -12,6 +12,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **Archived PRs return on a new request.** With "watch for review requests" on, a PR you archived comes back when your review is asked for again.
 - **Moved-code rows.** A moved block shows in a faded red or green, the side it left or arrived on, with a → or ← in place of +/- on each line. Violet now means only an agent note.
 - **Draft comments from Claude Code.** With the purview skill, Claude Code can leave drafts on a PR for you to send from Purview. It can edit or delete only the drafts it wrote.
+- **Fix:** the chat no longer jumps back to the bottom while you read a little higher up during a reply.
 - **Fix:** an expanded moved block no longer looks like an ordinary change; its lines keep the band's coloured edge and the arrow markers.
 - **Fix:** a moved line no longer shows a word-level highlight against an unrelated line next to it.
 
