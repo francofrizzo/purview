@@ -84,7 +84,9 @@ first three as "carried".
      **now** (the "now holds" lines in `changes`, or `reviewer-state units <key> <id>`). A
      unit that lost hunks is titled and summarized by what remains, not by what left; the
      history goes in the changelog only;
-   - re-check `kind` / `attention` and hunk `risks` (unit `riskFlags` is computed; incoming values are ignored) (a correction needs a `note`);
+   - re-check `kind` / `attention` and hunk `signals` (unit `riskFlags` is computed from risk-category signals; incoming values are ignored) (a correction needs a `note`);
+     reworked hunks lose smell signals and risk line ranges; reassess them from the new
+     body, and recheck intent or convention signals if their supporting context changed;
    - re-check each hunk entry's `label`, `skip` and `heart`: a hunk that left the unit
      took its entry with it; a reworked hunk's `skip`, `label` and heart `lines` are
      already gone (each was a claim about the old body), so a reworked hunk counts again

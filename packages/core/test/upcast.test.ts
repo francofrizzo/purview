@@ -228,6 +228,47 @@ describe("upcastUnitPatch with the existing unit", () => {
   });
 });
 
+describe("step 4: hunk risks (state shape 8)", () => {
+  const era = {
+    ts: "2026-10-27T10:00:00.000Z",
+    type: "analysis-set",
+    revision: 1,
+    summary: "s",
+    units: [{ ...base, riskFlags: ["money"], hunks: [{ id: "h1", risks: [{ flag: "money", why: "A retry can charge twice.", lines: [3, 9] }] }] }],
+    unassigned: [],
+  };
+  const currentHunks = [{ id: "h1", signals: [{ flag: "money", why: "A retry can charge twice.", lines: [3, 9] }] }];
+
+  it("replays a literal legacy event without losing its marks or rewriting the input", () => {
+    const before = structuredClone(era);
+    const up = upcastEvent(era);
+    expect(up).toEqual({ ...era, units: [{ ...base, riskFlags: ["money"], hunks: currentHunks }] });
+    expect(EventSchema.parse(up).type).toBe("analysis-set");
+    expect(fold([era as unknown as ReviewerEvent]).units[0].hunks).toEqual(currentHunks);
+    expect(upcastEvent(up)).toBe(up);
+    expect(era).toEqual(before);
+  });
+
+  it("upcasts incoming analyses, full unit patches and addHunks", () => {
+    expect(upcastAnalysisPayload({ units: era.units })).toEqual({ units: [{ ...base, riskFlags: ["money"], hunks: currentHunks }] });
+    const legacyHunks = era.units[0].hunks;
+    expect(upcastUnitPatch({ ...base, hunks: legacyHunks })).toEqual({ ...base, hunks: currentHunks });
+    const event = { ts, type: "unit-updated", unitId: "rounding", patch: { addHunks: legacyHunks } };
+    expect(upcastEvent(event)).toEqual({ ...event, patch: { addHunks: currentHunks } });
+    expect(upcastUnitPatch({ hunks: legacyHunks })).toEqual({ hunks: currentHunks });
+  });
+
+  it("keeps current signals on collisions and removes risks", () => {
+    const signals = [{ flag: "test-gap", why: "Retries have no coverage." }];
+    const both = { ...era.units[0].hunks[0], signals };
+    expect(upcastUnitPatch({ hunks: [both], addHunks: [both] })).toEqual({
+      hunks: [{ id: "h1", signals }], addHunks: [{ id: "h1", signals }],
+    });
+    const current = { hunks: [{ id: "h1", signals }] };
+    expect(upcastUnitPatch(current)).toBe(current);
+  });
+});
+
 describe("idempotence", () => {
   const current = [
     {

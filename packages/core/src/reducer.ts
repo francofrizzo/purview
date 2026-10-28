@@ -1,4 +1,4 @@
-import { CHANGELOG_TEXT_MAX, STATE_SHAPE_VERSION, isRemovedUnit } from "./schemas.js";
+import { CHANGELOG_TEXT_MAX, STATE_SHAPE_VERSION, RiskFlagSchema, isRemovedUnit } from "./schemas.js";
 import { GENERATED_UNIT_ID, buildGeneratedUnit, isGeneratedUnit } from "./generated.js";
 import { hunkIdsOf, normalizeHunks, skipOf, toHunkEntry, upsertHunks } from "./units.js";
 import { upcastEvent } from "./upcast.js";
@@ -380,7 +380,13 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
               // carrying the first why.
               entry.heart = [{ why: e.heart[0].why }];
             }
-            if (e.risks) entry.risks = identical ? e.risks : e.risks.map(({ flag, why }) => ({ flag, why }));
+            if (e.signals) {
+              // Risk context survives a rework, but smells judge the old body.
+              const signals = identical ? e.signals : e.signals
+                .filter(({ flag }) => RiskFlagSchema.safeParse(flag).success)
+                .map(({ flag, why }) => ({ flag, why }));
+              if (signals.length) entry.signals = signals;
+            }
             return entry;
           });
         };

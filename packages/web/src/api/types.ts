@@ -27,6 +27,14 @@ export type RiskFlag =
   | "external-call"
   | "security";
 
+export type SignalFlag = RiskFlag
+  | "abstraction"
+  | "duplication"
+  | "defensive-code"
+  | "convention-drift"
+  | "intent-drift"
+  | "test-gap";
+
 export const KINDS: Kind[] = [
   "core-logic",
   "connective-tissue",
@@ -133,8 +141,8 @@ export interface HeartSegment {
  * the one to three segments the unit's logic lives in. A hunk is never both
  * skip and heart.
  */
-export interface RiskMark extends HeartSegment {
-  flag: RiskFlag;
+export interface SignalMark extends HeartSegment {
+  flag: SignalFlag;
 }
 
 export interface HunkEntry {
@@ -143,7 +151,7 @@ export interface HunkEntry {
   label?: string;
   skip?: true;
   heart?: HeartSegment[];
-  risks?: RiskMark[];
+  signals?: SignalMark[];
 }
 
 export interface ReviewUnit {

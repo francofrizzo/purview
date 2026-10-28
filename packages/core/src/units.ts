@@ -1,4 +1,4 @@
-import type { HeartSegment, HunkEntry, HunkLines, ReviewUnit } from "./schemas.js";
+import { RiskFlagSchema, type RiskFlag, type HeartSegment, type HunkEntry, type HunkLines, type ReviewUnit } from "./schemas.js";
 
 /**
  * Reading a unit's `hunks` list (see HunkEntrySchema): membership, labels,
@@ -75,6 +75,7 @@ export function normalizeHunks<T extends WithHunks>(unit: T): T {
 
 /** Legacy units keep their flags until an analysis supplies marks. */
 export function derivedRiskFlags(unit: Pick<ReviewUnit, "hunks" | "riskFlags">): ReviewUnit["riskFlags"] {
-  const marks = unit.hunks.flatMap((h) => h.risks ?? []);
-  return marks.length ? [...new Set(marks.map((m) => m.flag))] : unit.riskFlags;
+  const marks = unit.hunks.flatMap((h) => h.signals ?? []);
+  const flags = marks.map((m) => m.flag).filter((flag): flag is RiskFlag => RiskFlagSchema.safeParse(flag).success);
+  return marks.length ? [...new Set(flags)] : unit.riskFlags;
 }

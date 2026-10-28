@@ -73,6 +73,8 @@ export default defineConfig({
   ],
   server: {
     port: 5179,
+    // A supervised orb preview exposes this exact host; local development is unchanged.
+    allowedHosts: process.env.PUBLIC_URL ? [new URL(process.env.PUBLIC_URL).hostname] : undefined,
     proxy: {
       "/api": {
         // PURVIEW_PORT points the dev server at another backend (e.g. a scratch one).

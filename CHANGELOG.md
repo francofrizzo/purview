@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Inline review signals.** You can inspect code-smell questions beside the relevant lines in the diff. Re-analyze to get them.
 - **Fix:** a Mermaid diagram that fails to render no longer shows an error outside the page layout; its source shows as a code block instead.
 
 ## 2026.10.28.1

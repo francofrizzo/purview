@@ -275,10 +275,34 @@ const roleStep: Step = {
   patch: (raw) => mapEntries(mapEntries(raw, "hunks"), "addHunks"),
 };
 
+/* ------------------------------------------------------------- step 4 */
+
+/** Current signals win a collision; legacy risks are always removed. */
+function risksToSignals(raw: Raw, field: string): Raw {
+  const list = raw[field];
+  if (!Array.isArray(list)) return raw;
+  let changed = false;
+  const next = list.map((entry) => {
+    if (!isObject(entry) || !("risks" in entry)) return entry;
+    changed = true;
+    const out = { ...entry };
+    if (out.signals === undefined) out.signals = out.risks;
+    delete out.risks;
+    return out;
+  });
+  return changed ? { ...raw, [field]: next } : raw;
+}
+
+const signalsStep: Step = {
+  bridges: "hunk risks -> signals (state shape 8)",
+  unit: (raw) => risksToSignals(raw, "hunks"),
+  patch: (raw) => risksToSignals(risksToSignals(raw, "hunks"), "addHunks"),
+};
+
 /* ------------------------------------------------------------- the order */
 
 /** Every step, oldest shape first. Append; never reorder or edit a shipped one. */
-const STEPS: readonly Step[] = [foldStep, hunkEntriesStep, roleStep];
+const STEPS: readonly Step[] = [foldStep, hunkEntriesStep, roleStep, signalsStep];
 
 function upcastUnit(raw: unknown): unknown {
   if (!isObject(raw)) return raw;

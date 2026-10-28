@@ -27,6 +27,12 @@ export const RiskFlagSchema = z.enum([
 ]);
 export type RiskFlag = z.infer<typeof RiskFlagSchema>;
 
+export const SignalFlagSchema = z.union([
+  RiskFlagSchema,
+  z.enum(["abstraction", "duplication", "defensive-code", "convention-drift", "intent-drift", "test-gap"]),
+]);
+export type SignalFlag = z.infer<typeof SignalFlagSchema>;
+
 /* ------------------------------------------------------------------- hunks */
 
 /**
@@ -200,12 +206,12 @@ export const HeartSegmentSchema = z.object({
   why: z.string().min(1).max(HEART_WHY_MAX),
   lines: HunkLinesSchema.optional(),
 });
-export const RiskMarkSchema = z.object({
-  flag: RiskFlagSchema.describe("The closed risk category at this place."),
-  why: z.string().min(1).max(HEART_WHY_MAX).describe("One sentence saying what is at stake at these lines."),
+export const SignalMarkSchema = z.object({
+  flag: SignalFlagSchema.describe("The closed risk or code-smell category at this place."),
+  why: z.string().min(1).max(HEART_WHY_MAX).describe("One sentence: what is at stake for a risk, or a concrete evidence-grounded question for a smell."),
   lines: HunkLinesSchema.optional().describe("Inclusive new-side lines inside the hunk; omit for a mark on the whole hunk."),
 });
-export type RiskMark = z.infer<typeof RiskMarkSchema>;
+export type SignalMark = z.infer<typeof SignalMarkSchema>;
 
 export type HeartSegment = z.infer<typeof HeartSegmentSchema>;
 
@@ -235,8 +241,8 @@ export const HunkEntrySchema = z.object({
     .literal(true)
     .optional()
     .describe("The reader need not read this hunk (an import change, a re-export, a renamed call site, moved boilerplate) inside a unit that otherwise matters. Needs a label; never on a heart; only after reading the body."),
-  risks: z.array(RiskMarkSchema).min(1).max(4).optional()
-    .describe("Up to four risk marks at the lines concerned, ranges not overlapping; never on a skip. Marks without lines cover the whole hunk and do not mix with ranged ones."),
+  signals: z.array(SignalMarkSchema).min(1).max(4).optional()
+    .describe("Up to four signals at the lines concerned; never on a skip. Independent lenses may overlap or mix whole-hunk and ranged marks."),
   heart: z
     .array(HeartSegmentSchema)
     .min(1)
@@ -274,21 +280,12 @@ export function hunkListIssues(hunks: readonly HunkEntry[], opts: { partial?: bo
     seen.add(h.id);
     if (h.skip && !h.label) out.push(`hunk ${h.id}: a skip needs a label saying why`);
     if (h.skip && h.heart) out.push(`hunk ${h.id}: a hunk is not both skip and heart`);
-    if (h.skip && h.risks?.length) out.push(`hunk ${h.id}: a skip never carries a risk`);
-    if (h.risks) {
-      if (h.risks.length > 4) out.push(`hunk ${h.id}: at most four risk marks`);
-      // Whole-hunk marks may stack (two flags on one hunk, or ranges lost to a
-      // rework); a ranged mark beside one would be covered twice.
-      const whole = h.risks.filter((m) => !m.lines).length;
-      if (whole > 0 && whole < h.risks.length) out.push(`hunk ${h.id}: whole-hunk risk marks do not mix with ranged ones`);
-      const ranges = h.risks.flatMap((m) => m.lines ? [m.lines] : []);
+    if (h.skip && h.signals?.length) out.push(`hunk ${h.id}: a skip never carries a signal`);
+    if (h.signals) {
+      if (h.signals.length > 4) out.push(`hunk ${h.id}: at most four signal marks`);
+      const ranges = h.signals.flatMap((m) => m.lines ? [m.lines] : []);
       const bounds = opts.bounds?.get(h.id);
-      if (bounds && ranges.some(([from, to]) => from < bounds.newStart || to >= bounds.newStart + bounds.newLines)) out.push(`hunk ${h.id}: risk lines must be inside the hunk's new-side bounds`);
-      for (let i = 0; i < ranges.length; i++) {
-        for (let j = i + 1; j < ranges.length; j++) {
-          if (ranges[i][0] <= ranges[j][1] && ranges[j][0] <= ranges[i][1]) out.push(`hunk ${h.id}: risk ranges overlap`);
-        }
-      }
+      if (bounds && ranges.some(([from, to]) => from < bounds.newStart || to >= bounds.newStart + bounds.newLines)) out.push(`hunk ${h.id}: signal lines must be inside the hunk's new-side bounds`);
     }
     if (!h.heart) continue;
     hearts++;
@@ -329,7 +326,7 @@ export const ReviewUnitBaseSchema = z.object({
   kind: KindSchema,
   attention: AttentionSchema,
   attentionWhy: z.string(),
-  riskFlags: z.array(RiskFlagSchema).default([]).describe("Computed from hunk risks; do not set. Incoming analysis and patch values are ignored; legacy units retain their flags."),
+  riskFlags: z.array(RiskFlagSchema).default([]).describe("Computed from risk-category hunk signals; do not set. Incoming analysis and patch values are ignored; legacy units retain their flags."),
   /**
    * The unit's hunks, in reading order, each saying what it is to the unit
    * (see HunkEntrySchema): ids or entries on input, always entries in state.
@@ -1367,7 +1364,7 @@ export type ArchivedHunk = z.infer<typeof ArchivedHunkSchema>;
  * written under an older version, so stored PRs pick the change up on their
  * next read instead of only on their next appended event.
  */
-export const STATE_SHAPE_VERSION = 8;
+export const STATE_SHAPE_VERSION = 9;
 
 export const StateSchema = z.object({
   /** see STATE_SHAPE_VERSION; absent on every state.json written before it existed */

@@ -160,9 +160,26 @@ first "yes":
 `must-read` unless you have a specific reason it's merely `skim` (rare — document the
 reason in `attentionWhy` if you downgrade a risk-flagged unit to skim).
 
-## Risk-flag triggers
+## Inline review signals
 
-**`risks`** — place one to four marks `{ "flag": "money", "why": "A retry can charge the customer twice.", "lines": [21, 23] }` on the hunk and new-side inclusive lines concerned. Use only `auth`, `migration`, `concurrency`, `money`, `external-call`, or `security`. Each `why` is one sentence (the same length limit as heart why) saying what is at stake there. Ranges must stay inside the hunk and must not overlap other risk ranges; they may overlap hearts. Omit `lines` for a mark on the whole hunk; whole-hunk marks do not mix with ranged ones on the same hunk. Never mark a skip hunk. Unit `riskFlags` is computed from these marks: do not set it; incoming values are ignored. Legacy units without marks retain their existing flags.
+`signals` generalizes the risk marks into two independent lenses: **risk surfaces**
+(what is at stake) and **code smells** (a concrete question worth inspecting). These
+are local reading cues, not grades, verified findings, or review comments. Never
+estimate AI authorship or emit a generic "slop" label.
+
+Place up to four marks `{ "flag": "money", "why": "A retry can charge the customer twice.", "lines": [21, 23] }`
+on each hunk. `why` is one short, self-contained sentence; `lines` is the smallest
+meaningful inclusive new-side range inside that hunk. Omit `lines` only when the
+whole hunk is concerned (including deleted-only hunks). Independent signals may
+overlap each other or hearts, and whole-hunk marks may coexist with ranged ones.
+Never mark a skip hunk. No quota: most code deserves no smell mark.
+
+### Risk-flag triggers
+
+Use `auth`, `migration`, `concurrency`, `money`, `external-call`, or `security` for
+risk surfaces. Unit `riskFlags` is computed from these six categories only: do not
+send it. Smells never become risk flags or automatically raise attention to
+must-read; the attention ladder still decides what needs reading.
 
 Attach a risk mark at the hunk lines that touch:
 
@@ -183,10 +200,51 @@ A unit can carry multiple risk flags, computed from its hunk marks. Risk flags a
 about whether the diff looks scary — a one-line change to a token expiry constant is
 `auth` and `must-read` even though it "looks trivial."
 
+### Code-smell lenses
+
+Read the logical change broadly, annotate narrowly. Before adding a smell, check
+its apparent justification in the surrounding code and the base version. Mark only
+what the PR introduces or worsens, not existing debt it merely touches. A small
+wrapper, repeated lines, or an unfamiliar idiom alone is not evidence.
+
+| Flag | When it earns a mark | What does not |
+| --- | --- | --- |
+| `abstraction` | An added layer adds no policy, translation, boundary, or demonstrated reuse; name what it needlessly wraps. | A useful ownership boundary, framework adapter, or deliberate test seam. |
+| `duplication` | A new copy of an existing decision must stay in sync; name the counterpart and the rule repeated. | Similar syntax, generated code, independent test examples, or coincidental repetition. |
+| `defensive-code` | A fallback or guard handles a state the checked contract excludes, or silently substitutes success-shaped data; name that contract. | Validation at an untrusted boundary, documented compatibility, or a reachable recovery path. |
+| `convention-drift` | The change departs from an explicit repo rule or established comparable implementations; name the rule or example. | Personal style preferences, a single inconsistent neighbor, or an intentional migration. |
+| `intent-drift` | A behavior change appears unrelated to the stated PR goal and is not a necessary supporting change; name both. | Intent inferred from the diff alone, missing requirements, or necessary refactoring. |
+| `test-gap` | A changed decision has an important alternative or boundary absent from the tests you read; name the scenario and tests inspected. | "Needs tests", a coverage percentage, missing tests you did not search for, or one mark per uncovered line. |
+
+Phrase smells as specific questions, not accusations. Examples:
+
+- `abstraction`: "What does `PaymentFacade` add beyond forwarding to `PaymentClient`, which already owns retries?"
+- `duplication`: "Should this currency rounding rule share `billing/amount.ts:roundCents` rather than maintain a second copy?"
+- `defensive-code`: "Why default a missing account to success here when `loadAccount` promises an account or throws?"
+- `convention-drift`: "Why bypass the shared `parseRequest` used by the other routes when the repo rubric requires it?"
+- `intent-drift`: "How does changing refund retention relate to the stated goal of adding charge retries?"
+- `test-gap`: "Does `charge.test.ts` cover a timeout after capture, rather than only failures before capture?"
+
+No checkout, no context-dependent smells: omit abstraction, duplication,
+defensive-code, convention-drift and test-gap unless you read their supporting
+contracts, counterparts, rules or tests in the checkout. Intent drift may be
+judged from a supplied PR description or requirements plus the diff; without a
+stated goal, omit it. Missing evidence is not evidence of a smell.
+
+Do not invent a worry merely by wording it as a question. If investigation proves
+a material defect, record a sourced finding instead of duplicating it as a smell.
+Risk-surface marks may remain: they identify stakes, not the defect. Signals never
+approve, block, post to GitHub, or substitute for the verification pass.
+
+On refresh, identical hunks retain their signals. Reworked hunks lose smells and
+risk line ranges; reassess them against the new body. Recheck convention and intent
+signals when their supporting rules or the stated goal change, even if the marked
+code did not. Signals are hypotheses about this revision, not permanent labels.
+
 ## Findings discipline
 
-Findings come out of the verification pass (SKILL.md step 5) and are the one place this
-skill says something about the *code* rather than about how to read it. That is exactly
+Findings come out of the verification pass (SKILL.md step 5) and are the place this
+skill states a verified conclusion about the *code*, rather than an inline review question. That is exactly
 why they are the easiest thing here to get wrong: the pull toward "while I'm in here, let
 me also mention…" is strong, and every sentence spent that way costs the reviewer trust in
 all the others. These are hard rules, not preferences.

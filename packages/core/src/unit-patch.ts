@@ -159,9 +159,9 @@ export function planUnitPatches(state: State, requests: UnitPatchRequest[]): Pla
         const entries = resolveList(add, "addHunks entry", revisionIds);
         for (const e of entries) {
           const had = next.find((h) => h.id === e.id);
-          const bare = !e.label && !e.skip && !e.heart && !e.risks;
-          if (had && bare && (had.label || had.skip || had.heart || had.risks)) {
-            warnings.push(`warning: unit ${unitId} already held ${e.id}; its label, skip, heart and risks were cleared`);
+          const bare = !e.label && !e.skip && !e.heart && !e.signals;
+          if (had && bare && (had.label || had.skip || had.heart || had.signals)) {
+            warnings.push(`warning: unit ${unitId} already held ${e.id}; its label, skip, heart and signals were cleared`);
           } else if (had && bare) warnings.push(`warning: unit ${unitId} already holds ${e.id}`);
         }
         next = upsertHunks(next, entries);

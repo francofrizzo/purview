@@ -164,6 +164,16 @@ citation-shaped hole in it. Findings are local annotations: they never block, ne
 and are never posted to GitHub. A refresh drops them from any unit whose hunks changed, so
 a stale claim can't outlive the code it was checked against.
 
+**Inline review signals.** Risk surfaces and code smells share line-anchored marks
+in the diff. Risks stay red; amber smell questions call out unnecessary abstraction,
+duplicated decisions, speculative fallbacks, convention drift, intent drift and test
+gaps. Each names the concrete concern beside the affected code.
+Re-analyze an existing PR to get smells. They use the same analysis agent, not an
+additional service or account. Context-dependent smells require a configured local
+checkout; intent drift requires a stated PR goal. These are review cues, not defect
+probabilities, AI-authorship judgments, grades or automatic review comments. Existing
+risk marks migrate automatically; smells on reworked hunks are dropped for reassessment.
+
 The CLI (`reviewer-state`, shipped by `packages/core`) is also usable directly:
 `init`, `refresh`, `set-analysis`, `set-unit`, `set-units` (an all-or-nothing batch of
 unit patches), `units` (compact unit listing), `view`, `report`, `list`, `sync`, and

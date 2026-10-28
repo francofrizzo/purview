@@ -866,3 +866,15 @@ html[data-mode="light"] .logo-for-light {
   background: var(--risk);
   pointer-events: none;
 }
+
+/* Independent lenses can overlap without hiding the risk or heart bars. */
+[data-smell="true"] > .smell-bar {
+  position: absolute;
+  z-index: 1;
+  left: 9px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--warn);
+  pointer-events: none;
+}

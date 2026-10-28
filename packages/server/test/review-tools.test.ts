@@ -58,8 +58,18 @@ it("uses task-scoped authority, real persisted analysis and fresh revision bindi
   const ops = createReviewOperations(request("analysis"), "test");
   await expect(ops.execute("create_draft", {})).rejects.toMatchObject({ code: "operation_not_granted" });
   await expect(ops.execute("patch_units", {})).rejects.toMatchObject({ code: "operation_not_granted" });
-  await ops.execute("set_analysis", analysis());
+  const input = analysis();
+  const signals = [
+    { flag: "auth", why: "This guard decides which account can read the value." },
+    { flag: "defensive-code", why: "Why default this value when the loader contract requires it?" },
+  ];
+  await ops.execute("set_analysis", { ...input, units: [{ ...input.units[0], hunks: hunkIds.map((id) => ({ id, signals })) }] });
   expect(loadState(key, root).summary).toBe("Change foo");
+  expect(loadState(key, root).units[0]).toMatchObject({ riskFlags: ["auth"], hunks: hunkIds.map((id) => ({ id, signals })) });
+  const app = createApp({ stateDir: root, webDist: path.join(root, "__no-web-dist__") });
+  const response = await app.request(`/api/prs/${encodeURIComponent(keyToString(key))}`);
+  expect(response.status).toBe(200);
+  expect((await response.json()).state.units[0].hunks).toEqual(hunkIds.map((id) => ({ id, signals })));
   nextRevision();
   await expect(ops.execute("set_analysis", analysis())).rejects.toMatchObject({ code: "stale_revision" });
   const fresh = createReviewOperations({ ...request("analysis"), review: { ...request("analysis").review!, revision: 2, analysisMode: "incremental" } }, "test");

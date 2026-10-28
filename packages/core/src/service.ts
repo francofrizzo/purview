@@ -673,7 +673,7 @@ export function setAnalysis(
     if (opts.origin !== "import") unit.riskFlags = state.units.find((u) => u.id === unit.id)?.riskFlags ?? [];
     unit.riskFlags = derivedRiskFlags(unit);
   }
-  validateRiskBounds(analysis.units, readFilesJson(key, state.currentRevision, root).files);
+  validateSignalBounds(analysis.units, readFilesJson(key, state.currentRevision, root).files);
   const coverage = analysisCoverage(state, analysis);
   if (coverage.missing.length > 0) {
     throw new Error(
@@ -760,7 +760,7 @@ export function setUnits(
 ): { state: State; warnings: string[]; unitIds: string[] } {
   const state = loadState(key, root);
   const planned = planUnitPatches(state, requests);
-  validateRiskBounds(planned.events.flatMap((e) => e.type === "unit-updated" && e.patch.hunks ? [{ hunks: e.patch.hunks }] : []), readFilesJson(key, state.currentRevision, root).files);
+  validateSignalBounds(planned.events.flatMap((e) => e.type === "unit-updated" && e.patch.hunks ? [{ hunks: e.patch.hunks }] : []), readFilesJson(key, state.currentRevision, root).files);
   const next = appendEvents(key, planned.events, root);
   return { state: next, warnings: planned.warnings, unitIds: planned.unitIds };
 }
@@ -938,7 +938,7 @@ export function syncPr(key: PrKey, root = stateRoot()): SyncResult {
   return { pushed, drift, state: next };
 }
 
-function validateRiskBounds(units: { hunks: HunkEntry[] }[], files: import("./schemas.js").FileDiff[]): void {
+function validateSignalBounds(units: { hunks: HunkEntry[] }[], files: import("./schemas.js").FileDiff[]): void {
   const bounds = new Map(files.flatMap((f) => f.hunks.map((h) => [h.id, h] as const)));
   const issues = units.flatMap((u) => hunkListIssues(u.hunks, { bounds }));
   if (issues.length) throw new Error(issues.join("\n"));

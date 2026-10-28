@@ -1,8 +1,9 @@
 import { defaultRangeExtractor, useVirtualizer, type Range } from "@tanstack/react-virtual";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Attention, ChatRef, DraftComment, FileEntry, Hunk, PrDetail } from "../api/types";
+import type { Attention, ChatRef, DraftComment, FileEntry, Hunk, PrDetail, SignalFlag } from "../api/types";
 import { baseName, lineRangeRef } from "../lib/chatRefs";
 import { hunkHint } from "../lib/hunkHints";
+import { REVIEW_SIGNALS } from "../lib/reviewSignals";
 import { InlineMarkdown } from "./Markdown";
 import { isRangeInDiff, lineAnchor } from "../lib/comments";
 import { buildThreadGroups, itemCount, threadRange, type DisplayThread, type ThreadGroups } from "../lib/threads";
@@ -116,7 +117,7 @@ type FlatRow =
   /** `seam`: not its file's first hunk here, so it draws the divider above it */
   | { type: "hunk"; key: string; hunkId: string; entry: HunkEntry; seam: boolean }
   /** the analysis's why, under a heart hunk's header (shown folded too) */
-  | { type: "risk"; key: string; hunkId: string; flag: string; why: string }
+  | { type: "signal"; key: string; hunkId: string; flag: SignalFlag; why: string }
   | { type: "heart"; key: string; hunkId: string; seg: number; why: string }
   | { type: "dod"; key: string; hunkId: string }
   | { type: "line"; key: string; hunkId: string; entry: HunkEntry; lineIdx: number }
@@ -883,8 +884,8 @@ export function DiffPane({
     }
     return { heartRows, heartCaptions, heartEnds };
   }, [heart, entries, detail.diff]);
-  const riskMarks = useMemo(() => {
-    const byId = new Map(detail.state.units.flatMap((u) => u.hunks.map((h) => [h.id, h.risks] as const)));
+  const signalMarks = useMemo(() => {
+    const byId = new Map(detail.state.units.flatMap((u) => u.hunks.map((h) => [h.id, h.signals] as const)));
     return new Map(entries.map((e) => {
       const rows = buildRows(e.hunk, detail.diff);
       return [e.hunk.id, (byId.get(e.hunk.id) ?? []).map((mark, index) => {
@@ -893,10 +894,10 @@ export function DiffPane({
       })];
     }));
   }, [detail.state.units, entries, detail.diff]);
-  const riskMarksRow = (row: FlatRow): boolean => {
+  const signalMarksRow = (row: FlatRow, kind: "risk" | "smell"): boolean => {
     if (!("hunkId" in row)) return false;
-    if (row.type === "risk") return true;
-    const marks = riskMarks.get(row.hunkId) ?? [];
+    if (row.type === "signal") return REVIEW_SIGNALS[row.flag].kind === kind;
+    const marks = (signalMarks.get(row.hunkId) ?? []).filter((m) => REVIEW_SIGNALS[m.flag].kind === kind);
     if (row.type === "line") return marks.some((m) => m.indices.has(row.lineIdx));
     if (row.type === "split") {
       const pair = buildSplitRows(row.entry.hunk, detail.diff)[row.rowIdx];
@@ -1212,9 +1213,9 @@ export function DiffPane({
       const captions = marks?.length && heartRows.get(hunk.id) !== null && open ? (heartCaptions.get(hunk.id) ?? []) : null;
       const headerIdx = out.length;
       let nextCaption = 0;
-      const risks = riskMarks.get(hunk.id) ?? [];
-      const shownRisks = new Set<number>();
-      const riskRow = (m: typeof risks[number]): FlatRow => ({ type: "risk", key: `risk:${hunk.id}:${m.index}`, hunkId: hunk.id, flag: m.flag, why: m.why });
+      const signals = signalMarks.get(hunk.id) ?? [];
+      const shownSignals = new Set<number>();
+      const signalRow = (m: typeof signals[number]): FlatRow => ({ type: "signal", key: `signal:${hunk.id}:${m.index}`, hunkId: hunk.id, flag: m.flag, why: m.why });
       const heartRow = (seg: number, why: string): FlatRow => ({
         type: "heart",
         key: `heart:${hunk.id}:${seg}`,
@@ -1224,10 +1225,10 @@ export function DiffPane({
       });
       /** Captions whose row is `unifiedIdx`, in order. */
       const pushCaptionsAt = (unifiedIdx: number) => {
-        for (const m of risks) {
-          if (m.at === unifiedIdx && !shownRisks.has(m.index)) {
-            out.push(riskRow(m));
-            shownRisks.add(m.index);
+        for (const m of signals) {
+          if (m.at === unifiedIdx && !shownSignals.has(m.index)) {
+            out.push(signalRow(m));
+            shownSignals.add(m.index);
           }
         }
         if (!captions) return;
@@ -1237,7 +1238,7 @@ export function DiffPane({
         }
       };
       if (marks?.length && captions === null) marks.forEach((m, seg) => out.push(heartRow(seg, m.why)));
-      if (!open) risks.forEach((m) => out.push(riskRow(m)));
+      if (!open) signals.forEach((m) => out.push(signalRow(m)));
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
       }
@@ -1328,7 +1329,7 @@ export function DiffPane({
           }
         }
       }
-      out.splice(headerIdx, 0, ...risks.filter((m) => !shownRisks.has(m.index)).map(riskRow));
+      out.splice(headerIdx, 0, ...signals.filter((m) => !shownSignals.has(m.index)).map(signalRow));
       if (captions && nextCaption < captions.length) {
         const left = captions.slice(nextCaption).map((c) => heartRow(c.seg, c.why));
         out.splice(headerIdx, 0, ...left);
@@ -1355,7 +1356,7 @@ export function DiffPane({
     openedFoldRegions,
     heart,
     heartRows,
-    riskMarks,
+    signalMarks,
     heartCaptions,
   ]);
 
@@ -1457,7 +1458,7 @@ export function DiffPane({
       // A fold placeholder is one row, always — no wrapping content inside it.
       if (r.type === "fold") return codeLineHeight;
       if (r.type === "dod") return 170;
-      if (r.type === "heart" || r.type === "risk") return 26;
+      if (r.type === "heart" || r.type === "signal") return 26;
       if (r.type === "compose") return 150;
       // Comment blocks are the one genuinely variable row. The estimate only
       // has to be in the right order of magnitude — measureElement's
@@ -2647,7 +2648,8 @@ export function DiffPane({
               data-flash={vi.key === flashKey ? "true" : undefined}
               data-sticky={stickyTop !== null ? "true" : undefined}
               data-heart={heartMarks(row) ? "true" : undefined}
-              data-risk={riskMarksRow(row) ? "true" : undefined}
+              data-risk={signalMarksRow(row, "risk") ? "true" : undefined}
+              data-smell={signalMarksRow(row, "smell") ? "true" : undefined}
               data-heart-end={heartEndsAt(row) ? "true" : undefined}
               data-skippable={
                 skip && (row.type === "line" || row.type === "split") && skip.has(row.hunkId) && row.hunkId !== focusedHunkId
@@ -2672,7 +2674,8 @@ export function DiffPane({
                     }
               }
             >
-              {riskMarksRow(row) && <span className="risk-bar" aria-hidden="true" />}
+              {signalMarksRow(row, "risk") && <span className="risk-bar" aria-hidden="true" />}
+              {signalMarksRow(row, "smell") && <span className="smell-bar" aria-hidden="true" />}
               {renderRow(row)}
             </div>
           );
@@ -3087,9 +3090,11 @@ export function DiffPane({
       );
     }
 
-    if (row.type === "risk") {
-      return <div data-testid={`hunk-risk-${row.hunkId}`} className="px-3 py-1 font-sans text-[11px] leading-[18px]" style={{ color: "var(--fg-muted)", background: "var(--bg)" }}>
-        <span className="mr-1.5 rounded px-1 py-px" style={{ color: "var(--risk)", background: "var(--risk-soft)" }}>{row.flag}</span>
+    if (row.type === "signal") {
+      const signal = REVIEW_SIGNALS[row.flag];
+      const color = signal.kind === "risk" ? "risk" : "warn";
+      return <div data-testid={`hunk-${signal.kind}-${row.hunkId}`} data-signal={row.flag} className="px-3 py-1 font-sans text-[11px] leading-[18px]" style={{ color: "var(--fg-muted)", background: "var(--bg)" }}>
+        <span className="mr-1.5 rounded px-1 py-px" style={{ color: `var(--${color})`, background: `var(--${color}-soft)` }}>{signal.label}</span>
         <InlineMarkdown text={row.why} />
       </div>;
     }

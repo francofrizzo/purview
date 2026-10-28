@@ -138,6 +138,8 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     ...["bg", "add-bg", "del-bg"].map((bg) => s(`risk-bar-${bg}`, "Diff rows", `risk bar on ${bg}`, "risk", 3.0, ["bg", bg], "│", { kind: "swatch" })),
     s("risk-caption-chip", "Diff rows", "risk caption chip", "risk", 3.0, ["bg", "risk-soft"], "money"),
     s("risk-caption-why", "Diff rows", "risk caption why", "fg-muted", 3.2, ["bg"], "A retry can charge twice."),
+    ...["bg", "add-bg", "del-bg"].map((bg) => s(`smell-bar-${bg}`, "Diff rows", `smell bar on ${bg}`, "warn", 3.0, ["bg", bg], "│", { kind: "swatch" })),
+    s("smell-caption-chip", "Diff rows", "smell caption and layer chip", "warn", 3.0, ["bg", "warn-soft"], "test gap?"),
     s("heart-why", "Diff rows", "heart why row (fg on heart-soft)", "fg", 4.5, ["bg", "heart-soft"], "short-circuits on the ledger row before touching the gateway"),
     s("heart-mark", "Diff rows", "heart mark on heart-soft", "heart", 3.0, ["bg", "heart-soft"], "♥ heart"),
     s("comment-marker-add", "Diff rows", "comment marker (accent on add-bg)", "accent", 3.0, ["bg", "add-bg"], "● 3"),

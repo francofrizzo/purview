@@ -287,14 +287,15 @@ semicolon. For a skim or skip unit, say in the same shape what the glance is for
 
 **A concern lives in one place.** Something you noticed — a stale description, a missing
 metric, a caller that may not handle the new path — is a `finding` on the unit that owns it
-(with a checkout) or a question in that unit's `attentionWhy` (without one). It does not
+(when verified with a checkout), a concrete inline smell question in `signals` (under
+the rubric's evidence rules), or a question in that unit's `attentionWhy`. It does not
 also appear in the overall `summary`, in another unit's `attentionWhy`, or in a heart
 `why`. The summary may point at it in a clause ("the Flows are not touched, see that
 unit"), never restate it.
 
 `hunks` is the unit's hunk ids (short ids are fine), in reading order. An entry may be
-a bare id or an object `{"id": "...", "label": "...", "skip": true, "heart": [...], "risks": [...]}`
-saying what that hunk is to the unit. Three fields, each optional:
+a bare id or an object `{"id": "...", "label": "...", "skip": true, "heart": [...], "signals": [...]}`
+saying what that hunk is to the unit. Each annotation is optional:
 
 **`label`** — three to six words saying what the hunk *is*, sentence case, no period:
 `"The retry table"`, `"Fixture for the drained case"`, `"Old handler, kept for the flag"`.
@@ -321,7 +322,19 @@ two to five words giving the reason, shown on the muted hunk: `"adds imports"`,
   passes over them, so a wrong skip steers the reviewer past code. When in doubt, leave
   it out.
 
-**`risks`** — place one to four marks `{ "flag": "money", "why": "A retry can charge the customer twice.", "lines": [21, 23] }` on the hunk and new-side inclusive lines concerned. Use only `auth`, `migration`, `concurrency`, `money`, `external-call`, or `security`. Each `why` is one sentence (the same length limit as heart why) saying what is at stake there. Ranges must stay inside the hunk and must not overlap other risk ranges; they may overlap hearts. Omit `lines` for a mark on the whole hunk; whole-hunk marks do not mix with ranged ones on the same hunk. Never mark a skip hunk. Unit `riskFlags` is computed from these marks: do not set it; incoming values are ignored. Legacy units without marks retain their existing flags.
+**`signals`** — up to four inline marks `{ "flag": "money", "why": "A retry can charge the customer twice.", "lines": [21, 23] }`
+per hunk. Risk flags remain `auth`, `migration`, `concurrency`, `money`, `external-call`,
+and `security`. Smell flags are `abstraction`, `duplication`, `defensive-code`,
+`convention-drift`, `intent-drift`, and `test-gap`. Read RUBRIC.md's **Inline review
+signals** for the triggers, counterexamples and evidence rules before marking smells.
+Read broadly, mark the smallest meaningful new-side span, and write one concrete
+sentence: stakes for risks, a grounded question for smells. Independent signals may
+overlap hearts or each other. Omit `lines` for a whole-hunk signal. Never on a skip.
+No quota, no generic "slop" score, no AI-authorship guesses, no unverified bug claims.
+Unit `riskFlags` is computed from risk-category signals only; do not send it.
+Use the existing analysis pass to look for these cues; do not skip the verification
+pass or duplicate a verified finding as a smell. Context-dependent smells need the
+checkout; a supplied description plus the diff can support intent drift.
 
 **`heart`** — one to three segments `{"why": "...", "lines": [from, to]}` on a hunk
 where the unit's logic actually lives, as opposed to the call sites, tests, imports and

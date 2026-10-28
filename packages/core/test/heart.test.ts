@@ -158,8 +158,9 @@ describe("heart through the reducer", () => {
       units: [
         unit({
           hunks: [
-            { id: "h1", risks: [{ flag: "money", why: "Duplicate charge.", lines: [3, 9] }, { flag: "auth", why: "Access leaks.", lines: [20, 25] }], heart: [{ why: "the rule", lines: [3, 9] }, { why: "its helper", lines: [20, 25] }] },
-            { id: "h2", risks: [{ flag: "security", why: "Secret leaks.", lines: [1, 2] }], heart: [{ why: "its guard", lines: [1, 2] }] },
+            { id: "h1", signals: [{ flag: "money", why: "Duplicate charge.", lines: [3, 9] }, { flag: "auth", why: "Access leaks.", lines: [20, 25] }, { flag: "duplication", why: "Repeats the guard.", lines: [3, 9] }, { flag: "test-gap", why: "No retry coverage." }], heart: [{ why: "the rule", lines: [3, 9] }, { why: "its helper", lines: [20, 25] }] },
+            { id: "h2", signals: [{ flag: "security", why: "Secret leaks.", lines: [1, 2] }, { flag: "abstraction", why: "Guard hides the policy.", lines: [1, 2] }], heart: [{ why: "its guard", lines: [1, 2] }] },
+            { id: "h3", signals: [{ flag: "intent-drift", why: "Changes unrelated policy." }] },
           ],
         }),
       ],
@@ -169,20 +170,22 @@ describe("heart through the reducer", () => {
       revision: 2,
       previousRevision: 1,
       baseOnly: false,
-      counts: { identical: 1, fuzzy: 1, renamed: 0, archived: 0, new: 0 },
+      counts: { identical: 1, fuzzy: 1, renamed: 1, archived: 0, new: 0 },
       entries: [
         { status: "fuzzy", hunkId: "h1b", previousHunkId: "h1", file: "a.ts", score: 0.8 },
         { status: "identical", hunkId: "h2", previousHunkId: "h2", file: "a.ts" },
+        { status: "renamed", hunkId: "h3b", previousHunkId: "h3", file: "b.ts" },
       ],
     };
     const state = fold([
       rev(1),
       withLines,
-      { ...(rev(2, ["h1b", "h2"]) as Record<string, unknown>), migration } as unknown as ReviewerEvent,
+      { ...(rev(2, ["h1b", "h2", "h3b"]) as Record<string, unknown>), migration } as unknown as ReviewerEvent,
     ]);
     expect(state.units[0].hunks).toEqual([
-      { id: "h1b", risks: [{ flag: "money", why: "Duplicate charge." }, { flag: "auth", why: "Access leaks." }], heart: [{ why: "the rule" }] },
-      { id: "h2", risks: [{ flag: "security", why: "Secret leaks.", lines: [1, 2] }], heart: [{ why: "its guard", lines: [1, 2] }] },
+      { id: "h1b", signals: [{ flag: "money", why: "Duplicate charge." }, { flag: "auth", why: "Access leaks." }], heart: [{ why: "the rule" }] },
+      { id: "h2", signals: [{ flag: "security", why: "Secret leaks.", lines: [1, 2] }, { flag: "abstraction", why: "Guard hides the policy.", lines: [1, 2] }], heart: [{ why: "its guard", lines: [1, 2] }] },
+      { id: "h3b" },
     ]);
   });
 
@@ -282,13 +285,16 @@ describe("heart through the CLI-facing service", () => {
   });
 
   it("derives risk flags for analysis and patches, ignoring sent flags", () => {
-    const risks = [{ flag: "money", why: "A retry can charge twice.", lines: [1, 1] }];
-    const input = payload([{ id: a1, risks }, a2]);
+    const signals = [{ flag: "money", why: "A retry can charge twice.", lines: [1, 1] }];
+    const input = payload([{ id: a1, signals }, a2]);
     input.units[0].riskFlags = ["security"];
     expect(setAnalysis(key, input, {}, tmp).state.units[0].riskFlags).toEqual(["money"]);
-    expect(setUnit(key, "alpha", { riskFlags: ["security"], addHunks: [{ id: a2, risks: [{ flag: "auth", why: "Access can leak." }] }] }, undefined, tmp).units[0].riskFlags).toEqual(["money", "auth"]);
-    expect(() => setUnit(key, "alpha", { addHunks: [{ id: a1, risks: [{ ...risks[0], lines: [1, 2] }] }] }, undefined, tmp)).toThrow(/bounds/);
-    expect(() => setAnalysis(key, payload([{ id: a1, risks: [{ ...risks[0], lines: [2, 2] }] }, a2]), {}, tmp)).toThrow(/bounds/);
+    expect(setUnit(key, "alpha", { riskFlags: ["security"], addHunks: [{ id: a2, signals: [{ flag: "auth", why: "Access can leak." }] }] }, undefined, tmp).units[0].riskFlags).toEqual(["money", "auth"]);
+    expect(() => setUnit(key, "alpha", { addHunks: [{ id: a1, signals: [{ ...signals[0], flag: "duplication", lines: [1, 2] }] }] }, undefined, tmp)).toThrow(/bounds/);
+    expect(() => setAnalysis(key, payload([{ id: a1, signals: [{ ...signals[0], flag: "test-gap", lines: [2, 2] }] }, a2]), {}, tmp)).toThrow(/bounds/);
+    expect(setAnalysis(key, payload([{ id: a1, signals: [{ flag: "duplication", why: "Repeats the rule." }] }, a2]), {}, tmp).state.units[0].riskFlags).toEqual([]);
+    expect(setUnit(key, "alpha", { addHunks: [{ id: a1, signals }] }, undefined, tmp).units[0].riskFlags).toEqual(["money"]);
+    expect(setUnit(key, "alpha", { addHunks: [{ id: a1, signals: [{ flag: "test-gap", why: "No retry coverage." }] }] }, undefined, tmp).units[0].riskFlags).toEqual([]);
   });
 
   it("set-analysis accepts a heart entry, resolving short ids", () => {
