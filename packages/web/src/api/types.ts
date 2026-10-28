@@ -1197,14 +1197,15 @@ export interface RewindChatResult {
 }
 
 /**
- * POST /api/prs/:key/chat/handoff — loopback-only. `command` forks the chat's
- * agent session into the reader's terminal with the PR context file appended
- * to its system prompt.
+ * POST /api/prs/:key/chat/handoff — loopback-only. `command` continues the
+ * review context in ordinary Claude Code, in a persistent coding worktree.
  */
 export interface ChatHandoff {
   command: string;
   cwd: string;
-  sessionId: string;
+  branch: string;
+  startSha: string;
+  headSha: string;
   contextPath: string;
 }
 

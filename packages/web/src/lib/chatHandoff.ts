@@ -1,5 +1,5 @@
 /**
- * "Continue in <harness>": the pure half. The panel owns the popover; this
+ * "Open in Claude Code": the pure half. The panel owns the popover; this
  * owns when the button is usable and how the command reaches the clipboard.
  */
 

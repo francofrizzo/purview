@@ -1,32 +1,29 @@
 import { log, shortKey, duration } from "./log.js";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import {
   keyToString,
   loadState,
-  prCheckoutPath,
   prDir,
   readMeta,
   stateRoot,
   type PrKey,
 } from "@reviewer/core";
-import { resolveRunCheckout } from "./pr-checkout.js";
+import { ensureCodingCheckout, resolveRunCheckout } from "./pr-checkout.js";
 import { cliEnvironment, getHarness } from "./agent/registry.js";
 import { actionGerund } from "./agent/types.js";
 import type { AgentAction, AgentHarness, AgentRun, AgentSession, HarnessId } from "./agent/types.js";
 import { skillDir } from "./skill-paths.js";
 import { effectiveChatAgent, effectiveRepoPath } from "./repo-config.js";
 import { loadCommittedConfig } from "./team-config.js";
-import { resolveCheckout, type CheckoutResolution } from "./worktree.js";
 import {
   appendChatMessage,
   buildChatPrompt,
   CHAT_CLI_SUBCOMMANDS,
   chatSystemPrompt,
   readChat,
+  replayTranscript,
   resolveRefs,
   terminalContext,
   writeChat,
@@ -35,8 +32,6 @@ import {
 } from "./chat.js";
 import { HttpError } from "./http-error.js";
 import { reviewSystemPrompt, checkoutGuidance } from "./agent/review-tools/prompts.js";
-
-const execFileAsync = promisify(execFile);
 
 /**
  * A chat turn runs independently of the HTTP request that started it: the SSE
@@ -350,7 +345,9 @@ export function startChatTurn(
 export interface ChatHandoff {
   command: string;
   cwd: string;
-  sessionId: string;
+  branch: string;
+  startSha: string;
+  headSha: string;
   contextPath: string;
 }
 
@@ -358,71 +355,14 @@ export function terminalContextPath(key: PrKey, root = stateRoot()): string {
   return path.join(prDir(key, root), "terminal-context.md");
 }
 
-function realOrSelf(p: string): string {
-  try {
-    return fs.realpathSync(p);
-  } catch {
-    return p;
-  }
-}
-
 /**
- * The checkout the session actually lives in, described without touching it:
- * the hand-off must not fetch, move or create anything, and the session
- * continues from the cwd it was started in, so that cwd is the truth
- * here — not whatever a fresh turn would resolve to.
- */
-async function sessionCheckout(
-  key: PrKey,
-  root: string,
-  cwd: string,
-): Promise<{ resolution: CheckoutResolution; headSha?: string } | undefined> {
-  const real = realOrSelf(cwd);
-  if (real === realOrSelf(prDir(key, root))) return undefined; // ran without a checkout
-
-  const state = loadState(key, root);
-  const revisionHead = state.revisions.find((r) => r.revision === state.currentRevision)?.headSha;
-
-  if (real === realOrSelf(prCheckoutPath(key, root))) {
-    // Name the commit the checkout is really on: it only moves on a turn, so
-    // it can trail a revision that arrived since.
-    let headSha = revisionHead ?? "";
-    try {
-      headSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" })).stdout.trim();
-    } catch {
-      /* keep the revision's head */
-    }
-    return { resolution: { path: cwd, resolvedWorktree: true, managed: { headSha } }, headSha };
-  }
-
-  // A reader's own worktree. Re-resolving is local-only (no fetch) and keeps
-  // the mismatch warning when the tree is on another branch.
-  let meta: ReturnType<typeof readMeta> | null = null;
-  try {
-    meta = readMeta(key, root);
-  } catch {
-    /* no meta */
-  }
-  const resolved = await resolveCheckout(effectiveRepoPath(key, root, { meta }), {
-    headRef: meta?.headRef,
-    headSha: revisionHead,
-  });
-  if (resolved.path && realOrSelf(resolved.path) === real) {
-    return { resolution: resolved, headSha: revisionHead };
-  }
-  return { resolution: { path: cwd, resolvedWorktree: false }, headSha: revisionHead };
-}
-
-/**
- * Hand the chat's agent session to the reader's own terminal: write the PR
- * context next to the state (overwritten, so it always matches the current
- * analysis) and return the harness's one-liner that continues the session
- * with it.
+ * Open ordinary coding access outside the review harness. The conversation
+ * is context, not a native resume; its review checkout is never made writable.
  */
 export async function chatHandoff(key: PrKey, root = stateRoot()): Promise<ChatHandoff> {
   const chat = readChat(key, root);
-  // The session's own harness continues it; before there is one, the harness
-  // the next turn would use names things.
+  // Use the conversation's adapter to prepare context, not to resume its
+  // restricted native session.
   let harness: AgentHarness;
   try {
     harness = getHarness(chat.session?.harness);
@@ -435,7 +375,7 @@ export async function chatHandoff(key: PrKey, root = stateRoot()): Promise<ChatH
     );
   }
   const { name, agentName } = harness.manifest;
-  const continueIn = `continue in ${name}`;
+  const continueIn = "open Claude Code";
   if (!harness.createHandoff) {
     throw new HttpError(409, "handoff_unsupported", `${name} cannot continue a chat in a terminal.`);
   }
@@ -446,39 +386,42 @@ export async function chatHandoff(key: PrKey, root = stateRoot()): Promise<ChatH
       `${agentName} is still answering. Wait for the reply to finish, then ${continueIn}.`,
     );
   }
-  const session = chat.session;
-  if (!session) {
+  if (chat.messages.length === 0) {
     throw new HttpError(
       409,
       "no_session",
       `This chat has no ${agentName} session yet. Send a message first, then ${continueIn}.`,
     );
   }
-  if (!fs.existsSync(session.cwd)) {
-    throw new HttpError(
-      409,
-      "session_cwd_missing",
-      `The chat's working directory ${session.cwd} no longer exists. ` +
-        `Send a message to move the session, then ${continueIn}.`,
-    );
-  }
-
-  const context = terminalContext(key, root, {
-    checkout: await sessionCheckout(key, root, session.cwd),
-    committed: await loadCommittedConfig(key, root),
-    harness: harness.manifest,
+  const meta = readMeta(key, root);
+  const state = loadState(key, root);
+  const revision = state.revisions.find((r) => r.revision === state.currentRevision);
+  const workspace = await ensureCodingCheckout(key, {
+    repoPath: effectiveRepoPath(key, root, { meta }),
+    headSha: revision?.headSha,
+    root,
   });
+  if ("error" in workspace) throw new HttpError(409, "coding_checkout_unavailable", workspace.error);
+  const context = [
+    "This is a fresh coding session with Purview's visible conversation, not its native tool history. Earlier messages may be omitted as noted below. The panel session is unchanged.",
+    replayTranscript(chat.messages),
+    terminalContext(key, root, {
+      coding: workspace,
+      committed: await loadCommittedConfig(key, root),
+      harness: harness.manifest,
+    }),
+  ].join("\n\n");
   const contextPath = terminalContextPath(key, root);
   fs.mkdirSync(path.dirname(contextPath), { recursive: true });
   fs.writeFileSync(contextPath, context, "utf8");
 
-  // The context file sends the continued session to the PR state dir
-  // (triage, show, the diff) and the skill docs.
-  const { command } = harness.createHandoff(session, {
+  const handoff = harness.createHandoff({
+    cwd: workspace.path,
     contextPath,
     readRoots: [prDir(key, root), skillDir()],
   });
-  return { cwd: session.cwd, sessionId: session.id, contextPath, command };
+  const { path: cwd, branch, startSha, headSha } = workspace;
+  return { cwd, branch, startSha, headSha, contextPath, ...handoff };
 }
 
 /** Only for tests: wait for any in-flight turn on this PR. */

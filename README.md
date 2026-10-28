@@ -343,6 +343,22 @@ where `sources` says which layer every field came from. A manifest lists the har
 `name` ("Claude Code"), `agentName` ("Claude", what the UI calls it), `models`, `efforts`,
 `defaults` and `capabilities` (`resume`, `handoff`); the settings pages are built from it.
 
+Both Claude adapters offer **Open in Claude Code** beside Chat settings. It copies a
+command for ordinary Claude Code with normal editing/testing permissions, outside the
+review harness. First open creates `~/.purview/coding/<host>/<owner>/<repo>/<pr>` on a
+new `purview/fix/<pr>` branch at the reviewed head commit, fetching that commit if needed.
+The popover shows the path, branch and starting commit. Later opens reuse the worktree,
+preserving commits and dirty files even after the PR changes; Purview never resets or
+automatically deletes it, including when you archive the PR or remove its repository.
+Branch/path collisions are refused rather than overwritten. Configure a local repository
+first; the command never opens the PR state directory as a substitute checkout.
+The new session receives the visible conversation and current review context, not native
+tool history; long conversations omit the oldest messages using the restarted-chat replay
+limit. The panel's session remains unchanged. GitHub writes still need explicit permission.
+Both adapters let chat edit or delete your draft comments only when you authorize that
+specific change in the conversation. This consent rule lives in the agent instructions;
+the server independently refuses changes to pushed or submitted comments.
+
 `:rkey` is `host/owner/repo`, URL-encoded. `POST /api/prs/:key/repo-path` is unchanged and
 still writes the **PR-level** checkout override; the repo-level default is written here.
 

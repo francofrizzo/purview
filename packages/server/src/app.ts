@@ -1127,9 +1127,9 @@ export function createApp(opts: AppOptions = {}): Hono {
   });
 
   /**
-   * "Continue in Claude Code": the shell one-liner that forks this chat's
-   * session into the reader's own terminal, with the PR context written to a
-   * file next to the state. Loopback-only, like `/api/lan`: the command spells
+   * "Open in Claude Code": prepare a persistent coding worktree and a fresh
+   * CLI session with the visible conversation and PR context.
+   * Loopback-only, like `/api/lan`: the command spells
    * out local paths, and it only runs on the machine Purview runs on anyway.
    */
   app.use("/api/prs/:key/chat/handoff", loopbackOnly({ port }));

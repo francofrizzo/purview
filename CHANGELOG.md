@@ -7,6 +7,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Claude Code worktrees.** You can edit code from either Claude chat using the terminal button beside Chat settings. A separate fix-branch worktree keeps your edits across PR refreshes.
+- **Draft comment audience.** You can ask shared-tools chat to move a draft between GitHub review comments and agent notes.
 - **Import picker.** "import PRs…" in a repo's ⋯ menu finds review requests and your own PRs, then lets you tick which ones to import. Ticking an archived PR brings it back.
 - **Archive reviewed PRs.** The archive button under a repo's list also clears open PRs you already reviewed that nobody asked you to review again.
 - **Archived PRs return on a new request.** With "watch for review requests" on, a PR you archived comes back when your review is asked for again.
@@ -16,6 +18,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **Fix:** the chat no longer jumps back to the bottom while you read a little higher up during a reply.
 - **Fix:** an expanded moved block no longer looks like an ordinary change; its lines keep the band's coloured edge and the arrow markers.
 - **Fix:** a moved line no longer shows a word-level highlight against an unrelated line next to it.
+- **Fix:** the chat's terminal command popover no longer opens below the bottom of the window.
 
 ## 2026.10.23.4
 

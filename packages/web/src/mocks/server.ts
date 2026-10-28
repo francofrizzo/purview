@@ -2225,18 +2225,21 @@ export const mockApi = {
     if (!(chats[key] ?? []).length) {
       throw new ApiError("no_session", 409, {
         error: "no_session",
-        detail: "This chat has no Claude session yet. Send a message first, then continue in Claude Code.",
+        detail: "This chat has no Claude session yet. Send a message first, then open Claude Code.",
       });
     }
-    const cwd = `/Users/you/.purview/checkouts/${key}`;
-    const sessionId = `mock-session-${key.replace(/[^A-Za-z0-9]/g, "-")}`;
+    const cwd = `/Users/you/.purview/coding/${key}`;
+    const branch = `purview/fix/${key.split("/").at(-1)}`;
+    const startSha = "a12b34c56d78e90f1234567890abcdef12345678";
     const contextPath = `/Users/you/.purview/${key}/terminal-context.md`;
     const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
     return {
       cwd,
-      sessionId,
+      branch,
+      startSha,
+      headSha: startSha,
       contextPath,
-      command: `cd ${q(cwd)} && claude --resume ${sessionId} --fork-session "$(cat ${q(contextPath)})"`,
+      command: `cd ${q(cwd)} && claude "$(cat ${q(contextPath)})"`,
     };
   },
 

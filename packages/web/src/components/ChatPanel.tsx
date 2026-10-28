@@ -842,7 +842,6 @@ export function ChatPanel({
           {handoffHarness?.capabilities.handoff ? (
             <HandoffButton
               prKey={prKey}
-              product={handoffHarness.name}
               messageCount={chat.messages.length}
               busy={chat.busy}
             />
@@ -930,25 +929,21 @@ type HandoffState =
   | { phase: "error"; message: string };
 
 /**
- * "Continue in Claude Code" (or whichever `product` holds the session):
- * fetches the one-liner that forks this chat's session into the reader's own
- * terminal, copies it, and shows it in a popover in case the copy did not
- * take (or they want to read it first). The server
+ * Opens ordinary Claude Code in a separate writable worktree, with the
+ * review conversation as context. Shows the workspace before the reader
+ * runs the copied command. The server
  * refuses it over the LAN, so the button says so up front instead.
  */
 function HandoffButton({
   prKey,
-  product,
   messageCount,
   busy,
 }: {
   prKey: string;
-  /** the harness's product name, e.g. "Claude Code" */
-  product: string;
   messageCount: number;
   busy: boolean;
 }) {
-  const label = `Continue in ${product}`;
+  const label = "Open in Claude Code";
   const [state, setState] = useState<HandoffState | null>(null);
   const [recopied, setRecopied] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
@@ -1026,13 +1021,13 @@ function HandoffButton({
           role="dialog"
           aria-label={label}
           data-testid="chat-handoff-popover"
-          className="surface absolute right-0 top-6 z-30 w-72 rounded-md p-2 elev-2"
+          className="surface absolute bottom-full right-0 z-30 mb-2 max-h-[calc(100vh-12rem)] w-72 overflow-y-auto rounded-md p-2 elev-2"
           onClick={(e) => e.stopPropagation()}
         >
           {state.phase === "loading" ? (
             <p className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
               <IconSpinner width={10} height={10} />
-              Preparing the command…
+              Preparing coding workspace…
             </p>
           ) : state.phase === "error" ? (
             <p className="text-2xs leading-4" data-testid="chat-handoff-error" style={{ color: "var(--risk)" }}>
@@ -1042,9 +1037,21 @@ function HandoffButton({
             <>
               <p className="text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
                 {state.copied
-                  ? `Copied. Paste into a terminal to continue this chat in ${product}.`
-                  : `Copy this and paste it into a terminal to continue this chat in ${product}.`}
+                  ? "Copied. Paste into a terminal to open ordinary Claude Code with code editing and testing."
+                  : "Copy and paste into a terminal to open ordinary Claude Code with code editing and testing."}
               </p>
+              <dl className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
+                <dt style={{ color: "var(--fg-faint)" }}>Coding worktree</dt>
+                <dd className="break-all font-mono" data-testid="chat-handoff-cwd">{state.handoff.cwd}</dd>
+                <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>Branch</dt>
+                <dd className="break-all font-mono">{state.handoff.branch}</dd>
+                <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>Started from reviewed commit</dt>
+                <dd className="font-mono">{state.handoff.startSha.slice(0, 12)}</dd>
+                {state.handoff.headSha !== state.handoff.startSha ? <>
+                  <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>Current HEAD</dt>
+                  <dd className="font-mono">{state.handoff.headSha.slice(0, 12)}</dd>
+                </> : null}
+              </dl>
               <code
                 data-testid="chat-handoff-command"
                 className="mt-1.5 block select-text whitespace-pre-wrap rounded px-2 py-1 font-mono text-2xs"
@@ -1068,7 +1075,9 @@ function HandoffButton({
                 </button>
               </div>
               <p className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-                Forks the conversation: what you do there won&apos;t appear here.
+                A fresh session with visible chat and PR context, not tool history. Earlier messages may be omitted.
+                This worktree is reused without resetting your work, even when the PR changes. Purview never removes it automatically.
+                What you do there won't appear here.
               </p>
             </>
           )}

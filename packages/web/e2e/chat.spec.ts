@@ -8,6 +8,35 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByTestId("chat-panel")).toBeVisible();
 });
 
+test("Open in Claude Code shows its coding workspace and copy control above the chat toolbar", async ({ page }) => {
+  await page.getByTestId("chat-input").fill("What should I check first?");
+  await page.getByTestId("chat-send").click();
+  await page.getByTestId("chat-stop").click();
+  await expect(page.getByTestId("chat-stopped")).toBeVisible();
+  await page.getByTestId("chat-handoff").click();
+  const popover = page.getByTestId("chat-handoff-popover");
+  await expect(popover).toHaveAccessibleName("Open in Claude Code");
+  await expect(page.getByTestId("chat-handoff-command")).toContainText("claude");
+  await expect(page.getByTestId("chat-handoff-command")).not.toContainText("--resume");
+  await expect(page.getByTestId("chat-handoff-cwd")).toContainText("/coding/");
+  await expect(popover).toContainText("purview/fix/482");
+  await expect(popover).toContainText("Started from reviewed commit");
+  const box = await popover.boundingBox();
+  expect(box!.y).toBeGreaterThanOrEqual(0);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  await expect(popover).toContainText("What you do there won't appear here");
+  await popover.getByRole("button", { name: "copy", exact: true }).click();
+  await expect(popover.getByRole("button", { name: "copied", exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 1100, height: 480 });
+  const compact = await popover.boundingBox();
+  const panel = await page.getByTestId("chat-panel").boundingBox();
+  expect(compact!.y).toBeGreaterThanOrEqual(panel!.y);
+  expect(compact!.y + compact!.height).toBeLessThanOrEqual(480);
+  await page.keyboard.press("Escape");
+  await expect(popover).toHaveCount(0);
+  await expect(page.getByTestId("chat-panel")).toBeVisible();
+});
+
 test("stopping a reply says so until the turn winds down", async ({ page }) => {
   await page.getByTestId("chat-input").fill("What is the riskiest change?");
   await page.getByTestId("chat-send").click();

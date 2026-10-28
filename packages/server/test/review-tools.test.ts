@@ -10,7 +10,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { prDir, readMeta, writeMeta, loadState, keyToString, writeRevision, appendEvent, parseDiff, toRevisionFiles } from "@reviewer/core";
 import { createApp } from "../src/app.js";
-import { readComments, readDeletedComments, addComment } from "../src/comments.js";
+import { readComments, readDeletedComments, addComment, writeComments } from "../src/comments.js";
 import { createReviewOperations } from "../src/agent/review-tools/operations.js";
 import { startReviewTools } from "../src/agent/review-tools/run.js";
 import { reviewSystemPrompt } from "../src/agent/review-tools/prompts.js";
@@ -142,11 +142,30 @@ it("creates, edits and trashes drafts through the real server, preserving bounda
   await ops.execute("delete_draft", { id: cliReply.id });
   const id = result.comment.id;
   expect(readComments(key, root)).toContainEqual(expect.objectContaining({ id, author: { agent: "codex" }, audience: "agent", status: "draft", line: 2 }));
-  await ops.execute("edit_draft", { id, body: "Rechecked new2" });
-  expect(readComments(key, root).find(c => c.id === id)?.body).toBe("Rechecked new2");
+  await ops.execute("edit_draft", { id, body: "Rechecked new2", audience: "github" });
+  expect(readComments(key, root).find(c => c.id === id)).toMatchObject({ body: "Rechecked new2", audience: "github", status: "draft" });
+  await expect(ops.execute("edit_draft", { id })).rejects.toThrow();
   const human = addComment(key, { file: "src/foo.ts", subjectType: "line", line: 2, side: "RIGHT", body: "Human note" }, root);
-  await ops.execute("edit_draft", { id: human.id, body: "Human note, tightened" });
-  expect(readComments(key, root).find(c => c.id === human.id)).toMatchObject({ body: "Human note, tightened", lastEditedBy: { agent: "codex" } });
+  await ops.execute("edit_draft", { id: human.id, body: "Authorized revision" });
+  expect(readComments(key, root).find(c => c.id === human.id)).toMatchObject({
+    author: "you", body: "Authorized revision", lastEditedBy: { agent: "codex" },
+    history: [expect.objectContaining({ body: "Human note" })],
+  });
+  await ops.execute("edit_draft", { id: human.id, audience: "agent" });
+  expect(readComments(key, root).find(c => c.id === human.id)).toMatchObject({
+    author: "you", body: "Authorized revision", audience: "agent", status: "draft",
+  });
+  await ops.execute("delete_draft", { id: human.id });
+  expect(readDeletedComments(key, root).find(c => c.id === human.id)).toMatchObject({
+    body: "Authorized revision", deletedBy: { agent: "codex" },
+  });
+  const published = addComment(key, { file: "src/foo.ts", subjectType: "line", line: 2, side: "RIGHT", body: "Published note" }, root);
+  for (const status of ["pushed", "submitted"] as const) {
+    writeComments(key, readComments(key, root).map(c => c.id === published.id ? { ...c, status } : c), root);
+    await expect(ops.execute("edit_draft", { id: published.id, body: "Forbidden" })).rejects.toMatchObject({ code: "not_draft" });
+    await expect(ops.execute("edit_draft", { id: published.id, audience: "agent" })).rejects.toMatchObject({ code: "not_draft" });
+    await expect(ops.execute("delete_draft", { id: published.id })).rejects.toMatchObject({ code: "not_draft" });
+  }
   await expect(ops.execute("create_draft", { file: "absent.ts", subjectType: "line", line: 2, body: "bad" })).rejects.toMatchObject({ code: "comment_outside_diff" });
   await ops.execute("delete_draft", { id });
   expect(readDeletedComments(key, root).some(c => c.id === id)).toBe(true);
@@ -169,7 +188,7 @@ it("creates, edits and trashes drafts through the real server, preserving bounda
   bodyController!.close();
   const late = await response;
   expect(late.status).toBe(409);
-  expect(readComments(key, root).map(c => c.body)).toEqual(["Human note, tightened"]);
+  expect(readComments(key, root).map(c => c.body)).toEqual(["Published note"]);
 });
 
 it("retains native Claude by default and exposes siblings only by opt-in", () => {

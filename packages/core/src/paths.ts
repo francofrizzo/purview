@@ -74,6 +74,13 @@ export function prCheckoutPath(key: PrKey, root = stateRoot()): string {
   return path.join(checkoutsRoot(root), key.host, key.owner, key.repo, String(key.number));
 }
 
+/** User-owned coding worktrees: never reset or removed by review cleanup. */
+export const CODING_DIR_NAME = "coding";
+
+export function codingCheckoutPath(key: PrKey, root = stateRoot()): string {
+  return path.join(root, CODING_DIR_NAME, key.host, key.owner, key.repo, String(key.number));
+}
+
 /** `~/.purview/<host>/<owner>/<repo>/` — per-repo settings + the PR dirs. */
 export function repoDir(key: RepoKey, root = stateRoot()): string {
   return path.join(root, key.host, key.owner, key.repo);

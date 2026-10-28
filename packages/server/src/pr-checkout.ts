@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   checkoutsRoot,
+  codingCheckoutPath,
   isPrDirName,
   keyToString,
   prCheckoutPath,
@@ -268,6 +269,77 @@ async function ensureUnlocked(key: PrKey, opts: EnsurePrCheckoutOptions): Promis
 function isUnder(p: string, dir: string): boolean {
   const rel = path.relative(path.resolve(dir), path.resolve(p));
   return rel !== "" && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+
+/* ------------------------------------------------ user-owned coding trees */
+
+export type CodingCheckoutResult =
+  | { path: string; branch: string; startSha: string; headSha: string }
+  | { error: string };
+
+/**
+ * A durable editing workspace, not a review snapshot. Only its first open
+ * fetches and checks out the reviewed head. Every subsequent open is read-only
+ * here: commits, branch changes and dirty files belong to the reader.
+ */
+export function ensureCodingCheckout(
+  key: PrKey,
+  opts: Pick<EnsurePrCheckoutOptions, "repoPath" | "headSha" | "root">,
+): Promise<CodingCheckoutResult> {
+  const root = opts.root ?? stateRoot();
+  const target = codingCheckoutPath(key, root);
+  const marker = `${target}.json`;
+  return withLock(`coding:${target}`, async (): Promise<CodingCheckoutResult> => {
+    if (fs.existsSync(target) || fs.existsSync(marker)) {
+      // Never adopt, rebuild or delete an occupied path, even after a failed
+      // creation. A missing/corrupt marker needs human recovery, not --force.
+      let saved: { commonDir?: string; startSha?: string };
+      try {
+        saved = JSON.parse(fs.readFileSync(marker, "utf8"));
+        if (!saved.commonDir || !saved.startSha || !SHA_RE.test(saved.startSha)) throw new Error();
+      } catch {
+        return { error: `Coding workspace ${target} has no valid ownership record. Move it aside or recover it manually; no files were changed.` };
+      }
+      const common = await gitAsync(["rev-parse", "--path-format=absolute", "--git-common-dir"], target);
+      const top = await gitAsync(["rev-parse", "--show-toplevel"], target);
+      if (!common.ok || !top.ok || realpath(top.out) !== realpath(target) || realpath(common.out) !== saved.commonDir) {
+        return { error: `Coding workspace ${target} is missing or no longer belongs to its original repository. Recover it manually; no files were changed.` };
+      }
+      const branch = await gitAsync(["symbolic-ref", "--quiet", "--short", "HEAD"], target);
+      const head = await gitAsync(["rev-parse", "HEAD"], target);
+      if (!branch.ok || !head.ok) {
+        return { error: `Coding workspace ${target} has no checked-out branch. Check out your fix branch there and try again.` };
+      }
+      return { path: realpath(target), branch: branch.out, startSha: saved.startSha!, headSha: head.out };
+    }
+
+    const { repoPath, headSha } = opts;
+    if (!repoPath || !fs.existsSync(repoPath)) {
+      return { error: "Set an existing local repository in this PR's or repository's settings before opening Claude Code." };
+    }
+    if (!headSha || !SHA_RE.test(headSha)) return { error: "The reviewed head commit is unknown. Refresh the PR first." };
+    const common = await gitAsync(["rev-parse", "--path-format=absolute", "--git-common-dir"], repoPath);
+    if (!common.ok) return { error: `Configured path ${repoPath} is not a git repository.` };
+    const remote = await matchingRemote(repoPath, key);
+    if (!remote) return { error: `No remote of ${repoPath} points at ${key.owner}/${key.repo}. Check the repository settings.` };
+
+    return withLock(`repo:${realpath(common.out)}`, async (): Promise<CodingCheckoutResult> => {
+      if (!(await hasCommit(repoPath, headSha))) {
+        const fetched = await gitAsync(["fetch", "--no-tags", "--quiet", remote, `refs/pull/${key.number}/head`], repoPath);
+        if (!(await hasCommit(repoPath, headSha))) {
+          return { error: `Reviewed commit ${headSha.slice(0, 12)} is unavailable${fetched.ok ? " after fetching the PR head" : `: ${fetched.err}`}. Refresh the PR or fetch that commit locally.` };
+        }
+      }
+      const branch = `purview/fix/${key.number}`;
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      // No --force, -B, reset, clean or automatic collision recovery. Git
+      // refuses existing branches and stale worktree registrations intact.
+      const added = await gitAsync(["worktree", "add", "--quiet", "-b", branch, target, headSha], repoPath);
+      if (!added.ok) return { error: `Could not create coding workspace: ${added.err}. Existing branches and files were left alone.` };
+      fs.writeFileSync(marker, JSON.stringify({ commonDir: realpath(common.out), startSha: headSha }), { flag: "wx" });
+      return { path: realpath(target), branch, startSha: headSha, headSha };
+    });
+  }).catch((err: unknown) => ({ error: `Coding workspace failed: ${(err as Error).message}` }));
 }
 
 /* ------------------------------------------------- per-run checkout choice */

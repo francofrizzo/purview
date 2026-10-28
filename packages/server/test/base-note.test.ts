@@ -125,7 +125,7 @@ describe("the base line in the prompts", () => {
     const chat = chatSystemPrompt(key, root, { resolution: managed });
     expect(chat).toContain(`current revision 1\n${STACKED_PR_MANAGED}\n`);
     expect(chatSystemPrompt(key, root, { resolution: unmanaged })).not.toContain("`base-file` shows");
-    expect(terminalContext(key, root, { checkout: { resolution: managed } })).toContain(STACKED_PR_MANAGED);
+    expect(terminalContext(key, root)).toContain(STACKED_PR);
   });
 
   it("chat: normal and stacked-without-PR", () => {

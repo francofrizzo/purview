@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   checkoutsRoot,
+  codingCheckoutPath,
   keyToString,
   listPrs,
   chatPath,
@@ -19,7 +20,8 @@ import { analysisIdle, checkoutNote } from "../src/analysis.js";
 import { chatTurnDone } from "../src/chat-session.js";
 import { readChat, writeChat } from "../src/chat.js";
 import { writeConfig } from "../src/config.js";
-import { dropWorktreeEntry, ensurePrCheckout, pruneCheckouts } from "../src/pr-checkout.js";
+import { dropWorktreeEntry, ensureCodingCheckout, ensurePrCheckout, pruneCheckouts } from "../src/pr-checkout.js";
+import { removeRepo } from "../src/repo-removal.js";
 import { listWorktrees } from "../src/worktree.js";
 import { buildFixture, key } from "./fixtures.js";
 import { fakeClaude, type FakeClaude } from "./fake-claude.js";
@@ -187,6 +189,78 @@ describe("ensurePrCheckout", () => {
     expect("path" in res).toBe(true);
     expect(fs.existsSync(path.join(managedPath(), "junk.txt"))).toBe(false);
     expect(headOf(managedPath())).toBe(remote.headSha);
+  });
+});
+
+describe("coding worktrees", () => {
+  it("creates one fix branch at the reviewed commit without touching the reader's dirty checkout", async () => {
+    const user = cloneRepo(remote.path, path.join(work, "user"));
+    fs.writeFileSync(path.join(user, "pricing.ts"), "// unfinished local work\n");
+    const before = git(["status", "--porcelain"], user);
+    const opts = { repoPath: user, headSha: remote.headSha, root };
+    const [first, second] = await Promise.all([ensureCodingCheckout(key, opts), ensureCodingCheckout(key, opts)]);
+    expect(first).toEqual({ path: real(codingCheckoutPath(key, root)), branch: "purview/fix/7", startSha: remote.headSha, headSha: remote.headSha });
+    expect(second).toEqual(first);
+    expect(git(["status", "--porcelain"], user)).toBe(before);
+    expect(headOf(user)).toBe(remote.baseSha);
+    expect(headOf(codingCheckoutPath(key, root))).toBe(remote.headSha);
+    expect(fs.readFileSync(path.join(codingCheckoutPath(key, root), "pricing.ts"), "utf8")).toContain("0.2");
+    expect(git(["branch", "--show-current"], user)).toBe("main");
+  });
+
+  it("preserves coding commits, branches and dirty files across refresh, archive and repository removal", async () => {
+    const user = cloneRepo(remote.path, path.join(work, "user"));
+    buildFixture(root, undefined, { ...remote, mergeBase: remote.baseSha });
+    await ensure(user);
+    const opts = { repoPath: user, headSha: remote.headSha, root };
+    await ensureCodingCheckout(key, opts);
+    const coding = codingCheckoutPath(key, root);
+    fs.writeFileSync(path.join(coding, "pricing.ts"), "export const rate = 0.25;\n");
+    git(["commit", "-qam", "fix rounding"], coding);
+    const fixHead = headOf(coding);
+    git(["branch", "-m", "my-rounding-fix"], coding);
+    fs.writeFileSync(path.join(coding, "pricing.ts"), "// my next edit\n");
+    fs.writeFileSync(path.join(coding, "scratch.txt"), "keep untracked work\n");
+    const status = git(["status", "--porcelain"], coding);
+    const next = pushPrHead(remote.path, key.number, "export const rate = 0.3;\n");
+    await ensure(user, next);
+    expect(headOf(managedPath())).toBe(next);
+    const expected = { path: real(coding), branch: "my-rounding-fix", startSha: remote.headSha, headSha: fixHead };
+    expect(await ensureCodingCheckout(key, { ...opts, headSha: next })).toEqual(expected);
+    updateMeta(key, { archived: true }, root);
+    expect(await pruneCheckouts(root)).toContain(managedPath());
+    await removeRepo(key, root);
+    expect(listPrs(root)).toEqual([]);
+    // Reuse does not even need the old repository setting after state removal.
+    expect(await ensureCodingCheckout(key, { root })).toEqual(expected);
+    expect(git(["status", "--porcelain"], coding)).toBe(status);
+    expect(fs.readFileSync(path.join(coding, "pricing.ts"), "utf8")).toBe("// my next edit\n");
+    expect(fs.readFileSync(path.join(coding, "scratch.txt"), "utf8")).toBe("keep untracked work\n");
+  });
+
+  it("refuses an existing branch instead of resetting or adopting it", async () => {
+    const user = cloneRepo(remote.path, path.join(work, "user"));
+    git(["branch", "purview/fix/7"], user);
+    expect(await ensureCodingCheckout(key, { repoPath: user, headSha: remote.headSha, root })).toMatchObject({ error: expect.stringContaining("already exists") });
+    expect(git(["rev-parse", "purview/fix/7"], user)).toBe(remote.baseSha);
+    expect(fs.existsSync(codingCheckoutPath(key, root))).toBe(false);
+  });
+
+  it("never replaces an occupied directory or rebuilds a missing coding tree", async () => {
+    const user = cloneRepo(remote.path, path.join(work, "user"));
+    const target = codingCheckoutPath(key, root);
+    fs.mkdirSync(target, { recursive: true });
+    fs.writeFileSync(path.join(target, "notes.txt"), "my notes");
+    const opts = { repoPath: user, headSha: remote.headSha, root };
+    expect(await ensureCodingCheckout(key, opts)).toMatchObject({ error: expect.stringContaining("ownership record") });
+    expect(fs.readFileSync(path.join(target, "notes.txt"), "utf8")).toBe("my notes");
+    // Remove only the disposable directory this test created, then create a tree.
+    fs.rmSync(target, { recursive: true });
+    expect(await ensureCodingCheckout(key, opts)).toHaveProperty("path");
+    fs.rmSync(target, { recursive: true });
+    expect(await ensureCodingCheckout(key, opts)).toMatchObject({ error: expect.stringContaining("missing") });
+    expect(fs.existsSync(target)).toBe(false);
+    expect(git(["rev-parse", "purview/fix/7"], user)).toBe(remote.headSha);
   });
 });
 
@@ -391,7 +465,7 @@ const cli = () => path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "revie
     expect(readChat(key, root).session?.cwd).toBe(real(managedPath()));
   });
 
-  it("hands the chat to the terminal from the managed checkout, with the base-file hint", async () => {
+  it("opens a separate coding workspace without changing the review session or checkout", async () => {
     const user = cloneRepo(remote.path, path.join(work, "user"));
     updateMeta(key, { repoPath: user }, root);
     await chat("hi");
@@ -400,17 +474,20 @@ const cli = () => path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "revie
     expect(res.status).toBe(200);
     const body = await res.json();
     const managed = real(managedPath());
-    expect(body.cwd).toBe(managed);
-    expect(body.command.startsWith(`cd '${managed}' && claude --resume ${body.sessionId} --fork-session`)).toBe(true);
+    const coding = real(codingCheckoutPath(key, root));
+    expect(body.cwd).toBe(coding);
+    expect(coding).not.toBe(managed);
+    expect(body.command.startsWith(`cd '${coding}' && claude "$(cat `)).toBe(true);
+    expect(body.branch).toBe("purview/fix/7");
+    expect(readChat(key, root).session?.cwd).toBe(managed);
 
     const context = fs.readFileSync(body.contextPath, "utf8");
-    expect(context).toContain(
-      `An exact checkout of the PR head (${remote.headSha.slice(0, 12)}) is at ${managed}.`,
-    );
+    expect(context).toContain(`Worktree: ${coding}`);
+    expect(context).toContain(`Started from reviewed commit: ${remote.headSha}`);
     expect(context).toContain(`\`${cli()} base-file ${keyToString(key)} <path>\``);
     expect(context).toContain("Review units:");
     expect(context).not.toContain("HARD RULES");
-    // Nothing was fetched or moved to build it.
+    // The coding workspace never takes ownership of the disposable review tree.
     expect(headOf(managed)).toBe(remote.headSha);
   });
 

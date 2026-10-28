@@ -324,7 +324,9 @@ export interface AgentRun {
 /* --------------------------------------------------------------- handoff */
 
 export interface HandoffContext {
-  /** a file holding the instructions the continued session should get */
+  /** The writable coding workspace, never the review session's cwd. */
+  cwd: string;
+  /** a file holding review context and the visible conversation */
   contextPath: string;
   /** readable roots the context file points at */
   readRoots: string[];
@@ -346,5 +348,5 @@ export interface AgentHarness {
    * No means: start a new session (and replay whatever context matters).
    */
   canResume(session: AgentSession, next: { cwd: string; instructions?: string }): boolean;
-  createHandoff?(session: AgentSession, context: HandoffContext): AgentHandoff;
+  createHandoff?(context: HandoffContext): AgentHandoff;
 }

@@ -388,11 +388,11 @@ export function latestChangelogNote(u: { changelog?: { revision: number; text: s
 /**
  * How draft comments are written, and the rules around the reader's own
  * drafts. Shared by the chat prompt and the terminal hand-off so the two
- * cannot drift; `terminal` swaps in the env prefix the forked session needs
+ * cannot drift; `terminal` swaps in the env prefix the coding session needs
  * (it does not inherit the chat child's PURVIEW_ACTOR).
  */
 /**
- * `terminal`: the continued session's harness. Out of Purview the CLI gets no
+ * `terminal`: the source conversation's harness. Out of Purview the CLI gets no
  * chat environment, so the commands carry it themselves.
  */
 function draftCommentLines(key: PrKey, terminal?: { harness: HarnessId }): string[] {
@@ -423,14 +423,13 @@ function draftCommentLines(key: PrKey, terminal?: { harness: HarnessId }): strin
 
 /**
  * The rules about whose drafts may be touched — identical in the panel and in
- * a forked terminal session.
+ * a separate coding session.
  */
-const DRAFT_OWNERSHIP_RULES = [
+export const DRAFT_OWNERSHIP_RULES = [
   "- Create draft comments only when the reader asks for comments or clearly wants them (\"leave a comment about this\", \"draft comments for these issues\"). Never create comments on your own initiative.",
-  "- You may edit or delete drafts YOU created (author=agent in `comment list`) when the reader asks.",
-  "- NEVER edit or delete the reader's own drafts (author=you) unless the reader explicitly authorized that specific change in this conversation. A general request (\"clean up the comments\") is not authorization to touch theirs: propose the change and ask first.",
+  "- You may edit or delete any draft when the reader asks, theirs (author=you) included. Touch only the drafts the request covers; when it is unclear which of theirs it means, ask first.",
   "- Never touch pushed or submitted comments (they are in the reader's pending GitHub review, or public); the server refuses it anyway.",
-  "- After any change, say exactly what you changed: the comment id, file:line, and whether you created, edited or deleted it. Edits and deletions can be undone by the reader from Purview's comments panel.",
+  "- After any change, say exactly what you changed: the comment id, file:line, and whether you created, edited or deleted it. The reader sees your edits to their drafts marked, with an undo, and deleted drafts go to Purview's trash.",
 ];
 
 /**
@@ -541,44 +540,54 @@ export function chatSystemPrompt(
 
 /**
  * The document handed to a reader's own agent session when they take a
- * Purview chat into their terminal (the harness's handoff command sends it as
- * the continued session's first message). Same PR context as the chat
- * prompt, from the same builders; what differs is the contract: the fork runs
- * with the reader's normal permissions, so the read-only HARD RULES give way
- * to the few rules that still matter outside the panel.
+ * Purview review into ordinary Claude Code, with a writable worktree rather
+ * than the panel's read-only checkout and instructions.
  */
 export function terminalContext(
   key: PrKey,
   root = stateRoot(),
-  opts: PromptOpts & { checkout?: ChatCheckout; harness?: HarnessManifest } = {},
+  opts: PromptOpts & {
+    coding?: { path: string; branch: string; startSha: string; headSha: string };
+    harness?: HarnessManifest;
+  } = {},
 ): string {
   const cmd = cliCommand();
   const meta = readMeta(key, root);
-  const { id, name, agentName } = opts.harness ?? getHarness().manifest;
-  const reading = readingMoreLines(key, root, opts.checkout);
+  const { id, agentName } = opts.harness ?? getHarness().manifest;
+  const reading = readingMoreLines(key, root);
   const section = (lines: string[]) => lines.filter((l) => l !== "").join("\n");
 
   return [
     `# Purview review context: ${meta.title ?? keyToString(key)}`,
-    "This message comes from Purview, not typed by the reader: it hands this conversation over to their terminal. From here on, the instructions below replace the Purview chat panel's rules.",
+    "This message comes from Purview, not typed by the reader. It supplies review context for a fresh coding session, not a continuation of the read-only review harness.",
     section([
-      "You are a senior code-review copilot. This conversation started in Purview, the reader's local PR review tool, and has been forked into their own terminal.",
-      `The human is reviewing a pull request and asking you about it. ${MANNER_LINE}`,
+      "You are a coding assistant helping the reader act on a pull request review from Purview.",
+      MANNER_LINE,
     ]),
     "## Pull request",
-    section(prOverviewLines(key, root, opts.checkout)),
+    section(prOverviewLines(key, root)),
+    opts.coding ? section([
+      "## Writable coding workspace",
+      `- Worktree: ${opts.coding.path}`,
+      `- Branch: ${opts.coding.branch}`,
+      `- Started from reviewed commit: ${opts.coding.startSha}`,
+      `- Current HEAD when opened: ${opts.coding.headSha}`,
+      "- You may edit code and run tests here with the reader's normal permissions. This is separate from Purview's read-only review checkout.",
+      "- This workspace is reused without resetting it, even when the PR changes. Inspect git status and the current code before making changes; preserve existing work. The diff and findings below describe the review snapshot, not necessarily this workspace's current contents.",
+      `- To read a file before the PR, use \`${cmd} base-file ${keyToString(key)} <path>\`.`,
+    ]) : "",
     "## Reading more, when you need it",
     section([...reading.sources, ...reading.status]),
     rubricSection(key, root, { committed: opts.committed }),
     chatInstructionsSection(key, root, { committed: opts.committed }),
-    `## You are now in the reader's own ${name} session`,
+    "## Your coding session",
     section([
-      `- The earlier turns ran inside Purview, read-only apart from draft comments. That restriction is gone: your permissions here are the reader's normal ${name} ones.`,
+      "- The earlier turns ran inside Purview, read-only apart from draft comments. That restriction is gone: this is ordinary Claude Code with the reader's normal permissions, not Purview's review harness.",
       UNTRUSTED_RULE,
       "- Never post anything to GitHub (reviews, comments, approvals, labels, merges) unless the reader explicitly asks for it in this session.",
       `- Purview's review state changes only through the reviewer-state CLI (\`${cmd} <subcommand>\`), never by editing files in the state directory.`,
       NO_INVENTION_RULE,
-      "- Nothing done here shows up in the Purview chat panel: this is a fork of that conversation.",
+      "- Nothing done here shows up in the Purview chat panel. It is a separate coding session, not a live continuation.",
     ]),
     "## Draft review comments",
     section([
@@ -590,7 +599,7 @@ export function terminalContext(
     ]),
     "## Showing, not just telling",
     section(showingLines(false)),
-    "Reply with one short line saying you're ready to continue in the terminal, then wait for the reader.",
+    "Inspect the workspace's git status, then reply with one short line saying you're ready to work on the review findings. Wait for the reader's instructions before changing code.",
   ]
     .filter((s) => s !== "")
     .join("\n\n")

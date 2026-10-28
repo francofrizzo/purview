@@ -244,14 +244,13 @@ export const claudeCodeHarness: AgentHarness = {
   probe,
   run,
   canResume,
-  createHandoff(session, context) {
-    // The context file sends the fork to other roots (state, skill docs);
+  createHandoff(context) {
+    // The context file refers to other roots (state, skill docs);
     // granting them up front spares a permission prompt on the first read.
-    const addDirs = context.readRoots.filter((d) => d !== session.cwd);
+    const addDirs = context.readRoots.filter((d) => d !== context.cwd);
     return {
       command: handoffCommand({
-        cwd: session.cwd,
-        sessionId: session.id,
+        cwd: context.cwd,
         contextPath: context.contextPath,
         addDirs,
       }),

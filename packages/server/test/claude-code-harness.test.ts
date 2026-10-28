@@ -227,13 +227,12 @@ describe("runs", () => {
 });
 
 describe("handoff", () => {
-  it("resumes a fork of the session from its cwd, granting roots other than the cwd", () => {
+  it("opens an ordinary coding session, granting roots other than the coding cwd", () => {
     const { command } = claudeCodeHarness.createHandoff!(
-      { harness: "claude-code", id: "abc", cwd: "/work" },
-      { contextPath: "/state/ctx.md", readRoots: ["/work", "/state", "/skills"] },
+      { cwd: "/work", contextPath: "/state/ctx.md", readRoots: ["/work", "/state", "/skills"] },
     );
     expect(command).toBe(
-      `cd '/work' && claude --resume abc --fork-session "$(cat '/state/ctx.md')"` +
+      `cd '/work' && claude "$(cat '/state/ctx.md')"` +
         ` --add-dir '/state' --add-dir '/skills'`,
     );
   });

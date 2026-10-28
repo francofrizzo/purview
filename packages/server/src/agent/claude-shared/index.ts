@@ -167,8 +167,9 @@ function run(request: AgentRunRequest) {
 
 export const claudeSharedHarness: AgentHarness = {
   manifest: { ...claudeCodeHarness.manifest, id: "claude-shared", name: "Claude shared tools (experimental)", reviewTools: true,
-    capabilities: { resume: true, handoff: false }, toolNames: { shell: "unavailable", read: "read_code", write: "unavailable", edit: "edit_draft" } },
+    capabilities: { resume: true, handoff: true }, toolNames: { shell: "unavailable", read: "read_code", write: "unavailable", edit: "edit_draft" } },
   canResume, run,
+  createHandoff: claudeCodeHarness.createHandoff,
   probe(exec) {
     const result = exec(executable(), ["--version"]);
     const version = result.ok ? acceptedClaudeVersion(result.stdout) : undefined;

@@ -51,13 +51,13 @@ describe("writeRevision", () => {
   });
 });
 
-describe("listPrs / listRepos and checkouts/", () => {
-  it("never walk into the managed checkouts tree", () => {
+describe("listPrs / listRepos and worktrees", () => {
+  it.each(["checkouts", "coding"])("never walk into the %s tree", (name) => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "purview-store-co-"));
     try {
       // Shaped exactly like a PR dir (host/owner/repo/<digits>/meta.json), so
       // only the explicit skip keeps it out.
-      const decoy = path.join(root, "checkouts", "h", "o", "1");
+      const decoy = path.join(root, name, "h", "o", "1");
       fs.mkdirSync(decoy, { recursive: true });
       fs.writeFileSync(path.join(decoy, "meta.json"), "{}");
       expect(listPrs(root)).toEqual([]);
