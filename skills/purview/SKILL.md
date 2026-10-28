@@ -12,9 +12,9 @@ levels, risks and verified findings), the reader's progress and their draft comm
 
 This skill lets you manage PRs in that instance, read its analysis and its comments,
 pick up the notes the reader addressed to you and leave draft comments of your own. It
-deliberately stops short of the review itself: you never publish a comment, touch the
-reader's drafts, mark things viewed or submit a review through it. Your drafts stay on
-this machine until the user sends them from the Purview window.
+deliberately stops short of the review itself: you never publish a comment, mark things
+viewed or submit a review through it. Drafts stay on this machine until the user sends
+them from the Purview window.
 
 ## Finding the instance
 
@@ -113,9 +113,11 @@ yourself with `"agent": "claude-code"` on every write, and anchor it on a line o
 current diff (`side` `RIGHT` for the new code, the default; `LEFT` for removed lines;
 `startLine` for a range; no `line` for the whole file). A reply to a GitHub thread
 takes `inReplyTo` with the thread's `id` and goes out with the reader's review. You may
-change or delete only your own drafts: the server refuses the reader's, another agent's
-and anything already pushed or submitted. Tell the user the drafts are waiting in
-Purview for them to read, edit and send; nothing reaches GitHub until they do.
+edit or delete any draft, the reader's too, when the user asks: Purview marks your edit
+and keeps the previous text for an undo, and a deleted draft goes to its trash. The
+server refuses anything already pushed or submitted. Tell the user which drafts you
+changed and that they are waiting in Purview for them to read and send; nothing
+reaches GitHub until they do.
 
 **Progress and status.** The list item's `progress.hunks` is `{viewed, total}`, how
 much the reader has read; an analysis job's `status` is `queued`, `running`, `done`, `failed` or
@@ -131,7 +133,7 @@ when the user will want to open it: `http://localhost:<port>/pr/<host>/<owner>/<
 **What stays out of reach.** Do not call routes this skill does not list, in
 particular anything under `comments`, `review`, `hunks`, `units` or `chat`: they write
 the user's review or spend money as the user. The `agent-notes` and `agent` routes are
-the exception: they deliver notes addressed to you and hold your own drafts, with the
+the exception: they deliver notes addressed to you and work on drafts, with the
 limits enforced by the server. The plain `comments` routes remain off limits, even to
 read. Publishing, pushing, submitting, resolving and reacting are the user's; for those,
 offer the Purview window's link.

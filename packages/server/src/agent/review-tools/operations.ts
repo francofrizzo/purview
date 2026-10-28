@@ -260,10 +260,10 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
       side: z.enum(["LEFT", "RIGHT"]).default("RIGHT"), startLine: z.number().int().positive().optional(),
       inReplyTo: z.string().min(1).optional(), body: z.string().min(1).max(20000), audience: z.enum(["github", "agent"]).optional(),
     }).strict(), args => commentRequest("POST", "", { ...args, ...(args.inReplyTo ? { audience: "github" } : {}), ...(args.startLine ? { startSide: args.side } : {}) }), false);
-    add("edit_draft", "Edit an agent-authored draft in this PR. Human and published comments are refused.", z.object({ id: z.string().min(1), body: z.string().min(1).max(20000) }).strict(), args => {
+    add("edit_draft", "Edit any draft in this PR, the reader's included; the reader sees the edit marked and can undo it. Pushed or published comments are refused.", z.object({ id: z.string().min(1), body: z.string().min(1).max(20000) }).strict(), args => {
       editable(args.id); return commentRequest("PATCH", `/${encodeURIComponent(args.id)}`, { body: args.body });
     }, false);
-    add("delete_draft", "Delete an agent-authored draft using Purview's history and trash.", z.object({ id: z.string().min(1) }).strict(), args => {
+    add("delete_draft", "Delete any draft in this PR into Purview's trash, where the reader can restore it.", z.object({ id: z.string().min(1) }).strict(), args => {
       editable(args.id); return commentRequest("DELETE", `/${encodeURIComponent(args.id)}`);
     }, false);
     // The reader's own progress, written through the server so the open

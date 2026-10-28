@@ -92,31 +92,30 @@ it("edits and trashes the agent's own draft", async () => {
   ]);
 });
 
-it("refuses to edit or delete the reader's drafts", async () => {
+it("edits the reader's draft as its own edit, keeping the old text for an undo, and trashes it restorably", async () => {
   const human = addComment(key, { ...line, body: "Mine" }, root);
-  for (const res of [
-    await req("PATCH", `${base}/drafts/${human.id}`, { agent: "claude-code", body: "Changed" }),
-    await req("DELETE", `${base}/drafts/${human.id}`, { agent: "claude-code" }),
-  ]) {
-    expect(res.status).toBe(403);
-    expect((await res.json()).error).toBe("consent_required");
-  }
-  expect(readComments(key, root)).toEqual([expect.objectContaining({ id: human.id, body: "Mine" })]);
+  const edit = await req("PATCH", `${base}/drafts/${human.id}`, { agent: "claude-code", body: "Changed" });
+  expect(edit.status).toBe(200);
+  const edited = readComments(key, root).find((c) => c.id === human.id)!;
+  // Still the reader's comment, sent under their name; the edit is the agent's.
+  expect(edited.author === undefined || edited.author === "you").toBe(true);
+  expect(edited).toMatchObject({ body: "Changed", lastEditedBy: { agent: "claude-code" } });
+  expect(edited.history?.[0]).toMatchObject({ body: "Mine" });
+  const del = await req("DELETE", `${base}/drafts/${human.id}`, { agent: "claude-code" });
+  expect(await del.json()).toEqual({ ok: true, trashed: true });
+  expect(readDeletedComments(key, root)).toEqual([expect.objectContaining({ id: human.id, deletedBy: { agent: "claude-code" } })]);
 });
 
-it("refuses to edit or delete another agent's draft", async () => {
+it("edits another agent's draft too", async () => {
   const { comment } = await (await create("codex")).json();
-  for (const res of [
-    await req("PATCH", `${base}/drafts/${comment.id}`, { agent: "claude-code", body: "Changed" }),
-    await req("DELETE", `${base}/drafts/${comment.id}?agent=claude-code`),
-  ]) {
-    expect(res.status).toBe(403);
-    expect((await res.json()).error).toBe("not_your_draft");
-  }
-  expect(readComments(key, root)).toEqual([expect.objectContaining({ id: comment.id, body: "Check new2" })]);
+  const edit = await req("PATCH", `${base}/drafts/${comment.id}`, { agent: "claude-code", body: "Changed" });
+  expect(edit.status).toBe(200);
+  expect(readComments(key, root)).toEqual([
+    expect.objectContaining({ id: comment.id, body: "Changed", author: { agent: "codex" }, lastEditedBy: { agent: "claude-code" } }),
+  ]);
 });
 
-it("refuses to edit or delete its own comment once pushed or submitted", async () => {
+it("refuses to edit or delete a comment once pushed or submitted", async () => {
   const pushed = seed({ status: "pushed", githubCommentId: 41, pushedAt: "2026-01-01T00:00:00Z" });
   const submitted = seed({ status: "submitted", githubCommentId: 42, submittedAt: "2026-01-01T00:00:00Z" });
   for (const target of [pushed, submitted]) {

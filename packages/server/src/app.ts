@@ -1826,12 +1826,12 @@ export function createApp(opts: AppOptions = {}): Hono {
     return { agent: parsed.data };
   }
 
-  /** The draft `agent` may change, or a refusal. */
-  function agentOwnDraft(key: PrKey, id: string, agent: AgentActor): Comment {
+  /** A draft an agent may change, or a refusal. */
+  function agentDraft(key: PrKey, id: string): Comment {
     const target = readComments(key, root).find((cc) => cc.id === id);
     if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
-    const refusal = agentChangeRefusal(target, agent.agent);
-    if (refusal) throw new HttpError(refusal.code === "not_draft" ? 409 : 403, refusal.code, refusal.message);
+    const refusal = agentChangeRefusal(target);
+    if (refusal) throw new HttpError(409, refusal.code, refusal.message);
     return target;
   }
 
@@ -1874,7 +1874,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw new HttpError(400, "invalid_body", 'Send { "agent": "<you>", "body": "<new text>" }; only the text can change.');
     }
     const agent = agentOf(parsed.data.agent);
-    agentOwnDraft(key, id, agent);
+    agentDraft(key, id);
     assertAttachmentRefsExist(key, parsed.data.body, root);
     const result = updateCommentBody(key, id, parsed.data.body, root, agent);
     if (!result.found || !result.comment) throw new HttpError(404, "not_found", `No comment "${id}"`);
@@ -1886,7 +1886,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const id = c.req.param("id");
     const body = (await readJsonBody(c)) as { agent?: unknown };
     const agent = agentOf(body.agent ?? c.req.query("agent"));
-    agentOwnDraft(key, id, agent);
+    agentDraft(key, id);
     // The same path as the reader's delete: a draft goes to the trash,
     // restorable from Purview for a while.
     const result = await deleteComment(key, id, root, agent);

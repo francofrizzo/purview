@@ -145,7 +145,8 @@ it("creates, edits and trashes drafts through the real server, preserving bounda
   await ops.execute("edit_draft", { id, body: "Rechecked new2" });
   expect(readComments(key, root).find(c => c.id === id)?.body).toBe("Rechecked new2");
   const human = addComment(key, { file: "src/foo.ts", subjectType: "line", line: 2, side: "RIGHT", body: "Human note" }, root);
-  await expect(ops.execute("delete_draft", { id: human.id })).rejects.toMatchObject({ code: "consent_required" });
+  await ops.execute("edit_draft", { id: human.id, body: "Human note, tightened" });
+  expect(readComments(key, root).find(c => c.id === human.id)).toMatchObject({ body: "Human note, tightened", lastEditedBy: { agent: "codex" } });
   await expect(ops.execute("create_draft", { file: "absent.ts", subjectType: "line", line: 2, body: "bad" })).rejects.toMatchObject({ code: "comment_outside_diff" });
   await ops.execute("delete_draft", { id });
   expect(readDeletedComments(key, root).some(c => c.id === id)).toBe(true);
@@ -168,7 +169,7 @@ it("creates, edits and trashes drafts through the real server, preserving bounda
   bodyController!.close();
   const late = await response;
   expect(late.status).toBe(409);
-  expect(readComments(key, root).map(c => c.body)).toEqual(["Human note"]);
+  expect(readComments(key, root).map(c => c.body)).toEqual(["Human note, tightened"]);
 });
 
 it("retains native Claude by default and exposes siblings only by opt-in", () => {
