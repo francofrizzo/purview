@@ -255,6 +255,34 @@ export function isFileLevel(c: Pick<Comment, "subjectType">): boolean {
   return c.subjectType === "file";
 }
 
+export interface AgentChangeRefusal {
+  code: "not_draft" | "consent_required" | "not_your_draft";
+  message: string;
+}
+
+/**
+ * Why an agent may not edit or delete `target`, or undefined when it may.
+ * An agent changes drafts an agent wrote, nothing else: never the reader's
+ * (an absent author is the reader's), never one in the reader's pending
+ * review or public on GitHub. Given `agent`, only that agent's own drafts.
+ * One rule for the in-app agent's tools and the external agent routes.
+ */
+export function agentChangeRefusal(
+  target: Pick<Comment, "id" | "status" | "author">,
+  agent?: string,
+): AgentChangeRefusal | undefined {
+  if (target.status !== "draft") {
+    return { code: "not_draft", message: `Only drafts may be changed; comment ${target.id} is ${target.status}.` };
+  }
+  if (!isAgentActor(target.author)) {
+    return { code: "consent_required", message: "Agents cannot change the reader's drafts; propose the edit instead." };
+  }
+  if (agent !== undefined && target.author.agent !== agent) {
+    return { code: "not_your_draft", message: `Comment ${target.id} is a draft by another agent (${target.author.agent}).` };
+  }
+  return undefined;
+}
+
 /**
  * What's actually on disk may predate the three-state vocabulary, where
  * "submitted" meant "pushed into a pending review" — and may predate

@@ -1,6 +1,6 @@
 ---
 name: purview
-description: Operate the user's running Purview instance (the local PR review tool) over its HTTP API. Use this whenever the user mentions Purview, asks to track, add, list, refresh, archive or re-analyze a pull request in it, asks what Purview's analysis says about a PR, or asks for the review units, risks or findings Purview found. Also use it when the user asks you to "add this PR to purview", "start an analysis", "check if the analysis finished", or "what does Purview think of #123", even without naming the API.
+description: Operate the user's running Purview instance (the local PR review tool) over its HTTP API. Use this whenever the user mentions Purview, asks to track, add, list, refresh, archive or re-analyze a pull request in it, asks what Purview's analysis says about a PR, or asks for the review units, risks or findings Purview found, or asks you to read a PR's comments and GitHub threads or leave draft comments on it. Also use it when the user asks you to "add this PR to purview", "start an analysis", "check if the analysis finished", or "what does Purview think of #123", even without naming the API.
 ---
 
 # Purview
@@ -10,10 +10,11 @@ user's machine and keeps its own state per PR: the diff by revision, an AI analy
 (a summary plus "review units" that group hunks by what they do, with attention
 levels, risks and verified findings), the reader's progress and their draft comments.
 
-This skill lets you manage PRs in that instance, read its analysis and pick up the
-notes the reader addressed to you. It deliberately stops short of the review itself:
-you never post comments, mark things viewed or submit a review through it. Those are
-the user's own acts, done in the Purview window.
+This skill lets you manage PRs in that instance, read its analysis and its comments,
+pick up the notes the reader addressed to you and leave draft comments of your own. It
+deliberately stops short of the review itself: you never publish a comment, touch the
+reader's drafts, mark things viewed or submit a review through it. Your drafts stay on
+this machine until the user sends them from the Purview window.
 
 ## Finding the instance
 
@@ -65,6 +66,10 @@ key() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]
 | The analysis itself | `GET $P/prs/<key>/analysis/export` |
 | Point a PR at a local checkout | `POST $P/prs/<key>/repo-path` with `{"path": "/abs/path"}` |
 | Discard a revision fetched mid-rebase | `POST $P/prs/<key>/revisions/<n>/discard` |
+| The PR's local comments, drafts included | `GET $P/prs/<key>/agent/comments` |
+| GitHub threads and reviews, as last fetched | `GET $P/prs/<key>/agent/threads` (`?only=unresolved`, `?path=src/x.ts`) |
+| Leave a draft comment | `POST $P/prs/<key>/agent/drafts` with `{"agent": "claude-code", "file": …, "line": …, "body": …}` |
+| Edit or delete one of your drafts | `PATCH` / `DELETE $P/prs/<key>/agent/drafts/<id>` with your `agent` |
 | Notes the reviewer left for you | `purview notes <key> --wait` (or `POST $P/prs/<key>/agent-notes/pickup` with `{ "agent": "<your name>", "wait": 30 }` in a loop) |
 | Tracked repos | `GET $P/repos` |
 
@@ -98,6 +103,20 @@ units in `order`, each with its why and any `warning` findings. Do not restate s
 skip units unless asked. A 409 here means there is no analysis yet: say so and offer to
 start one.
 
+**Comments and drafts.** `agent/comments` lists every local comment: the reader's,
+yours, notes for agents, with `status` (`draft`, `pushed` into the reader's pending
+review, `submitted` and public) and `author` (absent or `"you"` for the reader,
+`{agent}` for an agent). `agent/threads` is Purview's copy of the GitHub threads and
+reviews; it never fetches GitHub, so say how old it is from `fetchedAt`, and suggest a
+refresh in Purview when it matters. Leave a draft only when the user asks for one, name
+yourself with `"agent": "claude-code"` on every write, and anchor it on a line of the
+current diff (`side` `RIGHT` for the new code, the default; `LEFT` for removed lines;
+`startLine` for a range; no `line` for the whole file). A reply to a GitHub thread
+takes `inReplyTo` with the thread's `id` and goes out with the reader's review. You may
+change or delete only your own drafts: the server refuses the reader's, another agent's
+and anything already pushed or submitted. Tell the user the drafts are waiting in
+Purview for them to read, edit and send; nothing reaches GitHub until they do.
+
 **Progress and status.** The list item's `progress.hunks` is `{viewed, total}`, how
 much the reader has read; an analysis job's `status` is `queued`, `running`, `done`, `failed` or
 `cancelled`, with `progress` text while running and `error` when failed. When the user
@@ -111,9 +130,11 @@ when the user will want to open it: `http://localhost:<port>/pr/<host>/<owner>/<
 
 **What stays out of reach.** Do not call routes this skill does not list, in
 particular anything under `comments`, `review`, `hunks`, `units` or `chat`: they write
-the user's review or spend money as the user. The two `agent-notes` routes are the
-exception: they deliver notes addressed to you; `comments` remains off limits. For
-review actions, offer the Purview window's link.
+the user's review or spend money as the user. The `agent-notes` and `agent` routes are
+the exception: they deliver notes addressed to you and hold your own drafts, with the
+limits enforced by the server. The plain `comments` routes remain off limits, even to
+read. Publishing, pushing, submitting, resolving and reacting are the user's; for those,
+offer the Purview window's link.
 
 ## Examples
 
@@ -136,6 +157,18 @@ knows). Report `job.status` and say the window shows progress live.
 `GET /api/prs/<key>/analysis/export`. Summary first, then must-read units with their
 why and warnings, in order. Mention how far the reader got if they asked about
 progress.
+
+**"Leave a draft on line 40 of src/charge.ts saying the retry can double-charge"**
+`POST /api/prs/<key>/agent/drafts` with
+`{"agent": "claude-code", "file": "src/charge.ts", "line": 40, "body": "This retry can charge the customer twice: …"}`.
+A 422 `comment_outside_diff` means line 40 is not in the diff: say so and offer the
+nearest changed line. Reply with the draft's position and that it waits in Purview
+for them to send.
+
+**"What did reviewers say on #482? Answer the open ones"**
+`GET /api/prs/<key>/agent/threads?only=unresolved`, summarize each thread with its
+`fetchedAt` age, then on request a reply draft per thread: `POST …/agent/drafts` with
+`file`, `line`, `inReplyTo` set to the thread `id`, and the body.
 
 **"Wait for my notes on #482"**
 `purview notes <key> --wait` in the background. When it returns, apply each note in

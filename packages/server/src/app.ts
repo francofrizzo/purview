@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
   analysisCoverage,
   applyAnalysisImport,
+  compactThreads,
   buildAnalysisExport,
   discardRevision,
   hunkDiffOfDiffs,
@@ -83,7 +84,9 @@ import {
   updateCommentBody,
   updateCommentPosition,
   type Comment,
+  agentChangeRefusal,
   isAgentActor,
+  type AgentActor,
   type CommentActor,
   CommentAudienceSchema,
   CommentNotDraftError,
@@ -122,7 +125,7 @@ import {
   type SubmitEvent,
 } from "./github-review.js";
 import { HttpError, classifyError } from "./http-error.js";
-import { loadThreads, normalizeLogin, REACTION_CONTENTS, setReaction, setThreadResolved } from "./github-threads.js";
+import { loadThreads, normalizeLogin, REACTION_CONTENTS, readThreadsCache, setReaction, setThreadResolved } from "./github-threads.js";
 import { streamSSE } from "hono/streaming";
 import {
   cancelAnalysis,
@@ -1414,41 +1417,41 @@ export function createApp(opts: AppOptions = {}): Hono {
     return c.json({ comments: readComments(key, root), deleted: readDeletedComments(key, root) });
   });
 
-  app.post("/api/prs/:key/comments", async (c) => {
-    const key = keyParam(c);
-    const actor = actorOf(c);
-    const body = await readJsonBody(c);
-    assertCommentRevision(key, c.req.header("X-Purview-Revision"));
-    // CLI-created comments (the chat's included) must land inside the current
-    // diff: nobody is looking at the line they chose, and a comment outside
-    // the diff would only fail later, at push time. The web picks lines from
-    // the rendered diff, so it is not re-checked. Replies are exempt.
-    if (c.req.header(ACTOR_HEADER) !== undefined) {
-      const parsed = NewCommentSchema.safeParse(body);
-      // A reply is anchored by its thread, which may well be outdated (its
-      // line gone from the diff) — GitHub accepts it regardless.
-      if (parsed.success && !parsed.data.inReplyTo) {
-        const state = loadState(key, root);
-        const files = readFilesJson(key, state.currentRevision, root).files;
-        const { file, line, side, subjectType, startLine } = parsed.data;
-        if (!files.some((f) => f.path === file)) {
-          throw new HttpError(
-            422,
-            "comment_outside_diff",
-            `${file} is not one of the files changed in revision ${state.currentRevision}`,
-          );
-        }
-        if (subjectType === "line" && !findAnchoringHunk(files, file, line!, side!, startLine)) {
-          const where = startLine !== undefined ? `${startLine}–${line}` : `${line}`;
-          throw new HttpError(
-            422,
-            "comment_outside_diff",
-            `${file}:${where} (${side === "LEFT" ? "old" : "new"} side) is not part of the current diff` +
-              (startLine !== undefined ? " — a multi-line comment must stay inside one hunk" : ""),
-          );
-        }
-      }
+  /**
+   * A new comment written by something other than the web (the CLI, the
+   * chat, an external agent) must land inside the current diff: nobody is
+   * looking at the line they chose, and a comment outside the diff would only
+   * fail later, at push time. The web picks lines from the rendered diff, so
+   * it is not re-checked. Replies are exempt: a reply is anchored by its
+   * thread, which may well be outdated (its line gone from the diff), and
+   * GitHub accepts it regardless.
+   */
+  function assertNewCommentInDiff(key: PrKey, body: unknown): void {
+    const parsed = NewCommentSchema.safeParse(body);
+    if (!parsed.success || parsed.data.inReplyTo) return;
+    const state = loadState(key, root);
+    const files = readFilesJson(key, state.currentRevision, root).files;
+    const { file, line, side, subjectType, startLine } = parsed.data;
+    if (!files.some((f) => f.path === file)) {
+      throw new HttpError(
+        422,
+        "comment_outside_diff",
+        `${file} is not one of the files changed in revision ${state.currentRevision}`,
+      );
     }
+    if (subjectType === "line" && !findAnchoringHunk(files, file, line!, side!, startLine)) {
+      const where = startLine !== undefined ? `${startLine}–${line}` : `${line}`;
+      throw new HttpError(
+        422,
+        "comment_outside_diff",
+        `${file}:${where} (${side === "LEFT" ? "old" : "new"} side) is not part of the current diff` +
+          (startLine !== undefined ? " — a multi-line comment must stay inside one hunk" : ""),
+      );
+    }
+  }
+
+  /** Save a new draft: attachments checked, audience defaulted to the reader's switch. */
+  function createComment(key: PrKey, body: unknown, actor: CommentActor): Comment {
     // A body may name attachments (`purview-attachment:<id>`); each must
     // exist on this PR, whoever wrote the body — see attachments.ts.
     if (typeof (body as { body?: unknown })?.body === "string") {
@@ -1457,11 +1460,19 @@ export function createApp(opts: AppOptions = {}): Hono {
     try {
       // Without an explicit audience a comment follows the reader's switch,
       // whoever writes it: the web, the CLI, the chat.
-      const comment = addComment(key, body, root, actor, commentAudienceFor(key, root).effective);
-      return c.json({ comment }, 201);
+      return addComment(key, body, root, actor, commentAudienceFor(key, root).effective);
     } catch (err) {
       throw classifyError(err);
     }
+  }
+
+  app.post("/api/prs/:key/comments", async (c) => {
+    const key = keyParam(c);
+    const actor = actorOf(c);
+    const body = await readJsonBody(c);
+    assertCommentRevision(key, c.req.header("X-Purview-Revision"));
+    if (c.req.header(ACTOR_HEADER) !== undefined) assertNewCommentInDiff(key, body);
+    return c.json({ comment: createComment(key, body, actor) }, 201);
   });
 
   /**
@@ -1781,6 +1792,107 @@ export function createApp(opts: AppOptions = {}): Hono {
       const e = classifyGhReviewError(err);
       return c.json({ comment: result.comment, remote: { ok: false, reason: e.message } });
     }
+  });
+
+  /* -------------------------------------------------- external agents */
+
+  /**
+   * An agent working outside Purview (Claude Code through the purview skill)
+   * reads the PR's comments and the cached GitHub threads, and writes its own
+   * drafts — the same reach as the in-app agent's tools, enforced here rather
+   * than in the skill's text. It names itself on every write; the name becomes
+   * the draft's author and is the only thing it may change. Nothing here
+   * publishes, pushes, submits, resolves or reacts: drafts wait for the reader.
+   * A chat request (actor header) never reaches these writes: the actor guard
+   * above confines it to the comment routes.
+   */
+  const AgentNameSchema = z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9][a-z0-9-]{0,63}$/, "agent must be a lowercase id such as claude-code")
+    .refine((name) => name !== "you", "agent names the agent; \"you\" is the reader");
+
+  function agentOf(value: unknown): AgentActor {
+    const parsed = AgentNameSchema.safeParse(value);
+    if (!parsed.success) {
+      throw new HttpError(
+        400,
+        "invalid_agent",
+        value === undefined || value === ""
+          ? 'Name yourself with "agent" (a lowercase id such as claude-code).'
+          : parsed.error.issues[0].message,
+      );
+    }
+    return { agent: parsed.data };
+  }
+
+  /** The draft `agent` may change, or a refusal. */
+  function agentOwnDraft(key: PrKey, id: string, agent: AgentActor): Comment {
+    const target = readComments(key, root).find((cc) => cc.id === id);
+    if (!target) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    const refusal = agentChangeRefusal(target, agent.agent);
+    if (refusal) throw new HttpError(refusal.code === "not_draft" ? 409 : 403, refusal.code, refusal.message);
+    return target;
+  }
+
+  app.get("/api/prs/:key/agent/comments", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    return c.json({ comments: readComments(key, root) });
+  });
+
+  /** From threads.json only: never asks GitHub. `fetchedAt` says how old it is. */
+  app.get("/api/prs/:key/agent/threads", (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const only = z.enum(["mine", "unresolved", "all"]).catch("all").parse(c.req.query("only"));
+    return c.json(compactThreads(readThreadsCache(key, root), only, c.req.query("path") || undefined));
+  });
+
+  app.post("/api/prs/:key/agent/drafts", async (c) => {
+    const key = keyParam(c);
+    readMeta(key, root);
+    const { agent: name, ...input } = (await readJsonBody(c)) as Record<string, unknown>;
+    const agent = agentOf(name);
+    // As the in-app agent's tool: a line on the new side unless told
+    // otherwise, and a reply goes to GitHub's thread, never to an agent.
+    const body = {
+      ...input,
+      ...(input.line !== undefined && input.side === undefined ? { side: "RIGHT" } : {}),
+      ...(typeof input.inReplyTo === "string" ? { audience: "github" } : {}),
+    };
+    assertNewCommentInDiff(key, body);
+    return c.json({ comment: createComment(key, body, agent) }, 201);
+  });
+
+  app.patch("/api/prs/:key/agent/drafts/:id", async (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    const raw = await readJsonBody(c);
+    const parsed = z.object({ agent: z.unknown(), body: z.string() }).strict().safeParse(raw);
+    if (!parsed.success || parsed.data.body.trim() === "") {
+      throw new HttpError(400, "invalid_body", 'Send { "agent": "<you>", "body": "<new text>" }; only the text can change.');
+    }
+    const agent = agentOf(parsed.data.agent);
+    agentOwnDraft(key, id, agent);
+    assertAttachmentRefsExist(key, parsed.data.body, root);
+    const result = updateCommentBody(key, id, parsed.data.body, root, agent);
+    if (!result.found || !result.comment) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    return c.json({ comment: result.comment });
+  });
+
+  app.delete("/api/prs/:key/agent/drafts/:id", async (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    const body = (await readJsonBody(c)) as { agent?: unknown };
+    const agent = agentOf(body.agent ?? c.req.query("agent"));
+    agentOwnDraft(key, id, agent);
+    // The same path as the reader's delete: a draft goes to the trash,
+    // restorable from Purview for a while.
+    const result = await deleteComment(key, id, root, agent);
+    if (!result.removed) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    pruneAttachments(key, allCommentBodies(key, root), root);
+    return c.json({ ok: true, trashed: result.trashed ?? false });
   });
 
   /* ---------------------------------------------------------- attachments */

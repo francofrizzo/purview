@@ -5,7 +5,7 @@ JSON in, JSON out. `<key>` is `host/owner/repo/number` URL encoded (or an encode
 
 ## Errors
 
-Every error is `{ "error": "<code>", "message": "<sentence>" }` with an HTTP status:
+Every error is `{ "error": "<code>", "detail": "<sentence>" }` with an HTTP status:
 
 | Status | Code | Meaning |
 |---|---|---|
@@ -153,6 +153,56 @@ for an untracked PR. The CLI takes the key or the PR URL.
 Each delivered comment carries `pickedUp: {at: "<ISO timestamp>", by: "<agent name>"}`.
 Editing its body clears that mark, making it pending again; moving it to GitHub
 also clears the mark. `purview notes <key> --peek` reads without marking.
+
+## Comments and drafts for the coding agent
+
+These routes are yours; the plain `/comments` routes are not. Writes name you with
+`agent`, a lowercase id (`claude-code`); it becomes the draft's `author: {agent}`. The
+server refuses any change to a comment that is not your own draft. Nothing here
+publishes: a draft waits in Purview until the user sends it.
+
+`GET /prs/<key>/agent/comments` returns `{comments: Comment[]}`, every local comment:
+
+```
+id, file, subjectType ("line" | "file"), line, side ("LEFT" | "RIGHT"), startLine?,
+body, status ("draft" | "pushed" | "submitted"), audience ("github" | "agent"),
+author (absent or "you": the reader; {agent}: an agent), inReplyTo?, revision,
+outdated?, createdAt, updatedAt?
+```
+
+`GET /prs/<key>/agent/threads` returns Purview's cached GitHub threads, never fetched
+for you: `{fetchedAt, threads: [{id, path, line, side, startLine, resolved, outdated,
+comments: [{author, isMine, createdAt, body, truncated}]}], reviews?: [{author, state,
+submittedAt, body, truncated}]}`. `?only=mine|unresolved|all` and `?path=<file>` filter
+threads; `reviews` comes only with neither. Bodies stop at 600 characters
+(`truncated`). Without a cache: `{threads: [], error: "no_threads_cache"}`.
+
+`POST /prs/<key>/agent/drafts` creates a draft, 201 `{comment}`:
+
+```sh
+curl -s -X POST "$P/prs/$(key github.com/acme/billing/482)/agent/drafts" \
+  -H 'content-type: application/json' \
+  -d '{"agent":"claude-code","file":"src/charge.ts","line":40,"body":"This retry can charge twice."}'
+```
+
+Body: `agent`, `file`, `body`, and `line` with `side` (`RIGHT`, the new code, when
+omitted; `LEFT` for removed lines), `startLine` for a range inside one hunk, or no `line` for a file comment.
+`audience` is `github` or `agent` (omitted: the reader's switch). `inReplyTo` with a
+thread `id` makes a reply, always `github`, exempt from the diff check.
+
+`PATCH /prs/<key>/agent/drafts/<id>` with `{"agent":"claude-code","body":"…"}` changes
+the text, nothing else; returns `{comment}`. `DELETE /prs/<key>/agent/drafts/<id>?agent=claude-code`
+(or `agent` in a JSON body) moves the draft to Purview's trash, where the user can
+restore it; returns `{ok, trashed}`.
+
+| Status | Code | Meaning |
+|---|---|---|
+| 400 | `invalid_agent` | `agent` missing or not a lowercase id |
+| 400 | `invalid_body`, `validation_error` | the body is wrong; an edit takes only `agent` and `body` |
+| 403 | `consent_required` | the comment is the reader's; propose the change instead |
+| 403 | `not_your_draft` | another agent wrote it |
+| 409 | `not_draft` | it is pushed or submitted; only the user changes it now |
+| 422 | `comment_outside_diff` | that file or line is not in the current diff |
 
 ## `POST /prs/<key>/tag`
 

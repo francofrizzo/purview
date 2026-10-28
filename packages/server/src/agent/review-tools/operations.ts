@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import * as core from "@reviewer/core";
 import { readThreadsCache } from "../../github-threads.js";
-import { readComments } from "../../comments.js";
+import { agentChangeRefusal, readComments } from "../../comments.js";
 import type { AgentAction, AgentRunRequest } from "../types.js";
 
 /**
@@ -221,8 +221,8 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
     function editable(id: string) {
       const target = readComments(key, root).find(c => c.id === id);
       if (!target) failure("outside_review", "No comment with this ID in the bound PR.");
-      if (target.status !== "draft") failure("not_draft", "Only drafts may be changed.");
-      if (!target.author || target.author === "you") failure("consent_required", "Experimental tools cannot edit human drafts; propose the edit instead.");
+      const refusal = agentChangeRefusal(target);
+      if (refusal) failure(refusal.code, refusal.message);
     }
     add("list_threads", "Cached GitHub threads and reviews; report fetchedAt, never fetch GitHub. Follow nextCursor with cursor and reviews.nextCursor with reviewsCursor.", z.object({
       only: z.enum(["mine", "unresolved", "all"]).default("all"), path: relativePath.optional(), reviewsCursor: z.string().optional(), ...pageArgs,
