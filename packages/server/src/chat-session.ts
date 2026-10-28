@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  cachedViewerLogin,
   keyToString,
   loadState,
   prDir,
@@ -13,7 +14,7 @@ import {
 import { ensureCodingCheckout, resolveRunCheckout } from "./pr-checkout.js";
 import { cliEnvironment, getHarness } from "./agent/registry.js";
 import { actionGerund } from "./agent/types.js";
-import type { AgentAction, AgentHarness, AgentRun, AgentSession, HarnessId } from "./agent/types.js";
+import type { AgentAction, AgentRun, AgentSession, HarnessId } from "./agent/types.js";
 import { skillDir } from "./skill-paths.js";
 import { effectiveChatAgent, effectiveRepoPath } from "./repo-config.js";
 import { loadCommittedConfig } from "./team-config.js";
@@ -31,6 +32,8 @@ import {
   type ChatRef,
 } from "./chat.js";
 import { HttpError } from "./http-error.js";
+import { authoredByYou } from "./comment-audience.js";
+import { readConfig } from "./config.js";
 import { reviewSystemPrompt, checkoutGuidance } from "./agent/review-tools/prompts.js";
 
 /**
@@ -348,6 +351,8 @@ export interface ChatHandoff {
   branch: string;
   startSha: string;
   headSha: string;
+  /** false: the reader's own checkout of their PR branch, not a worktree Purview made */
+  owned: boolean;
   contextPath: string;
 }
 
@@ -356,72 +361,47 @@ export function terminalContextPath(key: PrKey, root = stateRoot()): string {
 }
 
 /**
- * Open ordinary coding access outside the review harness. The conversation
- * is context, not a native resume; its review checkout is never made writable.
+ * "Open in Claude Code": a fresh, ordinary Claude Code session in a writable
+ * worktree (see `ensureCodingCheckout`), started with the review's context and
+ * the chat so far as text. Never a resume of the panel's session: that one
+ * keeps its read-only system prompt whatever a fork is told.
  */
 export async function chatHandoff(key: PrKey, root = stateRoot()): Promise<ChatHandoff> {
-  const chat = readChat(key, root);
-  // Use the conversation's adapter to prepare context, not to resume its
-  // restricted native session.
-  let harness: AgentHarness;
-  try {
-    harness = getHarness(chat.session?.harness);
-  } catch {
-    throw new HttpError(
-      409,
-      "unknown_harness",
-      `This chat's session belongs to "${chat.session?.harness}", which this Purview does not have. ` +
-        "Send a message to start a new session.",
-    );
-  }
-  const { name, agentName } = harness.manifest;
-  const continueIn = "open Claude Code";
-  if (!harness.createHandoff) {
-    throw new HttpError(409, "handoff_unsupported", `${name} cannot continue a chat in a terminal.`);
-  }
+  // Claude Code runs the command whichever harness the chat is on.
+  const harness = getHarness("claude-code");
   if (chatBusy(key)) {
-    throw new HttpError(
-      409,
-      "chat_busy",
-      `${agentName} is still answering. Wait for the reply to finish, then ${continueIn}.`,
-    );
-  }
-  if (chat.messages.length === 0) {
-    throw new HttpError(
-      409,
-      "no_session",
-      `This chat has no ${agentName} session yet. Send a message first, then ${continueIn}.`,
-    );
+    throw new HttpError(409, "chat_busy", "Claude is still answering. Wait for the reply to finish, then open Claude Code.");
   }
   const meta = readMeta(key, root);
   const state = loadState(key, root);
   const revision = state.revisions.find((r) => r.revision === state.currentRevision);
+  const ownBranch =
+    meta.headRef && authoredByYou(meta.author, cachedViewerLogin(key.host, root), readConfig(root).extraAuthors)
+      ? meta.headRef
+      : undefined;
   const workspace = await ensureCodingCheckout(key, {
     repoPath: effectiveRepoPath(key, root, { meta }),
     headSha: revision?.headSha,
+    ownBranch,
     root,
   });
   if ("error" in workspace) throw new HttpError(409, "coding_checkout_unavailable", workspace.error);
-  const context = [
-    "This is a fresh coding session with Purview's visible conversation, not its native tool history. Earlier messages may be omitted as noted below. The panel session is unchanged.",
-    replayTranscript(chat.messages),
-    terminalContext(key, root, {
-      coding: workspace,
-      committed: await loadCommittedConfig(key, root),
-      harness: harness.manifest,
-    }),
-  ].join("\n\n");
+  const context = terminalContext(key, root, {
+    coding: { ...workspace, prBranch: workspace.branch === ownBranch },
+    conversation: replayTranscript(readChat(key, root).messages),
+    committed: await loadCommittedConfig(key, root),
+  });
   const contextPath = terminalContextPath(key, root);
   fs.mkdirSync(path.dirname(contextPath), { recursive: true });
   fs.writeFileSync(contextPath, context, "utf8");
 
-  const handoff = harness.createHandoff({
+  const { command } = harness.createHandoff!({
     cwd: workspace.path,
     contextPath,
     readRoots: [prDir(key, root), skillDir()],
   });
-  const { path: cwd, branch, startSha, headSha } = workspace;
-  return { cwd, branch, startSha, headSha, contextPath, ...handoff };
+  const { path: cwd, branch, startSha, headSha, owned } = workspace;
+  return { command, cwd, branch, startSha, headSha, owned, contextPath };
 }
 
 /** Only for tests: wait for any in-flight turn on this PR. */

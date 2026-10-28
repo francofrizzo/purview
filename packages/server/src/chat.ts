@@ -29,7 +29,7 @@ import type { CommittedConfig } from "./team-config.js";
 import type { CheckoutResolution } from "./worktree.js";
 import { HttpError } from "./http-error.js";
 import { getHarness } from "./agent/registry.js";
-import type { HarnessId, HarnessManifest, ReviewerCommand } from "./agent/types.js";
+import type { HarnessId, ReviewerCommand } from "./agent/types.js";
 
 /**
  * The review-assistant chat: one resumable agent session per PR.
@@ -547,34 +547,32 @@ export function terminalContext(
   key: PrKey,
   root = stateRoot(),
   opts: PromptOpts & {
-    coding?: { path: string; branch: string; startSha: string; headSha: string };
-    harness?: HarnessManifest;
+    coding?: CodingWorkspace;
+    /** the Purview chat replayed as text (`replayTranscript`), "" when there is none */
+    conversation?: string;
   } = {},
 ): string {
   const cmd = cliCommand();
   const meta = readMeta(key, root);
-  const { id, agentName } = opts.harness ?? getHarness().manifest;
+  // The command always starts Claude Code, whichever harness ran the chat.
+  const { id, agentName } = getHarness("claude-code").manifest;
   const reading = readingMoreLines(key, root);
   const section = (lines: string[]) => lines.filter((l) => l !== "").join("\n");
 
   return [
     `# Purview review context: ${meta.title ?? keyToString(key)}`,
-    "This message comes from Purview, not typed by the reader. It supplies review context for a fresh coding session, not a continuation of the read-only review harness.",
+    "This message comes from Purview, not typed by the reader. It opens a fresh coding session on a pull request they are reviewing in Purview, with the review's context below.",
     section([
       "You are a coding assistant helping the reader act on a pull request review from Purview.",
       MANNER_LINE,
     ]),
     "## Pull request",
     section(prOverviewLines(key, root)),
-    opts.coding ? section([
-      "## Writable coding workspace",
-      `- Worktree: ${opts.coding.path}`,
-      `- Branch: ${opts.coding.branch}`,
-      `- Started from reviewed commit: ${opts.coding.startSha}`,
-      `- Current HEAD when opened: ${opts.coding.headSha}`,
-      "- You may edit code and run tests here with the reader's normal permissions. This is separate from Purview's read-only review checkout.",
-      "- This workspace is reused without resetting it, even when the PR changes. Inspect git status and the current code before making changes; preserve existing work. The diff and findings below describe the review snapshot, not necessarily this workspace's current contents.",
-      `- To read a file before the PR, use \`${cmd} base-file ${keyToString(key)} <path>\`.`,
+    opts.coding ? section(codingWorkspaceLines(key, opts.coding)) : "",
+    opts.conversation ? section([
+      "## The conversation so far",
+      "The reader's chat in Purview, replayed as text: not your tool history. That chat goes on unchanged in the panel.",
+      opts.conversation,
     ]) : "",
     "## Reading more, when you need it",
     section([...reading.sources, ...reading.status]),
@@ -582,12 +580,12 @@ export function terminalContext(
     chatInstructionsSection(key, root, { committed: opts.committed }),
     "## Your coding session",
     section([
-      "- The earlier turns ran inside Purview, read-only apart from draft comments. That restriction is gone: this is ordinary Claude Code with the reader's normal permissions, not Purview's review harness.",
+      "- This is ordinary Claude Code with the reader's normal permissions. The review chat's read-only rules do not apply here.",
       UNTRUSTED_RULE,
       "- Never post anything to GitHub (reviews, comments, approvals, labels, merges) unless the reader explicitly asks for it in this session.",
       `- Purview's review state changes only through the reviewer-state CLI (\`${cmd} <subcommand>\`), never by editing files in the state directory.`,
       NO_INVENTION_RULE,
-      "- Nothing done here shows up in the Purview chat panel. It is a separate coding session, not a live continuation.",
+      "- Nothing done here shows up in the Purview chat panel.",
     ]),
     "## Draft review comments",
     section([
@@ -604,6 +602,34 @@ export function terminalContext(
     .filter((s) => s !== "")
     .join("\n\n")
     .concat("\n");
+}
+
+export interface CodingWorkspace {
+  path: string;
+  branch: string;
+  startSha: string;
+  headSha: string;
+  /** false: the reader's own checkout, not a worktree Purview made */
+  owned: boolean;
+  /** the branch is the PR's own head branch (the reader wrote the PR) */
+  prBranch: boolean;
+}
+
+function codingWorkspaceLines(key: PrKey, w: CodingWorkspace): string[] {
+  const cmd = cliCommand();
+  return [
+    "## Where you work",
+    `- ${w.owned ? "Worktree" : "The reader's own checkout"}: ${w.path}`,
+    `- Branch: ${w.branch}${w.prBranch ? " (the PR's own branch)" : ""}`,
+    `- Reviewed commit: ${w.startSha}`,
+    `- HEAD now: ${w.headSha}`,
+    "- You may edit code and run tests here. Purview's review checkout is elsewhere and stays untouched.",
+    w.prBranch
+      ? "- Commits here land on the PR once pushed. Push only when the reader asks."
+      : "- Commits stay on this local branch. Nothing reaches the PR unless the reader pushes it there.",
+    "- Nothing here is ever reset: it may hold earlier work and may be ahead of or behind the reviewed commit. Check git status and the current code before changing anything; the diff and findings below describe the reviewed commit.",
+    `- To read a file before the PR, use \`${cmd} base-file ${keyToString(key)} <path>\`.`,
+  ];
 }
 
 /**

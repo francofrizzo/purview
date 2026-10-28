@@ -106,6 +106,23 @@ it("edits the reader's draft as its own edit, keeping the old text for an undo, 
   expect(readDeletedComments(key, root)).toEqual([expect.objectContaining({ id: human.id, deletedBy: { agent: "claude-code" } })]);
 });
 
+it("moves a draft between audiences as an undoable edit", async () => {
+  const human = addComment(key, { ...line, body: "Mine", audience: "github" }, root);
+  const move = await req("PATCH", `${base}/drafts/${human.id}`, { agent: "claude-code", audience: "agent" });
+  expect(move.status).toBe(200);
+  expect((await move.json()).comment).toMatchObject({ body: "Mine", audience: "agent", lastEditedBy: { agent: "claude-code" } });
+  const both = await req("PATCH", `${base}/drafts/${human.id}`, { agent: "claude-code", audience: "github", body: "Mine, sharper" });
+  expect((await both.json()).comment).toMatchObject({ body: "Mine, sharper", audience: "github" });
+  // Each change is one undo step: the text first, then the move.
+  const undo = (id: string) => req("POST", `/api/prs/${encodeURIComponent(keyToString(key))}/comments/${id}/undo-edit`);
+  expect((await (await undo(human.id)).json()).comment).toMatchObject({ body: "Mine", audience: "github" });
+  expect((await (await undo(human.id)).json()).comment).toMatchObject({ body: "Mine", audience: "agent" });
+  expect((await (await undo(human.id)).json()).comment).toMatchObject({ body: "Mine", audience: "github" });
+  expect(readComments(key, root)[0].lastEditedBy).toBeUndefined();
+  const empty = await req("PATCH", `${base}/drafts/${human.id}`, { agent: "claude-code" });
+  expect((await empty.json()).error).toBe("invalid_body");
+});
+
 it("edits another agent's draft too", async () => {
   const { comment } = await (await create("codex")).json();
   const edit = await req("PATCH", `${base}/drafts/${comment.id}`, { agent: "claude-code", body: "Changed" });

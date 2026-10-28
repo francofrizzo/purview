@@ -192,15 +192,16 @@ omitted; `LEFT` for removed lines), `startLine` for a range inside one hunk, or 
 thread `id` makes a reply, always `github`, exempt from the diff check.
 
 `PATCH /prs/<key>/agent/drafts/<id>` with `{"agent":"claude-code","body":"…"}` changes
-the text of any draft, nothing else; the previous text is kept for the user's undo.
-Returns `{comment}`. `DELETE /prs/<key>/agent/drafts/<id>?agent=claude-code`
+the text of any draft; `"audience": "github" | "agent"` (with or without `body`) moves it
+between the reader's review and the notes for agents. Nothing else can change. The user
+can undo each change. Returns `{comment}`. `DELETE /prs/<key>/agent/drafts/<id>?agent=claude-code`
 (or `agent` in a JSON body) moves the draft to Purview's trash, where the user can
 restore it; returns `{ok, trashed}`.
 
 | Status | Code | Meaning |
 |---|---|---|
 | 400 | `invalid_agent` | `agent` missing or not a lowercase id |
-| 400 | `invalid_body`, `validation_error` | the body is wrong; an edit takes only `agent` and `body` |
+| 400 | `invalid_body`, `validation_error` | the body is wrong; an edit takes only `agent`, `body` and `audience` |
 | 409 | `not_draft` | it is pushed or submitted; only the user changes it now |
 | 422 | `comment_outside_diff` | that file or line is not in the current diff |
 

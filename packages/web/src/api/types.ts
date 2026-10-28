@@ -886,7 +886,7 @@ export interface DraftComment {
   /** who made the latest body edit still in effect; absent = unedited (or undone) */
   lastEditedBy?: CommentActor;
   /** earlier bodies, oldest first — what "undo" goes back to */
-  history?: { body: string; replacedAt: string; replacedBy: CommentActor }[];
+  history?: { body: string; audience?: CommentAudience; replacedAt: string; replacedBy: CommentActor }[];
   /** GraphQL node id of the GitHub thread this comment started, once pushed */
   githubThreadId?: string;
   /**
@@ -1206,6 +1206,8 @@ export interface ChatHandoff {
   branch: string;
   startSha: string;
   headSha: string;
+  /** false: the reader's own checkout of their PR branch, not a worktree Purview made */
+  owned: boolean;
   contextPath: string;
 }
 

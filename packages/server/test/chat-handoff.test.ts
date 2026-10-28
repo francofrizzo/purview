@@ -14,6 +14,7 @@ import {
 } from "../src/chat.js";
 import type { CommittedConfig } from "../src/team-config.js";
 import { skillDir } from "../src/skill-paths.js";
+import { writeConfig } from "../src/config.js";
 import { handoffCommand, shellQuote } from "../src/agent/claude-code/handoff.js";
 import { buildFixture, key } from "./fixtures.js";
 import { fakeClaude, type FakeClaude } from "./fake-claude.js";
@@ -24,6 +25,8 @@ const LAN_HOST = "192.168.1.24";
 const TOKEN = "t0ken-abcdefghijklmnopqrstuv";
 const SESSION = "0f8c2b1e-5d4a-4c3b-9a1f-2e7d6c5b4a39";
 const encodedKey = encodeURIComponent(keyToString(key));
+/** The coding worktree as the server reports it: resolved (macOS tmp is under /private). */
+const codingPath = () => fs.realpathSync(codingCheckoutPath(key, root));
 
 let root: string;
 let work: string;
@@ -116,12 +119,13 @@ describe("POST /chat/handoff", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     const contextPath = terminalContextPath(key, root);
-    const cwd = codingCheckoutPath(key, root);
+    const cwd = codingPath();
     expect(body).toEqual({
       cwd,
       branch: "purview/fix/7",
       startSha: headSha,
       headSha,
+      owned: true,
       contextPath,
       command: handoffCommand({ cwd, contextPath, addDirs: [prDir(key, root), skillDir()] }),
     });
@@ -134,7 +138,9 @@ describe("POST /chat/handoff", () => {
     expect(context).toContain("## Your coding session");
     expect(context).toContain("You may edit code and run tests here");
     expect(context).not.toContain("never modify it");
-    expect(context).toContain(`Started from reviewed commit: ${headSha}`);
+    expect(context).toContain(`Reviewed commit: ${headSha}`);
+    expect(context).toContain("Nothing reaches the PR unless the reader pushes it there.");
+    expect(context).toContain("## The conversation so far");
     expect(context).toContain("You: what is risky?");
     expect(context).toContain("  - unit-1 [must-read/core-logic] Widget logic (2 hunks)");
     expect(context).toContain(`\`${cli()} triage ${keyToString(key)}\``);
@@ -170,7 +176,8 @@ describe("POST /chat/handoff", () => {
     expect(context).toContain("Assistant: the rounding");
     expect(context).toContain("[the reader stopped this reply here, before it was finished]");
     expect(context).toContain("## Pull request");
-    expect(context).toContain("PURVIEW_AGENT=claude-shared");
+    // The terminal is Claude Code whatever harness ran the chat.
+    expect(context).toContain("PURVIEW_AGENT=claude-code");
     expect(context).not.toContain("Use only the Purview MCP tools");
     // Run the actual returned command through a shell; a stand-in CLI
     // records cwd/arguments instead of starting inference or reading auth.
@@ -181,20 +188,30 @@ describe("POST /chat/handoff", () => {
       env: { ...process.env, PATH: `${bin}${path.delimiter}${process.env.PATH}` }, encoding: "utf8",
     }));
     // POSIX command substitution removes trailing newlines from cat's output.
-    expect(executed).toEqual({ cwd: codingCheckoutPath(key, root), args: [context.replace(/\n+$/, ""), "--add-dir", prDir(key, root), "--add-dir", skillDir()] });
+    expect(executed).toEqual({ cwd: codingPath(), args: [context.replace(/\n+$/, ""), "--add-dir", prDir(key, root), "--add-dir", skillDir()] });
     expect(fs.existsSync(sentinel)).toBe(false);
     expect(fs.readFileSync(chatPath(key, root), "utf8")).toBe(before);
     expect((await handoff()).status).toBe(200);
     expect(fs.readFileSync(body.contextPath, "utf8")).toBe(context);
   });
 
-  it("409s no_session before the first message", async () => {
+  it("opens before the first message, with the review context alone", async () => {
     const res = await handoff();
-    expect(res.status).toBe(409);
-    const body = await res.json();
-    expect(body.error).toBe("no_session");
-    expect(body.detail).toMatch(/Send a message first/);
-    expect(fs.existsSync(terminalContextPath(key, root))).toBe(false);
+    expect(res.status).toBe(200);
+    const context = fs.readFileSync((await res.json()).contextPath, "utf8");
+    expect(context).toContain("## Pull request");
+    expect(context).not.toContain("## The conversation so far");
+  });
+
+  it("works on the PR's own branch when the reader wrote the PR", async () => {
+    seed();
+    updateMeta(key, { author: "octo", headRef: "feature" }, root);
+    writeConfig({ extraAuthors: ["octo"] }, root);
+    const body = await (await handoff()).json();
+    expect(body).toMatchObject({ cwd: codingPath(), branch: "feature", owned: true });
+    const context = fs.readFileSync(body.contextPath, "utf8");
+    expect(context).toContain("Branch: feature (the PR's own branch)");
+    expect(context).toContain("Commits here land on the PR once pushed.");
   });
 
   it("opens from a legacy conversation without needing its original native session", async () => {
@@ -205,22 +222,22 @@ describe("POST /chat/handoff", () => {
     const res = await handoff();
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.cwd).toBe(codingCheckoutPath(key, root));
+    expect(body.cwd).toBe(codingPath());
     expect(fs.readFileSync(body.contextPath, "utf8")).toContain("You: q");
   });
 
-  it("409s unknown_harness for a session no registered harness owns", async () => {
+  it("opens Claude Code even when the chat ran on a harness this Purview lacks", async () => {
     seed({ session: { harness: "elsewhere", id: SESSION, cwd: prDir(key, root) } });
     const res = await handoff();
-    expect(res.status).toBe(409);
-    expect((await res.json()).error).toBe("unknown_harness");
+    expect(res.status).toBe(200);
+    expect((await res.json()).command).toContain("&& claude ");
   });
 
   it("does not depend on the old session directory", async () => {
     seed({ session: { harness: "claude-code", id: SESSION, cwd: path.join(root, "vanished") } });
     const res = await handoff();
     expect(res.status).toBe(200);
-    expect((await res.json()).cwd).toBe(codingCheckoutPath(key, root));
+    expect((await res.json()).cwd).toBe(codingPath());
   });
 
   it("refuses a missing local repository instead of opening the state directory", async () => {
@@ -371,7 +388,7 @@ describe("chatSystemPrompt after the section refactor", () => {
 
 describe("terminalContext", () => {
   it("carries the same PR context and overlays, under the terminal contract", () => {
-    const coding = { path: "/coding/7", branch: "purview/fix/7", startSha: "a".repeat(40), headSha: "b".repeat(40) };
+    const coding = { path: "/coding/7", branch: "purview/fix/7", startSha: "a".repeat(40), headSha: "b".repeat(40), owned: true, prBranch: false };
     const doc = terminalContext(key, root, { coding, committed });
     const prompt = chatSystemPrompt(key, root, undefined, { committed });
 
@@ -386,8 +403,8 @@ describe("terminalContext", () => {
     expect(doc).toContain("TEAM RUBRIC BODY");
     expect(doc).toContain("TEAM CHAT BODY");
     expect(doc).toContain("Worktree: /coding/7");
-    expect(doc).toContain(`Current HEAD when opened: ${"b".repeat(40)}`);
-    expect(doc).toContain("preserve existing work");
+    expect(doc).toContain(`HEAD now: ${"b".repeat(40)}`);
+    expect(doc).toContain("Nothing here is ever reset");
     expect(doc).toContain(`base-file ${keyToString(key)} <path>`);
     expect(doc).toContain("Never post anything to GitHub");
     expect(doc).toContain("reviewer-state CLI");

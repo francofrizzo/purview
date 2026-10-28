@@ -79,6 +79,8 @@ export function isAgentActor(actor: CommentActor | undefined): actor is AgentAct
 /** One body a comment used to have, newest last. */
 export const CommentBodyRevisionSchema = z.object({
   body: z.string(),
+  /** the audience before this change, when an agent moved the draft */
+  audience: CommentAudienceSchema.optional(),
   /** when this body was replaced */
   replacedAt: z.string(),
   /** who replaced it */
@@ -610,7 +612,8 @@ export type UndoCommentEditResult =
   | { ok: false; reason: "not_found" | "no_history" | "not_draft" };
 
 /**
- * Put back the body a comment had before its latest edit. Drafts only: a
+ * Put back the body (and the audience, when the edit moved it) a comment had
+ * before its latest edit. Drafts only: a
  * pushed comment's body also lives on GitHub, and undo is a local safety net,
  * not a second way to edit remotely (the regular edit route does that).
  */
@@ -629,6 +632,7 @@ export function undoCommentEdit(key: PrKey, id: string, root = stateRoot()): Und
   const updated: Comment = {
     ...base,
     body: last.body,
+    ...(last.audience ? { audience: last.audience } : {}),
     updatedAt: new Date().toISOString(),
     // Whoever made the edit before the one undone is now the latest editor.
     ...(prev ? { lastEditedBy: prev.replacedBy } : {}),
@@ -819,6 +823,8 @@ export class CommentNotDraftError extends Error {
 /**
  * Move a draft between "part of the review" and "note for an agent". Only a
  * draft can move: a pushed or submitted comment already exists on GitHub.
+ * An agent's move is an edit like any other: stamped and undoable. The
+ * reader's own toggle is one click back, so it leaves no history.
  * Returns the comment, or null when there is no such id.
  */
 export function setCommentAudience(
@@ -826,6 +832,7 @@ export function setCommentAudience(
   id: string,
   audience: CommentAudience,
   root = stateRoot(),
+  actor: CommentActor = "you",
 ): Comment | null {
   const comments = readComments(key, root);
   const idx = comments.findIndex((c) => c.id === id);
@@ -835,6 +842,18 @@ export function setCommentAudience(
   if (target.status !== "draft") throw new CommentNotDraftError(target);
   const next = [...comments];
   next[idx] = { ...target, audience, pickedUp: audience === "github" ? undefined : target.pickedUp };
+  if (actor !== "you") {
+    const now = new Date().toISOString();
+    next[idx] = {
+      ...next[idx],
+      updatedAt: now,
+      lastEditedBy: actor,
+      history: [
+        ...(target.history ?? []),
+        { body: target.body, audience: target.audience, replacedAt: now, replacedBy: actor },
+      ].slice(-COMMENT_HISTORY_CAP),
+    };
+  }
   writeComments(key, next, root);
   return next[idx];
 }

@@ -199,7 +199,7 @@ describe("coding worktrees", () => {
     const before = git(["status", "--porcelain"], user);
     const opts = { repoPath: user, headSha: remote.headSha, root };
     const [first, second] = await Promise.all([ensureCodingCheckout(key, opts), ensureCodingCheckout(key, opts)]);
-    expect(first).toEqual({ path: real(codingCheckoutPath(key, root)), branch: "purview/fix/7", startSha: remote.headSha, headSha: remote.headSha });
+    expect(first).toEqual({ path: real(codingCheckoutPath(key, root)), branch: "purview/fix/7", startSha: remote.headSha, headSha: remote.headSha, owned: true });
     expect(second).toEqual(first);
     expect(git(["status", "--porcelain"], user)).toBe(before);
     expect(headOf(user)).toBe(remote.baseSha);
@@ -225,7 +225,7 @@ describe("coding worktrees", () => {
     const next = pushPrHead(remote.path, key.number, "export const rate = 0.3;\n");
     await ensure(user, next);
     expect(headOf(managedPath())).toBe(next);
-    const expected = { path: real(coding), branch: "my-rounding-fix", startSha: remote.headSha, headSha: fixHead };
+    const expected = { path: real(coding), branch: "my-rounding-fix", startSha: remote.headSha, headSha: fixHead, owned: true };
     expect(await ensureCodingCheckout(key, { ...opts, headSha: next })).toEqual(expected);
     updateMeta(key, { archived: true }, root);
     expect(await pruneCheckouts(root)).toContain(managedPath());
@@ -238,29 +238,68 @@ describe("coding worktrees", () => {
     expect(fs.readFileSync(path.join(coding, "scratch.txt"), "utf8")).toBe("keep untracked work\n");
   });
 
-  it("refuses an existing branch instead of resetting or adopting it", async () => {
+  it("rebuilds a tree deleted by hand from its branch, keeping the commits", async () => {
+    const user = cloneRepo(remote.path, path.join(work, "user"));
+    const opts = { repoPath: user, headSha: remote.headSha, root };
+    await ensureCodingCheckout(key, opts);
+    const coding = codingCheckoutPath(key, root);
+    fs.writeFileSync(path.join(coding, "pricing.ts"), "export const rate = 0.25;\n");
+    git(["commit", "-qam", "fix rounding"], coding);
+    const fixHead = headOf(coding);
+    // Not `git worktree remove`: the registration stays behind, as after an rm -rf.
+    fs.rmSync(coding, { recursive: true });
+    expect(await ensureCodingCheckout(key, opts)).toEqual({
+      path: real(coding), branch: "purview/fix/7", startSha: remote.headSha, headSha: fixHead, owned: true,
+    });
+    expect(fs.readFileSync(path.join(coding, "pricing.ts"), "utf8")).toBe("export const rate = 0.25;\n");
+  });
+
+  it("checks out an existing fix branch as it stands, never resetting it", async () => {
     const user = cloneRepo(remote.path, path.join(work, "user"));
     git(["branch", "purview/fix/7"], user);
-    expect(await ensureCodingCheckout(key, { repoPath: user, headSha: remote.headSha, root })).toMatchObject({ error: expect.stringContaining("already exists") });
+    const result = await ensureCodingCheckout(key, { repoPath: user, headSha: remote.headSha, root });
+    expect(result).toMatchObject({ branch: "purview/fix/7", headSha: remote.baseSha, startSha: remote.baseSha });
     expect(git(["rev-parse", "purview/fix/7"], user)).toBe(remote.baseSha);
+  });
+
+  it("refuses a fix branch checked out in another worktree", async () => {
+    const user = cloneRepo(remote.path, path.join(work, "user"));
+    addWorktree(user, path.join(work, "elsewhere"), "purview/fix/7");
+    expect(await ensureCodingCheckout(key, { repoPath: user, headSha: remote.headSha, root })).toMatchObject({
+      error: expect.stringContaining("is checked out at"),
+    });
     expect(fs.existsSync(codingCheckoutPath(key, root))).toBe(false);
   });
 
-  it("never replaces an occupied directory or rebuilds a missing coding tree", async () => {
+  it("never replaces a directory Purview did not create", async () => {
     const user = cloneRepo(remote.path, path.join(work, "user"));
     const target = codingCheckoutPath(key, root);
     fs.mkdirSync(target, { recursive: true });
     fs.writeFileSync(path.join(target, "notes.txt"), "my notes");
-    const opts = { repoPath: user, headSha: remote.headSha, root };
-    expect(await ensureCodingCheckout(key, opts)).toMatchObject({ error: expect.stringContaining("ownership record") });
+    expect(await ensureCodingCheckout(key, { repoPath: user, headSha: remote.headSha, root })).toMatchObject({
+      error: expect.stringContaining("Purview did not create it"),
+    });
     expect(fs.readFileSync(path.join(target, "notes.txt"), "utf8")).toBe("my notes");
-    // Remove only the disposable directory this test created, then create a tree.
-    fs.rmSync(target, { recursive: true });
-    expect(await ensureCodingCheckout(key, opts)).toHaveProperty("path");
-    fs.rmSync(target, { recursive: true });
-    expect(await ensureCodingCheckout(key, opts)).toMatchObject({ error: expect.stringContaining("missing") });
-    expect(fs.existsSync(target)).toBe(false);
-    expect(git(["rev-parse", "purview/fix/7"], user)).toBe(remote.headSha);
+  });
+
+  describe("on the reader's own PR", () => {
+    it("works on the PR's branch, tracking it upstream", async () => {
+      const user = cloneRepo(remote.path, path.join(work, "user"));
+      git(["fetch", "-q", "origin", `refs/pull/${key.number}/head:refs/remotes/origin/feature`], user);
+      const result = await ensureCodingCheckout(key, { repoPath: user, headSha: remote.headSha, ownBranch: "feature", root });
+      expect(result).toEqual({ path: real(codingCheckoutPath(key, root)), branch: "feature", startSha: remote.headSha, headSha: remote.headSha, owned: true });
+      expect(git(["rev-parse", "--abbrev-ref", "feature@{upstream}"], user)).toBe("origin/feature");
+    });
+
+    it("uses the reader's own checkout of the branch in place", async () => {
+      const user = cloneRepo(remote.path, path.join(work, "user"));
+      const mine = addWorktree(user, path.join(work, "mine"), "feature");
+      fs.writeFileSync(path.join(mine.path, "wip.txt"), "uncommitted\n");
+      const result = await ensureCodingCheckout(key, { repoPath: user, headSha: remote.headSha, ownBranch: "feature", root });
+      expect(result).toEqual({ path: real(mine.path), branch: "feature", startSha: remote.headSha, headSha: headOf(mine.path), owned: false });
+      expect(fs.existsSync(codingCheckoutPath(key, root))).toBe(false);
+      expect(fs.readFileSync(path.join(mine.path, "wip.txt"), "utf8")).toBe("uncommitted\n");
+    });
   });
 });
 
@@ -483,7 +522,7 @@ const cli = () => path.join(path.dirname(process.env.REVIEWER_CLI_PATH!), "revie
 
     const context = fs.readFileSync(body.contextPath, "utf8");
     expect(context).toContain(`Worktree: ${coding}`);
-    expect(context).toContain(`Started from reviewed commit: ${remote.headSha}`);
+    expect(context).toContain(`Reviewed commit: ${remote.headSha}`);
     expect(context).toContain(`\`${cli()} base-file ${keyToString(key)} <path>\``);
     expect(context).toContain("Review units:");
     expect(context).not.toContain("HARD RULES");

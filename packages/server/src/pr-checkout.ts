@@ -274,43 +274,69 @@ function isUnder(p: string, dir: string): boolean {
 /* ------------------------------------------------ user-owned coding trees */
 
 export type CodingCheckoutResult =
-  | { path: string; branch: string; startSha: string; headSha: string }
+  | {
+      path: string;
+      branch: string;
+      startSha: string;
+      headSha: string;
+      /** false: the reader's own checkout of their PR branch, not Purview's tree */
+      owned: boolean;
+    }
   | { error: string };
 
+export interface CodingCheckoutOptions extends Pick<EnsurePrCheckoutOptions, "repoPath" | "headSha" | "root"> {
+  /** the PR's head branch when the reader wrote the PR: fixes belong on it, not on a side branch */
+  ownBranch?: string;
+}
+
+export const codingBranch = (key: PrKey) => `purview/fix/${key.number}`;
+
+interface CodingMarker {
+  commonDir: string;
+  startSha: string;
+}
+
+function readCodingMarker(marker: string): CodingMarker | undefined {
+  try {
+    const saved = JSON.parse(fs.readFileSync(marker, "utf8")) as Partial<CodingMarker>;
+    if (saved.commonDir && saved.startSha && SHA_RE.test(saved.startSha)) return saved as CodingMarker;
+  } catch {
+    /* absent or unreadable */
+  }
+  return undefined;
+}
+
 /**
- * A durable editing workspace, not a review snapshot. Only its first open
- * fetches and checks out the reviewed head. Every subsequent open is read-only
- * here: commits, branch changes and dirty files belong to the reader.
+ * A durable editing workspace, not a review snapshot: nothing here ever
+ * resets, cleans or deletes. An existing tree is reused as it stands. A
+ * missing one is built from its branch when the branch still exists (a tree
+ * removed by hand loses only its uncommitted files, never its commits), else
+ * created at the reviewed head. On the reader's own PR the branch is the PR's
+ * own, and a checkout of it they already have is used in place.
  */
-export function ensureCodingCheckout(
-  key: PrKey,
-  opts: Pick<EnsurePrCheckoutOptions, "repoPath" | "headSha" | "root">,
-): Promise<CodingCheckoutResult> {
+export function ensureCodingCheckout(key: PrKey, opts: CodingCheckoutOptions): Promise<CodingCheckoutResult> {
   const root = opts.root ?? stateRoot();
   const target = codingCheckoutPath(key, root);
   const marker = `${target}.json`;
   return withLock(`coding:${target}`, async (): Promise<CodingCheckoutResult> => {
-    if (fs.existsSync(target) || fs.existsSync(marker)) {
-      // Never adopt, rebuild or delete an occupied path, even after a failed
-      // creation. A missing/corrupt marker needs human recovery, not --force.
-      let saved: { commonDir?: string; startSha?: string };
-      try {
-        saved = JSON.parse(fs.readFileSync(marker, "utf8"));
-        if (!saved.commonDir || !saved.startSha || !SHA_RE.test(saved.startSha)) throw new Error();
-      } catch {
-        return { error: `Coding workspace ${target} has no valid ownership record. Move it aside or recover it manually; no files were changed.` };
+    if (fs.existsSync(target)) {
+      // Never adopt, rebuild or delete an occupied path: without a valid
+      // marker it may be anything, and only the reader can say what.
+      const saved = readCodingMarker(marker);
+      if (!saved) {
+        return { error: `${target} exists but Purview did not create it. Move it aside and try again; nothing was changed.` };
       }
       const common = await gitAsync(["rev-parse", "--path-format=absolute", "--git-common-dir"], target);
       const top = await gitAsync(["rev-parse", "--show-toplevel"], target);
       if (!common.ok || !top.ok || realpath(top.out) !== realpath(target) || realpath(common.out) !== saved.commonDir) {
-        return { error: `Coding workspace ${target} is missing or no longer belongs to its original repository. Recover it manually; no files were changed.` };
+        return { error: `${target} is no longer a worktree of its repository. Move it aside and try again; nothing was changed.` };
       }
       const branch = await gitAsync(["symbolic-ref", "--quiet", "--short", "HEAD"], target);
       const head = await gitAsync(["rev-parse", "HEAD"], target);
       if (!branch.ok || !head.ok) {
-        return { error: `Coding workspace ${target} has no checked-out branch. Check out your fix branch there and try again.` };
+        return { error: `${target} has no branch checked out. Check out your fix branch there and try again.` };
       }
-      return { path: realpath(target), branch: branch.out, startSha: saved.startSha!, headSha: head.out };
+      return { path: realpath(target), branch: branch.out, startSha: saved.startSha, headSha: head.out, owned: true };
     }
 
     const { repoPath, headSha } = opts;
@@ -324,22 +350,49 @@ export function ensureCodingCheckout(
     if (!remote) return { error: `No remote of ${repoPath} points at ${key.owner}/${key.repo}. Check the repository settings.` };
 
     return withLock(`repo:${realpath(common.out)}`, async (): Promise<CodingCheckoutResult> => {
-      if (!(await hasCommit(repoPath, headSha))) {
+      const branch = opts.ownBranch ?? codingBranch(key);
+      const holder = (await listWorktrees(repoPath)).find(
+        (w) => w.branch === branch && fs.existsSync(w.path) && realpath(w.path) !== realpath(target),
+      );
+      if (holder) {
+        const head = await gitAsync(["rev-parse", "HEAD"], holder.path);
+        if (opts.ownBranch && head.ok) {
+          return { path: realpath(holder.path), branch, startSha: headSha, headSha: head.out, owned: false };
+        }
+        return { error: `${branch} is checked out at ${holder.path}. Work there, or remove that worktree and try again.` };
+      }
+
+      const existing = await gitAsync(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`], repoPath);
+      let startSha = headSha;
+      if (existing.ok) {
+        const base = await gitAsync(["merge-base", existing.out, headSha], repoPath);
+        startSha = readCodingMarker(marker)?.startSha ?? (base.ok ? base.out : existing.out);
+      } else if (!(await hasCommit(repoPath, headSha))) {
         const fetched = await gitAsync(["fetch", "--no-tags", "--quiet", remote, `refs/pull/${key.number}/head`], repoPath);
         if (!(await hasCommit(repoPath, headSha))) {
           return { error: `Reviewed commit ${headSha.slice(0, 12)} is unavailable${fetched.ok ? " after fetching the PR head" : `: ${fetched.err}`}. Refresh the PR or fetch that commit locally.` };
         }
       }
-      const branch = `purview/fix/${key.number}`;
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      // No --force, -B, reset, clean or automatic collision recovery. Git
-      // refuses existing branches and stale worktree registrations intact.
-      const added = await gitAsync(["worktree", "add", "--quiet", "-b", branch, target, headSha], repoPath);
-      if (!added.ok) return { error: `Could not create coding workspace: ${added.err}. Existing branches and files were left alone.` };
-      fs.writeFileSync(marker, JSON.stringify({ commonDir: realpath(common.out), startSha: headSha }), { flag: "wx" });
-      return { path: realpath(target), branch, startSha: headSha, headSha };
+      // An existing branch is checked out as it stands: never -B, reset or
+      // clean. --force only overrides the registration a tree deleted by hand
+      // leaves behind at this path; a live checkout of the branch elsewhere
+      // was ruled out above.
+      const added = await gitAsync(
+        ["worktree", "add", "--quiet", "--force", ...(existing.ok ? [target, branch] : ["-b", branch, target, headSha])],
+        repoPath,
+      );
+      if (!added.ok) return { error: `Could not create the coding worktree: ${added.err}. Existing branches and files were left alone.` };
+      if (!existing.ok && opts.ownBranch) {
+        // Best effort: lets a plain `git push` / `git pull` reach the PR branch.
+        await gitAsync(["branch", "--quiet", `--set-upstream-to=${remote}/${branch}`, branch], repoPath);
+      }
+      fs.writeFileSync(marker, JSON.stringify({ commonDir: realpath(common.out), startSha } satisfies CodingMarker));
+      const head = await gitAsync(["rev-parse", "HEAD"], target);
+      log.info("checkout", `${shortKey(key)}  coding worktree ${existing.ok ? "rebuilt" : "created"}`, { path: target, branch });
+      return { path: realpath(target), branch, startSha, headSha: head.ok ? head.out : startSha, owned: true };
     });
-  }).catch((err: unknown) => ({ error: `Coding workspace failed: ${(err as Error).message}` }));
+  }).catch((err: unknown) => ({ error: `Coding worktree failed: ${(err as Error).message}` }));
 }
 
 /* ------------------------------------------------- per-run checkout choice */

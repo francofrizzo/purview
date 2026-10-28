@@ -1675,7 +1675,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         throw new HttpError(400, "invalid_body", 'audience must be "github" or "agent"');
       }
       try {
-        const moved = setCommentAudience(key, id, parsedAudience.data, root);
+        const moved = setCommentAudience(key, id, parsedAudience.data, root, actor);
         if (!moved) throw new HttpError(404, "not_found", `No comment "${id}"`);
         target = moved;
       } catch (err) {
@@ -1869,16 +1869,25 @@ export function createApp(opts: AppOptions = {}): Hono {
     const key = keyParam(c);
     const id = c.req.param("id");
     const raw = await readJsonBody(c);
-    const parsed = z.object({ agent: z.unknown(), body: z.string() }).strict().safeParse(raw);
-    if (!parsed.success || parsed.data.body.trim() === "") {
-      throw new HttpError(400, "invalid_body", 'Send { "agent": "<you>", "body": "<new text>" }; only the text can change.');
+    const parsed = z
+      .object({ agent: z.unknown(), body: z.string().optional(), audience: CommentAudienceSchema.optional() })
+      .strict()
+      .safeParse(raw);
+    const { body, audience } = parsed.success ? parsed.data : {};
+    if (!parsed.success || (body === undefined && audience === undefined) || body?.trim() === "") {
+      throw new HttpError(
+        400,
+        "invalid_body",
+        'Send { "agent": "<you>", "body": "<new text>" } and/or "audience": "github" | "agent"; nothing else can change.',
+      );
     }
     const agent = agentOf(parsed.data.agent);
     agentDraft(key, id);
-    assertAttachmentRefsExist(key, parsed.data.body, root);
-    const result = updateCommentBody(key, id, parsed.data.body, root, agent);
-    if (!result.found || !result.comment) throw new HttpError(404, "not_found", `No comment "${id}"`);
-    return c.json({ comment: result.comment });
+    if (body !== undefined) assertAttachmentRefsExist(key, body, root);
+    let comment = audience !== undefined ? setCommentAudience(key, id, audience, root, agent) : null;
+    if (body !== undefined) comment = updateCommentBody(key, id, body, root, agent).comment ?? null;
+    if (!comment) throw new HttpError(404, "not_found", `No comment "${id}"`);
+    return c.json({ comment });
   });
 
   app.delete("/api/prs/:key/agent/drafts/:id", async (c) => {

@@ -69,7 +69,7 @@ key() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1]
 | The PR's local comments, drafts included | `GET $P/prs/<key>/agent/comments` |
 | GitHub threads and reviews, as last fetched | `GET $P/prs/<key>/agent/threads` (`?only=unresolved`, `?path=src/x.ts`) |
 | Leave a draft comment | `POST $P/prs/<key>/agent/drafts` with `{"agent": "claude-code", "file": …, "line": …, "body": …}` |
-| Edit or delete one of your drafts | `PATCH` / `DELETE $P/prs/<key>/agent/drafts/<id>` with your `agent` |
+| Edit, move or delete a draft | `PATCH` (`body`, `audience`) / `DELETE $P/prs/<key>/agent/drafts/<id>` with your `agent` |
 | Notes the reviewer left for you | `purview notes <key> --wait` (or `POST $P/prs/<key>/agent-notes/pickup` with `{ "agent": "<your name>", "wait": 30 }` in a loop) |
 | Tracked repos | `GET $P/repos` |
 
@@ -113,8 +113,9 @@ yourself with `"agent": "claude-code"` on every write, and anchor it on a line o
 current diff (`side` `RIGHT` for the new code, the default; `LEFT` for removed lines;
 `startLine` for a range; no `line` for the whole file). A reply to a GitHub thread
 takes `inReplyTo` with the thread's `id` and goes out with the reader's review. You may
-edit or delete any draft, the reader's too, when the user asks: Purview marks your edit
-and keeps the previous text for an undo, and a deleted draft goes to its trash. The
+edit, move (`audience`) or delete any draft, the reader's too, when the user asks:
+Purview marks your change and keeps what it replaced for an undo, and a deleted draft
+goes to its trash. The
 server refuses anything already pushed or submitted. Tell the user which drafts you
 changed and that they are waiting in Purview for them to read and send; nothing
 reaches GitHub until they do.

@@ -16,14 +16,10 @@ describe("isLoopbackHostname", () => {
 });
 
 describe("handoffDisabledReason", () => {
-  const ok = { messageCount: 2, busy: false, loopback: true };
+  const ok = { busy: false, loopback: true };
 
-  it("is enabled with a conversation, idle, on the Mac", () => {
+  it("is enabled when idle, on the Mac, even before the first message", () => {
     expect(handoffDisabledReason(ok)).toBeNull();
-  });
-
-  it("explains an empty conversation", () => {
-    expect(handoffDisabledReason({ ...ok, messageCount: 0 })).toMatch(/Send a message first/);
   });
 
   it("explains a streaming turn", () => {
@@ -31,7 +27,7 @@ describe("handoffDisabledReason", () => {
   });
 
   it("names the LAN case first: nothing else would make it usable there", () => {
-    expect(handoffDisabledReason({ messageCount: 0, busy: true, loopback: false })).toBe(
+    expect(handoffDisabledReason({ busy: true, loopback: false })).toBe(
       HANDOFF_LAN_REASON,
     );
     expect(HANDOFF_LAN_REASON).toBe("Run this from the Mac running Purview");

@@ -403,7 +403,10 @@ export function ByAgentChip({ comment }: { comment: Pick<DraftComment, "author">
   );
 }
 
-/** "edited by Claude · undo" — while the chat's latest edit to a draft is still in effect. */
+/**
+ * "edited by Claude · undo" (or "moved by", when the edit moved the draft
+ * between audiences) — while an agent's latest edit to a draft is in effect.
+ */
 export function AgentEditNote({
   comment,
   onUndo,
@@ -415,9 +418,10 @@ export function AgentEditNote({
 }) {
   const name = useAgentName(isAgentActor(comment.lastEditedBy) ? comment.lastEditedBy.agent : null);
   if (!canUndoAgentEdit(comment)) return null;
+  const movedFrom = comment.history?.at(-1)?.audience;
   return (
     <p className="mt-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-      edited by {name}
+      {movedFrom ? "moved" : "edited"} by {name}
       {onUndo ? (
         <>
           {" · "}
@@ -428,7 +432,11 @@ export function AgentEditNote({
             style={{ color: "var(--fg-muted)" }}
             disabled={busy}
             onClick={() => onUndo(comment.id)}
-            data-tip={`Go back to the text before ${name}'s edit`}
+            data-tip={
+              movedFrom
+                ? `Put it back ${movedFrom === "agent" ? "with the notes for agents" : "in your review"}`
+                : `Go back to the text before ${name}'s edit`
+            }
           >
             undo
           </button>

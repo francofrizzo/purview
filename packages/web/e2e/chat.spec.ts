@@ -8,6 +8,12 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByTestId("chat-panel")).toBeVisible();
 });
 
+test("Open in Claude Code works before the first message", async ({ page }) => {
+  await expect(page.getByTestId("chat-handoff")).toBeEnabled();
+  await page.getByTestId("chat-handoff").click();
+  await expect(page.getByTestId("chat-handoff-cwd")).toContainText("/coding/");
+});
+
 test("Open in Claude Code shows its coding workspace and copy control above the chat toolbar", async ({ page }) => {
   await page.getByTestId("chat-input").fill("What should I check first?");
   await page.getByTestId("chat-send").click();
@@ -20,7 +26,7 @@ test("Open in Claude Code shows its coding workspace and copy control above the 
   await expect(page.getByTestId("chat-handoff-command")).not.toContainText("--resume");
   await expect(page.getByTestId("chat-handoff-cwd")).toContainText("/coding/");
   await expect(popover).toContainText("purview/fix/482");
-  await expect(popover).toContainText("Started from reviewed commit");
+  await expect(popover).toContainText("Reviewed commit");
   const box = await popover.boundingBox();
   expect(box!.y).toBeGreaterThanOrEqual(0);
   expect(box!.y + box!.height).toBeLessThanOrEqual(page.viewportSize()!.height);

@@ -842,7 +842,6 @@ export function ChatPanel({
           {handoffHarness?.capabilities.handoff ? (
             <HandoffButton
               prKey={prKey}
-              messageCount={chat.messages.length}
               busy={chat.busy}
             />
           ) : null}
@@ -934,15 +933,7 @@ type HandoffState =
  * runs the copied command. The server
  * refuses it over the LAN, so the button says so up front instead.
  */
-function HandoffButton({
-  prKey,
-  messageCount,
-  busy,
-}: {
-  prKey: string;
-  messageCount: number;
-  busy: boolean;
-}) {
+function HandoffButton({ prKey, busy }: { prKey: string; busy: boolean }) {
   const label = "Open in Claude Code";
   const [state, setState] = useState<HandoffState | null>(null);
   const [recopied, setRecopied] = useState(false);
@@ -950,7 +941,6 @@ function HandoffButton({
   /** Bumped on every open/close, so a reply that lands after a close is dropped. */
   const request = useRef(0);
   const reason = handoffDisabledReason({
-    messageCount,
     busy,
     loopback: isLoopbackHostname(window.location.hostname),
   });
@@ -1027,7 +1017,7 @@ function HandoffButton({
           {state.phase === "loading" ? (
             <p className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
               <IconSpinner width={10} height={10} />
-              Preparing coding workspace…
+              Preparing the worktree…
             </p>
           ) : state.phase === "error" ? (
             <p className="text-2xs leading-4" data-testid="chat-handoff-error" style={{ color: "var(--risk)" }}>
@@ -1036,19 +1026,18 @@ function HandoffButton({
           ) : (
             <>
               <p className="text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
-                {state.copied
-                  ? "Copied. Paste into a terminal to open ordinary Claude Code with code editing and testing."
-                  : "Copy and paste into a terminal to open ordinary Claude Code with code editing and testing."}
+                {state.copied ? "Copied. Paste it" : "Paste this"} into a terminal to open Claude Code on this
+                PR, free to edit code and run tests.
               </p>
               <dl className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
-                <dt style={{ color: "var(--fg-faint)" }}>Coding worktree</dt>
+                <dt style={{ color: "var(--fg-faint)" }}>{state.handoff.owned ? "Worktree" : "Your checkout"}</dt>
                 <dd className="break-all font-mono" data-testid="chat-handoff-cwd">{state.handoff.cwd}</dd>
                 <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>Branch</dt>
                 <dd className="break-all font-mono">{state.handoff.branch}</dd>
-                <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>Started from reviewed commit</dt>
+                <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>Reviewed commit</dt>
                 <dd className="font-mono">{state.handoff.startSha.slice(0, 12)}</dd>
                 {state.handoff.headSha !== state.handoff.startSha ? <>
-                  <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>Current HEAD</dt>
+                  <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>HEAD now</dt>
                   <dd className="font-mono">{state.handoff.headSha.slice(0, 12)}</dd>
                 </> : null}
               </dl>
@@ -1075,9 +1064,10 @@ function HandoffButton({
                 </button>
               </div>
               <p className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-                A fresh session with visible chat and PR context, not tool history. Earlier messages may be omitted.
-                This worktree is reused without resetting your work, even when the PR changes. Purview never removes it automatically.
-                What you do there won't appear here.
+                {state.handoff.owned
+                  ? "Purview keeps this worktree as you leave it, even when the PR changes, and never deletes it."
+                  : "Your own checkout of the PR's branch, used as it stands."}{" "}
+                Claude starts fresh, with this chat as context. What you do there won&apos;t appear here.
               </p>
             </>
           )}

@@ -2222,12 +2222,6 @@ export const mockApi = {
    */
   async chatHandoff(key: string): Promise<ChatHandoff> {
     await delay(120);
-    if (!(chats[key] ?? []).length) {
-      throw new ApiError("no_session", 409, {
-        error: "no_session",
-        detail: "This chat has no Claude session yet. Send a message first, then open Claude Code.",
-      });
-    }
     const cwd = `/Users/you/.purview/coding/${key}`;
     const branch = `purview/fix/${key.split("/").at(-1)}`;
     const startSha = "a12b34c56d78e90f1234567890abcdef12345678";
@@ -2238,6 +2232,7 @@ export const mockApi = {
       branch,
       startSha,
       headSha: startSha,
+      owned: true,
       contextPath,
       command: `cd ${q(cwd)} && claude "$(cat ${q(contextPath)})"`,
     };

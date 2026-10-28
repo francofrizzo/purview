@@ -16,14 +16,9 @@ export function isLoopbackHostname(hostname: string): boolean {
 export const HANDOFF_LAN_REASON = "Run this from the Mac running Purview";
 
 /** Why the button is disabled, or `null` when it is usable. First reason wins. */
-export function handoffDisabledReason(input: {
-  messageCount: number;
-  busy: boolean;
-  loopback: boolean;
-}): string | null {
+export function handoffDisabledReason(input: { busy: boolean; loopback: boolean }): string | null {
   if (!input.loopback) return HANDOFF_LAN_REASON;
   if (input.busy) return "Wait for the reply to finish";
-  if (input.messageCount === 0) return "Send a message first — there is no conversation to continue yet";
   return null;
 }
 
