@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.28.1
 
 - **Import picker.** "import PRs…" in a repo's ⋯ menu finds review requests and your own PRs, then lets you tick which ones to import. Ticking an archived PR brings it back.
 - **Draft comments from Claude Code.** With the purview skill, Claude Code can leave, edit or move drafts on a PR for you to send from Purview.
