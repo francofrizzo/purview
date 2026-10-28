@@ -2352,7 +2352,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     c.json({
       default: DEFAULT_HARNESS,
       harnesses: registeredHarnessIds().map((id) => {
-        const { toolNames: _toolNames, inlineOutputLimit: _limit, ...manifest } = getHarness(id).manifest;
+        const { toolNames: _toolNames, inlineOutputLimit: _limit, reviewTools: _tools, ...manifest } = getHarness(id).manifest;
         // Unlisted: registered by the private override only, so the settings
         // pickers leave it out while a chat already on it can still name models.
         return { ...manifest, listed: listedHarnessIds().includes(id) };

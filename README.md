@@ -202,11 +202,23 @@ wait in Purview for you. Install it in any of three ways:
 ## Agent integration
 
 The skill flow above also runs by itself. The server drives an agent harness headlessly for
-two things. By default that harness is Claude Code: the server runs the `claude` CLI, reusing your
-existing Claude Code auth — there are no API keys anywhere. Everything outside the adapter
-(`packages/server/src/agent/claude-code/`) speaks the harness contract in
-`packages/server/src/agent/types.ts`, and the settings and chat UI are built from the
-harness's manifest (`GET /api/agents`).
+two things. Both harnesses run the `claude` CLI, reusing your existing Claude Code auth — there
+are no API keys anywhere — and Settings → Agents picks between them:
+
+- **Claude Code** (`claude-shared`, the default; needs Claude Code 2.1.305 or newer). Claude
+  gets no shell and no native tools, only Purview's own: reading the PR, its diff, units and
+  threads, searching and reading the checkout, and writing the analysis or drafts through the
+  server. Every run is bound to one PR, revision and task, and refuses to start if the CLI
+  offers any other tool.
+- **Claude Code (Legacy)** (`claude-code`). Claude Code's own Read/Grep/Glob and a shell
+  limited to the `reviewer-state` CLI and read-only commands, driven by the pr-review skill.
+
+Settings written before Claude Code became the default name `claude-code`; they are read as
+the new default once, and a pick of Legacy made since stays put (`agentsVersion: 2` marks
+it). Everything outside the adapters (`packages/server/src/agent/`) speaks the harness
+contract in `packages/server/src/agent/types.ts`, and the settings and chat UI are built from
+each harness's manifest (`GET /api/agents`). `PURVIEW_HARNESS=<id>` runs everything on one
+harness regardless of settings.
 
 **Automatic analysis.** Tracking a new PR queues an analysis run immediately; refreshing one
 queues another only when the migration actually produced hunks nobody has classified yet.
@@ -290,12 +302,14 @@ Anything left `null` inherits from the layer below, down to the built-in default
 default model and effort: `sonnet`, `medium`).
 
 **Agent selections.** `analysisAgent` and `chatAgent` name a harness and, optionally, that
-harness's model and (for analysis) effort: `{"harness": "claude-code", "model": "opus"}`. The
+harness's model and (for analysis) effort: `{"harness": "claude-shared", "model": "opus"}`. The
 harness is the first one any layer names; a model or effort only counts from a layer that
 names that same harness, since a Claude model means nothing to another harness. A selection
 this server cannot run (an unknown harness, a model its manifest does not list) is an error
 on the run, never a silent fallback. The old flat `analysisModel`/`chatModel`/`analysisEffort`
-fields are still read, as Claude Code selections.
+fields are still read, as Claude Code selections. A committed config that means Legacy says
+`"agentsVersion": 2` beside `"harness": "claude-code"`; without it, `claude-code` reads as
+today's default.
 
 `PURVIEW_AUTO_ANALYZE=0` still beats every layer, and an
 archived PR never starts an analysis run on its own.
@@ -304,7 +318,7 @@ The committed layer is the one your team shares. Put it in the repo you review:
 
 ```
 .purview/config.json    { "autoAnalyze": false,
-                          "chatAgent": { "harness": "claude-code", "model": "haiku" } }   # unknown keys ignored
+                          "chatAgent": { "harness": "claude-shared", "model": "haiku" } }   # unknown keys ignored
 .purview/RUBRIC.md      # rubric refinements for this codebase
 .purview/CHAT.md        # chat-only instructions for this codebase
 ```

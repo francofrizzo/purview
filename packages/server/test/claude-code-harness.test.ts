@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { claudeCodeHarness, setClaudeSpawner } from "../src/agent/claude-code/index.js";
+import { claudeSharedHarness } from "../src/agent/claude-shared/index.js";
 import type { AgentEvent, AgentRunRequest } from "../src/agent/types.js";
 import { getHarness } from "../src/agent/registry.js";
 import { cliCommand } from "../src/skill-paths.js";
@@ -32,7 +33,7 @@ afterEach(() => {
 
 describe("registry", () => {
   it("resolves the default harness and refuses unknown ids", () => {
-    expect(getHarness()).toBe(claudeCodeHarness);
+    expect(getHarness()).toBe(claudeSharedHarness);
     expect(getHarness("claude-code")).toBe(claudeCodeHarness);
     expect(() => getHarness("nope")).toThrow(/Unknown agent harness "nope"/);
   });

@@ -1,5 +1,11 @@
 # Integración experimental: siguiente handoff a Mac
 
+> **Estado (2026-10-28):** `claude-shared` es el default y se llama "Claude Code";
+> el harness nativo sigue como "Claude Code (Legacy)" y los dos aparecen en
+> Settings. Las selecciones guardadas antes con `claude-code` se leen una vez
+> como el nuevo default (`agentsVersion: 2`). Codex sigue experimental. Lo que
+> sigue es el registro de la integración tal como se hizo.
+
 Los adapters viven ahora en `packages/server/src/agent/{claude-shared,codex}`.
 No importan el spike. Nada es visible en la UI ni en el changelog; el Claude
 actual conserva sus permisos, prompts y posición de default. No cambia el

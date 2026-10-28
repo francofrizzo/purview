@@ -43,6 +43,7 @@ import {
 import type { ChatMessage } from "../src/chat.js";
 import { ownerRepoFromRemote } from "../src/repo-path.js";
 import { HttpError } from "../src/http-error.js";
+import { writeConfig } from "../src/config.js";
 import { buildFixture, key, DOD_REV1, DOD_REV2, REV1_PATCH } from "./fixtures.js";
 import { fakeClaude, scriptedRun, type FakeClaude } from "./fake-claude.js";
 import { analysisToolFlags, chatToolFlags } from "./claude-policies.js";
@@ -1698,6 +1699,12 @@ describe("chat rewind/edit routes", () => {
 
 describe("model selection", () => {
   const modelOf = (argv: string[]) => argv[argv.indexOf("--model") + 1];
+  // Selection is the subject here, so no override: Legacy (the harness the
+  // fake stands in for) is pinned the way a reader would, in the settings.
+  beforeEach(() => {
+    delete process.env.PURVIEW_HARNESS;
+    writeConfig({ analysisAgent: { harness: "claude-code" }, chatAgent: { harness: "claude-code" } }, root);
+  });
 
   const sendChat = async (text: string) => {
     const res = await app.request(`/api/prs/${encodedKey}/chat`, {
@@ -1721,7 +1728,7 @@ describe("model selection", () => {
     expect(claude.runs).toHaveLength(0);
     const job = readJob(key, root)!;
     expect(job.status).toBe("failed");
-    expect(job.error).toMatch(/Claude Code has no model "gpt-9" \(from the repo settings\)/);
+    expect(job.error).toMatch(/Claude Code \(Legacy\) has no model "gpt-9" \(from the repo settings\)/);
   });
 
   it("rejects a chat send whose agent cannot run, before the message is saved", async () => {
@@ -1753,7 +1760,7 @@ describe("model selection", () => {
     });
     expect(res.status).toBe(400);
     expect((await res.json()).detail).toBe(
-      'agent.model: "gpt-9" is not one of Claude Code\'s models: fable, opus, sonnet, haiku',
+      'agent.model: "gpt-9" is not one of Claude Code (Legacy)\'s models: fable, opus, sonnet, haiku',
     );
     expect(readChat(key, root).agent).toBeNull();
   });

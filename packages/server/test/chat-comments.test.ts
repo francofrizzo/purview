@@ -83,7 +83,7 @@ describe("comment author", () => {
     const mine = await create("reader draft");
     const claudes = await create("claude draft", CHAT);
     expect(mine.author).toBe("you");
-    expect(claudes.author).toEqual({ agent: "claude-code" });
+    expect(claudes.author).toEqual({ agent: "claude-shared" });
     expect(claudes.status).toBe("draft");
   });
 
@@ -112,7 +112,7 @@ describe("chat guards", () => {
     const mine = await create("reader draft");
     const edit = await req("PATCH", commentsUrl(`/${mine.id}`), { body: "claude rewrote it" }, CHAT);
     expect(edit.status).toBe(200);
-    expect((await edit.json()).comment.lastEditedBy).toEqual({ agent: "claude-code" });
+    expect((await edit.json()).comment.lastEditedBy).toEqual({ agent: "claude-shared" });
     const del = await req("DELETE", commentsUrl(`/${mine.id}`), undefined, CHAT);
     expect(del.status).toBe(200);
     expect((await del.json()).trashed).toBe(true);
@@ -145,7 +145,7 @@ describe("chat guards", () => {
     // The harness header alone does not make anyone an agent.
     expect((await create("mine", { "X-Purview-Agent": "other-harness" })).author).toBe("you");
     // A malformed harness is the default one, not whatever was sent.
-    expect((await create("odd", { ...CHAT, "X-Purview-Agent": "../../etc" })).author).toEqual({ agent: "claude-code" });
+    expect((await create("odd", { ...CHAT, "X-Purview-Agent": "../../etc" })).author).toEqual({ agent: "claude-shared" });
   });
 
   it("reads comments written as \"claude\" as Claude Code's agent, with the same restrictions", async () => {
@@ -212,10 +212,10 @@ describe("edit history and undo", () => {
     await req("PATCH", commentsUrl(`/${c.id}`), { body: "v3" }, CHAT);
     let stored = readComments(key, root)[0];
     expect(stored.body).toBe("v3");
-    expect(stored.lastEditedBy).toEqual({ agent: "claude-code" });
+    expect(stored.lastEditedBy).toEqual({ agent: "claude-shared" });
     expect(stored.history?.map((h) => [h.body, h.replacedBy])).toEqual([
       ["v1", "you"],
-      ["v2", { agent: "claude-code" }],
+      ["v2", { agent: "claude-shared" }],
     ]);
 
     const undo = await req("POST", commentsUrl(`/${c.id}/undo-edit`));
@@ -257,13 +257,13 @@ describe("deleted drafts (trash)", () => {
     const listed = await (await req("GET", commentsUrl())).json();
     expect(listed.comments).toEqual([]);
     expect(listed.deleted).toHaveLength(1);
-    expect(listed.deleted[0]).toMatchObject({ id: c.id, deletedBy: { agent: "claude-code" }, body: "claude draft" });
+    expect(listed.deleted[0]).toMatchObject({ id: c.id, deletedBy: { agent: "claude-shared" }, body: "claude draft" });
 
     const restored = await req("POST", commentsUrl(`/${c.id}/restore`));
     expect(restored.status).toBe(200);
     const after = await (await req("GET", commentsUrl())).json();
     expect(after.comments.map((x: { id: string }) => x.id)).toEqual([c.id]);
-    expect(after.comments[0]).toMatchObject({ status: "draft", author: { agent: "claude-code" } });
+    expect(after.comments[0]).toMatchObject({ status: "draft", author: { agent: "claude-shared" } });
     expect(after.deleted).toEqual([]);
     expect((await req("POST", commentsUrl(`/${c.id}/restore`))).status).toBe(404);
   });
@@ -329,7 +329,7 @@ describe("tool permissions", () => {
       } as unknown as ChildProcessLike;
     });
     try {
-      const run = getHarness().run({
+      const run = getHarness("claude-code").run({
         task: { kind: "chat", reviewerCommands: [] },
         prompt: "hi",
         cwd: root,
@@ -404,7 +404,7 @@ describe("reviewer-state comment (CLI -> server)", () => {
     const id = /Created draft comment (\S+) \(for github\) at src\/foo\.ts:2\./.exec(add.stdout)?.[1];
     expect(id).toBeTruthy();
     const stored = readComments(key, root)[0];
-    expect(stored).toMatchObject({ id, author: { agent: "claude-code" }, status: "draft", line: 2, side: "RIGHT" });
+    expect(stored).toMatchObject({ id, author: { agent: "claude-shared" }, status: "draft", line: 2, side: "RIGHT" });
     expect(stored.body).toBe("Why 'new2'? $HOME stays literal\nsecond line");
 
     const list = await cli(["comment", "list", keyStr]);
@@ -421,7 +421,7 @@ describe("reviewer-state comment (CLI -> server)", () => {
     expect(del.code, del.stderr).toBe(0);
     expect(del.stdout).toContain("can be restored");
     expect(readComments(key, root)).toEqual([]);
-    expect(readDeletedComments(key, root)[0]).toMatchObject({ id, deletedBy: { agent: "claude-code" } });
+    expect(readDeletedComments(key, root)[0]).toMatchObject({ id, deletedBy: { agent: "claude-shared" } });
   });
 
   it("adds a file-level comment, and as the reader outside the chat", async () => {

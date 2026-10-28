@@ -4,6 +4,8 @@ import {
   AgentSelectionSchema,
   ChatAgentSelectionSchema,
   migrateAgentFields,
+  migrateHarnessDefault,
+  AGENT_SETTINGS_VERSION,
   EMPTY_REPO_CONFIG,
   EventSchema,
   FilesJsonSchema,
@@ -343,8 +345,9 @@ export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
   } catch {
     return { ...EMPTY_REPO_CONFIG };
   }
-  // Files from before agent selections carry `analysisModel` & co.
-  raw = migrateAgentFields(raw);
+  // Files from before agent selections carry `analysisModel` & co., and
+  // files from before the harness default changed name the old one.
+  raw = migrateHarnessDefault(migrateAgentFields(raw));
   const parsed = RepoConfigSchema.safeParse(raw);
   if (parsed.success) return parsed.data;
   // Salvage what is valid rather than discarding the whole file.
@@ -358,6 +361,7 @@ export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
     watchOwn: typeof obj.watchOwn === "boolean" ? obj.watchOwn : null,
     archived: typeof obj.archived === "boolean" ? obj.archived : null,
     generated: GeneratedPatternsSchema.safeParse(obj.generated).data ?? { include: [], exclude: [] },
+    agentsVersion: AGENT_SETTINGS_VERSION,
   };
 }
 

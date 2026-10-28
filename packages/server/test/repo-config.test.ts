@@ -253,7 +253,7 @@ describe("effectiveConfig precedence", () => {
   for (const c of modelCases) {
     for (const field of ["analysisAgent", "chatAgent"] as const) {
       it(`${field} model: ${c.name}`, () => {
-        const sel = (model: ClaudeModel) => ({ harness: "claude-code", model });
+        const sel = (model: ClaudeModel) => ({ harness: "claude-shared", model });
         if (c.repoLocal !== undefined) {
           writeRepoConfig(repo, { [field]: c.repoLocal === null ? null : sel(c.repoLocal) }, root);
         }
@@ -263,7 +263,7 @@ describe("effectiveConfig precedence", () => {
         });
         expect(resolved[field].model.value).toBe(c.expected);
         expect(resolved[field].model.source).toBe(c.source);
-        expect(resolved[field].harness.value).toBe("claude-code");
+        expect(resolved[field].harness.value).toBe("claude-shared");
         expect(resolved[field].problem).toBeUndefined();
         // The two agents are independent: setting one must not move the other.
         const other = field === "analysisAgent" ? "chatAgent" : "analysisAgent";
@@ -277,15 +277,15 @@ describe("effectiveConfig precedence", () => {
   it("effectiveAnalysisAgent / effectiveChatAgent are the resolver's values", () => {
     writeRepoConfig(
       repo,
-      { analysisAgent: { harness: "claude-code", model: "haiku" }, chatAgent: { harness: "claude-code", model: "opus" } },
+      { analysisAgent: { harness: "claude-shared", model: "haiku" }, chatAgent: { harness: "claude-shared", model: "opus" } },
       root,
     );
-    expect(effectiveAnalysisAgent(key, root)).toEqual({ harness: "claude-code", model: "haiku", effort: "medium" });
-    expect(effectiveChatAgent(key, root)).toEqual({ harness: "claude-code", model: "opus" });
+    expect(effectiveAnalysisAgent(key, root)).toEqual({ harness: "claude-shared", model: "haiku", effort: "medium" });
+    expect(effectiveChatAgent(key, root)).toEqual({ harness: "claude-shared", model: "opus" });
   });
 
   it("PURVIEW_HARNESS runs everything on that harness, carrying a model the override knows and dropping one it does not", () => {
-    writeConfig({ analysisAgent: { harness: "claude-code", model: "opus", effort: "high" }, chatAgent: { harness: "claude-code", model: "opus" } }, root);
+    writeConfig({ analysisAgent: { harness: "claude-shared", model: "opus", effort: "high" }, chatAgent: { harness: "claude-shared", model: "opus" } }, root);
     vi.stubEnv("PURVIEW_HARNESS", "claude-shared");
     try {
       const analysis = effectiveConfig(key, root).analysisAgent;
@@ -308,12 +308,12 @@ describe("effectiveConfig precedence", () => {
       expect(() => effectiveAnalysisAgent(key, root)).toThrow(/invalid_agent_config/);
     } finally { vi.unstubAllEnvs(); }
     // Unset: exactly as configured.
-    expect(effectiveAnalysisAgent(key, root)).toEqual({ harness: "claude-code", model: "opus", effort: "high" });
+    expect(effectiveAnalysisAgent(key, root)).toEqual({ harness: "claude-shared", model: "opus", effort: "high" });
   });
 
   it("a model or effort only counts under the harness its layer names", () => {
     // Global pins a Claude model; the repo switches to another harness.
-    writeConfig({ analysisAgent: { harness: "claude-code", model: "opus", effort: "high" } }, root);
+    writeConfig({ analysisAgent: { harness: "claude-shared", model: "opus", effort: "high" } }, root);
     writeRepoConfig(repo, { analysisAgent: { harness: "elsewhere" } }, root);
     const resolved = effectiveConfig(key, root).analysisAgent;
     expect(resolved.harness).toEqual({ value: "elsewhere", source: "repo" });
@@ -321,12 +321,12 @@ describe("effectiveConfig precedence", () => {
     expect(resolved.model.source).toBe("default");
     expect(resolved.effort!.source).toBe("default");
     // And "elsewhere" is not a harness this server has: that is an error, not a fallback.
-    expect(resolved.problem).toMatch(/"elsewhere" \(from the repo settings\) is not available here; available: claude-code/);
+    expect(resolved.problem).toMatch(/"elsewhere" \(from the repo settings\) is not available here; available: claude-shared, claude-code/);
     expect(() => effectiveAnalysisAgent(key, root)).toThrow(/invalid_agent_config/);
   });
 
   it("a model the harness does not offer is an error naming its layer and the choices", () => {
-    writeRepoConfig(repo, { chatAgent: { harness: "claude-code", model: "gpt-9" } }, root);
+    writeRepoConfig(repo, { chatAgent: { harness: "claude-shared", model: "gpt-9" } }, root);
     const resolved = effectiveConfig(key, root).chatAgent;
     expect(resolved.model).toEqual({ value: "gpt-9", source: "repo" });
     expect(resolved.problem).toBe(
@@ -335,9 +335,9 @@ describe("effectiveConfig precedence", () => {
   });
 
   it("a layer that names the harness without a model inherits the model from a deeper layer of the same harness", () => {
-    writeConfig({ chatAgent: { harness: "claude-code", model: "haiku" } }, root);
+    writeConfig({ chatAgent: { harness: "claude-shared", model: "haiku" } }, root);
     const resolved = effectiveConfig(key, root, {
-      committed: { chatAgent: { harness: "claude-code" } },
+      committed: { chatAgent: { harness: "claude-shared" } },
     }).chatAgent;
     expect(resolved.harness.source).toBe("committed");
     expect(resolved.model).toEqual({ value: "haiku", source: "global" });
@@ -399,7 +399,7 @@ describe("effectiveConfig precedence", () => {
 
   for (const c of effortCases) {
     it(`analysis effort: ${c.name}`, () => {
-      const sel = (effort: AnalysisEffort) => ({ harness: "claude-code", effort });
+      const sel = (effort: AnalysisEffort) => ({ harness: "claude-shared", effort });
       if (c.repoLocal !== undefined) {
         writeRepoConfig(repo, { analysisAgent: c.repoLocal === null ? null : sel(c.repoLocal) }, root);
       }
@@ -413,7 +413,7 @@ describe("effectiveConfig precedence", () => {
   }
 
   it("the analysis agent carries 'none' through unchanged (the harness omits the flag)", () => {
-    writeRepoConfig(repo, { analysisAgent: { harness: "claude-code", effort: "none" } }, root);
+    writeRepoConfig(repo, { analysisAgent: { harness: "claude-shared", effort: "none" } }, root);
     expect(effectiveAnalysisAgent(key, root).effort).toBe("none");
   });
 
@@ -706,6 +706,7 @@ describe("init and refresh capture", () => {
       watchOwn: null,
       archived: null,
       generated: { include: [], exclude: [] },
+      agentsVersion: 2,
     });
   });
 
@@ -980,13 +981,13 @@ describe("/api/repos/:rkey/config", () => {
       autoAnalyze: false,
       repoPath: null,
       analysisAgent: {
-        harness: "claude-code",
+        harness: "claude-shared",
         model: "sonnet",
         effort: "medium",
         sources: { harness: "default", model: "default", effort: "default" },
       },
       chatAgent: {
-        harness: "claude-code",
+        harness: "claude-shared",
         model: "sonnet",
         sources: { harness: "default", model: "default" },
       },
@@ -1052,18 +1053,18 @@ describe("/api/repos/:rkey/config", () => {
     expect(before.effective.analysisAgent).toMatchObject({ model: "sonnet", sources: { model: "default" } });
     // The team's legacy `chatModel` reads as a Claude Code selection.
     expect(before.effective.chatAgent).toMatchObject({
-      harness: "claude-code",
+      harness: "claude-shared",
       model: "haiku",
       sources: { harness: "committed", model: "committed" },
     });
 
     const body = await (
       await put({
-        analysisAgent: { harness: "claude-code", model: "opus", effort: "high" },
-        chatAgent: { harness: "claude-code", model: "opus" },
+        analysisAgent: { harness: "claude-shared", model: "opus", effort: "high" },
+        chatAgent: { harness: "claude-shared", model: "opus" },
       })
     ).json();
-    expect(body.local.analysisAgent).toEqual({ harness: "claude-code", model: "opus", effort: "high" });
+    expect(body.local.analysisAgent).toEqual({ harness: "claude-shared", model: "opus", effort: "high" });
     expect(body.effective.analysisAgent).toMatchObject({
       model: "opus",
       effort: "high",
@@ -1072,15 +1073,15 @@ describe("/api/repos/:rkey/config", () => {
     expect(body.effective.chatAgent).toMatchObject({ model: "opus", sources: { model: "repo" } });
 
     // A selection is written whole: naming only the harness drops the model.
-    const harnessOnly = await (await put({ analysisAgent: { harness: "claude-code", effort: "none" } })).json();
-    expect(harnessOnly.local.analysisAgent).toEqual({ harness: "claude-code", effort: "none" });
+    const harnessOnly = await (await put({ analysisAgent: { harness: "claude-shared", effort: "none" } })).json();
+    expect(harnessOnly.local.analysisAgent).toEqual({ harness: "claude-shared", effort: "none" });
     expect(harnessOnly.effective.analysisAgent).toMatchObject({ model: "sonnet", effort: "none" });
 
     const cleared = await (await put({ chatAgent: null })).json();
     expect(cleared.local.chatAgent).toBeNull();
     expect(cleared.effective.chatAgent).toMatchObject({ model: "haiku", sources: { model: "committed" } });
     // analysisAgent was not in the body, so it kept its value.
-    expect(cleared.local.analysisAgent).toEqual({ harness: "claude-code", effort: "none" });
+    expect(cleared.local.analysisAgent).toEqual({ harness: "claude-shared", effort: "none" });
   });
 
   it("rejects a harness, model or effort the manifests do not offer, naming the choices", async () => {
@@ -1090,19 +1091,19 @@ describe("/api/repos/:rkey/config", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-    const model = await put({ analysisAgent: { harness: "claude-code", model: "claude-opus-4-6" } });
+    const model = await put({ analysisAgent: { harness: "claude-shared", model: "claude-opus-4-6" } });
     expect(model.status).toBe(400);
     expect((await model.json()).detail).toBe(
       'analysisAgent.model: "claude-opus-4-6" is not one of Claude Code\'s models: fable, opus, sonnet, haiku',
     );
-    const effort = await put({ analysisAgent: { harness: "claude-code", effort: "extreme" } });
+    const effort = await put({ analysisAgent: { harness: "claude-shared", effort: "extreme" } });
     expect((await effort.json()).detail).toBe(
       'analysisAgent.effort: "extreme" is not one of Claude Code\'s effort levels: low, medium, high, none',
     );
     const harness = await put({ chatAgent: { harness: "elsewhere" } });
-    expect((await harness.json()).detail).toBe('chatAgent.harness: "elsewhere" is not available; available: claude-code');
+    expect((await harness.json()).detail).toBe('chatAgent.harness: "elsewhere" is not available; available: claude-shared, claude-code');
     // A chat has no effort, a selection always names its harness, and the old flat fields are gone.
-    expect((await put({ chatAgent: { harness: "claude-code", effort: "high" } })).status).toBe(400);
+    expect((await put({ chatAgent: { harness: "claude-shared", effort: "high" } })).status).toBe(400);
     expect((await put({ analysisAgent: { model: "opus" } })).status).toBe(400);
     expect((await put({ analysisModel: "opus" })).status).toBe(400);
     expect(readRepoConfig(repo, root).analysisAgent).toBeNull();
@@ -1162,29 +1163,29 @@ describe("/api/config", () => {
       effective: {
         // Medium is the harness's default now, not a value every config.json pins.
         analysisAgent: {
-          harness: "claude-code",
+          harness: "claude-shared",
           model: "sonnet",
           effort: "medium",
           sources: { harness: "default", model: "default", effort: "default" },
         },
-        chatAgent: { harness: "claude-code", model: "sonnet", sources: { harness: "default", model: "default" } },
+        chatAgent: { harness: "claude-shared", model: "sonnet", sources: { harness: "default", model: "default" } },
       },
     });
   });
 
-  it("reads a config.json written before agent selections, as Claude Code's", async () => {
+  it("reads a config.json written before agent selections as Claude Code's, on its new harness", async () => {
     fs.writeFileSync(
       path.join(root, "config.json"),
       JSON.stringify({ autoAnalyze: false, analysisModel: "opus", chatModel: null, analysisEffort: "medium" }),
     );
     expect(readConfig(root)).toMatchObject({
       autoAnalyze: false,
-      analysisAgent: { harness: "claude-code", model: "opus", effort: "medium" },
+      analysisAgent: { harness: "claude-shared", model: "opus", effort: "medium" },
       chatAgent: null,
     });
     const body = await (await app.request("/api/config")).json();
     expect(body).toMatchObject({
-      analysisAgent: { harness: "claude-code", model: "opus", effort: "medium" },
+      analysisAgent: { harness: "claude-shared", model: "opus", effort: "medium" },
       chatAgent: null,
     });
     // Existing installs keep resolving effort from the global layer, as before.
@@ -1195,7 +1196,7 @@ describe("/api/config", () => {
     const bad = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisAgent: { harness: "claude-code", model: "gpt-9" } }),
+      body: JSON.stringify({ analysisAgent: { harness: "claude-shared", model: "gpt-9" } }),
     });
     expect(bad.status).toBe(400);
     expect((await bad.json()).detail).toBe(
@@ -1204,7 +1205,7 @@ describe("/api/config", () => {
     const effort = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisAgent: { harness: "claude-code", effort: "max" } }),
+      body: JSON.stringify({ analysisAgent: { harness: "claude-shared", effort: "max" } }),
     });
     expect(effort.status).toBe(400);
   });
@@ -1231,7 +1232,7 @@ describe("/api/config", () => {
     const put = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ analysisAgent: { harness: "claude-code", model: "haiku", effort: "none" } }),
+      body: JSON.stringify({ analysisAgent: { harness: "claude-shared", model: "haiku", effort: "none" } }),
     });
     expect(put.status).toBe(200);
     expect((await put.json()).effective.analysisAgent).toMatchObject({
@@ -1243,7 +1244,7 @@ describe("/api/config", () => {
     const resolved = effectiveConfig(key, root);
     expect(resolved.analysisAgent.model).toEqual({ value: "haiku", source: "global" });
     expect(resolved.analysisAgent.effort).toEqual({ value: "none", source: "global" });
-    expect(readConfig(root).analysisAgent).toEqual({ harness: "claude-code", model: "haiku", effort: "none" });
+    expect(readConfig(root).analysisAgent).toEqual({ harness: "claude-shared", model: "haiku", effort: "none" });
     // The other agent was not written, so it still inherits the built-in default.
     expect(resolved.chatAgent.model).toEqual({ value: "sonnet", source: "default" });
 
@@ -1251,11 +1252,11 @@ describe("/api/config", () => {
     const second = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chatAgent: { harness: "claude-code", model: "opus" } }),
+      body: JSON.stringify({ chatAgent: { harness: "claude-shared", model: "opus" } }),
     });
     expect(await second.json()).toMatchObject({
       analysisAgent: { model: "haiku" },
-      chatAgent: { harness: "claude-code", model: "opus" },
+      chatAgent: { harness: "claude-shared", model: "opus" },
     });
   });
 
@@ -1280,7 +1281,7 @@ describe("/api/config", () => {
   });
 
   it("null re-inherits the built-in default", async () => {
-    writeConfig({ chatAgent: { harness: "claude-code", model: "opus" } }, root);
+    writeConfig({ chatAgent: { harness: "claude-shared", model: "opus" } }, root);
     const put = await app.request("/api/config", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1292,9 +1293,9 @@ describe("/api/config", () => {
 
   it("400s on an unknown model, an unknown key or a flat field", async () => {
     for (const bad of [
-      { chatAgent: { harness: "claude-code", model: "gpt-5" } },
+      { chatAgent: { harness: "claude-shared", model: "gpt-5" } },
       { autoAnalyze: true },
-      { chatAgent: { harness: "claude-code", model: 3 } },
+      { chatAgent: { harness: "claude-shared", model: 3 } },
       { chatModel: "opus" },
     ]) {
       const res = await app.request("/api/config", {
@@ -1309,23 +1310,24 @@ describe("/api/config", () => {
 
 describe("/api/agents", () => {
   it("carries an experimental harness the PURVIEW_HARNESS override runs on, marked unlisted", async () => {
-    vi.stubEnv("PURVIEW_HARNESS", "claude-shared");
+    vi.stubEnv("PURVIEW_HARNESS", "codex");
     try {
       const body = await (await app.request("/api/agents")).json();
       // A chat already on it needs its models; the settings pickers skip it.
       expect(body.harnesses.map((h: { id: string; listed: boolean }) => [h.id, h.listed])).toEqual([
+        ["claude-shared", true],
         ["claude-code", true],
-        ["claude-shared", false],
+        ["codex", false],
       ]);
-      expect(body.harnesses[1].models.map((m: { id: string }) => m.id)).toContain("fable");
+      expect(body.harnesses[2].models.map((m: { id: string }) => m.id)).toContain("gpt-6.1-sol");
     } finally { vi.unstubAllEnvs(); }
   });
   it("lists every harness's manifest, without its prompt vocabulary", async () => {
     const body = await (await app.request("/api/agents")).json();
-    expect(body.default).toBe("claude-code");
+    expect(body.default).toBe("claude-shared");
     expect(body.harnesses).toEqual([
       {
-        id: "claude-code",
+        id: "claude-shared",
         name: "Claude Code",
         agentName: "Claude",
         models: expect.arrayContaining([expect.objectContaining({ id: "sonnet" })]),
@@ -1334,6 +1336,7 @@ describe("/api/agents", () => {
         capabilities: { resume: true, handoff: true },
         listed: true,
       },
+      expect.objectContaining({ id: "claude-code", name: "Claude Code (Legacy)", listed: true }),
     ]);
   });
 });

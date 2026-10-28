@@ -7,7 +7,9 @@ import {
   AgentSelectionSchema,
   ChatAgentSelectionSchema,
   configPath,
+  AGENT_SETTINGS_VERSION,
   migrateAgentFields,
+  migrateHarnessDefault,
   stateRoot,
 } from "@reviewer/core";
 
@@ -111,6 +113,8 @@ export const ConfigSchema = z.object({
    * updates.ts). The only thing it reveals to GitHub is that a checkout exists.
    */
   updateCheck: z.boolean().default(true),
+  /** See `migrateHarnessDefault` in core. */
+  agentsVersion: z.number().int().default(AGENT_SETTINGS_VERSION),
 });
 
 export type ReviewerConfig = z.infer<typeof ConfigSchema>;
@@ -134,8 +138,9 @@ export function readConfig(root = stateRoot()): ReviewerConfig {
   } catch {
     return { ...DEFAULT_CONFIG };
   }
-  // Files from before agent selections carry `analysisModel` & co.
-  const parsed = ConfigSchema.safeParse(migrateAgentFields(raw));
+  // Files from before agent selections carry `analysisModel` & co., and
+  // files from before the harness default changed name the old one.
+  const parsed = ConfigSchema.safeParse(migrateHarnessDefault(migrateAgentFields(raw)));
   if (!parsed.success) {
     log.warn("config", "invalid config ignored", { path: file, reason: parsed.error.issues[0]?.message });
     return { ...DEFAULT_CONFIG };

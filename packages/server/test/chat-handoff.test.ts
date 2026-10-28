@@ -444,8 +444,10 @@ describe("chat sessions and harness ownership", () => {
     );
     expect(readChat(key, root)).toEqual({
       session: { harness: "claude-code", id: SESSION, cwd: prDir(key, root) },
-      agent: { harness: "claude-code", model: "opus" },
+      // The pin was Claude Code before it became Legacy: it moves to today's.
+      agent: { harness: "claude-shared", model: "opus" },
       messages: history,
+      agentsVersion: 2,
     });
 
     await send("follow-up");
@@ -460,7 +462,7 @@ describe("chat sessions and harness ownership", () => {
     expect(onDisk).not.toHaveProperty("sessionId");
     expect(onDisk).not.toHaveProperty("sessionCwd");
     expect(onDisk).not.toHaveProperty("model");
-    expect(onDisk.agent).toEqual({ harness: "claude-code", model: "opus" });
+    expect(onDisk.agent).toEqual({ harness: "claude-shared", model: "opus" });
     expect(onDisk.messages).toHaveLength(4);
     expect(onDisk.session.harness).toBe("claude-code");
     expect(onDisk.session.fingerprint).toMatch(/^i1:/);

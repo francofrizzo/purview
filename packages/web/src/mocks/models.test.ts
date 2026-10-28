@@ -8,7 +8,7 @@ import { mockApi } from "./server";
 const BILLING = "github.com/acme/billing";
 const PLATFORM = "github.com/acme/platform";
 const TERRAFORM = "git.acme.dev/infra/terraform-modules";
-const CC = "claude-code";
+const CC = "claude-shared";
 
 beforeEach(async () => {
   // The store is module-level and mutable; reset what these tests touch.
@@ -80,7 +80,7 @@ describe("repo agent layering", () => {
   it("lists the harness manifests the settings are built from", async () => {
     const agents = await mockApi.getAgents();
     expect(agents.default).toBe(CC);
-    expect(agents.harnesses.map((h) => h.id)).toEqual([CC]);
+    expect(agents.harnesses.map((h) => h.id)).toEqual([CC, "claude-code"]);
   });
 });
 

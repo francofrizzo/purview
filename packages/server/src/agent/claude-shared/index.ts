@@ -166,13 +166,19 @@ function run(request: AgentRunRequest) {
 }
 
 export const claudeSharedHarness: AgentHarness = {
-  manifest: { ...claudeCodeHarness.manifest, id: "claude-shared", name: "Claude shared tools (experimental)", reviewTools: true,
+  manifest: { ...claudeCodeHarness.manifest, id: "claude-shared", name: "Claude Code", reviewTools: true,
     capabilities: { resume: true, handoff: true }, toolNames: { shell: "unavailable", read: "read_code", write: "unavailable", edit: "edit_draft" } },
   canResume, run,
   createHandoff: claudeCodeHarness.createHandoff,
   probe(exec) {
     const result = exec(executable(), ["--version"]);
-    const version = result.ok ? acceptedClaudeVersion(result.stdout) : undefined;
-    return { available: !!version, version, detail: version ? `Claude ${version} (experimental)` : `Requires Claude Code ${MIN_VERSION} or newer` };
+    if (!result.ok) return { available: false, detail: "not found", setupHint: "https://claude.com/claude-code" };
+    const version = acceptedClaudeVersion(result.stdout);
+    if (version) return { available: true, version, detail: result.stdout.trim().split("\n")[0] };
+    return {
+      available: false,
+      detail: `Requires Claude Code ${MIN_VERSION} or newer; found ${result.stdout.trim().split("\n")[0] || "an unknown version"}`,
+      setupHint: "run `claude update`, or choose Claude Code (Legacy) in Settings",
+    };
   },
 };

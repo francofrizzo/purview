@@ -46,7 +46,9 @@ const DEFAULT_TIMEOUT_MS = 30 * 60_000;
 
 const manifest: HarnessManifest = {
   id: HARNESS_ID,
-  name: "Claude Code",
+  // Claude Code's own tools: a shell with the reviewer-state CLI. The default
+  // is claude-shared, Claude Code on Purview's tools.
+  name: "Claude Code (Legacy)",
   agentName: "Claude",
   // The CLI's own aliases: stable across model releases, where a pinned
   // `claude-sonnet-5` id rots.

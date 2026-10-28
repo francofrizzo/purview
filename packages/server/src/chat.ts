@@ -6,6 +6,8 @@ import {
   LEGACY_HARNESS,
   chatPath,
   legacyAgentSelection,
+  migrateHarnessDefault,
+  AGENT_SETTINGS_VERSION,
   keyToString,
   loadState,
   prDir,
@@ -90,10 +92,12 @@ export const ChatFileSchema = z.object({
    * (switching harness starts a new session and replays it).
    */
   agent: ChatAgentSelectionSchema.nullable().default(null),
+  /** See `migrateHarnessDefault` in core: a pin of Claude Code before it became Legacy moves. */
+  agentsVersion: z.number().int().default(AGENT_SETTINGS_VERSION),
 });
 export type ChatFile = z.infer<typeof ChatFileSchema>;
 
-const EMPTY_CHAT: ChatFile = { session: null, messages: [], agent: null };
+const EMPTY_CHAT: ChatFile = { session: null, messages: [], agent: null, agentsVersion: AGENT_SETTINGS_VERSION };
 
 /**
  * chat.json as first written, always Claude Code's: a bare `sessionId` plus
@@ -117,7 +121,8 @@ function migrateChatFile(raw: unknown): unknown {
     const pin = legacyAgentSelection(model);
     out = { ...rest, agent: pin ? { harness: pin.harness, model: pin.model } : null };
   }
-  return out;
+  // The session keeps naming the harness that ran it; only the pin moves.
+  return migrateHarnessDefault(out, ["agent"]);
 }
 
 export function readChat(key: PrKey, root = stateRoot()): ChatFile {

@@ -191,15 +191,16 @@ it("creates, edits and trashes drafts through the real server, preserving bounda
   expect(readComments(key, root).map(c => c.body)).toEqual(["Published note"]);
 });
 
-it("retains native Claude by default and exposes siblings only by opt-in", () => {
+it("defaults to Claude Code on the shared tools, lists Legacy beside it, and Codex only by opt-in", () => {
   const previous = process.env.PURVIEW_EXPERIMENTAL_HARNESSES;
   try {
     delete process.env.PURVIEW_EXPERIMENTAL_HARNESSES;
-    expect(harnessIds()).toEqual(["claude-code"]);
+    expect(harnessIds()).toEqual(["claude-shared", "claude-code"]);
+    expect(getHarness().manifest).toMatchObject({ id: "claude-shared", name: "Claude Code" });
+    expect(getHarness("claude-code").manifest.name).toBe("Claude Code (Legacy)");
     expect(() => getHarness("codex")).toThrow("Unknown agent harness");
     process.env.PURVIEW_EXPERIMENTAL_HARNESSES = "1";
-    expect(harnessIds()).toEqual(["claude-code", "claude-shared", "codex"]);
-    expect(getHarness().manifest.id).toBe("claude-code");
+    expect(harnessIds()).toEqual(["claude-shared", "claude-code", "codex"]);
     const shared = reviewSystemPrompt(key, root, { task: "analysis", incremental: true });
     expect(shared).toContain("INCREMENTAL:");
     expect(shared).toContain("patch_units");

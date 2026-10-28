@@ -411,7 +411,8 @@ function hardRules(tools: HarnessManifest["toolNames"]): string {
 export function analysisSystemPrompt(
   opts: { incremental: boolean },
   skills = skillDir(),
-  tools: HarnessManifest["toolNames"] = getHarness().manifest.toolNames,
+  // The skill prompt is for harnesses with a shell; Legacy is the one.
+  tools: HarnessManifest["toolNames"] = getHarness("claude-code").manifest.toolNames,
 ): string {
   const files = ["SKILL.md", "RUBRIC.md", ...(opts.incremental ? ["MIGRATION-NOTES.md"] : [])];
   return [

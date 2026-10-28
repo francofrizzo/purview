@@ -735,6 +735,31 @@ export function migrateAgentFields(raw: unknown): unknown {
 }
 
 /**
+ * What the harness ids in a settings file mean. A file without it was written
+ * while Claude Code's own tools were the only harness, so its "claude-code"
+ * was never a choice: from version 2 Claude Code runs on Purview's tools
+ * (`claude-shared`) and the old harness is "Claude Code (Legacy)", picked on
+ * purpose. Every file written since carries the version, so a pick of Legacy
+ * stays put.
+ */
+export const AGENT_SETTINGS_VERSION = 2;
+const DEFAULT_CLAUDE_HARNESS = "claude-shared";
+
+export function migrateHarnessDefault(raw: unknown, fields = ["analysisAgent", "chatAgent"]): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.agentsVersion === "number" && obj.agentsVersion >= AGENT_SETTINGS_VERSION) return raw;
+  const out: Record<string, unknown> = { ...obj, agentsVersion: AGENT_SETTINGS_VERSION };
+  for (const field of fields) {
+    const s = obj[field];
+    if (s && typeof s === "object" && (s as { harness?: unknown }).harness === LEGACY_HARNESS) {
+      out[field] = { ...s, harness: DEFAULT_CLAUDE_HARNESS };
+    }
+  }
+  return out;
+}
+
+/**
  * `~/.purview/<host>/<owner>/<repo>/repo.json` — settings that apply to every
  * PR of one repository.
  *
@@ -783,6 +808,8 @@ export const RepoConfigSchema = z.object({
    * Machine-local, never layered.
    */
   generated: GeneratedPatternsSchema.default({ include: [], exclude: [] }),
+  /** See `migrateHarnessDefault`. */
+  agentsVersion: z.number().int().default(AGENT_SETTINGS_VERSION),
 });
 export type RepoConfig = z.infer<typeof RepoConfigSchema>;
 
@@ -806,10 +833,17 @@ export const TeamConfigSchema = z
     analysisModel: ClaudeModelSchema.optional(),
     chatModel: ClaudeModelSchema.optional(),
     analysisEffort: AnalysisEffortSchema.optional(),
+    /** See `migrateHarnessDefault`: a team pins Legacy by also writing 2 here. */
+    agentsVersion: z.number().int().optional(),
   })
-  .transform(({ autoAnalyze, analysisAgent, chatAgent, analysisModel, chatModel, analysisEffort }) => {
-    const analysis = analysisAgent ?? legacyAgentSelection(analysisModel, analysisEffort);
-    const chat = chatAgent ?? legacyAgentSelection(chatModel);
+  .transform(({ autoAnalyze, analysisAgent, chatAgent, analysisModel, chatModel, analysisEffort, agentsVersion }) => {
+    const lifted = migrateHarnessDefault({
+      analysisAgent: analysisAgent ?? legacyAgentSelection(analysisModel, analysisEffort),
+      chatAgent: chatAgent ?? legacyAgentSelection(chatModel),
+      agentsVersion,
+    }) as { analysisAgent: AgentSelection | null; chatAgent: AgentSelection | null };
+    const analysis = lifted.analysisAgent;
+    const chat = lifted.chatAgent;
     return {
       ...(autoAnalyze !== undefined ? { autoAnalyze } : {}),
       ...(analysis ? { analysisAgent: analysis } : {}),

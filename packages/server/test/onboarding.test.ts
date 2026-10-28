@@ -78,7 +78,7 @@ function fakeExec(table: Record<string, { ok?: boolean; stdout?: string; stderr?
 const HEALTHY = {
   "gh --version": { stdout: "gh version 2.63.2 (2024-12-05)" },
   "gh auth status": { stdout: "github.com\n  ✓ Logged in to github.com account octocat (keyring)" },
-  "claude --version": { stdout: "2.0.14 (Claude Code)" },
+  "claude --version": { stdout: "2.1.310 (Claude Code)" },
 };
 
 /* ------------------------------------------------------------ skip decision */
@@ -163,8 +163,14 @@ describe("environment checks", () => {
   it("passes claude and reports the version line", () => {
     expect(checkAgent(fakeExec(HEALTHY))).toMatchObject({
       status: "pass",
-      detail: "2.0.14 (Claude Code)",
+      detail: "2.1.310 (Claude Code)",
     });
+  });
+
+  it("warns about a Claude Code too old for the default harness, naming the way out", () => {
+    const r = checkAgent(fakeExec({ "claude --version": { stdout: "2.0.14 (Claude Code)" } }));
+    expect(r).toMatchObject({ status: "warn", detail: expect.stringContaining("found 2.0.14 (Claude Code)") });
+    expect(r.hint).toMatch(/claude update.*Claude Code \(Legacy\)/);
   });
 
   it("passes the state dir when it is writable, creating it if needed", () => {

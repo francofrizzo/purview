@@ -8,12 +8,13 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **Import picker.** "import PRs…" in a repo's ⋯ menu finds review requests and your own PRs, then lets you tick which ones to import. Ticking an archived PR brings it back.
-- **Archive reviewed PRs.** The archive button under a repo's list also clears open PRs you already reviewed that nobody asked you to review again.
-- **Archived PRs return on a new request.** With "watch for review requests" on, a PR you archived comes back when your review is asked for again.
-- **Moved-code rows.** A moved block shows in a faded red or green, the side it left or arrived on, with a → or ← in place of +/- on each line. Violet now means only an agent note.
 - **Draft comments from Claude Code.** With the purview skill, Claude Code can leave, edit or move drafts on a PR for you to send from Purview.
-- **Agents edit any draft.** Claude Code and the chat can edit, move or delete your drafts too; the drafts panel marks their changes with an undo.
+- **Archived PRs return on a new request.** With "watch for review requests" on, a PR you archived comes back when your review is asked for again.
+- **Claude Code on Purview's tools.** Analyses and the chat now run Claude Code with Purview's own review tools instead of a shell. It needs Claude Code 2.1.305 or newer; pick Claude Code (Legacy) in Settings → Agents to keep the old way.
 - **Open in Claude Code.** The chat's terminal button now opens Claude Code in a PR worktree where it can edit code and run tests. On your own PR it works on the PR's branch, and Purview never resets or deletes the worktree.
+- **Agents edit any draft.** Claude Code and the chat can edit, move or delete your drafts too; the drafts panel marks their changes with an undo.
+- **Archive reviewed PRs.** The archive button under a repo's list also clears open PRs you already reviewed that nobody asked you to review again.
+- **Moved-code rows.** A moved block shows in a faded red or green, the side it left or arrived on, with a → or ← in place of +/- on each line. Violet now means only an agent note.
 - **Fix:** the chat no longer jumps back to the bottom while you read a little higher up during a reply.
 - **Fix:** an expanded moved block no longer looks like an ordinary change; its lines keep the band's coloured edge and the arrow markers.
 - **Fix:** a moved line no longer shows a word-level highlight against an unrelated line next to it.

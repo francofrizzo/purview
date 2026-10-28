@@ -184,23 +184,24 @@ const delay = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 /** The built-in fallback the server applies when nothing overrides it. */
 const DEFAULT_AUTO_ANALYZE = false;
 
-/** `/api/agents`: the one harness the real server has today. */
+const CLAUDE_MANIFEST = {
+  agentName: "Claude",
+  models: [
+    { id: "sonnet", label: "Sonnet" },
+    { id: "opus", label: "Opus" },
+    { id: "haiku", label: "Haiku" },
+  ],
+  efforts: ["low", "medium", "high", "none"],
+  defaults: { model: "sonnet", effort: "medium" },
+  capabilities: { resume: true, handoff: true },
+};
+
+/** `/api/agents`: Claude Code on Purview's tools by default, the native one as Legacy. */
 export const MOCK_AGENTS: AgentsInfo = {
-  default: "claude-code",
+  default: "claude-shared",
   harnesses: [
-    {
-      id: "claude-code",
-      name: "Claude Code",
-      agentName: "Claude",
-      models: [
-        { id: "sonnet", label: "Sonnet" },
-        { id: "opus", label: "Opus" },
-        { id: "haiku", label: "Haiku" },
-      ],
-      efforts: ["low", "medium", "high", "none"],
-      defaults: { model: "sonnet", effort: "medium" },
-      capabilities: { resume: true, handoff: true },
-    },
+    { id: "claude-shared", name: "Claude Code", ...CLAUDE_MANIFEST },
+    { id: "claude-code", name: "Claude Code (Legacy)", ...CLAUDE_MANIFEST },
   ],
 };
 

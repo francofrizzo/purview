@@ -6,11 +6,12 @@ import type { AgentHarness, HarnessId } from "./types.js";
 
 /**
  * The harnesses this server can run. Callers go through here, never to an
- * adapter directly. Selecting a harness per run arrives with configuration
- * that names one; until then every run uses the default.
+ * adapter directly. Claude Code on Purview's own tools (`claude-shared`) is
+ * the default; Claude Code on its native tools stays selectable as Legacy.
  */
 
-const EXPERIMENTAL: AgentHarness[] = [claudeSharedHarness, codexHarness];
+const LISTED: AgentHarness[] = [claudeSharedHarness, claudeCodeHarness];
+const EXPERIMENTAL: AgentHarness[] = [codexHarness];
 
 /**
  * `PURVIEW_HARNESS=<id>` runs every analysis and chat on that harness, over
@@ -19,7 +20,7 @@ const EXPERIMENTAL: AgentHarness[] = [claudeSharedHarness, codexHarness];
  */
 export function harnessOverride(): HarnessId | undefined {
   const id = process.env.PURVIEW_HARNESS?.trim();
-  return id && [claudeCodeHarness, ...EXPERIMENTAL].some((h) => h.manifest.id === id) ? id : undefined;
+  return id && [...LISTED, ...EXPERIMENTAL].some((h) => h.manifest.id === id) ? id : undefined;
 }
 
 /** The override as set, even when it names nothing (so the error can say so). */
@@ -31,13 +32,13 @@ export function harnessOverrideRaw(): string | undefined {
 function harnesses(): AgentHarness[] {
   // The experimental adapters exist for the settings UI only when opted in;
   // the private override needs them registered without listing them.
-  if (process.env.PURVIEW_EXPERIMENTAL_HARNESSES === "1") return [claudeCodeHarness, ...EXPERIMENTAL];
+  if (process.env.PURVIEW_EXPERIMENTAL_HARNESSES === "1") return [...LISTED, ...EXPERIMENTAL];
   const override = harnessOverride();
   const extra = EXPERIMENTAL.filter((h) => h.manifest.id === override);
-  return [claudeCodeHarness, ...extra];
+  return [...LISTED, ...extra];
 }
 
-export const DEFAULT_HARNESS: HarnessId = claudeCodeHarness.manifest.id;
+export const DEFAULT_HARNESS: HarnessId = claudeSharedHarness.manifest.id;
 
 /**
  * Every harness this server can run right now, listed or not: the private
@@ -50,7 +51,7 @@ export function registeredHarnessIds(): HarnessId[] {
 
 /** What the settings UI may offer: the experimental ones only when opted in. */
 export function listedHarnessIds(): HarnessId[] {
-  const listed = process.env.PURVIEW_EXPERIMENTAL_HARNESSES === "1" ? [claudeCodeHarness, ...EXPERIMENTAL] : [claudeCodeHarness];
+  const listed = process.env.PURVIEW_EXPERIMENTAL_HARNESSES === "1" ? [...LISTED, ...EXPERIMENTAL] : LISTED;
   return listed.map((harness) => harness.manifest.id);
 }
 

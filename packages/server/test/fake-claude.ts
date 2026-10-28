@@ -101,8 +101,13 @@ export function fakeClaude(opts: FakeClaudeOptions = {}): FakeClaude {
   const argvFile = path.join(dir, "argv.jsonl");
   const runs: FakeClaude["runs"] = [];
   const children: ReturnType<typeof spawn>[] = [];
+  let previousHarness: string | undefined;
 
   const install = () => {
+    // The fake stands in for Claude Code's native CLI, so every run goes to
+    // the harness that spawns it (Legacy) rather than the default.
+    previousHarness = process.env.PURVIEW_HARNESS;
+    process.env.PURVIEW_HARNESS = "claude-code";
     setClaudeSpawner((argv, spawnOpts) => {
       const promptFile = path.join(dir, `prompt-${runs.length}.txt`);
       const index = runs.length;
@@ -146,6 +151,8 @@ export function fakeClaude(opts: FakeClaudeOptions = {}): FakeClaude {
     },
     restore: () => {
       setClaudeSpawner(null);
+      if (previousHarness === undefined) delete process.env.PURVIEW_HARNESS;
+      else process.env.PURVIEW_HARNESS = previousHarness;
       fs.rmSync(dir, { recursive: true, force: true });
     },
     dir,

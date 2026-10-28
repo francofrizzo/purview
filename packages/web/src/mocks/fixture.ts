@@ -1336,7 +1336,7 @@ function claudeCode(
 ): ResolvedAgent {
   const harnessSource = modelSource === "default" && (!effort || effort[1] === "default") ? "default" : modelSource;
   return {
-    harness: "claude-code",
+    harness: "claude-shared",
     model,
     ...(effort ? { effort: effort[0] } : {}),
     sources: { harness: harnessSource, model: modelSource, ...(effort ? { effort: effort[1] } : {}) },
@@ -1348,7 +1348,7 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
     local: {
       autoAnalyze: true,
       repoPath: "/Users/dana/code/billing",
-      analysisAgent: { harness: "claude-code", model: "opus" },
+      analysisAgent: { harness: "claude-shared", model: "opus" },
       chatAgent: null,
       watchReviews: true,
       watchOwn: true,
@@ -1400,8 +1400,8 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
       present: true,
       config: {
         autoAnalyze: true,
-        analysisAgent: { harness: "claude-code", model: "opus" },
-        chatAgent: { harness: "claude-code", model: "haiku" },
+        analysisAgent: { harness: "claude-shared", model: "opus" },
+        chatAgent: { harness: "claude-shared", model: "haiku" },
       },
       rubric: MOCK_COMMITTED_RUBRIC,
       chat: MOCK_COMMITTED_CHAT_INSTRUCTIONS,

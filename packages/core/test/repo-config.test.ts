@@ -191,8 +191,9 @@ describe("agent selections in repo.json", () => {
       ...EMPTY_REPO_CONFIG,
       autoAnalyze: false,
       repoPath: "/keep",
-      analysisAgent: { harness: "claude-code", model: "opus", effort: "none" },
-      chatAgent: { harness: "claude-code", model: "haiku" },
+      // A file from before the default changed: its Claude Code is the new one.
+      analysisAgent: { harness: "claude-shared", model: "opus", effort: "none" },
+      chatAgent: { harness: "claude-shared", model: "haiku" },
       watchReviews: true,
     });
     writeRepoConfig(repo, { autoAnalyze: true }, root);
@@ -213,7 +214,7 @@ describe("agent selections in repo.json", () => {
     expect(readRepoConfig(repo, root)).toEqual({
       ...EMPTY_REPO_CONFIG,
       analysisAgent: null,
-      chatAgent: { harness: "claude-code", model: "haiku" },
+      chatAgent: { harness: "claude-shared", model: "haiku" },
       repoPath: "/keep",
     });
   });
@@ -226,9 +227,26 @@ describe("agent selections in repo.json", () => {
     );
     expect(readRepoConfig(repo, root)).toEqual({
       ...EMPTY_REPO_CONFIG,
-      chatAgent: { harness: "claude-code" },
+      chatAgent: { harness: "claude-shared" },
       repoPath: "/keep",
     });
+  });
+
+  it("moves a selection of Claude Code made before the new default to it, once", () => {
+    fs.mkdirSync(path.dirname(repoConfigPath(repo, root)), { recursive: true });
+    fs.writeFileSync(
+      repoConfigPath(repo, root),
+      JSON.stringify({ analysisAgent: { harness: "claude-code", model: "opus" }, chatAgent: { harness: "codex" } }),
+    );
+    expect(readRepoConfig(repo, root)).toMatchObject({
+      analysisAgent: { harness: "claude-shared", model: "opus" },
+      chatAgent: { harness: "codex" },
+      agentsVersion: 2,
+    });
+    // Legacy picked afterwards is a choice: the written file says so.
+    writeRepoConfig(repo, { analysisAgent: { harness: "claude-code", model: "opus" } }, root);
+    expect(JSON.parse(fs.readFileSync(repoConfigPath(repo, root), "utf8"))).toMatchObject({ agentsVersion: 2 });
+    expect(readRepoConfig(repo, root).analysisAgent).toEqual({ harness: "claude-code", model: "opus" });
   });
 });
 
@@ -236,11 +254,17 @@ describe("committed team config", () => {
   it("reads the old keys as Claude Code selections, and the new ones as they are", () => {
     expect(TeamConfigSchema.parse({ autoAnalyze: false, analysisModel: "opus", chatModel: "haiku" })).toEqual({
       autoAnalyze: false,
-      analysisAgent: { harness: "claude-code", model: "opus" },
-      chatAgent: { harness: "claude-code", model: "haiku" },
+      analysisAgent: { harness: "claude-shared", model: "opus" },
+      chatAgent: { harness: "claude-shared", model: "haiku" },
     });
     expect(TeamConfigSchema.parse({ analysisEffort: "low" })).toEqual({
-      analysisAgent: { harness: "claude-code", effort: "low" },
+      analysisAgent: { harness: "claude-shared", effort: "low" },
+    });
+    // Claude Code named before it became Legacy is today's Claude Code; a
+    // team that means Legacy says so with the settings version.
+    expect(TeamConfigSchema.parse({ chatAgent: { harness: "claude-code" } })).toEqual({ chatAgent: { harness: "claude-shared" } });
+    expect(TeamConfigSchema.parse({ chatAgent: { harness: "claude-code" }, agentsVersion: 2 })).toEqual({
+      chatAgent: { harness: "claude-code" },
     });
     expect(TeamConfigSchema.parse({ chatAgent: { harness: "other", model: "m" }, chatModel: "haiku" })).toEqual({
       chatAgent: { harness: "other", model: "m" },
