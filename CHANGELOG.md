@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.30.5
 
 - **Comment box layout.** The placeholder names the line and who it's for, the audience switch sits by save, `Aa` opens the formatting, and copy and ask chat are icons. (thanks Canta 🐑)
 - **Comments panel.** Cards show who they're for with a colored frame and icon, actions appear on hover, AI reviewers get an outlined "bot" label, and the header is one line. (thanks Canta 🐑)
