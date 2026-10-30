@@ -22,7 +22,7 @@ const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }
   {
     event: "COMMENT",
     label: "Comment",
-    tone: "var(--fg-faint)",
+    tone: "var(--accent)",
     blurb: "Feedback without a verdict.",
   },
   {
@@ -272,7 +272,8 @@ export function FinishReviewPanel({
                 </div>
                 <button
                   type="button"
-                  className="btn btn-primary w-full justify-center font-semibold"
+                  className="btn w-full justify-center font-semibold hover:brightness-110"
+                  style={verdictFill(verdict)}
                   data-testid="submit-review"
                   disabled={submitting}
                   onClick={() => (unviewed > 0 ? setArming(verdict) : onSubmit(verdict, body))}
@@ -300,6 +301,12 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
+}
+
+/** The submit button's solid fill: the picked verdict's own color, page-colored text. */
+function verdictFill(event: ReviewEvent): React.CSSProperties {
+  const tone = EVENTS.find((e) => e.event === event)?.tone ?? "var(--accent)";
+  return { background: tone, borderColor: tone, color: "var(--bg)" };
 }
 
 /** Where the review stands, stated first: the thing to weigh before a verdict. */
@@ -414,7 +421,8 @@ function ConfirmStep({
         </button>
         <button
           type="button"
-          className="btn btn-primary ml-auto font-semibold"
+          className="btn ml-auto font-semibold hover:brightness-110"
+          style={verdictFill(event)}
           onClick={onConfirm}
           disabled={submitting}
         >

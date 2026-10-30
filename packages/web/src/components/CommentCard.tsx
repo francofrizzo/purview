@@ -279,6 +279,7 @@ export function CommentCard({
         editing={editing}
         onEditingChange={setEditing}
         suggestion={suggestion}
+        ink={forAgent ? "var(--agent)" : "var(--accent)"}
       />
       <AgentEditNote comment={comment} onUndo={onUndoEdit} busy={undoing} />
       {confirmPublish || publishing ? (

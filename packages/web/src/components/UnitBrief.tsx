@@ -5,7 +5,7 @@ import { orderUnitHunks, skippedIds } from "../lib/diffModel";
 import { useSettings } from "../lib/settings";
 import { noteFor } from "../lib/shape";
 import { heartOf, heartSegments, hunkIdsOf } from "../lib/units";
-import { attentionColor, FileStatusBadge } from "./Chips";
+import { attentionColor, AttentionIcon, FileStatusBadge } from "./Chips";
 import { UnitFindings } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
 import { UnitChangelog } from "./UnitChangelog";
@@ -234,7 +234,7 @@ export function UnitBrief({
       {/* The open unit's two actions, as words rather than a menu on every
           row. Moving is a correction the analysis learns from. */}
       {!generated && (onCite || onMove) ? (
-        <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
           {onCite ? (
             <button
               type="button"
@@ -249,8 +249,8 @@ export function UnitBrief({
             </button>
           ) : null}
           {onMove ? (
-            <span className="flex items-baseline gap-1.5" data-tip="Corrections are logged for the analysis to learn from">
-              move to
+            <span className="flex items-center gap-2" data-tip="Corrections are logged for the analysis to learn from">
+              move to:
               {(["must-read", "skim", "skip"] as const)
                 .filter((a) => a !== unit.attention)
                 .map((a) => (
@@ -258,10 +258,11 @@ export function UnitBrief({
                     key={a}
                     type="button"
                     data-testid={`move-unit-${a}`}
-                    className="hover:!text-[var(--fg)]"
+                    className="inline-flex items-center gap-1 hover:!text-[var(--fg)]"
                     style={{ color: "var(--fg-muted)" }}
                     onClick={() => onMove(a)}
                   >
+                    <AttentionIcon attention={a} />
                     {ATTENTION_WORD[a].replace(".", "").toLowerCase()}
                   </button>
                 ))}

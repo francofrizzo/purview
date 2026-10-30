@@ -199,3 +199,35 @@ test("a unit row's facts rest on the title's last line when they fit, and never 
   await expect(page.getByTestId("unit-viewed-transient-retry-backoff")).toBeVisible();
   await expect(facts("transient-retry-backoff")).toBeVisible();
 });
+
+test("editing a comment uses the same tools as writing one, with its own way out", async ({ page }) => {
+  await openPr(page);
+  await page.getByTestId("topbar-comments").click();
+  await page.getByTestId("dock-tab-comments").click();
+  const card = page.getByTestId("comment-card-draft-1");
+  await card.hover();
+  await card.getByRole("button", { name: /edit/i }).first().click();
+  const editor = page.getByTestId("comment-editor-draft-1");
+  await expect(editor.getByTestId("format-draft-1-toggle")).toBeVisible();
+  await expect(editor.getByTestId("format-draft-1-emoji")).toBeVisible();
+  await expect(editor.getByTestId("mode-draft-1-preview")).toBeVisible();
+  await expect(editor.getByTestId("composer-audience")).toHaveCount(0);
+  await editor.getByTestId("format-draft-1-toggle").click();
+  await expect(editor.getByTestId("format-draft-1-bold")).toBeVisible();
+  await editor.getByRole("button", { name: "Cancel" }).click();
+  await expect(editor).toHaveCount(0);
+});
+
+test("the submit button takes the color of the picked verdict", async ({ page }) => {
+  await openPr(page);
+  await page.getByTestId("topbar-finish-review").click();
+  const submit = page.getByTestId("submit-review");
+  const fill = () => submit.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const comment = await fill();
+  await page.getByTestId("verdict-approve").click();
+  await expect.poll(fill).not.toBe(comment);
+  const approve = await fill();
+  await page.getByTestId("verdict-request_changes").click();
+  await expect.poll(fill).not.toBe(approve);
+  await expect.poll(fill).not.toBe(comment);
+});

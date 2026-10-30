@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { errorText, isConfirmRequired } from "../api/errors";
 import { useAgentName } from "../api/hooks";
 import {
@@ -44,7 +44,7 @@ import { AttachmentContext, Markdown, SuggestionContext } from "./Markdown";
 import { suggestionSource, type SuggestionSource } from "../lib/suggestion";
 import { AttachButton, AttachmentStrip, DropHint, useAttachmentEditor } from "./Attachments";
 import { ComposerPreview, useWritePreview, WritePreviewToggle } from "./WritePreview";
-import { FormatRow, FormattingToggle, SuggestButton, useComposerFormat } from "./FormatToolbar";
+import { FormatRow, FormattingToggle, SuggestButton, useComposerFormat, type ComposerFormat } from "./FormatToolbar";
 import { EmojiPicker } from "./EmojiPicker";
 import { CommentCard, type CommentActionError } from "./CommentCard";
 
@@ -179,7 +179,6 @@ export function CommentComposer({
   );
   // Bold, lists, links…: the toolbar and the ⌘B family (lib/composerFormat.ts).
   const fmt = useComposerFormat({ textareaRef: ref, body, setBody, suggestion });
-  const { settings, update: updateSettings } = useSettings();
   const cancel = () => {
     attach.discard();
     onCancel();
@@ -212,14 +211,7 @@ export function CommentComposer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorKey, variant]);
 
-  // Grow with the text, up to a cap, instead of a fixed box. Not while hidden
-  // behind the preview: a display:none textarea measures 0.
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || !wp.writing) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
-  }, [body, wp.writing]);
+  useGrowingTextarea(ref, body, wp.writing);
 
   const floating = variant === "floating";
   return (
@@ -310,25 +302,7 @@ export function CommentComposer({
           {error}
         </p>
       ) : null}
-      {settings.composerFormatting ? (
-        <div className="border-t px-2 py-1" style={{ borderColor: "var(--border)" }}>
-          <FormatRow fmt={fmt} disabled={!wp.writing} testId="composer-format" />
-        </div>
-      ) : null}
-      {/* Wraps instead of overflowing: the tools on the left, the ways out on
-          the right. Shortcuts are on the buttons' tooltips. */}
-      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
-        <FormattingToggle
-          open={settings.composerFormatting}
-          onToggle={() => updateSettings({ composerFormatting: !settings.composerFormatting })}
-          testId="composer-format-toggle"
-        />
-        {/* An emoji is not formatting: it stays out from behind Aa. */}
-        <EmojiPicker onPick={fmt.insert} disabled={!wp.writing} testId="composer-format-emoji" />
-        {prKey ? <AttachButton editor={attach} testId="composer-attach" disabled={!wp.writing} /> : null}
-        <SuggestButton fmt={fmt} disabled={!wp.writing} testId="composer-format-suggestion" />
-        <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} />
-        <span className="ml-auto flex items-center gap-1.5">
+      <EditorTools fmt={fmt} wp={wp} attach={attach} prKey={prKey} formatId="composer-format" attachId="composer-attach">
           {/* Who it is for, in words, beside the button that saves it. */}
           {onAudienceChange && !reply ? (
             <AudienceSwitch value={audience} onChange={onAudienceChange} testId="composer-audience" compact={floating} />
@@ -387,21 +361,79 @@ export function CommentComposer({
           >
             {pending ? "saving…" : forAgent ? "save note" : "save draft"}
           </button>
-        </span>
-      </div>
+      </EditorTools>
     </div>
   );
 }
 
-function DiscardButton({ onClick }: { onClick: () => void }) {
+/** Grow with the text, up to a cap. Not while hidden behind the preview: a display:none textarea measures 0. */
+function useGrowingTextarea(ref: RefObject<HTMLTextAreaElement>, text: string, writing: boolean) {
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !writing) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 280)}px`;
+  }, [ref, text, writing]);
+}
+
+/**
+ * What sits under a comment's text, new or being edited: the formatting row
+ * when `Aa` has it open, then the tools on the left and the ways out on the
+ * right. It wraps instead of overflowing. Shortcuts are on the tooltips.
+ */
+function EditorTools({
+  fmt,
+  wp,
+  attach,
+  prKey,
+  formatId,
+  attachId,
+  modeId,
+  children,
+}: {
+  fmt: ComposerFormat;
+  wp: ReturnType<typeof useWritePreview>;
+  attach: ReturnType<typeof useAttachmentEditor>;
+  prKey: string;
+  formatId: string;
+  attachId: string;
+  modeId?: string;
+  children: ReactNode;
+}) {
+  const { settings, update } = useSettings();
+  return (
+    <>
+      {settings.composerFormatting ? (
+        <div className="border-t px-2 py-1" style={{ borderColor: "var(--border)" }}>
+          <FormatRow fmt={fmt} disabled={!wp.writing} testId={formatId} />
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
+        <FormattingToggle
+          open={settings.composerFormatting}
+          onToggle={() => update({ composerFormatting: !settings.composerFormatting })}
+          testId={`${formatId}-toggle`}
+        />
+        {/* An emoji is not formatting: it stays out from behind Aa. */}
+        <EmojiPicker onPick={fmt.insert} disabled={!wp.writing} testId={`${formatId}-emoji`} />
+        {prKey ? <AttachButton editor={attach} testId={attachId} disabled={!wp.writing} /> : null}
+        <SuggestButton fmt={fmt} disabled={!wp.writing} testId={`${formatId}-suggestion`} />
+        <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} testId={modeId} />
+        <span className="ml-auto flex items-center gap-1.5">{children}</span>
+      </div>
+    </>
+  );
+}
+
+function DiscardButton({ onClick, label = "Discard" }: { onClick: () => void; label?: string }) {
   return (
     <button
       type="button"
       className="flex-none rounded p-1 hover:bg-[var(--bg-hover)]"
       onClick={onClick}
-      data-tip="Discard"
+      data-tip={label}
       data-tip-key="esc"
-      aria-label="Discard"
+      aria-label={label}
       style={{ color: "var(--fg-faint)" }}
     >
       <IconClose width={10} height={10} />
@@ -501,6 +533,7 @@ export function CommentBody({
   editing,
   onEditingChange,
   suggestion,
+  ink = "var(--accent)",
 }: {
   comment: { id: string; body: string; status?: CommentStatus };
   edit?: EditComment;
@@ -520,6 +553,8 @@ export function CommentBody({
    */
   editing?: boolean;
   onEditingChange?: (editing: boolean) => void;
+  /** the editor's frame: who the comment is for, as in the composer */
+  ink?: string;
 }) {
   const status = comment.status ?? "draft";
   const [mode, setModeState] = useState<"view" | "edit" | "confirm">("view");
@@ -545,6 +580,7 @@ export function CommentBody({
   const attach = useAttachmentEditor({ prKey, textareaRef: ref, body: value, setBody: setValue });
   const wp = useWritePreview(ref);
   const fmt = useComposerFormat({ textareaRef: ref, body: value, setBody: setValue, suggestion });
+  useGrowingTextarea(ref, value, mode === "edit" && wp.writing);
 
   useEffect(() => {
     if (mode === "edit") wp.focus();
@@ -667,7 +703,9 @@ export function CommentBody({
 
   return (
     <div
-      className="relative mt-1"
+      className="relative mt-1 rounded-md"
+      data-testid={`comment-editor-${comment.id}`}
+      style={{ background: "var(--bg-raised)", border: `1px solid ${ink}` }}
       {...(prKey && wp.writing ? attach.dropProps : {})}
       onKeyDown={(e) => {
         if (wp.onKeyDown(e)) return;
@@ -681,15 +719,15 @@ export function CommentBody({
         }
       }}
     >
-      <div className="mb-1 flex flex-wrap items-center gap-1.5">
-        <SuggestButton fmt={fmt} disabled={!wp.writing} testId={`format-${comment.id}-suggestion`} />
-        <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} testId={`mode-${comment.id}`} />
-      </div>
+      <span className="absolute right-1.5 top-1.5 z-10">
+        <DiscardButton onClick={cancel} label="Cancel" />
+      </span>
       <textarea
         ref={ref}
+        rows={3}
         data-testid={`editor-${comment.id}`}
-        className="input h-24 resize-none text-xs leading-[18px]"
-        style={{ display: wp.writing ? undefined : "none" }}
+        className="block w-full resize-none bg-transparent px-3 py-2 pr-9 text-[13px] leading-[20px] outline-none"
+        style={{ color: "var(--fg)", display: wp.writing ? undefined : "none" }}
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={fmt.onKeyDown}
@@ -702,43 +740,47 @@ export function CommentBody({
         <ComposerPreview
           body={value}
           wp={wp}
-          textClass={bodyClass}
-          className="input"
+          textClass="text-[13px] leading-[20px]"
+          className="px-3 py-1.5"
           testId={`preview-${comment.id}`}
         />
       )}
       {prKey ? (
-        <div className="-mx-3 mt-1">
+        <>
           <AttachmentStrip prKey={prKey} body={value} editor={attach} />
           <DropHint active={attach.dragging} />
           {attach.input}
-        </div>
+        </>
       ) : null}
-      <p className="mt-1 flex items-center gap-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        <span>
-          {EDIT_HINT[status]} <kbd>esc</kbd> cancels, <kbd>⌘↵</kbd> saves
-        </span>
-        {prKey ? <AttachButton editor={attach} testId={`attach-${comment.id}`} disabled={!wp.writing} /> : null}
+      <p className="px-3 pb-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        {EDIT_HINT[status]}
       </p>
       {error ? (
-        <p className="mt-1 text-2xs leading-4" style={{ color: "var(--risk)" }}>
+        <p className="px-3 pb-1 text-2xs leading-4" style={{ color: "var(--risk)" }}>
           {error}
         </p>
       ) : null}
-      <div className="mt-1.5 flex items-center gap-1.5">
-        <button type="button" className="btn" disabled={busy} onClick={cancel}>
-          cancel
-        </button>
+      <EditorTools
+        fmt={fmt}
+        wp={wp}
+        attach={attach}
+        prKey={prKey}
+        formatId={`format-${comment.id}`}
+        attachId={`attach-${comment.id}`}
+        modeId={`mode-${comment.id}`}
+      >
         <button
           type="button"
           data-testid={`save-${comment.id}`}
-          className="btn btn-primary ml-auto"
+          className={ink === "var(--agent)" ? "btn btn-agent" : "btn btn-primary"}
+          data-tip-key="⌘↵"
+          data-tip="Save the change"
           disabled={busy || !value.trim()}
           onClick={() => void save()}
         >
           {busy ? "saving…" : "save"}
         </button>
-      </div>
+      </EditorTools>
     </div>
   );
 }
