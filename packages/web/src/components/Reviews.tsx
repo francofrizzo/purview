@@ -29,7 +29,7 @@ import { AuthorAvatar } from "./AuthorAvatar";
 import { Markdown } from "./Markdown";
 import { withoutHeadings } from "./SummaryStrip";
 import { BotChip, age } from "./Threads";
-import { IconCheck, IconClose } from "./icons";
+import { IconCheck, IconChevron, IconClose } from "./icons";
 
 /** Collapsed body height: six lines of 20px. */
 const CLAMP_PX = 120;
@@ -61,7 +61,7 @@ function authorLabel(entry: TimelineEntry): { name: string; avatarName: string; 
   return { name: isMine ? `${author.login} (you)` : author.login, avatarName: author.login, bot: false };
 }
 
-/** A body clamped (headings flattened: a bot's "## Walkthrough" is not a section title here) to a few lines, with "show more" when it actually overflows. */
+/** A body clamped (headings flattened: a bot's "## Walkthrough" is not a section title here) to a few lines, with "Show more" when it actually overflows. */
 function ClampedBody({ text }: { text: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
@@ -100,17 +100,21 @@ function ClampedBody({ text }: { text: string }) {
         <Markdown text={withoutHeadings(text)} textClass="text-[13px] leading-[20px]" ink="var(--fg)" />
       </div>
       {overflows ? (
+        // In the link colour with a chevron, like every "there is more here"
+        // in the app: faint grey read as a caption, not as something to press.
         <button
           type="button"
           data-testid="review-body-toggle"
-          className="-ml-1.5 mt-0.5 rounded px-1.5 py-0.5 text-2xs transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
-          style={{ color: "var(--fg-muted)" }}
+          aria-expanded={expanded}
+          className="mt-1 flex items-center gap-1 text-xs font-medium hover:underline"
+          style={{ color: "var(--accent)" }}
           onClick={(e) => {
             e.stopPropagation();
             setExpanded((v) => !v);
           }}
         >
-          {expanded ? "show less" : "show more"}
+          <IconChevron open={expanded} width={10} height={10} />
+          {expanded ? "Show less" : "Show more"}
         </button>
       ) : null}
     </div>
@@ -325,29 +329,44 @@ export function ReviewerVerdictList({
             data-testid={`verdict-row-${v.author.login}`}
             data-verdict={v.verdict}
           >
-          <div className="flex items-center gap-1.5">
+          {/* Who, what and when on one line that never breaks mid-phrase;
+              what else there is to know about the review goes under it. */}
+          <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
             <AuthorAvatar author={name} url={v.author.avatarUrl} size={16} />
-            <span style={{ color: "var(--fg)" }}>{v.isMine ? "You" : name}</span>
+            <span className="min-w-0 truncate" style={{ color: "var(--fg)" }}>{v.isMine ? "You" : name}</span>
             {v.author.bot ? <BotChip /> : null}
-            <span className="inline-flex items-center gap-1" style={{ color: mark ? mark.bg : "var(--fg-muted)" }}>
+            <span className="inline-flex flex-none items-center gap-1" style={{ color: mark ? mark.bg : "var(--fg-muted)" }}>
               {v.verdict === "APPROVED" ? <IconCheck width={11} height={11} /> : null}
               {v.verdict === "CHANGES_REQUESTED" ? <IconClose width={10} height={10} /> : null}
               {verdictVerb(v.verdict)}
             </span>
-            <span className="text-2xs" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(v.at)}>
+            <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(v.at)}>
               {age(v.at)}
             </span>
-            {revisionNote(v.revision) ? (
-              <span className="text-2xs" style={{ color: "var(--warn)" }} data-testid={`verdict-stale-${v.author.login}`}>
-                · {revisionNote(v.revision)}
+            {detailed ? (
+              <span className="ml-auto flex-none">
+                <GithubLink url={v.review.url} what="review" />
               </span>
             ) : null}
-            {detailed && inline > 0 ? (
-              <InlineCommentsJump review={v.review} threads={threads} onJump={onJumpToThread} />
-            ) : null}
-            {detailed ? <GithubLink url={v.review.url} what="review" /> : null}
           </div>
-          {body ? <ClampedBody text={body} /> : null}
+          {revisionNote(v.revision) || (detailed && inline > 0) ? (
+            <div className="flex flex-wrap items-center gap-x-1.5 pl-[22px] text-2xs">
+              {revisionNote(v.revision) ? (
+                <span className="whitespace-nowrap" style={{ color: "var(--warn)" }} data-testid={`verdict-stale-${v.author.login}`}>
+                  {revisionNote(v.revision)}
+                </span>
+              ) : null}
+              {detailed && inline > 0 ? (
+                <InlineCommentsJump review={v.review} threads={threads} onJump={onJumpToThread} lead={Boolean(revisionNote(v.revision))} />
+              ) : null}
+            </div>
+          ) : null}
+          {/* Under the name, not under the avatar: whose words these are. */}
+          {body ? (
+            <div className="pl-[22px]" style={{ color: "var(--fg-muted)" }}>
+              <ClampedBody text={body} />
+            </div>
+          ) : null}
           </li>
         );
       })}
@@ -363,25 +382,29 @@ function InlineCommentsJump({
   review,
   threads,
   onJump,
+  lead = false,
 }: {
   review: RemoteReview;
   threads: RemoteThread[];
   onJump: (thread: RemoteThread) => void;
+  /** something precedes it on its line: set off with a dot */
+  lead?: boolean;
 }) {
   const next = useRef(0);
   const own = reviewThreads(review, threads);
   const label = `${review.commentCount} inline ${review.commentCount === 1 ? "comment" : "comments"}`;
   if (!own.length) {
     return (
-      <span className="flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="verdict-inline-count">
-        · {label}
+      <span className="flex-none whitespace-nowrap text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="verdict-inline-count">
+        {lead ? "· " : null}
+        {label}
       </span>
     );
   }
   return (
     <button
       type="button"
-      className="-my-0.5 flex-none rounded px-1 py-0.5 text-2xs tabular-nums transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
+      className="-my-0.5 -ml-1 flex-none whitespace-nowrap rounded px-1 py-0.5 text-2xs tabular-nums transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
       style={{ color: "var(--fg-muted)" }}
       data-testid="verdict-inline-jump"
       data-tip={own.length === 1 ? "Go to the comment in the diff" : `Go to the next of ${own.length} in the diff`}
@@ -390,7 +413,8 @@ function InlineCommentsJump({
         next.current += 1;
       }}
     >
-      · {label}
+      {lead ? "· " : null}
+      {label}
     </button>
   );
 }

@@ -1,12 +1,14 @@
 import { useState, type ReactNode } from "react";
 import { clampChatPanelWidth, useSettings } from "../lib/settings";
-import { IconChat, IconCheck, IconClose, IconComment, IconSpinner } from "./icons";
+import { IconChat, IconCheck, IconClose, IconComment, IconPopOut, IconSpinner } from "./icons";
 
 /**
  * The one panel on the right: comments, the review chat, and finishing the
  * review are tabs of a single pane rather than three panels with their own
  * widths and rules about who may be open with whom. One toggle per tab in the
  * top bar (and `m`, `c`, `r`), one resize handle, one remembered width.
+ * The chat alone can pop out into a window of its own (FloatingChat); its tab
+ * then stays here as the way back to it.
  */
 export type DockTab = "comments" | "chat" | "review";
 
@@ -29,12 +31,18 @@ export function RightDock({
   tab,
   onSelect,
   onClose,
+  onPopOutChat,
+  chatFloating = false,
   badges = {},
   children,
 }: {
   tab: DockTab;
   onSelect: (tab: DockTab) => void;
   onClose: () => void;
+  /** float the chat over the page; offered while its tab is on */
+  onPopOutChat?: () => void;
+  /** the chat is out in its own window: its tab brings that window up */
+  chatFloating?: boolean;
   badges?: DockBadges;
   children: ReactNode;
 }) {
@@ -88,7 +96,7 @@ export function RightDock({
               role="tab"
               aria-selected={on}
               data-testid={`dock-tab-${t.id}`}
-              data-tip={t.label}
+              data-tip={t.id === "chat" && chatFloating ? "Chat, floating" : t.label}
               data-tip-key={t.key}
               onClick={() => onSelect(t.id)}
               className="relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors hover:text-[var(--fg)]"
@@ -104,6 +112,9 @@ export function RightDock({
                   {badge}
                 </span>
               ) : null}
+              {t.id === "chat" && chatFloating ? (
+                <IconPopOut width={11} height={11} data-testid="dock-chat-floating" />
+              ) : null}
               {t.id === "chat" && badges.chatBusy ? (
                 <IconSpinner width={10} height={10} style={{ color: "var(--accent)" }} />
               ) : null}
@@ -117,9 +128,22 @@ export function RightDock({
             </button>
           );
         })}
+        {tab === "chat" && onPopOutChat ? (
+          <button
+            type="button"
+            className="ml-auto px-2 transition-colors hover:text-[var(--fg)]"
+            onClick={onPopOutChat}
+            data-tip="Float the chat: a window you can move and resize"
+            aria-label="Float the chat"
+            data-testid="chat-pop-out"
+            style={{ color: "var(--fg-faint)" }}
+          >
+            <IconPopOut width={12} height={12} />
+          </button>
+        ) : null}
         <button
           type="button"
-          className="ml-auto px-3"
+          className={tab === "chat" && onPopOutChat ? "px-3" : "ml-auto px-3"}
           onClick={onClose}
           data-tip="Close"
           data-tip-key="esc"

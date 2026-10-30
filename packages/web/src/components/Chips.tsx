@@ -422,6 +422,43 @@ export function Progress({ viewed, total, stacked = false }: { viewed: number; t
 }
 
 /**
+ * How far through the hunks, as a ring and the count: the home list's right
+ * edge. The tooltip carries the rest (units, effort) the row no longer spells out.
+ */
+export function ProgressRing({ viewed, total, tip }: { viewed: number; total: number; tip?: string }) {
+  const done = total > 0 && viewed === total;
+  const r = 6;
+  const c = 2 * Math.PI * r;
+  const frac = total ? viewed / total : 0;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5"
+      data-tip={tip ?? `${viewed} of ${total} hunks viewed`}
+      data-testid="hunk-progress"
+    >
+      <svg width={16} height={16} viewBox="0 0 16 16" aria-hidden className="flex-none -rotate-90">
+        <circle cx={8} cy={8} r={r} fill="none" stroke="var(--border-strong)" strokeWidth={2} />
+        {frac > 0 ? (
+          <circle
+            cx={8}
+            cy={8}
+            r={r}
+            fill="none"
+            stroke={done ? "var(--ok)" : "var(--accent)"}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeDasharray={`${c * frac} ${c}`}
+          />
+        ) : null}
+      </svg>
+      <span className="w-12 text-2xs tabular-nums" style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}>
+        {viewed}/{total}
+      </span>
+    </span>
+  );
+}
+
+/**
  * "9 files · +120 −34", GitHub's own size stat: in the PR header, and on the
  * list row without the file count. Added green, removed red, like the diff;
  * nothing at all when there are no files yet.

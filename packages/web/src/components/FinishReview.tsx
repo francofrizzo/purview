@@ -20,6 +20,12 @@ import { IconCheck, IconExternal, IconSpinner, IconWarning } from "./icons";
 
 const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }[] = [
   {
+    event: "COMMENT",
+    label: "Comment",
+    tone: "var(--fg-faint)",
+    blurb: "Feedback without a verdict.",
+  },
+  {
     event: "APPROVE",
     label: "Approve",
     tone: "var(--ok)",
@@ -31,22 +37,14 @@ const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }
     tone: "var(--risk)",
     blurb: "Block the merge until the comments are addressed.",
   },
-  {
-    event: "COMMENT",
-    label: "Comment",
-    tone: "var(--accent)",
-    blurb: "Leave feedback without a verdict.",
-  },
 ];
 
 /**
- * The finish-review flow. Two deliberate frictions, because submitting posts
- * publicly and cannot be undone:
- *   1. picking a verdict never fires the request — it only arms the confirm
- *      step, which restates what is about to happen;
- *   2. the readiness summary is shown next to the buttons, so "2 must-read
- *      units still unviewed" is in view at the moment of decision rather than
- *      buried in a sidebar.
+ * The finish-review flow: where the review stands, what goes out, then one
+ * decision. Picking a verdict only selects it; the one submit button says what
+ * it will post. A confirm step stands in the way only when there is something
+ * to weigh (must-read units still unread), since submitting is public and
+ * cannot be undone.
  */
 export function FinishReviewPanel({
   review,
@@ -109,6 +107,7 @@ export function FinishReviewPanel({
   const savedBody = useRef<string | null>(null);
   const [savedFlash, flashSaved] = useFlash();
   const [arming, setArming] = useState<ReviewEvent | null>(null);
+  const [verdict, setVerdict] = useState<ReviewEvent>("COMMENT");
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   // Seed from the server draft once it arrives; never clobber in-flight typing.
@@ -143,7 +142,7 @@ export function FinishReviewPanel({
         <Notice tone="error">Could not load the review: {error.message}</Notice>
       ) : !review ? null : (
         <>
-          <div className="min-h-0 flex-1 overflow-auto">
+          <div className="quiet-scroll min-h-0 flex-1 overflow-auto">
             {result ? <SubmittedNotice result={result} /> : null}
             {submitError ? <Notice tone="error">{errorText(submitError)}</Notice> : null}
 
@@ -180,6 +179,7 @@ export function FinishReviewPanel({
                 <textarea
                   className="input mt-1.5 h-28 resize-none text-xs leading-5"
                   placeholder="What should the author take away? (optional)"
+                  data-tip="Kept on this machine until you submit"
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
                   onBlur={() => {
@@ -194,10 +194,13 @@ export function FinishReviewPanel({
                     );
                   }}
                 />
-                <p className="mt-1 flex items-center gap-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  <span>Saved locally when you click away.</span>
-                  <SavedFlash shown={savedFlash} error={saveBodyError} />
-                </p>
+                {/* No standing hint (it is on the field's tooltip): the line
+                    is there only while "saved" flashes or a save was refused. */}
+                {savedFlash || saveBodyError ? (
+                  <p className="mt-1 flex items-center gap-2">
+                    <SavedFlash shown={savedFlash} error={saveBodyError} />
+                  </p>
+                ) : null}
               </section>
 
               <IncludedComments
@@ -231,24 +234,58 @@ export function FinishReviewPanel({
                 onConfirm={() => onSubmit(arming, body)}
               />
             ) : (
-              <>
-                <SectionTitle>Submit as</SectionTitle>
-                <div className="mt-1.5 grid grid-cols-3 gap-1.5">
-                  {EVENTS.map((e) => (
-                    <button
-                      key={e.event}
-                      type="button"
-                      className="btn justify-center whitespace-nowrap px-2 font-semibold hover:brightness-110"
-                      style={verdictFill(e.tone)}
-                      disabled={submitting}
-                      data-tip={e.blurb}
-                      onClick={() => setArming(e.event)}
-                    >
-                      {e.label}
-                    </button>
-                  ))}
+              <div className="flex flex-col gap-2">
+                {/* The verdict is a choice, not three buttons that each post:
+                    three equal segments on one track, so none runs to the
+                    edge; at the panel's narrowest a label wraps inside its
+                    own segment rather than overflow. */}
+                <div
+                  role="radiogroup"
+                  aria-label="Verdict"
+                  className="grid grid-cols-3 gap-0.5 rounded-md border p-0.5"
+                  style={{ background: "var(--bg-inset)", borderColor: "var(--border)" }}
+                >
+                  {EVENTS.map((e) => {
+                    const on = e.event === verdict;
+                    return (
+                      <button
+                        key={e.event}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        data-testid={`verdict-${e.event.toLowerCase()}`}
+                        data-tip={e.blurb}
+                        disabled={submitting}
+                        onClick={() => setVerdict(e.event)}
+                        className="flex min-w-0 items-center justify-center gap-1.5 rounded px-1.5 py-1 text-center text-xs leading-4 transition-colors hover:text-[var(--fg)]"
+                        style={
+                          on
+                            ? { background: "var(--bg-raised)", color: "var(--fg)", boxShadow: "0 0 0 1px var(--border)" }
+                            : { color: "var(--fg-muted)" }
+                        }
+                      >
+                        <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: e.tone }} />
+                        {e.label}
+                      </button>
+                    );
+                  })}
                 </div>
-              </>
+                <button
+                  type="button"
+                  className="btn btn-primary w-full justify-center font-semibold"
+                  data-testid="submit-review"
+                  disabled={submitting}
+                  onClick={() => (unviewed > 0 ? setArming(verdict) : onSubmit(verdict, body))}
+                >
+                  {submitting
+                    ? "submitting…"
+                    : `Submit review${
+                        review.included.length
+                          ? ` · ${review.included.length} ${review.included.length === 1 ? "comment" : "comments"}`
+                          : ""
+                      }`}
+                </button>
+              </div>
             )}
           </div>
         </>
@@ -256,13 +293,6 @@ export function FinishReviewPanel({
     </div>
   );
 }
-
-/** A verdict button's solid fill: the verdict's own color, page-colored text. */
-const verdictFill = (tone: string): React.CSSProperties => ({
-  background: tone,
-  borderColor: tone,
-  color: "var(--bg)",
-});
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -300,9 +330,9 @@ function Readiness({ readiness }: { readiness: NonNullable<ReviewStatus["readine
         />
       </div>
       <p className="mt-1.5 text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-        {viewed}/{total} hunks · {readiness.units.complete}/{readiness.units.total} units
+        {viewed}/{total} hunks read
         {readiness.changedSinceViewed > 0
-          ? ` · ${readiness.changedSinceViewed} changed since viewed`
+          ? ` · ${readiness.changedSinceViewed} changed since you read them`
           : ""}
       </p>
     </section>
@@ -384,8 +414,7 @@ function ConfirmStep({
         </button>
         <button
           type="button"
-          className="btn ml-auto font-semibold hover:brightness-110"
-          style={verdictFill(EVENTS.find((e) => e.event === event)?.tone ?? "var(--accent)")}
+          className="btn btn-primary ml-auto font-semibold"
           onClick={onConfirm}
           disabled={submitting}
         >

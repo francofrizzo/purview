@@ -66,6 +66,7 @@ import {
 import { errorText } from "../api/errors";
 import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
+import { FloatingChat } from "../components/FloatingChat";
 import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
 import {
   CopyPathButton,
@@ -470,23 +471,47 @@ export function PrView() {
     return () => el.removeEventListener("scroll", onScroll);
   }, [peek]);
 
+  // Popped out, the chat floats over the page on its own and the dock is
+  // left to comments and review; docked, it is one of the dock's tabs.
+  const chatFloating = settings.chatMode === "float";
   // Only queried while the panel is open: it makes a live GitHub call.
-  const dock: DockTab | null = chat.open ? "chat" : dockTab;
+  const dock: DockTab | null = chat.open && !chatFloating ? "chat" : dockTab;
   const reviewOpen = dock === "review";
   const openDock = (tab: DockTab) => {
-    setLastDockTab(tab);
     if (tab === "chat") {
       chat.openChat();
+      if (!chatFloating) setLastDockTab(tab);
       return;
     }
-    chat.closeChat();
+    setLastDockTab(tab);
+    if (!chatFloating) chat.closeChat();
     setDockTab(tab);
   };
   const closeDock = () => {
-    chat.closeChat();
+    if (!chatFloating) chat.closeChat();
     setDockTab(null);
   };
-  const toggleDock = (tab: DockTab) => (dock === tab ? closeDock() : openDock(tab));
+  const toggleDock = (tab: DockTab) => {
+    // `c` on a floating chat: shown, it closes; closed or minimized, it shows.
+    if (tab === "chat" && chatFloating) {
+      if (chat.open && !chat.minimized) chat.closeChat();
+      else chat.openChat();
+      return;
+    }
+    if (dock === tab) closeDock();
+    else openDock(tab);
+  };
+  const popOutChat = () => {
+    updateSettings({ chatMode: "float" });
+    // The chat was what the dock showed; out of it, the dock has nothing to show.
+    setDockTab(null);
+    if (lastDockTab === "chat") setLastDockTab("comments");
+  };
+  const dockChat = () => {
+    updateSettings({ chatMode: "dock" });
+    setLastDockTab("chat");
+    chat.openChat();
+  };
   const review = useReview(prKey, reviewOpen);
 
   // Both live in the same right-hand slot, and the chat is the one the reader
@@ -1559,7 +1584,7 @@ export function PrView() {
         staleTooltip={stalenessTooltip(staleness.data)}
         syncing={sync.isPending}
         dockOpen={dock !== null}
-        dockBusy={chat.busy}
+        dockBusy={chat.busy && !(chatFloating && chat.open)}
         onToggleDock={() => (dock ? closeDock() : openDock(lastDockTab))}
         analysisJob={job}
         analysisStarting={startAnalysis.isPending}
@@ -1625,7 +1650,13 @@ export function PrView() {
         <ErrorBar message={`refresh failed: ${(refresh.error as Error).message}`} />
       ) : null}
       {sync.error ? <ErrorBar message={`sync failed: ${(sync.error as Error).message}`} /> : null}
-      {report ? <MigrationReportPanel report={report} onDismiss={() => setReport(null)} /> : null}
+      {report ? (
+        <MigrationReportPanel
+          report={report}
+          summary={detail.state.revisions?.find((r) => r.revision === report.revision)?.summary}
+          onDismiss={() => setReport(null)}
+        />
+      ) : null}
       {syncResult ? (
         <SyncResultPanel result={syncResult} onDismiss={() => setSyncResult(null)} />
       ) : null}
@@ -2190,6 +2221,8 @@ export function PrView() {
 
         {dock ? (
           <RightDock
+            onPopOutChat={popOutChat}
+            chatFloating={chatFloating}
             tab={dock}
             onSelect={openDock}
             onClose={closeDock}
@@ -2310,6 +2343,26 @@ export function PrView() {
           />
         ) : null}
           </RightDock>
+        ) : null}
+        {chatFloating && chat.open ? (
+          <FloatingChat
+            rect={settings.chatFloat}
+            onRectChange={(chatFloat) => updateSettings({ chatFloat })}
+            busy={chat.busy}
+            minimized={chat.minimized}
+            onMinimize={chat.minimizeChat}
+            onRestore={chat.openChat}
+            onDock={dockChat}
+            onClose={chat.closeChat}
+          >
+            <ChatPanel
+              prKey={prKey}
+              detail={detail}
+              comments={drafts}
+              onOpenUnit={openUnitFromText}
+              onOpenFile={openFileFromText}
+            />
+          </FloatingChat>
         ) : null}
       </div>
     </div>

@@ -19,7 +19,7 @@ import { AnalysisChip } from "../components/Analysis";
 import { AuthorAvatar } from "../components/AuthorAvatar";
 import {
   EffortChip,
-  Progress,
+  ProgressRing,
   PrStateChip,
   CiMark,
   ReviewDecisionChip,
@@ -1110,7 +1110,7 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
       <ReviewDecisionChip decision={decision} />
       <AnalysisChip job={pr.analysisJob} />
       <EffortChip effort={pr.effort} />
-      {/* The unit count sits over the bar: one narrow column for the two numbers of the review's size. */}
+      {/* The unit count sits over the ring: one narrow column for the two numbers of the review's size. */}
       <span className="inline-flex flex-none flex-col items-end gap-1.5">
         <span
           className="text-2xs leading-none tabular-nums"
@@ -1121,9 +1121,7 @@ function RowStatus({ pr, className }: { pr: PrListEntry; className: string }) {
             ? `${pr.unitCount} ${pr.unitCount === 1 ? "unit" : "units"}`
             : "not analyzed"}
         </span>
-        {pr.totalHunks ? (
-          <Progress viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} stacked />
-        ) : null}
+        {pr.totalHunks ? <ProgressRing viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} /> : null}
       </span>
     </div>
   );

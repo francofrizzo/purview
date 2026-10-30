@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type {
   AnalysisImportReport,
   MigrationReport,
@@ -7,7 +7,8 @@ import type {
   SyncResult,
 } from "../api/types";
 import { stalenessReasonText } from "../lib/staleness";
-import { IconClose, IconRefresh } from "./icons";
+import { IconChevron, IconClose, IconRefresh } from "./icons";
+import { revisionFileChanges, revisionNoticeText } from "../lib/revisionNotice";
 
 export function DismissiblePanel({
   tone = "neutral",
@@ -105,65 +106,85 @@ export function StalenessHint({
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-const COUNT_ORDER: { key: keyof NonNullable<MigrationReport["counts"]>; label: string }[] = [
-  { key: "carried", label: "carried" },
-  { key: "fuzzy", label: "fuzzy" },
-  { key: "renamed", label: "renamed" },
-  { key: "archived", label: "archived" },
-  { key: "new", label: "new" },
-];
-
+/**
+ * What a refresh brought, as one quiet line under the top bar: a sentence in
+ * the reader's words, the analysis's summary of the revision once it has
+ * written one, and per file only if they ask. The diff itself already marks
+ * what changed; this is the receipt, not the reading.
+ */
 export function MigrationReportPanel({
   report,
+  summary,
   onDismiss,
 }: {
   report: MigrationReport;
+  /** what the revision changed, in the analysis's words (written after the refresh's patches) */
+  summary?: string;
   onDismiss: () => void;
 }) {
-  const counts = report.counts ?? {
-    carried: report.carried?.length,
-    fuzzy: report.fuzzy?.length,
-    renamed: report.renamed?.length,
-    archived: report.archived?.length,
-    new: report.new?.length,
-  };
-  const details: { label: string; items: NonNullable<MigrationReport["fuzzy"]> }[] = [
-    { label: "fuzzy", items: report.fuzzy ?? [] },
-    { label: "renamed", items: report.renamed ?? [] },
-    { label: "archived", items: report.archived ?? [] },
-    { label: "new", items: report.new ?? [] },
-  ].filter((d) => d.items.length > 0);
-
+  const [open, setOpen] = useState(false);
+  const files = revisionFileChanges(report);
   return (
-    <DismissiblePanel
-      tone="warn"
-      title={`migration report${report.revision !== undefined ? ` · revision ${report.revision}` : ""}${
-        report.baseOnly ? " · base moved only" : ""
-      }`}
-      onDismiss={onDismiss}
+    <div
+      className="flex-none border-b px-3 py-1.5 text-xs"
+      style={{ background: "var(--bg-raised)", borderColor: "var(--border)" }}
+      data-testid="revision-notice"
     >
-      <div className="flex flex-wrap items-center gap-3">
-        {COUNT_ORDER.map(({ key, label }) => (
-          <span key={key} className="tabular-nums" style={{ color: "var(--fg-muted)" }}>
-            <span style={{ color: "var(--fg)" }}>{counts?.[key] ?? 0}</span> {label}
-          </span>
-        ))}
-        {report.noChange ? <span style={{ color: "var(--fg-muted)" }}>· already up to date</span> : null}
+      <div className="flex items-center gap-2">
+        <IconRefresh width={12} height={12} className="flex-none" style={{ color: "var(--fg-faint)" }} />
+        <span className="min-w-0 truncate" style={{ color: "var(--fg)" }} data-tip={summary}>
+          {revisionNoticeText(report)}
+          {summary ? (
+            <span className="ml-1.5" style={{ color: "var(--fg-muted)" }} data-testid="revision-notice-summary">
+              {summary}
+            </span>
+          ) : null}
+        </span>
+        {files.length ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-2xs hover:!text-[var(--fg)]"
+            style={{ color: "var(--fg-muted)" }}
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+          >
+            by file
+            <IconChevron open={open} width={9} height={9} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className="ml-auto rounded p-1 hover:bg-[var(--bg-hover)]"
+          style={{ color: "var(--fg-faint)" }}
+          aria-label="Dismiss"
+          data-tip="Dismiss"
+          onClick={onDismiss}
+        >
+          <IconClose width={10} height={10} />
+        </button>
       </div>
-      {details.length ? (
-        <ul className="mt-1.5 space-y-0.5 font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
-          {details.flatMap((d) =>
-            d.items.slice(0, 8).map((item) => (
-              <li key={`${d.label}:${item.hunkId}`}>
-                <span style={{ color: "var(--warn)" }}>{d.label}</span> {item.file ?? ""}{" "}
-                {item.hunkId?.slice(0, 8)}
-                {item.note ? ` — ${item.note}` : ""}
-              </li>
-            )),
-          )}
+      {open ? (
+        <ul className="mt-1.5 max-h-48 overflow-y-auto pb-1 pl-5 text-2xs">
+          {files.map((f) => (
+            <li key={f.file} className="flex items-baseline gap-3 leading-5">
+              <span className="min-w-0 truncate font-mono" style={{ color: "var(--fg-muted)" }}>
+                {f.file}
+              </span>
+              <span className="ml-auto flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
+                {[
+                  f.added ? `${f.added} new` : "",
+                  f.changed ? `${f.changed} changed` : "",
+                  f.moved ? `${f.moved} renamed` : "",
+                  f.gone ? `${f.gone} gone` : "",
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </li>
+          ))}
         </ul>
       ) : null}
-    </DismissiblePanel>
+    </div>
   );
 }
 

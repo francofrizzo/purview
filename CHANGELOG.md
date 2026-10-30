@@ -5,6 +5,16 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Floating chat.** The button at the top of the chat pops it into a window you drag, resize from any edge or minimize to a pill. It reopens where you left it, and `c` still shows and hides it. (thanks Canta 🐑)
+- **One submit button.** In the Review panel, pick Comment, Approve or Request changes, then press Submit. It asks to confirm only while must-read units are unread. (thanks Canta 🐑)
+- **One-line refresh result.** After a refresh, a line under the top bar says what the revision brought, then the analysis's summary of it. "by file" lists the rest. (thanks Canta 🐑)
+- **Graphite themes.** Graphite Dark and Light, on neutral grays, in Settings → Appearance. (thanks Canta 🐑)
+- **Progress ring on home rows.** A PR's row shows how far you've read as a ring with its count. (thanks Canta 🐑)
+- **Chat menu.** The chat's ⋯ menu holds clear conversation and repo checkout, in place of its settings panel. (thanks Canta 🐑)
+- **Fix:** a reviewer in the Review panel reads on one line, with the stale-commit note and inline comments under it, instead of breaking mid-phrase. (thanks Canta 🐑)
+
 ## 2026.10.30.1
 
 - **Opus by default.** Analyses and the chat run on Opus unless a model is picked; choose Sonnet in Settings → Agents for cheaper runs.

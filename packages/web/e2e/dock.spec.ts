@@ -51,3 +51,10 @@ test("one dock on the right: comments, chat and review are its tabs, one at a ti
   await page.getByTestId("topbar-finish-review").click();
   await expect(page.getByTestId("right-dock")).toHaveCount(0);
 });
+
+test("the chat's ⋯ menu opens upward, on screen, from the bottom of the panel", async ({ page }) => {
+  await page.keyboard.press("c");
+  await page.getByTestId("chat-menu").click();
+  await expect(page.getByTestId("chat-repo-settings-link")).toBeInViewport();
+  await expect(page.getByTestId("chat-clear")).toBeInViewport();
+});

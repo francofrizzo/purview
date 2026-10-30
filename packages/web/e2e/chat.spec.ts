@@ -76,8 +76,8 @@ test("a clear or rewind that fails says so and leaves the transcript alone", asy
   await page.getByTestId("chat-dismiss-failure").click();
   await expect(error).toHaveCount(0);
 
-  await page.getByLabel("Chat settings").click();
-  await page.getByRole("button", { name: "clear conversation" }).click();
+  await page.getByTestId("chat-menu").click();
+  await page.getByTestId("chat-clear").click();
   await page.getByTestId("chat-clear-confirm").click();
   await expect(error).toContainText("The conversation was not cleared");
   await expect(page.getByTestId("chat-panel")).toContainText("keep this one");
