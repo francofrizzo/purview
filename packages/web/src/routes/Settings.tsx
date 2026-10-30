@@ -664,7 +664,7 @@ function AgentsSection() {
     <Section
       id="agents"
       title="Agents"
-      hint="Which agent and model analysis runs and review chats use, for every repo that does not override it. Runs go through the agent's own CLI on this machine, so this is what they cost you."
+      hint="Which agent and model analysis runs and review chats use in every repo without its own setting. Runs go through the agent's own CLI on this machine, so this is what they cost you."
     >
       {config.isLoading || agents.isLoading ? (
         <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
@@ -676,25 +676,30 @@ function AgentsSection() {
         </p>
       ) : (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-end gap-6">
-            <GlobalAgentFields
-              kind="analysis"
-              agents={agents.data}
-              layer={config.data.analysisAgent}
-              resolved={config.data.effective.analysisAgent}
-              disabled={save.isPending}
-              onChange={(analysisAgent) => save.mutate({ analysisAgent })}
-            />
-            <GlobalAgentFields
-              kind="chat"
-              agents={agents.data}
-              layer={config.data.chatAgent}
-              resolved={config.data.effective.chatAgent}
-              disabled={save.isPending}
-              onChange={(chatAgent) => save.mutate({ chatAgent })}
-            />
+          <div>
+            <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
+              <GlobalAgentFields
+                kind="analysis"
+                agents={agents.data}
+                layer={config.data.analysisAgent}
+                resolved={config.data.effective.analysisAgent}
+                disabled={save.isPending}
+                onChange={(analysisAgent) => save.mutate({ analysisAgent })}
+              />
+              <GlobalAgentFields
+                kind="chat"
+                agents={agents.data}
+                layer={config.data.chatAgent}
+                resolved={config.data.effective.chatAgent}
+                disabled={save.isPending}
+                onChange={(chatAgent) => save.mutate({ chatAgent })}
+              />
+            </div>
+            <p className="mt-3 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+              <span className="font-mono">inherit</span> means the built-in default, named in brackets.
+            </p>
             {save.error ? (
-              <p className="pb-1 text-2xs" style={{ color: "var(--risk)" }}>
+              <p className="mt-1 text-2xs" style={{ color: "var(--risk)" }}>
                 {errorText(save.error)}
               </p>
             ) : null}
@@ -704,16 +709,28 @@ function AgentsSection() {
             disabled={save.isPending}
             onChange={(analysisLanguage) => save.mutate({ analysisLanguage })}
           />
-          <label className="flex w-fit items-center gap-2 text-xs" style={{ color: "var(--fg-muted)" }}>
+          <label
+            className="flex items-start gap-2 border-t pt-3"
+            style={{ borderColor: "var(--border)" }}
+          >
             <input
               type="checkbox"
+              className="mt-0.5"
               data-testid="global-managed-checkouts"
               checked={config.data.managedCheckouts}
               disabled={save.isPending}
               onChange={(e) => save.mutate({ managedCheckouts: e.target.checked })}
               style={{ accentColor: "var(--accent)" }}
             />
-            Managed checkouts — give runs an exact checkout of the PR head under ~/.purview/checkouts
+            <span className="flex flex-col gap-0.5">
+              <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+                Managed checkouts
+              </span>
+              <span className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+                Runs get an exact checkout of the PR head under{" "}
+                <span className="font-mono">~/.purview/checkouts</span>.
+              </span>
+            </span>
           </label>
         </div>
       )}
@@ -897,58 +914,55 @@ function ReviewThreadsSection({
 /**
  * The global-layer sibling of RepoSettings' `SelectField`: same "inherit vs.
  * pinned value" shape, but "inherit" here is the *end* of the chain, so the
- * hint shows the built-in default inline in the option rather than a source.
+ * option itself names the built-in default.
  */
 function GlobalSelectField({
   label,
+  ariaLabel,
   testId,
   value,
   fallback,
-  shown,
   disabled,
   options,
   onChange,
 }: {
   label: string;
+  /** the select's name out of context, when `label` leans on its block */
+  ariaLabel?: string;
   testId: string;
   value: string | null;
   /** what inheriting means here, as shown */
   fallback: string;
-  /** the pinned value, as shown */
-  shown?: string;
   disabled?: boolean;
   options: { value: string; label: string; title?: string }[];
   onChange: (value: string | null) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <Field label={label}>
-        <select
-          data-testid={`${testId}-select`}
-          className="select pl-2 py-1 text-xs"
-          value={value ?? "inherit"}
-          disabled={disabled}
-          onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
-        >
-          <option value="inherit">inherit ({fallback})</option>
-          {options.map((o) => (
-            <option key={o.value} value={o.value} title={o.title}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        {value ? `Every repo without its own setting uses ${shown ?? value}.` : `Built-in default: ${fallback}.`}
-      </p>
-    </div>
+    <Field label={label}>
+      <select
+        data-testid={`${testId}-select`}
+        aria-label={ariaLabel}
+        className="select w-full py-1 pl-2 text-xs"
+        value={value ?? "inherit"}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value === "inherit" ? null : e.target.value)}
+      >
+        <option value="inherit">inherit ({fallback})</option>
+        {options.map((o) => (
+          <option key={o.value} value={o.value} title={o.title}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </Field>
   );
 }
 
 /**
- * One kind of work's agent at the global layer. Inheriting falls through to
- * the default harness and, for a model or effort, to the harness's manifest
- * defaults.
+ * One kind of work's agent at the global layer, as one block: the agent on
+ * top, and under it, on a rule, the model (and effort) that only mean
+ * something for that agent. Inheriting falls through to the default harness
+ * and, for a model or effort, to the harness's manifest defaults.
  */
 function GlobalAgentFields<T extends AgentSelection>({
   kind,
@@ -971,47 +985,53 @@ function GlobalAgentFields<T extends AgentSelection>({
     onChange(editSelection(layer, field, value, resolved.harness, inherited));
   const title = kind === "analysis" ? "Analysis" : "Chat";
   const prefix = `global-${kind}`;
+  const choice = offersHarnessChoice(agents);
   return (
-    <>
-      {offersHarnessChoice(agents) ? (
+    <div className="flex min-w-0 max-w-sm flex-col gap-2" data-testid={`${prefix}-agent`}>
+      {choice ? (
         <GlobalSelectField
           label={`${title} agent`}
           testId={`${prefix}-harness`}
           value={layer?.harness ?? null}
           fallback={manifestOf(agents, agents!.default)?.name ?? agents!.default}
-          shown={manifest?.name}
           disabled={disabled}
           options={harnessOptions(agents)}
           onChange={(v) => edit("harness", v)}
         />
       ) : null}
-      <GlobalSelectField
-        label={`${title} model`}
-        testId={`${prefix}-model`}
-        value={layer?.model ?? null}
-        fallback={modelLabel(manifest, manifest?.defaults.model ?? resolved.model)}
-        shown={layer?.model ? modelLabel(manifest, layer.model) : undefined}
-        disabled={disabled}
-        options={modelOptions(manifest)}
-        onChange={(v) => edit("model", v)}
-      />
-      {kind === "analysis" ? (
+      <div
+        className={choice ? "ml-1.5 flex flex-col gap-2 border-l pl-3" : "flex flex-col gap-2"}
+        style={choice ? { borderColor: "var(--border)" } : undefined}
+      >
         <GlobalSelectField
-          label="Effort"
-          testId={`${prefix}-effort`}
-          value={layer?.effort ?? null}
-          fallback={manifest?.defaults.effort ?? resolved.effort ?? ""}
+          label={choice ? "Model" : `${title} model`}
+          ariaLabel={`${title} model`}
+          testId={`${prefix}-model`}
+          value={layer?.model ?? null}
+          fallback={modelLabel(manifest, manifest?.defaults.model ?? resolved.model)}
           disabled={disabled}
-          options={effortOptions(manifest)}
-          onChange={(v) => edit("effort", v)}
+          options={modelOptions(manifest)}
+          onChange={(v) => edit("model", v)}
         />
-      ) : null}
+        {kind === "analysis" ? (
+          <GlobalSelectField
+            label={choice ? "Effort" : `${title} effort`}
+            ariaLabel={`${title} effort`}
+            testId={`${prefix}-effort`}
+            value={layer?.effort ?? null}
+            fallback={manifest?.defaults.effort ?? resolved.effort ?? ""}
+            disabled={disabled}
+            options={effortOptions(manifest)}
+            onChange={(v) => edit("effort", v)}
+          />
+        ) : null}
+      </div>
       {resolved.problem ? (
-        <p className="pb-1 max-w-xs text-2xs leading-4" style={{ color: "var(--risk)" }}>
+        <p className="text-2xs leading-4" style={{ color: "var(--risk)" }}>
           {resolved.problem}
         </p>
       ) : null}
-    </>
+    </div>
   );
 }
 
