@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.30.6
 
 - **Unit brief in the sidebar.** The open unit unfolds in the sidebar with its summary, why, heart, findings and changelog, so the code starts higher. Click its row again to fold it. (thanks Canta 🐑)
 - **Two-line unit rows.** Each row has its title and a box that marks the whole unit viewed, then its chips, lines changed and a progress ring. A must-read row shows a risk only when it sets that unit apart. (thanks Canta 🐑)
