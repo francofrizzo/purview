@@ -15,7 +15,7 @@ import { IconArrowRight } from "./icons";
 /**
  * The PR before its parts, from broad to narrow: why it exists (the
  * analysis's summary, in plain words), the words the PR leans on, where it
- * lands in the code, then what to read closely;
+ * lands in the code, then what must be read;
  * the author's description, in their own words and whole, and what reviewers
  * said close it. One calm column; everything here is a way into the guide.
  * The bar on top jumps between the sections and underlines the one in view;
@@ -58,7 +58,7 @@ export function Overview({
     summary ? { id: "summary", label: "Summary" } : null,
     state.concepts?.length ? { id: "concepts", label: "Concepts" } : null,
     state.fileNotes ? { id: "files", label: "Where it lands" } : null,
-    ordered.length ? { id: "reading", label: "Read closely" } : null,
+    ordered.length ? { id: "reading", label: "Must read" } : null,
     description ? { id: "description", label: "Description" } : null,
     hasReviews ? { id: "reviews", label: "Reviews" } : null,
   ].filter((x): x is { id: string; label: string } => x !== null);
@@ -168,7 +168,7 @@ export function Overview({
             the analysis's why. The rest is counted; the guide lists it all. */}
         {ordered.length ? (
           <section data-testid="reading-order" data-section="reading">
-            <SectionHead title="Read closely">
+            <SectionHead title="Must read">
               {next ? (
                 <button
                   type="button"

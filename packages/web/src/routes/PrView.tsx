@@ -2496,7 +2496,7 @@ function ErrorBar({ message, testId }: { message: string; testId?: string }) {
 }
 
 const SIDEBAR_TAB_TIP = {
-  overview: { tip: "Summary, where it lands and what to read closely", key: "s" },
+  overview: { tip: "Summary, where it lands and what you must read", key: "s" },
   units: { tip: "The PR unit by unit", key: "g" },
   files: { tip: "The PR file by file", key: "f" },
 } as const;
