@@ -1810,6 +1810,7 @@ export function PrView() {
       <div
         className="workspace relative flex min-h-0 flex-1"
         data-flat={settings.flatWorkspace ? "true" : undefined}
+        data-headerless={tab === "units" && !unplacedSelected ? "true" : undefined}
         style={{ background: "var(--bg)" }}
       >
         {sidebarMode === "column" ? (

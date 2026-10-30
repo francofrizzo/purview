@@ -878,6 +878,22 @@ html[data-mode="light"] .logo-for-light {
   scrollbar-color: var(--border-strong) transparent;
 }
 
+/* No card above the diff (a unit's brief lives in the sidebar): the diff's own
+   header starts level with the side panes, and the corners facing it go
+   square, so the three read as one straight edge. */
+.workspace[data-headerless]:not([data-flat]) main {
+  padding-top: 7px;
+}
+.workspace[data-headerless]:not([data-flat]) main > [data-testid="unit-header"] {
+  border-top: 1px solid var(--border);
+}
+.workspace[data-headerless]:not([data-flat]) nav.pane:not(.elev-3) {
+  border-top-right-radius: 0;
+}
+.workspace[data-headerless]:not([data-flat]) main ~ .pane {
+  border-top-left-radius: 0;
+}
+
 /* The flat workspace (Settings → Spacing): the panes lose their desk and
    sit edge to edge, one rule between each. The drawer still floats. */
 .workspace[data-flat] .pane:not(.elev-3) {

@@ -8,7 +8,7 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **Unit brief in the sidebar.** The open unit unfolds in the sidebar with its summary, why, heart, findings and changelog, so the code starts higher. Click its row again to fold it. (thanks Canta 🐑)
-- **One-line unit rows.** Each row takes one line, with a box that marks the whole unit viewed. A must-read row shows a risk only when it sets that unit apart. (thanks Canta 🐑)
+- **Two-line unit rows.** Each row has its title and a box that marks the whole unit viewed, then its chips, lines changed and a progress ring. A must-read row shows a risk only when it sets that unit apart. (thanks Canta 🐑)
 - **Cite and move from the brief.** "cite in chat" and "move to" in the brief replace each row's ⋯ menu; a unit's kind can no longer be changed. (thanks Canta 🐑)
 
 ## 2026.10.30.5

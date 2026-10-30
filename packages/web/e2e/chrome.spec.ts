@@ -155,3 +155,31 @@ test("the flat workspace is a setting: off, the panes are cards; on, they sit ed
   await expect(page.getByTestId("unit-header")).toBeVisible();
   expect(await margin()).toBe("0px");
 });
+
+test("with no card above the diff, its header starts level with the panes and their inner corners go square", async ({ page }) => {
+  await openPr(page);
+  await page.getByTestId("topbar-comments").click();
+  const nav = page.locator(".workspace nav.pane").first();
+  const dock = page.getByTestId("right-dock");
+  const header = page.locator('[data-testid^="file-header-"]').first();
+  const top = async (l: typeof nav) => (await l.boundingBox())!.y;
+  expect(await top(header)).toBe(await top(nav));
+  await expect(nav).toHaveCSS("border-top-right-radius", "0px");
+  await expect(dock).toHaveCSS("border-top-left-radius", "0px");
+  // The Files view has its card, so the corners stay round.
+  await page.getByRole("tab", { name: "Files", exact: true }).click();
+  await expect(page.getByTestId("file-header")).toBeVisible();
+  await expect(nav).not.toHaveCSS("border-top-right-radius", "0px");
+  await expect(dock).not.toHaveCSS("border-top-left-radius", "0px");
+});
+
+test("a unit row has its title and box on one line, its chips, lines changed and ring under them", async ({ page }) => {
+  await openPr(page);
+  const row = page.getByTestId("unit-row-transient-retry-backoff");
+  await expect(row.getByTestId("hunk-progress")).toContainText("1/2");
+  await expect(row).toContainText(/\+\d+/);
+  const title = (await row.locator("span").nth(0).boundingBox())!;
+  const ring = (await row.getByTestId("hunk-progress").boundingBox())!;
+  expect(ring.y).toBeGreaterThanOrEqual(title.y + title.height - 1);
+  await expect(page.getByTestId("unit-viewed-transient-retry-backoff")).toBeVisible();
+});

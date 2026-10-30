@@ -7,8 +7,9 @@ import { workUnits } from "../lib/generated";
 import { commonRiskFlags } from "../lib/risks";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { attentionColor, KindChip, ViewedBox } from "./Chips";
+import { attentionColor, KindChip, ProgressRing, ViewedBox } from "./Chips";
 import { FindingsBadge } from "./Findings";
+import { LineDelta, unitFiles } from "./UnitBrief";
 import { UnitChangelog } from "./UnitChangelog";
 import { IconChevron, IconGenerated, RISK_META } from "./icons";
 import { InlineMarkdown } from "./Markdown";
@@ -165,7 +166,7 @@ export function UnitSidebar({
             <button
               type="button"
               onClick={() => setOpen((s) => ({ ...s, [g.attention]: !s[g.attention] }))}
-              className="flex w-full items-center gap-1.5 px-3 pb-1 pt-2.5 text-2xs font-medium uppercase tracking-wider transition-colors hover:text-[var(--fg-muted)]"
+              className="flex w-full items-center gap-1.5 px-3 pb-1 pt-2.5 text-xs font-medium transition-colors hover:text-[var(--fg-muted)]"
               style={{ color: "var(--fg-faint)" }}
               data-testid={`group-${g.attention}`}
             >
@@ -175,11 +176,11 @@ export function UnitSidebar({
               />
               {g.label}
               {hidden > 0 ? (
-                <span data-testid={`hidden-${g.attention}`} className="normal-case tracking-normal">
+                <span data-testid={`hidden-${g.attention}`}>
                   {hiddenHint(hidden)}
                 </span>
               ) : null}
-              <span className="ml-auto tabular-nums tracking-normal">
+              <span className="ml-auto tabular-nums">
                 {groupViewed.viewed}/{groupViewed.total}
               </span>
               <IconChevron open={isOpen} width={9} height={9} />
@@ -249,7 +250,7 @@ function UnplacedGroup({
         onClick={onSelect}
         data-tip={UNPLACED_TITLE}
         aria-current={selected ? "true" : undefined}
-        className="mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-1.5 rounded-md px-1.5 pb-1 pt-2.5 text-2xs font-medium uppercase tracking-wider transition-colors hover:text-[var(--fg-muted)]"
+        className="mx-1.5 flex w-[calc(100%-0.75rem)] items-center gap-1.5 rounded-md px-1.5 pb-1 pt-2.5 text-xs font-medium transition-colors hover:text-[var(--fg-muted)]"
         style={{
           color: selected ? "var(--fg)" : "var(--fg-faint)",
           background: selected ? "var(--bg-inset)" : "transparent",
@@ -260,7 +261,7 @@ function UnplacedGroup({
           style={{ borderColor: "var(--fg-faint)" }}
         />
         Not in any unit
-        <span className="normal-case tracking-normal">({hunkIds.length})</span>
+        <span>({hunkIds.length})</span>
         {matches ? <MatchBadge count={matches} /> : null}
         <span className="ml-auto tabular-nums">
           {viewed}/{hunkIds.length}
@@ -285,12 +286,12 @@ function RemovedGroup({ units }: { units: ReviewUnit[] }) {
       <button
         type="button"
         onClick={() => setIsOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 px-3 pb-1 pt-2.5 text-2xs font-medium uppercase tracking-wider transition-colors hover:text-[var(--fg-muted)]"
+        className="flex w-full items-center gap-1.5 px-3 pb-1 pt-2.5 text-xs font-medium transition-colors hover:text-[var(--fg-muted)]"
         style={{ color: "var(--fg-faint)" }}
       >
         <span className="inline-block h-1.5 w-1.5 flex-none rounded-full" style={{ background: "var(--border-strong)" }} />
         Removed
-        <span className="normal-case tracking-normal">({units.length})</span>
+        <span>({units.length})</span>
         <span className="ml-auto">
           <IconChevron open={isOpen} width={9} height={9} />
         </span>
@@ -380,6 +381,10 @@ const UnitRow = memo(function UnitRow({
   marking?: boolean;
 }) {
   const p = unitProgress(detail, unit);
+  const lines = unitFiles(detail, unit).reduce(
+    (n, f) => ({ added: n.added + f.added, removed: n.removed + f.removed }),
+    { added: 0, removed: 0 },
+  );
   // Purview's own unit: re-kinding or re-prioritizing it means nothing (it is
   // rebuilt every revision) and the analysis never read it to be asked about.
   const generated = isGeneratedUnit(unit);
@@ -435,7 +440,7 @@ const UnitRow = memo(function UnitRow({
       {/* The open unit's header stays pinned while its brief scrolls under
           it: which unit this is, and its box, are always in view. */}
       <div
-        className={`flex items-start rounded-md ${selected ? "sticky top-0 z-10" : "hover:bg-[var(--bg-hover)]"}`}
+        className={`rounded-md ${selected ? "sticky top-0 z-10" : "relative hover:bg-[var(--bg-hover)]"}`}
         style={selected ? { background: "var(--bg-inset)" } : undefined}
       >
         <button
@@ -444,10 +449,10 @@ const UnitRow = memo(function UnitRow({
           aria-current={selected ? "true" : undefined}
           aria-expanded={selected ? briefOpen : undefined}
           data-testid={`unit-row-${unit.id}`}
-          className={`sidebar-row-btn flex min-w-0 flex-1 flex-col gap-1 pl-2 text-left ${selected ? "py-2" : "py-1.5"}`}
-          data-tip={selected ? (briefOpen ? "Fold the brief" : "Show the brief") : unit.title}
+          className="sidebar-row-btn flex w-full min-w-0 flex-col gap-1 py-1.5 pl-2 pr-3 text-left"
+          data-tip={selected ? (briefOpen ? "Fold the brief" : "Show the brief") : undefined}
         >
-          <span className="flex w-full items-start gap-2">
+          <span className="flex w-full items-start gap-2 pr-6">
             {generated ? (
               <span
                 className="flex h-[18px] w-[18px] flex-none items-center justify-center"
@@ -469,48 +474,38 @@ const UnitRow = memo(function UnitRow({
                 {number}
               </span>
             )}
-            {/* The rows not being read are one line each, so the list stays
-                short beside an open brief; the open one wraps in full. */}
+            {/* The whole title, on every row: the list is the guide to the PR. */}
             <span
-              className={`min-w-0 flex-1 text-[13px] leading-[18px] ${selected ? "break-words font-medium" : "truncate"}`}
+              className={`min-w-0 flex-1 break-words text-[13px] leading-[18px] ${selected ? "font-medium" : ""}`}
               style={{ color: done && !selected ? "var(--fg-faint)" : "var(--fg)" }}
             >
               <InlineMarkdown text={unit.title} />
             </span>
-            {/* What asks for the reader, on the title's line on every row, open or not. */}
-            {riskWords || kind || changedTip || warnings > 0 || matches ? (
-              <span className="flex h-[18px] flex-none items-center gap-1.5">
-                {kind}
-                {riskWords}
-                {changedTip ? (
-                  <span
-                    className="h-1.5 w-1.5 rounded-full"
-                    style={{ background: "var(--warn)" }}
-                    data-tip={changedTip}
-                    data-testid={`unit-changed-${unit.id}`}
-                  />
-                ) : null}
-                {warnings > 0 ? <FindingsBadge unit={unit} /> : null}
-                {matches ? <MatchBadge count={matches} /> : null}
-              </span>
+          </span>
+          {/* What asks for the reader, then how big the unit is and how far in. */}
+          <span className="flex min-h-[18px] w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[26px]">
+            {kind}
+            {riskWords}
+            {changedTip ? (
+              <span
+                className="h-1.5 w-1.5 flex-none rounded-full"
+                style={{ background: "var(--warn)" }}
+                data-tip={changedTip}
+                data-testid={`unit-changed-${unit.id}`}
+              />
             ) : null}
+            {warnings > 0 ? <FindingsBadge unit={unit} /> : null}
+            {matches ? <MatchBadge count={matches} /> : null}
+            <span className="ml-auto flex flex-none items-center gap-2">
+              {lines.added || lines.removed ? <LineDelta added={lines.added} removed={lines.removed} /> : null}
+              {p.total > 0 ? <ProgressRing viewed={p.viewed} total={p.total} /> : null}
+            </span>
           </span>
         </button>
-        {/* Its own column: the box to mark the whole unit is on its row,
-            wherever the brief scrolls. */}
-        <span className={`flex flex-none items-center gap-1.5 pl-1.5 pr-3 ${selected ? "h-[34px]" : "h-[30px]"}`}>
-          {/* Done, the ticked box says it; the count is for what is left. */}
-          {done ? null : (
-            <span
-              className="text-2xs tabular-nums"
-              style={{ color: "var(--fg-faint)" }}
-              data-tip={`${p.viewed} of ${p.total} hunks viewed`}
-              data-testid="hunk-progress"
-            >
-              {p.viewed}/{p.total}
-            </span>
-          )}
-          {onToggleViewed && p.total > 0 ? (
+        {/* Its own spot, not inside the row's button: the box marks the whole
+            unit wherever the brief scrolls. */}
+        {onToggleViewed && p.total > 0 ? (
+          <span className="absolute right-3 top-[7px] flex">
             <ViewedBox
               state={done ? "all" : p.viewed > 0 ? "some" : "none"}
               tip={done ? "Mark the unit as not viewed" : "Mark the whole unit viewed"}
@@ -519,8 +514,8 @@ const UnitRow = memo(function UnitRow({
               onToggle={() => onToggleViewed(unit, !done)}
               busy={marking}
             />
-          ) : null}
-        </span>
+          </span>
+        ) : null}
       </div>
       {brief}
     </li>
