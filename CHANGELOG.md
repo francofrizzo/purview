@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.30.2
 
 - **Floating chat.** The button at the top of the chat pops it into a window you drag, resize from any edge or minimize to a pill. It reopens where you left it, and `c` still shows and hides it. (thanks Canta 🐑)
 - **One submit button.** In the Review panel, pick Comment, Approve or Request changes, then press Submit. It asks to confirm only while must-read units are unread. (thanks Canta 🐑)
