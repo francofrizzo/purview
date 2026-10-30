@@ -63,6 +63,8 @@ export interface Settings {
   flatWorkspace: boolean;
   /** The file list in a unit's brief stays open from unit to unit. */
   unitFilesOpen: boolean;
+  /** the PR header counts every line, not only the implementation's */
+  allLineCounts: boolean;
   /** Width of the review chat panel in px (clamped to the range below). */
   chatPanelWidth: number;
   /** The chat as a tab of the right dock, or a window floating over the page. */
@@ -126,6 +128,7 @@ export const DEFAULT_SETTINGS: Settings = {
   composerFormatting: false,
   flatWorkspace: false,
   unitFilesOpen: false,
+  allLineCounts: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
   chatMode: "dock",
   chatFloat: null,
@@ -191,6 +194,7 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   }
   if (typeof r.sidebarCollapsed === "boolean") out.sidebarCollapsed = r.sidebarCollapsed;
   if (typeof r.unitFilesOpen === "boolean") out.unitFilesOpen = r.unitFilesOpen;
+  if (typeof r.allLineCounts === "boolean") out.allLineCounts = r.allLineCounts;
   if (typeof r.composerFormatting === "boolean") out.composerFormatting = r.composerFormatting;
   if (typeof r.flatWorkspace === "boolean") out.flatWorkspace = r.flatWorkspace;
   if (typeof r.sidebarColumnWidth === "number" && Number.isFinite(r.sidebarColumnWidth)) {

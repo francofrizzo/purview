@@ -151,6 +151,29 @@ test("a review's inline comments jump from the overview to the diff", async ({ p
   await expect(page.locator("[data-diff-scroller]")).toBeVisible();
 });
 
+test("the header counts implementation lines, shows the rest on hover, and counts all of them on a click", async ({ page }) => {
+  const size = page.getByTestId("change-size");
+  await expect(page.getByTestId("change-size-mark")).toBeVisible();
+  const implementation = await size.innerText();
+  await size.hover();
+  const card = page.getByTestId("change-card");
+  await expect(card).toContainText("Implementation");
+  await expect(card).toContainText("Tests");
+  await expect(card).toContainText("Generated");
+  await expect(card).toContainText("Total");
+  await size.click();
+  await expect(page.getByTestId("change-size-mark")).toHaveCount(0);
+  await expect(size).not.toHaveText(implementation);
+  await page.reload();
+  await expect(page.getByTestId("change-size-mark")).toHaveCount(0);
+});
+
+test("a unit of mixed lines shows what it is made of", async ({ page }) => {
+  await openUnit(page, UNITS.wiring);
+  await expect(page.getByTestId("unit-mix")).toContainText("implementation");
+  await expect(page.getByTestId("unit-mix")).toContainText("documentation");
+});
+
 test("V marks the whole unit viewed and moves on", async ({ page }) => {
   await page.mouse.move(5, 5);
   await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile.slice(0, 30));

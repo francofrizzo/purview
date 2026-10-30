@@ -5,6 +5,7 @@ import { orderUnitHunks, skippedIds } from "../lib/diffModel";
 import { useSettings } from "../lib/settings";
 import { noteFor } from "../lib/shape";
 import { heartOf, heartSegments, hunkIdsOf } from "../lib/units";
+import { UnitMix } from "./ChangeMix";
 import { attentionColor, AttentionIcon, FileStatusBadge } from "./Chips";
 import { UnitFindings } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
@@ -200,6 +201,7 @@ export function UnitBrief({
           <UnitHeart segments={heartSegments(unit)} files={detail.files.files} onJump={onJumpHunk} />
         ) : null}
         {generated ? null : <UnitFiles detail={detail} unit={unit} onJump={onJumpHunk} />}
+        {generated ? null : <UnitMix files={detail.files.files} hunkIds={hunkIdsOf(unit)} />}
         {skipped > 0 ? (
           <button
             type="button"

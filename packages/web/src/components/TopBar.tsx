@@ -6,10 +6,11 @@ import type { AnalysisJob, CommentAudience, PrDetail, RevisionInfo } from "../ap
 import { isJobLive } from "../api/types";
 import { AnalysisChip, AnalysisStatsPanel, analysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
-import { CiMark, DiffSizeStat, ReviewRequestAge, StackedOnChip } from "./Chips";
+import { ChangeSize } from "./ChangeMix";
+import { CiMark, ReviewRequestAge, StackedOnChip } from "./Chips";
 import { ReviewersMark, showsReviewers } from "./Reviewers";
 import { RevisionMenu } from "./RevisionMenu";
-import { diffTotals, formatAddedAt } from "../lib/prList";
+import { formatAddedAt } from "../lib/prList";
 import { formatRevisionSummary, revisionSummaryLines } from "../lib/revisionSummary";
 import { stackedOnLink } from "../lib/stacked";
 import { CopyPathButton } from "./DiffPane";
@@ -240,7 +241,7 @@ export function TopBar({
               <span className="hidden sm:inline">{meta.author}</span>
             </span>
           ) : null}
-          <DiffSizeStat size={diffTotals(detail.files.files)} />
+          <ChangeSize files={detail.files.files} />
           {meta.tag ? (
             <button
               ref={tagChipRef}

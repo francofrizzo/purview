@@ -24,7 +24,8 @@ const IMPORT_LINE_RE =
 
 export type HunkHint = "tests" | "docs" | "snapshot" | "migration" | "generated" | "lockfile" | "imports only";
 
-export function hunkHint(file: FileEntry, hunk: Hunk): HunkHint | null {
+/** What the file alone says, before looking at any of its lines. */
+export function fileHint(file: Pick<FileEntry, "path" | "generated">): HunkHint | null {
   const p = file.path;
   if (file.generated?.source === "lockfile") return "lockfile";
   if (file.generated) return "generated";
@@ -32,6 +33,12 @@ export function hunkHint(file: FileEntry, hunk: Hunk): HunkHint | null {
   if (MIG_PATH_RE.test(p)) return "migration";
   if (TESTS_PATH_RE.test(p)) return "tests";
   if (DOCS_PATH_RE.test(p)) return "docs";
+  return null;
+}
+
+export function hunkHint(file: FileEntry, hunk: Hunk): HunkHint | null {
+  const hint = fileHint(file);
+  if (hint) return hint;
   const changed = [...(hunk.addedLines ?? []), ...(hunk.removedLines ?? [])];
   if (changed.some((l) => GEN_TEXT_RE.test(l))) return "generated";
   const content = changed.filter((l) => l.trim() !== "");

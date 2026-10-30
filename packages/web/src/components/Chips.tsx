@@ -496,14 +496,23 @@ export function UnitNumber({ number, selected = false, tip }: { number: number; 
  * list row without the file count. Added green, removed red, like the diff;
  * nothing at all when there are no files yet.
  */
-export function DiffSizeStat({ size, files = true }: { size: DiffSize | null | undefined; files?: boolean }) {
+export function DiffSizeStat({
+  size,
+  files = true,
+  tip = true,
+}: {
+  size: DiffSize | null | undefined;
+  files?: boolean;
+  /** false when something around it explains the numbers instead */
+  tip?: boolean;
+}) {
   if (!size || size.files === 0) return null;
   const { files: n, additions, deletions } = size;
   return (
     <span
       className="inline-flex flex-none items-center gap-1 text-2xs tabular-nums"
       data-testid="diff-size"
-      data-tip={`${n} ${n === 1 ? "file" : "files"} changed: ${additions} ${additions === 1 ? "line" : "lines"} added, ${deletions} removed`}
+      data-tip={tip ? `${n} ${n === 1 ? "file" : "files"} changed: ${additions} ${additions === 1 ? "line" : "lines"} added, ${deletions} removed` : undefined}
     >
       {files ? (
         <span>
