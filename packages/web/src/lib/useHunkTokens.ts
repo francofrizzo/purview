@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { cachedTokens, tokenizeLines, type ShikiTheme, type Tok } from "./highlight";
-import { buildRows, languageFor, type DiffRow } from "./diffModel";
+import { buildRows, hunkRenderKey, languageFor, type DiffRow } from "./diffModel";
 import type { Hunk } from "../api/types";
 
 /**
@@ -52,13 +52,16 @@ export function useTokensForHunks(
   diffText: string,
   theme: ShikiTheme,
 ): TokenMap {
-  const signature = hunks.map((h) => h.id).join(",");
+  // Render keys, not ids: a hunk a new revision moved keeps its id, and its
+  // tokens are cached under where it sits as well (see hunkRenderKey).
+  const signature = hunks.map(hunkRenderKey).join(",");
   const [map, setMap] = useState<TokenMap>({});
 
   const jobs = useMemo(
     () =>
       hunks.map((h) => ({
         id: h.id,
+        cacheKey: hunkRenderKey(h),
         lang: languageFor(h.file),
         rows: buildRows(h, diffText),
       })),
@@ -72,7 +75,7 @@ export function useTokensForHunks(
     const seeded: TokenMap = {};
     for (const j of jobs) {
       if (!j.lang) continue;
-      const hit = cachedTokens(j.id, j.lang, theme.name);
+      const hit = cachedTokens(j.cacheKey, j.lang, theme.name);
       if (hit) seeded[j.id] = hit;
     }
     setMap(seeded);
@@ -80,7 +83,7 @@ export function useTokensForHunks(
     for (const j of jobs) {
       if (!j.lang || seeded[j.id]) continue;
       const code = j.rows.map((r) => r.content).join("\n");
-      void tokenizeLines(j.id, code, j.lang, theme).then((t) => {
+      void tokenizeLines(j.cacheKey, code, j.lang, theme).then((t) => {
         if (!alive || !t) return;
         setMap((prev) => ({ ...prev, [j.id]: t }));
       });

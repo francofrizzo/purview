@@ -24,6 +24,29 @@ export interface DiffRow {
 
 const CACHE = new Map<string, DiffRow[]>();
 
+const RENDER_KEYS = new WeakMap<Hunk, string>();
+
+/**
+ * What the caches below (and the syntax tokens) are keyed by: the hunk's id
+ * plus where it sits and a fingerprint of its body. The id alone is not
+ * enough — it hashes only the path and the changed lines (core's
+ * hunk-id.ts), so a hunk that a later revision pushed down the file keeps
+ * its id, and rows cached under it would carry the old line numbers.
+ * Memoized per hunk object, so the fingerprint is computed once per fetch.
+ */
+export function hunkRenderKey(hunk: Hunk): string {
+  const memo = RENDER_KEYS.get(hunk);
+  if (memo) return memo;
+  let h = 0x811c9dc5;
+  for (const line of hunk.lines ?? []) {
+    for (let i = 0; i < line.length; i++) h = Math.imul(h ^ line.charCodeAt(i), 0x01000193);
+    h = Math.imul(h ^ 10, 0x01000193);
+  }
+  const key = `${hunk.id}@${hunk.oldStart},${hunk.oldLines},${hunk.newStart},${hunk.newLines}:${(h >>> 0).toString(36)}`;
+  RENDER_KEYS.set(hunk, key);
+  return key;
+}
+
 /**
  * A hunk's body lines from core's `text`: the raw split, prefix included,
  * nothing filtered ("\ No newline" markers and empty lines stay rows). This
@@ -77,7 +100,7 @@ export function extractHunkBody(diffText: string, hunk: Hunk): string[] {
 
 /** Build renderable rows (line numbers on both sides + word-level intra ranges). */
 export function buildRows(hunk: Hunk, diffText: string): DiffRow[] {
-  const cached = CACHE.get(hunk.id);
+  const cached = CACHE.get(hunkRenderKey(hunk));
   if (cached) return cached;
 
   const body = hunk.lines?.length ? hunk.lines : extractHunkBody(diffText, hunk);
@@ -98,7 +121,7 @@ export function buildRows(hunk: Hunk, diffText: string): DiffRow[] {
   }
 
   annotateIntraLine(rows);
-  CACHE.set(hunk.id, rows);
+  CACHE.set(hunkRenderKey(hunk), rows);
   return rows;
 }
 
@@ -178,7 +201,7 @@ export interface MoveIndex {
 const MOVE_INDEX_CACHE = new Map<string, MoveIndex>();
 
 export function buildMoveIndex(hunk: Hunk, diffText: string): MoveIndex {
-  const cached = MOVE_INDEX_CACHE.get(hunk.id);
+  const cached = MOVE_INDEX_CACHE.get(hunkRenderKey(hunk));
   if (cached) return cached;
 
   const rows = buildRows(hunk, diffText);
@@ -199,7 +222,7 @@ export function buildMoveIndex(hunk: Hunk, diffText: string): MoveIndex {
     }
   }
   const index = { removedIdx, addedIdx };
-  MOVE_INDEX_CACHE.set(hunk.id, index);
+  MOVE_INDEX_CACHE.set(hunkRenderKey(hunk), index);
   return index;
 }
 
@@ -239,7 +262,7 @@ const SPLIT_CACHE = new Map<string, SplitRow[]>();
  * already on the rows line up with the pairs shown here.
  */
 export function buildSplitRows(hunk: Hunk, diffText: string): SplitRow[] {
-  const cached = SPLIT_CACHE.get(hunk.id);
+  const cached = SPLIT_CACHE.get(hunkRenderKey(hunk));
   if (cached) return cached;
 
   const rows = buildRows(hunk, diffText);
@@ -268,7 +291,7 @@ export function buildSplitRows(hunk: Hunk, diffText: string): SplitRow[] {
     i = a;
   }
 
-  SPLIT_CACHE.set(hunk.id, out);
+  SPLIT_CACHE.set(hunkRenderKey(hunk), out);
   return out;
 }
 

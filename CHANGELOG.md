@@ -12,6 +12,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **PRs open on the Overview.** A PR with nothing read opens there, and a reload or a copied link keeps the view and the file you were on. (thanks Canta 🐑)
 - **Inline comments from Reviews.** In the Overview's Reviews section, a review's inline comment count takes you to each comment in the diff.
 - **Full hunk headers.** A hunk's header shows its `@@` range and the whole signature again, instead of only a line number and a name.
+- **Fix:** after a new revision, lines shown with "expand" above a hunk no longer jump to different line numbers than the hunk's own.
 
 ## 2026.10.30.7
 

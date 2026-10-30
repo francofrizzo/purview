@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRows, buildSplitRows, heartRowIndices, hunkLabel, orderUnitHunks, unitProgress } from "./diffModel";
+import { buildMoveIndex, buildRows, buildSplitRows, heartRowIndices, hunkLabel, hunkRenderKey, orderUnitHunks, unitProgress } from "./diffModel";
 import type { Hunk } from "../api/types";
 
 let seq = 0;
@@ -39,6 +39,28 @@ describe("hunkLabel", () => {
 
   it("handles an empty header", () => {
     expect(hunkLabel({ ...base, header: "" })).toBe("@@ -18,10 +18,26 @@");
+  });
+});
+
+describe("a hunk a later revision moved down the file", () => {
+  // Same id (it hashes only the path and the changed lines), new position:
+  // what a push that adds lines above an unchanged hunk does to it.
+  const lines = [" ctx", "-old", "+new", " ctx2"];
+  const before = { ...hunk(lines), id: "same", oldStart: 2661, newStart: 2687 } as Hunk;
+  const after = { ...before, newStart: 2730 } as Hunk;
+
+  it("numbers its rows from where it is now, not from the first revision seen", () => {
+    expect(buildRows(before, "")[0].newNumber).toBe(2687);
+    expect(buildRows(after, "")[0].newNumber).toBe(2730);
+    expect(buildRows(after, "")[0].oldNumber).toBe(2661);
+    expect(buildSplitRows(after, "")[0].right?.row.newNumber).toBe(2730);
+    expect(buildMoveIndex(after, "")).toEqual(buildMoveIndex(before, ""));
+  });
+
+  it("gets its own render key, and the same key while nothing changes", () => {
+    expect(hunkRenderKey(after)).not.toBe(hunkRenderKey(before));
+    expect(hunkRenderKey({ ...before } as Hunk)).toBe(hunkRenderKey(before));
+    expect(hunkRenderKey({ ...before, lines: [" ctx", "-old", "+new", " other"] } as Hunk)).not.toBe(hunkRenderKey(before));
   });
 });
 
