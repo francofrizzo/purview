@@ -192,7 +192,7 @@ const CLAUDE_MANIFEST = {
     { id: "haiku", label: "Haiku" },
   ],
   efforts: ["low", "medium", "high", "none"],
-  defaults: { model: "sonnet", effort: "medium" },
+  defaults: { model: "opus", effort: "medium" },
   capabilities: { resume: true, handoff: true },
 };
 

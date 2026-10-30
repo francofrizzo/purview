@@ -8,6 +8,7 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **Where moved code went.** A moved block's band and the hunk's "moved" badge name the file and lines at the other end. Their "go to" lands on those lines, in any unit.
+- **Opus by default.** Analyses and the chat run on Opus unless a model is picked; choose Sonnet in Settings → Agents for cheaper runs.
 - **Moved blocks start open.** Their band stays above the rows to fold them; Settings → Diff defaults → Moved blocks starts them folded instead.
 - **Fix:** a Mermaid diagram that fails to render no longer shows an error outside the page layout; its source shows as a code block instead.
 

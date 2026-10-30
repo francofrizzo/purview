@@ -92,7 +92,7 @@ the review chat and nothing else.
 
 Then it asks for consent about cost, plainly: adding a PR starts a Claude analysis run
 automatically and every chat message starts another, both on **your own Claude account or
-subscription** through the `claude` CLI you are already signed into, both on Sonnet unless you
+subscription** through the `claude` CLI you are already signed into, both on Opus unless you
 change it (settings → Agents, or per repo). Answering the `[Y/n]` writes `autoAnalyze` to the
 config, and it finishes with a box telling you the state
 dir, the port and the URL to open.
@@ -238,9 +238,9 @@ prepended to your message; a reference it cannot resolve fails the whole send ra
 quietly dropping it.
 
 **Which model.** Both kinds of run pass the model explicitly, so nothing inherits whatever
-the harness's CLI happens to default to — a habit that quietly billed every analysis and every
-chat turn at an Opus rate. An unset model is the harness's manifest default (**Sonnet** for
-Claude Code). Set them per repo (repo settings → Analysis), for the whole machine
+the harness's CLI happens to default to, so what a run costs never depends on the CLI's own
+setting. An unset model is the harness's manifest default (**Opus** for Claude Code; pick
+Sonnet for cheaper runs). Set them per repo (repo settings → Analysis), for the whole machine
 (settings → Agents), or for your team by committing them; the layering is the one described in
 [Per-repo configuration](#per-repo-configuration). Only the models a harness's manifest lists
 are accepted — for Claude Code, the CLI aliases `sonnet`, `opus` and `haiku`, since full model
@@ -299,7 +299,7 @@ Settings live in four layers, most specific first:
 
 Anything left `null` inherits from the layer below, down to the built-in defaults
 (`autoAnalyze: true`, no checkout, and the default harness — Claude Code — with its own
-default model and effort: `sonnet`, `medium`).
+default model and effort: `opus`, `medium`).
 
 **Agent selections.** `analysisAgent` and `chatAgent` name a harness and, optionally, that
 harness's model and (for analysis) effort: `{"harness": "claude-shared", "model": "opus"}`. The

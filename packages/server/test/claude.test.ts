@@ -401,7 +401,7 @@ describe("analysis job lifecycle", () => {
     expect(argv).toContain("--strict-mcp-config");
     expect(argv).toContain("--tools Read,Glob,Grep,Bash,Write,Edit");
     // Never inherited from the user's CLI default: the model is always explicit.
-    expect(argv).toContain("--model sonnet");
+    expect(argv).toContain("--model opus");
     // Default reasoning effort for analysis runs (see config.ts).
     expect(argv).toContain("--effort medium");
     // Bash is allowed only for the reviewer-state CLI; gh/git are denied outright.
@@ -1765,7 +1765,7 @@ describe("model selection", () => {
     expect(readChat(key, root).agent).toBeNull();
   });
 
-  it("passes --model on every spawn, defaulting to sonnet for both kinds of run", async () => {
+  it("passes --model on every spawn, defaulting to opus for both kinds of run", async () => {
     buildFixture(root);
     await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" });
     await analysisIdle();
@@ -1774,7 +1774,7 @@ describe("model selection", () => {
     expect(claude.runs).toHaveLength(2);
     for (const run of claude.runs) {
       expect(run.argv).toContain("--model");
-      expect(modelOf(run.argv)).toBe("sonnet");
+      expect(modelOf(run.argv)).toBe("opus");
     }
     // Both have a shell tool, so both tell the CLI the harness's inline limit.
     for (const run of claude.runs) expect(run.env).toMatchObject({ PURVIEW_INLINE_LIMIT: "25000" });
@@ -1800,32 +1800,32 @@ describe("model selection", () => {
   it("POST /chat/agent pins the session, and the next spawn uses it", async () => {
     buildFixture(root);
     await sendChat("first");
-    expect(modelOf(claude.runs[0].argv)).toBe("sonnet");
+    expect(modelOf(claude.runs[0].argv)).toBe("opus");
 
     const res = await app.request(`/api/prs/${encodedKey}/chat/agent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent: { harness: "claude-code", model: "opus" } }),
+      body: JSON.stringify({ agent: { harness: "claude-code", model: "haiku" } }),
     });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toMatchObject({
-      agent: { harness: "claude-code", model: "opus", sources: { harness: "chat", model: "chat" } },
-      sessionAgent: { harness: "claude-code", model: "opus" },
-      configuredAgent: { harness: "claude-code", model: "sonnet" },
+      agent: { harness: "claude-code", model: "haiku", sources: { harness: "chat", model: "chat" } },
+      sessionAgent: { harness: "claude-code", model: "haiku" },
+      configuredAgent: { harness: "claude-code", model: "opus" },
       // `claude --resume` accepts a different --model, so the transcript stays.
       restartedSession: false,
     });
 
     await sendChat("second");
     const second = claude.runs[1];
-    expect(modelOf(second.argv)).toBe("opus");
+    expect(modelOf(second.argv)).toBe("haiku");
     // ...on the same session: switching models does not start a new one.
     expect(second.argv).toContain("--resume");
 
     const state = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
-    expect(state.agent.model).toBe("opus");
-    expect(state.sessionAgent).toEqual({ harness: "claude-code", model: "opus" });
+    expect(state.agent.model).toBe("haiku");
+    expect(state.sessionAgent).toEqual({ harness: "claude-code", model: "haiku" });
     expect(state.sessionHarness).toBe("claude-code");
     expect(state.messages).toHaveLength(4);
   });
@@ -1896,12 +1896,12 @@ describe("model selection", () => {
     await app.request(`/api/prs/${encodedKey}/chat/agent`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent: { harness: "claude-code", model: "opus" } }),
+      body: JSON.stringify({ agent: { harness: "claude-code", model: "haiku" } }),
     });
     await app.request(`/api/prs/${encodedKey}/chat`, { method: "DELETE" });
     const after = await (await app.request(`/api/prs/${encodedKey}/chat`)).json();
     expect(after.sessionAgent).toBeNull();
-    expect(after.agent.model).toBe("sonnet");
+    expect(after.agent.model).toBe("opus");
   });
 });
 

@@ -60,12 +60,12 @@ const manifest: HarnessManifest = {
   ],
   // "none" omits `--effort`, for a CLI too old to know the flag.
   efforts: ["low", "medium", "high", "none"],
-  // Sonnet, not "whatever the CLI defaults to": inheriting the user's own
-  // default silently billed every run at that model's rate, which for an
-  // Opus default is an order of magnitude more. Medium effort matched high's
-  // classification quality on a 153-hunk PR at ~10% less wall time and ~15%
-  // less cost.
-  defaults: { model: "sonnet", effort: "medium" },
+  // A named model, not "whatever the CLI defaults to", so what a run costs
+  // never depends on the user's own Claude Code default. Opus: the review is
+  // the product, and Sonnet's cheaper runs are one pick away in Settings.
+  // Medium effort matched high's classification quality on a 153-hunk PR at
+  // ~10% less wall time and ~15% less cost.
+  defaults: { model: "opus", effort: "medium" },
   capabilities: { resume: true, handoff: true },
   toolNames: { shell: "Bash", read: "Read", write: "Write", edit: "Edit" },
   // Fixed in Claude Code; BASH_MAX_OUTPUT_LENGTH does not move it.

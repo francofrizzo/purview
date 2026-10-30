@@ -207,7 +207,7 @@ describe("effectiveConfig precedence", () => {
 
   /**
    * Model precedence, for both keys at once: repo.json > committed >
-   * ~/.purview/config.json > built-in "sonnet". Unlike autoAnalyze the global
+   * ~/.purview/config.json > built-in "opus". Unlike autoAnalyze the global
    * layer is nullable, so it can be present-but-inheriting.
    */
   const modelCases: {
@@ -218,7 +218,7 @@ describe("effectiveConfig precedence", () => {
     expected: ClaudeModel;
     source: string;
   }[] = [
-    { name: "nothing set anywhere falls back to sonnet", expected: "sonnet", source: "default" },
+    { name: "nothing set anywhere falls back to opus", expected: "opus", source: "default" },
     { name: "global alone decides", global: "haiku", expected: "haiku", source: "global" },
     {
       name: "committed beats global",
@@ -245,7 +245,7 @@ describe("effectiveConfig precedence", () => {
     {
       name: "a null global is inherit, not a pin, so the built-in default wins",
       global: null,
-      expected: "sonnet",
+      expected: "opus",
       source: "default",
     },
   ];
@@ -982,13 +982,13 @@ describe("/api/repos/:rkey/config", () => {
       repoPath: null,
       analysisAgent: {
         harness: "claude-shared",
-        model: "sonnet",
+        model: "opus",
         effort: "medium",
         sources: { harness: "default", model: "default", effort: "default" },
       },
       chatAgent: {
         harness: "claude-shared",
-        model: "sonnet",
+        model: "opus",
         sources: { harness: "default", model: "default" },
       },
     });
@@ -1050,7 +1050,7 @@ describe("/api/repos/:rkey/config", () => {
       });
 
     const before = await (await app.request(`/api/repos/${encodedRepo}/config`)).json();
-    expect(before.effective.analysisAgent).toMatchObject({ model: "sonnet", sources: { model: "default" } });
+    expect(before.effective.analysisAgent).toMatchObject({ model: "opus", sources: { model: "default" } });
     // The team's legacy `chatModel` reads as a Claude Code selection.
     expect(before.effective.chatAgent).toMatchObject({
       harness: "claude-shared",
@@ -1075,7 +1075,7 @@ describe("/api/repos/:rkey/config", () => {
     // A selection is written whole: naming only the harness drops the model.
     const harnessOnly = await (await put({ analysisAgent: { harness: "claude-shared", effort: "none" } })).json();
     expect(harnessOnly.local.analysisAgent).toEqual({ harness: "claude-shared", effort: "none" });
-    expect(harnessOnly.effective.analysisAgent).toMatchObject({ model: "sonnet", effort: "none" });
+    expect(harnessOnly.effective.analysisAgent).toMatchObject({ model: "opus", effort: "none" });
 
     const cleared = await (await put({ chatAgent: null })).json();
     expect(cleared.local.chatAgent).toBeNull();
@@ -1164,11 +1164,11 @@ describe("/api/config", () => {
         // Medium is the harness's default now, not a value every config.json pins.
         analysisAgent: {
           harness: "claude-shared",
-          model: "sonnet",
+          model: "opus",
           effort: "medium",
           sources: { harness: "default", model: "default", effort: "default" },
         },
-        chatAgent: { harness: "claude-shared", model: "sonnet", sources: { harness: "default", model: "default" } },
+        chatAgent: { harness: "claude-shared", model: "opus", sources: { harness: "default", model: "default" } },
       },
     });
   });
@@ -1246,7 +1246,7 @@ describe("/api/config", () => {
     expect(resolved.analysisAgent.effort).toEqual({ value: "none", source: "global" });
     expect(readConfig(root).analysisAgent).toEqual({ harness: "claude-shared", model: "haiku", effort: "none" });
     // The other agent was not written, so it still inherits the built-in default.
-    expect(resolved.chatAgent.model).toEqual({ value: "sonnet", source: "default" });
+    expect(resolved.chatAgent.model).toEqual({ value: "opus", source: "default" });
 
     // A partial PUT leaves the rest of config.json alone.
     const second = await app.request("/api/config", {
@@ -1332,7 +1332,7 @@ describe("/api/agents", () => {
         agentName: "Claude",
         models: expect.arrayContaining([expect.objectContaining({ id: "sonnet" })]),
         efforts: ["low", "medium", "high", "none"],
-        defaults: { model: "sonnet", effort: "medium" },
+        defaults: { model: "opus", effort: "medium" },
         capabilities: { resume: true, handoff: true },
         listed: true,
       },
