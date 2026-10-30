@@ -13,16 +13,10 @@ app, not for git: say what changed in the review, not which file moved.
 - **File status letters.** A, M, D or R beside a file's name says what the PR did to it, in diff headers, the Files view and a unit's file list.
 - **Resizable sidebar.** Drag the sidebar's right edge to resize it; double-click restores the default width. (thanks Canta 🐑)
 - **Shortcuts window.** `?`, the ⋯ menu or "keyboard shortcuts" in the sidebar opens the shortcuts in a centered window. (thanks Canta 🐑)
-- **Repo beside the title.** The top bar shows `owner/repo#number` next to the PR's title. (thanks Canta 🐑)
-- **Branches under an icon.** The branch icon beside the PR number shows base and head on hover, each with a copy button. (thanks Canta 🐑)
-- **Heart as a row of places.** "Where the logic lives" in the unit brief is one row of file names to jump to; each why is on hover and above its lines in the diff. (thanks Canta 🐑)
+- **PR name in the top bar.** `owner/repo#number` sits beside the title, the branch icon shows base and head with copy buttons, and the rev menu needs two revisions. (thanks Canta 🐑)
 - **New commits on Refresh.** When the PR moved on GitHub, the Refresh button reads "new commits", with the reason on hover. It replaces the bar under the top bar. (thanks Canta 🐑)
-- **Sync and full screen in the ⋯ menu.** Both left the top bar; find them in the PR's ⋯ menu. (thanks Canta 🐑)
-- **Analysis stats in the ⋯ menu.** The run stats left the PR header; open "analysis stats" in the PR's ⋯ menu. (thanks Canta 🐑)
-- **Comment audience outside the top bar.** Press `a` or use the comment box to switch; a "notes for agent" chip shows in agent mode. (thanks Canta 🐑)
-- **Short finding locations.** A finding's places show as file and lines on their own line, with the full path on hover. (thanks Canta 🐑)
-- **Revision menu.** The rev menu shows only on a PR with more than one revision. (thanks Canta 🐑)
-- **Update notice on the home page.** "Update available" no longer shows inside a PR; look for it on the home page. (thanks Canta 🐑)
+- **Top bar moves.** Sync, full screen and analysis stats are in the PR's ⋯ menu, the comment audience is on `a` and in the comment box, and updates show only at home. (thanks Canta 🐑)
+- **Shorter places in the unit brief.** The heart is one row of file names to jump to, and a finding's places show as file and lines; the details are on hover. (thanks Canta 🐑)
 - **Chat dot on the panel button.** A pulsing dot on the panel button shows the chat is replying while the panel is closed. (thanks Canta 🐑)
 
 ## 2026.10.30.3
