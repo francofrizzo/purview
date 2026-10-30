@@ -7,7 +7,7 @@ import { agentSkillRoutes, installPrompt, skillFilePath, skillRevision, stampSki
 import { readChangelog } from "../src/changelog.js";
 import { classifyError } from "../src/http-error.js";
 import { createApp } from "../src/app.js";
-import { runSkillCommand } from "../src/skill-command.js";
+import { refreshInstalledSkills, runSkillCommand } from "../src/skill-command.js";
 
 let temp: string;
 let source: string;
@@ -146,5 +146,86 @@ describe("skill command", () => {
   });
   it.each([["unknown"], ["install", "--dir"], ["install", "--wat"], ["prompt", "extra"]])("rejects invalid arguments %j", (...args) => {
     expect(run(args as string[]).status).toBe(1);
+  });
+});
+
+describe("skill refresh at startup", () => {
+  let home: string;
+  beforeEach(() => { home = path.join(temp, "home"); });
+  function refresh() {
+    const lines: { level: string; message: string; fields?: Record<string, unknown> }[] = [];
+    const log = {
+      info: (_scope: string, message: string, fields?: Record<string, unknown>) => { lines.push({ level: "info", message, fields }); },
+      warn: (_scope: string, message: string, fields?: Record<string, unknown>) => { lines.push({ level: "warn", message, fields }); },
+    };
+    const refreshed = refreshInstalledSkills({ home, source, log });
+    return { refreshed, lines };
+  }
+  function install(agent: string) {
+    runSkillCommand(["install", `--${agent.slice(1)}`], { port: 4880, home, cwd: temp, source, print: () => {} });
+    return path.join(home, agent, "skills", "purview");
+  }
+  const stamp = (dir: string) => stampedRevision(fs.readFileSync(path.join(dir, "SKILL.md"), "utf8"));
+
+  it("replaces a stale stamped copy and restamps it", () => {
+    const dir = install(".claude");
+    const old = skillRevision(source);
+    fs.writeFileSync(path.join(dir, "leftover.md"), "old");
+    fs.writeFileSync(path.join(source, "notes.txt"), "new notes");
+    const { refreshed, lines } = refresh();
+    expect(refreshed).toEqual([dir]);
+    expect(stamp(dir)).toBe(skillRevision(source));
+    expect(fs.readFileSync(path.join(dir, "notes.txt"), "utf8")).toBe("new notes");
+    expect(fs.existsSync(path.join(dir, "leftover.md"))).toBe(false);
+    expect(lines).toEqual([{ level: "info", message: `refreshed Purview skill ${old} → ${skillRevision(source)}`, fields: { path: dir } }]);
+  });
+  it("leaves an up-to-date copy alone", () => {
+    const dir = install(".codex");
+    const skillMd = path.join(dir, "SKILL.md");
+    const past = new Date(2020, 0, 1);
+    fs.utimesSync(skillMd, past, past);
+    const { refreshed, lines } = refresh();
+    expect(refreshed).toEqual([]);
+    expect(lines).toEqual([]);
+    expect(fs.statSync(skillMd).mtimeMs).toBe(past.getTime());
+  });
+  it("leaves an unstamped copy alone", () => {
+    const dir = path.join(home, ".agents/skills/purview");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "SKILL.md"), "---\nname: purview\n---\n# Mine\n");
+    expect(refresh()).toEqual({ refreshed: [], lines: [] });
+    expect(fs.readFileSync(path.join(dir, "SKILL.md"), "utf8")).toBe("---\nname: purview\n---\n# Mine\n");
+    expect(fs.readdirSync(dir)).toEqual(["SKILL.md"]);
+  });
+  it("never creates a copy that is not there", () => {
+    fs.mkdirSync(path.join(home, ".claude"), { recursive: true });
+    expect(refresh()).toEqual({ refreshed: [], lines: [] });
+    expect(fs.readdirSync(home)).toEqual([".claude"]);
+    expect(fs.readdirSync(path.join(home, ".claude"))).toEqual([]);
+  });
+  it.skipIf(process.getuid?.() === 0)("warns instead of throwing when a copy cannot be read or replaced", () => {
+    const unreadable = install(".claude");
+    const readOnly = install(".codex");
+    fs.writeFileSync(path.join(source, "notes.txt"), "new notes");
+    fs.chmodSync(path.dirname(unreadable), 0o000);
+    fs.chmodSync(path.dirname(readOnly), 0o555);
+    try {
+      const { refreshed, lines } = refresh();
+      expect(refreshed).toEqual([]);
+      expect(lines.map((line) => [line.level, line.fields?.path])).toEqual([["warn", unreadable], ["warn", readOnly]]);
+    } finally {
+      fs.chmodSync(path.dirname(unreadable), 0o755);
+      fs.chmodSync(path.dirname(readOnly), 0o755);
+    }
+    // The failed replace left the old copy whole, with nothing staged beside it.
+    expect(fs.readFileSync(path.join(readOnly, "notes.txt"), "utf8")).toBe("notes");
+    expect(fs.readdirSync(path.dirname(readOnly))).toEqual(["purview"]);
+  });
+  it("warns instead of throwing when the source skill is missing", () => {
+    install(".claude");
+    fs.rmSync(source, { recursive: true, force: true });
+    const { refreshed, lines } = refresh();
+    expect(refreshed).toEqual([]);
+    expect(lines.map((line) => line.level)).toEqual(["warn"]);
   });
 });

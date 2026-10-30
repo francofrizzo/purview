@@ -8,6 +8,7 @@ import { autoAnalyzeEnvAllows, lanEnabled, lanToken, readConfig } from "./config
 import { LAN_WARNING, lanHostnames, lanQrTerminal, lanUrl } from "./lan.js";
 import { maybeOnboard } from "./onboarding.js";
 import { pruneCheckouts } from "./pr-checkout.js";
+import { refreshInstalledSkills } from "./skill-command.js";
 import { startReviewWatch } from "./review-watch.js";
 
 /**
@@ -61,6 +62,9 @@ export async function main(opts: MainOptions = {}): Promise<void> {
   const server = serve({ fetch: app.fetch, port: PORT, hostname }, (info) => {
     log.info("server", `purview ${readChangelog()[0]?.version ?? "unknown"} · http://localhost:${info.port} · state ${ROOT.startsWith(os.homedir() + "/") ? "~" + ROOT.slice(os.homedir().length) : ROOT} · ${listRepos(ROOT).length} repos · ${listPrs(ROOT).length} PRs`);
     if (lan) void announceLan(lan.hosts, info.port, lan.token);
+    // Skill copies `purview skill install` put in ~/.claude, ~/.codex or
+    // ~/.agents follow the running Purview after an update. Never throws.
+    refreshInstalledSkills();
     // Managed checkouts of PRs that were merged, closed, archived or dropped
     // while the server was down. After listen, and never awaited: removing a
     // large worktree takes a while and must not delay serving.

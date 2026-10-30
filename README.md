@@ -191,8 +191,9 @@ wait in Purview for you. Install it in any of three ways:
   it uses `~/.agents/skills/purview`. Choose targets with `--claude`, `--codex`,
   or `--agents` (combinable). Add `--project` to use those directories in the
   current project, or `--dir <path>` to install into exactly `<path>/purview`.
-  Existing copies are replaced. `purview skill prompt` prints the install prompt
-  for another agent.
+  Existing copies are replaced, and Purview refreshes the copies it installed in
+  your home directory whenever it starts. `purview skill prompt` prints the
+  install prompt for another agent.
 - With Purview running, fetch `http://localhost:4779/api/skill/manifest.json`,
   then download every path in its `files` list from
   `http://localhost:4779/api/skill/<path>`, preserving paths in your agent's
