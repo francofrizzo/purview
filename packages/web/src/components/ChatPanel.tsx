@@ -1111,14 +1111,38 @@ export function QuoteButton({
   onClick,
   about,
   className,
+  labeled = false,
 }: {
   onClick: () => void;
   /** what the chat is asked about, e.g. "this hunk" */
   about: string;
   className?: string;
+  /** the icon with words, where the header has room on hover */
+  labeled?: boolean;
 }) {
   const agentName = useChatAgentName();
   const title = `Ask ${agentName} about ${about}`;
+  if (labeled) {
+    // It adds a reference to the chat's message; nothing is sent yet.
+    const tip = `Cite ${about} in the chat`;
+    return (
+      <button
+        type="button"
+        data-tip={tip}
+        aria-label={tip}
+        data-testid="quote-button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick();
+        }}
+        className={`inline-flex flex-none items-center gap-1 whitespace-nowrap rounded px-1 font-sans text-2xs hover:!text-[var(--fg)] ${className ?? ""}`}
+        style={{ color: "var(--fg-muted)" }}
+      >
+        <IconQuote width={12} height={12} />
+        cite in chat
+      </button>
+    );
+  }
   return (
     <button
       type="button"

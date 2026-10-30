@@ -5,6 +5,21 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Function names in hunk headers.** A hunk's header shows its first line and the function or type it sits in; the raw range and signature are on hover. (thanks Canta 🐑)
+- **File headers.** A file's header leads with its name, the folder faint beside it; new files read green and deleted ones red. (thanks Canta 🐑)
+- **Marks on folded hunks.** A folded hunk keeps a heart and its risks on its header instead of their captions; hover one for its words, and `h` opens it. (thanks Canta 🐑)
+- **Fold from the hunk header.** Click the header of the focused hunk to fold or unfold it; the first click on another hunk focuses it. (thanks Canta 🐑)
+- **File notes in the Files view.** The analysis's note on a file, or on its folder, sits under the file's header and on its row's tooltip. (thanks Canta 🐑)
+- **Hover actions in diff headers.** Hunk and file headers show "comment" and "cite in chat" on hover; "cite in chat" adds the code to your next message. (thanks Canta 🐑)
+- **Compact folded hunks.** Context rows appear only next to an open hunk, so a mostly read unit is a short list of headers. (thanks Canta 🐑)
+- **Plain new files.** A file the PR adds whole reads on the plain background in the unified diff, its gutter still green, so a heart or a risk in it stands out. (thanks Canta 🐑)
+- **Fix:** the diff no longer scrolls past its last hunk into a screenful of blank. (thanks Canta 🐑)
+- **Fix:** an outdated or whole-file thread clicked in the comments panel now opens at the top of its file, even resolved, instead of folded to one line. (thanks Canta 🐑)
+- **Fix:** switching files in the Files view no longer flashes a read hunk open before it folds. (thanks Canta 🐑)
+- **Fix:** a hunk label that names code shows it as code, not with backticks. (thanks Canta 🐑)
+
 ## 2026.10.30.2
 
 - **Floating chat.** The button at the top of the chat pops it into a window you drag, resize from any edge or minimize to a pill. It reopens where you left it, and `c` still shows and hides it. (thanks Canta 🐑)

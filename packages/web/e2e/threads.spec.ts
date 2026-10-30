@@ -96,7 +96,22 @@ test("a whole-file or outdated thread clicked in the drawer opens in the unit th
   await expect(page.getByTestId("unit-header")).toBeVisible();
   await expect(page.getByTestId("thread-PRRT_docs_file")).toBeVisible();
 
+  // An outdated thread's row says where it will be, since its line is gone.
+  await expect(page.getByTestId("drawer-thread-PRRT_charge_old")).toHaveAttribute("data-tip", /outdated.*top of the file/);
   await page.getByTestId("drawer-thread-PRRT_charge_old").click();
   await expect(page.getByTestId("unit-header")).toBeVisible();
-  await expect(page.getByTestId("thread-PRRT_charge_old")).toBeVisible();
+  // It lands open, resolved or not: the comment itself, not a one-line summary.
+  const landed = page.getByTestId("thread-PRRT_charge_old");
+  await expect(landed).toBeVisible();
+  await expect(landed).not.toHaveAttribute("data-collapsed", "true");
+
+  // A resolved thread lands open too, is still the reader's to fold away,
+  // and the next click on it in the panel opens it again.
+  const resolved = page.getByTestId("thread-PRRT_ledger17");
+  await page.getByTestId("drawer-thread-PRRT_ledger17").click();
+  await expect(resolved).not.toHaveAttribute("data-collapsed", "true");
+  await resolved.getByRole("button", { name: "collapse" }).click();
+  await expect(page.getByTestId("thread-PRRT_ledger17")).toHaveAttribute("data-collapsed", "true");
+  await page.getByTestId("drawer-thread-PRRT_ledger17").click();
+  await expect(page.getByTestId("thread-PRRT_ledger17")).not.toHaveAttribute("data-collapsed", "true");
 });

@@ -276,6 +276,43 @@ export function buildSplitRows(hunk: Hunk, diffText: string): SplitRow[] {
  * A label for a hunk row. core stores only the section heading in `header`
  * (frequently empty), so the `@@` range is reconstructed here for display.
  */
+/**
+ * Where a hunk is, the way a reader asks it: the line it starts at and the
+ * scope it sits in. The raw `@@ -a,b +c,d @@` range (hunkLabel) is diff
+ * syntax; the start is the gutter's first number and the length is what the
+ * fold counts, so it stays a hover away. A pure deletion has no new lines, so
+ * it is placed by its old start.
+ */
+export function hunkPlace(hunk: Hunk): { line: number; heading: string } {
+  return { line: hunk.newLines > 0 ? hunk.newStart : hunk.oldStart, heading: sectionHeading(hunk.header) };
+}
+
+const NOT_A_NAME = new Set([
+  "func", "function", "fn", "def", "if", "for", "while", "switch", "catch", "return",
+  "import", "sizeof", "typeof", "await", "elif", "foreach", "using", "lock", "match",
+]);
+
+/**
+ * What a section heading is about, for the hunk header: `resolveWorkingSet()`
+ * from `func (e *Engine) resolveWorkingSet(ctx context.Context, …`,
+ * `ChargeService` from `export class ChargeService {`. Git puts the enclosing
+ * declaration there so a reader knows where a hunk sits; its name says that,
+ * the rest of the signature is on hover. A heading that names nothing (a SQL
+ * statement, `import (`) is shortened instead.
+ */
+export function scopeName(heading: string): string {
+  const h = heading.trim();
+  if (!h) return "";
+  const shortened = h.length > 40 ? `${h.slice(0, 39)}…` : h;
+  if (/^(select|insert|update|delete|with|create|alter|drop)\b/i.test(h)) return shortened;
+  const declared = /\b(?:class|interface|struct|type|enum|trait|impl|module|namespace|const|let|var|val)\s+([A-Za-z_$][\w$]*)/.exec(h);
+  if (declared) return declared[1];
+  for (const m of h.matchAll(/([A-Za-z_$][\w$]*)\s*(?:<[^>()]*>)?\s*\(/g)) {
+    if (!NOT_A_NAME.has(m[1])) return `${m[1]}()`;
+  }
+  return shortened;
+}
+
 export function hunkLabel(hunk: Hunk): string {
   const range = `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`;
   const heading = sectionHeading(hunk.header);

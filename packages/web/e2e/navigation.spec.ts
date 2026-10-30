@@ -34,7 +34,8 @@ test("v marks the focused hunk viewed, folds it, and moves on to the next", asyn
   await expect(hunkHeader(page, B).getByRole("button", { name: "Mark as not viewed" })).toBeVisible();
   await expect(hunkHeader(page, B)).toContainText("lines folded");
   await expectUnderFileHeader(page, C);
-  await expect(page.getByTestId("file-header-src/billing/reconcile.ts").first()).toContainText("1/4 viewed");
+  // The file's own checkbox now reads partly done.
+  await expect(page.getByTestId("file-viewed-src/billing/reconcile.ts").first()).toHaveAttribute("aria-checked", "mixed");
 });
 
 test("a unit opens on its first hunk still to read, and v moves on to the next one still to read", async ({ page }) => {
@@ -133,4 +134,27 @@ test("a concept the guide names is explained on hover, once per block", async ({
   await openUnit(page, UNITS.charge);
   const mark = page.getByTestId("unit-header").getByTestId("concept-mark").first();
   await expect(mark).toHaveAttribute("data-tip", /^Charge (key|ledger) \(new in this PR\): /);
+});
+
+test("the Files view shows the analysis's note on a file, or on its folder", async ({ page }) => {
+  await page.getByRole("tab", { name: /files/i }).click();
+  await page.locator("nav").getByText("ledger.ts").first().click();
+  await expect(page.getByTestId("file-note")).toContainText("Charges once per key");
+});
+
+test("a hunk and a file offer to comment and to cite in chat on hover, with their icons", async ({ page }) => {
+  const header = hunkHeader(page, A);
+  await header.hover();
+  const cite = header.getByRole("button", { name: "Cite this hunk in the chat" });
+  await expect(cite).toHaveText("cite in chat");
+  await expect(cite.locator("svg")).toHaveCount(1);
+  const file = page.getByTestId("file-header-src/billing/reconcile.ts").first();
+  await file.hover();
+  await expect(file.getByRole("button", { name: /^Cite .* in the chat$/ }).locator("svg")).toHaveCount(1);
+  await expect(file.getByTestId("add-file-comment-src/billing/reconcile.ts").locator("svg")).toHaveCount(1);
+  // Citing attaches the hunk to the chat's message; nothing is sent.
+  await header.hover();
+  await cite.click();
+  await expect(page.getByTestId("chat-panel")).toBeVisible();
+  await expect(page.getByTestId("chat-stop")).toHaveCount(0);
 });

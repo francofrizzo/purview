@@ -371,6 +371,12 @@ function RemovalMarkers({ removedAbove, removedBelow }: RemovalMarkerProps) {
 
 export interface DiffLineProps extends GutterSelectProps, LineCommentProps, RemovalMarkerProps {
   row: DiffRow;
+  /**
+   * The row belongs to a file the PR adds whole: every line is new, so the
+   * green says nothing. The gutter keeps it; the code reads on the plain
+   * ground, where the marks that do say something (a heart, a risk) show.
+   */
+  wholeFileAdded?: boolean;
   tokens?: Tok[];
   onComment?: () => void;
   /** search hits on this row, if a search is running */
@@ -409,7 +415,9 @@ export const DiffLine = memo(function DiffLine({
   removedBelow,
   onDefinitionClick,
   isDefinedInDiff,
+  wholeFileAdded = false,
 }: DiffLineProps) {
+  const bodyType = wholeFileAdded && row.type === "add" && !moved ? "context" : row.type;
   const intraBg = row.type === "add" ? "var(--add-bg-strong)" : "var(--del-bg-strong)";
   const marker = markerFor(row.type, moved);
   const gutterBg = gutterBgFor(row.type, moved);
@@ -424,8 +432,8 @@ export const DiffLine = memo(function DiffLine({
       data-changed={changed ? "true" : undefined}
       data-covered={covered ? "true" : undefined}
       style={{
-        background: rowBackground(row.type, moved, changed),
-        ...(changed ? { ["--row-bg" as string]: bgFor(row.type, moved) } : {}),
+        background: rowBackground(bodyType, moved, changed),
+        ...(changed ? { ["--row-bg" as string]: bgFor(bodyType, moved) } : {}),
         ["--intra-bg" as string]: intraBg,
         boxShadow: selected ? "inset 0 0 0 9999px var(--accent-soft)" : undefined,
       }}

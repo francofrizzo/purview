@@ -9,7 +9,7 @@
  * delete (they aren't the reader's to change).
  */
 
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { RemoteAuthor, RemoteComment, RemoteThread } from "../api/types";
 import { formatCompactAge } from "../lib/reviewRequest";
 import { formatFullTimestamp } from "../lib/prList";
@@ -46,6 +46,8 @@ export interface ThreadActions extends ReactionActions {
   resolveError?: { id: string; message: string } | null;
   /** the thread being replied to: its composer renders at the end of it */
   replyingTo?: string | null;
+  /** the last jump from the comments panel, as `threadId#nonce`: that thread opens, even resolved */
+  focusId?: string | null;
   renderReplyComposer?: () => ReactNode;
 }
 
@@ -199,6 +201,15 @@ export function ThreadView({
 }) {
   const [open, setOpen] = useState(false);
   const t = thread.remote;
+  // A jump from the panel landed here: open it once, even resolved, so the
+  // reader finds the comment they came for rather than a one-line summary.
+  // After that it is the reader's to collapse again; the next jump here
+  // (a new `focusId`, see DiffPane) opens it again. Before paint, so it
+  // never shows folded first.
+  const landing = t && actions.focusId?.startsWith(`${t.id}#`) ? actions.focusId : null;
+  useLayoutEffect(() => {
+    if (landing) setOpen(true);
+  }, [landing]);
   const replying = Boolean(t && actions.replyingTo === t.id);
   // What the thread's ```suggestion blocks would replace: its lines on the
   // new side, as the diff shows them now. An outdated thread's lines are

@@ -9,12 +9,15 @@ const SUPPORT = "a1b2c3d4e5f60005";
 
 test("heart hunks are marked, counted in the sidebar, and h/H walk them", async ({ page }) => {
   await openPr(page);
-  // The header carries no mark; the captions and the segment rows do.
-  for (const id of HEART) {
-    await expect(page.getByTestId(`hunk-header-${id}`).locator("xpath=..")).not.toHaveAttribute("data-heart", "true");
-    await expect(page.getByTestId(`hunk-heart-${id}`).first()).toBeVisible();
-    await expect(page.getByTestId(`hunk-heart-${id}`).first().locator("xpath=..")).toHaveAttribute("data-heart", "true");
-  }
+  // An open heart hunk: the header carries no mark; the captions and the
+  // segment rows do. A folded one (0001, read) folds its captions with its
+  // code and keeps a heart on its header, the whys on hover.
+  await expect(page.getByTestId(`hunk-header-${HEART[0]}`).locator("xpath=..")).not.toHaveAttribute("data-heart", "true");
+  await expect(page.getByTestId(`hunk-heart-${HEART[0]}`).first()).toBeVisible();
+  await expect(page.getByTestId(`hunk-heart-${HEART[0]}`).first().locator("xpath=..")).toHaveAttribute("data-heart", "true");
+  await expect(page.getByTestId(`hunk-header-${HEART[1]}`)).toHaveAttribute("data-collapsed", "true");
+  await expect(page.getByTestId(`hunk-heart-${HEART[1]}`)).toHaveCount(0);
+  await expect(page.getByTestId(`hunk-heart-mark-${HEART[1]}`)).toHaveAttribute("data-tip", /short-circuits on the ledger row/);
   await expect(page.getByTestId(`hunk-header-${SUPPORT}`).locator("xpath=..")).not.toHaveAttribute("data-heart", "true");
   await expect(page.getByTestId(`hunk-heart-${SUPPORT}`)).toHaveCount(0);
 

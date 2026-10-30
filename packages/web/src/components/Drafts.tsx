@@ -1190,7 +1190,11 @@ function GithubThreadRow({ thread, github }: { thread: RemoteThread; github: Dra
         background: "var(--bg)",
         opacity: thread.isResolved ? 0.7 : undefined,
       }}
-      data-tip={`${thread.path}${line !== null && thread.subjectType !== "file" ? `:${lines}` : ""}; show it in the diff`}
+      data-tip={
+        thread.isOutdated
+          ? `${thread.path}: outdated, the line it was on has changed since. It waits at the top of the file in the diff`
+          : `${thread.path}${line !== null && thread.subjectType !== "file" ? `:${lines}` : ""}; show it in the diff`
+      }
       onClick={() => github.onJump(thread)}
     >
       <span className="flex items-center gap-1.5 text-2xs">

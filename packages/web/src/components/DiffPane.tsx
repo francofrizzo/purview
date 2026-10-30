@@ -13,6 +13,8 @@ import {
   contentLineNumbers,
   heartRowIndices,
   hunkLabel,
+  hunkPlace,
+  scopeName,
   languageFor,
   type CharRange,
   type DiffRow,
@@ -84,7 +86,6 @@ import { DiffOfDiffs } from "./DiffOfDiffs";
 import { GeneratedTag } from "./Generated";
 import { targetKey, type CommentTarget } from "./Drafts";
 import { CommentBubble, InlineCommentList, type InlineCommentActions } from "./InlineComments";
-import { MiddleTruncate } from "./Truncate";
 import {
   IconCheck,
   IconChevron,
@@ -278,6 +279,8 @@ export interface DiffPaneProps {
     showComments?: boolean;
     /** land on the file's header with its whole-file comments open, not on the hunk */
     fileComments?: boolean;
+    /** the thread the reader came for: shown open where it lands */
+    threadId?: string;
   } | null;
   /**
    * The selected unit's heart (hunk id -> its segments): those hunks are
@@ -847,6 +850,7 @@ export function DiffPane({
   // The jump request not yet landed on (see the jumpToHunk effect further
   // down), readable from the seed effect above it without a dependency.
   const jumpedNonce = useRef<number | null>(null);
+  const [focusThreadId, setFocusThreadId] = useState<string | null>(null);
   const pendingJumpRef = useRef<typeof jumpToHunk>(null);
   pendingJumpRef.current = jumpToHunk && jumpedNonce.current !== jumpToHunk.nonce ? jumpToHunk : null;
 
@@ -1140,6 +1144,12 @@ export function DiffPane({
       const lines = loaded?.status === "ok" ? loaded.lines : null;
       // Nothing is revealed until the file is here to draw it from.
       const reveal = lines ? (contextReveal[gap.key] ?? { top: 0, bottom: 0 }) : { top: 0, bottom: 0 };
+      // Context only means something next to code that is showing: between
+      // folded hunks (or a folded hunk and the file's edge) the row would be
+      // a line of noise per gap, so there is none, unless the reader has
+      // already opened some of it.
+      const open = (id: string | null) => id !== null && shownAt.has(id) && !isCollapsed(collapsed, id);
+      if (!open(gap.prevHunkId) && !open(gap.nextHunkId) && reveal.top === 0 && reveal.bottom === 0) return;
       const shown = revealGap(gap, reveal, lines ? lines.length : null);
       const pushCtx = (range: [number, number] | null, side: "top" | "bottom") => {
         if (!range) return;
@@ -1254,8 +1264,9 @@ export function DiffPane({
           nextCaption++;
         }
       };
-      if (marks?.length && captions === null) marks.forEach((m, seg) => out.push(heartRow(seg, m.why)));
-      if (!open) risks.forEach((m) => out.push(riskRow(m)));
+      // Folded, the captions fold with the code they explain; the header
+      // keeps a mark of each, its words on hover (see the hunk header).
+      if (open && marks?.length && captions === null) marks.forEach((m, seg) => out.push(heartRow(seg, m.why)));
       if (expandedDod.has(hunk.id)) {
         out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
       }
@@ -1467,6 +1478,17 @@ export function DiffPane({
     return () => ro.disconnect();
   }, [hasEntries]);
 
+  // Room past the last hunk: exactly what it takes for the last hunk's header
+  // to reach the top (under the pinned file header), and no more — so the
+  // pane stops scrolling where the last hunk sits at the top instead of
+  // scrolling its code away into blank space. A tall last hunk needs none.
+  // Measured from the last render, as the file header's height is above.
+  const lastHunkIdx = rows.findLastIndex((r) => r.type === "hunk");
+  const measured = virtualizerRef.current?.measurementsCache;
+  const lastStart = lastHunkIdx >= 0 ? measured?.[lastHunkIdx]?.start : undefined;
+  const contentEnd = measured?.[rows.length - 1]?.end;
+  const lastSpan = lastStart !== undefined && contentEnd !== undefined ? contentEnd - lastStart : 0;
+  const tailRoom = Math.max(24, viewportHeight - fileHeaderHeight - lastSpan);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -1502,7 +1524,7 @@ export function DiffPane({
     // Room past the last hunk, as editors leave past the last line: without
     // it the last hunks of a unit can never reach the top, so `v`/`j` would
     // leave them wherever the page ran out.
-    paddingEnd: Math.max(0, viewportHeight - fileHeaderHeight - 120),
+    paddingEnd: tailRoom,
   });
   virtualizerRef.current = virtualizer;
   const fileHeaderHeightRef = useRef(fileHeaderHeight);
@@ -1803,7 +1825,9 @@ export function DiffPane({
   const setSignature = entries.map((e) => e.hunk.id).join(",");
   const activeMatchRef = useRef(activeMatch);
   activeMatchRef.current = activeMatch;
-  useEffect(() => {
+  // Before paint, not after: a read hunk of a newly shown file or unit must
+  // first appear folded, not open for a frame and then snap shut.
+  useLayoutEffect(() => {
     const target = activeMatchRef.current;
     if (!(target && entries.some((e) => e.hunk.id === target.hunkId))) {
       scrollRef.current?.scrollTo({ top: 0 });
@@ -2164,6 +2188,8 @@ export function DiffPane({
       }
     }
     jumpedNonce.current = jumpToHunk.nonce;
+    // The thread the reader came for opens where it lands, even resolved.
+    if (jumpToHunk.threadId) setFocusThreadId(`${jumpToHunk.threadId}#${jumpToHunk.nonce}`);
     onFocusHunk(jumpToHunk.hunkId);
     // The hunk's rows follow its header contiguously; walk them for the
     // requested line (unified rows carry it directly, split rows on their
@@ -2228,6 +2254,7 @@ export function DiffPane({
     ...commentActions,
     replyingTo: replying ? (composeTarget?.inReplyTo ?? null) : null,
     renderReplyComposer: renderComposer,
+    focusId: focusThreadId,
   });
 
   const composingLine = (path: string, line: number, side: "LEFT" | "RIGHT") =>
@@ -2371,6 +2398,9 @@ export function DiffPane({
               : (at - 1 + stops.length) % stops.length;
         const stop = stops[nextIdx];
         heartStopRef.current = nextIdx;
+        // `h` is "take me to what matters": a heart folded shut (read, most
+        // likely) opens, or there would be nothing to land on but its header.
+        if (isCollapsed(collapsed, stop.id)) setCollapsedState((prev) => setCollapsed(prev, stop.id, false));
         onFocusHunk(stop.id);
         // A ranged segment's caption row is the target; a whole-hunk heart
         // (or a folded hunk) glides to the header like any hunk.
@@ -2459,6 +2489,7 @@ export function DiffPane({
     skip,
     heart,
     rows,
+    collapsed,
     glideToHunk,
     virtualizer,
   ]);
@@ -2893,7 +2924,7 @@ export function DiffPane({
           // file with a chip in its header used to be 2px taller than one
           // without — enough to leave the previous (folded) hunk as current.
           data-testid={`file-header-${row.path}`}
-          className="box-border flex h-8 items-center gap-2 border-y px-3 font-mono text-xs"
+          className="group/file box-border flex h-8 items-center gap-2 border-y px-3 font-mono text-xs"
           style={{
             background: "var(--bg-raised)",
             borderColor: "var(--border)",
@@ -2931,27 +2962,50 @@ export function DiffPane({
                 ) : null}
               </button>
             ) : null}
-            <MiddleTruncate text={row.path} tail={18} />
-            <CopyPathButton path={row.path} />
-            {row.file.status && row.file.status !== "modified" ? (
+            {/* The name is what the eye looks for; the folder only places it.
+                New files read green, deleted ones red, as on the guide's list. */}
+            <FileName path={row.path} status={row.file.status} done={rollup?.viewed === true} />
+            <span className="hidden flex-none group-hover/file:inline-flex">
+              <CopyPathButton path={row.path} />
+            </span>
+            {row.file.status === "renamed" ? (
               <span
                 className="chip"
                 style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
+                data-tip={row.file.oldPath ? `Renamed from ${row.file.oldPath}` : "Renamed"}
               >
-                {row.file.status}
+                renamed
               </span>
             ) : null}
             {row.file.generated ? <GeneratedTag generated={row.file.generated} /> : null}
-            {rollup ? (
-              <span
-                className="flex-none text-2xs"
-                style={{ color: rollup.viewed ? "var(--ok)" : "var(--fg-faint)" }}
-              >
-                {rollup.viewedHunks}/{rollup.totalHunks} viewed
-              </span>
-            ) : null}
           </span>
           <span className="ml-auto flex flex-none items-center gap-2">
+            {/* First in a right-aligned row and absent at rest: on hover they
+                grow to the left, and nothing after them moves. */}
+            <span className="hidden items-center gap-2 group-hover/file:flex">
+                            <button
+                type="button"
+                data-testid={`add-file-comment-${row.path}`}
+                aria-label={`Comment on ${row.path} as a whole`}
+                data-tip={`Comment on ${row.path} as a whole`}
+                className="inline-flex items-center gap-1 whitespace-nowrap rounded px-1 font-sans text-2xs hover:!text-[var(--fg)]"
+                style={{ color: "var(--fg-muted)" }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onComment({ subjectType: "file", file: row.path });
+                }}
+              >
+                <IconComment width={12} height={12} />
+                comment
+              </button>
+              {onQuote ? (
+                <QuoteButton
+                  labeled
+                  about={row.path}
+                  onClick={() => onQuote({ kind: "file", path: row.path })}
+                />
+              ) : null}
+            </span>
             {fileComments ? (
               <CommentBubble
                 threads={fileComments}
@@ -2959,29 +3013,10 @@ export function DiffPane({
                 onToggle={() => toggleFileComments(row.path)}
               />
             ) : null}
-            <button
-              type="button"
-              data-testid={`add-file-comment-${row.path}`}
-              aria-label={`Comment on ${row.path} as a whole`}
-              data-tip={`Comment on ${row.path} as a whole`}
-              className="inline-flex items-center hover:!text-[var(--fg)]"
-              style={{ color: "var(--fg-faint)" }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onComment({ subjectType: "file", file: row.path });
-              }}
-            >
-              <IconComment width={13} height={13} />
-            </button>
-            {onQuote ? (
-              <QuoteButton
-                about={row.path}
-                onClick={() => onQuote({ kind: "file", path: row.path })}
-              />
-            ) : null}
-            <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-              {row.file.additions !== undefined ? `+${row.file.additions}` : ""}{" "}
-              {row.file.deletions !== undefined ? `−${row.file.deletions}` : ""}
+            <span className="text-2xs tabular-nums">
+              {row.file.additions ? <span style={{ color: "var(--ok)" }}>+{row.file.additions}</span> : null}
+              {row.file.additions && row.file.deletions ? " " : null}
+              {row.file.deletions ? <span style={{ color: "var(--risk)" }}>−{row.file.deletions}</span> : null}
             </span>
             {renderFileMenu?.(row.file)}
           </span>
@@ -3163,7 +3198,7 @@ export function DiffPane({
           data-testid={`hunk-header-${row.hunkId}`}
           data-collapsed={folded ? "true" : "false"}
           data-focused={focused ? "true" : undefined}
-          className="flex cursor-pointer items-center gap-2 px-3 py-1"
+          className="group/hunk flex cursor-pointer items-center gap-2 px-3 py-1"
           style={{
             // A step lighter than the code, so a file's hunks read as
             // separate blocks. accent-soft is translucent; composite it over
@@ -3174,9 +3209,15 @@ export function DiffPane({
             boxShadow: row.seam ? "inset 0 1px 0 var(--border-strong)" : undefined,
             color: "var(--fg-muted)",
           }}
-          data-tip="Focus this hunk"
-          data-tip-key="j k"
-          onClick={() => onFocusHunk(row.hunkId)}
+          data-tip={focused ? (folded ? "Expand hunk" : "Collapse hunk") : "Focus this hunk"}
+          data-tip-key={focused ? undefined : "j k"}
+          // The first click focuses the hunk, the next folds or unfolds it:
+          // a header is where the reader reaches for it. A click on one of
+          // the header's own buttons is that button's.
+          onClick={(e) => {
+            if (focused && !(e.target as HTMLElement).closest("button, a")) toggleHunkCollapsed(row.hunkId);
+            else onFocusHunk(row.hunkId);
+          }}
         >
           <span className="row-head-fixed flex min-w-0 items-center gap-2">
           <button
@@ -3217,17 +3258,10 @@ export function DiffPane({
           >
             {st.viewed ? <IconCheck width={11} height={11} /> : null}
           </button>
-          {onQuote ? (
-            <QuoteButton
-              about="this hunk"
-              onClick={() => onQuote({ kind: "hunk", id: row.hunkId, path: row.entry.file.path })}
-            />
-          ) : null}
           {title !== undefined ? (
-            // The analysis's words lead the line as the hunk's title; the
-            // machine header follows, faint. A label after a long `@@`
-            // header reads as more of the same string. A skippable hunk's
-            // title is its reason, faint like its rows.
+            // The analysis's words lead the line as the hunk's title; where
+            // the hunk is follows, faint. A skippable hunk's title is its
+            // reason, faint like its rows.
             <span
               className="min-w-0 truncate font-sans text-xs"
               data-testid={`hunk-label-${row.hunkId}`}
@@ -3238,15 +3272,52 @@ export function DiffPane({
                   : "What this hunk is, in the analysis's words"
               }
             >
-              {title}
+              {/* Markdown like every field the analysis writes: a `name` is code, not backticks. */}
+              <InlineMarkdown text={title} />
             </span>
           ) : null}
-          <span
-            className="truncate font-mono text-2xs"
-            style={title !== undefined ? { color: "var(--fg-faint)", flex: "1 1 0" } : undefined}
-          >
-            {hunkLabel(row.entry.hunk)}
-          </span>
+          {/* Where the hunk is: its first line and its scope. The raw range
+              is diff syntax, one hover away. */}
+          {(() => {
+            const place = hunkPlace(row.entry.hunk);
+            return (
+              <span
+                className="truncate font-mono text-2xs"
+                data-tip={hunkLabel(row.entry.hunk)}
+                style={title !== undefined ? { color: "var(--fg-faint)", flex: "1 1 0" } : undefined}
+              >
+                <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
+                  {place.heading ? place.line : `line ${place.line}`}
+                </span>
+                {/* The declaration's name, as git's own hunk header means it;
+                    the whole signature is on hover with the range. */}
+                {place.heading ? <span className="ml-2">{scopeName(place.heading)}</span> : null}
+              </span>
+            );
+          })()}
+          {folded && atHeart ? (
+            <span
+              className="flex flex-none items-center"
+              data-testid={`hunk-heart-mark-${row.hunkId}`}
+              data-tip={(heart?.get(row.hunkId) ?? []).map((m) => m.why.replace(/`/g, "")).join("\n")}
+              aria-label="At the heart of the unit"
+            >
+              <IconHeart width={11} height={11} style={{ color: "var(--heart)" }} />
+            </span>
+          ) : null}
+          {folded
+            ? (riskMarks.get(row.hunkId) ?? []).map((m) => (
+                <span
+                  key={m.index}
+                  className="flex-none rounded px-1 text-2xs"
+                  style={{ color: "var(--risk)", background: "var(--risk-soft)" }}
+                  data-testid={`hunk-risk-mark-${row.hunkId}`}
+                  data-tip={m.why.replace(/`/g, "")}
+                >
+                  {m.flag}
+                </span>
+              ))
+            : null}
           {skipWhy !== undefined ? (
             <span
               className="chip flex-none"
@@ -3362,6 +3433,15 @@ export function DiffPane({
               on a wide screen the full title shows and on a narrow one the
               code-identifying content wins. */}
           <span className="ml-auto flex min-w-0 shrink-[3] items-center gap-2">
+            {onQuote ? (
+              <span className="hidden group-hover/hunk:flex">
+                <QuoteButton
+                  labeled
+                  about="this hunk"
+                  onClick={() => onQuote({ kind: "hunk", id: row.hunkId, path: row.entry.file.path })}
+                />
+              </span>
+            ) : null}
             {(() => {
               const unit = unitForHunkId?.(row.hunkId);
               if (!unit) return null;
@@ -3384,9 +3464,6 @@ export function DiffPane({
                 </button>
               );
             })()}
-            <span className="font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
-              {row.hunkId.slice(0, 8)}
-            </span>
           </span>
         </div>
       );
@@ -3483,6 +3560,7 @@ export function DiffPane({
           line.pairedWith !== undefined &&
           movedAt(row.hunkId, row.entry.hunk, line.pairedWith, lineRows[line.pairedWith].type)
         }
+        wholeFileAdded={row.entry.file.status === "added"}
         changed={markedByHunk.get(row.hunkId)?.has(row.lineIdx) ?? false}
         removedAbove={removalTitle(removal?.above, removal?.aboveIn)}
         removedBelow={removalTitle(removal?.below, removal?.belowIn)}
@@ -3505,6 +3583,31 @@ export function DiffPane({
       />
     );
   }
+}
+
+/** A file's name, then its folder, faint: what the eye looks for first. */
+function FileName({ path, status, done }: { path: string; status?: FileEntry["status"]; done?: boolean }) {
+  const slash = path.lastIndexOf("/");
+  const name = path.slice(slash + 1);
+  const dir = slash > 0 ? path.slice(0, slash) : "";
+  const color =
+    status === "added" ? "var(--ok)" : status === "removed" ? "var(--risk)" : done ? "var(--fg-muted)" : "var(--fg)";
+  return (
+    <span className="flex min-w-0 items-baseline gap-2" data-tip={path}>
+      <span
+        className="flex-none font-medium"
+        style={{ color, textDecoration: status === "removed" ? "line-through" : undefined }}
+      >
+        {name}
+      </span>
+      {dir ? (
+        <span className="min-w-0 truncate text-2xs" style={{ color: "var(--fg-faint)", direction: "rtl", textAlign: "left" }}>
+          {/* rtl truncates from the left, so the folder nearest the file stays */}
+          <bdi>{dir}</bdi>
+        </span>
+      ) : null}
+    </span>
+  );
 }
 
 /** Segmented unified / split control. Lives in the diff pane's own header. */
