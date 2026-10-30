@@ -17,9 +17,8 @@ import { IconArrowRight } from "./icons";
 
 /**
  * The PR before its parts, from broad to narrow: why it exists (the
- * analysis's summary, in plain words), how much of it is the real change, the
- * words the PR leans on, where it
- * lands in the code, then what must be read;
+ * analysis's summary, in plain words), the words the PR leans on, where it
+ * lands in the code and how much of it is the real change, then what must be read;
  * the author's description, in their own words and whole, and what reviewers
  * said close it. One calm column; everything here is a way into the guide.
  * The bar on top jumps between the sections and underlines the one in view;
@@ -65,9 +64,9 @@ export function Overview({
   const mix = useMemo(() => changeMix(detail.files.files), [detail.files.files]);
   const sections = [
     summary ? { id: "summary", label: "Summary" } : null,
-    mix.rows.length > 1 ? { id: "size", label: "Size" } : null,
     state.concepts?.length ? { id: "concepts", label: "Concepts" } : null,
     state.fileNotes ? { id: "files", label: "Where it lands" } : null,
+    mix.rows.length > 1 ? { id: "size", label: "Size" } : null,
     ordered.length ? { id: "reading", label: "Must read" } : null,
     description ? { id: "description", label: "Description" } : null,
     hasReviews ? { id: "reviews", label: "Reviews" } : null,
@@ -161,13 +160,6 @@ export function Overview({
           </section>
         ) : null}
 
-        {mix.rows.length > 1 ? (
-          <section data-testid="overview-size" data-section="size">
-            <SectionHead title="Size" />
-            <ChangeBreakdown mix={mix} />
-          </section>
-        ) : null}
-
         {state.concepts?.length ? <ConceptList concepts={state.concepts} /> : null}
 
         {/* Where the change lands, in the code: the shallow tree the analysis
@@ -178,6 +170,13 @@ export function Overview({
               <FileLegend files={detail.files.files} />
             </SectionHead>
             <FileShape files={detail.files.files} units={work} notes={state.fileNotes} onOpenFile={onOpenFile} />
+          </section>
+        ) : null}
+
+        {mix.rows.length > 1 ? (
+          <section data-testid="overview-size" data-section="size">
+            <SectionHead title="Size" />
+            <ChangeBreakdown mix={mix} />
           </section>
         ) : null}
 
