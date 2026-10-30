@@ -66,7 +66,7 @@ export function Overview({
     summary ? { id: "summary", label: "Summary" } : null,
     state.concepts?.length ? { id: "concepts", label: "Concepts" } : null,
     state.fileNotes ? { id: "files", label: "Where it lands" } : null,
-    mix.rows.length > 1 ? { id: "size", label: "Size" } : null,
+    mix.rows.length ? { id: "size", label: "Size" } : null,
     ordered.length ? { id: "reading", label: "Must read" } : null,
     description ? { id: "description", label: "Description" } : null,
     hasReviews ? { id: "reviews", label: "Reviews" } : null,
@@ -173,7 +173,8 @@ export function Overview({
           </section>
         ) : null}
 
-        {mix.rows.length > 1 ? (
+        {/* Shown even when it is all one kind: "all implementation" is an answer too. */}
+        {mix.rows.length ? (
           <section data-testid="overview-size" data-section="size">
             <SectionHead title="Size" />
             <ChangeBreakdown mix={mix} />
