@@ -231,3 +231,9 @@ test("the submit button takes the color of the picked verdict", async ({ page })
   await expect.poll(fill).not.toBe(approve);
   await expect.poll(fill).not.toBe(comment);
 });
+
+test("a hunk header shows its range and its signature, not only on hover", async ({ page }) => {
+  await openPr(page);
+  const header = page.locator('[data-testid^="hunk-header-"]').first();
+  await expect(header).toContainText(/@@ -\d+,\d+ \+\d+,\d+ @@/);
+});

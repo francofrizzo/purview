@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRows, buildSplitRows, heartRowIndices, hunkLabel, hunkPlace, orderUnitHunks, scopeName, unitProgress } from "./diffModel";
+import { buildRows, buildSplitRows, heartRowIndices, hunkLabel, orderUnitHunks, unitProgress } from "./diffModel";
 import type { Hunk } from "../api/types";
 
 let seq = 0;
@@ -15,19 +15,6 @@ function hunk(lines: string[]): Hunk {
     lines,
   } as Hunk;
 }
-
-describe("hunkPlace", () => {
-  const base = { ...hunk([" a"]), oldStart: 18, oldLines: 10, newStart: 20, newLines: 26 };
-  it("is the new start and the section heading, without the raw range", () => {
-    expect(hunkPlace({ ...base, header: "@@ -18,10 +20,26 @@ export class ChargeService {" })).toEqual({
-      line: 20,
-      heading: "export class ChargeService {",
-    });
-  });
-  it("places a pure deletion by its old start", () => {
-    expect(hunkPlace({ ...base, newStart: 0, newLines: 0, header: "" })).toEqual({ line: 18, heading: "" });
-  });
-});
 
 describe("hunkLabel", () => {
   const base = { ...hunk([" a"]), oldStart: 18, oldLines: 10, newStart: 18, newLines: 26 };
@@ -199,26 +186,3 @@ describe("orderUnitHunks", () => {
   });
 });
 
-describe("scopeName", () => {
-  it("names the function a hunk sits in, without its signature", () => {
-    expect(scopeName("func (e *Engine) resolveWorkingSet(ctx context.Context, cfg models.ReconciliationConfig) error {")).toBe("resolveWorkingSet()");
-    expect(scopeName("func (m *Metrics) AssociationRunStats(ctx context.Context, stats AssociationRunS")).toBe("AssociationRunStats()");
-    expect(scopeName("export function idempotencyKey(")).toBe("idempotencyKey()");
-    expect(scopeName("def persist(self, rows):")).toBe("persist()");
-    expect(scopeName("async findByKey(key: string) {")).toBe("findByKey()");
-  });
-
-  it("names a type, a class or a constant without parentheses", () => {
-    expect(scopeName("type Metrics interface {")).toBe("Metrics");
-    expect(scopeName("export class ChargeService {")).toBe("ChargeService");
-    expect(scopeName("const ReconciliationDefaultMaxArtifactAgeDays = 180")).toBe("ReconciliationDefaultMaxArtifactAgeDays");
-  });
-
-  it("shortens a heading that names nothing", () => {
-    expect(scopeName("SELECT state, count(*) FROM reconciliation_metadata_events WHERE run_id = $1")).toBe(
-      "SELECT state, count(*) FROM reconciliat…",
-    );
-    expect(scopeName("import (")).toBe("import (");
-    expect(scopeName("")).toBe("");
-  });
-});

@@ -13,8 +13,6 @@ import {
   contentLineNumbers,
   heartRowIndices,
   hunkLabel,
-  hunkPlace,
-  scopeName,
   languageFor,
   type CharRange,
   type DiffRow,
@@ -3273,9 +3271,10 @@ export function DiffPane({
             {st.viewed ? <IconCheck width={11} height={11} /> : null}
           </button>
           {title !== undefined ? (
-            // The analysis's words lead the line as the hunk's title; where
-            // the hunk is follows, faint. A skippable hunk's title is its
-            // reason, faint like its rows.
+            // The analysis's words lead the line as the hunk's title; the
+            // machine header follows, faint. A label after a long `@@`
+            // header reads as more of the same string. A skippable hunk's
+            // title is its reason, faint like its rows.
             <span
               className="min-w-0 truncate font-sans text-xs"
               data-testid={`hunk-label-${row.hunkId}`}
@@ -3290,25 +3289,12 @@ export function DiffPane({
               <InlineMarkdown text={title} />
             </span>
           ) : null}
-          {/* Where the hunk is: its first line and its scope. The raw range
-              is diff syntax, one hover away. */}
-          {(() => {
-            const place = hunkPlace(row.entry.hunk);
-            return (
-              <span
-                className="truncate font-mono text-2xs"
-                data-tip={hunkLabel(row.entry.hunk)}
-                style={title !== undefined ? { color: "var(--fg-faint)", flex: "1 1 0" } : undefined}
-              >
-                <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
-                  {place.heading ? place.line : `line ${place.line}`}
-                </span>
-                {/* The declaration's name, as git's own hunk header means it;
-                    the whole signature is on hover with the range. */}
-                {place.heading ? <span className="ml-2">{scopeName(place.heading)}</span> : null}
-              </span>
-            );
-          })()}
+          <span
+            className="truncate font-mono text-2xs"
+            style={title !== undefined ? { color: "var(--fg-faint)", flex: "1 1 0" } : undefined}
+          >
+            {hunkLabel(row.entry.hunk)}
+          </span>
           {folded && atHeart ? (
             <span
               className="flex flex-none items-center"

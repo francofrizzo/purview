@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Full hunk headers.** A hunk's header shows its `@@` range and the whole signature again, instead of only a line number and a name.
+
 ## 2026.10.30.7
 
 - **One comment editor.** Editing a comment uses the same box and tools as writing one: `Aa`, emoji, attach, suggest change and preview.
