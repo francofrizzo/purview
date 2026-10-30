@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.30.7
 
 - **One comment editor.** Editing a comment uses the same box and tools as writing one: `Aa`, emoji, attach, suggest change and preview.
 - **Verdict color on Submit.** In the Review panel, the Submit button takes the color of the verdict you picked.
