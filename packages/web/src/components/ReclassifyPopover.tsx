@@ -1,21 +1,19 @@
 import { useEffect, useRef } from "react";
 import { ATTENTIONS, KINDS, type Attention, type Kind, type ReviewUnit } from "../api/types";
-import { useChatAgentName } from "../lib/chat";
-import { IconChat } from "./icons";
+import { IconQuote } from "./icons";
 
 export function ReclassifyPopover({
   unit,
   onClose,
   onApply,
-  onAskAgent,
+  onCite,
 }: {
   unit: ReviewUnit;
   onClose: () => void;
   onApply: (patch: Partial<ReviewUnit>) => void;
   /** Attaches this unit as a chat ref and opens the panel. */
-  onAskAgent?: () => void;
+  onCite?: () => void;
 }) {
-  const agentName = useChatAgentName();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -40,18 +38,18 @@ export function ReclassifyPopover({
       className="surface absolute right-1 top-6 z-30 w-56 rounded-md p-2 elev-2"
       onClick={(e) => e.stopPropagation()}
     >
-      {onAskAgent ? (
+      {onCite ? (
         <button
           type="button"
-          data-testid={`ask-agent-${unit.id}`}
+          data-testid={`cite-unit-${unit.id}`}
           className="btn mb-2 w-full justify-start"
           onClick={() => {
-            onAskAgent();
+            onCite();
             onClose();
           }}
         >
-          <IconChat width={11} height={11} />
-          ask {agentName} about this unit
+          <IconQuote width={11} height={11} />
+          cite this unit in chat
         </button>
       ) : null}
       <div className="mb-1 text-2xs uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}>

@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { openPr } from "./helpers";
 
 // The fixture's charge unit has two heart hunks (…0003 first, then …0001,
@@ -97,4 +97,23 @@ test("the unit brief lists the heart, and a jump focuses that hunk", async ({ pa
   await page.getByTestId(`heart-jump-${HEART[1]}`).first().click();
   await expect(page.getByTestId(`hunk-header-${HEART[1]}`)).toHaveAttribute("data-focused", "true");
   await expect(page.getByTestId(`hunk-header-${HEART[1]}`)).toBeInViewport();
+});
+
+test("a file the PR adds whole reads on the plain ground, its gutter still green, in both views", async ({ page }) => {
+  await openPr(page);
+  const background = (row: Locator) => row.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const line = "Stable key for a charge attempt";
+  const transparent = "rgba(0, 0, 0, 0)";
+
+  const unified = page.locator('.diff-line[data-type="add"]').filter({ hasText: line });
+  await expect(unified).toHaveCount(1);
+  expect(await background(unified)).toBe(transparent);
+  expect(await background(unified.locator(".diff-gutter").nth(1))).not.toBe(transparent);
+
+  await page.keyboard.press("d");
+  await expect(page.getByTestId("view-split").first()).toHaveAttribute("aria-pressed", "true");
+  const split = page.locator('.diff-half[data-type="add"]').filter({ hasText: line });
+  await expect(split).toHaveCount(1);
+  expect(await background(split)).toBe(transparent);
+  expect(await background(split.locator(".diff-gutter"))).not.toBe(transparent);
 });

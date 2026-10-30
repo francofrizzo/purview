@@ -189,6 +189,10 @@ function rowBackground(type: DiffRow["type"], moved?: boolean, changed?: boolean
   const base = bgFor(type, moved);
   return changed ? `linear-gradient(var(--changed-in-bg), var(--changed-in-bg)), ${base}` : base;
 }
+/** What a row's code reads on: see `wholeFileAdded`. */
+function bodyTypeFor(type: DiffRow["type"], moved?: boolean, wholeFileAdded?: boolean) {
+  return wholeFileAdded && type === "add" && !moved ? "context" : type;
+}
 function gutterBgFor(type: DiffRow["type"], moved?: boolean) {
   if (type === "add") return moved ? "var(--moved-add-gutter)" : "var(--add-gutter)";
   if (type === "del") return moved ? "var(--moved-del-gutter)" : "var(--del-gutter)";
@@ -417,7 +421,7 @@ export const DiffLine = memo(function DiffLine({
   isDefinedInDiff,
   wholeFileAdded = false,
 }: DiffLineProps) {
-  const bodyType = wholeFileAdded && row.type === "add" && !moved ? "context" : row.type;
+  const bodyType = bodyTypeFor(row.type, moved, wholeFileAdded);
   const intraBg = row.type === "add" ? "var(--add-bg-strong)" : "var(--del-bg-strong)";
   const marker = markerFor(row.type, moved);
   const gutterBg = gutterBgFor(row.type, moved);
@@ -483,6 +487,8 @@ export interface SplitHalfProps extends LineCommentProps, RemovalMarkerProps {
   row: DiffRow | null;
   /** which gutter number this side shows */
   side: LineSide;
+  /** see `DiffLineProps.wholeFileAdded` */
+  wholeFileAdded?: boolean;
   tokens?: Tok[];
   onComment?: () => void;
   marks?: LineMarks;
@@ -503,6 +509,7 @@ export interface SplitHalfProps extends LineCommentProps, RemovalMarkerProps {
 function SplitHalf({
   row,
   side,
+  wholeFileAdded = false,
   tokens,
   onComment,
   comments,
@@ -540,6 +547,7 @@ function SplitHalf({
   }
   const intraBg = row.type === "add" ? "var(--add-bg-strong)" : "var(--del-bg-strong)";
   const marker = markerFor(row.type, moved);
+  const bodyType = bodyTypeFor(row.type, moved, wholeFileAdded);
   return (
     <div
       className="diff-half group/half"
@@ -549,8 +557,8 @@ function SplitHalf({
       data-changed={changed ? "true" : undefined}
       data-covered={covered ? "true" : undefined}
       style={{
-        background: rowBackground(row.type, moved, changed),
-        ...(changed ? { ["--row-bg" as string]: bgFor(row.type, moved) } : {}),
+        background: rowBackground(bodyType, moved, changed),
+        ...(changed ? { ["--row-bg" as string]: bgFor(bodyType, moved) } : {}),
         ["--intra-bg" as string]: intraBg,
         boxShadow: selected ? "inset 0 0 0 9999px var(--accent-soft)" : undefined,
       }}
@@ -591,6 +599,8 @@ function SplitHalf({
 export interface SplitDiffLineProps {
   left: DiffRow | null;
   right: DiffRow | null;
+  /** see `DiffLineProps.wholeFileAdded`; its lines are all on the right */
+  wholeFileAdded?: boolean;
   leftTokens?: Tok[];
   rightTokens?: Tok[];
   onCommentLeft?: () => void;
@@ -640,6 +650,7 @@ export interface SplitDiffLineProps {
 export const SplitDiffLine = memo(function SplitDiffLine({
   left,
   right,
+  wholeFileAdded,
   leftTokens,
   rightTokens,
   onCommentLeft,
@@ -703,6 +714,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
       <SplitHalf
         row={right}
         side="new"
+        wholeFileAdded={wholeFileAdded}
         tokens={rightTokens}
         onComment={onCommentRight}
         comments={commentsRight}

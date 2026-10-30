@@ -14,7 +14,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **File notes in the Files view.** The analysis's note on a file, or on its folder, sits under the file's header and on its row's tooltip. (thanks Canta 🐑)
 - **Hover actions in diff headers.** Hunk and file headers show "comment" and "cite in chat" on hover; "cite in chat" adds the code to your next message. (thanks Canta 🐑)
 - **Compact folded hunks.** Context rows appear only next to an open hunk, so a mostly read unit is a short list of headers. (thanks Canta 🐑)
-- **Plain new files.** A file the PR adds whole reads on the plain background in the unified diff, its gutter still green, so a heart or a risk in it stands out. (thanks Canta 🐑)
+- **Plain new files.** A file the PR adds whole reads on the plain background, its gutter still green, so a heart or a risk in it stands out. (thanks Canta 🐑)
 - **Fix:** the diff no longer scrolls past its last hunk into a screenful of blank. (thanks Canta 🐑)
 - **Fix:** an outdated or whole-file thread clicked in the comments panel now opens at the top of its file, even resolved, instead of folded to one line. (thanks Canta 🐑)
 - **Fix:** switching files in the Files view no longer flashes a read hunk open before it folds. (thanks Canta 🐑)

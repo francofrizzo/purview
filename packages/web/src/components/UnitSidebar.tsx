@@ -467,7 +467,7 @@ const UnitRow = memo(function UnitRow({
       {popover && !generated ? (
         <ReclassifyPopover
           unit={unit}
-          onAskAgent={onQuote ? () => onQuote({ kind: "unit", id: unit.id }) : undefined}
+          onCite={onQuote ? () => onQuote({ kind: "unit", id: unit.id }) : undefined}
           onClose={() => setPopover(false)}
           onApply={(patch) => {
             onReclassify(unit.id, patch);

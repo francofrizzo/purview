@@ -2608,7 +2608,7 @@ export function DiffPane({
             onClick={quoteSelection}
           >
             <IconQuote width={10} height={10} />
-            quote in chat
+            cite in chat
           </button>
           <button
             type="button"
@@ -3491,6 +3491,7 @@ export function DiffPane({
           removedBelowLeft={removalTitle(removal?.below, removal?.belowIn)}
           left={left?.row ?? null}
           right={right?.row ?? null}
+          wholeFileAdded={row.entry.file.status === "added"}
           leftTokens={left ? hunkTokens?.[left.index] : undefined}
           rightTokens={right ? hunkTokens?.[right.index] : undefined}
           marksLeft={left ? marksFor(row.hunkId, left.index) : undefined}

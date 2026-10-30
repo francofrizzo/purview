@@ -524,7 +524,7 @@ export function ChatPanel({
         {empty ? (
           <div className="p-3">
             <p className="text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
-              Ask about this pull request. Quote a unit, a hunk, a file, a range of lines or one of
+              Ask about this pull request. Cite a unit, a hunk, a file, a range of lines or one of
               your comments to point {agentName} at exactly what you mean.
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
@@ -1106,7 +1106,7 @@ export function ChatButton({ open, onClick }: { open: boolean; onClick: () => vo
   );
 }
 
-/** Small quote affordance reused by hunk headers, file rows and comments. */
+/** Small cite affordance reused by hunk headers, file rows and comments. */
 export function QuoteButton({
   onClick,
   about,
@@ -1114,17 +1114,15 @@ export function QuoteButton({
   labeled = false,
 }: {
   onClick: () => void;
-  /** what the chat is asked about, e.g. "this hunk" */
+  /** what gets cited, e.g. "this hunk" */
   about: string;
   className?: string;
   /** the icon with words, where the header has room on hover */
   labeled?: boolean;
 }) {
-  const agentName = useChatAgentName();
-  const title = `Ask ${agentName} about ${about}`;
+  // It adds a reference to the chat's message; nothing is sent yet.
+  const tip = `Cite ${about} in the chat`;
   if (labeled) {
-    // It adds a reference to the chat's message; nothing is sent yet.
-    const tip = `Cite ${about} in the chat`;
     return (
       <button
         type="button"
@@ -1146,8 +1144,8 @@ export function QuoteButton({
   return (
     <button
       type="button"
-      data-tip={title}
-      aria-label={title}
+      data-tip={tip}
+      aria-label={tip}
       data-testid="quote-button"
       onClick={(e) => {
         e.stopPropagation();
