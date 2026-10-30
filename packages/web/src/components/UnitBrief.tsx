@@ -218,8 +218,11 @@ export function UnitBrief({
             onClick={() => update({ foldSkippableHunks: !settings.foldSkippableHunks })}
           >
             <IconEyeOff width={12} height={12} className="flex-none" />
-            {skipped} skippable
-            {settings.foldSkippableHunks ? <span style={{ color: "var(--fg-faint)" }}>· folded</span> : null}
+            {/* One text run, so the dot sits a space from the count, not a gap. */}
+            <span>
+              {skipped} skippable
+              {settings.foldSkippableHunks ? <span style={{ color: "var(--fg-faint)" }}> · folded</span> : null}
+            </span>
           </button>
         ) : null}
         <UnitFindings unitId={unit.id} findings={unit.findings} />

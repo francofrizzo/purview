@@ -138,7 +138,8 @@ export function UnitMix({ files, hunkIds }: { files: FileEntry[]; hunkIds: reado
   if (mix.rows.length < 2) return null;
   return (
     <div
-      className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs tabular-nums"
+      // A caption of the files line above it: under its text, not its icon.
+      className="-mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-[18px] text-2xs tabular-nums"
       style={{ color: "var(--fg-muted)" }}
       data-testid="unit-mix"
       data-tip={mix.rows.map((r) => `${CHANGE_LOOK[r.kind].label}: +${r.added} −${r.removed}`).join("\n")}
