@@ -4,7 +4,7 @@ import { asideFiles, fileTree, noteFor, type TreeLine } from "./shape";
 const show = (lines: TreeLine[]) =>
   lines.map(
     (l) =>
-      l.prefix +
+      "  ".repeat(l.depth) +
       (l.status === "added" ? "+" : "") +
       l.name +
       (l.dir ? "/" : "") +
@@ -28,11 +28,11 @@ describe("fileTree", () => {
     );
     expect(show(lines)).toEqual([
       "internal/",
-      "├── engine/ (+1)",
-      "│   ├── +age.go",
-      "│   └── engine.go # Expires aged-out notices first.",
-      "└── storage/ # Stores and reads the expired state.",
-      "    └── +migrations/0042_expired.sql",
+      "  engine/ (+1)",
+      "    +age.go",
+      "    engine.go # Expires aged-out notices first.",
+      "  storage/ # Stores and reads the expired state.",
+      "    +migrations/0042_expired.sql",
     ]);
   });
 
@@ -56,9 +56,9 @@ describe("fileTree", () => {
     );
     expect(show(lines)).toEqual([
       "frontend/src/ (+1)",
-      "└── components/main/groups.tsx # The To review filter.",
+      "  components/main/groups.tsx # The To review filter.",
       "internal/ (+1)",
-      "└── handlers/groups.go # Exposes the expired count.",
+      "  handlers/groups.go # Exposes the expired count.",
       "scripts/life/publish.sql # A 14-day window.",
       "tools/ (2)",
       "go.mod",

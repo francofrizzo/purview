@@ -1,14 +1,14 @@
 /**
- * Where the change lands, as text: the PR's files as a shallow tree with the
- * analysis's one-line notes (fileNotes), keyed by a folder or a file. Pure,
- * so the drawing is the only thing the component does.
+ * Where the change lands: the PR's files as a shallow tree with the analysis's
+ * one-line notes (fileNotes), keyed by a folder or a file. Pure, so the
+ * drawing is the only thing the component does.
  */
 
 import type { FileEntry, FileNotes, ReviewUnit } from "../api/types";
 
 export interface TreeLine {
-  /** the box-drawing prefix for this line: "│   ├── " and the like */
-  prefix: string;
+  /** how far in: the top level is 0 */
+  depth: number;
   /** a folder's name (possibly a chain `a/b/c`), or a file's (possibly `dir/file` when it is all its folder draws) */
   name: string;
   dir: boolean;
@@ -38,8 +38,7 @@ const byName = <T>(entries: [string, T][]) => entries.sort(([a], [b]) => a.local
 const filesUnder = (d: Dir): TreeFile[] => [...d.files, ...[...d.dirs.values()].flatMap(filesUnder)];
 
 /**
- * The files as a shallow tree, the way a design doc shows where a change
- * lands. Drawn: folders and files with a note, and files the PR adds, deletes
+ * The files as a shallow tree, to show where a change lands. Drawn: folders and files with a note, and files the PR adds, deletes
  * or moves. A noted folder is one line, and its own note covers the rest of
  * it; any other folder counts the files no line names. A folder that draws a
  * single file is one line (`handlers/groups.go`); a quiet folder at the top is
@@ -92,8 +91,8 @@ export function fileTree(
   };
 
   const out: TreeLine[] = [];
-  const fileLine = (prefix: string, name: string, f: TreeFile): TreeLine => ({
-    prefix,
+  const fileLine = (depth: number, name: string, f: TreeFile): TreeLine => ({
+    depth,
     name,
     dir: false,
     path: f.path,
@@ -101,7 +100,7 @@ export function fileTree(
     note: notes[f.path],
   });
   // `covered`: inside a noted folder, whose note speaks for what is not drawn.
-  const walk = (dir: Dir, path: string, indent: string, top: boolean, covered: boolean) => {
+  const walk = (dir: Dir, path: string, depth: number, top: boolean, covered: boolean) => {
     type Item = { kind: "dir"; name: string; dir: Dir } | { kind: "file"; f: TreeFile };
     const dirs = top ? byName([...dir.dirs]) : drawnDirs(dir, path);
     const items: Item[] = [
@@ -111,20 +110,16 @@ export function fileTree(
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((f) => ({ kind: "file" as const, f })),
     ];
-    items.forEach((item, i) => {
-      const last = i === items.length - 1;
-      // The top level has no branch of its own: each root reads as a heading.
-      const branch = top ? "" : last ? "└── " : "├── ";
-      const childIndent = top ? "" : indent + (last ? "    " : "│   ");
+    for (const item of items) {
       if (item.kind === "file") {
-        out.push(fileLine(indent + branch, item.f.name, item.f));
-        return;
+        out.push(fileLine(depth, item.f.name, item.f));
+        continue;
       }
       const at = join(path, item.name);
       const single = lone(item.dir, at, covered);
       if (single) {
-        out.push(fileLine(indent + branch, `${item.name}/${single.name}`, single.f));
-        return;
+        out.push(fileLine(depth, `${item.name}/${single.name}`, single.f));
+        continue;
       }
       let name = item.name;
       let p = at;
@@ -139,17 +134,17 @@ export function fileTree(
         const under = filesUnder(d);
         out.push(
           under.length === 1
-            ? fileLine(indent + branch, `${name}/${under[0].path.slice(p.length + 1)}`, under[0])
-            : { prefix: indent + branch, name, dir: true, path: p, folded: under.length },
+            ? fileLine(depth, `${name}/${under[0].path.slice(p.length + 1)}`, under[0])
+            : { depth, name, dir: true, path: p, folded: under.length },
         );
-        return;
+        continue;
       }
       const more = noted(p) || covered ? 0 : hidden(d, p);
-      out.push({ prefix: indent + branch, name, dir: true, path: p, note: notes[p], ...(more ? { more } : {}) });
-      walk(d, p, childIndent, false, covered || noted(p));
-    });
+      out.push({ depth, name, dir: true, path: p, note: notes[p], ...(more ? { more } : {}) });
+      walk(d, p, depth + 1, false, covered || noted(p));
+    }
   };
-  walk(root, "", "", true, false);
+  walk(root, "", 0, true, false);
   return out;
 }
 

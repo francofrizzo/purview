@@ -116,6 +116,8 @@ test("the overview's jump bar moves to the margin where the pane has room, and c
 test("a file in the overview's tree opens in the Files view, and the tabs and the URL follow", async ({ page }) => {
   await page.getByTestId("sidebar-tab-overview").click();
   await expect(page).toHaveURL(/view=overview/);
+  // Listed like the Files view: the file's status as its badge.
+  await expect(page.getByTestId("file-shape").getByTestId("file-status").first()).toBeVisible();
   await page.getByTestId("file-shape-src/billing/idempotency.ts").click();
   await expect(page.getByTestId("overview")).toHaveCount(0);
   await expect(page.getByTestId("sidebar-tab-files")).toHaveAttribute("aria-selected", "true");
