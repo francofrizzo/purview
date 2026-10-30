@@ -878,7 +878,7 @@ html[data-mode="light"] .logo-for-light {
   scrollbar-color: var(--border-strong) transparent;
 }
 
-/* The flat workspace (Settings → Workspace): the panes lose their desk and
+/* The flat workspace (Settings → Spacing): the panes lose their desk and
    sit edge to edge, one rule between each. The drawer still floats. */
 .workspace[data-flat] .pane:not(.elev-3) {
   margin: 0;

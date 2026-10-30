@@ -57,7 +57,7 @@ const APP_SETTINGS_NAV: SettingsNavGroup[] = [
     items: [
       { id: "theme", title: "Theme" },
       { id: "typography", title: "Typography" },
-      { id: "workspace", title: "Workspace" },
+      { id: "spacing", title: "Spacing" },
       { id: "diff", title: "Diff defaults" },
       { id: "pr-list", title: "PR list" },
     ],
@@ -110,17 +110,19 @@ export function SettingsModal() {
       >
         <FontSection settings={settings} update={update} />
       </Section>
-      <Section id="workspace" title="Workspace" hint="How a PR's panes sit around the diff.">
-        <Field label="Panes">
-          <Segmented
-            value={settings.flatWorkspace ? "flat" : "cards"}
-            options={[
-              { value: "cards", label: "cards on a desk" },
-              { value: "flat", label: "flat" },
-            ]}
-            onChange={(v) => update({ flatWorkspace: v === "flat" })}
-          />
-        </Field>
+      <Section id="spacing" title="Spacing" hint="How a PR's panes sit around the diff.">
+        <div className="flex flex-wrap items-center gap-6">
+          <Field label="Panes">
+            <Segmented
+              value={settings.flatWorkspace ? "flat" : "cards"}
+              options={[
+                { value: "cards", label: "cards on a desk" },
+                { value: "flat", label: "flat" },
+              ]}
+              onChange={(v) => update({ flatWorkspace: v === "flat" })}
+            />
+          </Field>
+        </div>
       </Section>
       <Section id="diff" title="Diff defaults" hint="The same preferences the d / w keys toggle while reviewing.">
         <div className="flex flex-wrap items-center gap-6">
