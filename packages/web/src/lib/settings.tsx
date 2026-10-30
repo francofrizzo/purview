@@ -101,7 +101,7 @@ export const DEFAULT_CHAT_PANEL_WIDTH = 420;
 
 export const MIN_SIDEBAR_WIDTH = 260;
 export const MAX_SIDEBAR_WIDTH = 560;
-export const DEFAULT_SIDEBAR_WIDTH = 352;
+export const DEFAULT_SIDEBAR_WIDTH = 304;
 
 export const MIN_CODE_FONT_SIZE = 11;
 export const MAX_CODE_FONT_SIZE = 16;

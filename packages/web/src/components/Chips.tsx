@@ -452,7 +452,7 @@ export function ProgressRing({ viewed, total, tip }: { viewed: number; total: nu
           />
         ) : null}
       </svg>
-      <span className="min-w-9 text-right text-2xs tabular-nums" style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}>
+      <span className="text-2xs tabular-nums" style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}>
         {viewed}/{total}
       </span>
     </span>

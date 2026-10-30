@@ -92,7 +92,7 @@ test("the sidebar column resizes by dragging its edge; a double click restores i
   await page.mouse.down();
   await page.mouse.move(box.x + 82, box.y + 200, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(async () => (await nav.boundingBox())!.width).toBeGreaterThan(420);
+  await expect.poll(async () => (await nav.boundingBox())!.width).toBeGreaterThan(360);
   await handle.dblclick();
-  await expect.poll(async () => Math.round((await nav.boundingBox())!.width)).toBe(352);
+  await expect.poll(async () => Math.round((await nav.boundingBox())!.width)).toBe(304);
 });
