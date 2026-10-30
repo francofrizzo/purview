@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.30.8
 
 - **Overview tab.** The sidebar's first tab, or `s`, shows the summary, concepts, a file tree with the analysis's notes, the must-read units, description and reviews, with a jump bar or a margin list. A PR with nothing read opens there, and links keep the view and file. (thanks Canta 🐑)
 - **Line counts by type.** The PR header counts implementation lines; hover for tests, docs and generated, click to count all. The Overview's Size section and each unit show the same split.
