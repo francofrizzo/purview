@@ -7,63 +7,48 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Comment box layout.** The placeholder names the line and who the comment is for, the audience switch sits by Save, `Aa` opens the formatting, and Preview is one button. (thanks Canta 🐑)
-- **Comment cards.** A colored frame and icon say who a card is for instead of a left bar, actions show on hover, and AI reviewers get an outlined "bot" label. (thanks Canta 🐑)
-- **Comments panel header.** The header is one line, "New comments go to" and the switch; hints are on hover and thread filters are in View options. (thanks Canta 🐑)
-- **Flat workspace.** Settings → Workspace sets the PR's panes edge to edge, one rule between each, instead of cards on a desk. (thanks Canta 🐑)
-- **Scrollbars on hover.** The sidebar, chat, comments and review panes show their scrollbar only while the pointer is over them. (thanks Canta 🐑)
+- **Comment box layout.** The placeholder names the line and who it's for, the audience switch sits by save, `Aa` opens the formatting, and ask chat and save show their keys. (thanks Canta 🐑)
+- **Comments panel.** Cards show who they're for with a colored frame and icon, actions appear on hover, AI reviewers get an outlined "bot" label, and the header is one line. (thanks Canta 🐑)
+- **Workspace look.** Settings → Workspace sets the PR's panes flat, edge to edge, and side panes show their scrollbar only on hover. (thanks Canta 🐑)
 - **Fix:** flipping the comment audience twice in a row no longer saves a note for the agent as a GitHub draft.
 
 ## 2026.10.30.4
 
 - **View options.** The sliders button in the top bar holds the diff layout, line wrapping, skippable folding, read units and GitHub thread filters. (thanks Canta 🐑)
 - **End of a unit.** Past the last hunk, a button marks the unit viewed, opens the next unread unit or finishes the review. (thanks Canta 🐑)
-- **Files in the unit brief.** The "N files" line in a unit's brief opens its files, with lines changed and read state; each row jumps to its file. (thanks Canta 🐑)
+- **Unit brief.** The "N files" line opens the unit's files, the heart is one row of file names to jump to, and a finding's places show as file and lines. (thanks Canta 🐑)
 - **File status letters.** A, M, D or R beside a file's name says what the PR did to it, in diff headers, the Files view and a unit's file list.
 - **Resizable sidebar.** Drag the sidebar's right edge to resize it; double-click restores the default width. (thanks Canta 🐑)
 - **Shortcuts window.** `?`, the ⋯ menu or "keyboard shortcuts" in the sidebar opens the shortcuts in a centered window. (thanks Canta 🐑)
 - **PR name in the top bar.** `owner/repo#number` sits beside the title, the branch icon shows base and head with copy buttons, and the rev menu needs two revisions. (thanks Canta 🐑)
 - **New commits on Refresh.** When the PR moved on GitHub, the Refresh button reads "new commits", with the reason on hover. It replaces the bar under the top bar. (thanks Canta 🐑)
-- **Top bar moves.** Sync, full screen and analysis stats are in the PR's ⋯ menu, the comment audience is on `a` and in the comment box, and updates show only at home. (thanks Canta 🐑)
-- **Shorter places in the unit brief.** The heart is one row of file names to jump to, and a finding's places show as file and lines; the details are on hover. (thanks Canta 🐑)
-- **Chat dot on the panel button.** A pulsing dot on the panel button shows the chat is replying while the panel is closed. (thanks Canta 🐑)
+- **Top bar moves.** Sync, full screen and analysis stats are in the ⋯ menu, the audience is on `a` and in the comment box, updates show at home, and a dot marks a busy chat. (thanks Canta 🐑)
 
 ## 2026.10.30.3
 
-- **Function names in hunk headers.** A hunk's header shows its first line and the function or type it sits in; the raw range and signature are on hover. (thanks Canta 🐑)
-- **File headers.** A file's header leads with its name, the folder faint beside it; new files read green and deleted ones red. (thanks Canta 🐑)
-- **Marks on folded hunks.** A folded hunk keeps a heart and its risks on its header instead of their captions; hover one for its words, and `h` opens it. (thanks Canta 🐑)
-- **Fold from the hunk header.** Click the header of the focused hunk to fold or unfold it; the first click on another hunk focuses it. (thanks Canta 🐑)
+- **Hunk and file headers.** A hunk's header shows its first line and function, a file's leads with its name, and both offer "comment" and "cite in chat" on hover. (thanks Canta 🐑)
+- **Folded hunks.** Click a focused hunk's header to fold it; it keeps its heart and risks on the header, and context rows appear only next to open hunks. (thanks Canta 🐑)
 - **File notes in the Files view.** The analysis's note on a file, or on its folder, sits under the file's header and on its row's tooltip. (thanks Canta 🐑)
-- **Hover actions in diff headers.** Hunk and file headers show "comment" and "cite in chat" on hover; "cite in chat" adds the code to your next message. (thanks Canta 🐑)
-- **Compact folded hunks.** Context rows appear only next to an open hunk, so a mostly read unit is a short list of headers. (thanks Canta 🐑)
 - **Plain new files.** A file the PR adds whole reads on the plain background, its gutter still green, so a heart or a risk in it stands out. (thanks Canta 🐑)
-- **Fix:** the diff no longer scrolls past its last hunk into a screenful of blank. (thanks Canta 🐑)
 - **Fix:** an outdated or whole-file thread clicked in the comments panel now opens at the top of its file, even resolved, instead of folded to one line. (thanks Canta 🐑)
-- **Fix:** switching files in the Files view no longer flashes a read hunk open before it folds. (thanks Canta 🐑)
-- **Fix:** a hunk label that names code shows it as code, not with backticks. (thanks Canta 🐑)
+- **Fix:** the diff no longer scrolls past its last hunk, read hunks no longer flash open between files, and hunk labels show code as code, not backticks. (thanks Canta 🐑)
 
 ## 2026.10.30.2
 
-- **Floating chat.** The button at the top of the chat pops it into a window you drag, resize from any edge or minimize to a pill. It reopens where you left it, and `c` still shows and hides it. (thanks Canta 🐑)
+- **Floating chat.** The button at the top of the chat pops it into a window you drag, resize or minimize. `c` still shows and hides it, and its ⋯ menu holds clear conversation and repo checkout. (thanks Canta 🐑)
 - **One submit button.** In the Review panel, pick Comment, Approve or Request changes, then press Submit. It asks to confirm only while must-read units are unread. (thanks Canta 🐑)
 - **One-line refresh result.** After a refresh, a line under the top bar says what the revision brought, then the analysis's summary of it. "by file" lists the rest. (thanks Canta 🐑)
 - **Graphite themes.** Graphite Dark and Light, on neutral grays, in Settings → Appearance. (thanks Canta 🐑)
 - **Progress ring on home rows.** A PR's row shows how far you've read as a ring with its count. (thanks Canta 🐑)
-- **Chat menu.** The chat's ⋯ menu holds clear conversation and repo checkout, in place of its settings panel. (thanks Canta 🐑)
 - **Fix:** a reviewer in the Review panel reads on one line, with the stale-commit note and inline comments under it, instead of breaking mid-phrase. (thanks Canta 🐑)
 
 ## 2026.10.30.1
 
 - **Opus by default.** Analyses and the chat run on Opus unless a model is picked; choose Sonnet in Settings → Agents for cheaper runs.
 - **Analysis language setting.** Settings → Agents picks the language new analyses write in. It starts on Always English; a language in the repo's rubric still wins, and a refresh keeps the PR's own. (thanks Canta 🐑)
-- **Plain-language PR summary.** The analysis summary says why the PR exists and what to judge, in words, without code. Analyze from scratch to get it. (thanks Canta 🐑)
-- **Concepts in the summary.** `s` lists the terms the PR leans on, each with what it means; new ones are marked. Analyze from scratch to get them. (thanks Canta 🐑)
-- **Concept hover.** Hover a word with a dotted underline in the guide, the diff or the chat to read what that concept means. (thanks Canta 🐑)
-- **Analysis that reads one way.** The analysis uses one name for each thing, the active voice and one idea per sentence, after Simplified Technical English. Analyze from scratch to get it. (thanks Canta 🐑)
-- **Shorter unit summaries.** A unit's summary opens with what changes, in words, and no longer repeats its why or its heart. Analyze from scratch to get them. (thanks Canta 🐑)
-- **Where moved code went.** A moved block's band and the hunk's "moved" badge name the file and lines at the other end. Their "go to" lands on those lines, in any unit.
-- **Moved blocks start open.** Their band stays above the rows to fold them; Settings → Diff defaults → Moved blocks starts them folded instead.
+- **Plain-language analysis.** The PR summary says why it exists and what to judge, unit summaries open with what changes, and each thing keeps one name. Analyze from scratch to get it. (thanks Canta 🐑)
+- **Concepts.** `s` lists the terms the PR leans on, and hovering a dotted word in the guide, the diff or the chat says what it means. Analyze from scratch to get them. (thanks Canta 🐑)
+- **Moved blocks.** Blocks start open and their band names the other end, where "go to" lands. Settings → Diff defaults → Moved blocks starts them folded.
 - **Fix:** a Mermaid diagram that fails to render no longer shows an error outside the page layout; its source shows as a code block instead.
 
 ## 2026.10.28.1
