@@ -2,6 +2,7 @@ import { useMemo, type CSSProperties } from "react";
 import type { FileEntry, FileNotes, ReviewUnit } from "../api/types";
 import { asideFiles, fileTree } from "../lib/shape";
 import { FileStatusBadge } from "./Chips";
+import { TreeLines } from "./TreeLines";
 import { InlineMarkdown } from "./Markdown";
 import { IconFile, IconFolder } from "./icons";
 
@@ -23,6 +24,11 @@ function shortName(name: string): string {
 
 /** One level in: a child's icon sits under its parent's name. */
 const INDENT_PX = 20;
+/** The icon's center, across and down: where a row's lines meet it. */
+const ICON_X = 7;
+const ICON_Y = 13;
+/** Lines stop this short of an icon, so they lead to it without touching it. */
+const LINE_GAP = 3;
 
 const STATUS_COUNTS: [NonNullable<FileEntry["status"]>, string][] = [
   ["added", "new"],
@@ -66,9 +72,19 @@ export function FileShape({
         {lines.map((l, i) => (
           <div
             key={`${i}:${l.path}`}
-            className="col-span-full grid py-[3px] sm:[grid-template-columns:subgrid]"
+            className="relative col-span-full grid py-[3px] sm:[grid-template-columns:subgrid]"
             style={{ "--indent": `${l.depth * INDENT_PX}px` } as CSSProperties}
           >
+            <TreeLines
+              depth={l.depth}
+              guides={l.guides}
+              last={l.last}
+              indent={INDENT_PX}
+              lineAt={ICON_X}
+              elbowY={ICON_Y}
+              elbowWidth={INDENT_PX - ICON_X - LINE_GAP}
+              stemFrom={l.open ? ICON_Y + 6 + LINE_GAP : undefined}
+            />
             <div className="flex min-w-0 items-start gap-1.5 pl-[var(--indent)] font-mono text-[12px] leading-5">
               <span className="flex h-5 w-3.5 flex-none items-center justify-center" style={{ color: "var(--fg-faint)" }}>
                 {l.dir ? (

@@ -9,6 +9,12 @@ import type { FileEntry, FileNotes, ReviewUnit } from "../api/types";
 export interface TreeLine {
   /** how far in: the top level is 0 */
   depth: number;
+  /** by level, above the parent's: does that ancestor's line carry on below this one? */
+  guides: boolean[];
+  /** the last of its parent's children */
+  last: boolean;
+  /** a folder with lines under it */
+  open?: boolean;
   /** a folder's name (possibly a chain `a/b/c`), or a file's (possibly `dir/file` when it is all its folder draws) */
   name: string;
   dir: boolean;
@@ -90,9 +96,10 @@ export function fileTree(
     return null;
   };
 
+  type Place = Pick<TreeLine, "depth" | "guides" | "last">;
   const out: TreeLine[] = [];
-  const fileLine = (depth: number, name: string, f: TreeFile): TreeLine => ({
-    depth,
+  const fileLine = (at: Place, name: string, f: TreeFile): TreeLine => ({
+    ...at,
     name,
     dir: false,
     path: f.path,
@@ -100,7 +107,7 @@ export function fileTree(
     note: notes[f.path],
   });
   // `covered`: inside a noted folder, whose note speaks for what is not drawn.
-  const walk = (dir: Dir, path: string, depth: number, top: boolean, covered: boolean) => {
+  const walk = (dir: Dir, path: string, depth: number, guides: boolean[], top: boolean, covered: boolean) => {
     type Item = { kind: "dir"; name: string; dir: Dir } | { kind: "file"; f: TreeFile };
     const dirs = top ? byName([...dir.dirs]) : drawnDirs(dir, path);
     const items: Item[] = [
@@ -110,19 +117,21 @@ export function fileTree(
         .sort((a, b) => a.name.localeCompare(b.name))
         .map((f) => ({ kind: "file" as const, f })),
     ];
-    for (const item of items) {
+    items.forEach((item, i) => {
+      const last = i === items.length - 1;
+      const at: Place = { depth, guides, last };
       if (item.kind === "file") {
-        out.push(fileLine(depth, item.f.name, item.f));
-        continue;
+        out.push(fileLine(at, item.f.name, item.f));
+        return;
       }
-      const at = join(path, item.name);
-      const single = lone(item.dir, at, covered);
+      const folder = join(path, item.name);
+      const single = lone(item.dir, folder, covered);
       if (single) {
-        out.push(fileLine(depth, `${item.name}/${single.name}`, single.f));
-        continue;
+        out.push(fileLine(at, `${item.name}/${single.name}`, single.f));
+        return;
       }
       let name = item.name;
-      let p = at;
+      let p = folder;
       let d = item.dir;
       while (!noted(p) && d.files.length === 0 && d.dirs.size === 1) {
         const [next, inner] = [...d.dirs.entries()][0];
@@ -134,17 +143,21 @@ export function fileTree(
         const under = filesUnder(d);
         out.push(
           under.length === 1
-            ? fileLine(depth, `${name}/${under[0].path.slice(p.length + 1)}`, under[0])
-            : { depth, name, dir: true, path: p, folded: under.length },
+            ? fileLine(at, `${name}/${under[0].path.slice(p.length + 1)}`, under[0])
+            : { ...at, name, dir: true, path: p, folded: under.length },
         );
-        continue;
+        return;
       }
       const more = noted(p) || covered ? 0 : hidden(d, p);
-      out.push({ depth, name, dir: true, path: p, note: notes[p], ...(more ? { more } : {}) });
-      walk(d, p, depth + 1, false, covered || noted(p));
-    }
+      const line: TreeLine = { ...at, name, dir: true, path: p, note: notes[p], ...(more ? { more } : {}) };
+      out.push(line);
+      const drawn = out.length;
+      // The top level has no line of its own: each root reads as a heading.
+      walk(d, p, depth + 1, top ? [] : [...guides, !last], false, covered || noted(p));
+      line.open = out.length > drawn;
+    });
   };
-  walk(root, "", 0, true, false);
+  walk(root, "", 0, [], true, false);
   return out;
 }
 

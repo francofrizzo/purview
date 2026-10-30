@@ -54,6 +54,7 @@ import {
   type RepoGroup,
 } from "../lib/prList";
 import { AutoArchiveButton, RepoMenu } from "../components/RepoActions";
+import { TreeLines } from "../components/TreeLines";
 // Inlined as data URLs by the build (see vite.config.ts): the logo is part of
 // the first paint, not a request that lands after the header drew without it.
 import logoDark from "../assets/logo-dark.png";
@@ -908,7 +909,17 @@ function PrRow({
       data-testid={`pr-row-${pr.key}`}
       data-depth={depth || undefined}
     >
-      {depth > 0 ? <StackTree row={row} /> : null}
+      {depth > 0 ? (
+        <TreeLines
+          depth={depth}
+          guides={row.guides}
+          last={row.last}
+          indent={STACK_INDENT}
+          lineAt={STACK_LINE}
+          elbowY={STACK_ELBOW_Y + STACK_RISE}
+          testId="stack-tree"
+        />
+      ) : null}
       {waiting ? (
         <span
           aria-hidden
@@ -1009,51 +1020,6 @@ const STACK_LINE = 12;
 const STACK_ELBOW_Y = 20;
 /** The row above's bottom padding: the line starts right under its text. */
 const STACK_RISE = 10;
-
-/**
- * The tree beside a stacked row: one guide line per ancestor that continues
- * below this row, and at the parent's level an elbow into this row, which
- * closes (└) on the last child and carries on (├) otherwise.
- */
-function StackTree({ row }: { row: ArrangedRow }) {
-  const { depth, guides, last } = row;
-  const x = (level: number) => level * STACK_INDENT + STACK_LINE;
-  const line = "1px solid var(--fg-faint)";
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute inset-y-0 left-0"
-      data-testid="stack-tree"
-    >
-      {guides.map((continues, level) =>
-        continues ? (
-          <span
-            key={level}
-            className="absolute inset-y-0"
-            style={{ left: x(level), borderLeft: line }}
-          />
-        ) : null,
-      )}
-      <span
-        className="absolute top-0"
-        style={{
-          left: x(depth - 1),
-          width: STACK_INDENT - STACK_LINE,
-          height: STACK_ELBOW_Y + STACK_RISE,
-          borderLeft: line,
-          borderBottom: line,
-          borderBottomLeftRadius: 5,
-        }}
-      />
-      {last ? null : (
-        <span
-          className="absolute inset-y-0"
-          style={{ left: x(depth - 1), borderLeft: line }}
-        />
-      )}
-    </span>
-  );
-}
 
 /**
  * "update": GitHub holds commits this PR's stored revision does not. Refreshes
