@@ -449,54 +449,60 @@ const UnitRow = memo(function UnitRow({
           aria-current={selected ? "true" : undefined}
           aria-expanded={selected ? briefOpen : undefined}
           data-testid={`unit-row-${unit.id}`}
-          className="sidebar-row-btn flex w-full min-w-0 flex-col gap-1 py-1.5 pl-2 pr-3 text-left"
+          className="sidebar-row-btn flex w-full min-w-0 items-start gap-2 py-1.5 pl-2 pr-3 text-left"
           data-tip={selected ? (briefOpen ? "Fold the brief" : "Show the brief") : undefined}
         >
-          <span className="flex w-full items-start gap-2 pr-6">
-            {generated ? (
-              <span
-                className="flex h-[18px] w-[18px] flex-none items-center justify-center"
-                style={{ color: "var(--fg-faint)" }}
-                data-tip="Detected by Purview, not by the analysis"
-                data-testid="generated-unit-icon"
-              >
-                <IconGenerated width={12} height={12} />
-              </span>
-            ) : (
-              <span
-                className="flex h-[18px] min-w-[18px] flex-none items-center justify-center rounded-[5px] px-1 text-2xs tabular-nums"
-                style={{
-                  background: selected ? "var(--bg-raised)" : "var(--bg-inset)",
-                  color: selected ? "var(--fg)" : "var(--fg-muted)",
-                }}
-                data-tip={facts}
-              >
-                {number}
-              </span>
-            )}
-            {/* The whole title, on every row: the list is the guide to the PR. */}
+          {generated ? (
             <span
-              className={`min-w-0 flex-1 break-words text-[13px] leading-[18px] ${selected ? "font-medium" : ""}`}
+              className="flex h-[18px] w-[18px] flex-none items-center justify-center"
+              style={{ color: "var(--fg-faint)" }}
+              data-tip="Detected by Purview, not by the analysis"
+              data-testid="generated-unit-icon"
+            >
+              <IconGenerated width={12} height={12} />
+            </span>
+          ) : (
+            <span
+              className="flex h-[18px] min-w-[18px] flex-none items-center justify-center rounded-[5px] px-1 text-2xs tabular-nums"
+              style={{
+                background: selected ? "var(--bg-raised)" : "var(--bg-inset)",
+                color: selected ? "var(--fg)" : "var(--fg-muted)",
+              }}
+              data-tip={facts}
+            >
+              {number}
+            </span>
+          )}
+          {/* The whole title, on every row: the list is the guide to the PR.
+              Two floats do the layout. The first keeps the box's corner clear
+              on the first line. The second holds the facts: it follows the
+              title, so it rests on the title's last line when it fits and
+              drops under it when not, and clearing the first keeps it off the
+              first line, so even a short title has a line of facts below. */}
+          <span className="flow-root min-w-0 flex-1 break-words text-[13px] leading-[18px]">
+            <span aria-hidden className="float-right h-[18px] w-6" />
+            <span
+              className={selected ? "font-medium" : undefined}
               style={{ color: done && !selected ? "var(--fg-faint)" : "var(--fg)" }}
             >
               <InlineMarkdown text={unit.title} />
             </span>
-          </span>
-          {/* What asks for the reader, then how big the unit is and how far in. */}
-          <span className="flex min-h-[18px] w-full flex-wrap items-center gap-x-1.5 gap-y-0.5 pl-[26px]">
-            {kind}
-            {riskWords}
-            {changedTip ? (
-              <span
-                className="h-1.5 w-1.5 flex-none rounded-full"
-                style={{ background: "var(--warn)" }}
-                data-tip={changedTip}
-                data-testid={`unit-changed-${unit.id}`}
-              />
-            ) : null}
-            {warnings > 0 ? <FindingsBadge unit={unit} /> : null}
-            {matches ? <MatchBadge count={matches} /> : null}
-            <span className="ml-auto flex flex-none items-center gap-2">
+            <span
+              className="float-right clear-right flex min-h-[18px] max-w-full flex-wrap items-center justify-end gap-x-1.5 gap-y-0.5 pl-2"
+              data-testid={`unit-facts-${unit.id}`}
+            >
+              {kind}
+              {riskWords}
+              {changedTip ? (
+                <span
+                  className="h-1.5 w-1.5 flex-none rounded-full"
+                  style={{ background: "var(--warn)" }}
+                  data-tip={changedTip}
+                  data-testid={`unit-changed-${unit.id}`}
+                />
+              ) : null}
+              {warnings > 0 ? <FindingsBadge unit={unit} /> : null}
+              {matches ? <MatchBadge count={matches} /> : null}
               {lines.added || lines.removed ? <LineDelta added={lines.added} removed={lines.removed} /> : null}
               {p.total > 0 ? <ProgressRing viewed={p.viewed} total={p.total} /> : null}
             </span>

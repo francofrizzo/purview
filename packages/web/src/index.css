@@ -894,6 +894,26 @@ html[data-mode="light"] .logo-for-light {
   border-top-left-radius: 0;
 }
 
+/* The side panes stop a gutter short of the window's bottom edge while the
+   diff runs on, which left their rule beside it unfinished. These finish
+   just those pixels; the pane's own border is the rest of the line. */
+.workspace:not([data-flat]) main::before,
+.workspace:not([data-flat]) main:has(~ .pane)::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  height: 7px;
+  background: var(--border);
+  pointer-events: none;
+}
+.workspace:not([data-flat]) main::before {
+  left: -1px;
+}
+.workspace:not([data-flat]) main:has(~ .pane)::after {
+  right: -1px;
+}
+
 /* The flat workspace (Settings → Spacing): the panes lose their desk and
    sit edge to edge, one rule between each. The drawer still floats. */
 .workspace[data-flat] .pane:not(.elev-3) {

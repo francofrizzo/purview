@@ -173,13 +173,20 @@ test("with no card above the diff, its header starts level with the panes and th
   await expect(dock).not.toHaveCSS("border-top-left-radius", "0px");
 });
 
-test("a unit row has its title and box on one line, its chips, lines changed and ring under them", async ({ page }) => {
+test("a unit row's facts rest on the title's last line when they fit, and never on a first line", async ({ page }) => {
   await openPr(page);
+  const facts = (id: string) => page.getByTestId(`unit-facts-${id}`);
   const row = page.getByTestId("unit-row-transient-retry-backoff");
   await expect(row.getByTestId("hunk-progress")).toContainText("1/2");
   await expect(row).toContainText(/\+\d+/);
-  const title = (await row.locator("span").nth(0).boundingBox())!;
-  const ring = (await row.getByTestId("hunk-progress").boundingBox())!;
-  expect(ring.y).toBeGreaterThanOrEqual(title.y + title.height - 1);
+  const box = (l: ReturnType<typeof facts>) => l.boundingBox().then((b) => b!);
+  // A short title still has its facts on a second line.
+  const short = await box(page.locator('[data-testid^="unit-row-"]').nth(3));
+  const shortFacts = await box(page.locator('[data-testid^="unit-facts-"]').nth(3));
+  expect(shortFacts.y - short.y).toBeGreaterThan(15);
+  // A title that wraps with room left takes two lines, not three.
+  const wrapped = await box(row);
+  expect(wrapped.height).toBeLessThan(18 * 2 + 12 + 4);
   await expect(page.getByTestId("unit-viewed-transient-retry-backoff")).toBeVisible();
+  await expect(facts("transient-retry-backoff")).toBeVisible();
 });
