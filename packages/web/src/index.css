@@ -878,6 +878,42 @@ html[data-mode="light"] .logo-for-light {
   scrollbar-color: var(--border-strong) transparent;
 }
 
+/* The overview's jump bar. With margins wide enough for it, it leaves the top
+   for a contents list beside the text. The pane's width decides, not the
+   window's: the dock takes some of it. The 74rem is the text's measure plus
+   this list, its gap and a little air, on both sides so the text stays
+   centered. */
+.overview-scroll {
+  container-type: inline-size;
+}
+@container (min-width: 74rem) {
+  .overview-scroll .overview-jump {
+    top: 1.75rem;
+    height: 0;
+    padding: 0;
+    border: 0;
+  }
+  .overview-scroll .overview-jump > div {
+    position: absolute;
+    right: calc(50% + 27rem + 2rem);
+    width: 7rem;
+    flex-direction: column;
+    align-items: stretch;
+    flex-wrap: nowrap;
+  }
+  .overview-scroll .overview-jump button {
+    margin: 0;
+    padding: 0.25rem 0.5rem;
+    border: 0;
+    border-radius: 0.25rem;
+    text-align: left;
+  }
+  .overview-scroll .overview-jump button:hover,
+  .overview-scroll .overview-jump button[aria-selected="true"] {
+    background: var(--bg-hover);
+  }
+}
+
 /* The side panes stop a gutter short of the diff's bottom edge, which left
    their rule beside it unfinished. These finish just those pixels; the pane's
    own border is the rest of the line. A line the height of the diff, drawn

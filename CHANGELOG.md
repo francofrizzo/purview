@@ -7,7 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Overview tab.** The sidebar's first tab, or `s`, shows the summary, concepts, what to read closely, description and reviews across the page, with a bar to jump between them. It replaces the summary line. (thanks Canta 🐑)
+- **Overview tab.** The sidebar's first tab, or `s`, shows the summary, concepts, what to read closely, description and reviews across the page, with a bar to jump between them, or a list in the margin on wide screens. It replaces the summary line. (thanks Canta 🐑)
 - **Where it lands.** The Overview draws the PR's files as a short tree with the analysis's note beside each; click a file to open it. (thanks Canta 🐑)
 - **PRs open on the Overview.** A PR with nothing read opens there, and a reload or a copied link keeps the view and the file you were on. (thanks Canta 🐑)
 - **Full hunk headers.** A hunk's header shows its `@@` range and the whole signature again, instead of only a line number and a name.

@@ -18,7 +18,9 @@ import { IconArrowRight } from "./icons";
  * lands in the code, then what to read closely;
  * the author's description, in their own words and whole, and what reviewers
  * said close it. One calm column; everything here is a way into the guide.
- * The bar on top jumps between the sections and underlines the one in view.
+ * The bar on top jumps between the sections and underlines the one in view;
+ * where the pane has margins to spare it is a contents list beside the text
+ * instead (index.css).
  */
 export function Overview({
   detail,
@@ -105,13 +107,14 @@ export function Overview({
   );
 
   return (
-    <div ref={scrollRef} className="quiet-scroll relative h-full overflow-y-auto" data-testid="overview" onScroll={onScroll}>
+    <div ref={scrollRef} className="overview-scroll quiet-scroll relative h-full overflow-y-auto" data-testid="overview" onScroll={onScroll}>
       {sections.length > 1 ? (
         <div
           ref={barRef}
           role="tablist"
           aria-label="Overview sections"
-          className="sticky top-0 z-10 border-b px-6 pt-1.5 sm:px-10"
+          data-testid="overview-jump"
+          className="overview-jump sticky top-0 z-10 border-b px-6 pt-1.5 sm:px-10"
           style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
         >
           <div className="mx-auto flex max-w-[54rem] flex-wrap items-end gap-1">
@@ -206,10 +209,10 @@ export function Overview({
             <SectionHead
               title={
                 <span className="flex items-center gap-1.5">
-                  {meta.author ? <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} /> : null}
+                  {meta.author ? <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={16} /> : null}
                   Description
                   {meta.author ? (
-                    <span className="font-normal" style={{ color: "var(--fg-faint)" }}>
+                    <span className="text-[13px] font-normal" style={{ color: "var(--fg-faint)" }}>
                       by {meta.author}
                     </span>
                   ) : null}
@@ -281,7 +284,7 @@ function restLine(close: number, skim: number, skip: number): string {
 function SectionHead({ title, children }: { title: React.ReactNode; children?: React.ReactNode }) {
   return (
     <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-      <h2 className="text-[13px] font-semibold" style={{ color: "var(--fg)" }}>
+      <h2 className="text-base font-semibold" style={{ color: "var(--fg)" }}>
         {title}
       </h2>
       {children ? <div className="ml-auto flex items-center gap-2">{children}</div> : null}

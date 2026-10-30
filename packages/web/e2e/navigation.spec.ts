@@ -88,6 +88,31 @@ test("s opens the overview in the sidebar over the diff's room, and its bar jump
   await expect(page.locator("[data-diff-scroller]")).toBeVisible();
 });
 
+test("the overview's jump bar moves to the margin where the pane has room, and comes back where it does not", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 800 });
+  await page.keyboard.press("s");
+  const summary = page.getByTestId("pr-summary");
+  const first = page.getByTestId("overview-jump-summary");
+  const last = page.getByTestId("overview-jump-reviews");
+
+  // A list in the left margin, clear of the text, that stays as the text moves.
+  const text = (await summary.boundingBox())!;
+  const atRest = (await first.boundingBox())!;
+  expect(atRest.x + atRest.width).toBeLessThan(text.x);
+  expect((await last.boundingBox())!.y).toBeGreaterThan(atRest.y);
+  await last.click();
+  await expect(last).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("pr-reviews")).toBeInViewport();
+  expect((await first.boundingBox())!.y).toBe(atRest.y);
+
+  // The same bar, above the text, once the margins are gone.
+  await page.setViewportSize({ width: 1000, height: 800 });
+  const row = (await first.boundingBox())!;
+  expect((await last.boundingBox())!.y).toBe(row.y);
+  const pane = (await page.getByTestId("overview").boundingBox())!;
+  expect(row.y).toBeLessThan(pane.y + 20);
+});
+
 test("a file in the overview's tree opens in the Files view, and the tabs and the URL follow", async ({ page }) => {
   await page.getByTestId("sidebar-tab-overview").click();
   await expect(page).toHaveURL(/view=overview/);
