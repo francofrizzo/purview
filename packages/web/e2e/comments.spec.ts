@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { MOD, UNITS, lineRow, newGutter, openComments, openComposerOnLine, openPr, openUnit } from "./helpers";
+import { MOD, UNITS, lineRow, newGutter, openComments, openComposerOnLine, openPr, openUnit, settledScrollTop } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await openPr(page);
@@ -168,4 +168,25 @@ test("the emoji button searches by name and puts the pick at the caret, leaving 
   await page.getByTestId("composer-format-emoji-search").press("Escape");
   await expect(page.getByTestId("composer-format-emoji-search")).toHaveCount(0);
   await expect(page.getByTestId("comment-composer")).toBeVisible();
+});
+
+test("saving a comment with a search still in the box keeps the view where you wrote it", async ({ page }) => {
+  // Find something near the top, visit it, then go read further down.
+  await page.keyboard.press("/");
+  await page.getByTestId("search-input").fill("ledger-only");
+  await page.getByTestId("search-input").press("Enter");
+  await expect(page.getByTestId("search-count")).toContainText(/1\s*\/\s*\d+/);
+  await lineRow(page, 80).scrollIntoViewIfNeeded();
+  await expect(lineRow(page, 16)).not.toBeInViewport();
+  const row = await openComposerOnLine(page, 80);
+  const before = await settledScrollTop(page);
+  await page.getByTestId("composer-textarea").fill("worth a look");
+  await page.getByTestId("composer-save").click();
+  await expect(page.getByTestId("comment-composer")).toHaveCount(0);
+  await expect(row.getByTestId("comment-bubble")).toBeVisible();
+  await page.waitForTimeout(300);
+  // The search is still there, but nothing scrolls back to its match.
+  await expect(page.getByTestId("search-input")).toHaveValue("ledger-only");
+  expect(Math.abs((await settledScrollTop(page)) - before)).toBeLessThan(120);
+  await expect(row).toBeInViewport();
 });

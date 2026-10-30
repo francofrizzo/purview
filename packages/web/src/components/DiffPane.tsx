@@ -349,6 +349,11 @@ function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 }
 
+/** One search match, as the visit effect tells them apart. */
+function searchMatchKey(m: SearchMatch): string {
+  return `${m.hunkId}:${m.lineIdx}:${m.start}`;
+}
+
 /** The file header row above a hunk's header row, or -1 when the pane shows none. */
 function findFileRow(rows: FlatRow[], hunkIdx: number): number {
   for (let i = hunkIdx; i >= 0; i--) if (rows[i].type === "file") return i;
@@ -1836,11 +1841,15 @@ export function DiffPane({
   const setSignature = entries.map((e) => e.hunk.id).join(",");
   const activeMatchRef = useRef(activeMatch);
   activeMatchRef.current = activeMatch;
+  /** The match the search-visit effect below already scrolled to: a match
+   *  is visited once, not again every time the rows change under it. */
+  const landedMatchRef = useRef<string | null>(null);
   // Before paint, not after: a read hunk of a newly shown file or unit must
   // first appear folded, not open for a frame and then snap shut.
   useLayoutEffect(() => {
     const target = activeMatchRef.current;
-    if (!(target && entries.some((e) => e.hunk.id === target.hunkId))) {
+    const visiting = target && landedMatchRef.current !== searchMatchKey(target);
+    if (!(visiting && entries.some((e) => e.hunk.id === target.hunkId))) {
       scrollRef.current?.scrollTo({ top: 0 });
     }
     setExpandedDod(new Set());
@@ -2087,14 +2096,16 @@ export function DiffPane({
   // Visiting a match: the host has already switched to the unit or file that
   // contains it, so by the time `rows` holds that hunk this runs again and
   // scrolls. A match outside the shown set simply finds nothing and waits.
-  const matchKey = activeMatch
-    ? `${activeMatch.hunkId}:${activeMatch.lineIdx}:${activeMatch.start}`
-    : null;
+  // Once landed it stays put: the rows change under a match left in the box
+  // (a comment saved, a hunk folded) and the reader has long moved on.
+  const matchKey = activeMatch ? searchMatchKey(activeMatch) : null;
   useEffect(() => {
     if (!activeMatch) {
+      landedMatchRef.current = null;
       setFlashKey(null);
       return;
     }
+    if (landedMatchRef.current === matchKey) return;
     // A match inside a folded hunk is unreachable; unfold before looking.
     if (isCollapsed(collapsed, activeMatch.hunkId)) {
       setCollapsedState((prev) => setCollapsed(prev, activeMatch.hunkId, false));
@@ -2111,9 +2122,10 @@ export function DiffPane({
     setFlashKey(rows[idx].key);
     // A frame late: the shown set may have just been replaced, and the
     // virtualizer has yet to measure the rows it mounted for it.
-    const frame = requestAnimationFrame(() =>
-      virtualizer.scrollToIndex(idx, { align: "center" }),
-    );
+    const frame = requestAnimationFrame(() => {
+      virtualizer.scrollToIndex(idx, { align: "center" });
+      landedMatchRef.current = matchKey;
+    });
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchKey, findRowIndex, rows, virtualizer, onFocusHunk, collapsed]);
