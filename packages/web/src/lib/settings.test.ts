@@ -11,9 +11,10 @@ import {
 } from "./settings";
 
 describe("parseSettings", () => {
-  it("moves a saved 304 px sidebar, the old default, to the new one; a dragged width stays", () => {
-    expect(parseSettings({ sidebarWidth: 304 }).sidebarWidth).toBe(DEFAULT_SETTINGS.sidebarWidth);
-    expect(parseSettings({ sidebarWidth: 420 }).sidebarWidth).toBe(420);
+  it("keeps any dragged sidebar width, 304 px too, and ignores the old key once", () => {
+    expect(parseSettings({ sidebarColumnWidth: 304 }).sidebarColumnWidth).toBe(304);
+    expect(parseSettings({ sidebarColumnWidth: 420 }).sidebarColumnWidth).toBe(420);
+    expect(parseSettings({ sidebarWidth: 304 }).sidebarColumnWidth).toBe(DEFAULT_SETTINGS.sidebarColumnWidth);
   });
 
   it("returns the defaults for missing or unusable input", () => {

@@ -272,7 +272,7 @@ export function PrView() {
   const sidebarCollapsed = settings.sidebarCollapsed;
   // The column's width: dragged at its right edge, remembered.
   const [sidebarDrag, setSidebarDrag] = useState<number | null>(null);
-  const sidebarWidth = sidebarDrag ?? settings.sidebarWidth;
+  const sidebarWidth = sidebarDrag ?? settings.sidebarColumnWidth;
   const startSidebarResize = (e: React.MouseEvent) => {
     e.preventDefault();
     const left = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect().left;
@@ -280,7 +280,7 @@ export function PrView() {
     const onUp = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      updateSettings({ sidebarWidth: clampSidebarWidth(ev.clientX - left) });
+      updateSettings({ sidebarColumnWidth: clampSidebarWidth(ev.clientX - left) });
       setSidebarDrag(null);
     };
     window.addEventListener("mousemove", onMove);
@@ -1826,7 +1826,7 @@ export function PrView() {
             {sidebarCollapsed ? null : (
               <div
                 onMouseDown={startSidebarResize}
-                onDoubleClick={() => updateSettings({ sidebarWidth: DEFAULT_SIDEBAR_WIDTH })}
+                onDoubleClick={() => updateSettings({ sidebarColumnWidth: DEFAULT_SIDEBAR_WIDTH })}
                 data-tip="Drag to resize; double-click for the default width"
                 data-testid="sidebar-resize"
                 className="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-[var(--border-strong)]"

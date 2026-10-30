@@ -74,7 +74,7 @@ export interface Settings {
    *  the sidebar always starts closed regardless of this. */
   sidebarCollapsed: boolean;
   /** Width of the sidebar column in px (clamped to the range below). */
-  sidebarWidth: number;
+  sidebarColumnWidth: number;
   /** Days after which "asked you Nd ago" turns yellow, orange and red. */
   requestAgeDays: RequestAgeDays;
   /** GitHub review threads: resolved ones show collapsed (on) or not at all (off). */
@@ -106,8 +106,6 @@ export const DEFAULT_CHAT_PANEL_WIDTH = 420;
 export const MIN_SIDEBAR_WIDTH = 260;
 export const MAX_SIDEBAR_WIDTH = 560;
 export const DEFAULT_SIDEBAR_WIDTH = 352;
-/** The default before the brief moved into the sidebar: saved as a setting, it was never a choice. */
-const OLD_DEFAULT_SIDEBAR_WIDTH = 304;
 
 export const MIN_CODE_FONT_SIZE = 11;
 export const MAX_CODE_FONT_SIZE = 16;
@@ -132,7 +130,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatMode: "dock",
   chatFloat: null,
   sidebarCollapsed: false,
-  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+  sidebarColumnWidth: DEFAULT_SIDEBAR_WIDTH,
   requestAgeDays: [1, 3, 7],
   showResolvedThreads: true,
   showAiReviewers: true,
@@ -195,8 +193,8 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   if (typeof r.unitFilesOpen === "boolean") out.unitFilesOpen = r.unitFilesOpen;
   if (typeof r.composerFormatting === "boolean") out.composerFormatting = r.composerFormatting;
   if (typeof r.flatWorkspace === "boolean") out.flatWorkspace = r.flatWorkspace;
-  if (typeof r.sidebarWidth === "number" && Number.isFinite(r.sidebarWidth)) {
-    out.sidebarWidth = r.sidebarWidth === OLD_DEFAULT_SIDEBAR_WIDTH ? DEFAULT_SIDEBAR_WIDTH : clampSidebarWidth(r.sidebarWidth);
+  if (typeof r.sidebarColumnWidth === "number" && Number.isFinite(r.sidebarColumnWidth)) {
+    out.sidebarColumnWidth = clampSidebarWidth(r.sidebarColumnWidth);
   }
   if (
     Array.isArray(r.requestAgeDays) &&
