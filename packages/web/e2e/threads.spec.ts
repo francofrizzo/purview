@@ -70,7 +70,7 @@ test("a GitHub thread in the drawer can be copied with its code, replied to and 
   await page.getByTestId("drawer-thread-reply-PRRT_charge77_79").click();
   const composer = page.getByTestId("comment-composer");
   await expect(composer).toBeVisible();
-  await expect(composer).toContainText("maria");
+  await expect(page.getByTestId("composer-textarea")).toHaveAttribute("placeholder", /^Reply to @maria/);
 });
 
 

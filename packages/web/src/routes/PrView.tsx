@@ -1421,7 +1421,7 @@ export function PrView() {
           <IconChevron width={11} height={11} style={{ transform: "rotate(180deg)" }} />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+      <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         {tab === "units" ? (
           <CodeLinkContext.Provider value={textLinks}>
             <UnitSidebar
@@ -1754,7 +1754,11 @@ export function PrView() {
           and the sidebar and side panels are instruments resting on it:
           bordered, rounded, a hair of gutter around each. Only things that
           truly float (the summary panel, pills, menus) cast a shadow. */}
-      <div className="workspace relative flex min-h-0 flex-1" style={{ background: "var(--bg)" }}>
+      <div
+        className="workspace relative flex min-h-0 flex-1"
+        data-flat={settings.flatWorkspace ? "true" : undefined}
+        style={{ background: "var(--bg)" }}
+      >
         {sidebarMode === "column" ? (
           <nav
             className={`pane relative m-[7px] mr-0 rounded-br-none flex flex-none flex-col overflow-hidden ${
@@ -2239,7 +2243,6 @@ export function PrView() {
                     threads: remoteThreads,
                     posts: postAuthors,
                     filters: threadFilters.filters,
-                    hidden: threadGroups.hidden,
                     onShowResolved: threadFilters.setShowResolved,
                     onShowAiReviewers: threadFilters.setShowAiReviewers,
                     onBotHidden: threadFilters.setBotHidden,

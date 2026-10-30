@@ -8,6 +8,7 @@ import {
   type ComposerMode,
 } from "../lib/composerMode";
 import { Markdown } from "./Markdown";
+import { IconEdit, IconEye } from "./icons";
 
 /**
  * Write / Preview for a comment editor. The textarea stays mounted (hidden)
@@ -97,40 +98,24 @@ export function WritePreviewToggle({
   onChange: (mode: ComposerMode) => void;
   testId?: string;
 }) {
-  const options: { value: ComposerMode; label: string; tip: string }[] = [
-    { value: "write", label: "Write", tip: "Edit the markdown" },
-    { value: "preview", label: "Preview", tip: `Preview; ${PREVIEW_LIMITS}` },
-  ];
+  // One button that names the way over, in a word and an icon, like
+  // "suggest change" beside it: an eye and a pencil alone were guesses.
+  const previewing = mode === "preview";
+  const Icon = previewing ? IconEdit : IconEye;
   return (
-    <div
-      role="group"
-      aria-label="Write or preview"
-      className="inline-flex flex-none items-center rounded p-px"
-      style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
+    <button
+      type="button"
+      data-testid={`${testId}-${previewing ? "write" : "preview"}`}
+      aria-pressed={previewing}
+      data-tip={previewing ? "Back to the markdown" : `See it rendered; ${PREVIEW_LIMITS}`}
+      data-tip-key="⌘⇧P"
+      onClick={() => onChange(previewing ? "write" : "preview")}
+      className="inline-flex h-5 flex-none items-center gap-1 rounded px-1.5 text-2xs transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
+      style={{ color: previewing ? "var(--fg)" : "var(--fg-muted)", background: previewing ? "var(--bg-hover)" : undefined }}
     >
-      {options.map(({ value, label, tip }) => {
-        const active = mode === value;
-        return (
-          <button
-            key={value}
-            type="button"
-            data-testid={`${testId}-${value}`}
-            aria-pressed={active}
-            data-tip={tip}
-            data-tip-key="⌘⇧P"
-            onClick={() => onChange(value)}
-            className="rounded-sm px-1.5 text-2xs leading-4 transition-colors"
-            style={{
-              background: active ? "var(--bg-raised)" : "transparent",
-              color: active ? "var(--fg)" : "var(--fg-faint)",
-              boxShadow: active ? "0 0 0 1px var(--border-strong)" : undefined,
-            }}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
+      <Icon width={12} height={12} />
+      {previewing ? "Edit" : "Preview"}
+    </button>
   );
 }
 

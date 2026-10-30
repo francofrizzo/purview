@@ -2,11 +2,12 @@
  * One comment, drawn the same way wherever it appears: the inline thread under
  * a diff line, the comments drawer, and the finish-review list.
  *
- * Who it is for is carried by a bar on the card's left edge: accent for a
- * comment headed to GitHub, violet for a note to a coding agent, quiet once
- * submitted and public. The status word next to the anchor says where it is
- * in the review's lifecycle. The gutter pill uses the same colours, so a
- * line's marker and its thread read as one thing.
+ * Who it is for is carried by colour: the card's frame, a small mark before
+ * the anchor and the status word after it, which says where it is in the
+ * review's lifecycle. Accent for a comment headed to GitHub, violet for a note
+ * to a coding agent, quiet once submitted and public. The gutter pill uses the
+ * same colours, so a line's marker and its thread read as one thing. The
+ * actions show when the pointer is on the card.
  */
 
 import { useMemo, useEffect, useState, type ReactNode } from "react";
@@ -21,7 +22,16 @@ import type { MarkerLook, MarkerSummary } from "../lib/threads";
 import { QuoteButton } from "./ChatPanel";
 import { CopyForAgentButton } from "./CopyForAgent";
 import { AgentEditNote, ByAgentChip, CommentBody, commentRef, type EditComment } from "./Drafts";
-import { IconComment, IconCommentFilled, IconEdit, IconSend, IconSwap, IconTrash } from "./icons";
+import {
+  IconComment,
+  IconCommentFilled,
+  IconEdit,
+  IconGithub,
+  IconSend,
+  IconSparkles,
+  IconSwap,
+  IconTrash,
+} from "./icons";
 import { SuggestionContext } from "./Markdown";
 
 export const COMMENT_STATUS: Record<
@@ -144,14 +154,21 @@ export function CommentCard({
       data-audience={forAgent ? "agent" : "github"}
       data-publishing={publishing || undefined}
       data-flash={highlight || undefined}
-      className="group/comment rounded-md px-3 pb-2 pt-1.5"
+      className="group/comment rounded-lg px-3 pb-2.5 pt-2"
       style={{
         background: "var(--bg-raised)",
-        border: "1px solid var(--border-strong)",
-        boxShadow: `inset 3px 0 0 ${meta.edge}`,
+        border: `1px solid color-mix(in srgb, ${meta.edge} 45%, var(--border))`,
       }}
     >
       <header className="flex min-h-[22px] items-center gap-2 text-2xs">
+        <span
+          className="flex flex-none items-center"
+          style={{ color: meta.ink }}
+          data-tip={forAgent ? AGENT_LOOK.hint : "Part of your GitHub review"}
+          data-testid="comment-audience-mark"
+        >
+          {forAgent ? <IconSparkles width={12} height={12} /> : <IconGithub width={12} height={12} />}
+        </span>
         {comment.outdated && <span data-testid="comment-outdated" className="rounded px-1 font-medium" style={{ color: "var(--warn)", background: "var(--warn-soft)" }} data-tip={outdatedCommentTip(comment)}>outdated</span>}
         {anchor ? (
           <button
@@ -188,7 +205,9 @@ export function CommentCard({
             {formatCompactAge(age) === "just now" ? "just now" : `${formatCompactAge(age)} ago`}
           </span>
         ) : null}
-        <span className="ml-auto flex flex-none items-center gap-0.5">
+        {/* The actions belong to the card the pointer is on; at rest the
+            card is only its words. */}
+        <span className="ml-auto flex flex-none items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/comment:opacity-100 [@media(hover:none)]:opacity-100">
           {onQuote ? (
             <QuoteButton about="this comment" onClick={() => onQuote(commentRef(comment))} />
           ) : null}

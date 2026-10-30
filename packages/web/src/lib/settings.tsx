@@ -57,6 +57,10 @@ export interface Settings {
   foldMovedBlocks: boolean;
   /** Drop fully-viewed units out of the sidebar (except the selected one). */
   hideReviewedUnits: boolean;
+  /** The comment box's formatting row is open; `Aa` flips it and it stays. */
+  composerFormatting: boolean;
+  /** The PR view's panes sit edge to edge instead of as cards on a desk. */
+  flatWorkspace: boolean;
   /** The file list in a unit's brief stays open from unit to unit. */
   unitFilesOpen: boolean;
   /** Width of the review chat panel in px (clamped to the range below). */
@@ -119,6 +123,8 @@ export const DEFAULT_SETTINGS: Settings = {
   foldSkippableHunks: false,
   foldMovedBlocks: false,
   hideReviewedUnits: false,
+  composerFormatting: false,
+  flatWorkspace: false,
   unitFilesOpen: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
   chatMode: "dock",
@@ -185,6 +191,8 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   }
   if (typeof r.sidebarCollapsed === "boolean") out.sidebarCollapsed = r.sidebarCollapsed;
   if (typeof r.unitFilesOpen === "boolean") out.unitFilesOpen = r.unitFilesOpen;
+  if (typeof r.composerFormatting === "boolean") out.composerFormatting = r.composerFormatting;
+  if (typeof r.flatWorkspace === "boolean") out.flatWorkspace = r.flatWorkspace;
   if (typeof r.sidebarWidth === "number" && Number.isFinite(r.sidebarWidth)) {
     out.sidebarWidth = clampSidebarWidth(r.sidebarWidth);
   }

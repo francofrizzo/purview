@@ -913,23 +913,28 @@ export function useCommentAudience(key: string): {
   const qc = useQueryClient();
   const detail = useQuery<PrDetail>({ queryKey: qk.pr(key), queryFn: () => api.getPr(key), enabled: Boolean(key) });
   const audience: CommentAudience = detail.data?.commentAudience?.effective ?? "github";
+  const lastFlip = useRef(0);
   const save = useMutation<
     { effective: CommentAudience; override: CommentAudience | null },
     Error,
     CommentAudience,
-    { previous?: PrDetail }
+    { previous?: PrDetail; flip: number }
   >({
     mutationFn: (next) => api.setPrCommentAudience(key, next),
     onMutate: async (next) => {
+      const flip = ++lastFlip.current;
       await qc.cancelQueries({ queryKey: qk.pr(key) });
       const previous = qc.getQueryData<PrDetail>(qk.pr(key));
       if (previous) qc.setQueryData<PrDetail>(qk.pr(key), { ...previous, commentAudience: { effective: next, override: next } });
-      return { previous };
+      return { previous, flip };
     },
     onError: (_e, _v, ctx) => {
-      if (ctx?.previous) qc.setQueryData(qk.pr(key), ctx.previous);
+      if (ctx?.previous && ctx.flip === lastFlip.current) qc.setQueryData(qk.pr(key), ctx.previous);
     },
-    onSuccess: (info) => {
+    onSuccess: (info, _next, ctx) => {
+      // An answer to an older flip must not undo a newer one: the switch is
+      // what the next save reads.
+      if (ctx.flip !== lastFlip.current) return;
       qc.setQueryData<PrDetail>(qk.pr(key), (d) => (d ? { ...d, commentAudience: info } : d));
     },
   });

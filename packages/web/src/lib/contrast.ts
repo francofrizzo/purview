@@ -81,6 +81,7 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("accent-on-raised", "Text on surfaces", "accent text on bg-raised", "accent", 3.6, ["bg-raised"], "open the PR description"),
     s("ok-on-raised", "Text on surfaces", "ok text on bg-raised", "ok", 3.0, ["bg-raised"], "2/2 viewed"),
     s("risk-on-raised", "Text on surfaces", "risk text on bg-raised", "risk", 3.0, ["bg-raised"], "Must read (2)"),
+    s("bot-on-raised", "Text on surfaces", "bot label on bg-raised", "bot", 3.0, ["bg-raised"], "bot"),
     s("warn-on-raised", "Text on surfaces", "warn text on bg-raised", "warn", 3.0, ["bg-raised"], "Skim (1)"),
     s("warn-on-bg", "Text on surfaces", "warn text on bg (home list: \"no reviewers\", \"update\")", "warn", 3.0, ["bg"], "no reviewers · update"),
     s("heart-on-raised", "Text on surfaces", "heart text on bg-raised", "heart", 3.0, ["bg-raised"], "Heart · where the logic lives"),

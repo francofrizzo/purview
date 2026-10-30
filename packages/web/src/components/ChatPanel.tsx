@@ -512,7 +512,7 @@ export function ChatPanel({
         onScroll={onScroll}
         onWheel={onWheel}
         onKeyDown={onTranscriptKey}
-        className="min-h-0 flex-1 overflow-y-auto"
+        className="quiet-scroll min-h-0 flex-1 overflow-y-auto"
         data-testid="chat-transcript"
       >
         {chat.loading ? (

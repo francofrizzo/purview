@@ -57,6 +57,7 @@ const APP_SETTINGS_NAV: SettingsNavGroup[] = [
     items: [
       { id: "theme", title: "Theme" },
       { id: "typography", title: "Typography" },
+      { id: "workspace", title: "Workspace" },
       { id: "diff", title: "Diff defaults" },
       { id: "pr-list", title: "PR list" },
     ],
@@ -108,6 +109,18 @@ export function SettingsModal() {
         hint="Applies to the diff and every other code surface. The UI font follows it only if you ask it to."
       >
         <FontSection settings={settings} update={update} />
+      </Section>
+      <Section id="workspace" title="Workspace" hint="How a PR's panes sit around the diff.">
+        <Field label="Panes">
+          <Segmented
+            value={settings.flatWorkspace ? "flat" : "cards"}
+            options={[
+              { value: "cards", label: "cards on a desk" },
+              { value: "flat", label: "flat" },
+            ]}
+            onChange={(v) => update({ flatWorkspace: v === "flat" })}
+          />
+        </Field>
       </Section>
       <Section id="diff" title="Diff defaults" hint="The same preferences the d / w keys toggle while reviewing.">
         <div className="flex flex-wrap items-center gap-6">

@@ -208,7 +208,10 @@
   ::-webkit-scrollbar-thumb {
     background: var(--border-strong);
     border-radius: 6px;
-    border: 2px solid var(--bg);
+    /* A transparent ring, not one painted in --bg: on a raised pane a
+       bg-coloured ring read as a second rule beside the pane's border. */
+    border: 3px solid transparent;
+    background-clip: padding-box;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
@@ -862,4 +865,32 @@ html[data-mode="light"] .logo-for-light {
 }
 .concept-mark > code {
   text-decoration: inherit;
+}
+
+/* Panes that scroll (the sidebar, the dock): the scrollbar shows while the
+   pointer is over them, so at rest the pane's edge is its only line. */
+.quiet-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.quiet-scroll:hover,
+.quiet-scroll:focus-within {
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+/* The flat workspace (Settings → Workspace): the panes lose their desk and
+   sit edge to edge, one rule between each. The drawer still floats. */
+.workspace[data-flat] .pane:not(.elev-3) {
+  margin: 0;
+  border-width: 0;
+  border-radius: 0;
+}
+.workspace[data-flat] nav.pane:not(.elev-3) {
+  border-right-width: 1px;
+}
+.workspace[data-flat] main > .pane {
+  border-bottom-width: 1px;
+}
+.workspace[data-flat] main ~ .pane {
+  border-left-width: 1px;
 }

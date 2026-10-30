@@ -8,6 +8,7 @@ import {
   IconList,
   IconListCheck,
   IconListNumbers,
+  IconTypography,
   type IconProps,
 } from "@tabler/icons-react";
 import {
@@ -16,7 +17,6 @@ import {
   type ClipboardEvent,
   type ComponentType,
   type KeyboardEvent,
-  type ReactNode,
   type RefObject,
 } from "react";
 import {
@@ -30,7 +30,6 @@ import {
   type TextEdit,
 } from "../lib/composerFormat";
 import { insertSuggestion, type SuggestionSource } from "../lib/suggestion";
-import { EmojiPicker } from "./EmojiPicker";
 
 /**
  * Markdown formatting for a comment textarea: the toolbar's buttons and the
@@ -131,6 +130,44 @@ export function useComposerFormat({
   };
 }
 
+/**
+ * "Suggest a change": the one formatting action worth a button, since it is
+ * about the code, not the prose. A word, the height of Write | Preview, off
+ * (with the reason) wherever GitHub would refuse the suggestion. Bold, lists
+ * and the rest are typed as markdown or reached by their chords (see `?`).
+ */
+export function SuggestButton({
+  fmt,
+  disabled = false,
+  testId = "format-suggestion",
+}: {
+  fmt: ComposerFormat;
+  disabled?: boolean;
+  testId?: string;
+}) {
+  const suggest = fmt.suggestion;
+  if (!suggest) return null;
+  const { label, chord } = FORMAT_LABELS.suggestion;
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      className="inline-flex h-5 items-center gap-1 rounded px-1.5 text-2xs transition-colors enabled:hover:bg-[var(--bg-hover)] enabled:hover:text-[var(--fg)] disabled:opacity-40"
+      style={{ color: "var(--fg-muted)" }}
+      data-tip={suggest.reason ?? label}
+      data-tip-key={suggest.reason ? undefined : (chord ?? undefined)}
+      aria-label={label}
+      disabled={disabled || !suggest.lines}
+      // Keep the textarea's selection: a mousedown on the button would move focus.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => fmt.apply("suggestion")}
+    >
+      <IconFileDiff size={12} stroke={2} />
+      suggest change
+    </button>
+  );
+}
+
 const TOOLS: { action: EditAction; Icon: ComponentType<IconProps> }[] = [
   { action: "bold", Icon: IconBold },
   { action: "italic", Icon: IconItalic },
@@ -143,93 +180,53 @@ const TOOLS: { action: EditAction; Icon: ComponentType<IconProps> }[] = [
 ];
 
 /**
- * The formatting buttons, the height of the Write | Preview control they sit
- * beside. Quiet at rest; each names its chord in the tooltip. Disabled while
- * previewing, since there is no selection to format. "Suggest a change" sits
- * apart at the end: it is about the code, not the prose, and it is off (with
- * the reason) wherever GitHub would refuse the suggestion.
+ * "Aa": opens or closes the formatting buttons. They stay out of the way
+ * until asked for (markdown and the chords work either way) and the choice is
+ * remembered, so whoever likes them has them every time.
  */
-export function FormatToolbar({
-  fmt,
-  disabled = false,
-  testId = "format",
-}: {
-  fmt: ComposerFormat;
-  disabled?: boolean;
-  testId?: string;
-}) {
-  const suggest = fmt.suggestion;
-  const suggestLabel = FORMAT_LABELS.suggestion;
-  return (
-    <div role="toolbar" aria-label="Formatting" className="flex flex-none items-center gap-px">
-      {TOOLS.map(({ action, Icon }) => {
-        const { label, chord } = FORMAT_LABELS[action];
-        return (
-          <ToolButton
-            key={action}
-            testId={`${testId}-${action}`}
-            tip={label}
-            tipKey={chord ?? undefined}
-            label={label}
-            disabled={disabled}
-            onClick={() => fmt.apply(action)}
-          >
-            <Icon size={13} stroke={2} />
-          </ToolButton>
-        );
-      })}
-      <EmojiPicker onPick={fmt.insert} disabled={disabled} testId={`${testId}-emoji`} />
-      {suggest ? (
-        <>
-          <span aria-hidden className="mx-1 h-3 w-px flex-none" style={{ background: "var(--border)" }} />
-          <ToolButton
-            testId={`${testId}-suggestion`}
-            tip={suggest.reason ?? suggestLabel.label}
-            tipKey={suggest.reason ? undefined : (suggestLabel.chord ?? undefined)}
-            label={suggestLabel.label}
-            disabled={disabled || !suggest.lines}
-            onClick={() => fmt.apply("suggestion")}
-          >
-            <IconFileDiff size={13} stroke={2} />
-          </ToolButton>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-function ToolButton({
-  testId,
-  tip,
-  tipKey,
-  label,
-  disabled,
-  onClick,
-  children,
-}: {
-  testId: string;
-  tip: string;
-  tipKey?: string;
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
+export function FormattingToggle({ open, onToggle, testId = "format-toggle" }: { open: boolean; onToggle: () => void; testId?: string }) {
   return (
     <button
       type="button"
       data-testid={testId}
-      className="flex h-5 w-5 items-center justify-center rounded transition-colors enabled:hover:bg-[var(--bg-hover)] enabled:hover:text-[var(--fg)] disabled:opacity-40"
-      style={{ color: "var(--fg-faint)" }}
-      data-tip={tip}
-      data-tip-key={tipKey}
-      aria-label={label}
-      disabled={disabled}
-      // Keep the textarea's selection: a mousedown on the button would move focus.
+      aria-pressed={open}
+      aria-label={open ? "Hide formatting" : "Show formatting"}
+      data-tip={open ? "Hide formatting" : "Show formatting: bold, lists, links…; markdown works either way"}
+      className="flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
+      style={{ color: open ? "var(--fg)" : "var(--fg-muted)", background: open ? "var(--bg-hover)" : undefined }}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
+      onClick={onToggle}
     >
-      {children}
+      <IconTypography size={13} stroke={2} />
     </button>
+  );
+}
+
+/** The formatting buttons, each naming its chord in the tooltip; off while previewing. */
+export function FormatRow({ fmt, disabled = false, testId = "format" }: { fmt: ComposerFormat; disabled?: boolean; testId?: string }) {
+  return (
+    <div role="toolbar" aria-label="Formatting" className="flex flex-wrap items-center gap-px">
+      {TOOLS.map(({ action, Icon }) => {
+        const { label, chord } = FORMAT_LABELS[action];
+        return (
+          <button
+            key={action}
+            type="button"
+            data-testid={`${testId}-${action}`}
+            className="flex h-5 w-5 items-center justify-center rounded transition-colors enabled:hover:bg-[var(--bg-hover)] enabled:hover:text-[var(--fg)] disabled:opacity-40"
+            style={{ color: "var(--fg-faint)" }}
+            data-tip={label}
+            data-tip-key={chord ?? undefined}
+            aria-label={label}
+            disabled={disabled}
+            // Keep the textarea's selection: a mousedown on the button would move focus.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => fmt.apply(action)}
+          >
+            <Icon size={13} stroke={2} />
+          </button>
+        );
+      })}
+    </div>
   );
 }

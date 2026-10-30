@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { UNITS, hunkHeader, openPr, openUnit, scroller } from "./helpers";
+import { UNITS, hunkHeader, openComposerOnLine, openPr, openUnit, scroller } from "./helpers";
 
 test("the view options hold the layout, wrapping, folding, read units and thread filters", async ({ page }) => {
   await openPr(page);
@@ -95,4 +95,62 @@ test("the sidebar column resizes by dragging its edge; a double click restores i
   await expect.poll(async () => (await nav.boundingBox())!.width).toBeGreaterThan(360);
   await handle.dblclick();
   await expect.poll(async () => Math.round((await nav.boundingBox())!.width)).toBe(304);
+});
+
+test("the comment box keeps its keys and ask chat in words, and Aa opens the formatting", async ({ page }) => {
+  await openPr(page);
+  await openUnit(page, UNITS.reconcile);
+  await openComposerOnLine(page, 10);
+  await expect(page.getByTestId("composer-send-to-chat")).toContainText("ask chat");
+  await expect(page.getByTestId("composer-send-to-chat")).toContainText("⌘⇧↵");
+  await expect(page.getByTestId("composer-save")).toContainText("⌘↵");
+  await expect(page.getByTestId("copy-composer")).toBeVisible();
+  await expect(page.getByTestId("composer-format-bold")).toHaveCount(0);
+  await page.getByTestId("composer-format-toggle").click();
+  await expect(page.getByTestId("composer-format-bold")).toBeVisible();
+  await page.getByTestId("composer-textarea").press("Escape");
+  await expect(page.getByTestId("comment-composer")).toHaveCount(0);
+  await openComposerOnLine(page, 10);
+  await expect(page.getByTestId("composer-format-bold")).toBeVisible();
+});
+
+test("a comment card has no bar but keeps its audience's colour; its actions show on hover", async ({ page }) => {
+  await openPr(page);
+  await page.getByTestId("topbar-comments").click();
+  await page.getByTestId("dock-tab-comments").click().catch(() => {});
+  const note = page.getByTestId("comment-card-draft-agent-1");
+  await expect(note).toBeVisible();
+  const look = await note.evaluate((el) => {
+    const css = getComputedStyle(el);
+    return { shadow: css.boxShadow, border: css.borderTopColor };
+  });
+  const neutral = await page.getByTestId("comments-panel").evaluate((el) => {
+    const probe = document.createElement("div");
+    probe.style.borderTop = "1px solid var(--border)";
+    el.append(probe);
+    const color = getComputedStyle(probe).borderTopColor;
+    probe.remove();
+    return color;
+  });
+  expect(look.shadow).toBe("none");
+  expect(look.border).not.toBe(neutral);
+  await expect(note.getByTestId("comment-audience-mark")).toBeVisible();
+  const actions = page.getByTestId("move-draft-agent-1").locator("xpath=..");
+  await page.mouse.move(4, 4);
+  await expect(actions).toHaveCSS("opacity", "0");
+  await note.hover();
+  await expect(actions).toHaveCSS("opacity", "1");
+});
+
+test("the flat workspace is a setting: off, the panes are cards; on, they sit edge to edge", async ({ page }) => {
+  const margin = () => page.locator(".workspace nav.pane").first().evaluate((el) => getComputedStyle(el).marginTop);
+  await openPr(page);
+  expect(await margin()).toBe("7px");
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem("reviewer.settings") ?? "{}");
+    localStorage.setItem("reviewer.settings", JSON.stringify({ ...s, flatWorkspace: true }));
+  });
+  await page.reload();
+  await expect(page.getByTestId("unit-header")).toBeVisible();
+  expect(await margin()).toBe("0px");
 });

@@ -42,8 +42,9 @@ test("the switch decides what a new comment is for; `a` flips it", async ({ page
   await openComposerOnLine(page, 10);
   const composer = page.getByTestId("comment-composer");
   await expect(composer).toHaveAttribute("data-audience", "agent");
-  await expect(composer).toContainText("Note for agent");
-  await expect(page.getByTestId("composer-save")).toHaveText("save note");
+  // No header in place under the line: the placeholder and the button say who it is for.
+  await expect(page.getByTestId("composer-textarea")).toHaveAttribute("placeholder", "Note for the agent on line 10…");
+  await expect(page.getByTestId("composer-save")).toContainText("save note");
   // Flipping inside the composer flips the global switch too.
   await page.getByTestId("composer-audience-github").click();
   await expect(composer).toHaveAttribute("data-audience", "github");

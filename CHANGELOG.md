@@ -5,6 +5,15 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Comment box layout.** The placeholder names the line and who the comment is for, the audience switch sits by Save, `Aa` opens the formatting, and Preview is one button. (thanks Canta 🐑)
+- **Comment cards.** A colored frame and icon say who a card is for instead of a left bar, actions show on hover, and AI reviewers get an outlined "bot" label. (thanks Canta 🐑)
+- **Comments panel header.** The header is one line, "New comments go to" and the switch; hints are on hover and thread filters are in View options. (thanks Canta 🐑)
+- **Flat workspace.** Settings → Workspace sets the PR's panes edge to edge, one rule between each, instead of cards on a desk. (thanks Canta 🐑)
+- **Scrollbars on hover.** The sidebar, chat, comments and review panes show their scrollbar only while the pointer is over them. (thanks Canta 🐑)
+- **Fix:** flipping the comment audience twice in a row no longer saves a note for the agent as a GitHub draft.
+
 ## 2026.10.30.4
 
 - **View options.** The sliders button in the top bar holds the diff layout, line wrapping, skippable folding, read units and GitHub thread filters. (thanks Canta 🐑)

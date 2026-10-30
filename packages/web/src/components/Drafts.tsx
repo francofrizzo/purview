@@ -24,6 +24,7 @@ import {
 } from "../lib/threads";
 import { formatComment, type DiffContext } from "../lib/agentExport";
 import { capitalized } from "../lib/agentSelection";
+import { useSettings } from "../lib/settings";
 import {
   canUndoAgentEdit,
   agentDeletedDrafts,
@@ -36,14 +37,15 @@ import {
 } from "../lib/comments";
 import { AUDIENCE_HINT, AudienceSwitch } from "./AudienceSwitch";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
-import { IconChat, IconCheck, IconClose, IconReact, IconReply, IconSend } from "./icons";
+import { IconChat, IconCheck, IconClose, IconGithub, IconReact, IconReply, IconSend, IconSparkles } from "./icons";
 import { ReactionError, ReactionPicker, REACTION_EMOJI, type ReactionActions } from "./Reactions";
-import { BotChip, ThreadFilterMenu } from "./Threads";
+import { BotChip } from "./Threads";
 import { AttachmentContext, Markdown, SuggestionContext } from "./Markdown";
 import { suggestionSource, type SuggestionSource } from "../lib/suggestion";
 import { AttachButton, AttachmentStrip, DropHint, useAttachmentEditor } from "./Attachments";
 import { ComposerPreview, useWritePreview, WritePreviewToggle } from "./WritePreview";
-import { FormatToolbar, useComposerFormat } from "./FormatToolbar";
+import { FormatRow, FormattingToggle, SuggestButton, useComposerFormat } from "./FormatToolbar";
+import { EmojiPicker } from "./EmojiPicker";
 import { CommentCard, type CommentActionError } from "./CommentCard";
 
 /**
@@ -177,6 +179,7 @@ export function CommentComposer({
   );
   // Bold, lists, links…: the toolbar and the ⌘B family (lib/composerFormat.ts).
   const fmt = useComposerFormat({ textareaRef: ref, body, setBody, suggestion });
+  const { settings, update: updateSettings } = useSettings();
   const cancel = () => {
     attach.discard();
     onCancel();
@@ -229,7 +232,8 @@ export function CommentComposer({
           : "relative w-full max-w-[46rem] rounded-md"
       }
       data-audience={forAgent ? "agent" : "github"}
-      style={{ background: "var(--bg-raised)", border: `1px solid ${ink}`, boxShadow: `inset 3px 0 0 ${ink}` }}
+      // The frame takes the audience's colour, quietly: a ring, not a bar.
+      style={{ background: "var(--bg-raised)", border: `1px solid ${ink}` }}
       onClick={(e) => e.stopPropagation()}
       {...(prKey && wp.writing ? attach.dropProps : {})}
       onKeyDown={(e) => {
@@ -246,55 +250,41 @@ export function CommentComposer({
         } else onSubmit(body.trim());
       }}
     >
-      {/* Title, then the formatting controls; on the narrow floating box the
-          controls drop to a second line rather than squeeze the file name. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pr-8 pt-2 text-2xs">
-        <span className={`flex min-w-0 items-center gap-2 ${floating ? "flex-auto" : "flex-1"}`}>
-          <span className="flex-none font-medium" style={{ color: ink }}>
-            {reply ? "Reply" : forAgent ? "Note for agent" : "New comment"}
+      {/* Floating, the box is away from its line: one line says what is
+          being written and where. In place under the line that is plain,
+          so there is only the way out, in the corner. */}
+      {floating ? (
+        <div className="flex items-center gap-2 px-3 pt-2 text-2xs">
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <span className="flex-none font-medium" style={{ color: ink }}>
+              {reply ? "Reply" : forAgent ? "Note for agent" : "New comment"}
+            </span>
+            <span className="min-w-0 truncate" style={{ color: "var(--fg-faint)" }}>
+              {reply ? `${where} · ` : null}
+              <span className="font-mono" data-testid="composer-anchor">
+                {target.file}
+                {fileLevel ? "" : `:${lines}`}
+              </span>
+            </span>
           </span>
-          <span className="min-w-0 truncate" style={{ color: "var(--fg-faint)" }}>
-            {floating ? (
-              <>
-                {reply ? `${where} · ` : null}
-                <span className="font-mono" data-testid="composer-anchor">
-                  {target.file}
-                  {fileLevel ? "" : `:${lines}`}
-                </span>
-              </>
-            ) : (
-              where
-            )}
-          </span>
+          <DiscardButton onClick={cancel} />
+        </div>
+      ) : (
+        <span className="absolute right-1.5 top-1.5 z-10">
+          <DiscardButton onClick={cancel} />
         </span>
-        {/* The floating box is narrow: the audience switch goes icon-only and
-            the controls wrap instead of running past the edge. */}
-        <span className="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-1.5">
-          {onAudienceChange && !reply ? (
-            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="composer-audience" compact={floating} />
-          ) : null}
-          <FormatToolbar fmt={fmt} disabled={!wp.writing} testId="composer-format" />
-          <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} />
-        </span>
-        <button
-          type="button"
-          className="absolute right-2 top-2 rounded p-1 hover:bg-[var(--bg-hover)]"
-          onClick={cancel}
-          data-tip="Discard"
-          data-tip-key="esc"
-          aria-label="Discard"
-          style={{ color: "var(--fg-faint)" }}
-        >
-          <IconClose width={10} height={10} />
-        </button>
-      </div>
+      )}
       <textarea
         ref={ref}
         rows={3}
-        className="block w-full resize-none bg-transparent px-3 py-1.5 text-[13px] leading-[20px] outline-none"
+        className={`block w-full resize-none bg-transparent px-3 text-[13px] leading-[20px] outline-none ${floating ? "py-1.5" : "py-2 pr-9"}`}
         style={{ color: "var(--fg)", display: wp.writing ? undefined : "none" }}
         data-testid="composer-textarea"
-        placeholder={reply ? "Reply…" : fileLevel ? "Comment on this file…" : ranged ? "Comment on these lines…" : "Comment on this line…"}
+        placeholder={
+          reply
+            ? `Reply ${target.replyTo ? `to ${target.replyTo}` : "to the thread"}…`
+            : `${forAgent ? "Note for the agent on" : "Comment on"} ${fileLevel ? "this file" : `${ranged ? "lines" : "line"} ${lines}`}…`
+        }
         value={body}
         onChange={(e) => setBody(e.target.value)}
         onKeyDown={fmt.onKeyDown}
@@ -320,14 +310,29 @@ export function CommentComposer({
           {error}
         </p>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
-        {floating ? null : (
-          <span className="hidden text-2xs sm:inline" style={{ color: "var(--fg-faint)" }}>
-            markdown · <kbd>⌘↵</kbd> save{onSendToChat ? <> · <kbd>⌘⇧↵</kbd> ask chat</> : null}
-          </span>
-        )}
+      {settings.composerFormatting ? (
+        <div className="border-t px-2 py-1" style={{ borderColor: "var(--border)" }}>
+          <FormatRow fmt={fmt} disabled={!wp.writing} testId="composer-format" />
+        </div>
+      ) : null}
+      {/* Wraps instead of overflowing: the tools on the left, the ways out on
+          the right, each with its keys where there is room for them. */}
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
+        <FormattingToggle
+          open={settings.composerFormatting}
+          onToggle={() => updateSettings({ composerFormatting: !settings.composerFormatting })}
+          testId="composer-format-toggle"
+        />
+        {/* An emoji is not formatting: it stays out from behind Aa. */}
+        <EmojiPicker onPick={fmt.insert} disabled={!wp.writing} testId="composer-format-emoji" />
         {prKey ? <AttachButton editor={attach} testId="composer-attach" disabled={!wp.writing} /> : null}
+        <SuggestButton fmt={fmt} disabled={!wp.writing} testId="composer-format-suggestion" />
+        <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} />
         <span className="ml-auto flex items-center gap-1.5">
+          {/* Who it is for, in words, beside the button that saves it. */}
+          {onAudienceChange && !reply ? (
+            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="composer-audience" compact={floating} />
+          ) : null}
           {exportCtx ? (
             <CopyForAgentButton
               iconOnly
@@ -366,6 +371,7 @@ export function CommentComposer({
             >
               <IconChat width={11} height={11} />
               {chatBusy ? "queue for chat" : "ask chat"}
+              {floating ? null : <KeyHint keys="⌘⇧↵" />}
             </button>
           ) : null}
           <button
@@ -380,10 +386,36 @@ export function CommentComposer({
             onClick={() => onSubmit(body.trim())}
           >
             {pending ? "saving…" : forAgent ? "save note" : "save draft"}
+            {floating ? null : <KeyHint keys="⌘↵" />}
           </button>
         </span>
       </div>
     </div>
+  );
+}
+
+/** A button's chord, on the button: quiet, and only where the box has room. */
+function KeyHint({ keys }: { keys: string }) {
+  return (
+    <span aria-hidden className="hidden font-mono text-2xs font-normal opacity-70 sm:inline">
+      {keys}
+    </span>
+  );
+}
+
+function DiscardButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="flex-none rounded p-1 hover:bg-[var(--bg-hover)]"
+      onClick={onClick}
+      data-tip="Discard"
+      data-tip-key="esc"
+      aria-label="Discard"
+      style={{ color: "var(--fg-faint)" }}
+    >
+      <IconClose width={10} height={10} />
+    </button>
   );
 }
 
@@ -660,7 +692,7 @@ export function CommentBody({
       }}
     >
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
-        <FormatToolbar fmt={fmt} disabled={!wp.writing} testId={`format-${comment.id}`} />
+        <SuggestButton fmt={fmt} disabled={!wp.writing} testId={`format-${comment.id}-suggestion`} />
         <WritePreviewToggle mode={wp.mode} onChange={wp.setMode} testId={`mode-${comment.id}`} />
       </div>
       <textarea
@@ -845,42 +877,17 @@ export function DraftsDrawer({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="comments-panel">
-      <div className="flex-none border-b px-3 py-2" style={{ borderColor: "var(--border)" }}>
-        <div className="flex items-center gap-2">
-          {/* Only the stages that hold something; nothing at all says nothing. */}
-          <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-            {[
-              local.length ? `${local.length} draft` : "",
-              pushed.length ? `${pushed.length} pushed` : "",
-              submitted.length ? `${submitted.length} submitted` : "",
-              notes.length ? `${notes.length} for agent` : "",
-              threadCount ? `${threadCount} on GitHub` : "",
-            ]
-              .filter(Boolean)
-              .join(" · ")}
-          </span>
-          <span className="ml-auto flex items-center gap-2">
-            {github ? (
-              <ThreadFilterMenu
-                compact
-                filters={github.filters}
-                threads={github.threads}
-                posts={github.posts}
-                hidden={github.hidden}
-                onShowResolved={github.onShowResolved}
-                onShowAiReviewers={github.onShowAiReviewers}
-                onBotHidden={github.onBotHidden}
-              />
-            ) : null}
-          </span>
+      {/* One line: who a new comment is for. The counts are on the tab and on
+          each group; the thread filters are in the view options. */}
+      {onAudienceChange ? (
+        <div
+          className="flex flex-none items-center gap-2 border-b px-3 py-2 text-2xs"
+          style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
+        >
+          <span>New comments go to</span>
+          <AudienceSwitch value={audience} onChange={onAudienceChange} testId="drawer-audience" />
         </div>
-        {onAudienceChange ? (
-          <div className="mt-1.5 flex items-center gap-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
-            <span>New comments are for</span>
-            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="drawer-audience" />
-          </div>
-        ) : null}
-      </div>
+      ) : null}
       {chatDeleted.length ? (
         <ul className="flex-none border-b" style={{ borderColor: "var(--border)" }}>
           {chatDeleted.map((d) => (
@@ -917,7 +924,7 @@ export function DraftsDrawer({
           ))}
         </ul>
       ) : null}
-      <div className="flex-1 overflow-auto">
+      <div className="quiet-scroll flex-1 overflow-auto">
         {drafts.length === 0 && threadCount === 0 ? (
           <p className="p-3 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
             No comments yet. Hover a diff line and press the + button to write one, or use the
@@ -929,9 +936,10 @@ export function DraftsDrawer({
               <section data-testid="drawer-section-github" className="flex flex-col gap-2.5">
                 <DrawerSectionTitle
                   ink="var(--accent)"
+                  icon={<IconGithub width={12} height={12} />}
                   title="For GitHub"
                   count={forGithub.length}
-                  hint="your review"
+                  hint="Your review"
                 />
                 {(
                   [
@@ -943,15 +951,12 @@ export function DraftsDrawer({
                   .filter(([, , list]) => list.length)
                   .map(([title, hint, list]) => (
                     <section key={title} data-testid={`drawer-group-${title.toLowerCase()}`}>
-                      <h4 className="mb-1.5 flex items-baseline gap-1.5 px-0.5 text-2xs">
+                      <h4 className="mb-1.5 flex items-baseline gap-1.5 px-0.5 text-2xs" data-tip={hint}>
                         <span className="font-medium" style={{ color: "var(--fg-muted)" }}>
                           {title}
                         </span>
                         <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
                           {list.length}
-                        </span>
-                        <span className="truncate" style={{ color: "var(--fg-faint)" }}>
-                          · {hint}
                         </span>
                       </h4>
                       {cards(list)}
@@ -974,9 +979,10 @@ export function DraftsDrawer({
               <section data-testid="drawer-section-agent" className="flex flex-col gap-2">
                 <DrawerSectionTitle
                   ink="var(--agent)"
+                  icon={<IconSparkles width={12} height={12} />}
                   title="For agent"
                   count={notes.length}
-                  hint="never sent to GitHub"
+                  hint="Never sent to GitHub"
                 />
                 {bundle ? (
                   <div className="flex flex-wrap items-center gap-1.5 px-0.5">
@@ -1014,17 +1020,30 @@ export function DraftsDrawer({
   );
 }
 
-function DrawerSectionTitle({ ink, title, count, hint }: { ink: string; title: string; count: number; hint: string }) {
+/** A drawer section's title, in its audience's colour; its hint is on hover. */
+function DrawerSectionTitle({
+  ink,
+  icon,
+  title,
+  count,
+  hint,
+}: {
+  ink: string;
+  icon: ReactNode;
+  title: string;
+  count: number;
+  hint: string;
+}) {
   return (
-    <h3 className="flex items-baseline gap-1.5 px-0.5 text-xs">
+    <h3 className="flex items-center gap-1.5 px-0.5 text-xs" data-tip={hint}>
+      <span className="flex flex-none" style={{ color: ink }}>
+        {icon}
+      </span>
       <span className="font-semibold" style={{ color: ink }}>
         {title}
       </span>
       <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
         {count}
-      </span>
-      <span className="truncate text-2xs" style={{ color: "var(--fg-faint)" }}>
-        · {hint}
       </span>
     </h3>
   );
@@ -1036,8 +1055,6 @@ export interface DrawerThreads extends ReactionActions {
   /** authors of the PR's reviews and conversation comments (post-only bots) */
   posts?: readonly RemoteAuthor[];
   filters: ThreadFilters;
-  /** how many threads the filters hide in the diff */
-  hidden: number;
   onShowResolved: (v: boolean) => void;
   onShowAiReviewers: (v: boolean) => void;
   onBotHidden: (key: string, hidden: boolean) => void;
