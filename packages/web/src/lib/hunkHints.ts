@@ -11,9 +11,14 @@ import type { FileEntry, Hunk } from "../api/types";
  * generated.ts), which the analysis reads the same facts from.
  */
 
-const DOCS_PATH_RE = /(\.mdx?$|\.rst$|\.txt$|(^|\/)docs\/)/i;
+const DOCS_PATH_RE = /(\.mdx?$|\.rst$|(^|\/)docs\/|(^|\/)(readme|license|notice|changelog|contributing)[^/]*\.txt$)/i;
+/** Text a program ships (prompts, templates): it runs, so it is not documentation. */
+const SHIPPED_TEXT_RE =
+  /^(?!\.)(?!.*(^|\/)(README|AGENTS|CLAUDE)\.md$)(?!(.*\/)?docs\/)(.*\/)?(prompts?|templates?|assets?|skills)\/.*\.(mdx?|txt)$/;
+const EVALS_PATH_RE = /(^|\/)evals?\//;
+const ENCODED_BLOB_RE = /\.(b64|base64)$/;
 const TESTS_PATH_RE =
-  /(_test\.go$|\.test\.|\.spec\.|(^|\/)__tests__\/|(^|\/)testdata\/|(^|\/)tests\/|(^|\/)fixtures\/)/;
+  /(_test\.go$|\.test\.|\.spec\.|(^|\/)__tests__\/|(^|\/)testdata\/|(^|\/)(tests?|e2e|spec|__mocks__|integration[-_]?tests?)\/|(^|\/)fixtures\/)/;
 const SNAP_PATH_RE = /((^|\/)__snapshots__\/|\.snap$|(^|\/)golden\/)/;
 const MIG_PATH_RE = /((^|\/)migrations\/.*\.sql$|(^|\/)migrations\/)/;
 const GEN_TEXT_RE = /(Code generated|DO NOT EDIT|@generated)/;
@@ -28,11 +33,13 @@ export type HunkHint = "tests" | "docs" | "snapshot" | "migration" | "generated"
 export function fileHint(file: Pick<FileEntry, "path" | "generated">): HunkHint | null {
   const p = file.path;
   if (file.generated?.source === "lockfile") return "lockfile";
-  if (file.generated) return "generated";
+  if (file.generated || ENCODED_BLOB_RE.test(p)) return "generated";
   if (SNAP_PATH_RE.test(p)) return "snapshot";
   if (MIG_PATH_RE.test(p)) return "migration";
   if (TESTS_PATH_RE.test(p)) return "tests";
+  if (SHIPPED_TEXT_RE.test(p)) return null;
   if (DOCS_PATH_RE.test(p)) return "docs";
+  if (EVALS_PATH_RE.test(p)) return "tests";
   return null;
 }
 
