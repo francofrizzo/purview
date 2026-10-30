@@ -79,7 +79,7 @@ export function UnitFindings({ unitId, findings }: { unitId: string; findings: F
   ].filter(Boolean);
 
   return (
-    <div className="mt-1.5 max-w-4xl text-xs" data-testid="unit-findings" data-expanded={expanded}>
+    <div className="text-xs" data-testid="unit-findings" data-expanded={expanded}>
       <button
         type="button"
         data-testid="findings-toggle"

@@ -11,6 +11,11 @@ import {
 } from "./settings";
 
 describe("parseSettings", () => {
+  it("moves a saved 304 px sidebar, the old default, to the new one; a dragged width stays", () => {
+    expect(parseSettings({ sidebarWidth: 304 }).sidebarWidth).toBe(DEFAULT_SETTINGS.sidebarWidth);
+    expect(parseSettings({ sidebarWidth: 420 }).sidebarWidth).toBe(420);
+  });
+
   it("returns the defaults for missing or unusable input", () => {
     expect(parseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(parseSettings(undefined)).toEqual(DEFAULT_SETTINGS);

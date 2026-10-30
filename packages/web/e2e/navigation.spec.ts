@@ -88,9 +88,55 @@ test("V marks the whole unit viewed and moves on", async ({ page }) => {
   await page.keyboard.press("Shift+KeyV");
   // The unit is done, so the view advances to the next one in sidebar order.
   await expect(page.getByTestId("unit-header")).not.toContainText(UNITS.reconcile.slice(0, 30));
-  // The sidebar row is the button that holds the title; its progress reads full.
-  const row = page.locator("nav button", { hasText: UNITS.reconcile }).first();
-  await expect(row).toContainText("4/4");
+  // The row's own box reads fully viewed.
+  await expect(page.getByTestId("unit-viewed-ledger-reconciliation")).toHaveAttribute("aria-checked", "true");
+});
+
+test("a unit's box marks it all viewed from its row, and unmarks it", async ({ page }) => {
+  const box = page.getByTestId("unit-viewed-transient-retry-backoff");
+  // Retry has one of its two hunks viewed in the fixture.
+  await expect(box).toHaveAttribute("aria-checked", "mixed");
+  await box.click();
+  await expect(box).toHaveAttribute("aria-checked", "true");
+  // Not the open unit: marking it does not move the reader.
+  await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile.slice(0, 30));
+  await box.click();
+  await expect(box).toHaveAttribute("aria-checked", "false");
+});
+
+test("a risk is on a row where it changes what the reader does: any on a skim, an uncommon one on a must-read", async ({ page }) => {
+  // The reconciliation unit is a skim that makes an external call: worth knowing before skimming it.
+  await expect(page.getByTestId("unit-risk-ledger-reconciliation")).toHaveText("external call");
+  await expect(page.getByTestId("unit-risk-ledger-reconciliation")).toHaveAttribute("data-tip", "Skim, but a risk surface: external call");
+  // A must-read unit shows a risk only when it sets the unit apart: money is
+  // on one unit of this PR, not most (a flag most units share stays off, see lib/risks.ts).
+  await expect(page.getByTestId("unit-risk-idempotent-charge-path")).toHaveText("money");
+  await expect(page.getByTestId("unit-risk-idempotent-charge-path")).toHaveAttribute("data-tip", /Sets this unit apart/);
+});
+
+test("a second click on the open unit folds its brief to the row, and another opens it", async ({ page }) => {
+  const row = page.getByTestId("unit-row-ledger-reconciliation");
+  await expect(page.getByTestId("unit-brief")).toBeVisible();
+  await row.click();
+  await expect(page.getByTestId("unit-brief")).toHaveCount(0);
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  // Still the open unit: the diff did not move.
+  await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile.slice(0, 30));
+  await row.click();
+  await expect(page.getByTestId("unit-brief")).toBeVisible();
+  // Folded, then another unit: it opens with its brief.
+  await row.click();
+  await openUnit(page, UNITS.charge);
+  await expect(page.getByTestId("unit-brief")).toBeVisible();
+});
+
+test("the brief cites its unit in the chat and moves it to another group", async ({ page }) => {
+  const brief = page.getByTestId("unit-brief");
+  await brief.getByTestId("cite-unit-ledger-reconciliation").click();
+  await expect(page.getByTestId("chat-panel").or(page.getByTestId("floating-chat")).first()).toBeVisible();
+  await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile.slice(0, 30));
+  await page.getByTestId("move-unit-must-read").click();
+  await expect(page.getByTestId("group-must-read").locator("xpath=..")).toContainText(UNITS.reconcile.slice(0, 30));
 });
 
 test("the revision menu lights up what a revision changed", async ({ page }) => {

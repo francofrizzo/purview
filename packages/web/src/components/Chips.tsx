@@ -11,7 +11,6 @@ import type {
   ReviewDecision,
   ReviewEffort,
   ReviewRequest,
-  RiskFlag,
 } from "../api/types";
 import { Link } from "react-router-dom";
 import { formatMustReadLines } from "../lib/prList";
@@ -25,7 +24,7 @@ import {
 import { useSettings } from "../lib/settings";
 import { useNow } from "../lib/useNow";
 import type { StackedOnLink } from "../lib/stacked";
-import { IconArrowDown, IconBolt, IconCheck, IconEye, IconWarning, IconWeight, RISK_META } from "./icons";
+import { IconArrowDown, IconBolt, IconCheck, IconEye, IconWarning, IconWeight } from "./icons";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
 // distinguishable — and coherent with the syntax colors — on every theme.
@@ -330,30 +329,6 @@ export function EffortChip({ effort }: { effort?: ReviewEffort | null }) {
   );
 }
 
-/**
- * One quiet chip for a unit's whole risk surface, instead of a row of
- * per-flag icons: the icons read as alarms and needed a hover each to decode.
- * The full variant names the flags; `compact` (sidebar rows) shows a count
- * and leaves the names to the tooltip.
- */
-export function RiskFlags({ flags, compact }: { flags: RiskFlag[]; compact?: boolean }) {
-  if (!flags?.length) return null;
-  const labels = flags.map((f) => RISK_META[f]?.label ?? f);
-  const one = labels.length === 1;
-  return (
-    <span
-      className="chip"
-      data-testid="risk-chip"
-      data-tip={`Risk surface${one ? "" : "s"}: ${labels.join(", ")}`}
-      style={{ color: "var(--risk)", background: "var(--risk-soft)" }}
-    >
-      {compact
-        ? `${labels.length} risk${one ? "" : "s"}`
-        : `risk${one ? "" : "s"}: ${labels.join(" + ")}`}
-    </span>
-  );
-}
-
 export function ChangedBadge({ tip, testId, onClick }: { tip?: string; testId?: string; onClick?: () => void }) {
   const content = "changed";
   const cls = "chip";
@@ -369,23 +344,6 @@ export function ChangedBadge({ tip, testId, onClick }: { tip?: string; testId?: 
     <button type="button" className={cls} style={style} onClick={onClick}>
       {content}
     </button>
-  );
-}
-
-/**
- * `Progress` once anything is viewed; before that, just the size ("12 hunks"),
- * so an untouched list is not a column of empty bars.
- */
-export function HunkProgress({ viewed, total }: { viewed: number; total: number }) {
-  if (viewed > 0) return <Progress viewed={viewed} total={total} />;
-  return (
-    <span
-      className="text-2xs tabular-nums"
-      style={{ color: "var(--fg-faint)" }}
-      data-tip={`0 of ${total} hunks viewed`}
-    >
-      {total} {total === 1 ? "hunk" : "hunks"}
-    </span>
   );
 }
 
@@ -419,6 +377,54 @@ export function Progress({ viewed, total, stacked = false }: { viewed: number; t
         {viewed}/{total}
       </span>
     </span>
+  );
+}
+
+/** A whole unit's viewed box, the same as a file's and a hunk's: a dash while partly read. */
+export function ViewedBox({
+  state,
+  onToggle,
+  tip,
+  testId,
+  kbd,
+  busy = false,
+}: {
+  state: "none" | "some" | "all";
+  onToggle: () => void;
+  tip: string;
+  testId?: string;
+  kbd?: string;
+  /** a save is in flight: the box already shows its outcome, so it only refuses a second click */
+  busy?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={state === "all" ? "true" : state === "some" ? "mixed" : "false"}
+      aria-label={tip}
+      aria-busy={busy || undefined}
+      disabled={busy}
+      data-tip={busy ? "Marking…" : tip}
+      data-tip-key={kbd}
+      data-testid={testId}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
+      style={{
+        borderColor: state === "none" ? "var(--border-strong)" : "var(--ok)",
+        background: state === "all" ? "var(--ok)" : "transparent",
+        color: state === "all" ? "var(--bg)" : "var(--ok)",
+      }}
+    >
+      {state === "all" ? (
+        <IconCheck width={11} height={11} />
+      ) : state === "some" ? (
+        <span className="block h-0.5 w-2 rounded-full" style={{ background: "var(--ok)" }} />
+      ) : null}
+    </button>
   );
 }
 

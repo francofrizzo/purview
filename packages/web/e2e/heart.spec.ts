@@ -7,7 +7,7 @@ import { openPr } from "./helpers";
 const HEART = ["a1b2c3d4e5f60003", "a1b2c3d4e5f60001"];
 const SUPPORT = "a1b2c3d4e5f60005";
 
-test("heart hunks are marked, counted in the sidebar, and h/H walk them", async ({ page }) => {
+test("heart hunks are marked, and h/H walk them", async ({ page }) => {
   await openPr(page);
   // An open heart hunk: the header carries no mark; the captions and the
   // segment rows do. A folded one (0001, read) folds its captions with its
@@ -21,9 +21,6 @@ test("heart hunks are marked, counted in the sidebar, and h/H walk them", async 
   await expect(page.getByTestId(`hunk-header-${SUPPORT}`).locator("xpath=..")).not.toHaveAttribute("data-heart", "true");
   await expect(page.getByTestId(`hunk-heart-${SUPPORT}`)).toHaveCount(0);
 
-  await expect(page.getByTestId("unit-heart-idempotent-charge-path")).toHaveText("2");
-  await expect(page.getByTestId("unit-heart-transient-retry-backoff")).toHaveText("1");
-  await expect(page.getByTestId("unit-heart-wiring-and-docs")).toHaveCount(0);
 
   // The unit opens on its first unviewed hunk (0003, the first heart; 0001
   // is viewed). h walks the heart segments: 0001 has two, so it takes two
