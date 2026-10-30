@@ -364,7 +364,7 @@ export function PrView() {
   const [report, setReport] = useState<MigrationReport | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitReviewResult | null>(null);
-  // "import analysis…" is two steps: a file is picked and parsed (armed, not
+  // "import analysis from file…" is two steps: a file is picked and parsed (armed, not
   // yet sent), then explicitly confirmed — it replaces the current analysis.
   const [pendingImport, setPendingImport] = useState<{ filename: string; envelope: unknown } | null>(
     null,
@@ -894,6 +894,7 @@ export function PrView() {
         jumpToDiffHunk(fileHunk.id, c.file, { fileComments: true, threadId: c.threadId });
         return;
       }
+      setOverview(false);
       setTab("files");
       setSelectedPath(c.file);
     },
@@ -1525,10 +1526,12 @@ export function PrView() {
               description={description}
               reviews={threadsQuery.data?.reviews}
               conversation={threadsQuery.data?.conversation}
+              threads={threadsQuery.data?.threads}
               filters={threadFilters.filters}
               revisions={revisionContext}
               onOpenUnit={openUnitFromText}
               onOpenFile={openFileFromText}
+              onJumpToThread={(t) => jumpToComment({ file: t.path, line: t.line, side: t.side, threadId: t.id })}
             />
           </CodeLinkContext.Provider>
         ) : tab === "units" ? (

@@ -142,6 +142,13 @@ test("a unit in the overview opens in the Guide", async ({ page }) => {
   await expect(page.getByTestId("unit-header")).toBeVisible();
 });
 
+test("a review's inline comments jump from the overview to the diff", async ({ page }) => {
+  await page.keyboard.press("s");
+  await page.getByTestId("pr-reviews").getByTestId("verdict-inline-jump").first().click();
+  await expect(page.getByTestId("overview")).toHaveCount(0);
+  await expect(page.locator("[data-diff-scroller]")).toBeVisible();
+});
+
 test("V marks the whole unit viewed and moves on", async ({ page }) => {
   await page.mouse.move(5, 5);
   await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile.slice(0, 30));

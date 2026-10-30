@@ -136,12 +136,21 @@ function GithubLink({ url, what }: { url: string; what: string }) {
   );
 }
 
-function TimelineItem({ entry, revisions }: { entry: TimelineEntry; revisions?: RevisionContext }) {
+function TimelineItem({
+  entry,
+  revisions,
+  threads,
+  onJumpToThread,
+}: {
+  entry: TimelineEntry;
+  revisions?: RevisionContext;
+  threads: RemoteThread[];
+  onJumpToThread: (thread: RemoteThread) => void;
+}) {
   const who = authorLabel(entry);
   const body = entryBody(entry);
   const when = age(entry.at);
   const review = entry.kind === "review" ? entry.review : null;
-  const inline = review?.commentCount ?? 0;
   const edited = entry.kind === "comment" && entry.comment.updatedAt && entry.comment.updatedAt !== entry.comment.createdAt;
   const url = review ? review.url : entry.kind === "comment" ? entry.comment.url : "";
   // A verdict on code that has since moved says so: still true, but not
@@ -160,11 +169,7 @@ function TimelineItem({ entry, revisions }: { entry: TimelineEntry; revisions?: 
           · edited
         </span>
       ) : null}
-      {inline > 0 ? (
-        <span className="flex-none tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="review-inline-count">
-          · {inline} inline {inline === 1 ? "comment" : "comments"}
-        </span>
-      ) : null}
+      {review && review.commentCount > 0 ? <InlineCommentsJump review={review} threads={threads} onJump={onJumpToThread} lead /> : null}
       {stale ? (
         <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-testid="review-revision">
           · {stale}
@@ -214,11 +219,16 @@ export function ReviewTimeline({
   entries,
   hidden,
   revisions,
+  threads = [],
+  onJumpToThread,
 }: {
   entries: TimelineEntry[];
   hidden: number;
   /** to say which revision a verdict was given on */
   revisions?: RevisionContext;
+  /** a review's inline comments jump to these in the diff */
+  threads?: RemoteThread[];
+  onJumpToThread: (thread: RemoteThread) => void;
 }) {
   return (
     <div data-testid="review-timeline">
@@ -231,7 +241,7 @@ export function ReviewTimeline({
             style={{ background: "var(--border)" }}
           />
           {entries.map((e) => (
-            <TimelineItem key={`${e.kind}:${e.id}`} entry={e} revisions={revisions} />
+            <TimelineItem key={`${e.kind}:${e.id}`} entry={e} revisions={revisions} threads={threads} onJumpToThread={onJumpToThread} />
           ))}
         </ol>
       ) : null}

@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import type { Concept, PrDetail, RemoteConversationComment, RemoteReview, ReviewUnit } from "../api/types";
+import type { Concept, PrDetail, RemoteConversationComment, RemoteReview, RemoteThread, ReviewUnit } from "../api/types";
 import { unitProgress } from "../lib/diffModel";
 import { workUnits } from "../lib/generated";
 import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/reviews";
@@ -28,21 +28,25 @@ export function Overview({
   description,
   reviews,
   conversation,
+  threads,
   filters,
   revisions,
   onOpenUnit,
   onOpenFile,
+  onJumpToThread,
 }: {
   detail: PrDetail;
   summary: string;
   description: string;
   reviews?: RemoteReview[];
   conversation?: RemoteConversationComment[];
+  threads?: RemoteThread[];
   filters?: ThreadFilters;
   revisions?: RevisionContext;
   onOpenUnit: (unitId: string) => void;
   /** a file in the tree opens in the Files view */
   onOpenFile: (path: string) => void;
+  onJumpToThread: (thread: RemoteThread) => void;
 }) {
   const { meta, state } = detail;
   const ordered = useMemo(() => unitDisplayOrder(state.units), [state.units]);
@@ -230,7 +234,13 @@ export function Overview({
             <SectionHead title="Reviews">
               <ReviewerVerdicts verdicts={verdicts} />
             </SectionHead>
-            <ReviewTimeline entries={timeline.entries} hidden={timeline.hidden} revisions={revisions} />
+            <ReviewTimeline
+              entries={timeline.entries}
+              hidden={timeline.hidden}
+              revisions={revisions}
+              threads={threads}
+              onJumpToThread={onJumpToThread}
+            />
           </section>
         ) : null}
       </div>
