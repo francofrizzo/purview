@@ -7,7 +7,7 @@
  * predicates.
  */
 
-import { isSignificantLine, type MoveCounterpart } from "./moveDetection";
+import { isSignificantLine, type MoveRun } from "./moveDetection";
 
 /** One row's standing for a particular fold kind, in row-space order (a
  *  hunk's unified line index, or its split pair index — whichever the
@@ -112,7 +112,7 @@ export interface MoveCandidate {
   /** a candidate whose row cannot be hidden — in split mode, the other half
    *  of its pair is a real, unmoved line. It still belongs to its run, so
    *  the run is found whole; but a run holding one never folds (see
-   *  {@link moveFoldRegions}). */
+   *  {@link moveFoldRegions}): it keeps its band, with nothing to fold. */
   blocked?: boolean;
 }
 
@@ -177,10 +177,10 @@ export interface SplitPairShape {
  * long as the *other* side is empty or itself moved. When the other side is
  * a real, non-moved line, the pair is still a candidate — the run must be
  * found whole — but a `blocked` one: hiding that pair would hide a real
- * change, so {@link moveFoldRegions} drops the whole run instead of folding
- * around the pair. All or nothing: a moved block in split mode gets one
- * band or none, never a band for half of it with the other half showing.
- * Its rows keep their moved tint either way.
+ * change, so {@link moveFoldRegions} never folds the run instead of folding
+ * around the pair. All or nothing: a moved block in split mode folds whole
+ * or not at all, never half of it with the other half showing. Its band
+ * and its rows' moved tint stay either way.
  */
 export function splitMoveCandidates(
   pairs: readonly SplitPairShape[],
@@ -216,6 +216,58 @@ export function splitMoveCandidates(
 
 export const MIN_FOLD_LENGTH = 4;
 
+/** Where a moved block's lines are at the other end of the move. */
+export interface MoveTarget {
+  path: string;
+  hunkId: string;
+  /** the side they are read on there: new ("RIGHT") for code that left this
+   *  hunk, old ("LEFT") for code that arrived in it */
+  side: "LEFT" | "RIGHT";
+  /** first and last line there, inclusive; absent when they can't be read */
+  lines?: [number, number];
+}
+
+/** Line numbers, at the other end, of a run's `there` indexes (see
+ *  lib/diffModel.ts's `contentLineNumbers`). */
+export type LocateMoved = (hunkId: string, side: "LEFT" | "RIGHT", idx: readonly number[]) => [number, number] | undefined;
+
+/**
+ * The other ends of the `kind` runs, one per hunk, in the order the runs were
+ * found. With `here`, only runs with at least one line it accepts count: the
+ * runs a fold region actually holds.
+ */
+export function moveTargets(
+  runs: readonly MoveRun[],
+  kind: "in" | "out",
+  locate?: LocateMoved,
+  here?: (contentIdx: number) => boolean,
+): MoveTarget[] {
+  const side = kind === "out" ? "RIGHT" : "LEFT";
+  const byHunk = new Map<string, { path: string; there: number[] }>();
+  for (const run of runs) {
+    if (run.direction !== kind || (here && !run.here.some(here))) continue;
+    const at = byHunk.get(run.hunkId);
+    if (at) at.there.push(...run.there);
+    else byHunk.set(run.hunkId, { path: run.path, there: [...run.there] });
+  }
+  return [...byHunk].map(([hunkId, { path, there }]) => {
+    const lines = locate?.(hunkId, side, there);
+    return lines ? { path, hunkId, side, lines } : { path, hunkId, side };
+  });
+}
+
+/** `src/a.ts:12–19`, `src/a.ts:12`, or the bare path when the lines are unknown. */
+export function targetLines(t: Pick<MoveTarget, "lines">): string {
+  if (!t.lines) return "";
+  const [a, b] = t.lines;
+  return a === b ? `${a}` : `${a}–${b}`;
+}
+
+export function targetLabel(t: MoveTarget, path = t.path): string {
+  const lines = targetLines(t);
+  return lines ? `${path}:${lines}` : path;
+}
+
 export interface MoveFoldRegion {
   /** stable across a unified/split switch — keyed by the moved-content index
    *  space (removedIdx/addedIdx), not by row position */
@@ -225,30 +277,39 @@ export interface MoveFoldRegion {
   from: number;
   to: number;
   hidden: number;
-  /** never folds — something inside needs to stay visible */
+  /** never folds — something inside needs to stay visible, or (split mode)
+   *  a row of it faces a real line; its band still shows */
   exempt: boolean;
   label: string;
-  /** moved-content index (removedIdx/addedIdx space) of the run's first row */
+  /** moved-content index (removedIdx/addedIdx space) of the run's first and
+   *  last row, inclusive */
   contentFrom: number;
+  contentTo: number;
+  /** where these lines are at the other end, first one first */
+  targets: MoveTarget[];
 }
 
-/** One label per fold direction, naming the counterpart file(s) the way the
- *  hunk header's own "moved" badge does, just spelled out in full. */
-export function foldLabel(kind: "in" | "out", hidden: number, counterparts: MoveCounterpart[]): string {
-  const paths = [...new Set(counterparts.filter((c) => c.direction === kind).map((c) => c.path))];
+/** One label per fold direction, naming where the lines went (or came from):
+ *  the file and lines there, or how many files when they split up. */
+export function foldLabel(kind: "in" | "out", hidden: number, targets: readonly MoveTarget[]): string {
+  const paths = [...new Set(targets.map((t) => t.path))];
   const noun = hidden === 1 ? "line" : "lines";
   const verb = kind === "in" ? "from" : "to";
-  const where =
-    paths.length === 0 ? "" : paths.length === 1 ? ` ${verb} ${paths[0]}` : ` ${verb} ${paths.length} files`;
+  let where = "";
+  if (paths.length > 1) where = ` ${verb} ${paths.length} files`;
+  else if (paths.length === 1) {
+    const ranges = targets.map(targetLines).filter(Boolean);
+    where = ` ${verb} ${paths[0]}${ranges.length ? `:${ranges.join(", ")}` : ""}`;
+  }
   return `${hidden} ${noun} moved${where}`;
 }
 
 /**
  * Candidates (from {@link unifiedMoveCandidates} or {@link splitMoveCandidates})
  * plus a parallel exemption flag per row, folded down into the regions the
- * diff pane renders a placeholder for. A run with a `blocked` candidate in
- * it (split mode: a pair whose other half is a real line) yields no region
- * at all — the block can't fold whole, so it doesn't fold in part either.
+ * diff pane draws a band for. A run with a `blocked` candidate in it (split
+ * mode: a pair whose other half is a real line) can't fold whole, so it
+ * doesn't fold in part either: its region is exempt.
  */
 export function moveFoldRegions(params: {
   hunkId: string;
@@ -256,44 +317,36 @@ export function moveFoldRegions(params: {
   candidates: MoveCandidate[];
   /** same length as `candidates`; true where that row must stay visible */
   exempt: boolean[];
-  counterparts: MoveCounterpart[];
+  runs: readonly MoveRun[];
+  locate?: LocateMoved;
   minLength?: number;
 }): MoveFoldRegion[] {
-  const { hunkId, kind, candidates, exempt, counterparts, minLength = MIN_FOLD_LENGTH } = params;
+  const { hunkId, kind, candidates, exempt, runs, locate, minLength = MIN_FOLD_LENGTH } = params;
   const slots: FoldSlot[] = candidates.map((c, i) => ({
     candidate: c.candidate,
     exempt: exempt[i] === true,
     bridge: c.bridge,
   }));
-  const runs = computeFoldRuns(slots, minLength).filter(
-    (run) => !candidates.slice(run.from, run.to).some((c) => c.blocked),
-  );
-  return runs.map((run) => {
+  return computeFoldRuns(slots, minLength).map((run) => {
     const hidden = run.to - run.from;
+    const inside = candidates.slice(run.from, run.to);
+    const content = new Set(inside.flatMap((c) => (c.candidate && c.contentIdx !== undefined ? [c.contentIdx] : [])));
     const contentFrom = candidates[run.from].contentIdx ?? run.from;
+    const contentTo = candidates[run.to - 1].contentIdx ?? contentFrom;
+    const targets = moveTargets(runs, kind, locate, (i) => content.has(i));
     return {
       key: `${hunkId}:${kind}:${contentFrom}`,
       kind,
       from: run.from,
       to: run.to,
       hidden,
-      exempt: run.exempt,
-      label: foldLabel(kind, hidden, counterparts),
+      exempt: run.exempt || inside.some((c) => c.blocked),
+      label: foldLabel(kind, hidden, targets),
       contentFrom,
+      contentTo,
+      targets,
     };
   });
-}
-
-/** The counterpart a fold band of this `kind` can jump to: the first one in
- *  the move's direction whose hunk is in the pane right now (`liveHunkIds`).
- *  Same reachability rule as the hunk header's "moved" badge — a counterpart
- *  shown in another unit is named in the label but offers no jump. */
-export function reachableCounterpart(
-  counterparts: readonly MoveCounterpart[],
-  kind: "in" | "out",
-  liveHunkIds: ReadonlySet<string>,
-): MoveCounterpart | undefined {
-  return counterparts.find((c) => c.direction === kind && liveHunkIds.has(c.hunkId));
 }
 
 /* ------------------------------------------------ open / folded state */
@@ -307,24 +360,41 @@ export function foldRegionHunkId(regionKey: string): string {
   return kindSep === -1 ? regionKey : regionKey.slice(0, kindSep);
 }
 
-/** Is this region currently hidden behind its placeholder? Exempt regions
- *  never fold; everything else folds unless the reader opened it. */
-export function isFoldRegionFolded(region: MoveFoldRegion, opened: ReadonlySet<string>): boolean {
-  return !region.exempt && !opened.has(region.key);
+/** Is this region currently hidden behind its band? `flipped` holds the
+ *  regions the reader set against the default (`foldByDefault`, the
+ *  "Moved blocks" setting). Exempt regions never fold. */
+export function isFoldRegionFolded(
+  region: MoveFoldRegion,
+  flipped: ReadonlySet<string>,
+  foldByDefault: boolean,
+): boolean {
+  return !region.exempt && flipped.has(region.key) !== foldByDefault;
 }
 
-/** Flip one region between opened and folded. Takes the *region* key (see
+/** Flip one region against the default. Takes the *region* key (see
  *  {@link MoveFoldRegion.key}) — never a rendered row's key, which carries a
  *  `fold:` prefix and would never match on read. */
-export function toggleOpenedFoldRegion(opened: ReadonlySet<string>, regionKey: string): ReadonlySet<string> {
-  const next = new Set(opened);
+export function toggleFoldRegionKey(flipped: ReadonlySet<string>, regionKey: string): ReadonlySet<string> {
+  const next = new Set(flipped);
   if (next.has(regionKey)) next.delete(regionKey);
   else next.add(regionKey);
   return next;
 }
 
-/** The placeholder a folded region renders as. `key` is the virtualizer row
- *  key; `regionKey` is what open/fold state is keyed by. */
+/** `flipped` with one region set folded or open, whatever it was. */
+export function setFoldRegionFolded(
+  flipped: ReadonlySet<string>,
+  regionKey: string,
+  folded: boolean,
+  foldByDefault: boolean,
+): ReadonlySet<string> {
+  const flip = folded !== foldByDefault;
+  if (flipped.has(regionKey) === flip) return flipped;
+  return toggleFoldRegionKey(flipped, regionKey);
+}
+
+/** The band a region renders as, folded or open. `key` is the virtualizer
+ *  row key; `regionKey` is what fold state is keyed by. */
 export interface FoldPlaceholder {
   key: string;
   regionKey: string;
@@ -333,9 +403,14 @@ export interface FoldPlaceholder {
   to: number;
   label: string;
   hidden: number;
+  /** hiding its rows (the band stands in for them) or above them */
+  folded: boolean;
+  /** never folds: the band names the move and offers no toggle */
+  exempt: boolean;
+  targets: MoveTarget[];
 }
 
-export function foldPlaceholder(region: MoveFoldRegion): FoldPlaceholder {
+export function foldPlaceholder(region: MoveFoldRegion, folded: boolean): FoldPlaceholder {
   return {
     key: `fold:${region.key}`,
     regionKey: region.key,
@@ -344,30 +419,25 @@ export function foldPlaceholder(region: MoveFoldRegion): FoldPlaceholder {
     to: region.to,
     label: region.label,
     hidden: region.hidden,
+    folded,
+    exempt: region.exempt,
+    targets: region.targets,
   };
 }
 
 /**
- * Per hunk, by row-space start index: which regions are folded (render a
- * placeholder there and skip to `to`) and which are manually opened (render
- * rows as normal, with a "fold back up" control on the first one). Exempt
- * regions appear in neither — they can't fold, so there's nothing to offer.
+ * Per hunk, by row-space start index: the regions whose band goes there,
+ * moved-out first. Every region has one, folded or not; a folded one also
+ * stands in for its rows up to `to`.
  */
-export function foldStartsFor(
-  regions: readonly MoveFoldRegion[],
-  opened: ReadonlySet<string>,
-): { folded: Map<number, MoveFoldRegion>; opened: Map<number, MoveFoldRegion> } {
-  const folded = new Map<number, MoveFoldRegion>();
-  const open = new Map<number, MoveFoldRegion>();
-  for (const region of regions) {
-    if (region.exempt) continue;
-    if (opened.has(region.key)) open.set(region.from, region);
-    else folded.set(region.from, region);
-  }
-  return { folded, opened: open };
+export function foldBandsAt(regions: readonly MoveFoldRegion[]): Map<number, MoveFoldRegion[]> {
+  const at = new Map<number, MoveFoldRegion[]>();
+  for (const region of regions) at.set(region.from, [...(at.get(region.from) ?? []), region]);
+  for (const list of at.values()) list.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "out" ? -1 : 1));
+  return at;
 }
 
-/** Regions the reader can no longer see have no business holding open state —
+/** Regions the reader can no longer see have no business holding fold state —
  *  same idiom as hunkCollapse.ts's `pruneCollapsed`, keyed by the hunk id a
  *  region's key is prefixed with. */
 export function pruneOpenedFoldRegions(

@@ -203,6 +203,20 @@ export function buildMoveIndex(hunk: Hunk, diffText: string): MoveIndex {
   return index;
 }
 
+/**
+ * The line number each entry of the hunk's `removedLines` ("LEFT": old side)
+ * or `addedLines` ("RIGHT": new side) sits on — the same index space as
+ * {@link MoveIndex}, turned into something a reader can look up.
+ */
+export function contentLineNumbers(hunk: Hunk, diffText: string, side: "LEFT" | "RIGHT"): number[] {
+  const out: number[] = [];
+  for (const row of buildRows(hunk, diffText)) {
+    if (side === "LEFT" && row.type === "del" && row.oldNumber !== undefined) out.push(row.oldNumber);
+    else if (side === "RIGHT" && row.type === "add" && row.newNumber !== undefined) out.push(row.newNumber);
+  }
+  return out;
+}
+
 /** One side of a side-by-side row. `null` is a filler cell (nothing there). */
 export interface SplitCell {
   row: DiffRow;

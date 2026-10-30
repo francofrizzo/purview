@@ -2159,6 +2159,7 @@ export function PrView() {
               onDefinitionClick={handleDefinitionClick}
               isDefinedInDiff={isDefinedInDiff}
               jumpToHunk={jumpToHunk}
+              onJumpToLine={jumpToDiffHunk}
               heart={heart}
               skip={skip}
               labels={labels}

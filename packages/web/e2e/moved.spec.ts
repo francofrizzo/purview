@@ -22,39 +22,51 @@ test.beforeEach(async ({ page }) => {
   await openUnit(page, UNIT);
 });
 
-test("both ends of the move fold behind one band each, naming the other file", async ({ page }) => {
+test("each end of the move has a band naming the file and lines at the other end, open by default", async ({ page }) => {
   const out = page.getByTestId(band(OUT_REGION));
   const into = page.getByTestId(band(IN_REGION));
   // One band per end: the blank context line inside the old block is bridged,
   // so the two halves there do not get a band each.
-  await expect(out).toHaveText(/^8 lines moved to src\/billing\/report\.ts/);
-  await expect(into).toHaveText(/^8 lines moved from src\/billing\/reconcileReport\.ts/);
+  await expect(out).toHaveText(/^8 lines moved to src\/billing\/report\.ts:3–10/);
+  await expect(into).toHaveText(/^8 lines moved from src\/billing\/reconcileReport\.ts:3–10/);
   await expect(page.locator('[data-testid^="fold-fold:"]')).toHaveCount(2);
-  // Folded, no moved row is on screen yet.
-  await expect(movedRows(page, "del")).toHaveCount(0);
-  await expect(movedRows(page, "add")).toHaveCount(0);
+  await expect(out).toHaveAttribute("aria-expanded", "true");
+  // Open: the moved rows sit under their bands.
+  await expect(movedRows(page, "del")).toHaveCount(7);
+  await expect(movedRows(page, "add")).toHaveCount(8);
+  // The header badge names the other end's lines too.
+  await expect(page.getByTestId(`moved-badge-${OUT}`)).toHaveText("moved → report.ts:3–10");
+  await expect(page.getByTestId(`moved-badge-${IN}`)).toHaveText("moved ← reconcileReport.ts:3–10");
 });
 
-test("clicking a band expands it: the rows carry the moved tint, and the fold control folds them back up", async ({ page }) => {
-  await page.getByTestId(band(OUT_REGION)).click();
-  // 7 removed lines, tinted as moved; the bridged blank line is context.
-  await expect(movedRows(page, "del")).toHaveCount(7);
-  await expect(page.getByTestId(band(OUT_REGION))).toHaveCount(0);
-  const refold = page.getByTestId(`refold-${OUT_REGION}`);
-  await expect(refold).toBeVisible();
-  await refold.click();
-  await expect(page.getByTestId(band(OUT_REGION))).toBeVisible();
+test("the band stays above the block: clicking it folds the rows away, and again brings them back", async ({ page }) => {
+  const out = page.getByTestId(band(OUT_REGION));
+  await out.click();
+  await expect(out).toHaveAttribute("aria-expanded", "false");
   await expect(movedRows(page, "del")).toHaveCount(0);
+  await out.click();
+  await expect(out).toBeVisible();
+  await expect(out).toHaveAttribute("aria-expanded", "true");
+  await expect(movedRows(page, "del")).toHaveCount(7);
+});
 
-  // The other end: the same, in violet on the added side.
-  await page.getByTestId(band(IN_REGION)).click();
+test("with Moved blocks set to fold shut, blocks open folded and the band opens them", async ({ page }) => {
+  await page.addInitScript(() => {
+    const raw = localStorage.getItem("reviewer.settings");
+    localStorage.setItem("reviewer.settings", JSON.stringify({ ...(raw ? JSON.parse(raw) : {}), foldMovedBlocks: true }));
+  });
+  await page.reload();
+  await openUnit(page, UNIT);
+  const into = page.getByTestId(band(IN_REGION));
+  await expect(into).toHaveAttribute("aria-expanded", "false");
+  await expect(movedRows(page, "del")).toHaveCount(0);
+  await expect(movedRows(page, "add")).toHaveCount(0);
+  await into.click();
   await expect(movedRows(page, "add")).toHaveCount(8);
-  await expect(page.getByTestId(`refold-${IN_REGION}`)).toBeVisible();
+  await expect(into).toHaveAttribute("aria-expanded", "true");
 });
 
 test("a moved row keeps its side's tint, faded, and swaps +/- for a direction arrow", async ({ page }) => {
-  await page.getByTestId(band(OUT_REGION)).click();
-  await page.getByTestId(band(IN_REGION)).click();
   const bg = (loc: ReturnType<typeof movedRows>) =>
     loc.first().evaluate((el) => getComputedStyle(el).backgroundColor);
   const alpha = (rgba: string) => Number(rgba.match(/[\d.]+(?=\)$)/)?.[0] ?? 1);
@@ -73,36 +85,43 @@ test("a moved row keeps its side's tint, faded, and swaps +/- for a direction ar
   await expect(movedRows(page, "del").locator(".intra")).toHaveCount(0);
 });
 
-test("the band's \"go to\" lands on the other end of the move", async ({ page }) => {
+test("the band's \"go to\" lands on the other end's first line, folded or not", async ({ page }) => {
   await expect(hunkHeader(page, OUT)).toHaveAttribute("data-focused", "true");
   const go = page.getByTestId(jump(OUT_REGION));
-  await expect(go).toContainText("go to report.ts");
+  await expect(go).toContainText("go to report.ts:3–10");
   await go.click();
   await expect(hunkHeader(page, IN)).toHaveAttribute("data-focused", "true");
-  // The jump is its own control: the band it sits on is still folded.
-  await expect(page.getByTestId(band(OUT_REGION))).toBeVisible();
+  await expect(page.locator('[data-flash="true"]')).toContainText("function formatMismatch");
 
-  // and back, from the moved-in band
+  // and back, from the moved-in band, onto the removed line, even with
+  // that block folded
+  await page.getByTestId(band(OUT_REGION)).click();
+  await expect(movedRows(page, "del")).toHaveCount(0);
   await page.getByTestId(jump(IN_REGION)).click();
   await expect(hunkHeader(page, OUT)).toHaveAttribute("data-focused", "true");
+  await expect(movedRows(page, "del")).toHaveCount(7);
+  await expect(page.locator('[data-flash="true"]')).toContainText("function formatMismatch");
 });
 
-test("Enter on the focused band expands it", async ({ page }) => {
+test("Enter on the focused band folds it", async ({ page }) => {
   await page.getByTestId(band(IN_REGION)).focus();
   await page.keyboard.press("Enter");
-  await expect(movedRows(page, "add")).toHaveCount(8);
+  await expect(movedRows(page, "add")).toHaveCount(0);
 });
 
-test("split view: a block folds only when the whole run can — the one facing a real line stays open", async ({ page }) => {
+test("split view: a block that can't fold whole keeps its band, with nothing to fold", async ({ page }) => {
   await page.keyboard.press("d");
   await expect(page.getByTestId("view-split").first()).toHaveAttribute("aria-pressed", "true");
   // The new file's block faces nothing on the left: it folds, whole.
-  await expect(page.getByTestId(band(IN_REGION))).toHaveText(/^8 lines moved from/);
-  // In the old file the second half pairs with the re-export, a real line:
-  // no band at all for that block, not one for the first half either, and
-  // its rows stay tinted as moved.
-  await expect(page.getByTestId(band(OUT_REGION))).toHaveCount(0);
-  await expect(page.locator('[data-testid^="fold-fold:"]')).toHaveCount(1);
-  await expect(movedRows(page, "del")).toHaveCount(7);
+  const into = page.getByTestId(band(IN_REGION));
+  await expect(into).toHaveText(/^8 lines moved from/);
+  await into.click();
   await expect(movedRows(page, "add")).toHaveCount(0);
+  // In the old file the second half pairs with the re-export, a real line:
+  // its band names the move but is no toggle, and its rows stay in view.
+  const out = page.getByTestId(band(OUT_REGION));
+  await expect(out).toHaveText(/^8 lines moved to src\/billing\/report\.ts:3–10/);
+  await expect(out).not.toHaveAttribute("aria-expanded", /.*/);
+  await out.click();
+  await expect(movedRows(page, "del")).toHaveCount(7);
 });

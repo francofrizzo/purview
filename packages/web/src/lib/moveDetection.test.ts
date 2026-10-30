@@ -49,6 +49,19 @@ describe("detectMoves", () => {
     expect(toMoves.counterparts).toEqual([{ path: "src/old.ts", hunkId: from.id, direction: "in" }]);
   });
 
+  it("records each run with the lines it covers at both ends", () => {
+    const from = mkHunk("src/old.ts", [], ["  unrelated removal here", ...BLOCK]);
+    const to = mkHunk("src/new.ts", ["  brand new line of code", "", ...BLOCK], []);
+    const moves = detectMoves([mkFile("src/old.ts", [from]), mkFile("src/new.ts", [to])]);
+
+    expect(moves.get(from.id)!.runs).toEqual([
+      { path: "src/new.ts", hunkId: to.id, direction: "out", here: [1, 2, 3, 4, 5], there: [2, 3, 4, 5, 6] },
+    ]);
+    expect(moves.get(to.id)!.runs).toEqual([
+      { path: "src/old.ts", hunkId: from.id, direction: "in", here: [2, 3, 4, 5, 6], there: [1, 2, 3, 4, 5] },
+    ]);
+  });
+
   it("pairs a move within one file between two hunks", () => {
     const from = mkHunk("src/a.ts", [], BLOCK);
     const to = mkHunk("src/a.ts", BLOCK, []);

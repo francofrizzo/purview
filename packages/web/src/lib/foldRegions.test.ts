@@ -1,20 +1,24 @@
 import { describe, expect, it } from "vitest";
-import type { MoveCounterpart } from "./moveDetection";
+import type { MoveRun } from "./moveDetection";
 import {
   computeFoldRuns,
+  foldBandsAt,
   foldLabel,
   foldPlaceholder,
   foldRegionHunkId,
-  foldStartsFor,
   isFoldRegionFolded,
-  toggleOpenedFoldRegion,
   moveFoldRegions,
+  moveTargets,
   pruneOpenedFoldRegions,
-  reachableCounterpart,
+  setFoldRegionFolded,
   splitMoveCandidates,
+  targetLabel,
+  toggleFoldRegionKey,
   unifiedMoveCandidates,
   type FoldSlot,
+  type LocateMoved,
   type MoveCandidate,
+  type MoveTarget,
 } from "./foldRegions";
 
 const candidate = (exempt = false): FoldSlot => ({ candidate: true, exempt });
@@ -226,42 +230,72 @@ describe("splitMoveCandidates", () => {
 });
 
 describe("foldLabel", () => {
-  const oneIn: MoveCounterpart[] = [
-    { path: "internal/browser/manager.go", hunkId: "h1", direction: "in" },
+  const at = (path: string, lines?: [number, number], hunkId = "h"): MoveTarget =>
+    lines ? { path, hunkId, side: "RIGHT", lines } : { path, hunkId, side: "RIGHT" };
+
+  it("names the file and the lines at the other end", () => {
+    expect(foldLabel("in", 39, [at("internal/browser/manager.go", [120, 158])])).toBe(
+      "39 lines moved from internal/browser/manager.go:120–158",
+    );
+    expect(foldLabel("out", 39, [at("sandbox_runtime.go", [12, 50])])).toBe("39 lines moved to sandbox_runtime.go:12–50");
+  });
+
+  it("a single line is one number, and unknown lines leave the bare path", () => {
+    expect(foldLabel("out", 1, [at("a.go", [7, 7])])).toBe("1 line moved to a.go:7");
+    expect(foldLabel("out", 5, [at("a.go")])).toBe("5 lines moved to a.go");
+  });
+
+  it("two places in one file list both ranges", () => {
+    expect(foldLabel("in", 9, [at("a.go", [1, 4], "h1"), at("a.go", [30, 34], "h2")])).toBe(
+      "9 lines moved from a.go:1–4, 30–34",
+    );
+  });
+
+  it("summarizes several files by count instead of listing them", () => {
+    expect(foldLabel("in", 12, [at("a.go", [1, 6]), at("b.go", [2, 7])])).toBe("12 lines moved from 2 files");
+  });
+
+  it("says only that it moved when there is no other end", () => {
+    expect(foldLabel("in", 4, [])).toBe("4 lines moved");
+  });
+});
+
+describe("moveTargets", () => {
+  const runs: MoveRun[] = [
+    { path: "src/new.ts", hunkId: "hN", direction: "out", here: [0, 1, 2], there: [10, 11, 12] },
+    { path: "src/new.ts", hunkId: "hN", direction: "out", here: [5, 6, 7], there: [20, 21, 22] },
+    { path: "src/old.ts", hunkId: "hO", direction: "in", here: [0, 1, 2], there: [3, 4, 5] },
   ];
-  const oneOut: MoveCounterpart[] = [{ path: "sandbox_runtime.go", hunkId: "h2", direction: "out" }];
-  const twoIn: MoveCounterpart[] = [
-    { path: "a.go", hunkId: "h1", direction: "in" },
-    { path: "b.go", hunkId: "h2", direction: "in" },
-  ];
+  // line = 100 + content index on the new side, 500 + on the old
+  const locate: LocateMoved = (_hunkId, side, idx) => {
+    const base = side === "RIGHT" ? 100 : 500;
+    return [base + Math.min(...idx), base + Math.max(...idx)];
+  };
 
-  it("names the single counterpart for a moved-in region", () => {
-    expect(foldLabel("in", 39, oneIn)).toBe("39 lines moved from internal/browser/manager.go");
+  it("one target per other hunk, its lines spanning every run that went there", () => {
+    expect(moveTargets(runs, "out", locate)).toEqual([
+      { path: "src/new.ts", hunkId: "hN", side: "RIGHT", lines: [110, 122] },
+    ]);
   });
 
-  it("names the single counterpart for a moved-out region", () => {
-    expect(foldLabel("out", 39, oneOut)).toBe("39 lines moved to sandbox_runtime.go");
+  it("code that arrived is read on the old side there", () => {
+    expect(moveTargets(runs, "in", locate)).toEqual([{ path: "src/old.ts", hunkId: "hO", side: "LEFT", lines: [503, 505] }]);
   });
 
-  it("summarizes several counterparts by count instead of listing them", () => {
-    expect(foldLabel("in", 12, twoIn)).toBe("12 lines moved from 2 files");
+  it("with `here`, only the runs a region holds count", () => {
+    expect(moveTargets(runs, "out", locate, (i) => i >= 5)).toEqual([
+      { path: "src/new.ts", hunkId: "hN", side: "RIGHT", lines: [120, 122] },
+    ]);
   });
 
-  it("singularizes 'line' for a one-line region", () => {
-    expect(foldLabel("in", 1, oneIn)).toBe("1 line moved from internal/browser/manager.go");
+  it("without a locator the lines are left out", () => {
+    expect(moveTargets(runs, "in")).toEqual([{ path: "src/old.ts", hunkId: "hO", side: "LEFT" }]);
   });
 
-  it("dedupes two counterparts that share a path", () => {
-    const dup: MoveCounterpart[] = [
-      { path: "a.go", hunkId: "h1", direction: "in" },
-      { path: "a.go", hunkId: "h2", direction: "in" },
-    ];
-    expect(foldLabel("in", 5, dup)).toBe("5 lines moved from a.go");
-  });
-
-  it("ignores counterparts of the other direction", () => {
-    const mixed: MoveCounterpart[] = [...oneIn, ...oneOut];
-    expect(foldLabel("in", 5, mixed)).toBe("5 lines moved from internal/browser/manager.go");
+  it("targetLabel reads path:lines, with the path it is given", () => {
+    const [t] = moveTargets(runs, "out", locate);
+    expect(targetLabel(t)).toBe("src/new.ts:110–122");
+    expect(targetLabel(t, "new.ts")).toBe("new.ts:110–122");
   });
 });
 
@@ -278,7 +312,8 @@ describe("moveFoldRegions", () => {
       kind: "in",
       candidates,
       exempt: [false, false, false, false],
-      counterparts: [{ path: "src/a.go", hunkId: "h0", direction: "in" }],
+      runs: [{ path: "src/a.go", hunkId: "h0", direction: "in", here: [5, 6, 7, 8], there: [0, 1, 2, 3] }],
+      locate: () => [40, 43],
     });
     expect(regions).toEqual([
       {
@@ -288,8 +323,10 @@ describe("moveFoldRegions", () => {
         to: 4,
         hidden: 4,
         exempt: false,
-        label: "4 lines moved from src/a.go",
+        label: "4 lines moved from src/a.go:40–43",
         contentFrom: 5,
+        contentTo: 8,
+        targets: [{ path: "src/a.go", hunkId: "h0", side: "LEFT", lines: [40, 43] }],
       },
     ]);
   });
@@ -311,7 +348,7 @@ describe("moveFoldRegions", () => {
       kind: "in",
       candidates,
       exempt: candidates.map(() => false),
-      counterparts: [],
+      runs: [],
     });
     expect(region.key).toBe("h1:in:5");
   });
@@ -328,12 +365,12 @@ describe("moveFoldRegions", () => {
       kind: "out",
       candidates,
       exempt: [false, true, false, false],
-      counterparts: [],
+      runs: [],
     });
     expect(region.exempt).toBe(true);
   });
 
-  it("split mode: a run with one blocked pair gets no band at all, not two half bands", () => {
+  it("split mode: a run with one blocked pair keeps one band that never folds, not two half bands", () => {
     // Six moved-out rows; the third pairs with a real added line on the right.
     // Before, that pair broke the run into 2 + 3 (neither long enough here,
     // but with a longer block: a band above the pair, rows, a band below).
@@ -352,9 +389,9 @@ describe("moveFoldRegions", () => {
       kind: "out",
       candidates,
       exempt: candidates.map(() => false),
-      counterparts: [],
+      runs: [],
     });
-    expect(regions).toEqual([]);
+    expect(regions.map((r) => [r.key, r.from, r.to, r.exempt])).toEqual([["h1:out:0", 0, 8, true]]);
   });
 
   it("split mode: a blocked pair in one run leaves a separate, whole run foldable", () => {
@@ -370,9 +407,12 @@ describe("moveFoldRegions", () => {
       kind: "in",
       candidates,
       exempt: candidates.map(() => false),
-      counterparts: [],
+      runs: [],
     });
-    expect(regions.map((r) => r.key)).toEqual(["h1:in:10"]);
+    expect(regions.map((r) => [r.key, r.exempt])).toEqual([
+      ["h1:in:0", true],
+      ["h1:in:10", false],
+    ]);
   });
 
   it("drops a run shorter than the minimum fold length", () => {
@@ -386,7 +426,7 @@ describe("moveFoldRegions", () => {
       kind: "in",
       candidates,
       exempt: [false, false, false],
-      counterparts: [],
+      runs: [],
     });
     expect(regions).toEqual([]);
   });
@@ -404,49 +444,55 @@ describe("pruneOpenedFoldRegions", () => {
   });
 });
 
-describe("folding and unfolding a region through its placeholder", () => {
-  // Mirrors DiffPane: the rows memo renders a placeholder for every folded
-  // region start, the placeholder's click toggles open state, and the next
-  // rows pass reads that state back by region key.
+describe("folding and unfolding a region through its band", () => {
+  // Mirrors DiffPane: the rows memo draws a band at every region's start,
+  // folded or not; the band's click flips the region against the setting's
+  // default, and the next rows pass reads that back by region key.
   const [region] = moveFoldRegions({
     hunkId: "h1",
     kind: "in",
     candidates: [5, 6, 7, 8].map((contentIdx) => ({ candidate: true, contentIdx })),
     exempt: [false, false, false, false],
-    counterparts: [],
+    runs: [],
   });
 
-  it("expands when the placeholder is clicked (regression: row key vs region key)", () => {
-    let opened: ReadonlySet<string> = new Set();
-    expect(foldStartsFor([region], opened).folded.get(0)).toBe(region);
+  it("follows the default until the reader flips it", () => {
+    expect(isFoldRegionFolded(region, new Set(), false)).toBe(false);
+    expect(isFoldRegionFolded(region, new Set(), true)).toBe(true);
+    expect(isFoldRegionFolded(region, new Set([region.key]), false)).toBe(true);
+    expect(isFoldRegionFolded(region, new Set([region.key]), true)).toBe(false);
+  });
 
-    const placeholder = foldPlaceholder(region);
-    // The row key is the virtualizer's, and differs from the region key —
-    // toggling by it is what left the region folded forever.
-    expect(placeholder.key).not.toBe(region.key);
-    opened = toggleOpenedFoldRegion(opened, placeholder.regionKey);
-
-    expect(isFoldRegionFolded(region, opened)).toBe(false);
-    expect(foldStartsFor([region], opened).folded.size).toBe(0);
-    expect(foldStartsFor([region], opened).opened.get(0)).toBe(region);
+  it("flips by region key, not the band's row key (regression)", () => {
+    const band = foldPlaceholder(region, false);
+    expect(band.key).not.toBe(region.key);
+    const flipped = toggleFoldRegionKey(new Set(), band.regionKey);
+    expect(isFoldRegionFolded(region, flipped, false)).toBe(true);
+    expect(isFoldRegionFolded(region, toggleFoldRegionKey(flipped, band.regionKey), false)).toBe(false);
     // and it survives the pane's prune pass while its hunk is still shown
-    expect(pruneOpenedFoldRegions(opened, ["h1"])).toBe(opened);
+    expect(pruneOpenedFoldRegions(flipped, ["h1"])).toBe(flipped);
   });
 
-  it("folds back up when the opened region's fold control is clicked", () => {
-    let opened: ReadonlySet<string> = toggleOpenedFoldRegion(new Set(), foldPlaceholder(region).regionKey);
-    const [first] = foldStartsFor([region], opened).opened.values();
-    opened = toggleOpenedFoldRegion(opened, first.key);
-    expect(isFoldRegionFolded(region, opened)).toBe(true);
-    expect(foldStartsFor([region], opened).folded.get(0)).toBe(region);
-    expect(foldStartsFor([region], opened).opened.size).toBe(0);
+  it("setFoldRegionFolded lands on the state asked for, whatever the default", () => {
+    for (const byDefault of [false, true]) {
+      for (const folded of [false, true]) {
+        const next = setFoldRegionFolded(new Set(), region.key, folded, byDefault);
+        expect(isFoldRegionFolded(region, next, byDefault)).toBe(folded);
+        expect(setFoldRegionFolded(next, region.key, folded, byDefault)).toBe(next);
+      }
+    }
   });
 
-  it("offers neither a placeholder nor a fold control for an exempt region", () => {
+  it("an exempt region never folds, but still has its band", () => {
     const exempt = { ...region, exempt: true };
-    const starts = foldStartsFor([exempt], new Set([exempt.key]));
-    expect(starts.folded.size).toBe(0);
-    expect(starts.opened.size).toBe(0);
+    expect(isFoldRegionFolded(exempt, new Set(), true)).toBe(false);
+    expect(foldBandsAt([exempt]).get(0)).toEqual([exempt]);
+    expect(foldPlaceholder(exempt, false).exempt).toBe(true);
+  });
+
+  it("bands starting on the same row put the moved-out one first", () => {
+    const out = { ...region, key: "h1:out:0", kind: "out" as const };
+    expect(foldBandsAt([region, out]).get(0)?.map((r) => r.kind)).toEqual(["out", "in"]);
   });
 });
 
@@ -455,27 +501,5 @@ describe("foldRegionHunkId", () => {
     expect(foldRegionHunkId("h1:in:5")).toBe("h1");
     expect(foldRegionHunkId("a:b:out:12")).toBe("a:b");
     expect(pruneOpenedFoldRegions(new Set(["a:b:out:12"]), ["a:b"])).toEqual(new Set(["a:b:out:12"]));
-  });
-});
-
-describe("reachableCounterpart", () => {
-  const counterparts: MoveCounterpart[] = [
-    { path: "src/a.ts", hunkId: "hA", direction: "in" },
-    { path: "src/b.ts", hunkId: "hB", direction: "in" },
-    { path: "src/c.ts", hunkId: "hC", direction: "out" },
-  ];
-
-  it("names the first counterpart in the band's direction that the pane shows", () => {
-    expect(reachableCounterpart(counterparts, "in", new Set(["hB", "hC"]))?.hunkId).toBe("hB");
-    expect(reachableCounterpart(counterparts, "out", new Set(["hB", "hC"]))?.hunkId).toBe("hC");
-  });
-
-  it("offers nothing when every counterpart of that direction is out of the pane", () => {
-    expect(reachableCounterpart(counterparts, "out", new Set(["hA", "hB"]))).toBeUndefined();
-    expect(reachableCounterpart([], "in", new Set(["hA"]))).toBeUndefined();
-  });
-
-  it("never crosses directions: a moved-in band does not jump to where other code went", () => {
-    expect(reachableCounterpart(counterparts, "in", new Set(["hC"]))).toBeUndefined();
   });
 });

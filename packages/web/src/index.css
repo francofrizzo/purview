@@ -443,13 +443,13 @@
     color: color-mix(in srgb, var(--tok) 30%, var(--fg));
   }
 
-  /* Folded moved-code placeholder. Exactly one diff line tall (the
-     virtualizer estimates it as one). It wears the tint of the rows it
-     hides, faded red for a block that left this file and faded green for
-     one that arrived, with a solid edge in that side's colour: found the
-     way a change is, not as chrome. The same edge runs down the rows once
-     the band is opened (see [data-moved] below), so the block still reads
-     as one moved region. */
+  /* Moved-code band, above the block whether it is folded or open. Exactly
+     one diff line tall (the virtualizer estimates it as one). It wears the
+     tint of the rows it stands for, faded red for a block that left this
+     file and faded green for one that arrived, with a solid edge in that
+     side's colour: found the way a change is, not as chrome. The same edge
+     runs down the rows once the block is open (see [data-moved] below), so
+     band and rows read as one moved region. */
   .diff-fold-row {
     --fold-tint: var(--bg-inset);
     --fold-edge: var(--fg-muted);
@@ -470,10 +470,14 @@
     --fold-tint: var(--moved-add-bg);
     --fold-edge: var(--ok);
   }
-  /* The band proper: expands on click, takes every pixel the jump leaves. */
+  /* The band proper: folds or opens on click, takes every pixel the jump
+     leaves. A block that can't fold has a plain label here instead. */
   .diff-fold-row-expand {
     @apply flex min-w-0 flex-1 items-center text-left;
     cursor: pointer;
+  }
+  .diff-fold-row-expand[data-static] {
+    cursor: default;
   }
   /* The trailing "go to": its own control at the band's right edge, muted
      like the header badge; a hover underlines it like a link. */
@@ -512,32 +516,12 @@
   }
   @media (hover: hover) {
     /* the tint laid twice: a clearly darker band, same hue */
-    .diff-fold-row:has(.diff-fold-row-expand:hover) {
+    .diff-fold-row:has(button.diff-fold-row-expand:hover) {
       background-image: linear-gradient(var(--fold-tint), var(--fold-tint));
     }
     .diff-fold-row-expand:hover .diff-fold-row-hint {
       opacity: 1;
     }
-  }
-
-  /* "Fold back up" on the first line of an opened moved-code region: overlaid
-     on the old-number gutter's left edge (numbers are right-aligned there),
-     vertically centred on the first visual line so wrapping can't move it. */
-  .diff-refold {
-    position: absolute;
-    left: 5px;
-    top: calc((var(--code-line-height) - 14px) / 2);
-    @apply flex items-center justify-center;
-    width: 14px;
-    height: 14px;
-    border-radius: 3px;
-    cursor: pointer;
-    color: var(--fg-muted);
-    background: var(--bg-inset);
-  }
-  .diff-refold:hover,
-  .diff-refold:focus-visible {
-    box-shadow: inset 0 0 0 1px currentColor;
   }
 
   /* Cmd/ctrl+click "go to definition" affordance: with the modifier held AND

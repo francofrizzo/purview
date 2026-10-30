@@ -311,20 +311,16 @@ function Gutter({
   selected,
   onSelectDown,
   onSelectEnter,
-  action,
 }: {
   number?: number;
   side: LineSide;
   background: string;
   selected?: boolean;
-  /** overlaid at the gutter's left edge (see `foldAction`) — the gutter sits
-   *  in the pinned column, so it stays put when wrap is off */
-  action?: ReactNode;
 } & Pick<GutterSelectProps, "onSelectDown" | "onSelectEnter">) {
   const interactive = Boolean(onSelectDown && number !== undefined);
   return (
     <span
-      className={`diff-gutter${interactive ? " cursor-pointer select-none" : ""}${action ? " relative" : ""}`}
+      className={`diff-gutter${interactive ? " cursor-pointer select-none" : ""}`}
       style={{
         background: selected ? "var(--accent-soft)" : background,
         color: selected ? "var(--accent)" : undefined,
@@ -342,7 +338,6 @@ function Gutter({
         interactive && onSelectEnter ? () => onSelectEnter(side, number!) : undefined
       }
     >
-      {action}
       {number ?? ""}
     </span>
   );
@@ -385,9 +380,6 @@ export interface DiffLineProps extends GutterSelectProps, LineCommentProps, Remo
   /** true when the line this row's word-level ranges were computed against is
    *  a moved line: the pair was positional, not a real edit, so no highlight */
   pairMoved?: boolean;
-  /** a control overlaid on the gutter — the "fold back up" button on the
-   *  first line of an opened moved-code region */
-  foldAction?: ReactNode;
   /** the highlighted changelog revision introduced this line (see lib/revisionHighlight.ts) */
   changed?: boolean;
   onDefinitionClick?: OnDefinitionClick;
@@ -412,7 +404,6 @@ export const DiffLine = memo(function DiffLine({
   selectedNew,
   moved,
   pairMoved,
-  foldAction,
   changed,
   removedAbove,
   removedBelow,
@@ -447,7 +438,6 @@ export const DiffLine = memo(function DiffLine({
           selected={selectedOld}
           onSelectDown={onSelectDown}
           onSelectEnter={onSelectEnter}
-          action={foldAction}
         />
         <Gutter
           number={row.newNumber}
@@ -496,7 +486,6 @@ export interface SplitHalfProps extends LineCommentProps, RemovalMarkerProps {
   /** true when the line this row's word-level ranges were computed against is
    *  a moved line: the pair was positional, not a real edit, so no highlight */
   pairMoved?: boolean;
-  foldAction?: ReactNode;
   changed?: boolean;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
@@ -521,7 +510,6 @@ function SplitHalf({
   onSelectEnter,
   moved,
   pairMoved,
-  foldAction,
   changed,
   removedAbove,
   removedBelow,
@@ -567,7 +555,6 @@ function SplitHalf({
           selected={selected}
           onSelectDown={onSelectDown}
           onSelectEnter={onSelectEnter}
-          action={foldAction}
         />
         <CommentColumn
           onComment={onComment}
@@ -629,9 +616,6 @@ export interface SplitDiffLineProps {
    */
   movedLeft?: boolean;
   movedRight?: boolean;
-  /** "fold back up" control, on whichever half carries the moved region */
-  foldActionLeft?: ReactNode;
-  foldActionRight?: ReactNode;
   /**
    * "Changed in rN", per side: '-' lines mark on the left, '+' and context
    * lines on the right (a context row is on both sides; it marks only once).
@@ -674,8 +658,6 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   onSelectEnter,
   movedLeft,
   movedRight,
-  foldActionLeft,
-  foldActionRight,
   changedLeft,
   changedRight,
   removedAboveLeft,
@@ -703,7 +685,6 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectEnter={onSelectEnter}
         moved={movedLeft}
         pairMoved={movedRight}
-        foldAction={foldActionLeft}
         changed={changedLeft}
         removedAbove={removedAboveLeft}
         removedBelow={removedBelowLeft}
@@ -729,7 +710,6 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onSelectEnter={onSelectEnter}
         moved={movedRight}
         pairMoved={movedLeft}
-        foldAction={foldActionRight}
         changed={changedRight}
         onDefinitionClick={onDefinitionClick}
         isDefinedInDiff={isDefinedInDiff}

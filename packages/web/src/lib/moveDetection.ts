@@ -5,7 +5,9 @@ import type { FileEntry, Hunk } from "../api/types";
  * algorithm over core's types (the server needs it to describe moves to the
  * analysis prompt), because this package deliberately does not depend on
  * core. The two copies share their behavioral contract through matching test
- * vectors; change one, change both, and keep the constants identical.
+ * vectors; change one, change both, and keep the constants identical. The
+ * per-run pairing (`HunkMoves.runs`) is this copy's own output, for the
+ * diff's "where did it go" line numbers; core has no reader for it.
  *
  * Move detection (git `--color-moved` spirit): a contiguous run of removed
  * lines that reappears, in order, as added lines elsewhere in the same
@@ -41,6 +43,15 @@ export interface MoveCounterpart {
   direction: "out" | "in";
 }
 
+/** One moved run, seen from one of its two ends. */
+export interface MoveRun extends MoveCounterpart {
+  /** this hunk's lines: removedLines indexes for "out", addedLines for "in" */
+  here: number[];
+  /** the same lines at the other end: addedLines indexes of `hunkId` for
+   *  "out", removedLines for "in" */
+  there: number[];
+}
+
 export interface HunkMoves {
   /** indexes into the hunk's removedLines that are part of a moved-out run */
   movedOut: Set<number>;
@@ -48,6 +59,8 @@ export interface HunkMoves {
   movedIn: Set<number>;
   /** counterpart hunks for the badge, deduped, order = first occurrence */
   counterparts: MoveCounterpart[];
+  /** every run, in the order it was found */
+  runs: MoveRun[];
 }
 
 /** A qualifying run needs at least this many *significant* lines (blank and
@@ -207,7 +220,7 @@ export function detectMoves(files: FileEntry[]): Map<string, HunkMoves> {
   const movesFor = (hunkId: string): HunkMoves => {
     let m = result.get(hunkId);
     if (!m) {
-      m = { movedOut: new Set(), movedIn: new Set(), counterparts: [] };
+      m = { movedOut: new Set(), movedIn: new Set(), counterparts: [], runs: [] };
       result.set(hunkId, m);
     }
     return m;
@@ -255,8 +268,22 @@ export function detectMoves(files: FileEntry[]): Map<string, HunkMoves> {
 
       const outMoves = movesFor(from.hunk.id);
       for (const ri of run.removedIdx) outMoves.movedOut.add(ri);
+      outMoves.runs.push({
+        path: candidate.entry.path,
+        hunkId: candidate.entry.hunk.id,
+        direction: "out",
+        here: run.removedIdx,
+        there: run.addedIdx,
+      });
       const inMoves = movesFor(candidate.entry.hunk.id);
       for (const ai of run.addedIdx) inMoves.movedIn.add(ai);
+      inMoves.runs.push({
+        path: from.path,
+        hunkId: from.hunk.id,
+        direction: "in",
+        here: run.addedIdx,
+        there: run.removedIdx,
+      });
 
       addCounterpart(from.hunk.id, {
         path: candidate.entry.path,

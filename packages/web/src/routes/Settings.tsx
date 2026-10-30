@@ -151,6 +151,16 @@ export function SettingsModal() {
               onChange={(v) => update({ foldSkippableHunks: v === "fold" })}
             />
           </Field>
+          <Field label="Moved blocks">
+            <Segmented
+              value={settings.foldMovedBlocks ? "fold" : "open"}
+              options={[
+                { value: "fold", label: "fold shut" },
+                { value: "open", label: "leave open" },
+              ]}
+              onChange={(v) => update({ foldMovedBlocks: v === "fold" })}
+            />
+          </Field>
         </div>
         <p className="mt-2 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
           Folding a viewed hunk clears it out of the way; un-viewing brings it back. You can always
