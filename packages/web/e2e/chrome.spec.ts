@@ -97,14 +97,14 @@ test("the sidebar column resizes by dragging its edge; a double click restores i
   await expect.poll(async () => Math.round((await nav.boundingBox())!.width)).toBe(304);
 });
 
-test("the comment box shows its keys on the buttons, and Aa opens the formatting", async ({ page }) => {
+test("the comment box keeps its keys on the tooltips, and Aa opens the formatting", async ({ page }) => {
   await openPr(page);
   await openUnit(page, UNITS.reconcile);
   await openComposerOnLine(page, 10);
   const ask = page.getByTestId("composer-send-to-chat");
   await expect(ask).toHaveAttribute("aria-label", "Ask the chat");
-  await expect(ask.locator("kbd")).toHaveText("⌘⇧↵");
-  await expect(page.getByTestId("composer-save").locator("kbd")).toHaveText("⌘↵");
+  await expect(ask).toHaveAttribute("data-tip-key", "⌘⇧↵");
+  await expect(page.getByTestId("composer-save")).toHaveAttribute("data-tip-key", "⌘↵");
   await expect(page.getByTestId("copy-composer")).toHaveClass(/\bbtn\b/);
   await expect(page.getByTestId("composer-format-bold")).toHaveCount(0);
   await page.getByTestId("composer-format-toggle").click();

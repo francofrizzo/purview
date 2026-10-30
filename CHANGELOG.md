@@ -7,7 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Comment box layout.** The placeholder names the line and who it's for, the audience switch sits by save, `Aa` opens the formatting, and ask chat and save show their keys. (thanks Canta 🐑)
+- **Comment box layout.** The placeholder names the line and who it's for, the audience switch sits by save, `Aa` opens the formatting, and copy and ask chat are icons. (thanks Canta 🐑)
 - **Comments panel.** Cards show who they're for with a colored frame and icon, actions appear on hover, AI reviewers get an outlined "bot" label, and the header is one line. (thanks Canta 🐑)
 - **Workspace look.** Settings → Workspace sets the PR's panes flat, edge to edge, and side panes show their scrollbar only on hover. (thanks Canta 🐑)
 - **Fix:** flipping the comment audience twice in a row no longer saves a note for the agent as a GitHub draft.

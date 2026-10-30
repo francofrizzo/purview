@@ -129,7 +129,7 @@ test("a save the server refuses says why under the box and keeps the text", asyn
   await expect(page.getByTestId("composer-error")).toContainText("mock failure");
   await expect(composer).toBeVisible();
   await expect(page.getByTestId("composer-textarea")).toHaveValue("this will fail");
-  await expect(page.getByTestId("composer-save")).toContainText("save draft");
+  await expect(page.getByTestId("composer-save")).toHaveText("save draft");
 });
 
 test("a delete the server refuses says so under that card", async ({ page }) => {

@@ -316,7 +316,7 @@ export function CommentComposer({
         </div>
       ) : null}
       {/* Wraps instead of overflowing: the tools on the left, the ways out on
-          the right, each with its keys where there is room for them. */}
+          the right. Shortcuts are on the buttons' tooltips. */}
       <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t px-2 py-1.5" style={{ borderColor: "var(--border)" }}>
         <FormattingToggle
           open={settings.composerFormatting}
@@ -372,7 +372,6 @@ export function CommentComposer({
               onClick={() => onSendToChat(body.trim())}
             >
               <IconChat width={12} height={12} />
-              {floating ? null : <KeyHint keys="⌘⇧↵" />}
             </button>
           ) : null}
           <button
@@ -387,20 +386,10 @@ export function CommentComposer({
             onClick={() => onSubmit(body.trim())}
           >
             {pending ? "saving…" : forAgent ? "save note" : "save draft"}
-            {floating ? null : <KeyHint keys="⌘↵" />}
           </button>
         </span>
       </div>
     </div>
-  );
-}
-
-/** A button's chord, on the button, where the box has room for it. */
-function KeyHint({ keys }: { keys: string }) {
-  return (
-    <kbd aria-hidden className="!hidden sm:!inline-flex">
-      {keys}
-    </kbd>
   );
 }
 
