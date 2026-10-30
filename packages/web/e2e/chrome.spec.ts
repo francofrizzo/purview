@@ -156,16 +156,25 @@ test("the flat workspace is a setting: off, the panes are cards; on, they sit ed
   expect(await margin()).toBe("0px");
 });
 
-test("with no card above the diff, its header starts level with the panes and their inner corners go square", async ({ page }) => {
+test("with no card above the diff, it starts level with the panes and pins to the top when scrolled", async ({ page }) => {
   await openPr(page);
   await page.getByTestId("topbar-comments").click();
   const nav = page.locator(".workspace nav.pane").first();
   const dock = page.getByTestId("right-dock");
   const header = page.locator('[data-testid^="file-header-"]').first();
   const top = async (l: typeof nav) => (await l.boundingBox())!.y;
+  const rule = () => page.locator("main").first().evaluate((el) => getComputedStyle(el, "::before").backgroundImage);
   expect(await top(header)).toBe(await top(nav));
+  expect(await rule()).not.toContain(", linear-gradient");
   await expect(nav).toHaveCSS("border-top-right-radius", "0px");
   await expect(dock).toHaveCSS("border-top-left-radius", "0px");
+
+  await scroller(page).evaluate((el) => el.scrollTo({ top: 60 }));
+  await expect.poll(async () => (await top(page.locator("[data-sticky]").first()))).toBe(await top(page.locator(".workspace")));
+  await expect.poll(rule).toContain(", linear-gradient");
+  await scroller(page).evaluate((el) => el.scrollTo({ top: 0 }));
+  await expect.poll(rule).not.toContain(", linear-gradient");
+
   // The Files view has its card, so the corners stay round.
   await page.getByRole("tab", { name: "Files", exact: true }).click();
   await expect(page.getByTestId("file-header")).toBeVisible();

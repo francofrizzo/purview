@@ -7,7 +7,7 @@ import { workUnits } from "../lib/generated";
 import { commonRiskFlags } from "../lib/risks";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { attentionColor, KindChip, ProgressRing, ViewedBox } from "./Chips";
+import { AttentionIcon, KindChip, ProgressRing, ViewedBox } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { LineDelta, unitFiles } from "./UnitBrief";
 import { UnitChangelog } from "./UnitChangelog";
@@ -170,11 +170,10 @@ export function UnitSidebar({
               style={{ color: "var(--fg-faint)" }}
               data-testid={`group-${g.attention}`}
             >
-              <span
-                className="inline-block h-1.5 w-1.5 flex-none rounded-full"
-                style={{ background: attentionColor(g.attention) }}
-              />
-              {g.label}
+              <AttentionIcon attention={g.attention} />
+              <span className="font-semibold" style={{ color: "var(--fg-muted)" }}>
+                {g.label}
+              </span>
               {hidden > 0 ? (
                 <span data-testid={`hidden-${g.attention}`}>
                   {hiddenHint(hidden)}

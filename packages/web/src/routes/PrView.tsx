@@ -2074,6 +2074,7 @@ export function PrView() {
               onNarrowChange={setNarrow}
               onQuote={quote}
               endOfList={unitEnd}
+              topGutter={tab === "units" && briefInSidebar && !settings.flatWorkspace ? 7 : 0}
               searchMarks={search.marksByLine}
               activeMatch={search.current}
               onScrolledAway={onScrolledAway}

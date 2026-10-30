@@ -234,6 +234,8 @@ export interface DiffPaneProps {
   emptyMessage?: string;
   /** drawn in the room left past the last hunk: what comes after this list */
   endOfList?: ReactNode;
+  /** room above the first row, scrolled away with it: the list starts level with the panes beside it */
+  topGutter?: number;
   /** Quote affordances — omitted, the diff has no chat integration at all. */
   onQuote?: (ref: ChatRef) => void;
   /** Search hits for every row of the whole diff, keyed `hunkId:lineIdx`. */
@@ -383,6 +385,7 @@ export function DiffPane({
   showFileRows = true,
   emptyMessage = "Nothing to show.",
   endOfList,
+  topGutter = 0,
   onQuote,
   searchMarks,
   activeMatch,
@@ -1527,11 +1530,14 @@ export function DiffPane({
     // Room past the last hunk, as editors leave past the last line: without
     // it the last hunks of a unit can never reach the top, so `v`/`j` would
     // leave them wherever the page ran out. `endOfList` is drawn in it.
+    paddingStart: topGutter,
     paddingEnd: tailRoom,
   });
   virtualizerRef.current = virtualizer;
   const fileHeaderHeightRef = useRef(fileHeaderHeight);
   fileHeaderHeightRef.current = fileHeaderHeight;
+  const topGutterRef = useRef(topGutter);
+  topGutterRef.current = topGutter;
 
   /** Scroll offset that puts a hunk's header right under the pinned file header. */
   const hunkTargetOffset = useCallback((id: string): number | null => {
@@ -1540,7 +1546,9 @@ export function DiffPane({
     const m = idx === undefined ? undefined : virtualizerRef.current?.measurementsCache[idx];
     if (!el || !m) return null;
     const max = el.scrollHeight - el.clientHeight;
-    return Math.max(0, Math.min(max, m.start - fileHeaderHeightRef.current));
+    const target = m.start - fileHeaderHeightRef.current;
+    // The first hunk is the top of the list: the gutter above it stays.
+    return target <= topGutterRef.current ? 0 : Math.min(max, target);
   }, []);
 
   // Keyboard moves glide instead of jumping, so the reader sees where they
@@ -1679,9 +1687,11 @@ export function DiffPane({
   const scrollToHunk = useCallback(
     (id: string) => {
       const idx = hunkRowIndex.get(id);
-      if (idx !== undefined) virtualizer.scrollToIndex(idx, { align: "start" });
+      if (idx === undefined) return;
+      if (hunkTargetOffset(id) === 0) virtualizer.scrollToOffset(0);
+      else virtualizer.scrollToIndex(idx, { align: "start" });
     },
-    [hunkRowIndex, virtualizer],
+    [hunkRowIndex, hunkTargetOffset, virtualizer],
   );
   scrollToHunkRef.current = scrollToHunk;
   // The fold `v` waited for has re-laid out the rows: now scroll.
@@ -2646,6 +2656,7 @@ export function DiffPane({
       <div
         ref={scrollRef}
         data-diff-scroller=""
+        data-scrolled={(virtualizer.scrollOffset ?? 0) > 0 ? "true" : undefined}
         // Focusable (not tabbable) so the keyboard has somewhere to land
         // when the composer closes; see the composeKey effect above.
         tabIndex={-1}

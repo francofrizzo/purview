@@ -284,6 +284,16 @@ export function AttentionChip({ attention }: { attention: Attention }) {
   );
 }
 
+/** The same icon and hue as {@link AttentionChip}, without the chip: the sidebar's group names. */
+export function AttentionIcon({ attention }: { attention: Attention }) {
+  const s = ATTENTION_STYLE[attention] ?? ATTENTION_STYLE.skim;
+  return (
+    <span className="flex flex-none" style={{ color: s.color }}>
+      <s.icon width={12} height={12} />
+    </span>
+  );
+}
+
 /** Just the color decision behind {@link AttentionChip}, for callers (e.g. a
  *  hunk header's unit dot) that want the same hue without the whole chip. */
 export function attentionColor(attention: Attention): string {

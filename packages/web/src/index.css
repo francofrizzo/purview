@@ -878,33 +878,18 @@ html[data-mode="light"] .logo-for-light {
   scrollbar-color: var(--border-strong) transparent;
 }
 
-/* No card above the diff (a unit's brief lives in the sidebar): the diff's own
-   header starts level with the side panes, and the corners facing it go
-   square, so the three read as one straight edge. */
-.workspace[data-headerless]:not([data-flat]) main {
-  padding-top: 7px;
-}
-.workspace[data-headerless]:not([data-flat]) main > [data-testid="unit-header"] {
-  border-top: 1px solid var(--border);
-}
-.workspace[data-headerless]:not([data-flat]) nav.pane:not(.elev-3) {
-  border-top-right-radius: 0;
-}
-.workspace[data-headerless]:not([data-flat]) main ~ .pane {
-  border-top-left-radius: 0;
-}
-
-/* The side panes stop a gutter short of the window's bottom edge while the
-   diff runs on, which left their rule beside it unfinished. These finish
-   just those pixels; the pane's own border is the rest of the line. */
+/* The side panes stop a gutter short of the diff's bottom edge, which left
+   their rule beside it unfinished. These finish just those pixels; the pane's
+   own border is the rest of the line. A line the height of the diff, drawn
+   only at its ends. */
 .workspace:not([data-flat]) main::before,
 .workspace:not([data-flat]) main:has(~ .pane)::after {
   content: "";
   position: absolute;
+  top: 0;
   bottom: 0;
   width: 1px;
-  height: 7px;
-  background: var(--border);
+  background: linear-gradient(var(--border), var(--border)) bottom / 1px 7px no-repeat;
   pointer-events: none;
 }
 .workspace:not([data-flat]) main::before {
@@ -912,6 +897,26 @@ html[data-mode="light"] .logo-for-light {
 }
 .workspace:not([data-flat]) main:has(~ .pane)::after {
   right: -1px;
+}
+
+/* No card above the diff (a unit's brief lives in the sidebar). At rest the
+   diff starts level with the panes (DiffPane's topGutter) and the corners
+   facing it go square, one straight edge. Scrolled, its header pins to the
+   top, so the rule is unfinished at that end too; a bar over the diff always
+   sits there. */
+.workspace[data-headerless]:not([data-flat]) nav.pane:not(.elev-3) {
+  border-top-right-radius: 0;
+}
+.workspace[data-headerless]:not([data-flat]) main ~ .pane {
+  border-top-left-radius: 0;
+}
+.workspace[data-headerless]:not([data-flat]) main:has([data-scrolled])::before,
+.workspace[data-headerless]:not([data-flat]) main:has(> [data-testid="unit-header"])::before,
+.workspace[data-headerless]:not([data-flat]) main:has([data-scrolled]):has(~ .pane)::after,
+.workspace[data-headerless]:not([data-flat]) main:has(> [data-testid="unit-header"]):has(~ .pane)::after {
+  background:
+    linear-gradient(var(--border), var(--border)) top / 1px 7px no-repeat,
+    linear-gradient(var(--border), var(--border)) bottom / 1px 7px no-repeat;
 }
 
 /* The flat workspace (Settings → Spacing): the panes lose their desk and
