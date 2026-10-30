@@ -7,12 +7,12 @@
  * units simply appear when it finishes.
  */
 
-import { useCallback, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { FloatingPanel } from "./FloatingPanel";
 import { useAgentName } from "../api/hooks";
 import type { AnalysisJob, AnalysisMetrics } from "../api/types";
 import { capitalized } from "../lib/agentSelection";
-import { IconClose, IconRefresh, IconSpinner, IconStopwatch } from "./icons";
+import { IconClose, IconRefresh, IconSpinner } from "./icons";
 
 const STATUS_TEXT: Record<AnalysisJob["status"], string> = {
   queued: "queued",
@@ -54,54 +54,38 @@ export function analysisStatsRows(m: AnalysisMetrics): [string, string][] {
   return rows;
 }
 
-/**
- * A finished analysis's run stats, behind a small stopwatch trigger in the PR
- * header: there when you want them, silent otherwise. Nothing for a job with
- * no metrics (runs from before they were recorded).
- */
-export function AnalysisStats({ job }: { job?: AnalysisJob | null }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLSpanElement>(null);
+/** A finished analysis's run stats; none for a job from before they were recorded. */
+export function analysisStats(job?: AnalysisJob | null): [string, string][] {
+  return job?.status === "done" && job.metrics ? analysisStatsRows(job.metrics) : [];
+}
 
-  const close = useCallback(() => setOpen(false), []);
-
-  if (job?.status !== "done" || !job.metrics) return null;
-  const rows = analysisStatsRows(job.metrics);
-  if (rows.length === 0) return null;
-
+/** The run stats, opened from the PR's ⋯ menu. */
+export function AnalysisStatsPanel({
+  rows,
+  anchorRef,
+  onClose,
+}: {
+  rows: [string, string][];
+  anchorRef: RefObject<HTMLElement | null>;
+  onClose: () => void;
+}) {
   return (
-    <span ref={wrapRef} className="relative inline-flex flex-none">
-      <button
-        type="button"
-        data-testid="analysis-stats"
-        aria-label="Analysis run stats"
-        aria-expanded={open}
-        data-tip="Analysis run stats"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center"
-        style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
-      >
-        <IconStopwatch width={12} height={12} />
-      </button>
-      {open ? (
-        <FloatingPanel anchorRef={wrapRef} onClose={close} label="Analysis run stats" className="w-60 p-2">
-          <table className="w-full text-2xs tabular-nums">
-            <tbody>
-              {rows.map(([label, value]) => (
-                <tr key={label}>
-                  <td className="py-0.5 pr-3 align-top" style={{ color: "var(--fg-faint)" }}>
-                    {label}
-                  </td>
-                  <td className="py-0.5 text-right" style={{ color: "var(--fg-muted)" }}>
-                    {value}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </FloatingPanel>
-      ) : null}
-    </span>
+    <FloatingPanel anchorRef={anchorRef} onClose={onClose} label="Analysis run stats" className="w-60 p-2">
+      <table className="w-full text-2xs tabular-nums">
+        <tbody>
+          {rows.map(([label, value]) => (
+            <tr key={label}>
+              <td className="py-0.5 pr-3 align-top" style={{ color: "var(--fg-faint)" }}>
+                {label}
+              </td>
+              <td className="py-0.5 text-right" style={{ color: "var(--fg-muted)" }}>
+                {value}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </FloatingPanel>
   );
 }
 

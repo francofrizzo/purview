@@ -5,6 +5,26 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **View options.** The sliders button in the top bar holds the diff layout, line wrapping, skippable folding, read units and GitHub thread filters. (thanks Canta 🐑)
+- **End of a unit.** Past the last hunk, a button marks the unit viewed, opens the next unread unit or finishes the review. (thanks Canta 🐑)
+- **Files in the unit brief.** The "N files" line in a unit's brief opens its files, with lines changed and read state; each row jumps to its file. (thanks Canta 🐑)
+- **File status letters.** A, M, D or R beside a file's name says what the PR did to it, in diff headers, the Files view and a unit's file list.
+- **Resizable sidebar.** Drag the sidebar's right edge to resize it; double-click restores the default width. (thanks Canta 🐑)
+- **Shortcuts window.** `?`, the ⋯ menu or "keyboard shortcuts" in the sidebar opens the shortcuts in a centered window. (thanks Canta 🐑)
+- **Repo beside the title.** The top bar shows `owner/repo#number` next to the PR's title. (thanks Canta 🐑)
+- **Branches under an icon.** The branch icon beside the PR number shows base and head on hover, each with a copy button. (thanks Canta 🐑)
+- **Heart as a row of places.** "Where the logic lives" in the unit brief is one row of file names to jump to; each why is on hover and above its lines in the diff. (thanks Canta 🐑)
+- **New commits on Refresh.** When the PR moved on GitHub, the Refresh button reads "new commits", with the reason on hover. It replaces the bar under the top bar. (thanks Canta 🐑)
+- **Sync and full screen in the ⋯ menu.** Both left the top bar; find them in the PR's ⋯ menu. (thanks Canta 🐑)
+- **Analysis stats in the ⋯ menu.** The run stats left the PR header; open "analysis stats" in the PR's ⋯ menu. (thanks Canta 🐑)
+- **Comment audience outside the top bar.** Press `a` or use the comment box to switch; a "notes for agent" chip shows in agent mode. (thanks Canta 🐑)
+- **Short finding locations.** A finding's places show as file and lines on their own line, with the full path on hover. (thanks Canta 🐑)
+- **Revision menu.** The rev menu shows only on a PR with more than one revision. (thanks Canta 🐑)
+- **Update notice on the home page.** "Update available" no longer shows inside a PR; look for it on the home page. (thanks Canta 🐑)
+- **Chat dot on the panel button.** A pulsing dot on the panel button shows the chat is replying while the panel is closed. (thanks Canta 🐑)
+
 ## 2026.10.30.3
 
 - **Function names in hunk headers.** A hunk's header shows its first line and the function or type it sits in; the raw range and signature are on hover. (thanks Canta 🐑)

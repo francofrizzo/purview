@@ -71,7 +71,7 @@ import {
 import { useTokensForHunks } from "../lib/useHunkTokens";
 import { useSettings, type DiffViewMode } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
-import { attentionColor, ChangedBadge } from "./Chips";
+import { attentionColor, ChangedBadge, FileStatusBadge } from "./Chips";
 import { QuoteButton } from "./ChatPanel";
 import {
   COMMENT_COL_WIDTH,
@@ -94,9 +94,6 @@ import {
   IconHeart,
   IconCopy,
   IconQuote,
-  IconSplit,
-  IconUnified,
-  IconWrap,
 } from "./icons";
 
 export interface HunkEntry {
@@ -235,6 +232,8 @@ export interface DiffPaneProps {
   /** Files tab shows a single file and already names it in the pane header. */
   showFileRows?: boolean;
   emptyMessage?: string;
+  /** drawn in the room left past the last hunk: what comes after this list */
+  endOfList?: ReactNode;
   /** Quote affordances — omitted, the diff has no chat integration at all. */
   onQuote?: (ref: ChatRef) => void;
   /** Search hits for every row of the whole diff, keyed `hunkId:lineIdx`. */
@@ -356,6 +355,9 @@ function findFileRow(rows: FlatRow[], hunkIdx: number): number {
   return -1;
 }
 
+/** Height of the end-of-list block drawn past the last hunk. */
+const END_ROOM = 120;
+
 export function DiffPane({
   detail,
   entries,
@@ -380,6 +382,7 @@ export function DiffPane({
   onNarrowChange,
   showFileRows = true,
   emptyMessage = "Nothing to show.",
+  endOfList,
   onQuote,
   searchMarks,
   activeMatch,
@@ -1488,7 +1491,7 @@ export function DiffPane({
   const lastStart = lastHunkIdx >= 0 ? measured?.[lastHunkIdx]?.start : undefined;
   const contentEnd = measured?.[rows.length - 1]?.end;
   const lastSpan = lastStart !== undefined && contentEnd !== undefined ? contentEnd - lastStart : 0;
-  const tailRoom = Math.max(24, viewportHeight - fileHeaderHeight - lastSpan);
+  const tailRoom = Math.max(endOfList ? END_ROOM : 24, viewportHeight - fileHeaderHeight - lastSpan);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollRef.current,
@@ -1523,7 +1526,7 @@ export function DiffPane({
     scrollPaddingStart: fileHeaderHeight,
     // Room past the last hunk, as editors leave past the last line: without
     // it the last hunks of a unit can never reach the top, so `v`/`j` would
-    // leave them wherever the page ran out.
+    // leave them wherever the page ran out. `endOfList` is drawn in it.
     paddingEnd: tailRoom,
   });
   virtualizerRef.current = virtualizer;
@@ -2670,6 +2673,15 @@ export function DiffPane({
             className="pointer-events-none absolute left-0 top-0 w-full"
             style={{ height: EXPAND_UNDER }}
           />
+          {endOfList && rows.length ? (
+            <div
+              className="absolute left-0"
+              style={{ top: virtualizer.getTotalSize() - tailRoom, width: scrollRef.current?.clientWidth ?? "100%" }}
+              data-testid="end-of-list"
+            >
+              {endOfList}
+            </div>
+          ) : null}
         {(() => {
           // The current headers render in-flow + sticky instead of absolute.
           // They are the lowest indexes in the range, so they are the first
@@ -2964,19 +2976,10 @@ export function DiffPane({
             ) : null}
             {/* The name is what the eye looks for; the folder only places it.
                 New files read green, deleted ones red, as on the guide's list. */}
-            <FileName path={row.path} status={row.file.status} done={rollup?.viewed === true} />
+            <FileName path={row.path} oldPath={row.file.oldPath} status={row.file.status} done={rollup?.viewed === true} />
             <span className="hidden flex-none group-hover/file:inline-flex">
               <CopyPathButton path={row.path} />
             </span>
-            {row.file.status === "renamed" ? (
-              <span
-                className="chip"
-                style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
-                data-tip={row.file.oldPath ? `Renamed from ${row.file.oldPath}` : "Renamed"}
-              >
-                renamed
-              </span>
-            ) : null}
             {row.file.generated ? <GeneratedTag generated={row.file.generated} /> : null}
           </span>
           <span className="ml-auto flex flex-none items-center gap-2">
@@ -3587,7 +3590,17 @@ export function DiffPane({
 }
 
 /** A file's name, then its folder, faint: what the eye looks for first. */
-function FileName({ path, status, done }: { path: string; status?: FileEntry["status"]; done?: boolean }) {
+function FileName({
+  path,
+  oldPath,
+  status,
+  done,
+}: {
+  path: string;
+  oldPath?: string;
+  status?: FileEntry["status"];
+  done?: boolean;
+}) {
   const slash = path.lastIndexOf("/");
   const name = path.slice(slash + 1);
   const dir = slash > 0 ? path.slice(0, slash) : "";
@@ -3595,6 +3608,7 @@ function FileName({ path, status, done }: { path: string; status?: FileEntry["st
     status === "added" ? "var(--ok)" : status === "removed" ? "var(--risk)" : done ? "var(--fg-muted)" : "var(--fg)";
   return (
     <span className="flex min-w-0 items-baseline gap-2" data-tip={path}>
+      <FileStatusBadge status={status} tip={status === "renamed" && oldPath ? `Renamed from ${oldPath}` : undefined} />
       <span
         className="flex-none font-medium"
         style={{ color, textDecoration: status === "removed" ? "line-through" : undefined }}
@@ -3607,99 +3621,6 @@ function FileName({ path, status, done }: { path: string; status?: FileEntry["st
           <bdi>{dir}</bdi>
         </span>
       ) : null}
-    </span>
-  );
-}
-
-/** Segmented unified / split control. Lives in the diff pane's own header. */
-export function DiffViewToggle({
-  mode,
-  onChange,
-}: {
-  mode: DiffViewMode;
-  onChange: (mode: DiffViewMode) => void;
-}) {
-  const options: { value: DiffViewMode; label: string; Icon: typeof IconUnified }[] = [
-    { value: "unified", label: "unified", Icon: IconUnified },
-    { value: "split", label: "split", Icon: IconSplit },
-  ];
-  return (
-    <div
-      role="group"
-      aria-label="Diff view mode"
-      className="inline-flex flex-none items-center rounded p-px"
-      style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
-    >
-      {options.map(({ value, label, Icon }) => {
-        const active = mode === value;
-        return (
-          <button
-            key={value}
-            type="button"
-            data-testid={`view-${value}`}
-            aria-pressed={active}
-            aria-label={`${label} view`}
-            data-tip={`${label} view`}
-            data-tip-key="d"
-            onClick={() => onChange(value)}
-            className="inline-flex flex-none items-center justify-center rounded-sm px-1.5 py-0.5 transition-colors"
-            style={{
-              background: active ? "var(--bg-raised)" : "transparent",
-              color: active ? "var(--fg)" : "var(--fg-faint)",
-              boxShadow: active ? "0 0 0 1px var(--border-strong)" : undefined,
-            }}
-          >
-            <Icon width={13} height={13} />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** Wrap on/off, styled to match the unified/split control it sits next to. */
-export function WrapToggle({
-  wrap,
-  onChange,
-}: {
-  wrap: boolean;
-  onChange: (wrap: boolean) => void;
-}) {
-  return (
-    <div
-      className="inline-flex flex-none items-center rounded p-px"
-      style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
-    >
-      <button
-        type="button"
-        data-testid="toggle-wrap"
-        aria-pressed={wrap}
-        aria-label="wrap long lines"
-        data-tip="Wrap long lines"
-        data-tip-key="w"
-        onClick={() => onChange(!wrap)}
-        className="inline-flex flex-none items-center justify-center rounded-sm px-1.5 py-0.5 transition-colors"
-        style={{
-          background: wrap ? "var(--bg-raised)" : "transparent",
-          color: wrap ? "var(--fg)" : "var(--fg-faint)",
-          boxShadow: wrap ? "0 0 0 1px var(--border-strong)" : undefined,
-        }}
-      >
-        <IconWrap width={13} height={13} />
-      </button>
-    </div>
-  );
-}
-
-/** Quiet in-header note that side-by-side was downgraded for lack of room. */
-export function NarrowPaneNote() {
-  return (
-    <span
-      className="flex-none text-2xs"
-      style={{ color: "var(--fg-faint)" }}
-      data-tip="Too narrow for side-by-side, shown unified; close a panel or widen the window"
-    >
-      too narrow — unified
     </span>
   );
 }

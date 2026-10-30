@@ -10,11 +10,10 @@ import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { ChangedBadge, HunkProgress, KindChip, RiskFlags } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconChevron, IconEye, IconEyeOff, IconGenerated, IconHeart } from "./icons";
+import { IconChevron, IconGenerated, IconHeart } from "./icons";
 import { ReclassifyPopover } from "./ReclassifyPopover";
 import { InlineMarkdown } from "./Markdown";
 
-const HIDE_REVIEWED_TITLE = "Hide fully viewed units; the one you are reading stays";
 
 export const UNPLACED_TITLE =
   "Hunks the analysis hasn't placed in a unit yet, usually new commits since the last analysis";
@@ -52,7 +51,7 @@ export function UnitSidebar({
     skim: true,
     skip: false,
   });
-  const { settings, update } = useSettings();
+  const { settings } = useSettings();
   const hide = settings.hideReviewedUnits;
 
   // Selecting a unit opens its group: a selection hidden inside a collapsed
@@ -112,34 +111,11 @@ export function UnitSidebar({
           No review units yet — the banner above tracks the analysis of this revision.
         </p>
       ) : null}
-      <div
-        className="flex items-center gap-1.5 px-2.5 pb-1 pt-0.5 text-2xs"
-        style={{ color: "var(--fg-faint)" }}
-      >
-        {/* A toggle, drawn as one: an eye that closes when reviewed units
-            are hidden, in a bordered chip that takes the accent when on. */}
-        <button
-          type="button"
-          data-testid="hide-reviewed-units"
-          aria-pressed={hide}
-          data-tip={HIDE_REVIEWED_TITLE}
-          onClick={() => update({ hideReviewedUnits: !hide })}
-          className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-2xs transition-colors"
-          style={{
-            color: hide ? "var(--accent)" : "var(--fg-muted)",
-            borderColor: hide ? "var(--accent)" : "var(--border)",
-            background: hide ? "var(--accent-soft)" : "transparent",
-          }}
-        >
-          {hide ? <IconEyeOff width={11} height={11} /> : <IconEye width={11} height={11} />}
-          Hide reviewed
-        </button>
-        {hide && totalHidden > 0 ? (
-          <span className="ml-auto tabular-nums" data-testid="hidden-total">
-            {totalHidden} hidden
-          </span>
-        ) : null}
-      </div>
+      {hide && totalHidden > 0 ? (
+        <p className="px-3 pb-1 text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="hidden-total">
+          {totalHidden} read {totalHidden === 1 ? "unit" : "units"} hidden
+        </p>
+      ) : null}
       {GROUPS.map((g) => {
         const all = units.filter(
           (u) => u.attention === g.attention && (!onlyUnitIds || onlyUnitIds.has(u.id)),

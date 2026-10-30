@@ -57,6 +57,8 @@ export interface Settings {
   foldMovedBlocks: boolean;
   /** Drop fully-viewed units out of the sidebar (except the selected one). */
   hideReviewedUnits: boolean;
+  /** The file list in a unit's brief stays open from unit to unit. */
+  unitFilesOpen: boolean;
   /** Width of the review chat panel in px (clamped to the range below). */
   chatPanelWidth: number;
   /** The chat as a tab of the right dock, or a window floating over the page. */
@@ -67,6 +69,8 @@ export interface Settings {
   /** Column-mode sidebar collapsed to nothing. Ignored in drawer mode, where
    *  the sidebar always starts closed regardless of this. */
   sidebarCollapsed: boolean;
+  /** Width of the sidebar column in px (clamped to the range below). */
+  sidebarWidth: number;
   /** Days after which "asked you Nd ago" turns yellow, orange and red. */
   requestAgeDays: RequestAgeDays;
   /** GitHub review threads: resolved ones show collapsed (on) or not at all (off). */
@@ -95,6 +99,10 @@ export const MIN_CHAT_PANEL_WIDTH = 320;
 export const MAX_CHAT_PANEL_WIDTH = 760;
 export const DEFAULT_CHAT_PANEL_WIDTH = 420;
 
+export const MIN_SIDEBAR_WIDTH = 260;
+export const MAX_SIDEBAR_WIDTH = 560;
+export const DEFAULT_SIDEBAR_WIDTH = 352;
+
 export const MIN_CODE_FONT_SIZE = 11;
 export const MAX_CODE_FONT_SIZE = 16;
 export const TAB_SIZES = [2, 4, 8] as const;
@@ -111,15 +119,21 @@ export const DEFAULT_SETTINGS: Settings = {
   foldSkippableHunks: false,
   foldMovedBlocks: false,
   hideReviewedUnits: false,
+  unitFilesOpen: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
   chatMode: "dock",
   chatFloat: null,
   sidebarCollapsed: false,
+  sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
   requestAgeDays: [1, 3, 7],
   showResolvedThreads: true,
   showAiReviewers: true,
   hiddenBots: [],
 };
+
+export function clampSidebarWidth(width: number): number {
+  return Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, Math.round(width)));
+}
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
@@ -170,6 +184,10 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
     }
   }
   if (typeof r.sidebarCollapsed === "boolean") out.sidebarCollapsed = r.sidebarCollapsed;
+  if (typeof r.unitFilesOpen === "boolean") out.unitFilesOpen = r.unitFilesOpen;
+  if (typeof r.sidebarWidth === "number" && Number.isFinite(r.sidebarWidth)) {
+    out.sidebarWidth = clampSidebarWidth(r.sidebarWidth);
+  }
   if (
     Array.isArray(r.requestAgeDays) &&
     r.requestAgeDays.length === 3 &&

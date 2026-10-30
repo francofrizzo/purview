@@ -11,6 +11,9 @@ test("a finding's evidence opens the places the diff shows and leaves the rest a
   // inside hunk 0005.
   const evidence = findings.getByTestId("finding-evidence").first();
   await expect(evidence.getByRole("button", { name: /refund\.ts/ })).toHaveCount(0);
+  // The file and the line show; the folders are on hover.
+  await expect(evidence).toContainText("ledger.ts 17");
+  await expect(evidence).not.toContainText("src/billing/");
   await evidence.getByRole("button", { name: "src/billing/ledger.ts:17" }).click();
   const header = hunkHeader(page, "a1b2c3d4e5f60005");
   await expect(header).toHaveAttribute("data-focused", "true");

@@ -14,8 +14,6 @@ export interface MenuItem {
   /** a destructive action, drawn in the risk color */
   danger?: boolean;
   testId?: string;
-  /** listed only at phone width, where its button leaves the row */
-  narrowOnly?: boolean;
   /** starts a new group: a rule is drawn above it */
   dividerBefore?: boolean;
 }
@@ -99,8 +97,8 @@ export function OverflowMenu({
           data-tip={item.hint}
           data-divider={item.dividerBefore ? "true" : undefined}
           className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50 ${
-            item.narrowOnly ? "sm:hidden" : ""
-          } ${item.dividerBefore ? "menu-divider" : ""}`}
+            item.dividerBefore ? "menu-divider" : ""
+          }`}
           style={{ color: item.danger ? "var(--risk)" : "var(--fg)" }}
           onClick={() => {
             if (!item.keepOpen) setOpen(false);

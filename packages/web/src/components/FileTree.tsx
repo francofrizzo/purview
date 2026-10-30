@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import type { ChatRef, FileGenerated, PrDetail } from "../api/types";
+import type { ChatRef, FileEntry, FileGenerated, PrDetail } from "../api/types";
 import { QuoteButton } from "./ChatPanel";
+import { FileStatusBadge } from "./Chips";
 import { GeneratedTag } from "./Generated";
 import { IconChevron, IconFile } from "./icons";
 import { MiddleTruncate } from "./Truncate";
@@ -18,6 +19,7 @@ interface TreeFile {
   path: string;
   hunkCount: number;
   generated?: FileGenerated;
+  status?: FileEntry["status"];
 }
 
 function buildTree(paths: TreeFile[]): TreeNode {
@@ -76,7 +78,7 @@ export function FileTree({
       buildTree(
         detail.files.files
           .filter((f) => !onlyPaths || onlyPaths.has(f.path))
-          .map((f) => ({ path: f.path, hunkCount: f.hunks.length, generated: f.generated })),
+          .map((f) => ({ path: f.path, hunkCount: f.hunks.length, generated: f.generated, status: f.status })),
       ),
     [detail.files, onlyPaths],
   );
@@ -132,7 +134,11 @@ export function FileTree({
               color: viewed || generated ? "var(--fg-faint)" : "var(--fg)",
             }}
           >
-            <IconFile width={10} height={10} style={{ opacity: generated ? 0.4 : 0.6, flex: "none" }} />
+            {kid.file.status ? (
+              <FileStatusBadge status={kid.file.status} />
+            ) : (
+              <IconFile width={10} height={10} style={{ opacity: generated ? 0.4 : 0.6, flex: "none" }} />
+            )}
             <MiddleTruncate text={kid.name} tail={13} tip={fileTip(kid.file.path, noteFor(detail.state.fileNotes, kid.file.path))} />
             {generated ? <GeneratedTag generated={generated} /> : null}
             {matchCounts?.get(kid.file.path) ? (

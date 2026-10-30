@@ -387,7 +387,6 @@ export function ThreadFilterMenu({
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLSpanElement>(null);
   const bots = knownBots(threads, posts);
-  const resolvedCount = threads.filter((t) => t.isResolved).length;
   if (threads.length === 0 && bots.length === 0) return null;
   const active = !filters.showResolved || !filters.showAiReviewers || filters.hiddenBots.length > 0;
   return (
@@ -410,47 +409,79 @@ export function ThreadFilterMenu({
       </button>
       {open ? (
         <FloatingPanel anchorRef={wrapRef} onClose={() => setOpen(false)} label="GitHub thread filters" className="w-64 p-2.5 text-xs">
-          <div className="mb-1.5 text-2xs font-semibold" style={{ color: "var(--fg-muted)" }}>
-            GitHub threads
-          </div>
-          <FilterCheck
-            testId="filter-resolved"
-            checked={filters.showResolved}
-            onChange={onShowResolved}
-            label="Show resolved"
-            count={resolvedCount}
-            hint="They show collapsed to one line"
+          <ThreadFilterFields
+            filters={filters}
+            threads={threads}
+            posts={posts}
+            onShowResolved={onShowResolved}
+            onShowAiReviewers={onShowAiReviewers}
+            onBotHidden={onBotHidden}
           />
-          {bots.length ? (
-            <>
-              <FilterCheck
-                testId="filter-ai"
-                checked={filters.showAiReviewers}
-                onChange={onShowAiReviewers}
-                label="Show AI reviewers"
-                count={bots.reduce((n, b) => n + b.count, 0)}
-              />
-              <div className="ml-5 mt-0.5 flex flex-col">
-                {bots.map((b) => (
-                  <FilterCheck
-                    key={b.key}
-                    testId={`filter-bot-${b.key}`}
-                    checked={!filters.hiddenBots.includes(b.key)}
-                    disabled={!filters.showAiReviewers}
-                    onChange={(v) => onBotHidden(b.key, !v)}
-                    label={b.name}
-                    count={b.count}
-                  />
-                ))}
-              </div>
-            </>
-          ) : null}
-          <p className="mt-2 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-            Threads holding a reply you haven't sent always show.
-          </p>
         </FloatingPanel>
       ) : null}
     </span>
+  );
+}
+
+/** The thread filters themselves: the menu's body, and a section of the view options. */
+export function ThreadFilterFields({
+  filters,
+  threads,
+  posts = [],
+  onShowResolved,
+  onShowAiReviewers,
+  onBotHidden,
+}: {
+  filters: ThreadFilters;
+  threads: RemoteThread[];
+  posts?: readonly RemoteAuthor[];
+  onShowResolved: (v: boolean) => void;
+  onShowAiReviewers: (v: boolean) => void;
+  onBotHidden: (key: string, hidden: boolean) => void;
+}) {
+  const bots = knownBots(threads, posts);
+  const resolvedCount = threads.filter((t) => t.isResolved).length;
+  return (
+    <>
+      <div className="mb-1.5 text-2xs font-semibold" style={{ color: "var(--fg-muted)" }}>
+        GitHub threads
+      </div>
+      <FilterCheck
+        testId="filter-resolved"
+        checked={filters.showResolved}
+        onChange={onShowResolved}
+        label="Show resolved"
+        count={resolvedCount}
+        hint="They show collapsed to one line"
+      />
+      {bots.length ? (
+        <>
+          <FilterCheck
+            testId="filter-ai"
+            checked={filters.showAiReviewers}
+            onChange={onShowAiReviewers}
+            label="Show AI reviewers"
+            count={bots.reduce((n, b) => n + b.count, 0)}
+          />
+          <div className="ml-5 mt-0.5 flex flex-col">
+            {bots.map((b) => (
+              <FilterCheck
+                key={b.key}
+                testId={`filter-bot-${b.key}`}
+                checked={!filters.hiddenBots.includes(b.key)}
+                disabled={!filters.showAiReviewers}
+                onChange={(v) => onBotHidden(b.key, !v)}
+                label={b.name}
+                count={b.count}
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
+      <p className="mt-2 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        Threads holding a reply you haven't sent always show.
+      </p>
+    </>
   );
 }
 

@@ -1,4 +1,3 @@
-import { createPortal } from "react-dom";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -6,7 +5,6 @@ import type {
   AnalysisImportReport,
   ChatRef,
   FileEntry,
-  HeartSegment,
   MigrationReport,
   PrDetail,
   ReviewEvent,
@@ -15,7 +13,6 @@ import type {
   SubmitReviewResult,
   SyncResult, CommentAudience, ReactionContent } from "../api/types";
 import { isGeneratedUnit, isJobLive } from "../api/types";
-import { baseName } from "../lib/chatRefs";
 import {
   qk,
   useAddComment,
@@ -67,13 +64,10 @@ import { errorText } from "../api/errors";
 import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
 import { FloatingChat } from "../components/FloatingChat";
-import { AttentionChip, ChangedBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
+import { AttentionChip, ChangedBadge, FileStatusBadge, KindChip, Progress, RiskFlags } from "../components/Chips";
 import {
   CopyPathButton,
   DiffPane,
-  DiffViewToggle,
-  NarrowPaneNote,
-  WrapToggle,
   type HeartMark,
   type HunkEntry,
 } from "../components/DiffPane";
@@ -89,15 +83,17 @@ import {
 import { CommentBubble, InlineCommentList } from "../components/InlineComments";
 import { hunkForLine, isLineInDiff } from "../lib/comments";
 import { buildThreadGroups, remoteReplyTarget, replyTarget, type DisplayThread } from "../lib/threads";
-import { ThreadFilterMenu } from "../components/Threads";
+import { Modal } from "../components/Modal";
+import { ViewOptions } from "../components/ViewOptions";
 import type { CommentActionError } from "../components/CommentCard";
 import { UnitChangelog } from "../components/UnitChangelog";
 import { FindingsBadge, UnitFindings } from "../components/Findings";
+import { UnitEnd, UnitFiles, UnitHeart } from "../components/UnitBrief";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { RightDock, type DockTab } from "../components/RightDock";
 import { isForAgent } from "../lib/comments";
 import { FileTree } from "../components/FileTree";
-import { IconChevron, IconComment, IconHeart, IconSpinner } from "../components/icons";
+import { IconChevron, IconComment, IconSpinner } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
 import { generatedUnitFiles, reviewProgress, workUnits } from "../lib/generated";
 import {
@@ -109,7 +105,6 @@ import {
   ShareAnalysisConfirmPanel,
   ShareAnalysisResultPanel,
   SharedAnalysisBanner,
-  StalenessHint,
   SyncResultPanel,
 } from "../components/Panels";
 import { SummaryStrip, visibleDescription } from "../components/SummaryStrip";
@@ -119,6 +114,7 @@ import { SidebarRail } from "../components/SidebarRail";
 import { DiffSearchBar } from "../components/DiffSearchBar";
 import { orderUnitHunks, sortUnitsForDisplay, unitProgress } from "../lib/diffModel";
 import { heartOf, heartSegments, hunkIdsOf, skipOf } from "../lib/units";
+import { unitDisplayNumbers } from "../lib/unitOrder";
 import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { rollbackMessage } from "../lib/rollback";
@@ -136,11 +132,17 @@ import { prPageTitle, unitFromSearch, withUnitParam } from "../lib/prUrl";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
-import { useDiffViewPrefs, useSettings, useThreadFilters } from "../lib/settings";
+import {
+  clampSidebarWidth,
+  DEFAULT_SIDEBAR_WIDTH,
+  useDiffViewPrefs,
+  useSettings,
+  useThreadFilters,
+} from "../lib/settings";
 import { latestVerdicts } from "../lib/reviews";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
-import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
+import { stalenessTooltip } from "../lib/staleness";
 import { AttachmentContext, CodeLinkContext, GlossaryContext, InlineMarkdown } from "../components/Markdown";
 import { buildGlossary } from "../lib/glossary";
 import { noteFor } from "../lib/shape";
@@ -235,9 +237,6 @@ export function PrView() {
     [patchUnit.mutate],
   );
 
-  // Dismissing the hint bar is remembered against the upstream head sha it was
-  // raised for, so the bar comes back the next time the PR really moves.
-  const [dismissedStaleKey, setDismissedStaleKey] = useState<string | null>(null);
   // The PR's own lifecycle state only reaches us through the check itself, and
   // that is enough: it decides whether the 5-minute interval is worth running
   // (a merged or closed PR grows no commits, so it is mount + focus only).
@@ -245,8 +244,6 @@ export function PrView() {
   // Comment pictures: where editors upload to, and how bodies find their local copies.
   const attachmentScope = useAttachmentScope(prKey);
   const stale = staleness.data?.stale === true;
-  const showStalenessHint =
-    stale && shouldShowStalenessHint(staleness.data, dismissedStaleKey);
 
   const [tab, setTab] = useState<"units" | "files">("units");
   // Seeded from `?unit=` so a unit link opens on that unit; validated against
@@ -268,6 +265,22 @@ export function PrView() {
     if (sidebarMode === "column") setDrawerOpen(false);
   }, [sidebarMode]);
   const sidebarCollapsed = settings.sidebarCollapsed;
+  // The column's width: dragged at its right edge, remembered.
+  const [sidebarDrag, setSidebarDrag] = useState<number | null>(null);
+  const sidebarWidth = sidebarDrag ?? settings.sidebarWidth;
+  const startSidebarResize = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const left = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect().left;
+    const onMove = (ev: MouseEvent) => setSidebarDrag(clampSidebarWidth(ev.clientX - left));
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      updateSettings({ sidebarWidth: clampSidebarWidth(ev.clientX - left) });
+      setSidebarDrag(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
   const toggleSidebar = useCallback(() => {
     if (sidebarMode === "drawer") setDrawerOpen((v) => !v);
     else updateSettings({ sidebarCollapsed: !sidebarCollapsed });
@@ -303,43 +316,6 @@ export function PrView() {
 
   const fullscreen = useFullscreen();
   const [showShortcuts, setShowShortcuts] = useState(false);
-  const shortcutsRef = useRef<HTMLDivElement>(null);
-  const shortcutsPopRef = useRef<HTMLDivElement>(null);
-  // Where the card goes: above the toggle, aligned to its left edge.
-  const [shortcutsAt, setShortcutsAt] = useState<{ left: number; bottom: number } | null>(null);
-  useEffect(() => {
-    if (!showShortcuts) {
-      setShortcutsAt(null);
-      return;
-    }
-    const place = () => {
-      const r = shortcutsRef.current?.getBoundingClientRect();
-      if (r) setShortcutsAt({ left: r.left + 8, bottom: window.innerHeight - r.top + 6 });
-    };
-    place();
-    window.addEventListener("resize", place);
-    return () => window.removeEventListener("resize", place);
-  }, [showShortcuts]);
-  useEffect(() => {
-    if (!showShortcuts) return;
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (shortcutsRef.current?.contains(t) || shortcutsPopRef.current?.contains(t)) return;
-      setShowShortcuts(false);
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setShowShortcuts(false);
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey, true);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey, true);
-    };
-  }, [showShortcuts]);
   const [standalone] = useState(isStandalone);
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
@@ -400,7 +376,6 @@ export function PrView() {
   const probedForRef = useRef<string | null>(null);
   const { viewMode, setViewMode, toggleViewMode, wrap, setWrap, toggleWrap } = useDiffViewPrefs();
   const [narrow, setNarrow] = useState(false);
-  const showNarrowNote = narrow && viewMode === "split";
 
   // --- go to definition ---------------------------------------------------
   // A new object (even for a repeat target) is what re-triggers DiffPane's
@@ -979,6 +954,9 @@ export function PrView() {
       } else if (e.key === "s") {
         e.preventDefault();
         setSummaryOpen((v) => !v);
+      } else if (e.key === "?") {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
       } else if (e.key === "/") {
         e.preventDefault();
         openSearch();
@@ -1184,19 +1162,29 @@ export function PrView() {
   const replyAt = commentTarget?.inReplyTo ? threadGroups.located.get(commentTarget.inReplyTo) : undefined;
   const replyInHeader =
     tab === "files" && fileCommentsOpen && !!replyAt && "file" in replyAt && replyAt.file === selectedPath;
-  const threadFilterMenu = (
-    <ThreadFilterMenu
-      compact
-      filters={threadFilters.filters}
-      threads={remoteThreads ?? []}
-      posts={postAuthors}
-      hidden={threadGroups.hidden}
-      onShowResolved={threadFilters.setShowResolved}
-      onShowAiReviewers={threadFilters.setShowAiReviewers}
-      onBotHidden={threadFilters.setBotHidden}
-    />
-  );
   const progress = selectedUnit ? unitProgress(detail, selectedUnit) : null;
+  const markUnitViewed = (unitId: string) =>
+    setUnitViewed.mutate(unitId, { onSuccess: () => advanceAfterUnitViewed(unitId) });
+  // A ranged heart segment lands on its first line, not the hunk's top.
+  const jumpToUnitHunk = (hunkId: string, line?: number) => {
+    setFocusedHunkId(hunkId);
+    setJumpToHunk(line === undefined ? { hunkId, nonce: Date.now() } : { hunkId, nonce: Date.now(), line, side: "RIGHT" });
+  };
+  // The next unit to read, as the mark-viewed advance would pick it.
+  const nextUnread = (() => {
+    if (!selectedUnit) return null;
+    const ordered = sortUnitsForDisplay(detail.state.units);
+    const at = ordered.findIndex((u) => u.id === selectedUnit.id);
+    for (let k = 1; k < ordered.length; k++) {
+      const u = ordered[(at + k) % ordered.length];
+      if (sinceUnitIds && !sinceUnitIds.has(u.id)) continue;
+      if (isGeneratedUnit(u)) continue;
+      const p = unitProgress(detail, u);
+      if (p.total > 0 && p.viewed < p.total) return u;
+    }
+    return null;
+  })();
+  const unitNumbers = unitDisplayNumbers(detail.state.units);
   const unsubmittedDrafts = drafts.filter((d) => d.status !== "submitted");
 
   const job = analysisJob.data ?? detail.analysisJob ?? null;
@@ -1459,79 +1447,40 @@ export function PrView() {
         )}
       </div>
       <div
-        ref={shortcutsRef}
-        className="relative flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
+        className="flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
         style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
       >
+        {/* The way in to every key, in sight: a list reachable only by a key
+            nobody knows about would never be found. */}
         <button
           type="button"
-          className="flex items-center gap-1 rounded transition-colors hover:text-[var(--fg-muted)]"
-          aria-expanded={showShortcuts}
-          data-testid="shortcuts-toggle"
-          onClick={() => setShowShortcuts((v) => !v)}
+          className="flex items-center gap-1.5 rounded transition-colors hover:text-[var(--fg-muted)]"
+          data-testid="shortcuts-button"
+          onClick={() => setShowShortcuts(true)}
         >
-          <IconChevron open={showShortcuts} width={9} height={9} />
           keyboard shortcuts
+          <kbd>?</kbd>
         </button>
-        {/* A card floating over the desk, not a strip that eats the sidebar.
-            Portaled: the sidebar pane clips its overflow. */}
-        {showShortcuts && shortcutsAt
-          ? createPortal(
-          <div
-            ref={shortcutsPopRef}
-            role="dialog"
-            aria-label="Keyboard shortcuts"
-            data-testid="shortcuts-popover"
-            className="surface elev-3 fixed z-50 grid w-[max-content] max-w-[calc(100vw-2rem)] grid-cols-1 gap-x-8 gap-y-3 rounded-lg p-3 sm:grid-cols-[repeat(3,max-content)]"
-            style={{ left: shortcutsAt.left, bottom: shortcutsAt.bottom }}
-          >
-            <ShortcutGroup
-              title="Reading"
-              rows={[
-                [["j", "k"], "next / previous hunk"],
-                [["h", "H"], "next / previous heart hunk"],
-                [["J", "K"], "next / previous unit"],
-                [["v"], "mark hunk viewed"],
-                [["V"], "mark unit viewed"],
-                [["space", "⇧ space"], "next / previous unviewed hunk"],
-                [["z"], "fold / unfold"],
-                [["Z"], "fold / show skippable hunks"],
-                [["n"], "comment (then a line number)"],
-                [["a"], "comments for GitHub / for agent"],
-              ]}
-            />
-            <ShortcutGroup
-              title="View"
-              rows={[
-                [["d"], viewMode === "split" ? "unified diff" : "split diff"],
-                [["w"], wrap ? "stop wrapping" : "wrap long lines"],
-                [["s"], "summary"],
-                [["m", "c", "r"], "comments, chat, review"],
-                [["b"], "sidebar"],
-                [["/"], "search"],
-                [["⌘", "click"], "go to definition"],
-              ]}
-            />
-            <ShortcutGroup
-              title="In a comment"
-              rows={[
-                [["⌘↵"], "save"],
-                [["⌘⇧↵"], "ask chat"],
-                [["⌘⇧P"], "preview"],
-                [["⌘B", "⌘I", "⌘E", "⌘K"], "bold, italic, code, link"],
-                [["⌘⇧7", "⌘⇧8"], "numbered / bullet list"],
-                [["⌘⇧."], "quote"],
-                [["⌘⇧S"], "suggest a change"],
-              ]}
-            />
-          </div>,
-          document.body,
-        )
-        : null}
       </div>
     </>
   );
 
+
+  const unitEnd =
+    tab === "units" && selectedUnit && progress ? (
+      <UnitEnd
+        number={unitNumbers.get(selectedUnit.id)}
+        progress={progress}
+        next={nextUnread ? { number: unitNumbers.get(nextUnread.id), title: nextUnread.title } : null}
+        onMarkViewed={() => markUnitViewed(selectedUnit.id)}
+        onOpenNext={() => nextUnread && setSelectedUnitId(nextUnread.id)}
+        onFinish={() => {
+          setSubmitResult(null);
+          submitReview.reset();
+          openDock("review");
+        }}
+      />
+    ) : undefined;
 
   const renderComposer = (variant: "inline" | "floating") =>
     commentTarget ? (
@@ -1638,16 +1587,29 @@ export function PrView() {
         }}
         onRefresh={() => refresh.mutate(undefined, { onSuccess: setReport })}
         onSync={() => sync.mutate(undefined, { onSuccess: setSyncResult })}
+        onShowShortcuts={() => setShowShortcuts(true)}
+        viewOptions={
+          <ViewOptions
+            viewMode={viewMode}
+            onViewMode={setViewMode}
+            wrap={wrap}
+            onWrap={setWrap}
+            narrow={narrow}
+            foldSkippable={settings.foldSkippableHunks}
+            onFoldSkippable={(v) => updateSettings({ foldSkippableHunks: v })}
+            hideReviewed={settings.hideReviewedUnits}
+            onHideReviewed={(v) => updateSettings({ hideReviewedUnits: v })}
+            threads={remoteThreads ?? []}
+            posts={postAuthors}
+            filters={threadFilters.filters}
+            hiddenThreads={threadGroups.hidden}
+            onShowResolved={threadFilters.setShowResolved}
+            onShowAiReviewers={threadFilters.setShowAiReviewers}
+            onBotHidden={threadFilters.setBotHidden}
+          />
+        }
       />
 
-      {showStalenessHint && staleness.data ? (
-        <StalenessHint
-          result={staleness.data}
-          refreshing={refresh.isPending}
-          onRefresh={() => refresh.mutate(undefined, { onSuccess: setReport })}
-          onDismiss={() => setDismissedStaleKey(stalenessDismissKey(staleness.data))}
-        />
-      ) : null}
       {refresh.error ? (
         <ErrorBar message={`refresh failed: ${(refresh.error as Error).message}`} />
       ) : null}
@@ -1795,13 +1757,25 @@ export function PrView() {
       <div className="workspace relative flex min-h-0 flex-1" style={{ background: "var(--bg)" }}>
         {sidebarMode === "column" ? (
           <nav
-            className="pane m-[7px] mr-0 rounded-br-none flex flex-none flex-col overflow-hidden transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0"
+            className={`pane relative m-[7px] mr-0 rounded-br-none flex flex-none flex-col overflow-hidden ${
+              sidebarDrag === null ? "transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0" : ""
+            }`}
             style={{
-              width: sidebarCollapsed ? "var(--sidebar-rail-width)" : "19rem",
+              width: sidebarCollapsed ? "var(--sidebar-rail-width)" : sidebarWidth,
               borderColor: "var(--border)",
               background: "var(--bg-raised)",
             }}
           >
+            {sidebarCollapsed ? null : (
+              <div
+                onMouseDown={startSidebarResize}
+                onDoubleClick={() => updateSettings({ sidebarWidth: DEFAULT_SIDEBAR_WIDTH })}
+                data-tip="Drag to resize; double-click for the default width"
+                data-testid="sidebar-resize"
+                className="absolute right-0 top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-[var(--border-strong)]"
+                style={sidebarDrag === null ? undefined : { background: "var(--accent)" }}
+              />
+            )}
             {sidebarCollapsed ? (
               <SidebarRail
                 detail={detail}
@@ -1813,7 +1787,9 @@ export function PrView() {
                 expandLabel="Expand sidebar"
               />
             ) : (
-              <div className="flex h-full w-[19rem] flex-none flex-col">{sidebarBody}</div>
+              <div className="flex h-full flex-none flex-col" style={{ width: sidebarWidth }}>
+                {sidebarBody}
+              </div>
             )}
           </nav>
         ) : null}
@@ -1934,10 +1910,6 @@ export function PrView() {
                   ) : null}
                 </div>
                 <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
-                  {showNarrowNote ? <NarrowPaneNote /> : null}
-                  {threadFilterMenu}
-                  <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                  <WrapToggle wrap={wrap} onChange={setWrap} />
                   {progress?.skipped ? (
                     <button
                       type="button"
@@ -1960,11 +1932,7 @@ export function PrView() {
                     type="button"
                     className="btn"
                     disabled={setUnitViewed.isPending || (progress?.viewed ?? 0) === (progress?.total ?? 0)}
-                    onClick={() =>
-                      setUnitViewed.mutate(selectedUnit.id, {
-                        onSuccess: () => advanceAfterUnitViewed(selectedUnit.id),
-                      })
-                    }
+                    onClick={() => markUnitViewed(selectedUnit.id)}
                   >
                     {/* Same action; for the generated unit it is the one-click way through. */}
                     {setUnitViewed.isPending
@@ -2046,12 +2014,12 @@ export function PrView() {
                     <UnitHeart
                       segments={heartSegments(selectedUnit)}
                       files={detail.files.files}
-                      onJump={(hunkId, line) => {
-                        setFocusedHunkId(hunkId);
-                        setJumpToHunk({ hunkId, nonce: Date.now(), line, side: "RIGHT" });
-                      }}
+                      onJump={jumpToUnitHunk}
                     />
                   ) : null}
+                  {isGeneratedUnit(selectedUnit) ? null : (
+                    <UnitFiles detail={detail} unit={selectedUnit} onJump={jumpToUnitHunk} />
+                  )}
                   <UnitFindings unitId={selectedUnit.id} findings={selectedUnit.findings} />
                 </div>
               </div>
@@ -2069,14 +2037,6 @@ export function PrView() {
               onAnalyze={() => startAnalysis.mutate()}
               markingViewed={setHunksViewed.isPending}
               onMarkViewed={() => setHunksViewed.mutate({ hunkIds: unplaced, viewed: true })}
-              controls={
-                <>
-                  {showNarrowNote ? <NarrowPaneNote /> : null}
-                  {threadFilterMenu}
-                  <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                  <WrapToggle wrap={wrap} onChange={setWrap} />
-                </>
-              }
             />
           ) : null}
 
@@ -2092,6 +2052,7 @@ export function PrView() {
                 headerCollapsed ? "py-1" : "py-2"
               }`}
             >
+              <FileStatusBadge status={selectedFile?.status} />
               <MiddleTruncate text={selectedPath} tail={20} />
               <CopyPathButton path={selectedPath} />
               {selectedFile?.generated ? <GeneratedTag generated={selectedFile.generated} /> : null}
@@ -2125,10 +2086,6 @@ export function PrView() {
                   comment
                 </button>
                 {selectedFile ? generatedMenuFor(selectedFile) : null}
-                {showNarrowNote ? <NarrowPaneNote /> : null}
-                {threadFilterMenu}
-                  <DiffViewToggle mode={viewMode} onChange={setViewMode} />
-                <WrapToggle wrap={wrap} onChange={setWrap} />
               </div>
             </div>
           {/* What the analysis says this file, or its folder, does in the change. */}
@@ -2197,6 +2154,7 @@ export function PrView() {
               onToggleWrap={toggleWrap}
               onNarrowChange={setNarrow}
               onQuote={quote}
+              endOfList={unitEnd}
               searchMarks={search.marksByLine}
               activeMatch={search.current}
               onScrolledAway={onScrolledAway}
@@ -2373,6 +2331,54 @@ export function PrView() {
           </FloatingChat>
         ) : null}
       </div>
+      {showShortcuts ? (
+        <Modal title="Keyboard shortcuts" maxWidth={760} onClose={() => setShowShortcuts(false)} testId="shortcuts-popover">
+          {/* The groups wrap onto a new row rather than run past the card:
+              nothing here should need a sideways scroll. */}
+          <div className="flex flex-wrap items-start gap-x-10 gap-y-5 p-4">
+            <ShortcutGroup
+            title="Reading"
+            rows={[
+              [["j", "k"], "next / previous hunk"],
+              [["h", "H"], "next / previous heart hunk"],
+              [["J", "K"], "next / previous unit"],
+              [["v"], "mark hunk viewed"],
+              [["V"], "mark unit viewed"],
+              [["space", "⇧ space"], "next / previous unviewed hunk"],
+              [["z"], "fold / unfold"],
+              [["Z"], "fold / show skippable hunks"],
+              [["n"], "comment (then a line number)"],
+              [["a"], "comments for GitHub / for agent"],
+            ]}
+          />
+          <ShortcutGroup
+            title="View"
+            rows={[
+              [["d"], viewMode === "split" ? "unified diff" : "split diff"],
+              [["w"], wrap ? "stop wrapping" : "wrap long lines"],
+              [["s"], "summary"],
+              [["m", "c", "r"], "comments, chat, review"],
+              [["b"], "sidebar"],
+              [["/"], "search"],
+                [["?"], "this list"],
+              [["⌘", "click"], "go to definition"],
+            ]}
+          />
+          <ShortcutGroup
+            title="In a comment"
+            rows={[
+              [["⌘↵"], "save"],
+              [["⌘⇧↵"], "ask chat"],
+              [["⌘⇧P"], "preview"],
+              [["⌘B", "⌘I", "⌘E", "⌘K"], "bold, italic, code, link"],
+              [["⌘⇧7", "⌘⇧8"], "numbered / bullet list"],
+              [["⌘⇧."], "quote"],
+              [["⌘⇧S"], "suggest a change"],
+            ]}
+          />
+          </div>
+        </Modal>
+      ) : null}
     </div>
     </GlossaryContext.Provider>
     </AttachmentContext.Provider>
@@ -2393,7 +2399,6 @@ function UnplacedHeader({
   onAnalyze,
   markingViewed,
   onMarkViewed,
-  controls,
 }: {
   total: number;
   viewed: number;
@@ -2403,7 +2408,6 @@ function UnplacedHeader({
   onAnalyze: () => void;
   markingViewed: boolean;
   onMarkViewed: () => void;
-  controls: ReactNode;
 }) {
   return (
     <div
@@ -2416,7 +2420,6 @@ function UnplacedHeader({
           Not in any unit
         </h2>
         <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
-          {controls}
           <Progress viewed={viewed} total={total} />
           {canAnalyze ? (
             <button
@@ -2512,60 +2515,6 @@ function ErrorBar({ message, testId }: { message: string; testId?: string }) {
       style={{ background: "var(--risk-soft)", color: "var(--risk)", borderColor: "var(--border)" }}
     >
       {message}
-    </div>
-  );
-}
-
-/**
- * The unit's heart: the segments its logic lives in, each with the
- * analysis's one-sentence why. A button per segment lands the reader on its
- * first line; the pane draws the same rows with a bar, so this is the index
- * and the diff the map.
- */
-function UnitHeart({
-  segments,
-  files,
-  onJump,
-}: {
-  segments: (HeartSegment & { id: string })[];
-  files: FileEntry[];
-  onJump: (hunkId: string, line?: number) => void;
-}) {
-  const pathOf = (hunkId: string) => files.find((f) => f.hunks.some((h) => h.id === hunkId))?.path;
-  return (
-    <div className="mt-1.5 max-w-4xl text-xs" data-testid="unit-heart">
-      <div className="flex items-center gap-1.5" style={{ color: "var(--heart)" }}>
-        <IconHeart width={12} height={12} className="flex-none" />
-        <span>Heart</span>
-        <span style={{ color: "var(--fg-faint)" }}>· where the logic lives</span>
-      </div>
-      <ol className="mt-1 space-y-0.5 border-l pl-3" style={{ borderColor: "var(--heart)" }}>
-        {segments.map((h, i) => {
-          const path = pathOf(h.id);
-          return (
-            <li key={`${h.id}:${i}`}>
-              <button
-                type="button"
-                data-testid={`heart-jump-${h.id}`}
-                data-segment={i}
-                className="changelog-row -mx-1.5 flex w-[calc(100%+0.75rem)] items-baseline gap-2 rounded px-1.5 text-left leading-[18px]"
-                onClick={() => onJump(h.id, h.lines?.[0])}
-                data-tip={path ? `Go to this hunk in ${path}` : "Go to this hunk"}
-              >
-                {path ? (
-                  <span className="flex-none font-mono text-2xs" style={{ color: "var(--fg-muted)" }}>
-                    {baseName(path)}
-                    {h.lines ? `:${h.lines[0]}-${h.lines[1]}` : ""}
-                  </span>
-                ) : null}
-                <span style={{ color: "var(--fg)" }}>
-                  <InlineMarkdown text={h.why} />
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
     </div>
   );
 }

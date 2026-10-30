@@ -111,7 +111,10 @@ test("Enter on the focused band folds it", async ({ page }) => {
 
 test("split view: a block that can't fold whole keeps its band, with nothing to fold", async ({ page }) => {
   await page.keyboard.press("d");
-  await expect(page.getByTestId("view-split").first()).toHaveAttribute("aria-pressed", "true");
+  // The layout lives in the view options.
+  await page.getByTestId("view-options").click();
+  await expect(page.getByTestId("layout-split")).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
   // The new file's block faces nothing on the left: it folds, whole.
   const into = page.getByTestId(band(IN_REGION));
   await expect(into).toHaveText(/^8 lines moved from/);

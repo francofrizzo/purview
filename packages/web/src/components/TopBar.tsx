@@ -1,26 +1,26 @@
 import { EditorButton } from "./Editor";
-import { useRef, useState } from "react";
+import { Fragment, useCallback, useRef, useState } from "react";
 import { TagChip, TagPopover } from "./TagPopover";
 import { Link, useNavigate } from "react-router-dom";
 import type { AnalysisJob, CommentAudience, PrDetail, RevisionInfo } from "../api/types";
 import { isJobLive } from "../api/types";
-import { AnalysisChip, AnalysisStats } from "./Analysis";
+import { AnalysisChip, AnalysisStatsPanel, analysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { CiMark, DiffSizeStat, ReviewRequestAge, StackedOnChip } from "./Chips";
 import { ReviewersMark, showsReviewers } from "./Reviewers";
 import { RevisionMenu } from "./RevisionMenu";
-import { AudienceSwitch } from "./AudienceSwitch";
-import { UpdateAvailable } from "./UpdateAvailable";
 import { diffTotals, formatAddedAt } from "../lib/prList";
 import { formatRevisionSummary, revisionSummaryLines } from "../lib/revisionSummary";
 import { stackedOnLink } from "../lib/stacked";
 import { CopyPathButton } from "./DiffPane";
+import { FloatingPanel } from "./FloatingPanel";
 import { useModalBackground } from "./Modal";
 import { OverflowMenu } from "./OverflowMenu";
 import {
   IconArchive,
   IconArrowLeft,
   IconBolt,
+  IconBranch,
   IconCheck,
   IconClose,
   IconCollapse,
@@ -28,13 +28,14 @@ import {
   IconExpand,
   IconFileImport,
   IconInbox,
+  IconKeyboard,
   IconRefresh,
   IconRewind,
   IconSettings,
   IconShare,
+  IconStopwatch,
   IconUpload,
   IconDock,
-  IconSpinner,
   IconTag,
 } from "./icons";
 
@@ -84,6 +85,8 @@ export function TopBar({
   onSetArchived,
   repoArchiving = false,
   onSetRepoArchived,
+  viewOptions,
+  onShowShortcuts,
 }: {
   detail: PrDetail;
   draftCount: number;
@@ -119,7 +122,7 @@ export function TopBar({
   onToggleFullscreen?: () => void;
   onRefresh: () => void;
   onSync: () => void;
-  /** the global switch: who new comments are for */
+  /** who new comments are for; only the agent case is shown here */
   audience?: CommentAudience;
   onAudienceChange?: (next: CommentAudience) => void;
   onFinishReview: () => void;
@@ -149,11 +152,17 @@ export function TopBar({
   repoArchiving?: boolean;
   /** archive state of the PR's whole repo (`detail.repoArchived`) */
   onSetRepoArchived?: (archived: boolean) => void;
+  /** the view options button */
+  viewOptions?: React.ReactNode;
+  onShowShortcuts?: () => void;
 }) {
   // The tag popover hangs under the chip when there is one, under the ⋯ menu otherwise.
   const tagChipRef = useRef<HTMLButtonElement>(null);
   const tagMenuRef = useRef<HTMLDivElement>(null);
   const [tagOpen, setTagOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const closeStats = useCallback(() => setStatsOpen(false), []);
+  const stats = analysisStats(analysisJob);
   const importInputRef = useRef<HTMLInputElement>(null);
   const { meta, state } = detail;
   const live = isJobLive(analysisJob);
@@ -185,31 +194,35 @@ export function TopBar({
       {/* Phone width: back + actions share the first row, and the title
           takes a full-width row of its own under them. */}
       <div className="order-last flex min-w-0 flex-1 basis-full flex-col justify-center gap-0.5 sm:order-none sm:basis-auto">
-        <div className="flex min-w-0 items-baseline gap-2.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5 sm:flex-nowrap">
           <a
             href={meta.url}
             target="_blank"
             rel="noreferrer"
-            className="min-w-0 truncate text-[13px] font-semibold leading-snug hover:underline"
+            className="min-w-0 max-w-full truncate text-[13px] font-semibold leading-snug hover:underline"
             style={{ color: "var(--fg)" }}
             data-testid="topbar-title"
             data-tip="Open on GitHub"
           >
             {meta.title ?? `${meta.owner}/${meta.repo}#${meta.number}`}
           </a>
-          {/* Wide screens: the branch belongs to the PR's name, next to the
-              title. Narrower, it ends the facts line below instead. */}
-          {meta.headRef ? (
-            <span
-              className="hidden min-w-0 max-w-[22rem] shrink-[2] items-center gap-1 text-2xs xl:flex"
-              style={{ color: "var(--fg-faint)" }}
-              data-tip={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
-              data-testid="topbar-branch"
-            >
-              <span className="truncate font-mono">{meta.headRef}</span>
-              <CopyPathButton path={meta.headRef} what="branch name" />
+          {/* Which PR, beside its name. Out of room it gives way before the
+              title does, the number and the buttons last; at phone width it
+              takes a line of its own. */}
+          <span
+            className="flex min-w-0 shrink-[999] items-center gap-1 text-2xs"
+            style={{ color: "var(--fg-faint)" }}
+            data-testid="topbar-repo"
+          >
+            <span className="min-w-0 truncate font-mono" data-tip={`${meta.owner}/${meta.repo}`}>
+              {meta.owner}/{meta.repo}
             </span>
-          ) : null}
+            <span className="flex-none font-mono" style={{ color: "var(--fg-muted)" }}>
+              #{meta.number}
+            </span>
+            <CopyPathButton path={String(meta.number)} what="PR number" />
+            {meta.headRef ? <BranchesButton head={meta.headRef} base={meta.baseRef} /> : null}
+          </span>
         </div>
         <div
           className="flex min-w-0 items-center gap-x-3 overflow-hidden whitespace-nowrap text-2xs leading-4"
@@ -221,20 +234,12 @@ export function TopBar({
           }}
           data-testid="topbar-meta"
         >
-          {/* Which PR and whose, together: the author rides on the PR number. */}
-          <span className="flex flex-none items-center gap-1.5">
-            <span className="font-mono">
-              {meta.owner}/{meta.repo}
-              <span style={{ color: "var(--fg-muted)" }}>#{meta.number}</span>
+          {meta.author ? (
+            <span className="flex flex-none items-center gap-1" data-tip={`Opened by ${meta.author}`}>
+              <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
+              <span className="hidden sm:inline">{meta.author}</span>
             </span>
-            <CopyPathButton path={String(meta.number)} what="PR number" />
-            {meta.author ? (
-              <span className="flex items-center gap-1" data-tip={`Opened by ${meta.author}`}>
-                <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={14} />
-                <span className="hidden sm:inline">{meta.author}</span>
-              </span>
-            ) : null}
-          </span>
+          ) : null}
           <DiffSizeStat size={diffTotals(detail.files.files)} />
           {meta.tag ? (
             <button
@@ -253,17 +258,19 @@ export function TopBar({
           {showsReviewers(detail.authoredByYou, meta.prState) ? (
             <ReviewersMark reviewers={meta.reviewers} className="flex-none" ring="var(--bg-raised)" />
           ) : null}
-          <RevisionMenu
-            state={state}
-            analysisLive={live}
-            discarding={discardingRevision}
-            error={discardRevisionError}
-            onDiscard={onDiscardRevision}
-            onResetError={onResetDiscardRevision}
-            highlightRevisions={highlightRevisions}
-            onToggleHighlight={onToggleHighlight}
-            highlightAvailable={highlightAvailable}
-          />
+          {state.revisions && state.revisions.length > 1 ? (
+            <RevisionMenu
+              state={state}
+              analysisLive={live}
+              discarding={discardingRevision}
+              error={discardRevisionError}
+              onDiscard={onDiscardRevision}
+              onResetError={onResetDiscardRevision}
+              highlightRevisions={highlightRevisions}
+              onToggleHighlight={onToggleHighlight}
+              highlightAvailable={highlightAvailable}
+            />
+          ) : null}
           {detail.sinceReview && onToggleSinceReview ? (
             <SinceReviewChip
               since={detail.sinceReview}
@@ -304,38 +311,43 @@ export function TopBar({
           ) : null}
           {/* Only interesting while the analysis is not a plain success. */}
           <AnalysisChip job={analysisJob} />
-          <AnalysisStats job={analysisJob} />
           <span className="hidden flex-none md:inline-flex">
             <StackedOnChip link={stackedOnLink(meta, detail.basePrTracked === true)} />
           </span>
-          {meta.headRef ? (
-            <span
-              className="hidden min-w-0 items-center gap-1 lg:flex xl:hidden"
-              data-tip={meta.baseRef ? `${meta.headRef} → ${meta.baseRef}` : meta.headRef}
-              data-testid="topbar-branch-meta"
-            >
-              <span className="truncate font-mono">{meta.headRef}</span>
-              <CopyPathButton path={meta.headRef} what="branch name" />
-            </span>
-          ) : null}
         </div>
       </div>
 
       <div className="ml-auto flex flex-none items-center gap-1.5 sm:gap-2">
-        <UpdateAvailable compact />
-        {onAudienceChange ? (
-          <span className="hidden lg:inline-flex">
-            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="topbar-audience" />
-          </span>
+        {/* GitHub is where a comment goes unless said otherwise; the agent
+            case is the one to be told about, and one click undoes it. */}
+        {audience === "agent" && onAudienceChange ? (
+          <button
+            type="button"
+            className="chip flex-none"
+            data-testid="topbar-audience-agent-mode"
+            data-tip="New comments are notes for a coding agent. Click for GitHub review comments"
+            data-tip-key="a"
+            style={{ background: "var(--agent-soft)", color: "var(--agent)" }}
+            onClick={() => onAudienceChange("github")}
+          >
+            notes for agent
+          </button>
         ) : null}
+        {viewOptions}
         <EditorButton prKey={detail.key} />
         {/* The right dock (comments, chat, review) has one toggle; its tabs
             take over once it is open. The badge is the unsent comments. */}
         <button
           type="button"
-          className="btn"
+          className="btn relative"
           onClick={onToggleDock}
-          data-tip={dockOpen ? "Close the panel" : "Comments, chat and review"}
+          data-tip={
+            dockOpen
+              ? "Close the panel"
+              : dockBusy
+                ? "The chat is answering · comments, chat and review"
+                : "Comments, chat and review"
+          }
           data-tip-key="m c r"
           aria-label="Comments, chat and review"
           aria-pressed={dockOpen}
@@ -351,57 +363,32 @@ export function TopBar({
               {draftCount}
             </span>
           ) : null}
-          {dockBusy ? <IconSpinner width={10} height={10} style={{ color: "var(--accent)" }} /> : null}
+          {/* The chat at work, while the panel is shut (open, its tab says
+              so). A dot on the corner, so the button never changes width
+              and nothing beside it moves. */}
+          {dockBusy && !dockOpen ? (
+            <span
+              className="absolute -right-0.5 -top-0.5 h-2 w-2 animate-pulse rounded-full"
+              style={{ background: "var(--accent)", boxShadow: "0 0 0 2px var(--bg)" }}
+              data-testid="topbar-chat-busy"
+            />
+          ) : null}
         </button>
-        <div className="btn-group">
+        {/* Quiet until GitHub moved: then it says so, and why on hover. */}
         <button
           type="button"
-          className="btn relative"
+          className="btn"
           data-testid="topbar-refresh"
           data-stale={stale ? "1" : undefined}
           data-tip={refreshing ? "Refreshing…" : (staleTooltip ?? "Refresh from GitHub")}
           aria-label="Refresh"
           onClick={onRefresh}
           disabled={refreshing}
+          style={stale ? { color: "var(--accent)", borderColor: "var(--accent)" } : undefined}
         >
           <IconRefresh width={12} height={12} className={refreshing ? "animate-spin" : undefined} />
-          {stale ? (
-            <span
-              data-testid="staleness-dot"
-              aria-label="This PR changed upstream"
-              className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"
-              style={{ background: "var(--accent)" }}
-            />
-          ) : null}
+          {stale ? <span className="hidden md:inline">new commits</span> : null}
         </button>
-        <button
-          type="button"
-          className="btn hidden sm:inline-flex"
-          onClick={onSync}
-          disabled={syncing}
-          data-tip={syncing ? "Syncing…" : "Sync viewed files and comments to GitHub"}
-          aria-label="Sync"
-        >
-          <IconUpload width={12} height={12} className={syncing ? "animate-pulse" : undefined} />
-        </button>
-        </div>
-        {fullscreenVisible && onToggleFullscreen ? (
-          <button
-            type="button"
-            className="btn"
-            data-testid="topbar-fullscreen"
-            onClick={onToggleFullscreen}
-            data-tip={fullscreenActive ? "Exit full screen" : "Full screen"}
-            aria-label={fullscreenActive ? "Exit full screen" : "Full screen"}
-            aria-pressed={fullscreenActive}
-          >
-            {fullscreenActive ? (
-              <IconCollapse width={12} height={12} />
-            ) : (
-              <IconExpand width={12} height={12} />
-            )}
-          </button>
-        ) : null}
         <input
           ref={importInputRef}
           type="file"
@@ -414,16 +401,14 @@ export function TopBar({
             if (file) onImportFilePicked(file);
           }}
         />
-        <div ref={tagMenuRef} className="contents">
+        <div ref={tagMenuRef} className="flex flex-none">
         <OverflowMenu
           items={[
             { label: meta.tag ? "change tag…" : "tag…", testId: "header-tag-menu", icon: <IconTag width={12} height={12} />, onClick: () => setTagOpen(true) },
-            // Phone width: the row keeps chat, comments, refresh and finish;
-            // sync moves in here.
             {
-              label: syncing ? "syncing…" : "sync",
+              label: syncing ? "syncing…" : "sync to GitHub",
               icon: <IconUpload width={12} height={12} />,
-              narrowOnly: true,
+              testId: "menu-sync",
               disabled: syncing,
               hint: "Push viewed files and comments to GitHub.",
               onClick: onSync,
@@ -458,6 +443,17 @@ export function TopBar({
                     onClick: onAnalyzeFresh,
                   },
                 ]),
+            ...(stats.length
+              ? [
+                  {
+                    label: "analysis stats",
+                    icon: <IconStopwatch width={12} height={12} />,
+                    testId: "menu-analysis-stats",
+                    hint: "What the last analysis run took.",
+                    onClick: () => setStatsOpen(true),
+                  },
+                ]
+              : []),
             {
               label: exporting ? "exporting…" : "export analysis",
               icon: <IconDownload width={12} height={12} />,
@@ -509,9 +505,32 @@ export function TopBar({
                 ]
               : []),
             // App-level, not about this PR: last.
+            ...(fullscreenVisible && onToggleFullscreen
+              ? [
+                  {
+                    label: fullscreenActive ? "exit full screen" : "full screen",
+                    dividerBefore: true,
+                    icon: fullscreenActive ? <IconCollapse width={12} height={12} /> : <IconExpand width={12} height={12} />,
+                    testId: "menu-fullscreen",
+                    onClick: onToggleFullscreen,
+                  },
+                ]
+              : []),
+            ...(onShowShortcuts
+              ? [
+                  {
+                    label: "keyboard shortcuts",
+                    dividerBefore: !(fullscreenVisible && onToggleFullscreen),
+                    icon: <IconKeyboard width={12} height={12} />,
+                    testId: "menu-shortcuts",
+                    hint: "Or press ?",
+                    onClick: onShowShortcuts,
+                  },
+                ]
+              : []),
             {
               label: "repo settings",
-              dividerBefore: true,
+              dividerBefore: !(fullscreenVisible && onToggleFullscreen) && !onShowShortcuts,
               icon: <IconSettings width={12} height={12} />,
               testId: "menu-repo-settings",
               hint: `Shared by every PR in ${meta.owner}/${meta.repo}.`,
@@ -562,7 +581,69 @@ export function TopBar({
           onClose={() => setTagOpen(false)}
         />
       ) : null}
+      {statsOpen ? <AnalysisStatsPanel rows={stats} anchorRef={tagMenuRef} onClose={closeStats} /> : null}
     </header>
+  );
+}
+
+/**
+ * The PR's two branches behind one icon: a tooltip that stays while the
+ * pointer is on it, so each branch can be copied. A press opens it too, for
+ * touch and the keyboard.
+ */
+function BranchesButton({ head, base }: { head: string; base?: string }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const leaving = useRef<number | null>(null);
+  const close = useCallback(() => setOpen(false), []);
+  const stay = () => {
+    if (leaving.current !== null) window.clearTimeout(leaving.current);
+    leaving.current = null;
+  };
+  const leave = () => {
+    stay();
+    leaving.current = window.setTimeout(close, 160);
+  };
+  const rows: [string, string][] = base ? [["base", base], ["head", head]] : [["head", head]];
+  return (
+    <span ref={anchorRef} className="inline-flex flex-none" onMouseLeave={leave}>
+      <button
+        type="button"
+        className="inline-flex items-center hover:!text-[var(--fg)]"
+        style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
+        aria-label="Branches"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        data-testid="topbar-branches"
+        onMouseEnter={() => {
+          stay();
+          setOpen(true);
+        }}
+        onClick={() => setOpen(true)}
+      >
+        <IconBranch width={12} height={12} />
+      </button>
+      {open ? (
+        <FloatingPanel anchorRef={anchorRef} onClose={close} label="Branches" className="text-2xs">
+          <div
+            className="grid max-w-[32rem] grid-cols-[max-content_minmax(0,1fr)_max-content] items-center gap-x-2 gap-y-1 p-2"
+            data-testid="topbar-branches-panel"
+            onMouseEnter={stay}
+            onMouseLeave={leave}
+          >
+            {rows.map(([which, name]) => (
+              <Fragment key={which}>
+                <span style={{ color: "var(--fg-faint)" }}>{which}</span>
+                <span className="truncate font-mono" style={{ color: "var(--fg)" }} data-tip={name}>
+                  {name}
+                </span>
+                <CopyPathButton path={name} what={`${which} branch`} />
+              </Fragment>
+            ))}
+          </div>
+        </FloatingPanel>
+      ) : null}
+    </span>
   );
 }
 

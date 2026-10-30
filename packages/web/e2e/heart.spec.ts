@@ -71,8 +71,8 @@ test("a heart with a line range bars only those rows, and its brief entry names 
   await expect(page.locator("[data-index]", { hasText: "throw new ChargeFailed(res.code);" }).nth(1)).toHaveAttribute("data-heart-end", "true");
   await expect(row("const res = await this.gateway.charge(order.total, order.currency);")).not.toHaveAttribute("data-heart-end", "true");
   await expect(row("await this.ledger.recordFailure(key, res.code)")).not.toHaveAttribute("data-heart-end", "true");
-  await expect(page.getByTestId(`heart-jump-${HEART[1]}`).first()).toContainText("charge.ts:21-23");
-  await expect(page.getByTestId(`heart-jump-${HEART[1]}`).nth(1)).toContainText("charge.ts:29-30");
+  await expect(page.getByTestId(`heart-jump-${HEART[1]}`).first()).toContainText("charge.ts 21–23");
+  await expect(page.getByTestId(`heart-jump-${HEART[1]}`).nth(1)).toContainText("charge.ts 29–30");
   // Each why sits right above its segment's first marked row (for the first,
   // the deleted line the range replaces), not under the header rows up.
   const captionIdx = Number(await page.getByTestId(`hunk-heart-${HEART[1]}`).first().locator("xpath=..").getAttribute("data-index"));
@@ -111,7 +111,7 @@ test("a file the PR adds whole reads on the plain ground, its gutter still green
   expect(await background(unified.locator(".diff-gutter").nth(1))).not.toBe(transparent);
 
   await page.keyboard.press("d");
-  await expect(page.getByTestId("view-split").first()).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator(".diff-half").first()).toBeVisible();
   const split = page.locator('.diff-half[data-type="add"]').filter({ hasText: line });
   await expect(split).toHaveCount(1);
   expect(await background(split)).toBe(transparent);

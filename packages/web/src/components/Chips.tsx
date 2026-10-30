@@ -5,6 +5,7 @@ import type {
   Ci,
   DiffSize,
   EffortBadge,
+  FileEntry,
   Kind,
   PrGithubState,
   ReviewDecision,
@@ -451,7 +452,7 @@ export function ProgressRing({ viewed, total, tip }: { viewed: number; total: nu
           />
         ) : null}
       </svg>
-      <span className="w-12 text-2xs tabular-nums" style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}>
+      <span className="min-w-9 text-right text-2xs tabular-nums" style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}>
         {viewed}/{total}
       </span>
     </span>
@@ -479,6 +480,31 @@ export function DiffSizeStat({ size, files = true }: { size: DiffSize | null | u
       ) : null}
       <span style={{ color: "var(--ok)" }}>+{additions}</span>
       <span style={{ color: "var(--risk)" }}>−{deletions}</span>
+    </span>
+  );
+}
+
+const FILE_STATUS: Record<NonNullable<FileEntry["status"]>, { letter: string; word: string; color: string }> = {
+  added: { letter: "A", word: "Added", color: "var(--ok)" },
+  modified: { letter: "M", word: "Modified", color: "var(--fg-muted)" },
+  removed: { letter: "D", word: "Deleted", color: "var(--risk)" },
+  renamed: { letter: "R", word: "Renamed", color: "var(--accent)" },
+};
+
+/** What the PR did to a file, as a letter: color alone would not say it to everyone. */
+export function FileStatusBadge({ status, tip }: { status?: FileEntry["status"]; tip?: string }) {
+  if (!status) return null;
+  const { letter, word, color } = FILE_STATUS[status];
+  return (
+    <span
+      className="inline-flex h-3.5 w-3.5 flex-none items-center justify-center self-center rounded-sm font-mono text-[10px] font-semibold leading-none"
+      style={{ color, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${color} 45%, transparent)` }}
+      data-testid="file-status"
+      data-status={status}
+      data-tip={tip ?? word}
+      aria-label={tip ?? word}
+    >
+      {letter}
     </span>
   );
 }

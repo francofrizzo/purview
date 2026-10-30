@@ -7,18 +7,17 @@ export const UPDATE_COMMAND = "git pull && pnpm start";
 
 /**
  * "A newer Purview is on origin": a chip that opens a short card with the
- * version and the command to run. On the home it says the version outright;
- * `compact` (the PR top bar) is the icon with a dot, named on hover. It
- * renders nothing while there is no update. Nothing here updates anything —
+ * version and the command to run. It lives on the home page and renders
+ * nothing while there is no update. Nothing here updates anything —
  * the server cannot replace itself while serving — so the card says exactly
  * what to type and leaves it there.
  */
-export function UpdateAvailable({ compact = false }: { compact?: boolean }) {
+export function UpdateAvailable() {
   const latest = useVersion().data?.latest ?? null;
-  return latest ? <UpdateChip latest={latest} compact={compact} /> : null;
+  return latest ? <UpdateChip latest={latest} /> : null;
 }
 
-function UpdateChip({ latest, compact }: { latest: string; compact: boolean }) {
+function UpdateChip({ latest }: { latest: string }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -62,15 +61,7 @@ function UpdateChip({ latest, compact }: { latest: string; compact: boolean }) {
         style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
       >
         <IconDownload width={12} height={12} />
-        {compact ? (
-          <span
-            aria-hidden
-            className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full"
-            style={{ background: "var(--accent)", boxShadow: "0 0 0 1.5px var(--bg)" }}
-          />
-        ) : (
-          "Update available"
-        )}
+        Update available
       </button>
       {open ? (
         <div

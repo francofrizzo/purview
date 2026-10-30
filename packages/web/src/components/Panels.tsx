@@ -3,10 +3,8 @@ import type {
   AnalysisImportReport,
   MigrationReport,
   ShareAnalysisResult,
-  Staleness,
   SyncResult,
 } from "../api/types";
-import { stalenessReasonText } from "../lib/staleness";
 import { IconChevron, IconClose, IconRefresh } from "./icons";
 import { revisionFileChanges, revisionNoticeText } from "../lib/revisionNotice";
 
@@ -47,64 +45,6 @@ export function DismissiblePanel({
     </div>
   );
 }
-
-/**
- * The loud half of the staleness signal: a slim bar under the top bar, with
- * the refresh it is asking for inline. Dismissing it is remembered per
- * upstream revision by the caller — the dot on the refresh button is what
- * stays behind.
- */
-export function StalenessHint({
-  result,
-  refreshing,
-  onRefresh,
-  onDismiss,
-}: {
-  result: Staleness;
-  refreshing: boolean;
-  onRefresh: () => void;
-  onDismiss: () => void;
-}) {
-  return (
-    <div
-      data-testid="staleness-hint"
-      // Recessed and neutral, not another accent wash: the top bar above is
-      // already accent-tinted, and two tints in a row read as one band.
-      className="flex flex-none items-center gap-2 border-y px-3 py-1.5 text-xs"
-      style={{ background: "var(--bg-inset)", borderColor: "var(--border-strong)" }}
-    >
-      {/* The refresh button's dot, so the two read as one signal. */}
-      <span aria-hidden className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: "var(--accent)" }} />
-      {/* One line: what moved (or, when the reason is unknown, that something did). */}
-      <span style={{ color: "var(--fg)" }}>
-        {result.reasons.length > 0
-          ? capitalize(stalenessReasonText(result.reasons))
-          : "This PR changed upstream"}
-      </span>
-      <button
-        type="button"
-        className="btn ml-auto"
-        data-testid="staleness-refresh"
-        disabled={refreshing}
-        onClick={onRefresh}
-      >
-        <IconRefresh width={11} height={11} />
-        {refreshing ? "refreshing…" : "refresh"}
-      </button>
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs"
-        data-testid="staleness-dismiss"
-        style={{ color: "var(--fg-muted)" }}
-        onClick={onDismiss}
-      >
-        dismiss <IconClose width={10} height={10} />
-      </button>
-    </div>
-  );
-}
-
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * What a refresh brought, as one quiet line under the top bar: a sentence in
