@@ -8,7 +8,9 @@ import { DiffSizeStat } from "./Chips";
 const CHANGE_LOOK: Record<ChangeKind, { label: string; color: string }> = {
   implementation: { label: "Implementation", color: "var(--kind-core)" },
   tests: { label: "Tests", color: "var(--kind-tests)" },
-  docs: { label: "Documentation", color: "var(--kind-docs)" },
+  // Yellow, not the docs chip's grey: two greys side by side in a thin bar
+  // read as one. The theme's yellow, which turns orange where yellow is faint.
+  docs: { label: "Documentation", color: "var(--warn)" },
   generated: { label: "Generated", color: "var(--fg-faint)" },
 };
 
