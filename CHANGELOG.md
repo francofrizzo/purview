@@ -5,16 +5,16 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.30.1
 
-- **Concepts in the summary.** `s` lists the terms the PR leans on, each with what it means; new ones are marked. Analyze from scratch to get them. (thanks Canta)
-- **Concept hover.** Hover a word with a dotted underline in the guide, the diff or the chat to read what that concept means. (thanks Canta)
-- **Analysis language setting.** Settings → Agents picks the language new analyses write in. It starts on Always English; a language in the repo's rubric still wins, and a refresh keeps the PR's own. (thanks Canta)
-- **Plain-language PR summary.** The analysis summary says why the PR exists and what to judge, in words, without code. Analyze from scratch to get it. (thanks Canta)
-- **Shorter unit summaries.** A unit's summary opens with what changes, in words, and no longer repeats its why or its heart. Analyze from scratch to get them. (thanks Canta)
-- **Analysis that reads one way.** The analysis uses one name for each thing, the active voice and one idea per sentence, after Simplified Technical English. Analyze from scratch to get it. (thanks Canta)
-- **Where moved code went.** A moved block's band and the hunk's "moved" badge name the file and lines at the other end. Their "go to" lands on those lines, in any unit.
 - **Opus by default.** Analyses and the chat run on Opus unless a model is picked; choose Sonnet in Settings → Agents for cheaper runs.
+- **Analysis language setting.** Settings → Agents picks the language new analyses write in. It starts on Always English; a language in the repo's rubric still wins, and a refresh keeps the PR's own. (thanks Canta 🐑)
+- **Plain-language PR summary.** The analysis summary says why the PR exists and what to judge, in words, without code. Analyze from scratch to get it. (thanks Canta 🐑)
+- **Concepts in the summary.** `s` lists the terms the PR leans on, each with what it means; new ones are marked. Analyze from scratch to get them. (thanks Canta 🐑)
+- **Concept hover.** Hover a word with a dotted underline in the guide, the diff or the chat to read what that concept means. (thanks Canta 🐑)
+- **Analysis that reads one way.** The analysis uses one name for each thing, the active voice and one idea per sentence, after Simplified Technical English. Analyze from scratch to get it. (thanks Canta 🐑)
+- **Shorter unit summaries.** A unit's summary opens with what changes, in words, and no longer repeats its why or its heart. Analyze from scratch to get them. (thanks Canta 🐑)
+- **Where moved code went.** A moved block's band and the hunk's "moved" badge name the file and lines at the other end. Their "go to" lands on those lines, in any unit.
 - **Moved blocks start open.** Their band stays above the rows to fold them; Settings → Diff defaults → Moved blocks starts them folded instead.
 - **Fix:** a Mermaid diagram that fails to render no longer shows an error outside the page layout; its source shows as a code block instead.
 
