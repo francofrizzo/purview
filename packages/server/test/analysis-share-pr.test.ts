@@ -49,11 +49,11 @@ function ghWithComments(
 
   const runner = ((args: string[], input?: string) => {
     const joined = args.join(" ");
-    if (joined.includes("/compare/")) {
-      return JSON.stringify({ merge_base_commit: { sha: `mb${sha}` } });
-    }
     if (joined.includes("v3.diff")) {
       return opts.patch ?? "";
+    }
+    if (joined.includes("/compare/")) {
+      return JSON.stringify({ merge_base_commit: { sha: `mb${sha}` } });
     }
     if (/pulls\/\d+$/.test(args[args.length - 1] ?? "")) {
       return JSON.stringify({

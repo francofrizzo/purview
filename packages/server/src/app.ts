@@ -183,7 +183,7 @@ import {
 } from "./review-import.js";
 import { getWatchStatus } from "./review-watch.js";
 import { reanchorComments } from "./comment-anchors.js";
-import { ensurePrCheckout, pruneCheckouts } from "./pr-checkout.js";
+import { ensurePrCheckout, localDiffSource, pruneCheckouts } from "./pr-checkout.js";
 import { removeRepo, repoRemovalSummary } from "./repo-removal.js";
 import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
 import { fileLinesAtHead } from "./file-content.js";
@@ -544,7 +544,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     } catch (err) {
       throw classifyError(err);
     }
-    const result = await initPrAsync(key, root);
+    const result = await initPrAsync(key, root, { localDiff: localDiffSource(root) });
     // Adding a PR you had archived is asking for it back: bring it out of the
     // archive instead of leaving the add looking like it did nothing. (Only
     // this explicit add; the background importer never resurrects one.)
@@ -590,9 +590,10 @@ export function createApp(opts: AppOptions = {}): Hono {
     readComments(key, root); // Stamp legacy anchors before refresh advances the revision.
     let result: Awaited<ReturnType<typeof refreshPrAsync>>;
     try {
-      result = await refreshPrAsync(key, root);
+      result = await refreshPrAsync(key, root, { localDiff: localDiffSource(root) });
     } catch (err) {
-      log.error("review", `${shortKey(key)}  refresh failed`, { reason: err instanceof Error ? err.message : String(err) });
+      const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined;
+      log.error("review", `${shortKey(key)}  refresh failed`, { reason: err instanceof Error ? err.message : String(err), cause });
       throw err;
     }
     log.info("review", `${shortKey(key)}  ${result.added ? "refresh finished" : "nothing changed"}`, { revision: result.revision });

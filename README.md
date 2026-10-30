@@ -436,7 +436,7 @@ review.json         # review body draft + pending review ids + last submission
 analysis-job.json   # status of the latest Claude analysis run
 chat.json           # review-chat session id + transcript summary + model pin
 revisions/<n>/      # one per observed (baseSha, headSha, mergeBase), 1-based
-  diff.patch        # the diff exactly as GitHub served it (v3.diff)
+  diff.patch        # merge base..head in GitHub's v3.diff format (local git, else compare)
   files.json        # parsed: files -> hunks with ids, added/removed lines, body text
   migration.json    # how the previous revision's hunks map onto this one (from r2 on)
   team-config.json  # cached read of the repo's committed .purview/ config at this head sha
@@ -518,7 +518,9 @@ any risk flags (auth, migration, concurrency, money, external-call, security) th
 attention upward. You read the PR unit by unit in the suggested order rather than file by
 file, which is what the diff pane is organized around.
 
-On **refresh**, the new diff is fetched from GitHub and old hunks are matched onto new ones:
+On **refresh**, the new diff is read with git from the PR's configured clone (or its managed
+checkout), fetching the PR head there if needed, else from GitHub's compare endpoint, and
+old hunks are matched onto new ones:
 identical ids carry all state; otherwise the best fuzzy match within the same file (Jaccard
 over added+removed lines, threshold 0.6 — small hunks also get a word-token Jaccard blended
 in, so a single edited line still matches) carries state and is marked `fuzzy`; renames are

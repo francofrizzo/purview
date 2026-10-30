@@ -26,8 +26,8 @@ let root: string;
 const initGh: GhRunner = (args) => {
   const joined = args.join(" ");
   if (args[1] === "graphql") return JSON.stringify({ data: { repository: { pullRequest: { reviewDecision: null } } } });
-  if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
   if (joined.includes("v3.diff")) return "";
+  if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
   const m = /pulls\/(\d+)$/.exec(args[args.length - 1] ?? "");
   if (m) {
     const number = Number(m[1]);

@@ -182,7 +182,7 @@ export interface InitResult {
 }
 
 /** Fetch PR meta + diff from GitHub and create the state dir (idempotent). */
-export function initPr(key: PrKey, root = stateRoot()): InitResult {
+export function initPr(key: PrKey, root = stateRoot(), opts: RefreshSyncOptions = {}): InitResult {
   const created = !prExists(key, root);
   const pr = fetchPullRequest(key);
   const now = new Date().toISOString();
@@ -228,7 +228,7 @@ export function initPr(key: PrKey, root = stateRoot()): InitResult {
     );
   }
 
-  const res = refreshPr(key, root);
+  const res = refreshPr(key, root, opts);
   return { key, state: res.state, revision: res.revision, created };
 }
 
@@ -241,10 +241,85 @@ export interface RefreshResult {
 }
 
 /**
- * Fetch the current diff from GitHub; if (baseSha, headSha, mergeBase) is new,
- * store a revision, run migration and record it as a `revision-added` event.
+ * A diff of `mergeBase..headSha` read from somewhere other than GitHub — the
+ * server reads it from a local clone with git. `null` means "not here"; a
+ * throw is treated the same. Either way the refresh falls back to GitHub, so
+ * the source must produce exactly GitHub's bytes or nothing.
  */
-export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
+export type LocalDiffSource = (
+  key: PrKey,
+  mergeBase: string,
+  headSha: string,
+) => string | null | Promise<string | null>;
+
+export interface RefreshOptions {
+  localDiff?: LocalDiffSource;
+}
+
+/** The synchronous refresh (the CLI) can only use a synchronous source. */
+export interface RefreshSyncOptions {
+  localDiff?: (key: PrKey, mergeBase: string, headSha: string) => string | null;
+}
+
+/**
+ * GitHub would not hand over the diff (and no local clone could). The message
+ * is for the reader; the raw `gh` failure stays on `cause` for the logs.
+ */
+export class DiffUnavailableError extends Error {
+  constructor(key: PrKey, cause: unknown) {
+    super(
+      `GitHub could not render the diff of ${key.owner}/${key.repo}#${key.number}. ` +
+        "Set this repository's local path in its settings so Purview can read the diff from git instead.",
+      { cause },
+    );
+    this.name = "DiffUnavailableError";
+  }
+}
+
+interface DiffShas {
+  baseSha: string;
+  headSha: string;
+  mergeBase: string;
+}
+
+function fetchRevisionDiff(key: PrKey, shas: DiffShas, opts: RefreshSyncOptions): string {
+  if (opts.localDiff) {
+    try {
+      const local = opts.localDiff(key, shas.mergeBase, shas.headSha);
+      if (typeof local === "string") return local;
+    } catch {
+      // the source logs its own failures; GitHub is the fallback
+    }
+  }
+  try {
+    return fetchPullDiff(key, shas.baseSha, shas.headSha);
+  } catch (err) {
+    throw new DiffUnavailableError(key, err);
+  }
+}
+
+async function fetchRevisionDiffAsync(key: PrKey, shas: DiffShas, opts: RefreshOptions): Promise<string> {
+  if (opts.localDiff) {
+    try {
+      const local = await opts.localDiff(key, shas.mergeBase, shas.headSha);
+      if (typeof local === "string") return local;
+    } catch {
+      // the source logs its own failures; GitHub is the fallback
+    }
+  }
+  try {
+    return await fetchPullDiffAsync(key, shas.baseSha, shas.headSha);
+  } catch (err) {
+    throw new DiffUnavailableError(key, err);
+  }
+}
+
+/**
+ * Fetch the current diff (from `opts.localDiff` when it has it, else GitHub);
+ * if (baseSha, headSha, mergeBase) is new, store a revision, run migration and
+ * record it as a `revision-added` event.
+ */
+export function refreshPr(key: PrKey, root = stateRoot(), opts: RefreshSyncOptions = {}): RefreshResult {
   const meta = readMeta(key, root); // ensures the PR was initialized
   const pr = fetchPullRequest(key);
   // The head branch can be renamed (or was never recorded, on older state), and
@@ -305,7 +380,7 @@ export function refreshPr(key: PrKey, root = stateRoot()): RefreshResult {
     };
   }
 
-  const patch = fetchPullDiff(key);
+  const patch = fetchRevisionDiff(key, { baseSha: pr.baseSha, headSha: pr.headSha, mergeBase }, opts);
   const parsed = parseDiff(patch);
   // Not current + 1: a discarded revision's number is never handed out again.
   // The migration below still diffs against `current`, the revision in force.
@@ -1064,7 +1139,7 @@ export async function reviewRequestPatchAsync(
 }
 
 // Non-blocking counterparts used by server request paths.
-export async function initPrAsync(key: PrKey, root = stateRoot()): Promise<InitResult> {
+export async function initPrAsync(key: PrKey, root = stateRoot(), opts: RefreshOptions = {}): Promise<InitResult> {
   const created = !prExists(key, root);
   const pr = await fetchPullRequestAsync(key);
   const now = new Date().toISOString();
@@ -1110,11 +1185,15 @@ export async function initPrAsync(key: PrKey, root = stateRoot()): Promise<InitR
     );
   }
 
-  const res = await refreshPrAsync(key, root);
+  const res = await refreshPrAsync(key, root, opts);
   return { key, state: res.state, revision: res.revision, created };
 }
 
-export async function refreshPrAsync(key: PrKey, root = stateRoot()): Promise<RefreshResult> {
+export async function refreshPrAsync(
+  key: PrKey,
+  root = stateRoot(),
+  opts: RefreshOptions = {},
+): Promise<RefreshResult> {
   const meta = readMeta(key, root); // ensures the PR was initialized
   const pr = await fetchPullRequestAsync(key);
   // The head branch can be renamed (or was never recorded, on older state), and
@@ -1175,7 +1254,7 @@ export async function refreshPrAsync(key: PrKey, root = stateRoot()): Promise<Re
     };
   }
 
-  const patch = await fetchPullDiffAsync(key);
+  const patch = await fetchRevisionDiffAsync(key, { baseSha: pr.baseSha, headSha: pr.headSha, mergeBase }, opts);
   const parsed = parseDiff(patch);
   // Not current + 1: a discarded revision's number is never handed out again.
   // The migration below still diffs against `current`, the revision in force.

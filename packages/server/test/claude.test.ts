@@ -70,11 +70,11 @@ function ghFor(
   let calls = 0;
   return (args) => {
     const joined = args.join(" ");
-    if (joined.includes("/compare/")) {
-      return JSON.stringify({ merge_base_commit: { sha: `mb${sha}` } });
-    }
     if (joined.includes("v3.diff")) {
       return patches[Math.min(calls++, patches.length - 1)];
+    }
+    if (joined.includes("/compare/")) {
+      return JSON.stringify({ merge_base_commit: { sha: `mb${sha}` } });
     }
     if (/pulls\/\d+$/.test(args[args.length - 1] ?? "")) {
       return JSON.stringify({

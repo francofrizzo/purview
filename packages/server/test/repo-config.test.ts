@@ -94,10 +94,10 @@ function ghFor(
         content: Buffer.from(body, "utf8").toString("base64"),
       });
     }
+    if (joined.includes("v3.diff")) return opts.patch ?? REV1_PATCH;
     if (joined.includes("/compare/")) {
       return JSON.stringify({ merge_base_commit: { sha: `mb${sha}` } });
     }
-    if (joined.includes("v3.diff")) return opts.patch ?? REV1_PATCH;
     if (/pulls\/\d+$/.test(args[args.length - 1] ?? "")) {
       return JSON.stringify({
         node_id: "PR_1",
@@ -912,8 +912,8 @@ describe("POST /api/repos/:rkey/import-reviews", () => {
       if (args[1] === "graphql") {
         return JSON.stringify({ data: { repository: { pullRequest: { reviewDecision: null } } } });
       }
-      if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb9" } });
       if (joined.includes("v3.diff")) return "";
+      if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb9" } });
       if (/pulls\/\d+$/.test(args[args.length - 1] ?? "")) {
         return JSON.stringify({
           node_id: "PR_99",

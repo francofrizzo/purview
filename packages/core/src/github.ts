@@ -209,15 +209,24 @@ export function fetchPullRequest(key: PrKey): PullRequestInfo {
   };
 }
 
-/** Same endpoint with the v3.diff media type — the unified diff GitHub serves. */
-export function fetchPullDiff(key: PrKey): string {
-  return gh([
+/**
+ * The PR's unified diff, from `compare/base...head` with the v3.diff media
+ * type: byte for byte what `pulls/{n}` serves as v3.diff, minus that
+ * endpoint's 300-file limit (HTTP 406 above it), and pinned to the exact
+ * SHAs the refresh records instead of whatever the PR points at by then.
+ */
+export function fetchPullDiff(key: PrKey, baseSha: string, headSha: string): string {
+  return gh(pullDiffArgs(key, baseSha, headSha));
+}
+
+function pullDiffArgs(key: PrKey, baseSha: string, headSha: string): string[] {
+  return [
     "api",
     ...hostArgs(key.host),
-    `repos/${key.owner}/${key.repo}/pulls/${key.number}`,
+    `repos/${key.owner}/${key.repo}/compare/${baseSha}...${headSha}`,
     "-H",
     "Accept: application/vnd.github.v3.diff",
-  ]);
+  ];
 }
 
 /** True merge base of base..head (the diff GitHub shows is against this). */
@@ -1572,14 +1581,8 @@ export async function findOpenPrByHeadAsync(key: RepoKey, head: string): Promise
 }
 
 // Non-blocking counterparts used by server request paths.
-export async function fetchPullDiffAsync(key: PrKey): Promise<string> {
-  return await ghAsync([
-    "api",
-    ...hostArgs(key.host),
-    `repos/${key.owner}/${key.repo}/pulls/${key.number}`,
-    "-H",
-    "Accept: application/vnd.github.v3.diff",
-  ]);
+export async function fetchPullDiffAsync(key: PrKey, baseSha: string, headSha: string): Promise<string> {
+  return await ghAsync(pullDiffArgs(key, baseSha, headSha));
 }
 
 export async function fetchMergeBaseAsync(

@@ -16,6 +16,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **The PR author's threads open.** In the diff, a thread the PR's author started shows open, since it explains the change; others wait behind their gutter marker.
 - **Fix:** after a new revision, lines shown with "expand" above a hunk no longer jump to different line numbers than the hunk's own.
 - **Fix:** saving a comment while the diff search box still holds text no longer scrolls back to the search match.
+- **Fix:** adding or refreshing a PR that touches more than 300 files no longer fails with "the diff exceeded the maximum number of files".
 
 ## 2026.10.30.7
 

@@ -60,7 +60,7 @@ review.json         # review body draft + pending review ids + last submission
 analysis-job.json   # latest Claude analysis run for this PR (see "Claude integration")
 chat.json           # review-chat session id + transcript summary + per-chat model pin
 revisions/<n>/      # one per observed (baseSha, headSha, mergeBase)
-  diff.patch        # the diff exactly as GitHub served it (v3.diff)
+  diff.patch        # merge base..head in GitHub's v3.diff format (local git, else compare)
   files.json        # parsed: files -> hunks with ids
   team-config.json  # cached read of the repo's committed .purview/ config at this head sha
 ```
@@ -181,7 +181,7 @@ interface HunkState {
 
 ## Migration (on refresh: new headSha or mergeBase)
 
-1. Fetch new diff **from GitHub** (`gh api repos/{o}/{r}/pulls/{n} -H "Accept: application/vnd.github.v3.diff"`), store as new revision. Never use local `git diff`.
+1. Fetch the new diff of mergeBase..headSha in GitHub's v3.diff format, store as new revision. The server first tries `git diff` (all output-affecting settings pinned to git's defaults, `--abbrev=11`) in the PR's configured clone or managed checkout, fetching `refs/pull/{n}/head` if the head is missing and never moving a branch or work tree; on any failure it asks GitHub (`gh api repos/{o}/{r}/compare/{baseSha}...{headSha} -H "Accept: application/vnd.github.v3.diff"`, the same bytes as `pulls/{n}` without its 300-file limit). The CLI asks GitHub directly.
 2. Match old hunks → new hunks: (a) identical hunkId → carry all state; (b) same file, best fuzzy match (Jaccard over added+removed lines, threshold 0.6; for small hunks — either side with ≤6 changed lines — blended with word-token Jaccard so single-line in-place edits still match) → carry, mark `fuzzy`, set changedSinceViewed if was viewed; (c) file renamed (GitHub rename detection in diff) → recompute with new path, treat as (a)/(b); (d) unmatched old → archive (kept in events, listed in report); (e) unmatched new → `new`, always left unassigned for the skill to classify.
 3. Distinguish base-moved vs head-moved: if headSha unchanged but mergeBase moved, mark revision `baseOnly: true`; new hunks in such revisions default attention `skip` with why="base moved".
 4. Emit migration report (carried/fuzzy/renamed/archived/new counts + per-hunk list) → stored in revision dir, printed by CLI.

@@ -13,6 +13,7 @@ import {
 } from "@reviewer/core";
 import { readConfig } from "./config.js";
 import { HttpError } from "./http-error.js";
+import { localDiffSource } from "./pr-checkout.js";
 import { startAnalysis } from "./analysis.js";
 import { resolveAutoSharedAnalysis } from "./analysis-share-server.js";
 import { reviewRequestDue } from "./review-request-refresh.js";
@@ -233,7 +234,7 @@ async function importCandidates(
       continue;
     }
     try {
-      await initPrAsync(key, root);
+      await initPrAsync(key, root, { localDiff: localDiffSource(root) });
       if (analyze) {
         // Cost-avoidance: a shared analysis already on the PR for this exact
         // revision is free to import and replaces the paid run entirely.

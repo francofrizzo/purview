@@ -11,6 +11,7 @@ import {
   prExists,
   readMeta,
   stateRoot,
+  type LocalDiffSource,
   type Meta,
   type PrKey,
   type RevisionInfo,
@@ -160,6 +161,34 @@ async function hasCommit(repo: string, sha: string): Promise<boolean> {
   return (await gitAsync(["-C", repo, "cat-file", "-e", `${sha}^{commit}`], repo)).ok;
 }
 
+/**
+ * Make sure `headSha` is in `repo`, fetching `refs/pull/<n>/head` from
+ * `remote` when it is not. Objects only: the fetch updates FETCH_HEAD and
+ * nothing else, no branch, work tree or index. Call under the repo lock.
+ */
+async function ensureHeadCommit(
+  repo: string,
+  remote: string,
+  key: PrKey,
+  headSha: string,
+  onStep?: (detail: string) => void,
+): Promise<{ ok: true } | { error: string }> {
+  if (await hasCommit(repo, headSha)) return { ok: true };
+  // refs/pull/<n>/head exists for every PR — forks and stacked PRs
+  // included — and the merge base, an ancestor, arrives with it.
+  onStep?.("fetching the PR head");
+  const fetched = await gitAsync(
+    ["-C", repo, "fetch", "--no-tags", "--quiet", remote, `+refs/pull/${key.number}/head`],
+    repo,
+  );
+  if (await hasCommit(repo, headSha)) return { ok: true };
+  return {
+    error:
+      `head commit ${headSha.slice(0, 12)} is not in ${repo}` +
+      (fetched.ok ? " even after fetching the PR head" : ` and fetching it failed: ${fetched.err}`),
+  };
+}
+
 /* ------------------------------------------------------------------ ensure */
 
 /**
@@ -204,22 +233,8 @@ async function ensureUnlocked(key: PrKey, opts: EnsurePrCheckoutOptions): Promis
   const baseRef = opts.mergeBase || opts.baseSha || undefined;
 
   return withLock(`repo:${realpath(common.out)}`, async () => {
-    if (!(await hasCommit(repoPath, headSha))) {
-      // refs/pull/<n>/head exists for every PR — forks and stacked PRs
-      // included — and the merge base, an ancestor, arrives with it.
-      opts.onStep?.("fetching the PR head");
-      const fetched = await gitAsync(
-        ["-C", repoPath, "fetch", "--no-tags", "--quiet", remote, `+refs/pull/${key.number}/head`],
-        repoPath,
-      );
-      if (!(await hasCommit(repoPath, headSha))) {
-        return {
-          error:
-            `head commit ${headSha.slice(0, 12)} is not in ${repoPath}` +
-            (fetched.ok ? " even after fetching the PR head" : ` and fetching it failed: ${fetched.err}`),
-        };
-      }
-    }
+    const head = await ensureHeadCommit(repoPath, remote, key, headSha, opts.onStep);
+    if ("error" in head) return head;
 
     const targetReal = fs.existsSync(target) ? realpath(target) : undefined;
     const registered = targetReal
@@ -393,6 +408,143 @@ export function ensureCodingCheckout(key: PrKey, opts: CodingCheckoutOptions): P
       return { path: realpath(target), branch, startSha, headSha: head.ok ? head.out : startSha, owned: true };
     });
   }).catch((err: unknown) => ({ error: `Coding worktree failed: ${(err as Error).message}` }));
+}
+
+/* ------------------------------------------------------ diff from local git */
+
+/**
+ * Pins every setting that changes `git diff`'s bytes to git's defaults, which
+ * is what GitHub's v3.diff is: whatever the reader set globally or in the
+ * repo (no prefixes, patience, colour, a smaller rename limit…) is overridden.
+ */
+const DIFF_CONFIG = [
+  "diff.noprefix=false",
+  "diff.mnemonicPrefix=false",
+  "diff.srcPrefix=a/",
+  "diff.dstPrefix=b/",
+  "diff.relative=false",
+  "diff.renames=true",
+  "diff.renameLimit=1000",
+  "diff.algorithm=myers",
+  "diff.indentHeuristic=true",
+  "diff.context=3",
+  "diff.interHunkContext=0",
+  "diff.suppressBlankEmpty=false",
+  "diff.orderFile=/dev/null",
+  "diff.submodule=short",
+  "core.quotePath=true",
+].flatMap((kv) => ["-c", kv]);
+
+const DIFF_MAX_BUFFER = 512 * 1024 * 1024;
+
+/** `git diff mergeBase head`, untrimmed: the trailing newline is part of the patch. */
+function gitDiff(repo: string, mergeBase: string, headSha: string): Promise<GitOk | GitFail> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      [
+        "-c",
+        "core.hooksPath=/dev/null",
+        ...DIFF_CONFIG,
+        "-C",
+        repo,
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--abbrev=11",
+        mergeBase,
+        headSha,
+        "--",
+      ],
+      {
+        cwd: repo,
+        encoding: "utf8",
+        maxBuffer: DIFF_MAX_BUFFER,
+        timeout: GIT_TIMEOUT_MS,
+        env: { ...process.env, LC_ALL: "C", GIT_TERMINAL_PROMPT: "0" },
+      },
+      (err, stdout, stderr) => {
+        if (err) {
+          const msg = (stderr || err.message || "git diff failed").toString().trim().split("\n").pop();
+          resolve({ ok: false, err: msg ?? "git diff failed" });
+        } else {
+          resolve({ ok: true, out: stdout.toString() });
+        }
+      },
+    );
+  });
+}
+
+/** One checkout's attempt: the diff, or why this checkout could not give it. */
+async function diffIn(
+  dir: string,
+  key: PrKey,
+  mergeBase: string,
+  headSha: string,
+): Promise<{ diff: string } | { error: string }> {
+  const common = await gitAsync(["-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir"], dir);
+  if (!common.ok) return { error: `${dir} is not a git repository` };
+  if (!(await hasCommit(dir, headSha))) {
+    const remote = await matchingRemote(dir, key);
+    if (!remote) return { error: `head ${headSha.slice(0, 12)} is not in ${dir} and no remote points at ${key.owner}/${key.repo}` };
+    const head = await withLock(`repo:${realpath(common.out)}`, () => ensureHeadCommit(dir, remote, key, headSha));
+    if ("error" in head) return head;
+  }
+  if (!(await hasCommit(dir, mergeBase))) return { error: `merge base ${mergeBase.slice(0, 12)} is not in ${dir}` };
+  const res = await gitDiff(dir, mergeBase, headSha);
+  return res.ok ? { diff: res.out } : { error: `git diff failed in ${dir}: ${res.err}` };
+}
+
+/**
+ * The PR diff (`mergeBase..headSha`) from a clone Purview already knows, so a
+ * refresh needs no GitHub diff at all: the configured repo path first, then
+ * the managed checkout. Only reads, plus fetching the PR head when it is
+ * missing; never a checkout, reset or branch move. `null` (logged, never
+ * thrown) when no clone could produce it, and the caller asks GitHub.
+ */
+export async function localPrDiff(
+  key: PrKey,
+  mergeBase: string,
+  headSha: string,
+  opts: { root?: string; repoPath?: string } = {},
+): Promise<string | null> {
+  const root = opts.root ?? stateRoot();
+  if (!SHA_RE.test(mergeBase) || !SHA_RE.test(headSha)) return null;
+  const candidates: string[] = [];
+  if (opts.repoPath && fs.existsSync(opts.repoPath)) candidates.push(opts.repoPath);
+  const managed = prCheckoutPath(key, root);
+  if (fs.existsSync(managed)) candidates.push(managed);
+  if (candidates.length === 0) return null;
+
+  const reasons: string[] = [];
+  for (const dir of candidates) {
+    try {
+      const res = await diffIn(dir, key, mergeBase, headSha);
+      if ("diff" in res) {
+        log.debug("diff", `${shortKey(key)}  read from local git`, { path: dir, head: headSha.slice(0, 12) });
+        return res.diff;
+      }
+      reasons.push(res.error);
+    } catch (err) {
+      reasons.push(`${dir}: ${(err as Error).message}`);
+    }
+  }
+  log.warn("diff", `${shortKey(key)}  local git diff unavailable, asking GitHub`, { reason: reasons.join("; ") });
+  return null;
+}
+
+/** The `localDiff` source core's refresh takes: this PR's configured repo path, then its managed checkout. */
+export function localDiffSource(root: string): LocalDiffSource {
+  return (key, mergeBase, headSha) => {
+    let repoPath: string | undefined;
+    try {
+      repoPath = effectiveRepoPath(key, root);
+    } catch (err) {
+      log.warn("diff", `${shortKey(key)}  repo path unreadable, checking the managed checkout only`, { reason: (err as Error).message });
+    }
+    return localPrDiff(key, mergeBase, headSha, { root, repoPath });
+  };
 }
 
 /* ------------------------------------------------- per-run checkout choice */

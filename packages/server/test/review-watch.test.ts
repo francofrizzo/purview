@@ -27,8 +27,8 @@ function ghFor(candidatesByRepo: Record<string, { number: number; title: string;
     if (args[1] === "graphql") {
       return JSON.stringify({ data: { repository: { pullRequest: { reviewDecision: null } } } });
     }
-    if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
     if (joined.includes("v3.diff")) return "";
+    if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
     const pullMatch = /pulls\/(\d+)$/.exec(args[args.length - 1] ?? "");
     if (pullMatch) {
       const number = Number(pullMatch[1]);

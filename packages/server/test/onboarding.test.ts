@@ -391,8 +391,8 @@ describe("the stored consent reaching the auto-analysis trigger", () => {
 
   const ghStub: GhRunner = (args) => {
     const joined = args.join(" ");
-    if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
     if (joined.includes("v3.diff")) return REV1_PATCH;
+    if (joined.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
     if (/pulls\/\d+$/.test(args[args.length - 1] ?? "")) {
       return JSON.stringify({
         node_id: "PR_1",

@@ -25,6 +25,10 @@ export function classifyError(err: unknown): HttpError {
     const e = err as { code: string; message: string };
     return new HttpError(409, e.code, e.message);
   }
+  // GitHub would not render the PR diff: the plain sentence, not gh's stderr.
+  if ((err as { name?: string } | null)?.name === "DiffUnavailableError") {
+    return new HttpError(502, "gh_failed", (err as Error).message);
+  }
   const message = err instanceof Error ? err.message : String(err);
 
   if (/^No PR state at /.test(message) || /^No files\.json for revision/.test(message)) {
