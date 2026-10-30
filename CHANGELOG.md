@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.10.30.3
 
 - **Function names in hunk headers.** A hunk's header shows its first line and the function or type it sits in; the raw range and signature are on hover. (thanks Canta 🐑)
 - **File headers.** A file's header leads with its name, the folder faint beside it; new files read green and deleted ones red. (thanks Canta 🐑)
