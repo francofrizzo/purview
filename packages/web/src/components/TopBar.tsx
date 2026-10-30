@@ -175,7 +175,7 @@ export function TopBar({
       style={{
         borderColor: "var(--border)",
         // A faint wash of the theme's accent: the PR's header reads as its
-        // own band above the summary strip and the diff, in every theme.
+        // own band above the diff, in every theme.
         background: "color-mix(in srgb, var(--accent) 7%, var(--bg-raised))",
       }}
     >

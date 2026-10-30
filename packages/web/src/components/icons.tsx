@@ -60,6 +60,7 @@ import {
   IconSettingsAutomation,
   IconShield as TablerShield,
   IconStopwatch as TablerStopwatch,
+  IconArrowRight as TablerArrowRight,
   IconAdjustmentsHorizontal,
   IconGitBranch as TablerGitBranch,
   IconKeyboard as TablerKeyboard,
@@ -205,6 +206,7 @@ export const IconHistory = wrap(TablerHistory);
 
 /** A stopwatch — how long an analysis run took (its stats popover). */
 export const IconStopwatch = wrap(TablerStopwatch);
+export const IconArrowRight = wrap(TablerArrowRight);
 export const IconViewOptions = wrap(IconAdjustmentsHorizontal);
 export const IconBranch = wrap(TablerGitBranch);
 export const IconKeyboard = wrap(TablerKeyboard);

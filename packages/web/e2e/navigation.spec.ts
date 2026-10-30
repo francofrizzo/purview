@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { RECONCILE_HUNKS, UNITS, expectUnderFileHeader, hunkHeader, openPr, openUnit } from "./helpers";
+import { PR_PATH, RECONCILE_HUNKS, UNITS, expectUnderFileHeader, hunkHeader, openPr, openUnit } from "./helpers";
 
 const [A, B, C] = RECONCILE_HUNKS;
 
@@ -61,25 +61,60 @@ test("Shift+J / Shift+K step between units in sidebar order", async ({ page }) =
   await expect(hunkHeader(page, "a1b2c3d4e5f60008")).toHaveAttribute("data-focused", "true");
 });
 
-test("s toggles the summary strip", async ({ page }) => {
-  // Hovering the strip peeks it open too; keep the pointer out of the way.
-  await page.mouse.move(8, 792);
-  const strip = page.getByTestId("summary-strip");
-  await expect(strip).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("summary-overlay")).toHaveCount(0);
-
+test("s opens the overview in the sidebar over the diff's room, and its bar jumps between sections", async ({ page }) => {
   await page.keyboard.press("s");
-  await expect(strip).toHaveAttribute("aria-expanded", "true");
-  await expect(page.getByTestId("summary-overlay")).toBeVisible();
+  const overview = page.getByTestId("overview");
+  await expect(overview).toBeVisible();
+  await expect(page.getByTestId("sidebar-tab-overview")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("[data-diff-scroller]")).toHaveCount(0);
+  const pane = (await page.getByTestId("overview-pane").boundingBox())!;
+  expect(pane.width).toBeGreaterThan(1000);
+
   await expect(page.getByTestId("pr-summary")).toBeVisible();
   await expect(page.getByTestId("pr-description")).toContainText("Retried charges could double-bill");
-  // The tabs jump: the description scrolls to the panel's top and its tab lights up.
-  await page.getByTestId("summary-tab-description").click();
-  await expect(page.getByTestId("summary-tab-description")).toHaveAttribute("aria-selected", "true");
+  const jump = page.getByTestId("overview-jump-description");
+  await jump.click();
+  await expect(jump).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("pr-description")).toBeInViewport();
+
+  // Only what needs a close read is listed; the rest is counted.
+  const reading = page.getByTestId("reading-order");
+  await expect(reading).toContainText(UNITS.charge);
+  await expect(reading).not.toContainText(UNITS.reconcile);
+  await expect(page.getByTestId("reading-rest")).toHaveText("Then 2 to skim and 2 to skip.");
 
   await page.keyboard.press("s");
-  await expect(strip).toHaveAttribute("aria-expanded", "false");
-  await expect(page.getByTestId("summary-overlay")).toHaveCount(0);
+  await expect(overview).toHaveCount(0);
+  await expect(page.locator("[data-diff-scroller]")).toBeVisible();
+});
+
+test("a file in the overview's tree opens in the Files view, and the tabs and the URL follow", async ({ page }) => {
+  await page.getByTestId("sidebar-tab-overview").click();
+  await expect(page).toHaveURL(/view=overview/);
+  await page.getByTestId("file-shape-src/billing/idempotency.ts").click();
+  await expect(page.getByTestId("overview")).toHaveCount(0);
+  await expect(page.getByTestId("sidebar-tab-files")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("file-note")).toHaveText("Derives the charge key from order id, amount and currency.");
+  await expect(page).toHaveURL(/view=files.*file=src%2Fbilling%2Fidempotency\.ts/);
+  await page.reload();
+  await expect(page.getByTestId("file-note")).toBeVisible();
+});
+
+test("a PR with nothing read opens on the overview, unless the link names a view", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("reviewer.mockUnread", "1"));
+  await page.goto(PR_PATH);
+  await expect(page.getByTestId("overview")).toBeVisible();
+  await page.goto(`${PR_PATH}?view=guide`);
+  await expect(page.getByTestId("sidebar-tab-units")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("overview")).toHaveCount(0);
+});
+
+test("a unit in the overview opens in Review units", async ({ page }) => {
+  await page.keyboard.press("s");
+  await page.getByTestId("start-reading").click();
+  await expect(page.getByTestId("overview")).toHaveCount(0);
+  await expect(page.getByTestId("sidebar-tab-units")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("unit-header")).toBeVisible();
 });
 
 test("V marks the whole unit viewed and moves on", async ({ page }) => {
@@ -168,9 +203,9 @@ test("space / shift+space step between the hunks still to read, skipping viewed 
   await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
 });
 
-test("the summary panel lists the concepts the PR leans on", async ({ page }) => {
+test("the overview lists the concepts the PR leans on", async ({ page }) => {
   await page.keyboard.press("s");
-  const concepts = page.getByTestId("pr-concepts");
+  const concepts = page.getByTestId("overview-concepts");
   await expect(concepts.getByTestId("concept")).toHaveCount(3);
   await expect(concepts).toContainText("Charge ledger");
   await expect(concepts.getByTestId("concept-new")).toHaveCount(2);

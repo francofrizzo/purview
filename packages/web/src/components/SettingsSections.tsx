@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { sectionInView } from "./SummaryStrip";
+import { sectionInView } from "../lib/summaryText";
 
 /**
  * The settings screens: titled sections on the right, a sticky list of them
  * on the left that scrolls to a section and underlines the one in view. The
- * same jump bar the summary panel uses, laid out as a rail because a settings
+ * same jump bar the overview uses, laid out as a rail because a settings
  * screen is long and its sections are many.
  */
 

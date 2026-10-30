@@ -105,7 +105,8 @@ import {
   SharedAnalysisBanner,
   SyncResultPanel,
 } from "../components/Panels";
-import { SummaryStrip, visibleDescription } from "../components/SummaryStrip";
+import { Overview } from "../components/Overview";
+import { visibleDescription } from "../lib/summaryText";
 import { TopBar } from "../components/TopBar";
 import { UNPLACED_TITLE, UnitSidebar } from "../components/UnitSidebar";
 import { SidebarRail } from "../components/SidebarRail";
@@ -126,7 +127,7 @@ import {
   type RevisionHighlight,
 } from "../lib/revisionHighlight";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { prPageTitle, unitFromSearch, withUnitParam } from "../lib/prUrl";
+import { fileFromSearch, prPageTitle, unitFromSearch, viewFromSearch, withUnitParam, withViewParams } from "../lib/prUrl";
 import { useDiffSearch, type SearchScope } from "../lib/useDiffSearch";
 import { MiddleTruncate } from "../components/Truncate";
 import { useChatFor } from "../lib/chat";
@@ -250,13 +251,16 @@ export function PrView() {
   const attachmentScope = useAttachmentScope(prKey);
   const stale = staleness.data?.stale === true;
 
-  const [tab, setTab] = useState<"units" | "files">("units");
-  // Seeded from `?unit=` so a unit link opens on that unit; validated against
-  // the real units once they load (see the effect below).
+  // Seeded from `?view=`, `?unit=` and `?file=` so a reload or a link opens
+  // where it was; the unit and the file are validated against the real ones
+  // once they load (see the effect below).
+  const [tab, setTab] = useState<"units" | "files">(() =>
+    viewFromSearch(location.search) === "files" ? "files" : "units",
+  );
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(() =>
     unitFromSearch(location.search),
   );
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedPath, setSelectedPath] = useState<string | null>(() => fileFromSearch(location.search));
 
   // --- sidebar: collapsible column, or a floating drawer on a narrow/iPad
   // viewport ---------------------------------------------------------------
@@ -323,7 +327,12 @@ export function PrView() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [standalone] = useState(isStandalone);
   const [focusedHunkId, setFocusedHunkId] = useState<string | null>(null);
-  const [summaryOpen, setSummaryOpen] = useState(false);
+  // The overview takes the sidebar's first tab, and the diff's room with it.
+  // It opens by itself on a PR with nothing read yet, unless the link named a
+  // view or a unit.
+  const [overview, setOverview] = useState(() => viewFromSearch(location.search) === "overview");
+  // The PR whose first view is picked; state, not a ref, so the URL follows that pick.
+  const [viewDecidedFor, setViewDecidedFor] = useState<string | null>(null);
   // The right dock: comments, chat or review, one at a time. The chat's own
   // open flag (lib/chat.tsx, which attachRef and the composer flip) stays the
   // source of truth for its tab; the other two live here.
@@ -609,7 +618,7 @@ export function PrView() {
     [detail],
   );
 
-  // Whole-PR reading progress, shown quietly on the summary strip.
+  // Whole-PR reading progress, shown quietly in the footer.
   // Generated files and lockfiles are left out: they are not review work.
   const overall = useMemo(
     () => reviewProgress(detail?.files.files ?? [], detail?.state.hunks ?? {}),
@@ -649,18 +658,23 @@ export function PrView() {
     };
   }, [detail]);
 
-  // Per-unit URLs: `?unit=<id>` follows the selection (replace, not push, so
-  // j/k through units doesn't bury the back button), and a copied URL opens
-  // on that unit. Only while this page is the real location — never while a
-  // settings modal sits over it, where navigating would close the modal.
+  // The URL follows what is on screen: `?view=` (overview, guide, files),
+  // the units' `?unit=` and the Files view's `?file=` (replace, not push, so
+  // j/k through units doesn't bury the back button), and a reload or a copied
+  // URL opens on it. Only while this page is the real location — never while
+  // a settings modal sits over it, where navigating would close the modal.
   const navigate = useNavigate();
+  const view = overview ? "overview" : tab;
   useEffect(() => {
-    if (!detail || tab !== "units") return;
+    if (!detail) return;
     if (!window.location.pathname.startsWith("/pr/")) return;
-    const next = withUnitParam(location.search, selectedUnitId);
+    // Not before the first visit picks its view (see below): that choice is the one to keep.
+    if (viewDecidedFor !== prKey) return;
+    let next = withViewParams(location.search, view, selectedPath);
+    if (view === "units") next = withUnitParam(next, selectedUnitId);
     if (next === location.search) return;
     navigate({ pathname: location.pathname, search: next, hash: location.hash }, { replace: true, state: location.state });
-  }, [detail, tab, selectedUnitId, location.pathname, location.search, location.hash, location.state, navigate]);
+  }, [detail, prKey, viewDecidedFor, view, selectedUnitId, selectedPath, location.pathname, location.search, location.hash, location.state, navigate]);
 
   const selectedUnit = units.find((u) => u.id === selectedUnitId) ?? null;
   const unplacedSelected = selectedUnitId === UNPLACED_ID && !unplacedEmpty;
@@ -809,6 +823,8 @@ export function PrView() {
 
   const openSearch = useCallback(
     (scope?: SearchScope) => {
+      // The search runs over the diff: it brings the diff back.
+      setOverview(false);
       search.openSearch(scope);
       // Opening while already open means "start over": select what is there.
       requestAnimationFrame(() => {
@@ -958,14 +974,22 @@ export function PrView() {
         toggleDock("review");
       } else if (e.key === "s") {
         e.preventDefault();
-        setSummaryOpen((v) => !v);
+        setOverview((v) => !v);
+      } else if (e.key === "g") {
+        e.preventDefault();
+        setOverview(false);
+        setTab("units");
+      } else if (e.key === "f") {
+        e.preventDefault();
+        setOverview(false);
+        setTab("files");
       } else if (e.key === "?") {
         e.preventDefault();
         setShowShortcuts((v) => !v);
       } else if (e.key === "/") {
         e.preventDefault();
         openSearch();
-      } else if ((e.key === "J" || e.key === "K") && tab === "units") {
+      } else if ((e.key === "J" || e.key === "K") && tab === "units" && !overview) {
         // Shift+j/k: the unit-sized step next to the hunk-sized j/k, in the
         // sidebar's order.
         const ordered = sortUnitsForDisplay(units).filter((u) => !sinceUnitIds || sinceUnitIds.has(u.id));
@@ -975,7 +999,7 @@ export function PrView() {
           e.preventDefault();
           setSelectedUnitId(next.id);
         }
-      } else if (e.key === "V" && tab === "units") {
+      } else if (e.key === "V" && tab === "units" && !overview) {
         // Shift+v: the unit-sized "mark unit viewed", next to v for one hunk.
         if (!selectedUnit || !detail || setUnitViewed.isPending) return;
         const p = unitProgress(detail, selectedUnit);
@@ -1010,7 +1034,7 @@ export function PrView() {
         // Last in line: an open popover, overlay, composer or line selection
         // claims Escape first (they mark it handled, or stop it outright).
         !e.defaultPrevented &&
-        !summaryOpen &&
+        !overview &&
         !commentTarget
       ) {
         e.preventDefault();
@@ -1037,11 +1061,25 @@ export function PrView() {
     advanceAfterUnitViewed,
     highlightActive,
     clearHighlight,
-    summaryOpen,
+    overview,
     commentTarget,
     settings.foldSkippableHunks,
     updateSettings,
   ]);
+
+  // First visit to an analyzed PR with nothing read: start on the overview.
+  useEffect(() => {
+    if (!detail || viewDecidedFor === prKey) return;
+    setViewDecidedFor(prKey);
+    const anyViewed = Object.values(detail.state.hunks).some((h) => h.viewed);
+    const hasOverview = Boolean(detail.state.summary?.trim());
+    if (!anyViewed && hasOverview && !unitFromSearch(location.search) && !viewFromSearch(location.search)) setOverview(true);
+  }, [detail, prKey, viewDecidedFor, location.search]);
+
+  // Any jump into the diff (a link, a heart, a comment) leaves the overview.
+  useEffect(() => {
+    if (jumpToHunk) setOverview(false);
+  }, [jumpToHunk]);
 
   // Keep the focused hunk inside the currently shown set. Entering a unit (or
   // a file) lands on its first hunk still to read that the analysis did not
@@ -1117,6 +1155,7 @@ export function PrView() {
   // driving unit by id (see lib/codeLinks.ts).
   const openUnitFromText = useCallback(
     (unitId: string) => {
+      setOverview(false);
       setTab("units");
       selectUnitFromSidebar(unitId);
     },
@@ -1130,6 +1169,7 @@ export function PrView() {
       const hunkId = file && line !== undefined ? hunkAtLine(file.hunks, line) : null;
       if (hunkId) jumpToDiffHunk(hunkId, path, { line });
       else {
+        setOverview(false);
         setTab("files");
         setSelectedPath(path);
       }
@@ -1437,39 +1477,61 @@ export function PrView() {
   // a different container depending on `sidebarMode`.
   const sidebarBody = (
     <>
-      {/* Same jump-bar vocabulary as the summary panel: sentence case, a
+      {/* Same jump-bar vocabulary as the overview: sentence case, a
           2px accent underline on the current one. */}
       <div className="flex flex-none items-end gap-1 border-b px-2 pt-1.5" style={{ borderColor: "var(--border)" }}>
-        {(["units", "files"] as const).map((t) => (
+        {(["overview", "units", "files"] as const).map((t) => (
           <button
             key={t}
             type="button"
             role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
+            aria-selected={view === t}
+            data-testid={`sidebar-tab-${t}`}
+            data-tip={SIDEBAR_TAB_TIP[t].tip}
+            data-tip-key={SIDEBAR_TAB_TIP[t].key}
+            onClick={() => {
+              setOverview(t === "overview");
+              if (t !== "overview") setTab(t);
+            }}
             className="sidebar-tab-btn -mb-px border-b-2 px-2 pb-1.5 pt-1 text-xs font-medium transition-colors"
             style={{
-              borderColor: tab === t ? "var(--accent)" : "transparent",
-              color: tab === t ? "var(--fg)" : "var(--fg-muted)",
+              borderColor: view === t ? "var(--accent)" : "transparent",
+              color: view === t ? "var(--fg)" : "var(--fg-muted)",
             }}
           >
-            {t === "units" ? "Review units" : "Files"}
+            {t === "overview" ? "Overview" : t === "units" ? "Review units" : "Files"}
           </button>
         ))}
         <span className="flex-1" />
-        <button
-          type="button"
-          className="flex-none px-2 pb-2"
-          style={{ color: "var(--fg-faint)" }}
-          data-tip={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
-          aria-label={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
-          onClick={toggleSidebar}
-        >
-          <IconChevron width={11} height={11} style={{ transform: "rotate(180deg)" }} />
-        </button>
+        {overview ? null : (
+          <button
+            type="button"
+            className="flex-none px-2 pb-2"
+            style={{ color: "var(--fg-faint)" }}
+            data-tip={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
+            aria-label={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
+            onClick={toggleSidebar}
+          >
+            <IconChevron width={11} height={11} style={{ transform: "rotate(180deg)" }} />
+          </button>
+        )}
       </div>
-      <div className="quiet-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-        {tab === "units" ? (
+      <div className={overview ? "min-h-0 flex-1" : "quiet-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden"}>
+        {overview ? (
+          <CodeLinkContext.Provider value={textLinks}>
+            <Overview
+              detail={detail}
+              summary={summary}
+              description={description}
+              reviews={threadsQuery.data?.reviews}
+              conversation={threadsQuery.data?.conversation}
+              filters={threadFilters.filters}
+              revisions={revisionContext}
+              onOpenUnit={openUnitFromText}
+              onOpenFile={openFileFromText}
+            />
+          </CodeLinkContext.Provider>
+        ) : tab === "units" ? (
           <CodeLinkContext.Provider value={textLinks}>
             <UnitSidebar
               detail={detail}
@@ -1500,11 +1562,9 @@ export function PrView() {
       >
         {/* The way in to every key, in sight: a list reachable only by a key
             nobody knows about would never be found. */}
-        {allUnitsViewed ? (
-          <span className="float-right" data-testid="all-units-viewed">
-            every unit read
-          </span>
-        ) : null}
+        <span className="float-right tabular-nums" data-testid={allUnitsViewed ? "all-units-viewed" : "overall-progress"}>
+          {allUnitsViewed ? "every unit read" : `${overall.viewed}/${overall.total} viewed`}
+        </span>
         <button
           type="button"
           className="flex items-center gap-1.5 rounded transition-colors hover:text-[var(--fg-muted)]"
@@ -1784,36 +1844,27 @@ export function PrView() {
           onCancel={() => cancelAnalysis.mutate()}
         />
       ) : null}
-      {summary || description || threadsQuery.data?.reviews?.length || threadsQuery.data?.conversation?.length ? (
-        <SummaryStrip
-          summary={summary}
-          description={description}
-          author={detail.meta.author}
-          authorAvatarUrl={detail.meta.authorAvatarUrl}
-          reviews={threadsQuery.data?.reviews}
-          conversation={threadsQuery.data?.conversation}
-          filters={threadFilters.filters}
-          revisions={revisionContext}
-          concepts={concepts}
-          viewed={overall.viewed}
-          total={overall.total}
-          open={summaryOpen}
-          onToggle={() => setSummaryOpen((v) => !v)}
-          onClose={() => setSummaryOpen(false)}
-        />
-      ) : null}
-
       {/* The workspace: the diff is the desk — it runs to the edges, unframed —
           and the sidebar and side panels are instruments resting on it:
           bordered, rounded, a hair of gutter around each. Only things that
-          truly float (the summary panel, pills, menus) cast a shadow. */}
+          truly float (pills, menus) cast a shadow. */}
       <div
         className="workspace relative flex min-h-0 flex-1"
         data-flat={settings.flatWorkspace ? "true" : undefined}
-        data-headerless={tab === "units" && !unplacedSelected ? "true" : undefined}
+        data-headerless={tab === "units" && !overview && !unplacedSelected ? "true" : undefined}
         style={{ background: "var(--bg)" }}
       >
-        {sidebarMode === "column" ? (
+        {/* The overview is the sidebar's own tab, grown over the diff's room. */}
+        {overview ? (
+          <nav
+            className="pane m-[7px] flex min-w-0 flex-1 flex-col overflow-hidden"
+            data-testid="overview-pane"
+            style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
+          >
+            {sidebarBody}
+          </nav>
+        ) : null}
+        {!overview && sidebarMode === "column" ? (
           <nav
             className={`pane relative m-[7px] mr-0 rounded-br-none flex flex-none flex-col overflow-hidden ${
               sidebarDrag === null ? "transition-[width] duration-150 motion-reduce:transition-none motion-reduce:duration-0" : ""
@@ -1852,7 +1903,7 @@ export function PrView() {
           </nav>
         ) : null}
 
-        {sidebarMode === "drawer" ? (
+        {!overview && sidebarMode === "drawer" ? (
           // The rail is the drawer mode's resting state — always present,
           // never unmounted — with the full sidebar floating over it (and
           // over the diff) exactly like it floats when opened below.
@@ -1876,7 +1927,7 @@ export function PrView() {
           </nav>
         ) : null}
 
-        {sidebarMode === "drawer" && drawerOpen ? (
+        {!overview && sidebarMode === "drawer" && drawerOpen ? (
           <>
             {/* Transparent scrim: tapping anywhere outside the drawer closes it. */}
             <div
@@ -1893,6 +1944,9 @@ export function PrView() {
           </>
         ) : null}
 
+        {/* Unmounted under the overview, not hidden: the diff's keys (j, k, v)
+            must not act on hunks the reader cannot see. */}
+        {overview ? null : (
         <main ref={mainRef} className="relative flex min-w-0 flex-1 flex-col">
           {tab === "units" && selectedUnit && !briefInSidebar ? (
             <div
@@ -2103,6 +2157,7 @@ export function PrView() {
             renderComposer("floating")
           ) : null}
         </main>
+        )}
 
 
         {dock ? (
@@ -2275,7 +2330,9 @@ export function PrView() {
             rows={[
               [["d"], viewMode === "split" ? "unified diff" : "split diff"],
               [["w"], wrap ? "stop wrapping" : "wrap long lines"],
-              [["s"], "summary"],
+              [["s"], "overview"],
+              [["g"], "review units"],
+              [["f"], "files"],
               [["m", "c", "r"], "comments, chat, review"],
               [["b"], "sidebar"],
               [["/"], "search"],
@@ -2437,6 +2494,12 @@ function ErrorBar({ message, testId }: { message: string; testId?: string }) {
     </div>
   );
 }
+
+const SIDEBAR_TAB_TIP = {
+  overview: { tip: "Summary, where it lands and what to read closely", key: "s" },
+  units: { tip: "The PR unit by unit", key: "g" },
+  files: { tip: "The PR file by file", key: "f" },
+} as const;
 
 /** One group of the shortcuts legend: a two-column list of keys and what they do. */
 function ShortcutGroup({ title, rows }: { title: string; rows: [string[], string][] }) {

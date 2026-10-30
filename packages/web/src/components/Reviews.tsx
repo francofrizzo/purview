@@ -1,8 +1,7 @@
 /**
- * The PR's reviews and conversation comments, for the summary strip: a
- * chronological timeline in the overlay, and each reviewer's standing verdict
- * as a cluster of marked avatars on the collapsed strip (GitHub's reviewers
- * box, in one line).
+ * The PR's reviews and conversation comments, for the overview: a
+ * chronological timeline, and each reviewer's standing verdict
+ * as a cluster of marked avatars (GitHub's reviewers box, in one line).
  *
  * Bodies here are often long (bot walkthroughs, CodeRabbit's review
  * summaries), so each one starts clamped to a few lines; an entry with nothing
@@ -27,7 +26,7 @@ import { cleanRemoteBody } from "../lib/threads";
 import type { RemoteReview, RemoteThread } from "../api/types";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { Markdown } from "./Markdown";
-import { withoutHeadings } from "./SummaryStrip";
+import { withoutHeadings } from "../lib/summaryText";
 import { BotChip, age } from "./Threads";
 import { IconCheck, IconChevron, IconClose } from "./icons";
 
@@ -252,7 +251,7 @@ const MARK: Record<Verdict, { bg: string; fg: string } | null> = {
   DISMISSED: null,
 };
 
-/** The collapsed strip's reviewers: an avatar each, marked ✓ or ✗ by their standing verdict. */
+/** The overview's reviewers: an avatar each, marked ✓ or ✗ by their standing verdict. */
 export function ReviewerVerdicts({ verdicts }: { verdicts: ReviewerVerdict[] }) {
   if (verdicts.length === 0) return null;
   return (

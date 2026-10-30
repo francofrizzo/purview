@@ -103,6 +103,14 @@ const MOCK_DOD_AFTER: Record<string, string[]> = {
 
 /** In-memory mutable copy so the UI behaves like a real backend under VITE_MOCK=1. */
 const detail: PrDetail = structuredClone(mockDetail);
+// reviewer.mockUnread "1" starts the fixture PR with nothing read.
+try {
+  if (localStorage.getItem("reviewer.mockUnread") === "1") {
+    for (const hunk of Object.values(detail.state.hunks)) hunk.viewed = false;
+  }
+} catch {
+  // No storage: the fixture stays as it is.
+}
 const list: PrListEntry[] = structuredClone(mockList);
 const drafts: DraftComment[] = structuredClone(mockDrafts);
 const pickedUpNote = drafts.find((c) => c.id === "draft-agent-1");

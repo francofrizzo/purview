@@ -1,5 +1,5 @@
 /**
- * The PR's reviews and conversation comments, the way the summary strip reads
+ * The PR's reviews and conversation comments, the way the overview reads
  * them: one chronological timeline, and each reviewer's standing verdict (the
  * reviewers box GitHub shows beside a PR).
  *
