@@ -131,11 +131,11 @@ function ChangeCard({ mix, all, anchor }: { mix: Mix; all: boolean; anchor: DOMR
 
 /**
  * What the unit's lines are made of: a bar and the shares, with the lines on
- * hover. Nothing when they are all of one kind: the +/− above already says it.
+ * hover. Shown for one kind too: "100% tests" says what the unit is.
  */
 export function UnitMix({ files, hunkIds }: { files: FileEntry[]; hunkIds: readonly string[] }) {
   const mix = changeMix(files, new Set(hunkIds));
-  if (mix.rows.length < 2) return null;
+  if (!mix.rows.length) return null;
   return (
     <div
       // A caption of the files line above it: under its text, not its icon.
