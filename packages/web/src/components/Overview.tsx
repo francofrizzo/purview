@@ -1,11 +1,13 @@
 import { useMemo, useRef, useState } from "react";
 import type { Concept, PrDetail, RemoteConversationComment, RemoteReview, RemoteThread, ReviewUnit } from "../api/types";
+import { changeMix } from "../lib/changeMix";
 import { unitProgress } from "../lib/diffModel";
 import { workUnits } from "../lib/generated";
 import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/reviews";
 import { sectionInView, withoutHeadings } from "../lib/summaryText";
 import type { ThreadFilters } from "../lib/threads";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
+import { ChangeBreakdown } from "./ChangeMix";
 import { ProgressRing, UnitNumber } from "./Chips";
 import { FileLegend, FileShape } from "./Shape";
 import { AuthorAvatar } from "./AuthorAvatar";
@@ -15,7 +17,8 @@ import { IconArrowRight } from "./icons";
 
 /**
  * The PR before its parts, from broad to narrow: why it exists (the
- * analysis's summary, in plain words), the words the PR leans on, where it
+ * analysis's summary, in plain words), how much of it is the real change, the
+ * words the PR leans on, where it
  * lands in the code, then what must be read;
  * the author's description, in their own words and whole, and what reviewers
  * said close it. One calm column; everything here is a way into the guide.
@@ -59,8 +62,10 @@ export function Overview({
     [reviews, meta.author, filters, revisions],
   );
   const hasReviews = timeline.entries.length > 0 || timeline.hidden > 0;
+  const mix = useMemo(() => changeMix(detail.files.files), [detail.files.files]);
   const sections = [
     summary ? { id: "summary", label: "Summary" } : null,
+    mix.rows.length > 1 ? { id: "size", label: "Size" } : null,
     state.concepts?.length ? { id: "concepts", label: "Concepts" } : null,
     state.fileNotes ? { id: "files", label: "Where it lands" } : null,
     ordered.length ? { id: "reading", label: "Must read" } : null,
@@ -153,6 +158,13 @@ export function Overview({
             <div className="[&>div]:text-[15px] [&>div]:leading-[25px]" style={{ color: "var(--fg)" }}>
               <Markdown text={withoutHeadings(summary.trim())} ink="var(--fg)" />
             </div>
+          </section>
+        ) : null}
+
+        {mix.rows.length > 1 ? (
+          <section data-testid="overview-size" data-section="size">
+            <SectionHead title="Size" />
+            <ChangeBreakdown mix={mix} />
           </section>
         ) : null}
 

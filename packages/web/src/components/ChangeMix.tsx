@@ -56,6 +56,62 @@ export function ChangeSize({ files }: { files: FileEntry[] }) {
   );
 }
 
+/** The lines of each kind, its share, and the total. */
+function ChangeTable({ mix }: { mix: Mix }) {
+  return (
+    <div className="grid grid-cols-[1fr_auto_auto_auto] items-baseline gap-x-2 gap-y-1">
+      {mix.rows.map((r) => (
+        <div key={r.kind} className="contents" data-testid={`change-row-${r.kind}`}>
+          <span className="flex items-center gap-1.5" style={{ color: "var(--fg)" }}>
+            <span className="h-2 w-2 flex-none rounded-full" style={{ background: CHANGE_LOOK[r.kind].color }} />
+            {CHANGE_LOOK[r.kind].label}
+          </span>
+          <span className="text-right text-2xs" style={{ color: "var(--fg-faint)" }}>
+            {formatShare(r.percent)}
+          </span>
+          <span className="text-right" style={{ color: "var(--ok)" }}>
+            +{r.added}
+          </span>
+          <span className="text-right" style={{ color: "var(--risk)" }}>
+            −{r.removed}
+          </span>
+        </div>
+      ))}
+      <span className="col-span-full my-0.5 border-t" style={{ borderColor: "var(--border)" }} />
+      <span className="col-span-2" style={{ color: "var(--fg)" }}>
+        Total
+      </span>
+      <span className="text-right" style={{ color: "var(--ok)" }}>
+        +{mix.added}
+      </span>
+      <span className="text-right" style={{ color: "var(--risk)" }}>
+        −{mix.removed}
+      </span>
+    </div>
+  );
+}
+
+/** A row of the kinds in proportion: the same look in a unit and in the overview. */
+function ChangeBar({ mix, className }: { mix: Mix; className: string }) {
+  return (
+    <span className={`flex flex-none gap-px overflow-hidden rounded-full ${className}`} aria-hidden>
+      {mix.rows.map((r) => (
+        <span key={r.kind} style={{ width: `${r.percent}%`, background: CHANGE_LOOK[r.kind].color }} />
+      ))}
+    </span>
+  );
+}
+
+/** The overview's size: the kinds in proportion, over the table. */
+export function ChangeBreakdown({ mix }: { mix: Mix }) {
+  return (
+    <div className="max-w-md text-[13px] tabular-nums" data-testid="change-breakdown">
+      <ChangeBar mix={mix} className="mb-3 h-1.5 w-full" />
+      <ChangeTable mix={mix} />
+    </div>
+  );
+}
+
 function ChangeCard({ mix, all, anchor }: { mix: Mix; all: boolean; anchor: DOMRect }) {
   const left = Math.max(8, Math.min(anchor.left, window.innerWidth - CARD_WIDTH - 8));
   return (
@@ -65,35 +121,7 @@ function ChangeCard({ mix, all, anchor }: { mix: Mix; all: boolean; anchor: DOMR
       style={{ top: anchor.bottom + 6, left, width: CARD_WIDTH }}
       data-testid="change-card"
     >
-      <div className="grid grid-cols-[1fr_auto_auto_auto] items-baseline gap-x-2 gap-y-1">
-        {mix.rows.map((r) => (
-          <div key={r.kind} className="contents" data-testid={`change-row-${r.kind}`}>
-            <span className="flex items-center gap-1.5" style={{ color: "var(--fg)" }}>
-              <span className="h-2 w-2 flex-none rounded-full" style={{ background: CHANGE_LOOK[r.kind].color }} />
-              {CHANGE_LOOK[r.kind].label}
-            </span>
-            <span className="text-right text-2xs" style={{ color: "var(--fg-faint)" }}>
-              {formatShare(r.percent)}
-            </span>
-            <span className="text-right" style={{ color: "var(--ok)" }}>
-              +{r.added}
-            </span>
-            <span className="text-right" style={{ color: "var(--risk)" }}>
-              −{r.removed}
-            </span>
-          </div>
-        ))}
-        <span className="col-span-full my-0.5 border-t" style={{ borderColor: "var(--border)" }} />
-        <span className="col-span-2" style={{ color: "var(--fg)" }}>
-          Total
-        </span>
-        <span className="text-right" style={{ color: "var(--ok)" }}>
-          +{mix.added}
-        </span>
-        <span className="text-right" style={{ color: "var(--risk)" }}>
-          −{mix.removed}
-        </span>
-      </div>
+      <ChangeTable mix={mix} />
       <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
         {all ? "Click to count implementation lines" : "Click to count all lines"}
       </p>
@@ -115,11 +143,7 @@ export function UnitMix({ files, hunkIds }: { files: FileEntry[]; hunkIds: reado
       data-testid="unit-mix"
       data-tip={mix.rows.map((r) => `${CHANGE_LOOK[r.kind].label}: +${r.added} −${r.removed}`).join("\n")}
     >
-      <span className="flex h-1.5 w-14 flex-none gap-px overflow-hidden rounded-full" aria-hidden>
-        {mix.rows.map((r) => (
-          <span key={r.kind} style={{ width: `${r.percent}%`, background: CHANGE_LOOK[r.kind].color }} />
-        ))}
-      </span>
+      <ChangeBar mix={mix} className="h-1.5 w-14" />
       <span>{mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].label.toLowerCase()}`).join(" · ")}</span>
     </div>
   );

@@ -168,6 +168,20 @@ test("the header counts implementation lines, shows the rest on hover, and count
   await expect(page.getByTestId("change-size-mark")).toHaveCount(0);
 });
 
+test("the overview's Size section breaks the lines down by type", async ({ page }) => {
+  await page.keyboard.press("s");
+  await page.getByTestId("overview-jump-size").click();
+  const size = page.getByTestId("overview-size");
+  await expect(size).toBeInViewport();
+  await expect(size.getByTestId("change-row-implementation")).toHaveCount(1);
+  await expect(size).toContainText("Implementation");
+  await expect(size).toContainText("84%");
+  await expect(size).toContainText("+188");
+  await expect(size).toContainText("Generated");
+  await expect(size).toContainText("Total");
+  await expect(size).toContainText("+231");
+});
+
 test("a unit of mixed lines shows what it is made of", async ({ page }) => {
   await openUnit(page, UNITS.wiring);
   await expect(page.getByTestId("unit-mix")).toContainText("implementation");
