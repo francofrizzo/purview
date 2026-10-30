@@ -6,6 +6,7 @@ import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/revi
 import { sectionInView, withoutHeadings } from "../lib/summaryText";
 import type { ThreadFilters } from "../lib/threads";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
+import { ProgressRing, UnitNumber } from "./Chips";
 import { FileLegend, FileShape } from "./Shape";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { InlineMarkdown, Markdown } from "./Markdown";
@@ -319,10 +320,10 @@ function ReadingRow({
       type="button"
       onClick={onOpen}
       data-testid={`reading-row-${unit.id}`}
-      className="group -mx-2 flex w-[calc(100%+1rem)] items-baseline gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
+      className="group -mx-2 flex w-[calc(100%+1rem)] items-start gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-[var(--bg-hover)]"
     >
-      <span className="w-5 flex-none text-right text-xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-        {number}
+      <span className="mt-px flex w-5 flex-none justify-center">
+        <UnitNumber number={number} />
       </span>
       <span className="min-w-0 flex-1">
         <span
@@ -337,12 +338,11 @@ function ReadingRow({
           </span>
         ) : null}
       </span>
-      <span
-        className="flex-none text-2xs tabular-nums"
-        style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}
-      >
-        {progress.total ? `${progress.viewed}/${progress.total}` : ""}
-      </span>
+      {progress.total ? (
+        <span className="mt-0.5 flex-none">
+          <ProgressRing viewed={progress.viewed} total={progress.total} />
+        </span>
+      ) : null}
     </button>
   );
 }

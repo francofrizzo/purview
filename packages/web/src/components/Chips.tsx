@@ -475,6 +475,22 @@ export function ProgressRing({ viewed, total, tip }: { viewed: number; total: nu
   );
 }
 
+/** A unit's number, on an inset tile: wherever a unit is listed. */
+export function UnitNumber({ number, selected = false, tip }: { number: number; selected?: boolean; tip?: string }) {
+  return (
+    <span
+      className="flex h-[18px] min-w-[18px] flex-none items-center justify-center rounded-[5px] px-1 text-2xs tabular-nums"
+      style={{
+        background: selected ? "var(--bg-raised)" : "var(--bg-inset)",
+        color: selected ? "var(--fg)" : "var(--fg-muted)",
+      }}
+      data-tip={tip}
+    >
+      {number}
+    </span>
+  );
+}
+
 /**
  * "9 files · +120 −34", GitHub's own size stat: in the PR header, and on the
  * list row without the file count. Added green, removed red, like the diff;

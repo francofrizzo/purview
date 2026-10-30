@@ -7,7 +7,7 @@ import { workUnits } from "../lib/generated";
 import { commonRiskFlags } from "../lib/risks";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
-import { AttentionIcon, KindChip, ProgressRing, ViewedBox } from "./Chips";
+import { AttentionIcon, KindChip, ProgressRing, UnitNumber, ViewedBox } from "./Chips";
 import { FindingsBadge } from "./Findings";
 import { LineDelta, unitFiles } from "./UnitBrief";
 import { UnitChangelog } from "./UnitChangelog";
@@ -461,16 +461,7 @@ const UnitRow = memo(function UnitRow({
               <IconGenerated width={12} height={12} />
             </span>
           ) : (
-            <span
-              className="flex h-[18px] min-w-[18px] flex-none items-center justify-center rounded-[5px] px-1 text-2xs tabular-nums"
-              style={{
-                background: selected ? "var(--bg-raised)" : "var(--bg-inset)",
-                color: selected ? "var(--fg)" : "var(--fg-muted)",
-              }}
-              data-tip={facts}
-            >
-              {number}
-            </span>
+            <UnitNumber number={number} selected={selected} tip={facts} />
           )}
           {/* The whole title, on every row: the list is the guide to the PR.
               Two floats do the layout. The first keeps the box's corner clear
