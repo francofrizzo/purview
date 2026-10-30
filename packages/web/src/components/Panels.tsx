@@ -190,7 +190,7 @@ export function SyncResultPanel({
 }
 
 /**
- * "import analysis…" is a two-step act (it replaces the current analysis):
+ * "import analysis from file…" is a two-step act (it replaces the current analysis):
  * this panel is the confirm step, shown after a file was picked and parsed
  * but before anything is posted. `onDismiss`/`onCancel` are the same "back
  * out" action.

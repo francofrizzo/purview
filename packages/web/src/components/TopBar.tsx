@@ -413,10 +413,25 @@ export function TopBar({
               hint: "Push viewed files and comments to GitHub.",
               onClick: onSync,
             },
+            ...(onSetArchived
+              ? [
+                  {
+                    label: meta.archived ? "unarchive" : "archive",
+                    icon: <IconArchive out={meta.archived} width={12} height={12} />,
+                    testId: "menu-archive",
+                    disabled: archiving,
+                    hint: meta.archived
+                      ? "Back in the PR list; new revisions are analyzed automatically again."
+                      : "Hide it in the PR list and stop automatic analyses. Nothing changes on GitHub.",
+                    onClick: () => onSetArchived(!meta.archived),
+                  },
+                ]
+              : []),
             ...(live
               ? [
                   {
                     label: analysisCancelling ? "cancelling analysis…" : "cancel analysis",
+                    dividerBefore: true,
                     icon: <IconClose width={12} height={12} />,
                     testId: "menu-cancel-analysis",
                     disabled: analysisCancelling,
@@ -426,6 +441,7 @@ export function TopBar({
               : [
                   {
                     label: analysisStarting ? "starting analysis…" : "analyze again",
+                    dividerBefore: true,
                     icon: <IconBolt width={12} height={12} />,
                     testId: "menu-analyze-again",
                     disabled: analysisStarting,
@@ -455,7 +471,8 @@ export function TopBar({
                 ]
               : []),
             {
-              label: exporting ? "exporting…" : "export analysis",
+              label: exporting ? "exporting…" : "export analysis to file",
+              dividerBefore: true,
               icon: <IconDownload width={12} height={12} />,
               testId: "menu-export-analysis",
               disabled: exporting || !hasAnalysis,
@@ -465,7 +482,7 @@ export function TopBar({
               onClick: onExportAnalysis,
             },
             {
-              label: "import analysis…",
+              label: "import analysis from file…",
               icon: <IconFileImport width={12} height={12} />,
               testId: "menu-import-analysis",
               hint: "Replaces the current analysis with one exported from a teammate's copy of this PR.",
@@ -489,21 +506,6 @@ export function TopBar({
               hint: "Replaces the current analysis with the one shared as a comment on this PR.",
               onClick: onImportFromPr,
             },
-            ...(onSetArchived
-              ? [
-                  {
-                    label: meta.archived ? "unarchive" : "archive",
-                    dividerBefore: true,
-                    icon: <IconArchive out={meta.archived} width={12} height={12} />,
-                    testId: "menu-archive",
-                    disabled: archiving,
-                    hint: meta.archived
-                      ? "Back in the PR list; new revisions are analyzed automatically again."
-                      : "Hide it in the PR list and stop automatic analyses. Nothing changes on GitHub.",
-                    onClick: () => onSetArchived(!meta.archived),
-                  },
-                ]
-              : []),
             // App-level, not about this PR: last.
             ...(fullscreenVisible && onToggleFullscreen
               ? [
