@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { MOD, UNITS, lineRow, newGutter, openComments, openComposerOnLine, openPr, openUnit, settledScrollTop } from "./helpers";
+import { MOD, UNITS, lineRow, newGutter, openComments, openComposerOnLine, openPr, openUnit, scroller, settledScrollTop } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await openPr(page);
@@ -176,6 +176,10 @@ test("saving a comment with a search still in the box keeps the view where you w
   await page.getByTestId("search-input").fill("ledger-only");
   await page.getByTestId("search-input").press("Enter");
   await expect(page.getByTestId("search-count")).toContainText(/1\s*\/\s*\d+/);
+  // Virtualized: scroll down until line 80 is rendered, then bring it in.
+  for (let i = 0; i < 20 && !(await lineRow(page, 80).count()); i++) {
+    await scroller(page).evaluate((el) => el.scrollBy(0, 400));
+  }
   await lineRow(page, 80).scrollIntoViewIfNeeded();
   await expect(lineRow(page, 16)).not.toBeInViewport();
   const row = await openComposerOnLine(page, 80);

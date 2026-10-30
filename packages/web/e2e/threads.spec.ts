@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openComments, openPr } from "./helpers";
+import { UNITS, openComments, openPr, openUnit } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await openPr(page);
@@ -114,4 +114,21 @@ test("a whole-file or outdated thread clicked in the drawer opens in the unit th
   await expect(page.getByTestId("thread-PRRT_ledger17")).toHaveAttribute("data-collapsed", "true");
   await page.getByTestId("drawer-thread-PRRT_ledger17").click();
   await expect(page.getByTestId("thread-PRRT_ledger17")).not.toHaveAttribute("data-collapsed", "true");
+});
+
+test("a thread the PR's author started is open in the diff; others wait behind their marker", async ({ page }) => {
+  await openUnit(page, UNITS.reconcile);
+  await expect(page.getByTestId("inline-thread-PRRT_reconcile25_author")).toContainText("This is the case the job exists for");
+  // Folding it by hand sticks.
+  await page
+    .getByTestId("inline-comments")
+    .filter({ has: page.getByTestId("inline-thread-PRRT_reconcile25_author") })
+    .getByTestId("inline-comments-close")
+    .click();
+  await expect(page.getByTestId("inline-thread-PRRT_reconcile25_author")).toHaveCount(0);
+  await openUnit(page, UNITS.charge);
+  // @maria's thread on charge.ts:25 is not the author's: still folded.
+  await expect(page.getByTestId("inline-thread-PRRT_charge25")).toHaveCount(0);
+  await openUnit(page, UNITS.reconcile);
+  await expect(page.getByTestId("inline-thread-PRRT_reconcile25_author")).toHaveCount(0);
 });

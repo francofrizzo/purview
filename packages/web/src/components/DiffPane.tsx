@@ -673,6 +673,32 @@ export function DiffPane({
   const [expandedAnchors, setExpandedAnchors] = useState<Set<string>>(() => new Set());
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(() => new Set());
 
+  // A thread the PR's author started opens on its own: it explains the
+  // change rather than reviews it. Each block is opened once, the first time
+  // it shows up, so folding it by hand sticks. Before paint, so the rows it
+  // adds never push the diff down a frame later.
+  const prAuthor = detail.meta.author?.toLowerCase() ?? null;
+  const seededAuthorBlocks = useRef(new Set<string>());
+  useLayoutEffect(() => {
+    if (!prAuthor) return;
+    const seen = seededAuthorBlocks.current;
+    const byAuthor = (list: readonly DisplayThread[]) =>
+      list.some((t) => t.remote && !t.resolved && t.author.login?.toLowerCase() === prAuthor);
+    const pick = <K extends string>(map: ReadonlyMap<K, readonly DisplayThread[]>, prefix: string): K[] => {
+      const out: K[] = [];
+      for (const [key, list] of map) {
+        if (seen.has(prefix + key) || !byAuthor(list)) continue;
+        seen.add(prefix + key);
+        out.push(key);
+      }
+      return out;
+    };
+    const anchors = pick(grouped.byLine, "line:");
+    const files = pick(grouped.byFile, "file:");
+    if (anchors.length) setExpandedAnchors((cur) => new Set([...cur, ...anchors]));
+    if (files.length) setExpandedFiles((cur) => new Set([...cur, ...files]));
+  }, [grouped, prAuthor]);
+
   /* ---------------------------------------------- multi-line comment spans */
 
   // Anchors whose threads include a multi-line comment: only their markers

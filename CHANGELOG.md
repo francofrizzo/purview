@@ -13,6 +13,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **Inline comments from Reviews.** In the Overview's Reviews section, a review's inline comment count takes you to each comment in the diff.
 - **Full hunk headers.** A hunk's header shows its `@@` range and the whole signature again, instead of only a line number and a name.
 - **Skill refresh on update.** Starting Purview updates the coding-agent skill it installed in ~/.claude, ~/.codex or ~/.agents when it is out of date.
+- **The PR author's threads open.** In the diff, a thread the PR's author started shows open, since it explains the change; others wait behind their gutter marker.
 - **Fix:** after a new revision, lines shown with "expand" above a hunk no longer jump to different line numbers than the hunk's own.
 - **Fix:** saving a comment while the diff search box still holds text no longer scrolls back to the search match.
 

@@ -1870,6 +1870,19 @@ export const mockThreads: RemoteThread[] = [
       ),
     ],
   }),
+  // The PR's author explaining a line: opens on its own in the diff.
+  thread({
+    id: "PRRT_reconcile25_author",
+    path: "src/billing/reconcile.ts",
+    line: 25,
+    comments: [
+      remote(
+        "dana",
+        "This is the case the job exists for: a crash between the gateway call and the ledger write leaves a gateway-only row.",
+        "2026-08-10T09:30:00Z",
+      ),
+    ],
+  }),
 ];
 
 /* ------------------------------------------- reviews and conversation */
