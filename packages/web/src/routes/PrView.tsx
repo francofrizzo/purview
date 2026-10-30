@@ -1499,7 +1499,7 @@ export function PrView() {
               color: view === t ? "var(--fg)" : "var(--fg-muted)",
             }}
           >
-            {t === "overview" ? "Overview" : t === "units" ? "Review units" : "Files"}
+            {t === "overview" ? "Overview" : t === "units" ? "Guide" : "Files"}
           </button>
         ))}
         <span className="flex-1" />
@@ -2331,7 +2331,7 @@ export function PrView() {
               [["d"], viewMode === "split" ? "unified diff" : "split diff"],
               [["w"], wrap ? "stop wrapping" : "wrap long lines"],
               [["s"], "overview"],
-              [["g"], "review units"],
+              [["g"], "guide"],
               [["f"], "files"],
               [["m", "c", "r"], "comments, chat, review"],
               [["b"], "sidebar"],

@@ -134,7 +134,7 @@ test("a PR with nothing read opens on the overview, unless the link names a view
   await expect(page.getByTestId("overview")).toHaveCount(0);
 });
 
-test("a unit in the overview opens in Review units", async ({ page }) => {
+test("a unit in the overview opens in the Guide", async ({ page }) => {
   await page.keyboard.press("s");
   await page.getByTestId("start-reading").click();
   await expect(page.getByTestId("overview")).toHaveCount(0);

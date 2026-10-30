@@ -123,7 +123,7 @@ export function RevisionMenu({
                           disabled={!highlightAvailable}
                           data-tip={
                             !highlightAvailable
-                              ? "Shown on the review units tab"
+                              ? "Shown on the guide tab"
                               : on
                                 ? `Stop showing what revision ${r.revision} changed`
                                 : `Light up the lines revision ${r.revision} changed`
@@ -168,7 +168,7 @@ export function RevisionMenu({
                 <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
                   {highlightAvailable
                     ? "Lines those revisions changed light up in each unit; esc clears."
-                    : "Switch to review units to see them."}
+                    : "Switch to the guide to see them."}
                 </p>
               ) : null}
             </div>

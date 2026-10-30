@@ -26,7 +26,7 @@ export function withUnitParam(search: string, unitId: string | null): string {
   return s ? `?${s}` : "";
 }
 
-/** The three ways to read a PR, as the sidebar's tabs name them (`units` is Review units). */
+/** The three ways to read a PR, as the sidebar's tabs name them (`units` is the Guide). */
 export type PrViewMode = "overview" | "units" | "files";
 
 /** The view a `?view=` link asks for, or null (the PR picks: see PrView's first visit). */
