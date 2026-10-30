@@ -1205,27 +1205,27 @@ export function PrView() {
       onMove={(attention) => reclassifyUnit(u.id, { attention })}
       changelog={{ activeRevisions: highlightRevisions, onSelectRevision: toggleHighlight }}
       extra={
-        <>
-          {isGeneratedUnit(u) ? (
-            <GeneratedUnitFileList
-              files={generatedUnitFiles(detail.files.files, u)}
-              onOpen={(path) => {
-                const first = detail.files.files
-                  .find((f) => f.path === path)
-                  ?.hunks.find((h) => u.hunks.some((x) => x.id === h.id));
-                if (first) setJumpToHunk({ hunkId: first.id, nonce: Date.now() });
-              }}
-            />
-          ) : null}
-          {highlightActive ? (
-            <HighlightSummary
-              revisions={highlightRevisions}
-              highlight={highlight}
-              failed={lineChanges.failed}
-              onClear={clearHighlight}
-            />
-          ) : null}
-        </>
+        isGeneratedUnit(u) ? (
+          <GeneratedUnitFileList
+            files={generatedUnitFiles(detail.files.files, u)}
+            onOpen={(path) => {
+              const first = detail.files.files
+                .find((f) => f.path === path)
+                ?.hunks.find((h) => u.hunks.some((x) => x.id === h.id));
+              if (first) setJumpToHunk({ hunkId: first.id, nonce: Date.now() });
+            }}
+          />
+        ) : null
+      }
+      highlight={
+        highlightActive ? (
+          <HighlightSummary
+            revisions={highlightRevisions}
+            highlight={highlight}
+            failed={lineChanges.failed}
+            onClear={clearHighlight}
+          />
+        ) : null
       }
     />
   );
@@ -2392,7 +2392,7 @@ function HighlightSummary({
   const body = highlightSummaryText(revisions, highlight, failed);
   return (
     <p
-      className="mt-1 flex max-w-4xl flex-wrap items-baseline gap-x-1 text-2xs"
+      className="flex flex-wrap items-baseline gap-x-1 text-2xs"
       data-testid="highlight-summary"
       style={{ color: error ? "var(--risk)" : "var(--fg-muted)" }}
     >

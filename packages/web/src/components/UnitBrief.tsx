@@ -9,7 +9,7 @@ import { attentionColor, FileStatusBadge } from "./Chips";
 import { UnitFindings } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconCheck, IconChevron, IconHeart, IconQuote } from "./icons";
+import { IconCheck, IconChevron, IconEyeOff, IconFile, IconHeart, IconQuote } from "./icons";
 
 const ATTENTION_WORD: Record<ReviewUnit["attention"], string> = {
   "must-read": "Must read.",
@@ -85,18 +85,19 @@ export function UnitFiles({
     <div>
       <button
         type="button"
-        className="flex items-center gap-1.5 text-2xs transition-colors hover:text-[var(--fg-muted)]"
-        style={{ color: "var(--fg-faint)" }}
+        className="inline-flex items-center gap-1.5 rounded hover:!text-[var(--fg)]"
+        style={{ color: "var(--fg-muted)" }}
         aria-expanded={settings.unitFilesOpen}
         data-testid="unit-files-toggle"
         onClick={() => update({ unitFilesOpen: !settings.unitFilesOpen })}
       >
-        <IconChevron open={settings.unitFilesOpen} width={9} height={9} />
+        <IconFile width={12} height={12} className="flex-none" />
         {files.length} {files.length === 1 ? "file" : "files"}
         <LineDelta added={files.reduce((n, f) => n + f.added, 0)} removed={files.reduce((n, f) => n + f.removed, 0)} />
+        <IconChevron open={settings.unitFilesOpen} width={10} height={10} className="flex-none" />
       </button>
       {settings.unitFilesOpen ? (
-        <ul className="-mx-1.5 mt-0.5 flex flex-col" data-testid="unit-files">
+        <ul className="-mr-1.5 mt-1 flex flex-col pl-3" data-testid="unit-files">
           {files.map((f) => {
             const slash = f.path.lastIndexOf("/");
             const name = f.path.slice(slash + 1);
@@ -142,9 +143,10 @@ export function UnitFiles({
  *
  * One container only: the row's tint says this belongs to that unit, and
  * nothing in here draws a box or a rule of its own. Everything aligns to the
- * title's text column. What every review needs (the summary, why it matters,
- * where the logic lives) is open; what only some reviews need (the files,
- * findings, revisions) is one line that opens.
+ * title's text column. The prose leads (what the unit does, why it matters);
+ * under it, every other fact is one row of the same shape: an icon, a label,
+ * its value, and a chevron where the row opens. Revisions are one of those
+ * rows, the highlight in the diff included.
  */
 export function UnitBrief({
   detail,
@@ -154,6 +156,7 @@ export function UnitBrief({
   onMove,
   changelog,
   extra,
+  highlight,
 }: {
   detail: PrDetail;
   unit: ReviewUnit;
@@ -164,8 +167,10 @@ export function UnitBrief({
   /** a correction of the analysis: the unit belongs in another group */
   onMove?: (attention: ReviewUnit["attention"]) => void;
   changelog?: { activeRevisions: readonly number[]; onSelectRevision: (r: number) => void };
-  /** under the summary: the generated file list, the highlight summary */
+  /** under the summary: the generated file list */
   extra?: ReactNode;
+  /** what the revision highlight marks, with the way out */
+  highlight?: ReactNode;
 }) {
   const { settings, update } = useSettings();
   const generated = isGeneratedUnit(unit);
@@ -173,51 +178,48 @@ export function UnitBrief({
 
   return (
     <div className="flex flex-col gap-3 pb-3 pl-[34px] pr-4 text-xs leading-5" data-testid="unit-brief">
-      {unit.summary ? (
-        <p className="text-[13px] leading-[20px]" style={{ color: "var(--fg)" }}>
-          <InlineMarkdown text={unit.summary} />
-        </p>
-      ) : null}
-      {extra}
-
-      {unit.attentionWhy ? (
-        <p data-testid="unit-why" style={{ color: "var(--fg-muted)" }}>
-          <span className="font-medium" style={{ color: attentionColor(unit.attention) }}>
-            {ATTENTION_WORD[unit.attention]}
-          </span>{" "}
-          <InlineMarkdown text={unit.attentionWhy} />
-        </p>
-      ) : null}
-
-      {heartOf(unit).length ? (
-        <UnitHeart segments={heartSegments(unit)} files={detail.files.files} onJump={onJumpHunk} />
-      ) : null}
-
-      {generated ? null : <UnitFiles detail={detail} unit={unit} onJump={onJumpHunk} />}
-
-      {skipped > 0 ? (
-        <button
-          type="button"
-          className="self-start text-2xs tabular-nums hover:!text-[var(--fg-muted)]"
-          style={{
-            color: "var(--fg-faint)",
-            textDecoration: settings.foldSkippableHunks ? "line-through" : undefined,
-          }}
-          data-testid="unit-skipped-count"
-          data-folded={settings.foldSkippableHunks ? "true" : "false"}
-          data-tip={
-            settings.foldSkippableHunks
-              ? "Skippable hunks are folded shut; click or Z shows them muted instead"
-              : "Hunks the analysis says you can skip; shown muted, they count toward nothing. Click or Z folds them shut"
-          }
-          data-tip-key="Z"
-          onClick={() => update({ foldSkippableHunks: !settings.foldSkippableHunks })}
-        >
-          {skipped} skippable
-        </button>
-      ) : null}
+      <div className="flex flex-col gap-2">
+        {unit.summary ? (
+          <p className="text-[13px] leading-[20px]" style={{ color: "var(--fg)" }}>
+            <InlineMarkdown text={unit.summary} />
+          </p>
+        ) : null}
+        {extra}
+        {unit.attentionWhy ? (
+          <p data-testid="unit-why" style={{ color: "var(--fg-muted)" }}>
+            <span className="font-medium" style={{ color: attentionColor(unit.attention) }}>
+              {ATTENTION_WORD[unit.attention]}
+            </span>{" "}
+            <InlineMarkdown text={unit.attentionWhy} />
+          </p>
+        ) : null}
+      </div>
 
       <div className="flex flex-col gap-1.5">
+        {heartOf(unit).length ? (
+          <UnitHeart segments={heartSegments(unit)} files={detail.files.files} onJump={onJumpHunk} />
+        ) : null}
+        {generated ? null : <UnitFiles detail={detail} unit={unit} onJump={onJumpHunk} />}
+        {skipped > 0 ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 self-start rounded text-xs tabular-nums hover:!text-[var(--fg)]"
+            style={{ color: "var(--fg-muted)" }}
+            data-testid="unit-skipped-count"
+            data-folded={settings.foldSkippableHunks ? "true" : "false"}
+            data-tip={
+              settings.foldSkippableHunks
+                ? "Skippable hunks are folded shut; click or Z shows them muted instead"
+                : "Hunks the analysis says you can skip; shown muted, they count toward nothing. Click or Z folds them shut"
+            }
+            data-tip-key="Z"
+            onClick={() => update({ foldSkippableHunks: !settings.foldSkippableHunks })}
+          >
+            <IconEyeOff width={12} height={12} className="flex-none" />
+            {skipped} skippable
+            {settings.foldSkippableHunks ? <span style={{ color: "var(--fg-faint)" }}>· folded</span> : null}
+          </button>
+        ) : null}
         <UnitFindings unitId={unit.id} findings={unit.findings} />
         <UnitChangelog
           className=""
@@ -226,6 +228,7 @@ export function UnitBrief({
           activeRevisions={changelog?.activeRevisions}
           onSelectRevision={changelog?.onSelectRevision}
         />
+        {highlight ? <div className="pl-[18px]">{highlight}</div> : null}
       </div>
 
       {/* The open unit's two actions, as words rather than a menu on every
@@ -286,32 +289,34 @@ export function UnitHeart({
 }) {
   const pathOf = (hunkId: string) => files.find((f) => f.hunks.some((h) => h.id === hunkId))?.path;
   return (
-    <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-testid="unit-heart">
-      <span className="flex items-center gap-1.5 self-center text-2xs" style={{ color: "var(--fg-faint)" }}>
-        <IconHeart width={11} height={11} className="flex-none" style={{ color: "var(--heart)" }} />
+    <div className="text-xs" data-testid="unit-heart">
+      <span className="flex items-center gap-1.5" style={{ color: "var(--fg-muted)" }}>
+        <IconHeart width={12} height={12} className="flex-none" style={{ color: "var(--heart)" }} />
         Where the logic lives
       </span>
-      {segments.map((h, i) => {
-        const path = pathOf(h.id);
-        // A range when the heart is part of a hunk; a whole hunk is its file.
-        const lines = h.lines ? `${h.lines[0]}–${h.lines[1]}` : "";
-        return (
-          <button
-            key={`${h.id}:${i}`}
-            type="button"
-            data-testid={`heart-jump-${h.id}`}
-            data-segment={i}
-            className="rounded px-1 font-mono text-2xs transition-colors hover:bg-[var(--bg-hover)]"
-            style={{ color: "var(--accent)" }}
-            onClick={() => onJump(h.id, h.lines?.[0])}
-            data-tip={h.why.replace(/`/g, "")}
-          >
-            {path ? baseName(path) : "hunk"}
-            {lines ? <span style={{ opacity: 0.75 }}> {lines}</span> : null}
-          </button>
-        );
-      })}
-    </p>
+      <span className="-ml-1 mt-0.5 flex flex-wrap gap-x-1 pl-[18px]">
+        {segments.map((h, i) => {
+          const path = pathOf(h.id);
+          // A range when the heart is part of a hunk; a whole hunk is its file.
+          const lines = h.lines ? `${h.lines[0]}–${h.lines[1]}` : "";
+          return (
+            <button
+              key={`${h.id}:${i}`}
+              type="button"
+              data-testid={`heart-jump-${h.id}`}
+              data-segment={i}
+              className="rounded px-1 font-mono text-2xs transition-colors hover:bg-[var(--bg-hover)]"
+              style={{ color: "var(--accent)" }}
+              onClick={() => onJump(h.id, h.lines?.[0])}
+              data-tip={h.why.replace(/`/g, "")}
+            >
+              {path ? baseName(path) : "hunk"}
+              {lines ? <span style={{ opacity: 0.75 }}> {lines}</span> : null}
+            </button>
+          );
+        })}
+      </span>
+    </div>
   );
 }
 
