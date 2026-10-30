@@ -336,6 +336,7 @@ export function CommentComposer({
           {exportCtx ? (
             <CopyForAgentButton
               iconOnly
+              boxed
               testId="copy-composer"
               tip="Copy with the code it points at, as markdown"
               disabled={!body.trim()}
@@ -360,6 +361,7 @@ export function CommentComposer({
               type="button"
               className="btn"
               data-testid="composer-send-to-chat"
+              aria-label={chatBusy ? "Queue for the chat" : "Ask the chat"}
               disabled={!body.trim()}
               data-tip={
                 chatBusy
@@ -369,8 +371,7 @@ export function CommentComposer({
               data-tip-key="⌘⇧↵"
               onClick={() => onSendToChat(body.trim())}
             >
-              <IconChat width={11} height={11} />
-              {chatBusy ? "queue for chat" : "ask chat"}
+              <IconChat width={12} height={12} />
               {floating ? null : <KeyHint keys="⌘⇧↵" />}
             </button>
           ) : null}
@@ -394,12 +395,12 @@ export function CommentComposer({
   );
 }
 
-/** A button's chord, on the button: quiet, and only where the box has room. */
+/** A button's chord, on the button, where the box has room for it. */
 function KeyHint({ keys }: { keys: string }) {
   return (
-    <span aria-hidden className="hidden font-mono text-2xs font-normal opacity-70 sm:inline">
+    <kbd aria-hidden className="!hidden sm:!inline-flex">
       {keys}
-    </span>
+    </kbd>
   );
 }
 

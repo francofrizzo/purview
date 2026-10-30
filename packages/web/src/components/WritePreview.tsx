@@ -114,7 +114,7 @@ export function WritePreviewToggle({
       style={{ color: previewing ? "var(--fg)" : "var(--fg-muted)", background: previewing ? "var(--bg-hover)" : undefined }}
     >
       <Icon width={12} height={12} />
-      {previewing ? "Edit" : "Preview"}
+      {previewing ? "edit" : "preview"}
     </button>
   );
 }

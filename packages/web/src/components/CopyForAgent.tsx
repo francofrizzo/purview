@@ -56,6 +56,7 @@ export function CopyForAgentButton({
   tip,
   disabled,
   iconOnly,
+  boxed,
   className,
   testId,
 }: {
@@ -64,6 +65,8 @@ export function CopyForAgentButton({
   tip: string;
   disabled?: boolean;
   iconOnly?: boolean;
+  /** with `iconOnly`: a full button, for a row of them rather than a quiet corner */
+  boxed?: boolean;
   className?: string;
   testId?: string;
 }) {
@@ -78,14 +81,28 @@ export function CopyForAgentButton({
       data-testid={testId}
       data-copied={copied ? "1" : undefined}
       disabled={disabled}
-      className={`flex-none rounded p-0.5 opacity-50 transition-opacity hover:opacity-100 ${className ?? ""}`}
-      style={{ color: copied ? "var(--ok)" : "var(--fg-muted)", opacity: copied ? 1 : undefined }}
+      className={
+        boxed
+          ? `btn flex-none ${className ?? ""}`
+          : `flex-none rounded p-0.5 opacity-50 transition-opacity hover:opacity-100 ${className ?? ""}`
+      }
+      style={
+        boxed
+          ? copied
+            ? { color: "var(--ok)", borderColor: "var(--ok)" }
+            : undefined
+          : { color: copied ? "var(--ok)" : "var(--fg-muted)", opacity: copied ? 1 : undefined }
+      }
       onClick={(e) => {
         e.stopPropagation();
         void copy(text());
       }}
     >
-      {copied ? <IconCheck width={11} height={11} /> : <IconCopy width={11} height={11} />}
+      {copied ? (
+        <IconCheck width={boxed ? 12 : 11} height={boxed ? 12 : 11} />
+      ) : (
+        <IconCopy width={boxed ? 12 : 11} height={boxed ? 12 : 11} />
+      )}
     </button>
   ) : (
     <button
