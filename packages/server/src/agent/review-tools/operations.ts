@@ -118,7 +118,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
     const files = core.readFilesJson(key, revision, root).files;
     const meta = core.readMeta(key, root);
     return { pr: { key, title: meta.title, url: meta.url }, revision, task: request.task.kind, analysisMode: context.analysisMode,
-      checkoutAvailable: !!checkout, summary: state.summary,
+      checkoutAvailable: !!checkout, summary: state.summary, concepts: state.concepts, fileNotes: state.fileNotes,
       generatedFiles: files.filter(f => f.generated).map(f => f.path),
       corrections: state.corrections,
       files: page("review_context", args, files.filter(f => !f.generated).flatMap(f => f.hunks.map(h => ({
@@ -199,6 +199,10 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
       }).strict(), args => {
         const result = core.setUnits(key, args.units.map(({ id, patch }) => ({ unitId: id, payload: patch })), root);
         return { unitIds: result.unitIds, warnings: result.warnings, remaining: core.remainingWorkFor(key, root) };
+      }, false);
+      add("set_shape", "Replace the concepts or the file notes without re-sending the analysis. A key present replaces that view whole; null drops it; an absent key leaves it.", core.ShapeSchema, args => {
+        const state = core.setShape(key, args, root);
+        return { concepts: state.concepts?.length ?? 0, fileNotes: Object.keys(state.fileNotes ?? {}).length };
       }, false);
       add("set_revision_summary", "Save a nonempty summary of what this revision changed.", z.object({ text: z.string().min(1) }).strict(), args => core.setRevisionSummary(key, args.text, revision, root), false);
     } else throw new Error("Analysis mode required");

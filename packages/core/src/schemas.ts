@@ -426,12 +426,69 @@ export const NewReviewUnitSchema = ReviewUnitBaseSchema.extend({
 }).superRefine((u, ctx) => refineHunkList(false)(u.hunks, ctx));
 export type ReviewUnitPatch = z.infer<typeof ReviewUnitPatchSchema>;
 
+/* ------------------------------------------------------------------- shape */
+
+/**
+ * The shape of the change: what the reader takes in before opening a unit.
+ * Where the change lands is drawn by Purview from the file notes; the
+ * concepts (below) are the analysis's own words.
+ */
+
+/* -------------------------------------------------------------- file notes */
+
+/**
+ * Where the change lands, as a shallow tree: one line on what a folder does
+ * in the change (when its files share that role) or what a file does (when
+ * it has a role of its own: a new file, the heart of the change). Keyed by a
+ * path of the revision, a file's or a folder's; Purview draws the tree.
+ */
+export const FILE_NOTE_MAX = 140;
+export const MAX_FILE_NOTES = 40;
+export const FileNotesSchema = z
+  .record(z.string(), z.string().min(1).max(FILE_NOTE_MAX))
+  .refine((r) => Object.keys(r).length <= MAX_FILE_NOTES, `at most ${MAX_FILE_NOTES} file notes`)
+  // A folder is keyed without its trailing slash, however the analysis wrote it.
+  .transform((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k.replace(/\/+$/, ""), v])));
+export type FileNotes = z.infer<typeof FileNotesSchema>;
+
+/* ------------------------------------------------------------- concepts */
+
+/**
+ * A term the PR leans on that a reviewer from outside this area would not
+ * know. Purview lists them before the units and explains each wherever the
+ * guide uses it (the term, or a name in `aka`), so the units can stay exact.
+ */
+export const ConceptSchema = z.object({
+  /** in the reader's words: "Snapshot source", "Pending record" */
+  term: z.string().min(1).max(40),
+  /** one plain sentence: what it is, and for a new one why it exists */
+  means: z.string().min(1).max(200),
+  /** the names the code and the guide use for it (`UNRECONCILED`, `tpk`), matched as written */
+  aka: z.array(z.string().min(2).max(60)).max(6).default([]),
+  /** the PR introduces it */
+  isNew: z.boolean().optional(),
+});
+export type Concept = z.infer<typeof ConceptSchema>;
+export const MAX_CONCEPTS = 8;
+export const ConceptsSchema = z.array(ConceptSchema).min(1).max(MAX_CONCEPTS);
+
+/** Payload of `set-shape`: each key present replaces that view; `null` drops it. */
+export const ShapeSchema = z.object({
+  fileNotes: FileNotesSchema.nullable().optional(),
+  concepts: ConceptsSchema.nullable().optional(),
+});
+export type Shape = z.infer<typeof ShapeSchema>;
+
 /** Payload accepted by `reviewer-state set-analysis --file <json>`. */
 export const AnalysisSchema = z.object({
   summary: z.string(),
   units: z.array(ReviewUnitSchema),
   /** hunk ids deliberately left out of every unit */
   unassigned: z.array(z.string()).default([]),
+  /** optional: one line per folder or file worth placing (see FileNotesSchema) */
+  fileNotes: FileNotesSchema.optional(),
+  /** optional: the terms a reader new to this code needs (see ConceptSchema) */
+  concepts: ConceptsSchema.optional(),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -461,6 +518,9 @@ export const AnalysisExportSchema = z.object({
   exportedAt: z.string(),
   summary: z.string(),
   units: z.array(ReviewUnitSchema),
+  /** additive: exports made before the shape existed have none */
+  fileNotes: FileNotesSchema.optional(),
+  concepts: ConceptsSchema.optional(),
 });
 export type AnalysisExport = z.infer<typeof AnalysisExportSchema>;
 
@@ -1146,6 +1206,22 @@ export const AnalysisSetEventSchema = z.object({
    * optional, so every event written before this existed parses unchanged.
    */
   origin: z.literal("import").optional(),
+  /** the shape of the change; each absent when the analysis drew none */
+  fileNotes: FileNotesSchema.optional(),
+  concepts: ConceptsSchema.optional(),
+});
+
+/**
+ * `set-shape`: the file notes or the concepts, without re-sending the
+ * analysis (how a refresh redraws them). A key that is present replaces that
+ * view whole; `null` drops it; an absent key leaves it as it was.
+ */
+export const ShapeSetEventSchema = z.object({
+  ...base,
+  type: z.literal("shape-set"),
+  revision: z.number().int(),
+  fileNotes: FileNotesSchema.nullable().optional(),
+  concepts: ConceptsSchema.nullable().optional(),
 });
 
 export const UnitUpdatedEventSchema = z.object({
@@ -1289,6 +1365,7 @@ export const EventSchema = z.discriminatedUnion("type", [
   PrInitializedEventSchema,
   RevisionAddedEventSchema,
   AnalysisSetEventSchema,
+  ShapeSetEventSchema,
   UnitUpdatedEventSchema,
   HunkViewedEventSchema,
   HunkUnviewedEventSchema,
@@ -1388,6 +1465,12 @@ export const StateSchema = z.object({
   analysisRevision: z.number().int().optional(),
   /** provenance of the current analysis; absent = produced by a normal Claude run */
   analysisOrigin: z.literal("import").optional(),
+  /** the shape of the change, from the analysis or a later `set-shape` */
+  fileNotes: FileNotesSchema.optional(),
+  /** the terms the PR leans on, explained wherever the guide uses them */
+  concepts: ConceptsSchema.optional(),
+  /** the revision the shape was last drawn for */
+  shapeRevision: z.number().int().optional(),
   units: z.array(ReviewUnitSchema).default([]),
   hunks: z.record(z.string(), HunkStateSchema).default({}),
   files: z.array(FileRollupSchema).default([]),

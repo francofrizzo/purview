@@ -47,6 +47,7 @@ import {
 import type {
   Analysis,
   AnalysisJob,
+  FileNotes,
   BasePr,
   HunkEntry,
   Meta,
@@ -57,6 +58,7 @@ import type {
 import {
   AnalysisJobSchema,
   AnalysisSchema,
+  ShapeSchema,
   CHANGELOG_TEXT_MAX,
   REVISION_SUMMARY_MAX,
   FINDING_EVIDENCE_MAX,
@@ -635,6 +637,66 @@ export function truncateFindings(
   return { payload: fixUnit(p), warnings };
 }
 
+/** The folders a set of paths sits in, at every depth (`a`, `a/b` for `a/b/c.ts`). */
+export function foldersOf(paths: Iterable<string>): Set<string> {
+  const out = new Set<string>();
+  for (const path of paths) {
+    const parts = path.split("/");
+    for (let i = 1; i < parts.length; i++) out.add(parts.slice(0, i).join("/"));
+  }
+  return out;
+}
+
+/**
+ * What is wrong with file notes: each key must be a file of the revision or a
+ * folder holding some, and not generated (those are Purview's, and never read).
+ */
+export function fileNoteProblems(notes: FileNotes, paths: ReadonlySet<string>, generated: ReadonlySet<string>): string[] {
+  const read = foldersOf([...paths].filter((p) => !generated.has(p)));
+  const all = foldersOf(paths);
+  const problems: string[] = [];
+  for (const path of Object.keys(notes)) {
+    if (generated.has(path)) problems.push(`"${path}" is a generated file; leave it out`);
+    else if (paths.has(path) || read.has(path)) continue;
+    else if (all.has(path)) problems.push(`"${path}" holds only generated files; leave it out`);
+    else problems.push(`"${path}" is not a file or folder of this revision`);
+  }
+  return problems;
+}
+
+function assertShape(
+  shape: { fileNotes?: FileNotes | null },
+  ctx: { paths: ReadonlySet<string>; generated: ReadonlySet<string> },
+): void {
+  const problems = shape.fileNotes
+    ? fileNoteProblems(shape.fileNotes, ctx.paths, ctx.generated).map((p) => `fileNotes: ${p}`)
+    : [];
+  if (problems.length > 0) {
+    throw new Error(`The shape of the change does not hold together:\n  ${problems.join("\n  ")}`);
+  }
+}
+
+/** The revision's file paths, and which of them are generated. */
+function revisionPaths(key: PrKey, state: State, root: string) {
+  const files = readFilesJson(key, state.currentRevision, root).files;
+  return {
+    paths: new Set(files.map((f) => f.path)),
+    generated: new Set((state.generated ?? []).map((g) => g.path)),
+  };
+}
+
+/**
+ * `set-shape`: replace the file notes or the concepts without
+ * re-sending the analysis (a refresh redraws them this way). Each key present
+ * replaces that view; `null` drops it.
+ */
+export function setShape(key: PrKey, input: unknown, root = stateRoot()): State {
+  const shape = ShapeSchema.parse(input);
+  const state = loadState(key, root);
+  assertShape(shape, revisionPaths(key, state, root));
+  return appendEvent(key, { type: "shape-set", revision: state.currentRevision, ...shape }, root);
+}
+
 export interface SetAnalysisOptions {
   /** Provenance: set to "import" when the units came from another reader's
    *  exported analysis (see analysis-share.ts) rather than a fresh Claude run. */
@@ -705,6 +767,7 @@ export function setAnalysis(
           dupes.map((d) => `${d.hunkId}: ${d.owners.join(", ")}`).join("\n  "),
       );
     }
+    assertShape(analysis, revisionPaths(key, state, root));
   }
   const next = appendEvent(
     key,
@@ -715,6 +778,8 @@ export function setAnalysis(
       units: analysis.units,
       unassigned: analysis.unassigned ?? [],
       origin: opts.origin,
+      fileNotes: analysis.fileNotes,
+      concepts: analysis.concepts,
     },
     root,
   );

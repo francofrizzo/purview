@@ -120,19 +120,23 @@ export function rubricSection(
 
 /**
  * Which language the run writes in. Purview takes no side: a rubric layer may
- * state one and wins; otherwise the PR's own description decides. Stated
- * explicitly because "the reader's language" on its own is ambiguous, and two
- * harnesses were seen resolving it differently on the same repository.
+ * state one and wins; otherwise the reader's own choice for analyses
+ * (config.json's `analysisLanguage`, when set), else the PR's own description
+ * decides. Stated explicitly because "the reader's language" on its own is
+ * ambiguous, and two harnesses were seen resolving it differently on the same
+ * repository. A refresh does not come here: it keeps the language the PR's
+ * analysis already reads in (analysis.ts `languageNote`).
  */
-export function languageRule(kind: "analysis" | "chat"): string {
+export function languageRule(kind: "analysis" | "chat", language?: string | null): string {
   const written = kind === "analysis"
-    ? "unit titles, summaries, attentionWhy, findings and revision summaries"
+    ? "unit titles, summaries, attentionWhy, hunk labels and heart whys, findings, the concepts and the file notes, and revision summaries"
     : "comment drafts";
+  const otherwise = kind === "analysis" && language ? language : "the language of the PR's title and description";
   return [
     "LANGUAGE:",
-    `Write ${written} in the language a rubric layer above names, if one does; otherwise in the language of the PR's title and description.`,
+    `Write ${written} in the language a rubric layer above names, if one does; otherwise in ${otherwise}.`,
     kind === "chat"
       ? "Answer the reader in the language they write to you in, whatever the drafts' language."
-      : "Code identifiers, paths and quoted code stay as they are.",
+      : "Code identifiers, paths and quoted code stay as they are; JSON keys and enum values (kind, attention, risk flags…) stay exactly as the schema spells them.",
   ].join("\n");
 }

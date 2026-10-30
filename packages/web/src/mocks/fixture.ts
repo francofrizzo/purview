@@ -1,5 +1,7 @@
 import type { Ci } from "../api/types";
 import type {
+  Concept,
+  FileNotes,
   ConfigSource,
   ResolvedAgent,
   DraftComment,
@@ -944,6 +946,34 @@ const removedUnits: ReviewUnit[] = [
   },
 ];
 
+/** Where #482 lands: what each folder or file does in the change. */
+export const mockFileNotes: FileNotes = {
+  "src/billing": "Charges once per key: looks it up before the gateway, records the outcome.",
+  "src/billing/idempotency.ts": "Derives the charge key from order id, amount and currency.",
+  "migrations/0042_charge_ledger.sql": "Creates `charge_ledger`, unique on the key.",
+  "src/container.ts": "Hands the ledger to `ChargeService`.",
+  "src/api/routes/orders.ts": "Passes the order's currency through to `charge()`.",
+  "src/billing/reconcile.ts": "Compares ledger rows with gateway records, one verdict each.",
+  "src/jobs/reconcileNightly.ts": "Runs the reconciliation nightly and raises an alert on mismatches.",
+};
+
+/** The words #482 leans on, for a reviewer who does not live in billing. */
+export const mockConcepts: Concept[] = [
+  {
+    term: "Charge key",
+    means: "What makes two charge attempts the same charge: the order, the amount and the currency.",
+    aka: ["idempotency key", "idempotencyKey"],
+    isNew: true,
+  },
+  {
+    term: "Charge ledger",
+    means: "A table that remembers each charge's outcome by its key, so a retry gets the first result back.",
+    aka: ["charge_ledger"],
+    isNew: true,
+  },
+  { term: "Gateway", means: "The payment provider that actually charges the card.", aka: [] },
+];
+
 const state: PrState = {
   revision: 3,
   revisions: [
@@ -965,6 +995,8 @@ const state: PrState = {
     "Payment charges become replay-safe. A key derived from (orderId, amount, currency) is recorded in a new charge_ledger table before the gateway call, so retries — whether from the client, the queue, or the new backoff wrapper — return the original result instead of charging twice. Two things deserve real attention: the key derivation (it must not include anything volatile) and the interaction between the retry loop and the ledger write ordering.",
   units,
   removedUnits,
+  fileNotes: mockFileNotes,
+  concepts: mockConcepts,
   hunks: {
     a1b2c3d4e5f60001: { viewed: true, viewedAtRevision: 2, changedSinceViewed: true, migration: "fuzzy", predecessorId: "a1b2c3d4e5f6ff01" },
     a1b2c3d4e5f60002: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false, migration: "identical" },

@@ -850,3 +850,16 @@ html[data-mode="light"] .logo-for-light {
   background: var(--risk);
   pointer-events: none;
 }
+
+/* A word the PR's concepts explain (lib/glossary.ts): dotted, its meaning on
+   hover. The dots are the only mark, so the prose keeps its color. */
+.concept-mark {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--fg-faint);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+.concept-mark > code {
+  text-decoration: inherit;
+}

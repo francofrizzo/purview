@@ -137,6 +137,23 @@ export interface RiskMark extends HeartSegment {
   flag: RiskFlag;
 }
 
+/* ------------------------------------------------------------------ shape */
+
+/** One line per folder or file the analysis placed: what it does in the change (core's FileNotesSchema). */
+export type FileNotes = Record<string, string>;
+
+/** A term the PR leans on, explained wherever the guide uses it (core's ConceptSchema). */
+export interface Concept {
+  /** in the reader's words */
+  term: string;
+  /** one plain sentence */
+  means: string;
+  /** the names the code and the guide use for it, matched as written */
+  aka: string[];
+  /** the PR introduces it */
+  isNew?: boolean;
+}
+
 export interface HunkEntry {
   id: string;
   /** inline markdown */
@@ -387,6 +404,9 @@ export interface DiscardRevisionResult {
 }
 
 export interface PrState {
+  /** The analysis's words for the PR's terms, and its notes on files (see core's shape). */
+  concepts?: Concept[];
+  fileNotes?: FileNotes;
   /** the mock's spelling of the revision in force; the server sends `currentRevision` */
   revision: number;
   /** the revision in force, as the server names it */
@@ -711,6 +731,8 @@ export interface GlobalConfig {
   analysisAgent: AgentSelection | null;
   chatAgent: ChatAgentSelection | null;
   /** Purview's own exact checkout of each PR's head for agent runs */
+  /** The language a PR's first analysis writes in; null = the PR description's. A rubric that names one wins. */
+  analysisLanguage: string | null;
   managedCheckouts: boolean;
   /**
    * Extra GitHub logins to treat as AI reviewers in review threads, on top of
@@ -733,6 +755,7 @@ export interface GlobalConfigPatch {
   editorConfirmed?: boolean;
   analysisAgent?: AgentSelection | null;
   chatAgent?: ChatAgentSelection | null;
+  analysisLanguage?: string | null;
   managedCheckouts?: boolean;
   aiReviewers?: string[];
   extraAuthors?: string[];

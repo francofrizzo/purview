@@ -268,7 +268,7 @@ export function changesBlock(cmd: string, keyStr: string): string {
     "what is left; there is no need to run `report` afterwards.",
     `REVISION SUMMARY: after the patches land, run \`${cmd} set-revision-summary ${keyStr} --text "<summary>"\` once`,
     "(MIGRATION-NOTES.md step 4): ONE sentence, 25 words at most, on what this revision changed across the PR",
-    "as a whole, in the reader's language — the behavior that moved, not the bookkeeping or the test plumbing;",
+    "as a whole, in the analysis's language — the behavior that moved, not the bookkeeping or the test plumbing;",
     "file paths only when they are the point (\"the stop timeout moved to shared.go\"). Then stop.",
   ].join("\n");
 }
@@ -352,6 +352,30 @@ export function hunksToClassifyNote(
   ].join("\n");
 }
 
+/**
+ * Which language the analysis writes in. A first analysis, or one from
+ * scratch, follows rubric.ts `languageRule`: a rubric layer, else the
+ * reader's setting, else the PR's description. A refresh keeps to whatever
+ * the PR's analysis already reads in, quoted from it, so a setting or rubric
+ * changed in between never leaves the guide half in one language and half in
+ * another. Analyze from scratch is how a PR changes language.
+ */
+export function languageNote(
+  state: Pick<State, "summary" | "units">,
+  opts: { incremental: boolean; language?: string | null },
+): string {
+  if (!opts.incremental) return languageRule("analysis", opts.language);
+  const sample = (state.summary || analysisUnits(state)[0]?.title || "").replace(/\s+/g, " ").replace(/"/g, "'").trim();
+  const quoted = sample.length > 120 ? `${sample.slice(0, 119)}…` : sample;
+  return [
+    "LANGUAGE:",
+    "Write everything new or rewritten (titles, summaries, attentionWhy, hunk labels and heart whys, changelog entries,",
+    "findings, the concepts and the file notes, the revision summary) in the language this PR's analysis is already written in" +
+      `${quoted ? ` (it reads like: "${quoted}")` : ""}, so the guide never mixes two.`,
+    "Code identifiers, paths and quoted code stay as they are; JSON keys and enum values (kind, attention, risk flags…) stay exactly as the schema spells them.",
+  ].join("\n");
+}
+
 /* ------------------------------------------------------------ system prompt */
 
 /**
@@ -414,7 +438,7 @@ export function analysisSystemPrompt(
   // The skill prompt is for harnesses with a shell; Legacy is the one.
   tools: HarnessManifest["toolNames"] = getHarness("claude-code").manifest.toolNames,
 ): string {
-  const files = ["SKILL.md", "RUBRIC.md", ...(opts.incremental ? ["MIGRATION-NOTES.md"] : [])];
+  const files = ["SKILL.md", "RUBRIC.md", "WRITING.md", ...(opts.incremental ? ["MIGRATION-NOTES.md"] : [])];
   return [
     "You are Purview's automatic PR analysis: the pr-review skill, run headlessly for one PR.",
     `The skill's files (${files.join(", ")}) are included below in full and are already loaded:`,
@@ -438,6 +462,8 @@ export function analysisPrompt(
     committed?: CommittedConfig;
     /** the harness's tool names; omitted, the default harness's */
     tools?: HarnessManifest["toolNames"];
+    /** config.json's `analysisLanguage`; omitted or null, the PR description's */
+    language?: string | null;
   },
 ): string {
   const dir = prDir(key, root);
@@ -500,7 +526,7 @@ export function analysisPrompt(
     movedNote(movedCodeSummary(key, state.currentRevision, root)),
     rubric ? "\n" + rubric : "",
     "",
-    languageRule("analysis"),
+    languageNote(state, opts),
     "",
     correctionsNote(state),
     "",
@@ -516,12 +542,16 @@ export function analysisPrompt(
           "patch just the affected units, all in one `set-units` batch. Never regenerate the whole analysis",
           "with set-analysis on a refresh. Husks (\"Removed units\"; `~` in `units`) are not patched except",
           "to revive one with hunks that genuinely belong to that same decision.",
+          state.fileNotes || state.concepts
+            ? "The PR has a shape (concepts, file notes; WRITING.md, 'The shape of the change'). Only if this revision changes something one of them shows (a new concept, a new file or a folder taking a new role), redraw that view with `set-shape` after `set-units`; otherwise leave it."
+            : "",
         ].join(" ") +
         "\n\n" +
         changesBlock(cmd, keyStr)
       : [
           "This PR has no analysis yet. Produce the full analysis and write it with",
           `\`${cmd} set-analysis ${keyStr} --file <analysis.json>\`.`,
+          "Lead the reader in from broad to narrow (WRITING.md): a plain `summary` with no code, then the shape ('The shape of the change'): `concepts` as that section says, and `fileNotes` always: a shallow tree, one note per folder where its files share a role and per file only where one has its own.",
           "Every hunk id the triage lists must be covered by a unit or listed in \"unassigned\".",
           "Generated files and lockfiles (triage's GENERATED line) are already in Purview's own",
           `\`${GENERATED_UNIT_ID}\` unit: leave their hunks out, don't read them, and don't use that unit id.`,
@@ -570,6 +600,7 @@ export const ANALYSIS_CLI_SUBCOMMANDS: readonly ReviewerCommand[] = [
   "set-unit",
   "set-units",
   "set-revision-summary",
+  "set-shape",
 ];
 
 /* ------------------------------------------------------------------- queue */
@@ -756,7 +787,7 @@ function isUnder(p: string, dir: string): boolean {
 const INVESTIGATION_RE = /\b(grep|sed\s+-n|cat|head|tail)\b/;
 const GREP_RE = /\b(grep|rg)\b/;
 const SED_N_RE = /\bsed\s+-n\b/;
-const CLI_SUBCOMMAND_RE = /\b(set-analysis|set-units?)\b/;
+const CLI_SUBCOMMAND_RE = /\b(set-analysis|set-units?|set-shape)\b/;
 
 /**
  * Folds one real (non-synthetic) tool call into the running metrics. `index`
@@ -815,7 +846,7 @@ function recordAction(
 /* ------------------------------------------------------------ run identity */
 
 /** The skill files a run is pointed at (MIGRATION-NOTES only on incremental runs). */
-const PROMPT_SKILL_FILES = ["SKILL.md", "RUBRIC.md", "MIGRATION-NOTES.md"];
+const PROMPT_SKILL_FILES = ["SKILL.md", "RUBRIC.md", "WRITING.md", "MIGRATION-NOTES.md"];
 
 /**
  * A short, stable fingerprint of what a run is told: the source of the
@@ -837,6 +868,7 @@ export function promptVersion(skills = skillDir()): string {
     changesBlock,
     correctionsNote,
     hunksToClassifyNote,
+    languageNote,
     baseNote,
     rubricSection,
     hardRules,
@@ -1062,6 +1094,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
       headSha,
       committed,
       tools: harness.manifest.toolNames,
+      language: readConfig(root).analysisLanguage,
     }),
     cwd,
     readRoots,

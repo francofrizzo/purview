@@ -120,3 +120,17 @@ test("space / shift+space step between the hunks still to read, skipping viewed 
   await page.keyboard.press("Shift+Space");
   await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toHaveAttribute("data-focused", "true");
 });
+
+test("the summary panel lists the concepts the PR leans on", async ({ page }) => {
+  await page.keyboard.press("s");
+  const concepts = page.getByTestId("pr-concepts");
+  await expect(concepts.getByTestId("concept")).toHaveCount(3);
+  await expect(concepts).toContainText("Charge ledger");
+  await expect(concepts.getByTestId("concept-new")).toHaveCount(2);
+});
+
+test("a concept the guide names is explained on hover, once per block", async ({ page }) => {
+  await openUnit(page, UNITS.charge);
+  const mark = page.getByTestId("unit-header").getByTestId("concept-mark").first();
+  await expect(mark).toHaveAttribute("data-tip", /^Charge (key|ledger) \(new in this PR\): /);
+});

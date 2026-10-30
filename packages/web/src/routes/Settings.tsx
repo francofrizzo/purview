@@ -699,6 +699,11 @@ function AgentsSection() {
               </p>
             ) : null}
           </div>
+          <AnalysisLanguageField
+            value={config.data.analysisLanguage}
+            disabled={save.isPending}
+            onChange={(analysisLanguage) => save.mutate({ analysisLanguage })}
+          />
           <label className="flex w-fit items-center gap-2 text-xs" style={{ color: "var(--fg-muted)" }}>
             <input
               type="checkbox"
@@ -713,6 +718,106 @@ function AgentsSection() {
         </div>
       )}
     </Section>
+  );
+}
+
+/** Language names as the analysis prompt reads them, shown as their speakers write them. */
+const ANALYSIS_LANGUAGES = [
+  { value: "English", label: "Always English" },
+  { value: "Spanish", label: "Español" },
+  { value: "Portuguese", label: "Português" },
+  { value: "French", label: "Français" },
+  { value: "German", label: "Deutsch" },
+  { value: "Italian", label: "Italiano" },
+];
+
+/**
+ * The language the guide is written in: English unless changed, or the PR
+ * description's (a rubric that names one still wins; see the server's
+ * `languageRule`). It is a PR's at its first analysis: a refresh keeps writing
+ * in it, and Analyze from scratch rewrites the PR in the current one. A name
+ * not in the list is "Other", typed as the agent should read it ("Rioplatense
+ * Spanish").
+ */
+function AnalysisLanguageField({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string | null;
+  disabled?: boolean;
+  onChange: (language: string | null) => void;
+}) {
+  const custom = value !== null && !ANALYSIS_LANGUAGES.some((l) => l.value === value);
+  const [typing, setTyping] = useState(custom);
+  const [draft, setDraft] = useState(custom ? value : "");
+  useEffect(() => {
+    if (custom) {
+      setTyping(true);
+      setDraft(value);
+    }
+  }, [custom, value]);
+
+  const commit = () => {
+    const name = draft.trim();
+    if (name !== "" && name !== value) onChange(name);
+    else if (name === "" && custom) setDraft(value);
+    else if (name === "") setTyping(false);
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Analysis language">
+          <select
+            data-testid="global-analysis-language-select"
+            className="select pl-2 py-1 text-xs"
+            value={typing ? "other" : (value ?? "pr")}
+            disabled={disabled}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "other") {
+                setTyping(true);
+                setDraft("");
+                return;
+              }
+              setTyping(false);
+              onChange(v === "pr" ? null : v);
+            }}
+          >
+            <option value={ANALYSIS_LANGUAGES[0].value}>{ANALYSIS_LANGUAGES[0].label}</option>
+            <option value="pr">Same as the PR</option>
+            {ANALYSIS_LANGUAGES.slice(1).map((l) => (
+              <option key={l.value} value={l.value}>
+                {l.label}
+              </option>
+            ))}
+            <option value="other">Other…</option>
+          </select>
+        </Field>
+        {typing ? (
+          <input
+            data-testid="global-analysis-language-other"
+            className="input w-56 px-2 py-1 text-xs"
+            aria-label="Analysis language name"
+            placeholder="e.g. Rioplatense Spanish"
+            maxLength={40}
+            autoFocus={!custom}
+            value={draft}
+            disabled={disabled}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+            }}
+          />
+        ) : null}
+      </div>
+      <p className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+        Titles, summaries and notes of the guide; code and names stay as they are. A repo whose rubric names a language
+        keeps it. A PR keeps the language of its first analysis; Analyze from scratch rewrites it.
+      </p>
+    </div>
   );
 }
 

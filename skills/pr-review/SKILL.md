@@ -16,7 +16,7 @@ run the rest of this file, RUBRIC.md and (on a refresh) MIGRATION-NOTES.md inlin
 `headless-only` comments hold the text that run gets instead. -->
 
 <!-- interactive-only:start -->
-Read `RUBRIC.md` in this directory before classifying anything. It holds the kind
+Read `RUBRIC.md` in this directory before classifying anything, and `WRITING.md` before writing any prose field. It holds the kind
 definitions, worked examples, the attention ladder, risk-flag triggers, and learned
 corrections. Update it (see "Learn from corrections" below) as you go.
 
@@ -42,7 +42,7 @@ relative to it.
 
 Subcommands that exist: `init`, `refresh`, `report`, `units`, `triage`, `show`, `changes`,
 `base-file`, `history`, `description`, `set-analysis`, `set-unit`, `set-units`,
-`set-revision-summary`, `view`, `sync`, `list`, `discard-revision`, `remove-repo`, `comment`.
+`set-revision-summary`, `set-shape`, `view`, `sync`, `list`, `discard-revision`, `remove-repo`, `comment`.
 There are no others.
 
 ## 1. Determine state: init, refresh, or report (interactive only)
@@ -248,13 +248,18 @@ Produce:
 
 ```json
 {
-  "summary": "short, plain-language overall summary",
+  "summary": "three to six short sentences in plain words, no code (see WRITING.md)",
   "units": [ /* ReviewUnit[] */ ],
-  "unassigned": [ /* hunk ids deliberately left out of every unit */ ]
+  "unassigned": [ /* hunk ids deliberately left out of every unit */ ],
+  "concepts": [ /* see WRITING.md */ ],
+  "fileNotes": { /* same */ }
 }
 ```
 
-`ReviewUnit` fields: `id` (slug), `title`, `summary` (1-3 sentences), `kind`, `attention`,
+**Every prose field follows `WRITING.md`**: how the reader is led in, the plain overall
+`summary`, the writing rules, and what each field says.
+
+`ReviewUnit` fields: `id` (slug), `title`, `summary` (one to three short sentences, see `WRITING.md`), `kind`, `attention`,
 `attentionWhy`, `order` (integer, suggested reading order, starting at 0 or 1 — be
 consistent), plus `hunks` (an array; write it explicitly). `id`, `title`, `summary`, `kind`, `attention`, `attentionWhy`
 and `order` are required — the schema rejects the payload if any is missing.
@@ -269,7 +274,7 @@ and no list of what the unit contains.
 - Bad: `"Chat component: reload on reconnect, dedupe optimistic bubbles, arm watchdog"` (a
   list; the summary holds that).
 
-`attentionWhy` is **one sentence, under 25 words, saying what is at stake**: what breaks or
+`attentionWhy` is **one sentence saying what is at stake**: what breaks or
 whom it affects if this unit is wrong. The attention chip already tells the reviewer to
 check, so do not open with "Check", "Verify" or "Confirm", and do not stack clauses with a
 semicolon. For a skim or skip unit, say in the same shape what the glance is for.
@@ -341,7 +346,10 @@ under the segment in the diff, so it must read on its own.
 
 A heart `why` and the unit's `attentionWhy` must not overlap: the heart says what the
 code does, the attentionWhy says what is at stake. If writing one makes the other
-redundant, rewrite the attentionWhy, not the heart.
+redundant, rewrite the attentionWhy, not the heart. Nor does a heart `why` restate the
+unit `summary` for one file ("splits the sources: snapshot brings its ingestion ids,
+incremental its key" under a summary that says exactly that): say what these lines do that
+the summary leaves out, the condition, the order, the edge case.
 
 Give every **must-read** unit a heart; give a skim unit one only when one hunk clearly
 carries it. Purview marks these segments in the diff; the rest of the unit stays fully
@@ -372,8 +380,15 @@ An id listed twice is rejected.
 One more field, `findings`, is optional and is only ever filled in by the verification
 pass (step 5). Leave it off entirely here.
 
-Every prose field — the overall `summary`, each unit's `summary`, `attentionWhy`, a
-hunk's `label` and heart `why`, and later the findings — is rendered as markdown. Use `code` spans for identifiers, paths,
+### The shape of the change
+
+`concepts` and `fileNotes` are two top-level fields; `WRITING.md` says what goes in each.
+On a refresh, `set-shape` replaces either one (`{"concepts": …}`, `{"fileNotes": …}`;
+`null` drops it); see the run prompt for when to redraw them.
+
+Every prose field — each unit's `summary`, `attentionWhy`, a hunk's `label` and heart
+`why`, and later the findings — is rendered as markdown (the overall `summary`, the
+concepts are plain words, without `code`). Use `code` spans for identifiers, paths,
 values and commands (`charge()`, `src/billing/ledger.ts`, `max_attempts=4`), and **bold**
 or *italics* where they help. No headings, lists or fences inside the one-line fields;
 the overall `summary` may use short paragraphs, nothing else.
@@ -557,6 +572,9 @@ units, so batch its reads and its re-verification the same way.
 - `reviewer-state set-unit <key> --id <unitId> --file patch.json` /
   `reviewer-state set-units <key> --file patches.json` — patch one unit, or several in one
   all-or-nothing batch; see MIGRATION-NOTES.md.
+- `reviewer-state set-shape <key> --file shape.json` — replace the file notes or the
+  concepts (`{"fileNotes": …, "concepts": …}`; each key present replaces that view, `null`
+  drops it). Validated like the same fields in `set-analysis`.
 - `reviewer-state report <key>` — human report: PR header, revision + shas, summary,
   migration report, hunk/file progress, per-unit progress bars, a "Needs classification"
   list of hunks in no unit, and recent archived hunks. Use it to verify your analysis

@@ -100,6 +100,7 @@ export const REVIEWER_COMMANDS = [
   "set-unit",
   "set-units",
   "set-revision-summary",
+  "set-shape",
   "units",
   "view",
   "sync",
@@ -258,6 +259,7 @@ const ACTION_GERUNDS: Record<string, string> = {
   set_analysis: "Saving the analysis",
   patch_units: "Patching units",
   set_revision_summary: "Summarizing the revision",
+  set_shape: "Updating the concepts and file notes",
 };
 
 /** `mcp__purview__review_units` -> `review_units`; a bare name stays as is. */

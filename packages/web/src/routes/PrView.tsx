@@ -140,7 +140,8 @@ import { latestVerdicts } from "../lib/reviews";
 import { useSidebarMode } from "../lib/sidebarMode";
 import { isStandalone, useFullscreen } from "../lib/useFullscreen";
 import { shouldShowStalenessHint, stalenessDismissKey, stalenessTooltip } from "../lib/staleness";
-import { AttachmentContext, CodeLinkContext, InlineMarkdown } from "../components/Markdown";
+import { AttachmentContext, CodeLinkContext, GlossaryContext, InlineMarkdown } from "../components/Markdown";
+import { buildGlossary } from "../lib/glossary";
 import { useAttachmentScope } from "../components/Attachments";
 
 /** No changelog highlight; one shared array, so nothing downstream sees a new one each render. */
@@ -491,6 +492,9 @@ export function PrView() {
   // Both live in the same right-hand slot, and the chat is the one the reader
   // just asked for, so it wins.
 
+  // The PR's concepts, explained wherever the guide, the diff or the chat names them.
+  const concepts = detail?.state.concepts;
+  const glossary = useMemo(() => buildGlossary(concepts), [concepts]);
   const units = useMemo(
     () => (detail ? [...detail.state.units].sort((a, b) => a.order - b.order) : []),
     [detail],
@@ -1535,6 +1539,7 @@ export function PrView() {
     ) : null;
   return (
     <AttachmentContext.Provider value={attachmentScope}>
+    <GlossaryContext.Provider value={glossary}>
     <div className="flex h-full flex-col">
       <TopBar
         detail={detail}
@@ -1741,6 +1746,7 @@ export function PrView() {
           conversation={threadsQuery.data?.conversation}
           filters={threadFilters.filters}
           revisions={revisionContext}
+          concepts={concepts}
           viewed={overall.viewed}
           total={overall.total}
           open={summaryOpen}
@@ -2307,6 +2313,7 @@ export function PrView() {
         ) : null}
       </div>
     </div>
+    </GlossaryContext.Provider>
     </AttachmentContext.Provider>
   );
 }

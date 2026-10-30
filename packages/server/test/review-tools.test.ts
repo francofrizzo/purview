@@ -13,7 +13,8 @@ import { createApp } from "../src/app.js";
 import { readComments, readDeletedComments, addComment, writeComments } from "../src/comments.js";
 import { createReviewOperations } from "../src/agent/review-tools/operations.js";
 import { startReviewTools } from "../src/agent/review-tools/run.js";
-import { reviewSystemPrompt } from "../src/agent/review-tools/prompts.js";
+import { reviewRunPrompt, reviewSystemPrompt } from "../src/agent/review-tools/prompts.js";
+import { writeConfig } from "../src/config.js";
 import { getHarness, harnessIds } from "../src/agent/registry.js";
 import { buildFixture, key, REV2_PATCH } from "./fixtures.js";
 import type { AgentRunRequest } from "../src/agent/types.js";
@@ -71,6 +72,49 @@ it("uses task-scoped authority, real persisted analysis and fresh revision bindi
   await expect(fresh.execute("review_context")).rejects.toMatchObject({ code: "revoked" });
 });
 
+it("saves concepts and file notes through the tools, and a refresh redraws them with set_shape", async () => {
+  const ops = createReviewOperations(request("analysis"), "test");
+  const concepts = [{ term: "Foo", means: "What the module exports.", aka: ["foo"] }];
+  await ops.execute("set_analysis", { ...analysis(), concepts, fileNotes: { "src/foo.ts": "Changes the first value." } });
+  expect(loadState(key, root)).toMatchObject({ concepts, fileNotes: { "src/foo.ts": "Changes the first value." } });
+  expect(await ops.execute("review_context", {})).toMatchObject({ concepts });
+  await expect(ops.execute("set_shape", { concepts: null })).rejects.toMatchObject({ code: "operation_not_granted" });
+
+  nextRevision();
+  const fresh = createReviewOperations({ ...request("analysis"), review: { ...request("analysis").review!, revision: 2, analysisMode: "incremental" } }, "test");
+  await fresh.execute("set_shape", { concepts: null });
+  const state = loadState(key, root);
+  expect(state.concepts).toBeUndefined();
+  expect(state.fileNotes).toEqual({ "src/foo.ts": "Changes the first value." });
+  ops.revoke(); fresh.revoke();
+});
+
+it("offers set_shape over MCP to a refresh, with both views nullable", async () => {
+  await createReviewOperations(request("analysis"), "test").execute("set_analysis", analysis());
+  nextRevision();
+  binding = await startReviewTools({ ...request("analysis"), review: { ...request("analysis").review!, revision: 2, analysisMode: "incremental" } }, "test");
+  client = new Client({ name: "test", version: "1" });
+  await client.connect(new StreamableHTTPClientTransport(new URL(binding.url)));
+  const shape = (await client.listTools()).tools.find(t => t.name === "set_shape")!;
+  expect(Object.keys(shape.inputSchema.properties!)).toEqual(expect.arrayContaining(["concepts", "fileNotes"]));
+  const result = await client.callTool({ name: "set_shape", arguments: { fileNotes: { "src/foo.ts/": "Changes the value." } } });
+  expect(result.isError).toBeFalsy();
+  expect(loadState(key, root).fileNotes).toEqual({ "src/foo.ts": "Changes the value." });
+});
+
+it("gives the shared analysis the writing guide and the language, and leaves the chat's prompt alone", () => {
+  const analysisPrompt = reviewSystemPrompt(key, root, { task: "analysis" });
+  expect(analysisPrompt).toContain("===== WRITING GUIDE =====");
+  expect(analysisPrompt).toContain("Write every prose field so it reads one way");
+  expect(reviewSystemPrompt(key, root, { task: "chat" })).not.toContain("===== WRITING GUIDE =====");
+  const checkout = { path: null, managed: false } as never;
+  expect(reviewRunPrompt(key, root, checkout, false)).toContain("if one does; otherwise in English.");
+  writeConfig({ analysisLanguage: null }, root);
+  expect(reviewRunPrompt(key, root, checkout, false)).toContain("otherwise in the language of the PR's title and description.");
+  expect(reviewRunPrompt(key, root, checkout, true)).toContain("the language this PR's analysis is already written in");
+  writeConfig({ analysisLanguage: "English" }, root);
+});
+
 it("paginates with source lines, rejects mismatched cursors and confines real paths", async () => {
   const ops = createReviewOperations(request("chat"), "test");
   const first = await ops.execute("read_code", { path: "src/foo.ts", limit: 2 }) as any;
@@ -96,6 +140,9 @@ it("serves the actual MCP protocol with strict capability URLs and revocation", 
   await client.connect(new StreamableHTTPClientTransport(new URL(binding.url)));
   const tools = await client.listTools();
   expect(tools.tools.some(t => t.name === "set_analysis")).toBe(true);
+  const props = tools.tools.find(t => t.name === "set_analysis")!.inputSchema.properties as Record<string, any>;
+  expect(props.concepts.items.required).toEqual(expect.arrayContaining(["term", "means"]));
+  expect(props.fileNotes.type).toBe("object");
   const result = await client.callTool({ name: "review_context", arguments: {} });
   expect(JSON.parse((result.content as any)[0].text)).toMatchObject({ revision: 1, checkoutAvailable: true });
   const saved = await client.callTool({ name: "set_analysis", arguments: analysis() });

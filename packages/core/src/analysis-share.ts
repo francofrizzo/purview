@@ -1,6 +1,6 @@
 import { keyToString, type PrKey } from "./paths.js";
 import { loadState, readFilesJson, readMeta } from "./store.js";
-import { setAnalysis } from "./service.js";
+import { foldersOf, setAnalysis } from "./service.js";
 import { analysisUnits } from "./reducer.js";
 import { isGeneratedUnit } from "./generated.js";
 import { AnalysisExportSchema, type AnalysisExport, type State } from "./schemas.js";
@@ -133,6 +133,8 @@ export function buildAnalysisExport(key: PrKey, root: string): AnalysisExport {
     exportedAt: new Date().toISOString(),
     summary: state.summary,
     units,
+    ...(state.fileNotes ? { fileNotes: state.fileNotes } : {}),
+    ...(state.concepts ? { concepts: state.concepts } : {}),
   });
 }
 
@@ -195,9 +197,17 @@ export function applyAnalysisImport(
 
   const unassigned = [...currentIds].filter((id) => !matched.has(id));
 
+  // Notes on files or folders this revision no longer has would be refused: keep the rest.
+  const files = readFilesJson(key, loadState(key, root).currentRevision, root).files.map((f) => f.path);
+  const here = new Set([...files, ...foldersOf(files)]);
+  const fileNotes = envelope.fileNotes
+    ? Object.fromEntries(Object.entries(envelope.fileNotes).filter(([p]) => here.has(p)))
+    : undefined;
+
   const { state: next } = setAnalysis(
     key,
-    { summary: envelope.summary, units, unassigned },
+    // The concepts name no unit or file: they travel as they are.
+    { summary: envelope.summary, units, unassigned, fileNotes, concepts: envelope.concepts },
     { origin: "import" },
     root,
   );

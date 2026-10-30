@@ -108,6 +108,7 @@ and are dropped off a TTY.
 {
   "autoAnalyze": true,                       // start an analysis run when a PR is added
   "analysisAgent": null,                     // {harness, model?, effort?} | null (= the default harness's defaults)
+  "analysisLanguage": "English",             // the language new analyses write in; null = the PR description's
   "chatAgent": null,                         // {harness, model?} | null, for review chat
   "onboardedAt": "2026-08-26T12:51:24.500Z",
   "devOrigins": ["http://localhost:5179",    // origins allowed to send state-changing
@@ -348,8 +349,8 @@ GET  /api/repos/:rkey/config    # local + committed + effective, with the source
 PUT  /api/repos/:rkey/config    # {autoAnalyze?, repoPath?, analysisAgent?, chatAgent?,
                                 # rubric?, chatInstructions?}; null re-inherits, rubric: ""
                                 # deletes RUBRIC.local.md, chatInstructions: "" deletes CHAT.local.md
-GET  /api/config                # the global layer: {analysisAgent, chatAgent, managedCheckouts, effective}
-PUT  /api/config                # {analysisAgent?, chatAgent?, managedCheckouts?}; null re-inherits
+GET  /api/config                # the global layer: {analysisAgent, chatAgent, analysisLanguage, managedCheckouts, effective}
+PUT  /api/config                # {analysisAgent?, chatAgent?, analysisLanguage?, managedCheckouts?}; null re-inherits
 ```
 
 A selection is written whole and checked against its harness's manifest (a 400 names the

@@ -19,6 +19,7 @@ import {
   initPr,
   refreshPr,
   setAnalysis,
+  setShape,
   setHunkViewed,
   setUnits,
   setRevisionSummary,
@@ -561,6 +562,23 @@ program
   });
 
 program
+  .command("set-shape")
+  .argument("<key>")
+  .requiredOption("--file <json>", 'JSON file with {fileNotes?, concepts?} ("-" for stdin)')
+  .description(
+    "replace the file notes or the concepts (a key present replaces that view, null drops it); set-analysis takes them too",
+  )
+  .action((keyArg: string, opts: { file: string }) => {
+    const key = requireExistingKey(keyArg);
+    const state = setShape(key, readJsonFile(opts.file));
+    const parts = [
+      state.fileNotes ? `${Object.keys(state.fileNotes).length} file notes` : "no file notes",
+      state.concepts ? `${state.concepts.length} concepts` : "no concepts",
+    ];
+    console.log(`Shape for revision ${state.currentRevision}: ${parts.join(", ")}`);
+  });
+
+program
   .command("set-unit")
   .argument("<key>")
   .requiredOption("--file <json>", 'JSON file with a unit or a partial patch ("-" for stdin)')
@@ -626,7 +644,7 @@ program
   .option("--file <json>", 'JSON file with {"text": "..."} instead of --text')
   .option("--rev <n>", "revision to summarize (defaults to the current one; never 1)")
   .description(
-    "record what a revision changed across the whole PR, in the reader's language (replaces an earlier summary of that revision)",
+    "record what a revision changed across the whole PR, in the analysis's language (replaces an earlier summary of that revision)",
   )
   .action((keyArg: string, opts: { text?: string; file?: string; rev?: string }) => {
     const key = requireExistingKey(keyArg);
