@@ -36,7 +36,7 @@ export interface ChatFloatRect {
   h: number;
 }
 
-export const UNIT_DETAILS = ["heart", "files", "findings", "revisions"] as const;
+export const UNIT_DETAILS = ["heart", "files", "findings"] as const;
 export type UnitDetail = (typeof UNIT_DETAILS)[number];
 
 export interface Settings {

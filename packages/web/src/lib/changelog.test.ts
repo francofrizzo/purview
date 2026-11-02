@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changelogHeading, changelogView, formatChangelogEntry } from "./changelog";
+import { changelogHeading, changelogView, formatChangelogEntry, withoutRevisionLabel } from "./changelog";
 import { mockDetail } from "../mocks/fixture";
 
 describe("changelogView", () => {
@@ -33,5 +33,17 @@ describe("changelogHeading", () => {
   it("counts revisions with the right plural", () => {
     expect(changelogHeading(1)).toBe("Changelog (1 revision)");
     expect(changelogHeading(3)).toBe("Changelog (3 revisions)");
+  });
+});
+
+describe("withoutRevisionLabel", () => {
+  it("drops the revision the note opens with", () => {
+    expect(withoutRevisionLabel("Revision 2: alias handler removed")).toBe("alias handler removed");
+    expect(withoutRevisionLabel("Rev 2: keys matched")).toBe("keys matched");
+    expect(withoutRevisionLabel("r3 — tests added")).toBe("tests added");
+  });
+  it("leaves a note that only mentions a revision later", () => {
+    expect(withoutRevisionLabel("rounding switched, as in revision 2: fine")).toBe("rounding switched, as in revision 2: fine");
+    expect(withoutRevisionLabel("Revision 7 makes review_id required")).toBe("Revision 7 makes review_id required");
   });
 });

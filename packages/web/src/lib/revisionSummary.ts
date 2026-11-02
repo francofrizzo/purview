@@ -1,4 +1,5 @@
 import type { RevisionInfo } from "../api/types";
+import { withoutRevisionLabel } from "./changelog";
 
 /** One "rN · what it changed" line: a revision that carries a summary. */
 export interface RevisionSummaryLine {
@@ -19,7 +20,7 @@ export function revisionSummaryLines(
 ): RevisionSummaryLine[] {
   return (revisions ?? [])
     .filter((r) => !!r.summary && (after === undefined || r.revision > after))
-    .map((r) => ({ revision: r.revision, summary: r.summary! }))
+    .map((r) => ({ revision: r.revision, summary: withoutRevisionLabel(r.summary!) }))
     .sort((a, b) => b.revision - a.revision);
 }
 

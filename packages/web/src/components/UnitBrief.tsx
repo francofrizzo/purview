@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { FileEntry, HeartSegment, Hunk, PrDetail, ReviewUnit } from "../api/types";
 import { isGeneratedUnit } from "../api/types";
 import { orderUnitHunks, skippedIds } from "../lib/diffModel";
@@ -132,8 +132,9 @@ export function UnitFileList({
  * nothing in here draws a box or a rule of its own. Everything aligns to the
  * title's text column. The prose leads (what the unit does, why it matters);
  * under it, one line of counts (the heart, the files and their mix, the
- * findings, the skippable hunks, the revisions) with the unit's two actions
- * at its end. A count opens its list under the line, one at a time.
+ * findings, the skippable hunks) with the unit's two actions at its end. A
+ * count opens its list under the line, one at a time. The unit's history is
+ * a line of its own below.
  */
 export function UnitBrief({
   detail,
@@ -175,10 +176,10 @@ export function UnitBrief({
     heart: heart.length > 0,
     files: files.length > 0,
     findings: findings.length > 0,
-    revisions: revisionCount > 0,
   };
   const open = settings.unitDetail && available[settings.unitDetail] ? settings.unitDetail : null;
   const toggle = (d: UnitDetail) => update({ unitDetail: open === d ? null : d });
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-3 pb-3 pl-[34px] pr-4 text-xs leading-5" data-testid="unit-brief">
@@ -261,65 +262,6 @@ export function UnitBrief({
               {skipped}
             </Count>
           ) : null}
-          {/* History is one control: the count opens what each revision
-              changed here (each a toggle for the diff's highlight), and while
-              a highlight is on, the count names it, with its way out. */}
-          {available.revisions || highlight ? (
-            <span
-              className="inline-flex items-center rounded"
-              style={highlight ? { background: "var(--bg-hover)" } : undefined}
-              data-testid={highlight ? "highlight-summary" : undefined}
-            >
-              <Count
-                open={open === "revisions"}
-                onClick={() => (available.revisions ? toggle("revisions") : undefined)}
-                testId="changelog-toggle"
-                tip={
-                  highlight?.tip ??
-                  `What changed here, in ${revisionCount} revision${revisionCount === 1 ? "" : "s"}${
-                    revisions && revisions.latest.revision === currentRevision ? `; updated in r${currentRevision}` : ""
-                  }`
-                }
-              >
-                {highlight ? (
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-[3px] flex-none rounded-full"
-                    style={{ background: "var(--changed-in-bar)" }}
-                  />
-                ) : null}
-                <IconHistory
-                  width={12}
-                  height={12}
-                  className="flex-none"
-                  style={
-                    !highlight && revisions && revisions.latest.revision === currentRevision
-                      ? { color: "var(--accent)" }
-                      : undefined
-                  }
-                />
-                {highlight ? (
-                  <span style={highlight.error ? { color: "var(--risk)" } : undefined}>{highlight.label}</span>
-                ) : (
-                  revisionCount
-                )}
-              </Count>
-              {highlight ? (
-                <button
-                  type="button"
-                  data-testid="highlight-clear"
-                  className="rounded py-1 pl-0.5 pr-1.5 hover:!text-[var(--fg)]"
-                  style={{ color: "var(--fg-muted)" }}
-                  data-tip="Clear the highlight"
-                  data-tip-key="esc"
-                  aria-label="Clear the highlight"
-                  onClick={highlight.onClear}
-                >
-                  <IconClose width={10} height={10} />
-                </button>
-              ) : null}
-            </span>
-          ) : null}
           {!generated && (onCite || onMove) ? (
             <span className="ml-auto flex items-center">
               {onCite ? (
@@ -369,16 +311,83 @@ export function UnitBrief({
           </div>
         ) : null}
         {open === "findings" ? <FindingList findings={findings} /> : null}
-        {open === "revisions" ? (
-          <UnitChangelog
-            listOnly
-            className=""
-            changelog={unit.changelog}
-            activeRevisions={changelog?.activeRevisions}
-            onSelectRevision={changelog?.onSelectRevision}
-          />
-        ) : null}
       </div>
+
+      {/* History on its own line, not one of the counts: it opens what each
+          revision changed here (each a toggle for the diff's highlight), and
+          while a highlight is on it names it, with its way out. */}
+      {revisionCount || highlight ? (
+        <div className="flex flex-col gap-1.5">
+          {/* History is one control: the count opens what each revision
+              changed here (each a toggle for the diff's highlight), and while
+              a highlight is on, the count names it, with its way out. */}
+          {revisionCount || highlight ? (
+            <span
+              className="-ml-1 inline-flex items-center self-start rounded tabular-nums"
+              style={highlight ? { background: "var(--bg-hover)" } : undefined}
+              data-testid={highlight ? "highlight-summary" : undefined}
+            >
+              <Count
+                open={historyOpen}
+                onClick={() => (revisionCount ? setHistoryOpen((v) => !v) : undefined)}
+                testId="changelog-toggle"
+                tip={
+                  highlight?.tip ??
+                  `What changed here, in ${revisionCount} revision${revisionCount === 1 ? "" : "s"}${
+                    revisions && revisions.latest.revision === currentRevision ? `; updated in r${currentRevision}` : ""
+                  }`
+                }
+              >
+                {highlight ? (
+                  <span
+                    aria-hidden
+                    className="h-2.5 w-[3px] flex-none rounded-full"
+                    style={{ background: "var(--changed-in-bar)" }}
+                  />
+                ) : null}
+                <IconHistory
+                  width={12}
+                  height={12}
+                  className="flex-none"
+                  style={
+                    !highlight && revisions && revisions.latest.revision === currentRevision
+                      ? { color: "var(--accent)" }
+                      : undefined
+                  }
+                />
+                {highlight ? (
+                  <span style={highlight.error ? { color: "var(--risk)" } : undefined}>{highlight.label}</span>
+                ) : (
+                  `${revisionCount} ${revisionCount === 1 ? "revision" : "revisions"}`
+                )}
+              </Count>
+              {highlight ? (
+                <button
+                  type="button"
+                  data-testid="highlight-clear"
+                  className="rounded py-1 pl-0.5 pr-1.5 hover:!text-[var(--fg)]"
+                  style={{ color: "var(--fg-muted)" }}
+                  data-tip="Clear the highlight"
+                  data-tip-key="esc"
+                  aria-label="Clear the highlight"
+                  onClick={highlight.onClear}
+                >
+                  <IconClose width={10} height={10} />
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+          {historyOpen && revisionCount ? (
+            <UnitChangelog
+              listOnly
+              className=""
+              changelog={unit.changelog}
+              activeRevisions={changelog?.activeRevisions}
+              onSelectRevision={changelog?.onSelectRevision}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

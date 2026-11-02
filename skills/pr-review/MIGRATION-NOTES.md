@@ -98,6 +98,8 @@ first three as "carried".
      new / archived / revived hunks). A hunk `changes` says was mostly already in the
      previous revision is not a change of this revision. It is recorded under the state's current revision in the unit's
      `changelog`; re-sending replaces that revision's entry rather than adding another.
+     Start with the change itself, never with the revision ("Revision 2: …", "Rev 2: …"):
+     Purview already shows the number beside the note;
      Only runaway output is truncated;
    - re-verify its findings (see "What happens to findings").
 
@@ -150,8 +152,8 @@ first three as "carried".
    across the PR as a whole, once:
    `reviewer-state set-revision-summary <key> --text "<one sentence>"`.
    One sentence, 25 words at most: it sits in a list with every other revision's. Write it
-   for the reader: the behavior that moved, not the bookkeeping or the test plumbing, and no
-   file paths unless they are the point (`"stop timeout constant moved to shared.go; queue mapping
+   for the reader: the behavior that moved, not the bookkeeping or the test plumbing, no
+   opening "Revision N …" (the list shows the number), and no file paths unless they are the point (`"stop timeout constant moved to shared.go; queue mapping
    failure model moved to models/communication.go"`). It replaces an earlier summary of the
    same revision; `changes` and `report` say when the revision has none. Revision 1 takes
    none (the PR summary covers it).

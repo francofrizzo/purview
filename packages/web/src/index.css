@@ -731,7 +731,6 @@
   }
   .changelog-row[data-active="true"] {
     background: var(--warn-soft);
-    box-shadow: inset 2px 0 0 var(--changed-in-bar);
   }
   /* The hunk header's "changed in rN" label: the same bar, in miniature. */
   .changed-in-chip {

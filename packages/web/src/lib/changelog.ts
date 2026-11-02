@@ -5,6 +5,14 @@ export function changelogHeading(count: number): string {
   return `Changelog (${count} revision${count === 1 ? "" : "s"})`;
 }
 
+/**
+ * A note without the revision label the analysis sometimes opens with
+ * ("Revision 2: …", "Rev 2 — …", "r2: …"): the number already sits beside it.
+ */
+export function withoutRevisionLabel(text: string): string {
+  return text.replace(/^\s*(?:revision|rev\.?|r)\s*\d+\s*[:·—–-]\s*/i, "");
+}
+
 /** "r3 · rounding switched to banker's" */
 export function formatChangelogEntry(e: UnitChangelogEntry): string {
   return `r${e.revision} · ${e.text}`;
@@ -20,6 +28,8 @@ export function changelogView(
   changelog: UnitChangelogEntry[] | undefined,
 ): { latest: UnitChangelogEntry; earlier: UnitChangelogEntry[] } | null {
   if (!changelog?.length) return null;
-  const newestFirst = [...changelog].sort((a, b) => b.revision - a.revision);
+  const newestFirst = [...changelog]
+    .map((e) => ({ ...e, text: withoutRevisionLabel(e.text) }))
+    .sort((a, b) => b.revision - a.revision);
   return { latest: newestFirst[0], earlier: newestFirst.slice(1) };
 }
