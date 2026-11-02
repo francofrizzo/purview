@@ -14,6 +14,7 @@ import {
   toRevisionFiles,
   writeRepoConfig,
   updateMeta,
+  appendEvent,
   appendEvents,
   writeRevision,
   type GhRunner,
@@ -29,6 +30,7 @@ import {
   promptVersion,
   readJob,
   reconcileStaleJobs,
+  MAX_RESUMES,
 } from "../src/analysis.js";
 import { writeConfig } from "../src/config.js";
 import { chatTurnDone } from "../src/chat-session.js";
@@ -374,6 +376,35 @@ describe("analysis job lifecycle", () => {
     const job = readJob(key, root)!;
     expect(job.status).toBe("failed");
     expect(job.error).toBe("server restarted");
+  });
+
+  it("starts a run a restart cut short again, and the log keeps the failed one", async () => {
+    buildFixture(root);
+    fs.writeFileSync(
+      analysisJobPath(key, root),
+      JSON.stringify({ revision: 1, status: "running", startedAt: new Date().toISOString() }),
+    );
+    createApp({ stateDir: root, webDist: path.join(root, "__no-web-dist__"), analysisTimeoutMs: 10_000 });
+    await analysisIdle();
+    expect(readJob(key, root)!.status).toBe("done");
+    expect(claude.runs).toHaveLength(1);
+    const finished = readEvents(key, root).filter((e) => e.type === "analysis-finished");
+    expect(finished.map((e) => (e.type === "analysis-finished" ? e.status : null))).toEqual(["failed", "done"]);
+  });
+
+  it("leaves a run failed once restarts have cut it short too many times in a row", async () => {
+    buildFixture(root);
+    for (let i = 0; i < MAX_RESUMES; i++) {
+      appendEvent(key, { type: "analysis-finished", revision: 1, status: "failed", error: "server restarted" }, root);
+    }
+    fs.writeFileSync(
+      analysisJobPath(key, root),
+      JSON.stringify({ revision: 1, status: "running", startedAt: new Date().toISOString() }),
+    );
+    createApp({ stateDir: root, webDist: path.join(root, "__no-web-dist__"), analysisTimeoutMs: 10_000 });
+    await analysisIdle();
+    expect(readJob(key, root)!.status).toBe("failed");
+    expect(claude.runs).toHaveLength(0);
   });
 
   it("exposes the job on the list and detail endpoints", async () => {

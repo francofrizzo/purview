@@ -82,9 +82,11 @@ jobEvents.setMaxListeners(0);
  * A "running" record with no process behind it can only mean the server died
  * mid-run, so on startup every such record is closed out as failed. Queued
  * jobs are treated the same way: the queue is in-memory and did not survive.
+ * The log keeps that failure; whether the run starts again is the caller's
+ * call (see `shouldResume`), so each closed job is returned with its key.
  */
-export function reconcileStaleJobs(root = stateRoot()): PrKey[] {
-  const touched: PrKey[] = [];
+export function reconcileStaleJobs(root = stateRoot()): { key: PrKey; job: AnalysisJob }[] {
+  const touched: { key: PrKey; job: AnalysisJob }[] = [];
   for (const key of listPrs(root)) {
     const job = readJob(key, root);
     if (!job || (job.status !== "running" && job.status !== "queued")) continue;
@@ -113,9 +115,32 @@ export function reconcileStaleJobs(root = stateRoot()): PrKey[] {
     } catch {
       // A PR whose event log is unreadable should not stop the server booting.
     }
-    touched.push(key);
+    touched.push({ key, job });
   }
   return touched;
+}
+
+/** Restarts in a row on one revision after which a run is left failed: a run that keeps taking the server down must not loop. */
+export const MAX_RESUMES = 3;
+
+/**
+ * Whether a run a restart cut short should start again: only for the
+ * revision still in force (a newer one gets its own run), and only while the
+ * revision's latest runs have not all ended in restarts `MAX_RESUMES` times.
+ */
+export function shouldResume(key: PrKey, job: AnalysisJob, root = stateRoot()): boolean {
+  try {
+    if (loadState(key, root).currentRevision !== job.revision) return false;
+    let restarts = 0;
+    for (const e of readEvents(key, root).reverse()) {
+      if (e.type !== "analysis-finished" || e.revision !== job.revision) continue;
+      if (e.status !== "failed" || e.error !== "server restarted") break;
+      restarts++;
+    }
+    return restarts <= MAX_RESUMES;
+  } catch {
+    return false;
+  }
 }
 
 /* ------------------------------------------------------------------- paths */

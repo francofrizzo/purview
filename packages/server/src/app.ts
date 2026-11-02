@@ -133,6 +133,7 @@ import {
   jobEvents,
   readJob,
   reconcileStaleJobs,
+  shouldResume,
   startAnalysis,
 } from "./analysis.js";
 import {
@@ -373,7 +374,18 @@ export function createApp(opts: AppOptions = {}): Hono {
   const updateChecker =
     opts.updateChecker === false ? noUpdateChecker : (opts.updateChecker ?? createUpdateChecker());
   // A "running" job record can only be stale at boot — nothing is running yet.
-  reconcileStaleJobs(root);
+  // Each is closed out as failed, then started again, so a restart (an
+  // update, a crash) never leaves a revision half analyzed. Not on an
+  // archived PR, and not with automatic runs switched off for the process.
+  for (const { key, job } of reconcileStaleJobs(root)) {
+    if (!autoAnalyze || autoAnalyzeBlocker(key, root) === "archived" || !shouldResume(key, job, root)) continue;
+    try {
+      startAnalysis(key, root, { timeoutMs: opts.analysisTimeoutMs, fresh: job.fresh === true });
+      log.info("analysis", `${shortKey(key)}  resumed after a restart`, { revision: job.revision });
+    } catch (err) {
+      log.warn("analysis", `${shortKey(key)}  not resumed`, { reason: (err as Error).message });
+    }
+  }
 
   /**
    * `?analyze=false` opts a single init/refresh out of the automatic run.
