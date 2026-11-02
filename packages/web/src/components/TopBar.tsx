@@ -8,7 +8,7 @@ import { AnalysisChip, AnalysisStatsPanel, analysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { ChangeSize } from "./ChangeMix";
 import { CiMark, ReviewRequestAge, StackedOnChip } from "./Chips";
-import { ReviewersMark, showsReviewers } from "./Reviewers";
+import { ReviewersButton, showsReviewers } from "./Reviewers";
 import { RevisionMenu } from "./RevisionMenu";
 import { formatAddedAt } from "../lib/prList";
 import { formatRevisionSummary, revisionSummaryLines } from "../lib/revisionSummary";
@@ -258,7 +258,7 @@ export function TopBar({
           ) : null}
           <CiMark ci={meta.ci} interactive />
           {showsReviewers(detail.authoredByYou, meta.prState) ? (
-            <ReviewersMark reviewers={meta.reviewers} className="flex-none" ring="var(--bg-raised)" />
+            <ReviewersButton prKey={detail.key} reviewers={meta.reviewers} ring="var(--bg-raised)" />
           ) : null}
           {state.revisions && state.revisions.length > 1 ? (
             <RevisionMenu

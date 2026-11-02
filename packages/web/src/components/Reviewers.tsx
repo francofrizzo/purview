@@ -1,6 +1,10 @@
-import type { PrGithubState, Reviewer } from "../api/types";
+import { useEffect, useRef, useState } from "react";
+import type { PrGithubState, Reviewer, ReviewerCandidate } from "../api/types";
+import { errorText } from "../api/errors";
+import { useReviewerCandidates, useReviewRequests } from "../api/hooks";
 import { AuthorAvatar } from "./AuthorAvatar";
-import { IconCheck, IconClock, IconClose, IconWarning } from "./icons";
+import { FloatingPanel } from "./FloatingPanel";
+import { IconCheck, IconClock, IconClose, IconRefresh, IconWarning } from "./icons";
 
 /** How many avatars the cluster shows before folding the rest into "+N". */
 const MAX_SHOWN = 4;
@@ -119,5 +123,165 @@ export function ReviewersMark({
         </span>
       ) : null}
     </span>
+  );
+}
+
+/**
+ * The cluster on your own PR, as a button: it opens who is on the PR (ask
+ * again, or stop asking) and a search to ask someone new, GitHub's
+ * suggestions first.
+ */
+export function ReviewersButton({
+  prKey,
+  reviewers,
+  className,
+  ring,
+}: {
+  prKey: string;
+  reviewers: Reviewer[] | undefined;
+  className?: string;
+  ring?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={ref}
+        type="button"
+        className={`inline-flex flex-none items-center rounded px-0.5 transition-colors hover:bg-[var(--bg-hover)] ${className ?? ""}`}
+        style={open ? { background: "var(--bg-hover)" } : undefined}
+        aria-expanded={open}
+        aria-label="Reviewers"
+        data-testid="reviewers-button"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {reviewers === undefined ? (
+          <span className="text-2xs" style={{ color: "var(--fg-muted)" }}>
+            reviewers
+          </span>
+        ) : (
+          <ReviewersMark reviewers={reviewers} ring={ring} />
+        )}
+      </button>
+      {open ? (
+        <FloatingPanel anchorRef={ref} onClose={() => setOpen(false)} label="Reviewers" className="w-72 p-2 text-xs">
+          <ReviewersPanel prKey={prKey} reviewers={reviewers ?? []} />
+        </FloatingPanel>
+      ) : null}
+    </>
+  );
+}
+
+function ReviewersPanel({ prKey, reviewers }: { prKey: string; reviewers: Reviewer[] }) {
+  const [q, setQ] = useState("");
+  const [query, setQuery] = useState("");
+  // Each keystroke would be a GitHub search: wait for a pause.
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(q.trim()), 200);
+    return () => clearTimeout(t);
+  }, [q]);
+  const candidates = useReviewerCandidates(prKey, query, true);
+  const requests = useReviewRequests(prKey);
+  const people = humanReviewers(reviewers);
+  const ask = (who: { login: string; kind: "user" | "team" }, remove = false) =>
+    requests.mutate(who.kind === "team" ? { teams: [who.login], remove } : { users: [who.login], remove });
+  const busy = requests.isPending;
+
+  return (
+    <div className="flex flex-col gap-2" data-testid="reviewers-panel">
+      {people.length ? (
+        <ul className="flex flex-col">
+          {people.map((r) => (
+            <li key={`${r.kind}:${r.login}`} className="flex items-center gap-2 rounded px-1.5 py-1" data-testid="reviewers-row">
+              <AuthorAvatar author={r.login} url={r.avatarUrl ?? undefined} size={16} />
+              <span className="min-w-0 flex-1 truncate" style={{ color: "var(--fg)" }}>
+                {r.login}
+              </span>
+              <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
+                {STATE_LABEL[r.state]}
+              </span>
+              {r.state === "requested" ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="flex-none rounded p-0.5 hover:bg-[var(--bg-hover)] hover:!text-[var(--fg)] disabled:opacity-50"
+                  style={{ color: "var(--fg-faint)" }}
+                  data-tip={`Stop asking ${r.login}`}
+                  aria-label={`Stop asking ${r.login}`}
+                  data-testid={`reviewers-remove-${r.login}`}
+                  onClick={() => ask(r, true)}
+                >
+                  <IconClose width={10} height={10} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="flex-none rounded p-0.5 hover:bg-[var(--bg-hover)] hover:!text-[var(--fg)] disabled:opacity-50"
+                  style={{ color: "var(--fg-faint)" }}
+                  data-tip={`Ask ${r.login} to review again`}
+                  aria-label={`Ask ${r.login} to review again`}
+                  data-testid={`reviewers-rerequest-${r.login}`}
+                  onClick={() => ask(r)}
+                >
+                  <IconRefresh width={11} height={11} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <input
+        autoFocus
+        className="input text-xs"
+        placeholder="Ask someone to review…"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        data-testid="reviewers-search"
+      />
+      <ul className="flex max-h-60 flex-col overflow-y-auto">
+        {(candidates.data ?? []).map((c: ReviewerCandidate) => (
+          <li key={`${c.kind}:${c.login}`}>
+            <button
+              type="button"
+              disabled={busy}
+              className="flex w-full min-w-0 items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-[var(--bg-hover)] disabled:opacity-50"
+              data-testid={`reviewers-candidate-${c.login}`}
+              data-tip={c.kind === "team" ? `Ask the ${c.name ?? c.login} team` : `Ask ${c.login}`}
+              onClick={() => {
+                ask(c);
+                setQ("");
+              }}
+            >
+              <AuthorAvatar author={c.login} url={c.avatarUrl ?? undefined} size={16} />
+              <span className="flex-none" style={{ color: "var(--fg)" }}>
+                {c.kind === "team" ? `team/${c.login}` : c.login}
+              </span>
+              {c.name && c.kind === "user" ? (
+                <span className="min-w-0 truncate text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  {c.name}
+                </span>
+              ) : null}
+              {c.suggested ? (
+                <span className="ml-auto flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  suggested
+                </span>
+              ) : null}
+            </button>
+          </li>
+        ))}
+        {candidates.isFetched && !candidates.data?.length ? (
+          <li className="px-1.5 py-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
+            {query ? "Nobody here matches" : "Type a name or a team"}
+          </li>
+        ) : null}
+      </ul>
+      {candidates.error || requests.error ? (
+        <p className="px-1.5 text-2xs" style={{ color: "var(--risk)" }} data-testid="reviewers-error">
+          {errorText(requests.error ?? candidates.error)}
+        </p>
+      ) : null}
+    </div>
   );
 }

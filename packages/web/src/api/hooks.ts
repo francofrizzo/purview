@@ -34,6 +34,8 @@ import type {
   LanAccess,
   MigrationReport,
   PrDetail,
+  Reviewer,
+  ReviewerCandidate,
   PrListEntry,
   ReanchorResult,
   ResolveThreadResult,
@@ -942,6 +944,34 @@ export function useCommentAudience(key: string): {
     if (next !== audience) save.mutate(next);
   };
   return { audience, set, toggle: () => set(audience === "github" ? "agent" : "github"), saving: save.isPending };
+}
+
+/** Who could be asked to review this PR, for the picker; `q` narrows it. */
+export function useReviewerCandidates(key: string, q: string, enabled: boolean) {
+  return useQuery<ReviewerCandidate[]>({
+    queryKey: ["reviewer-candidates", key, q],
+    queryFn: () => api.reviewerCandidates(key, q),
+    enabled: enabled && Boolean(key),
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/**
+ * Ask someone to review (asking one who already did is a re-request), or
+ * stop asking. The answer is GitHub's reviewer list, written straight into
+ * the PR and the list, so the cluster shows it at once.
+ */
+export function useReviewRequests(key: string) {
+  const qc = useQueryClient();
+  return useMutation<Reviewer[], Error, { users?: string[]; teams?: string[]; remove?: boolean }>({
+    mutationFn: ({ users = [], teams = [], remove }) => api.setReviewRequests(key, { users, teams }, remove),
+    onSuccess: (reviewers) => {
+      qc.setQueryData<PrDetail>(qk.pr(key), (d) => (d ? { ...d, meta: { ...d.meta, reviewers } } : d));
+      void qc.invalidateQueries({ queryKey: qk.prs });
+      void qc.invalidateQueries({ queryKey: ["reviewer-candidates", key] });
+    },
+  });
 }
 
 /** Deleted drafts the server still keeps restorable. */

@@ -6,6 +6,8 @@ import { isFileComment, isGeneratedUnit } from "../api/types";
 import { skippedHunkIds } from "../lib/diffModel";
 import type {
   AgentSelection,
+  Reviewer,
+  ReviewerCandidate,
   AgentsInfo,
   Attachment,
   ChatAgentSelection,
@@ -874,6 +876,41 @@ export const mockApi = {
       }
     }
     return { ...structuredClone(entry.meta), stack: keys };
+  },
+
+  async reviewerCandidates(key: string, q: string): Promise<ReviewerCandidate[]> {
+    await delay(120);
+    const entry = list.find((p) => p.key === key);
+    const on = new Set((entry?.reviewers ?? []).map((r) => r.login));
+    const people: ReviewerCandidate[] = [
+      { login: "maria", kind: "user", avatarUrl: null, name: "María Gómez", suggested: true },
+      { login: "kai", kind: "user", avatarUrl: null, name: "Kai Tanaka", suggested: true },
+      { login: "dana", kind: "user", avatarUrl: null, name: "Dana Ruiz" },
+      { login: "sam", kind: "user", avatarUrl: null, name: "Sam Ortiz" },
+      { login: "payments", kind: "team", avatarUrl: null, name: "Payments" },
+    ];
+    const needle = q.trim().toLowerCase();
+    return people.filter(
+      (p) =>
+        !on.has(p.login) &&
+        (needle ? `${p.login} ${p.name ?? ""}`.toLowerCase().includes(needle) : p.suggested),
+    );
+  },
+
+  async setReviewRequests(key: string, who: { users: string[]; teams: string[] }, remove = false): Promise<Reviewer[]> {
+    await delay(150);
+    const entry = list.find((p) => p.key === key);
+    if (!entry) throw new ApiError("not_found", 404, `No PR "${key}"`);
+    const names = [...who.users, ...who.teams];
+    const rest = (entry.reviewers ?? []).filter((r) => !names.includes(r.login));
+    entry.reviewers = remove
+      ? rest
+      : [
+          ...who.users.map((login): Reviewer => ({ login, avatarUrl: null, kind: "user", state: "requested" })),
+          ...who.teams.map((login): Reviewer => ({ login, avatarUrl: null, kind: "team", state: "requested" })),
+          ...rest,
+        ];
+    return entry.reviewers;
   },
 
   async setPrCommentAudience(

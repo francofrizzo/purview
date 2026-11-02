@@ -6,6 +6,8 @@ import { ApiError } from "./errors";
 import { isGeneratedUnit, isRemovedUnit, TOOL_KINDS } from "./types";
 import type {
   AddCommentInput,
+  Reviewer,
+  ReviewerCandidate,
   AnalysisImportReport,
   Attachment,
   Concept,
@@ -770,6 +772,22 @@ export const api = {
   async setReaction(key: string, commentId: string, content: ReactionContent, on: boolean): Promise<ReactResult> {
     if (MOCK) return mockApi.setReaction(key, commentId, content, on);
     return post<ReactResult>(`/prs/${encodeKey(key)}/comments/${encodeURIComponent(commentId)}/reactions`, { content, on });
+  },
+
+  /** People and teams to ask for a review: GitHub's suggestions, then whoever matches `q`. */
+  async reviewerCandidates(key: string, q: string): Promise<ReviewerCandidate[]> {
+    if (MOCK) return mockApi.reviewerCandidates(key, q);
+    const res = await request<{ candidates: ReviewerCandidate[] }>(
+      `/prs/${encodeKey(key)}/reviewers/candidates?q=${encodeURIComponent(q)}`,
+    );
+    return res.candidates;
+  },
+
+  /** Ask (or with `remove`, stop asking) users and teams to review; answers with the PR's reviewers now. */
+  async setReviewRequests(key: string, who: { users: string[]; teams: string[] }, remove = false): Promise<Reviewer[]> {
+    if (MOCK) return mockApi.setReviewRequests(key, who, remove);
+    const res = await post<{ reviewers: Reviewer[] }>(`/prs/${encodeKey(key)}/reviewers`, { ...who, remove });
+    return res.reviewers;
   },
 
   async setThreadResolved(key: string, id: string, resolved: boolean): Promise<ResolveThreadResult> {

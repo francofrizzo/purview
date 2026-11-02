@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Request reviewers on your PRs.** Click the reviewer avatars in the PR header to ask someone or a team, ask a reviewer again, or stop asking. GitHub's suggested reviewers show first.
 - **Mentions stay in your message.** Picking from the `@` list writes `@unit 3`, `@ledger.ts` or `@Charge key` into your text, and the sent message shows each as a link.
 - **Fix:** restarting or updating Purview mid-analysis no longer leaves a revision's new hunks outside any unit; the analysis starts again on its own.
 

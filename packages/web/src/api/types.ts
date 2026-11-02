@@ -332,6 +332,17 @@ export interface Reviewer {
   bot?: boolean;
 }
 
+/** Someone who can be asked to review: a user, or a team by its slug. */
+export interface ReviewerCandidate {
+  login: string;
+  kind: "user" | "team";
+  avatarUrl: string | null;
+  /** a user's display name, a team's name */
+  name?: string;
+  /** GitHub suggests them for this PR */
+  suggested?: boolean;
+}
+
 export interface PrMeta {
   tag?: string;
   ci?: Ci;

@@ -31,6 +31,9 @@ import {
   reclassifyRepo,
   setGeneratedOverrideAsync,
   readMeta,
+  fetchReviewStatusAsync,
+  fetchReviewerCandidatesAsync,
+  setReviewRequestsAsync,
   readLocalChatInstructions,
   readLocalRubric,
   readMigrationReport,
@@ -2027,6 +2030,52 @@ export function createApp(opts: AppOptions = {}): Hono {
       const result = await setReaction(key, c.req.param("commentId"), content, on, root);
       log.info("github", `${shortKey(key)}  reaction toggled`, { content, on });
       return c.json(result);
+    } catch (err) {
+      throw classifyError(err);
+    }
+  });
+
+  /* ----------------------------------------------------- review requests */
+
+  /** Who is on the PR now, read back from GitHub and kept in the meta like the background check does. */
+  const refreshReviewers = async (key: PrKey) => {
+    const { reviewers } = await fetchReviewStatusAsync(key);
+    if (reviewers) updateMeta(key, { reviewers, reviewersCheckedAt: new Date().toISOString() }, root);
+    return reviewers ?? readMeta(key, root).reviewers ?? [];
+  };
+
+  /** People and teams to ask, for the picker: GitHub's suggestions, then whoever matches `q`. */
+  app.get("/api/prs/:key/reviewers/candidates", async (c) => {
+    const key = trackedKey(c);
+    const meta = readMeta(key, root);
+    const exclude = [
+      ...(meta.author ? [meta.author] : []),
+      ...(meta.reviewers ?? []).map((r) => (r.kind === "team" ? `team:${r.login}` : r.login)),
+    ];
+    try {
+      return c.json({ candidates: await fetchReviewerCandidatesAsync(key, c.req.query("q") ?? "", exclude) });
+    } catch (err) {
+      throw classifyError(err);
+    }
+  });
+
+  /**
+   * Ask users and teams to review (asking one who already reviewed is a
+   * re-request), or with `remove`, stop asking. Answers with the reviewers
+   * as GitHub now has them.
+   */
+  app.post("/api/prs/:key/reviewers", async (c) => {
+    const key = trackedKey(c);
+    const body = (await readJsonBody(c)) as { users?: unknown; teams?: unknown; remove?: unknown };
+    const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.length > 0) : []);
+    const users = list(body.users);
+    const teams = list(body.teams);
+    if (!users.length && !teams.length) throw new HttpError(400, "invalid_body", "Body must name at least one of users or teams");
+    const remove = body.remove === true;
+    try {
+      await setReviewRequestsAsync(key, { users, teams }, remove);
+      log.info("github", `${shortKey(key)}  review ${remove ? "request removed" : "requested"}`, { who: [...users, ...teams].join(", ") });
+      return c.json({ reviewers: await refreshReviewers(key) });
     } catch (err) {
       throw classifyError(err);
     }

@@ -1834,3 +1834,156 @@ export async function updateIssueCommentAsync(key: PrKey, commentId: number, bod
     updatedAt: raw.updated_at,
   };
 }
+
+/* ------------------------------------------------------ review requests */
+
+/** Someone who can be asked to review: a user, or a team by its slug. */
+export interface ReviewerCandidate {
+  login: string;
+  kind: "user" | "team";
+  avatarUrl: string | null;
+  /** a user's display name, a team's name */
+  name?: string;
+  /** GitHub suggests them for this PR (they touched these files) */
+  suggested?: boolean;
+}
+
+/**
+ * Ask (or, with `remove`, stop asking) users and teams to review. GitHub
+ * treats asking someone who already reviewed as a re-request.
+ */
+export async function setReviewRequestsAsync(
+  key: PrKey,
+  who: { users: string[]; teams: string[] },
+  remove = false,
+): Promise<void> {
+  await ghAsync(
+    [
+      "api",
+      ...hostArgs(key.host),
+      "--method",
+      remove ? "DELETE" : "POST",
+      `repos/${key.owner}/${key.repo}/pulls/${key.number}/requested_reviewers`,
+      "--input",
+      "-",
+    ],
+    JSON.stringify({ reviewers: who.users, team_reviewers: who.teams }),
+  );
+}
+
+const CANDIDATES_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $q: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) { suggestedReviewers { reviewer { login name avatarUrl } } }
+    assignableUsers(first: 20, query: $q) { nodes { login name avatarUrl } }
+  }
+}`;
+
+const TEAMS_QUERY = `query($owner: String!, $q: String) {
+  organization(login: $owner) { teams(first: 10, query: $q) { nodes { slug name avatarUrl } } }
+}`;
+
+type RawUser = { login?: string; name?: string | null; avatarUrl?: string | null } | null;
+
+/**
+ * Pure: GitHub's suggestions first, then the users matching the search, then
+ * teams, each once. Logins in `exclude` (the author, whoever is already on
+ * the PR) are left out.
+ */
+export function reviewerCandidates(
+  raw: {
+    suggested?: ({ reviewer?: RawUser } | null)[] | null;
+    users?: RawUser[] | null;
+    teams?: ({ slug?: string; name?: string | null; avatarUrl?: string | null } | null)[] | null;
+  },
+  exclude: readonly string[] = [],
+): ReviewerCandidate[] {
+  const out: ReviewerCandidate[] = [];
+  const seen = new Set(exclude.map((l) => l.toLowerCase()));
+  const push = (c: ReviewerCandidate) => {
+    const k = `${c.kind}:${c.login.toLowerCase()}`;
+    if (!c.login || seen.has(c.login.toLowerCase()) || seen.has(k)) return;
+    seen.add(k);
+    if (c.kind === "user") seen.add(c.login.toLowerCase());
+    out.push(c);
+  };
+  const user = (u: RawUser, suggested?: boolean) => {
+    if (!u?.login) return;
+    push({
+      login: u.login,
+      kind: "user",
+      avatarUrl: u.avatarUrl ?? null,
+      ...(u.name ? { name: u.name } : {}),
+      ...(suggested ? { suggested: true } : {}),
+    });
+  };
+  for (const s of raw.suggested ?? []) user(s?.reviewer ?? null, true);
+  for (const u of raw.users ?? []) user(u);
+  for (const t of raw.teams ?? []) {
+    if (!t?.slug) continue;
+    push({ login: t.slug, kind: "team", avatarUrl: t.avatarUrl ?? null, ...(t.name ? { name: t.name } : {}) });
+  }
+  return out;
+}
+
+/**
+ * Who could review this PR, for the request picker: GitHub's suggestions, the
+ * repo's assignable users matching `query`, and the org's teams matching it.
+ * Teams are best-effort (a user-owned repo has none, a token may not read
+ * them); the rest throws on failure.
+ */
+export async function fetchReviewerCandidatesAsync(
+  key: PrKey,
+  query: string,
+  exclude: readonly string[] = [],
+): Promise<ReviewerCandidate[]> {
+  const q = query.trim();
+  const res = JSON.parse(
+    await ghAsync([
+      "api",
+      "graphql",
+      ...hostArgs(key.host),
+      "-f",
+      `query=${CANDIDATES_QUERY}`,
+      "-F",
+      `owner=${key.owner}`,
+      "-F",
+      `repo=${key.repo}`,
+      "-F",
+      `number=${key.number}`,
+      "-f",
+      `q=${q}`,
+    ]),
+  ) as {
+    data?: { repository?: {
+      pullRequest?: { suggestedReviewers?: ({ reviewer?: RawUser } | null)[] | null } | null;
+      assignableUsers?: { nodes?: RawUser[] | null } | null;
+    } | null };
+  };
+  let teams: ({ slug?: string; name?: string | null; avatarUrl?: string | null } | null)[] = [];
+  try {
+    const t = JSON.parse(
+      await ghAsync([
+        "api",
+        "graphql",
+        ...hostArgs(key.host),
+        "-f",
+        `query=${TEAMS_QUERY}`,
+        "-F",
+        `owner=${key.owner}`,
+        "-f",
+        `q=${q}`,
+      ]),
+    ) as { data?: { organization?: { teams?: { nodes?: typeof teams } | null } | null } };
+    teams = t.data?.organization?.teams?.nodes ?? [];
+  } catch {
+    /* no org, or no read:org: users only */
+  }
+  const repo = res.data?.repository;
+  // The suggestions are for the PR, not the search: only with nothing typed,
+  // or the ones that match what was.
+  const needle = q.toLowerCase();
+  const suggested = (repo?.pullRequest?.suggestedReviewers ?? []).filter(
+    (s) => !needle || `${s?.reviewer?.login ?? ""} ${s?.reviewer?.name ?? ""}`.toLowerCase().includes(needle),
+  );
+  return reviewerCandidates({ suggested, users: repo?.assignableUsers?.nodes, teams }, exclude);
+}
