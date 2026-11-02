@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Mentions stay in your message.** Picking from the `@` list writes `@unit 3`, `@ledger.ts` or `@Charge key` into your text, and the sent message shows each as a link.
 - **Fix:** restarting or updating Purview mid-analysis no longer leaves a revision's new hunks outside any unit; the analysis starts again on its own.
 
 ## 2026.11.2.2

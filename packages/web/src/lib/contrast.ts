@@ -87,6 +87,7 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("heart-on-raised", "Text on surfaces", "heart text on bg-raised", "heart", 3.0, ["bg-raised"], "Heart · where the logic lives"),
     s("agent-on-raised", "Text on surfaces", "agent text on bg-raised", "agent", 3.0, ["bg-raised"], "Note for agent"),
 
+    s("chat-mention", "Buttons", "an @mention in a sent chat message (accent on accent-soft)", "accent", 3.4, ["bg-inset", "accent-soft"], "@Charge key", { kind: "chip" }),
     s("btn-primary", "Buttons", "primary button (accent on accent-soft)", "accent", 3.6, ["bg-raised", "accent-soft"], "finish review", { kind: "chip" }),
     s("btn-agent", "Buttons", "agent button (agent on agent-soft)", "agent", 3.6, ["bg-raised", "agent-soft"], "save note", { kind: "chip" }),
     s("btn-solid", "Buttons", "solid accent button (bg on accent)", "bg", 3.6, ["accent"], "finish review", { kind: "chip" }),

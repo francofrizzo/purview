@@ -131,7 +131,7 @@ test("a diagram that does not parse shows its source in the reply and nothing ou
   await expect(page.getByText("Syntax error in text")).toHaveCount(0);
 });
 
-test("@ in the chat box lists units, concepts and files; picking one attaches it as a chip", async ({ page }) => {
+test("@ in the chat box writes a mention into the message, and the sent message links it", async ({ page }) => {
   const input = page.getByTestId("chat-input");
   await input.fill("");
   await input.pressSequentially("why @charge k");
@@ -140,22 +140,29 @@ test("@ in the chat box lists units, concepts and files; picking one attaches it
   await expect(list.getByTestId("chat-mention").first()).toContainText("Charge key");
   await input.press("Enter");
   await expect(list).toHaveCount(0);
-  await expect(input).toHaveValue("why ");
-  await expect(page.getByTestId("chat-refs")).toContainText("Charge key");
+  await expect(input).toHaveValue("why @Charge key ");
 
-  await input.pressSequentially("@ledger.");
+  await input.pressSequentially("vs @ledger.");
   await expect(list.getByTestId("chat-mention").first()).toContainText("ledger.ts");
   await input.press("Tab");
-  await expect(page.getByTestId("chat-refs")).toContainText("ledger.ts");
+  await expect(input).toHaveValue("why @Charge key vs @ledger.ts ");
+  // The text is the reference: no chip for either.
+  await expect(page.getByTestId("chat-refs")).not.toContainText("ledger.ts");
 
   // Esc closes the list for that word without closing the chat.
   await input.pressSequentially("@zzq");
   await expect(list).toHaveCount(0);
-  await input.press("Backspace");
-  await input.press("Backspace");
-  await input.press("Backspace");
+  for (let i = 0; i < 3; i++) await input.press("Backspace");
   await expect(list).toBeVisible();
   await input.press("Escape");
   await expect(list).toHaveCount(0);
   await expect(page.getByTestId("chat-panel")).toBeVisible();
+
+  await input.press("Backspace");
+  await input.press("Backspace");
+  await input.press("Enter");
+  const links = page.getByTestId("chat-mention-link");
+  await expect(links).toHaveCount(2);
+  await expect(links.nth(0)).toHaveText("@Charge key");
+  await expect(links.nth(1)).toHaveText("@ledger.ts");
 });

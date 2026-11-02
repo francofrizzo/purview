@@ -17,6 +17,7 @@ import {
   useState,
   type ComponentType,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { OverflowMenu } from "./OverflowMenu";
@@ -32,7 +33,17 @@ import type {
 import { capitalized, editSelection, manifestOf, modelLabel, modelOptions } from "../lib/agentSelection";
 import { copyText, handoffDisabledReason, isLoopbackHostname } from "../lib/chatHandoff";
 import { refContext, refKey, refLabel, refTitle } from "../lib/chatRefs";
-import { mentionAt, mentionOptions, rankMentions, removeMention, type MentionOption, type MentionQuery } from "../lib/mentions";
+import {
+  findMentions,
+  insertMention,
+  mentionAt,
+  mentionOptions,
+  mentionRefs,
+  rankMentions,
+  type MentionOption,
+  type MentionQuery,
+  type MentionSpan,
+} from "../lib/mentions";
 import { UnitNumber } from "./Chips";
 import { useChat, useChatAgentName, type LocalMessage, type ToolActivity } from "../lib/chat";
 import {
@@ -124,6 +135,47 @@ export function RefChip({
       ) : null}
     </span>
   );
+}
+
+/** A sent message's text, its @tokens drawn as links: a unit or a file opens, a concept explains itself on hover. */
+function MentionText({
+  text,
+  spans,
+  onOpen,
+}: {
+  text: string;
+  spans: readonly MentionSpan[];
+  onOpen?: (o: MentionOption) => void;
+}) {
+  if (!spans.length) return <>{text}</>;
+  const parts: ReactNode[] = [];
+  let at = 0;
+  spans.forEach((m, i) => {
+    if (m.start > at) parts.push(text.slice(at, m.start));
+    const word = text.slice(m.start, m.end);
+    const opens = onOpen && m.option.kind !== "concept";
+    parts.push(
+      opens ? (
+        <button
+          key={i}
+          type="button"
+          className="mention rounded-sm hover:underline"
+          data-testid="chat-mention-link"
+          data-tip={m.option.tip}
+          onClick={() => onOpen(m.option)}
+        >
+          {word}
+        </button>
+      ) : (
+        <span key={i} className="mention rounded-sm" data-testid="chat-mention-link" data-tip={m.option.tip}>
+          {word}
+        </span>
+      ),
+    );
+    at = m.end;
+  });
+  if (at < text.length) parts.push(text.slice(at));
+  return <>{parts}</>;
 }
 
 /**
@@ -221,6 +273,8 @@ function MessageBlock({
   index,
   labelFor,
   titleFor,
+  mentions,
+  onOpenMention,
   busy,
   isEditing,
   rewindConfirming,
@@ -235,6 +289,9 @@ function MessageBlock({
   index: number;
   labelFor: (ref: ChatRef) => string;
   titleFor: (ref: ChatRef) => string;
+  /** what a written @token can name, to draw it as a link and keep it off the chips */
+  mentions: readonly MentionOption[];
+  onOpenMention?: (o: MentionOption) => void;
   busy: boolean;
   isEditing: boolean;
   rewindConfirming: boolean;
@@ -248,6 +305,13 @@ function MessageBlock({
   onRewindCancel: () => void;
 }) {
   const [toolsOpen, setToolsOpen] = useState(false);
+  const spans = useMemo(
+    () => (message.role === "user" ? findMentions(message.text, mentions) : []),
+    [message.role, message.text, mentions],
+  );
+  // A ref the text names is shown there, as a link; the chips are the rest.
+  const mentioned = new Set(spans.map((m) => refKey(m.option.ref)));
+  const chips = (message.refs ?? []).filter((r) => !mentioned.has(refKey(r)));
   return (
     <div
       className="group border-b px-3 py-2.5"
@@ -311,16 +375,16 @@ function MessageBlock({
           </div>
         ) : null}
       </div>
-      {message.refs?.length ? (
+      {chips.length ? (
         <div className="mb-1.5 flex flex-wrap gap-1">
-          {message.refs.map((r) => (
+          {chips.map((r) => (
             <RefChip key={refKey(r)} refValue={r} label={labelFor(r)} tip={titleFor(r)} />
           ))}
         </div>
       ) : null}
       {message.role === "user" ? (
         <p className={`whitespace-pre-wrap ${CHAT_TEXT}`} style={{ color: "var(--fg)" }}>
-          {message.text}
+          <MentionText text={message.text} spans={spans} onOpen={onOpenMention} />
         </p>
       ) : (
         <>
@@ -413,7 +477,13 @@ export function ChatPanel({
   const [mentionActive, setMentionActive] = useState(0);
   const allMentions = useMemo(() => mentionOptions(detail), [detail]);
   const mentionList = useMemo(
-    () => (mention && mention.start !== mentionDismissed ? rankMentions(allMentions, mention.query) : []),
+    () =>
+      // A written token, the caret at its end, is done: no list over it.
+      mention &&
+      mention.start !== mentionDismissed &&
+      !allMentions.some((o) => o.token.toLowerCase() === `@${mention.query}`.toLowerCase())
+        ? rankMentions(allMentions, mention.query)
+        : [],
     [allMentions, mention, mentionDismissed],
   );
   const trackMention = (el: HTMLTextAreaElement) => {
@@ -422,12 +492,21 @@ export function ChatPanel({
     if (!at) setMentionDismissed(null);
   };
   useEffect(() => setMentionActive(0), [mention?.query, mention?.start]);
+  const openMention = useCallback(
+    (o: MentionOption) => {
+      if (o.ref.kind === "unit" && o.ref.id) onOpenUnit?.(o.ref.id);
+      else if (o.ref.kind === "file" && o.ref.path) onOpenFile?.(o.ref.path);
+    },
+    [onOpenUnit, onOpenFile],
+  );
   const pickMention = (o: MentionOption) => {
     if (!mention) return;
-    const next = removeMention(draft, mention);
+    // The token stays in the sentence and is the reference: no chip.
+    const next = insertMention(draft, mention, o.token);
     setDraft(next.text);
     setMention(null);
-    chat.attachRef(o.ref, { open: false });
+    // The written token would read as a new @query; this one is settled.
+    setMentionDismissed(mention.start);
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -552,9 +631,9 @@ export function ChatPanel({
     if (!body) return;
     if (chat.editingIndex !== null) {
       if (chat.busy) return;
-      chat.sendEdit(body);
+      chat.sendEdit(body, mentionRefs(body, allMentions));
     } else {
-      chat.send(body);
+      chat.send(body, mentionRefs(body, allMentions));
     }
     setDraft("");
     setPreEditDraft(null);
@@ -601,7 +680,8 @@ export function ChatPanel({
     if (chat.busy) return;
     setPreEditDraft(draft);
     setDraft(text);
-    chat.startEdit(index);
+    // The text carries its mentions back; only the other refs return as chips.
+    chat.startEdit(index, mentionRefs(text, allMentions));
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
 
@@ -676,6 +756,8 @@ export function ChatPanel({
             index={i}
             labelFor={labelFor}
             titleFor={titleFor}
+            mentions={allMentions}
+            onOpenMention={openMention}
             busy={chat.busy}
             isEditing={chat.editingIndex === i}
             rewindConfirming={rewindConfirmIndex === i}

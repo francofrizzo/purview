@@ -145,12 +145,12 @@ interface ChatContextValue {
 
   /** index of the user message currently loaded into the composer, or null */
   editingIndex: number | null;
-  /** load a user message's text/refs into the composer for editing; caller supplies the text */
-  startEdit: (index: number) => void;
+  /** load a user message's text/refs into the composer for editing; caller supplies the text, and the refs it already names (its @mentions), which stay out of the chips */
+  startEdit: (index: number, inText?: ChatRef[]) => void;
   /** leave editing mode; the composer's own contents are the caller's to restore */
   cancelEdit: () => void;
   /** resend the message at `editingIndex` with new text — discards it and everything after first */
-  sendEdit: (text: string) => void;
+  sendEdit: (text: string, extraRefs?: ChatRef[]) => void;
   /** discard the message at `index` and everything after it */
   rewindTo: (index: number) => Promise<void>;
   /** true from a rewind/edit until the next turn finishes — the session is fresh and will replay history */
@@ -527,11 +527,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
    * tracks which message is being edited.
    */
   const startEdit = useCallback(
-    (index: number) => {
+    (index: number, inText: ChatRef[] = []) => {
       const target = messages[index];
       if (!target || target.role !== "user" || busy) return;
       setPreEditRefs(refs);
-      setRefs(target.refs ?? []);
+      const named = new Set(inText.map(refKey));
+      setRefs((target.refs ?? []).filter((r) => !named.has(refKey(r))));
       setEditingIndex(index);
     },
     [messages, refs, busy],
@@ -545,12 +546,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   /** Resend the message being edited: discards it and everything after, then resends with `text`. */
   const sendEdit = useCallback(
-    (text: string) => {
+    (text: string, extraRefs: ChatRef[] = []) => {
       const key = keyRef.current;
       const body = text.trim();
       const index = editingIndex;
       if (!key || !body || busy || index === null) return;
-      const sent = effectiveRefs;
+      const sent = extraRefs.reduce(addRefTo, effectiveRefs);
       setMessages((cur) => [
         ...cur.slice(0, index),
         { role: "user", text: body, ts: new Date().toISOString(), refs: sent.length ? sent : undefined },

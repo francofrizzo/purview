@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mentionAt, rankMentions, removeMention, type MentionOption } from "./mentions";
+import { findMentions, insertMention, mentionAt, mentionRefs, rankMentions, type MentionOption } from "./mentions";
 
 describe("mentionAt", () => {
   it("finds the @word under the caret", () => {
@@ -18,10 +18,10 @@ describe("mentionAt", () => {
 });
 
 const opts: MentionOption[] = [
-  { ref: { kind: "unit", id: "u1" }, kind: "unit", label: "Widget logic", number: 1 },
-  { ref: { kind: "unit", id: "u2" }, kind: "unit", label: "Cache layer", number: 2 },
-  { ref: { kind: "concept", id: "Snapshot" }, kind: "concept", label: "Snapshot", also: ["SNAP_SRC"] },
-  { ref: { kind: "file", path: "src/widget/cache.ts" }, kind: "file", label: "cache.ts", hint: "src/widget" },
+  { ref: { kind: "unit", id: "u1" }, kind: "unit", label: "Widget logic", number: 1, token: "@unit 1", tip: "" },
+  { ref: { kind: "unit", id: "u2" }, kind: "unit", label: "Cache layer", number: 2, token: "@unit 2", tip: "" },
+  { ref: { kind: "concept", id: "Snapshot" }, kind: "concept", label: "Snapshot", also: ["SNAP_SRC"], token: "@Snapshot", tip: "" },
+  { ref: { kind: "file", path: "src/widget/cache.ts" }, kind: "file", label: "cache.ts", hint: "src/widget", token: "@cache.ts", tip: "" },
 ];
 
 describe("rankMentions", () => {
@@ -39,9 +39,25 @@ describe("rankMentions", () => {
   });
 });
 
-describe("removeMention", () => {
-  it("drops the @query and one following space", () => {
-    expect(removeMention("see @cac now", { start: 4, query: "cac" })).toEqual({ text: "see now", caret: 4 });
-    expect(removeMention("@x", { start: 0, query: "x" })).toEqual({ text: "", caret: 0 });
+describe("insertMention", () => {
+  it("writes the token and a space in place of the @query", () => {
+    expect(insertMention("see @cac now", { start: 4, query: "cac" }, "@cache.ts")).toEqual({ text: "see @cache.ts now", caret: 14 });
+    expect(insertMention("@x", { start: 0, query: "x" }, "@unit 2")).toEqual({ text: "@unit 2 ", caret: 8 });
+  });
+});
+
+describe("findMentions / mentionRefs", () => {
+  it("finds each token where it starts and ends a word", () => {
+    const text = "why does @unit 2 call @cache.ts, and is @snapshot stale?";
+    expect(findMentions(text, opts).map((m) => text.slice(m.start, m.end))).toEqual(["@unit 2", "@cache.ts", "@snapshot"]);
+  });
+  it("does not read @unit 2 into @unit 20, or a token inside a word", () => {
+    expect(findMentions("@unit 20 and a@unit 1", opts)).toEqual([]);
+  });
+  it("names each ref once, in the order written", () => {
+    expect(mentionRefs("@cache.ts then @unit 1 then @cache.ts", opts)).toEqual([
+      { kind: "file", path: "src/widget/cache.ts" },
+      { kind: "unit", id: "u1" },
+    ]);
   });
 });

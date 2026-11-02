@@ -866,6 +866,13 @@ html[data-mode="light"] .logo-for-light {
   text-decoration: inherit;
 }
 
+/* An @mention in a sent chat message: the reference, in the sentence. */
+.mention {
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 0 2px;
+}
+
 /* The chat's "Thinking": a band of light sweeps the faint word, left to right. */
 .chat-working {
   color: var(--fg-faint);
