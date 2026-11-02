@@ -867,6 +867,31 @@ html[data-mode="light"] .logo-for-light {
   text-decoration: inherit;
 }
 
+/* The chat's "Thinking": a band of light sweeps the faint word, left to right. */
+.chat-working {
+  color: var(--fg-faint);
+  background: linear-gradient(90deg, var(--fg-faint) 0%, var(--fg-faint) 40%, var(--fg) 50%, var(--fg-faint) 60%, var(--fg-faint) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: chat-working 1.8s linear infinite;
+}
+@keyframes chat-working {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-working {
+    animation: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
 /* Panes that scroll (the sidebar, the dock): the scrollbar shows while the
    pointer is over them, so at rest the pane's edge is its only line. */
 .quiet-scroll {

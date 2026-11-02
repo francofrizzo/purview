@@ -132,13 +132,15 @@ function ToolLine({ tool }: { tool: ToolActivity }) {
   );
 }
 
+/** Who wrote a message, in sentence case: "You", or the agent the chat runs on. */
 function RoleLabel({ role }: { role: "user" | "assistant" }) {
+  const agentName = useChatAgentName();
   return (
     <span
-      className="text-2xs uppercase tracking-wider"
-      style={{ color: role === "user" ? "var(--fg-faint)" : "var(--accent)" }}
+      className="text-xs font-semibold"
+      style={{ color: role === "user" ? "var(--fg-muted)" : "var(--accent)" }}
     >
-      {role === "user" ? "you" : "claude"}
+      {role === "user" ? "You" : capitalized(agentName)}
     </span>
   );
 }
@@ -581,8 +583,11 @@ export function ChatPanel({
             {chat.streaming.text ? (
               <Markdown text={chat.streaming.text} textClass={CHAT_TEXT} />
             ) : (
-              <span className="text-xs" style={{ color: "var(--fg-faint)" }}>
-                …
+              // Until the first words arrive: the step it is on, the word
+              // swept by a light, which reads as alive where a static
+              // ellipsis read as stuck.
+              <span className="chat-working text-xs" data-testid="chat-working">
+                {chat.streaming.tools.length ? "Working" : "Thinking"}
               </span>
             )}
           </div>
