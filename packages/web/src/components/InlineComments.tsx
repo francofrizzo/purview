@@ -75,8 +75,11 @@ export function InlineCommentList({
     <div
       data-testid="inline-comments"
       data-count={threads.length}
-      className="py-1.5 pr-4"
-      style={{ paddingLeft: indent, background: "var(--bg)" }}
+      // As wide as the pane shows and pinned to its left edge: with long
+      // unwrapped lines the row is as wide as the longest one, and a card
+      // sized to that would run off the right edge.
+      className="sticky left-0 py-1.5 pr-4"
+      style={{ paddingLeft: indent, background: "var(--bg)", width: "100cqw" }}
       // The thread owns clicks inside it: a stray one must not re-focus the
       // hunk underneath or, worse, start a line selection.
       onClick={(e) => e.stopPropagation()}

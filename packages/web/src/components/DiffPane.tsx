@@ -2696,7 +2696,9 @@ export function DiffPane({
         // Focusable (not tabbable) so the keyboard has somewhere to land
         // when the composer closes; see the composeKey effect above.
         tabIndex={-1}
-        className={`min-h-0 flex-1 overflow-auto outline-none${wrap ? "" : " diff-nowrap"}`}
+        // A size container, so a row can size itself to the visible width
+        // (100cqw) when long unwrapped lines make the content wider.
+        className={`min-h-0 flex-1 overflow-auto outline-none [container-type:inline-size]${wrap ? "" : " diff-nowrap"}`}
         style={{ background: "var(--bg)" }}
       >
         <div
