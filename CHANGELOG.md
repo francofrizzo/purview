@@ -7,8 +7,10 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Request reviewers on your PRs.** The reviewer avatars in the PR header, and the Reviewers section of the Review panel, ask a person or a team, ask again, or stop asking. With nobody asked yet, the header's button reads Request review.
+- **Request reviewers on your PRs.** The reviewer avatars in the PR header, and the Reviewers section of the Review panel, ask a person or a team, ask again, or stop asking.
 - **Mentions stay in your message.** Picking from the `@` list writes `@unit 3`, `@ledger.ts` or `@Charge key` into your text, tinted as you type and a link once sent.
+- **Fix:** the PR header of your own open PR shows its reviewers, or "no reviewers", like its row on the home page.
+- **Fix:** a PR's comment audience keeps your switch after the page refetches, and your own PRs start on notes for the agent.
 - **Fix:** restarting or updating Purview mid-analysis no longer leaves a revision's new hunks outside any unit; the analysis starts again on its own.
 
 ## 2026.11.2.2

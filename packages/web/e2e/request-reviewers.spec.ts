@@ -35,13 +35,3 @@ test("the Review panel on your PR has the same reviewers section", async ({ page
   // The header's cluster follows.
   await expect(page.getByTestId("reviewers-button").getByTestId("reviewer")).toHaveCount(4);
 });
-
-test("your PR with nobody on it says request review; once someone is asked, finish review", async ({ page }) => {
-  await page.goto("/pr/github.com/acme/billing/491");
-  const button = page.getByTestId("topbar-finish-review");
-  await expect(button).toContainText("request review");
-  await button.click();
-  const section = page.getByTestId("review-panel-reviewers");
-  await section.getByTestId("reviewers-candidate-maria").click();
-  await expect(button).toContainText("finish review");
-});

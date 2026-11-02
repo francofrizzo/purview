@@ -221,7 +221,7 @@ export interface WireState {
   concepts?: Concept[];
 }
 
-interface WirePrDetail {
+export interface WirePrDetail {
   state: WireState;
   /** a bare array — NOT wrapped in a `{ files }` envelope */
   files: WireFile[];
@@ -232,6 +232,8 @@ interface WirePrDetail {
   reviewRequest?: ReviewRequest | null;
   analysisPending?: AnalysisPending | null;
   repoArchived?: boolean;
+  commentAudience?: { effective: CommentAudience; override: CommentAudience | null };
+  authoredByYou?: boolean;
   sinceReview?: SinceReview | null;
 }
 
@@ -346,7 +348,7 @@ export function adaptState(s: WireState): PrState {
   };
 }
 
-function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
+export function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
   return {
     key,
     meta: raw.meta,
@@ -359,6 +361,8 @@ function adaptDetail(raw: WirePrDetail, key: string): PrDetail {
     reviewRequest: raw.reviewRequest !== undefined ? raw.reviewRequest : raw.meta?.reviewRequest,
     analysisPending: raw.analysisPending ?? null,
     repoArchived: raw.repoArchived === true,
+    commentAudience: raw.commentAudience,
+    authoredByYou: raw.authoredByYou,
     sinceReview: raw.sinceReview ?? null,
   };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { adaptState, type WireState } from "./client";
+import { adaptDetail, adaptState, type WirePrDetail, type WireState } from "./client";
 
 const wire = (extra: Partial<WireState> = {}): WireState => ({
   currentRevision: 1,
@@ -28,5 +28,24 @@ describe("adaptState", () => {
     const state = adaptState(wire());
     expect("concepts" in state).toBe(false);
     expect("fileNotes" in state).toBe(false);
+  });
+});
+
+describe("adaptDetail", () => {
+  const raw = (extra: Partial<WirePrDetail> = {}): WirePrDetail => ({
+    state: wire(),
+    files: [],
+    diff: "",
+    meta: { title: "t", author: "me" } as WirePrDetail["meta"],
+    ...extra,
+  });
+
+  it("keeps whose PR it is and who comments go to", () => {
+    const detail = adaptDetail(
+      raw({ authoredByYou: true, commentAudience: { effective: "agent", override: null } }),
+      "github.com/o/r/1",
+    );
+    expect(detail.authoredByYou).toBe(true);
+    expect(detail.commentAudience).toEqual({ effective: "agent", override: null });
   });
 });

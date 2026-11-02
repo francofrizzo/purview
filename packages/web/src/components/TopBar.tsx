@@ -8,7 +8,7 @@ import { AnalysisChip, AnalysisStatsPanel, analysisStats } from "./Analysis";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { ChangeSize } from "./ChangeMix";
 import { CiMark, ReviewRequestAge, StackedOnChip } from "./Chips";
-import { humanReviewers, ReviewersButton, showsReviewers } from "./Reviewers";
+import { ReviewersButton, showsReviewers } from "./Reviewers";
 import { RevisionMenu } from "./RevisionMenu";
 import { formatAddedAt } from "../lib/prList";
 import { formatRevisionSummary, revisionSummaryLines } from "../lib/revisionSummary";
@@ -170,10 +170,6 @@ export function TopBar({
   // The gear opens settings over this PR view instead of leaving it.
   const background = useModalBackground();
   const navigate = useNavigate();
-  const askForReview =
-    showsReviewers(detail.authoredByYou, detail.meta.prState) &&
-    detail.meta.reviewers !== undefined &&
-    humanReviewers(detail.meta.reviewers).length === 0;
   return (
     <header
       className="flex flex-none flex-wrap items-center gap-x-2 gap-y-1.5 border-b px-2 py-2 sm:flex-nowrap sm:gap-3 sm:px-3"
@@ -561,16 +557,12 @@ export function TopBar({
           className="btn flex-none font-semibold hover:brightness-110"
           style={{ background: "var(--accent)", borderColor: "var(--accent)", color: "var(--bg)" }}
           data-testid="topbar-finish-review"
-          data-ask={askForReview ? "true" : undefined}
           onClick={onFinishReview}
         >
           <IconCheck width={12} height={12} />
           {/* One flex item, so the button's gap never lands between the words. */}
-          {/* Your own PR with nobody on it: the next step is asking, and the
-              panel it opens starts with the reviewers. */}
           <span>
-            {askForReview ? "request" : "finish"}
-            <span className="hidden sm:inline"> review</span>
+            finish<span className="hidden sm:inline"> review</span>
           </span>
           {pendingReview ? (
             <span
