@@ -873,6 +873,14 @@ html[data-mode="light"] .logo-for-light {
   padding: 0 2px;
 }
 
+/* The same mention in the composer, on the backdrop behind the textarea: the
+   tint only, with no padding, so the backdrop wraps exactly like the text. */
+.mention-ink {
+  background: var(--accent-soft);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
 /* The chat's "Thinking": a band of light sweeps the faint word, left to right. */
 .chat-working {
   color: var(--fg-faint);

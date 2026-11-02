@@ -141,6 +141,8 @@ test("@ in the chat box writes a mention into the message, and the sent message 
   await input.press("Enter");
   await expect(list).toHaveCount(0);
   await expect(input).toHaveValue("why @Charge key ");
+  // The composer tints it where it sits in the text.
+  await expect(page.getByTestId("chat-input-mention")).toHaveText("@Charge key");
 
   await input.pressSequentially("vs @ledger.");
   await expect(list.getByTestId("chat-mention").first()).toContainText("ledger.ts");

@@ -142,10 +142,13 @@ function MentionText({
   text,
   spans,
   onOpen,
+  ink = false,
 }: {
   text: string;
   spans: readonly MentionSpan[];
   onOpen?: (o: MentionOption) => void;
+  /** the composer's backdrop: only the tint, in the exact width of the words (no padding to shift the wrap) */
+  ink?: boolean;
 }) {
   if (!spans.length) return <>{text}</>;
   const parts: ReactNode[] = [];
@@ -153,6 +156,15 @@ function MentionText({
   spans.forEach((m, i) => {
     if (m.start > at) parts.push(text.slice(at, m.start));
     const word = text.slice(m.start, m.end);
+    if (ink) {
+      parts.push(
+        <span key={i} className="mention-ink" data-testid="chat-input-mention">
+          {word}
+        </span>,
+      );
+      at = m.end;
+      return;
+    }
     const opens = onOpen && m.option.kind !== "concept";
     parts.push(
       opens ? (
@@ -467,6 +479,7 @@ export function ChatPanel({
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
 
   const ctx = useMemo(() => refContext(detail, comments), [detail, comments]);
 
@@ -476,6 +489,7 @@ export function ChatPanel({
   const [mentionDismissed, setMentionDismissed] = useState<number | null>(null);
   const [mentionActive, setMentionActive] = useState(0);
   const allMentions = useMemo(() => mentionOptions(detail), [detail]);
+  const draftMentions = useMemo(() => findMentions(draft, allMentions), [draft, allMentions]);
   const mentionList = useMemo(
     () =>
       // A written token, the caret at its end, is done: no list over it.
@@ -507,13 +521,19 @@ export function ChatPanel({
     setMention(null);
     // The written token would read as a new @query; this one is settled.
     setMentionDismissed(mention.start);
-    requestAnimationFrame(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(next.caret, next.caret);
-    });
+    pendingCaret.current = next.caret;
   };
+  // The caret goes after the token in the same commit that writes it: a frame
+  // later, a key typed in between would land where the caret used to be.
+  const pendingCaret = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    const caret = pendingCaret.current;
+    if (!el || caret === null) return;
+    pendingCaret.current = null;
+    el.focus();
+    el.setSelectionRange(caret, caret);
+  }, [draft]);
   const labelFor = useCallback((r: ChatRef) => refLabel(r, ctx), [ctx]);
   const titleFor = useCallback((r: ChatRef) => refTitle(r, ctx), [ctx]);
 
@@ -992,10 +1012,27 @@ export function ChatPanel({
             onPick={pickMention}
           />
         ) : null}
+        {/* A textarea cannot style a word, so the mentions are tinted on a
+            copy of the text drawn behind it (same box, same wrapping, ink
+            transparent), kept on the textarea's scroll. */}
+        <div className="relative rounded" style={{ background: "var(--bg-inset)" }}>
+        <div
+          ref={mirrorRef}
+          aria-hidden
+          data-testid="chat-input-mirror"
+          className="input pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words text-[13px] leading-[20px]"
+          style={{ color: "transparent", background: "transparent", borderColor: "transparent", boxShadow: "none" }}
+        >
+          {draftMentions.length ? <MentionText text={draft} spans={draftMentions} ink /> : null}
+        </div>
         <textarea
           ref={textareaRef}
           data-testid="chat-input"
-          className="input resize-none text-[13px] leading-[20px]"
+          className="input relative resize-none text-[13px] leading-[20px]"
+          style={{ background: "transparent" }}
+          onScroll={(e) => {
+            if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
+          }}
           rows={2}
           placeholder={
             chat.busy
@@ -1015,6 +1052,7 @@ export function ChatPanel({
           aria-autocomplete="list"
           aria-expanded={mentionList.length > 0}
         />
+        </div>
         </div>
         {/* One row under the box: what is happening, the model for the next
             message, then the panel's tools and send. */}
