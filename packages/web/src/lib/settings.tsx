@@ -36,6 +36,9 @@ export interface ChatFloatRect {
   h: number;
 }
 
+export const UNIT_DETAILS = ["heart", "files", "findings", "revisions"] as const;
+export type UnitDetail = (typeof UNIT_DETAILS)[number];
+
 export interface Settings {
   /** Theme id, or "system" to follow prefers-color-scheme (the default). */
   themeId: string;
@@ -61,8 +64,8 @@ export interface Settings {
   composerFormatting: boolean;
   /** The PR view's panes sit edge to edge instead of as cards on a desk. */
   flatWorkspace: boolean;
-  /** The file list in a unit's brief stays open from unit to unit. */
-  unitFilesOpen: boolean;
+  /** Which list under the open unit's line of counts is open; it stays open from unit to unit. */
+  unitDetail: UnitDetail | null;
   /** the PR header counts every line, not only the implementation's */
   allLineCounts: boolean;
   /** Width of the review chat panel in px (clamped to the range below). */
@@ -127,7 +130,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hideReviewedUnits: false,
   composerFormatting: false,
   flatWorkspace: false,
-  unitFilesOpen: false,
+  unitDetail: null,
   allLineCounts: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
   chatMode: "dock",
@@ -193,7 +196,10 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
     }
   }
   if (typeof r.sidebarCollapsed === "boolean") out.sidebarCollapsed = r.sidebarCollapsed;
-  if (typeof r.unitFilesOpen === "boolean") out.unitFilesOpen = r.unitFilesOpen;
+  if (typeof r.unitDetail === "string" && (UNIT_DETAILS as readonly string[]).includes(r.unitDetail)) {
+    out.unitDetail = r.unitDetail as UnitDetail;
+  } else if (r.unitDetail === null) out.unitDetail = null;
+  else if (r.unitFilesOpen === true) out.unitDetail = "files";
   if (typeof r.allLineCounts === "boolean") out.allLineCounts = r.allLineCounts;
   if (typeof r.composerFormatting === "boolean") out.composerFormatting = r.composerFormatting;
   if (typeof r.flatWorkspace === "boolean") out.flatWorkspace = r.flatWorkspace;

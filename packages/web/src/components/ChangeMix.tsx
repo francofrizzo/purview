@@ -7,7 +7,7 @@ import { DiffSizeStat } from "./Chips";
 import { IconChevron } from "./icons";
 
 /** `short` is for the unit's one line, where "documentation" alone would wrap it. */
-const CHANGE_LOOK: Record<ChangeKind, { label: string; short: string; color: string }> = {
+export const CHANGE_LOOK: Record<ChangeKind, { label: string; short: string; color: string }> = {
   implementation: { label: "Implementation", short: "implementation", color: "var(--kind-core)" },
   tests: { label: "Tests", short: "tests", color: "var(--kind-tests)" },
   // Yellow, not the docs chip's grey: two greys side by side in a thin bar
@@ -148,7 +148,7 @@ function ChangeTable({
 }
 
 /** A row of the kinds in proportion: the same look in a unit and in the overview. */
-function ChangeBar({ mix, className }: { mix: Mix; className: string }) {
+export function ChangeBar({ mix, className }: { mix: Mix; className: string }) {
   return (
     <span className={`flex flex-none gap-px overflow-hidden rounded-full ${className}`} aria-hidden>
       {mix.rows.map((r) => (
@@ -189,28 +189,6 @@ function ChangeCard({ mix, all, anchor }: { mix: Mix; all: boolean; anchor: DOMR
       <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
         {all ? "Click to count implementation lines" : "Click to count all lines"}
       </p>
-    </div>
-  );
-}
-
-/**
- * What the unit's lines are made of: a bar and the shares, with the lines on
- * hover. Shown for one kind too: "100% tests" says what the unit is.
- */
-export function UnitMix({ files, hunkIds }: { files: FileEntry[]; hunkIds: readonly string[] }) {
-  const mix = changeMix(files, new Set(hunkIds));
-  if (!mix.rows.length) return null;
-  return (
-    <div
-      // A caption of the files line above it: under its text, not its icon.
-      className="-mt-0.5 flex items-start gap-2 pl-[18px] text-2xs leading-4 tabular-nums"
-      style={{ color: "var(--fg-muted)" }}
-      data-testid="unit-mix"
-      data-tip={mix.rows.map((r) => `${CHANGE_LOOK[r.kind].label}: +${r.added} −${r.removed}`).join("\n")}
-    >
-      {/* The bar keeps its place on the first line; the shares wrap under themselves. */}
-      <ChangeBar mix={mix} className="mt-[5px] h-1.5 w-14" />
-      <span className="min-w-0">{mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].short}`).join(" · ")}</span>
     </div>
   );
 }

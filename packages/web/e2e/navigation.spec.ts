@@ -190,6 +190,7 @@ test("the overview's Size section breaks the lines down by type", async ({ page 
 
 test("a unit of mixed lines shows what it is made of", async ({ page }) => {
   await openUnit(page, UNITS.wiring);
+  await page.getByTestId("unit-files-toggle").click();
   await expect(page.getByTestId("unit-mix")).toContainText("implementation");
   await expect(page.getByTestId("unit-mix")).toContainText("docs");
 });
@@ -247,6 +248,7 @@ test("the brief cites its unit in the chat and moves it to another group", async
   await brief.getByTestId("cite-unit-ledger-reconciliation").click();
   await expect(page.getByTestId("chat-panel").or(page.getByTestId("floating-chat")).first()).toBeVisible();
   await expect(page.getByTestId("unit-header")).toContainText(UNITS.reconcile.slice(0, 30));
+  await page.getByTestId("move-unit").click();
   await page.getByTestId("move-unit-must-read").click();
   await expect(page.getByTestId("group-must-read").locator("xpath=..")).toContainText(UNITS.reconcile.slice(0, 30));
 });

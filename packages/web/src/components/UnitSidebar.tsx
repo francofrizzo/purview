@@ -8,7 +8,6 @@ import { commonRiskFlags } from "../lib/risks";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { AttentionIcon, KindChip, ProgressRing, UnitNumber, ViewedBox } from "./Chips";
-import { FindingsBadge } from "./Findings";
 import { LineDelta, unitFiles } from "./UnitBrief";
 import { UnitChangelog } from "./UnitChangelog";
 import { IconChevron, IconGenerated, RISK_META } from "./icons";
@@ -388,7 +387,6 @@ const UnitRow = memo(function UnitRow({
   // rebuilt every revision) and the analysis never read it to be asked about.
   const generated = isGeneratedUnit(unit);
   const done = p.total > 0 && p.viewed === p.total;
-  const warnings = (unit.findings ?? []).filter((f) => f.severity === "warning").length;
   // Core logic is what most units are; only the exceptions get a chip. The
   // generated unit's kind is a placeholder, not a judgment.
   const kind = unit.kind !== "core-logic" && !generated ? <KindChip kind={unit.kind} /> : null;
@@ -491,9 +489,9 @@ const UnitRow = memo(function UnitRow({
                   data-testid={`unit-changed-${unit.id}`}
                 />
               ) : null}
-              {warnings > 0 ? <FindingsBadge unit={unit} /> : null}
               {matches ? <MatchBadge count={matches} /> : null}
-              {lines.added || lines.removed ? <LineDelta added={lines.added} removed={lines.removed} /> : null}
+              {/* Open, the brief's Files row carries the size. */}
+              {(lines.added || lines.removed) && !(selected && briefOpen) ? <LineDelta added={lines.added} removed={lines.removed} /> : null}
               {p.total > 0 ? <ProgressRing viewed={p.viewed} total={p.total} /> : null}
             </span>
           </span>

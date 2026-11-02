@@ -2,20 +2,23 @@ import { type ReactNode } from "react";
 import type { FileEntry, HeartSegment, Hunk, PrDetail, ReviewUnit } from "../api/types";
 import { isGeneratedUnit } from "../api/types";
 import { orderUnitHunks, skippedIds } from "../lib/diffModel";
-import { useSettings } from "../lib/settings";
+import { changelogView } from "../lib/changelog";
+import { changeMix, formatShare } from "../lib/changeMix";
+import { useSettings, type UnitDetail } from "../lib/settings";
 import { noteFor } from "../lib/shape";
 import { heartOf, heartSegments, hunkIdsOf } from "../lib/units";
-import { UnitMix } from "./ChangeMix";
-import { attentionColor, AttentionIcon, FileStatusBadge } from "./Chips";
-import { UnitFindings } from "./Findings";
+import { CHANGE_LOOK, ChangeBar } from "./ChangeMix";
+import { AttentionIcon, FileStatusBadge } from "./Chips";
+import { FindingList } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
+import { OverflowMenu } from "./OverflowMenu";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconCheck, IconChevron, IconEyeOff, IconFile, IconHeart, IconQuote } from "./icons";
+import { IconCheck, IconEyeOff, IconFile, IconHeart, IconHistory, IconQuote, IconWarning } from "./icons";
 
 const ATTENTION_WORD: Record<ReviewUnit["attention"], string> = {
-  "must-read": "Must read.",
-  skim: "Skim.",
-  skip: "Skip.",
+  "must-read": "must read",
+  skim: "skim",
+  skip: "skip",
 };
 
 const added = (h: Hunk) => h.addedLines?.length ?? (h.lines ?? []).filter((l) => l.startsWith("+")).length;
@@ -69,8 +72,8 @@ export function LineDelta({ added: a, removed: r }: { added: number; removed: nu
   );
 }
 
-/** "3 files +34 −3", a line that opens the unit's file list. It stays open from unit to unit. */
-export function UnitFiles({
+/** The unit's files, each a jump to its first hunk, with its note and size. */
+export function UnitFileList({
   detail,
   unit,
   onJump,
@@ -79,65 +82,46 @@ export function UnitFiles({
   unit: ReviewUnit;
   onJump: (hunkId: string) => void;
 }) {
-  const { settings, update } = useSettings();
   const files = unitFiles(detail, unit);
-  if (!files.length) return null;
   return (
-    <div>
-      <button
-        type="button"
-        className="inline-flex items-center gap-1.5 rounded hover:!text-[var(--fg)]"
-        style={{ color: "var(--fg-muted)" }}
-        aria-expanded={settings.unitFilesOpen}
-        data-testid="unit-files-toggle"
-        onClick={() => update({ unitFilesOpen: !settings.unitFilesOpen })}
-      >
-        <IconFile width={12} height={12} className="flex-none" />
-        {files.length} {files.length === 1 ? "file" : "files"}
-        <LineDelta added={files.reduce((n, f) => n + f.added, 0)} removed={files.reduce((n, f) => n + f.removed, 0)} />
-        <IconChevron open={settings.unitFilesOpen} width={10} height={10} className="flex-none" />
-      </button>
-      {settings.unitFilesOpen ? (
-        <ul className="-mr-1.5 mt-1 flex flex-col pl-3" data-testid="unit-files">
-          {files.map((f) => {
-            const slash = f.path.lastIndexOf("/");
-            const name = f.path.slice(slash + 1);
-            const dir = slash > 0 ? f.path.slice(0, slash) : "";
-            const read = f.hunks > 0 && f.viewed === f.hunks;
-            const note = noteFor(detail.state.fileNotes, f.path);
-            return (
-              <li key={f.path}>
-                <button
-                  type="button"
-                  onClick={() => onJump(f.firstHunkId)}
-                  data-tip={note ? `${f.path} — ${note}` : f.path}
-                  className="flex w-full items-baseline gap-2 rounded px-1.5 py-0.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
+    <ul className="-ml-1.5 -mr-1.5 flex flex-col" data-testid="unit-files">
+      {files.map((f) => {
+        const slash = f.path.lastIndexOf("/");
+        const name = f.path.slice(slash + 1);
+        const dir = slash > 0 ? f.path.slice(0, slash) : "";
+        const read = f.hunks > 0 && f.viewed === f.hunks;
+        const note = noteFor(detail.state.fileNotes, f.path);
+        return (
+          <li key={f.path}>
+            <button
+              type="button"
+              onClick={() => onJump(f.firstHunkId)}
+              data-tip={note ? `${f.path} — ${note}` : f.path}
+              className="flex w-full items-baseline gap-2 rounded px-1.5 py-0.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
+            >
+              <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+                <FileStatusBadge status={f.status} />
+                {/* The name gives way last: the folder truncates first, then the
+                    name, so neither runs into the counts. */}
+                <span
+                  className="min-w-0 shrink truncate font-mono text-[11.5px]"
+                  style={{ color: f.status === "added" ? "var(--ok)" : read ? "var(--fg-muted)" : "var(--fg)" }}
                 >
-                  <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-                    <FileStatusBadge status={f.status} />
-                    {/* The name gives way last: the folder truncates first, then the
-                        name, so neither runs into the counts. */}
-                    <span
-                      className="min-w-0 shrink truncate font-mono text-[11.5px]"
-                      style={{ color: f.status === "added" ? "var(--ok)" : read ? "var(--fg-muted)" : "var(--fg)" }}
-                    >
-                      {name}
-                    </span>
-                    <span className="min-w-0 shrink-[1000] truncate font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
-                      {dir}
-                    </span>
-                  </span>
-                  <LineDelta added={f.added} removed={f.removed} />
-                  {read ? (
-                    <IconCheck width={11} height={11} style={{ color: "var(--ok)" }} className="flex-none self-center" />
-                  ) : null}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-    </div>
+                  {name}
+                </span>
+                <span className="min-w-0 shrink-[1000] truncate font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  {dir}
+                </span>
+              </span>
+              <LineDelta added={f.added} removed={f.removed} />
+              {read ? (
+                <IconCheck width={11} height={11} style={{ color: "var(--ok)" }} className="flex-none self-center" />
+              ) : null}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -147,9 +131,9 @@ export function UnitFiles({
  * One container only: the row's tint says this belongs to that unit, and
  * nothing in here draws a box or a rule of its own. Everything aligns to the
  * title's text column. The prose leads (what the unit does, why it matters);
- * under it, every other fact is one row of the same shape: an icon, a label,
- * its value, and a chevron where the row opens. Revisions are one of those
- * rows, the highlight in the diff included.
+ * under it, one line of counts (the heart, the files and their mix, the
+ * findings, the skippable hunks, the revisions) with the unit's two actions
+ * at its end. A count opens its list under the line, one at a time.
  */
 export function UnitBrief({
   detail,
@@ -178,6 +162,25 @@ export function UnitBrief({
   const { settings, update } = useSettings();
   const generated = isGeneratedUnit(unit);
   const skipped = skippedIds(unit).size;
+  const heart = heartOf(unit).length ? heartSegments(unit) : [];
+  const files = generated ? [] : unitFiles(detail, unit);
+  const mix = generated ? null : changeMix(detail.files.files, new Set(hunkIdsOf(unit)));
+  const findings = unit.findings ?? [];
+  const warnings = findings.filter((f) => f.severity === "warning").length;
+  // A unit's first entry only says it arrived; the count is worth a place
+  // once a later revision changed it.
+  const revisions = changelogView(unit.changelog);
+  const firstRevision = Math.min(...(detail.state.revisions ?? []).map((r) => r.revision), detail.state.revision);
+  const revisionCount = revisions ? 1 + revisions.earlier.length : 0;
+  const showRevisions = !!revisions && (revisionCount > 1 || revisions.latest.revision > firstRevision);
+  const available: Record<UnitDetail, boolean> = {
+    heart: heart.length > 0,
+    files: files.length > 0,
+    findings: findings.length > 0,
+    revisions: showRevisions,
+  };
+  const open = settings.unitDetail && available[settings.unitDetail] ? settings.unitDetail : null;
+  const toggle = (d: UnitDetail) => update({ unitDetail: open === d ? null : d });
 
   return (
     <div className="flex flex-col gap-3 pb-3 pl-[34px] pr-4 text-xs leading-5" data-testid="unit-brief">
@@ -188,96 +191,188 @@ export function UnitBrief({
           </p>
         ) : null}
         {extra}
+        {/* The group it sits under already names the attention: only the why. */}
         {unit.attentionWhy ? (
           <p data-testid="unit-why" style={{ color: "var(--fg-muted)" }}>
-            <span className="font-medium" style={{ color: attentionColor(unit.attention) }}>
-              {ATTENTION_WORD[unit.attention]}
-            </span>{" "}
             <InlineMarkdown text={unit.attentionWhy} />
           </p>
         ) : null}
       </div>
 
       <div className="flex flex-col gap-1.5">
-        {heartOf(unit).length ? (
-          <UnitHeart segments={heartSegments(unit)} files={detail.files.files} onJump={onJumpHunk} />
-        ) : null}
-        {generated ? null : <UnitFiles detail={detail} unit={unit} onJump={onJumpHunk} />}
-        {generated ? null : <UnitMix files={detail.files.files} hunkIds={hunkIdsOf(unit)} />}
-        {skipped > 0 ? (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 self-start rounded text-xs tabular-nums hover:!text-[var(--fg)]"
-            style={{ color: "var(--fg-muted)" }}
-            data-testid="unit-skipped-count"
-            data-folded={settings.foldSkippableHunks ? "true" : "false"}
-            data-tip={
-              settings.foldSkippableHunks
-                ? "Skippable hunks are folded shut; click or Z shows them muted instead"
-                : "Hunks the analysis says you can skip; shown muted, they count toward nothing. Click or Z folds them shut"
-            }
-            data-tip-key="Z"
-            onClick={() => update({ foldSkippableHunks: !settings.foldSkippableHunks })}
-          >
-            <IconEyeOff width={12} height={12} className="flex-none" />
-            {/* One text run, so the dot sits a space from the count, not a gap. */}
-            <span>
-              {skipped} skippable
-              {settings.foldSkippableHunks ? <span style={{ color: "var(--fg-faint)" }}> · folded</span> : null}
-            </span>
-          </button>
-        ) : null}
-        <UnitFindings unitId={unit.id} findings={unit.findings} />
-        <UnitChangelog
-          className=""
-          changelog={unit.changelog}
-          currentRevision={detail.state.revision}
-          activeRevisions={changelog?.activeRevisions}
-          onSelectRevision={changelog?.onSelectRevision}
-        />
-        {highlight ? <div className="pl-[18px]">{highlight}</div> : null}
-      </div>
-
-      {/* The open unit's two actions, as words rather than a menu on every
-          row. Moving is a correction the analysis learns from. */}
-      {!generated && (onCite || onMove) ? (
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
-          {onCite ? (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 self-center hover:!text-[var(--fg)]"
-              style={{ color: "var(--fg-muted)" }}
-              onClick={onCite}
-              data-tip="Cite this unit in the chat"
-              data-testid={`cite-unit-${unit.id}`}
+        <div className="-ml-1 flex flex-wrap items-center gap-x-1 gap-y-0.5 tabular-nums" data-testid="unit-counts">
+          {available.heart ? (
+            <Count
+              open={open === "heart"}
+              onClick={() => toggle("heart")}
+              testId="unit-heart-toggle"
+              tip="Where the logic lives: the places the diff marks with a heart"
             >
-              <IconQuote width={11} height={11} />
-              cite in chat
-            </button>
+              <IconHeart width={12} height={12} className="flex-none" style={{ color: "var(--heart)" }} />
+              {heart.length}
+            </Count>
           ) : null}
-          {onMove ? (
-            <span className="flex items-center gap-2" data-tip="Corrections are logged for the analysis to learn from">
-              move to:
-              {(["must-read", "skim", "skip"] as const)
-                .filter((a) => a !== unit.attention)
-                .map((a) => (
-                  <button
-                    key={a}
-                    type="button"
-                    data-testid={`move-unit-${a}`}
-                    className="inline-flex items-center gap-1 hover:!text-[var(--fg)]"
-                    style={{ color: "var(--fg-muted)" }}
-                    onClick={() => onMove(a)}
-                  >
-                    <AttentionIcon attention={a} />
-                    {ATTENTION_WORD[a].replace(".", "").toLowerCase()}
-                  </button>
-                ))}
+          {available.files ? (
+            <Count
+              open={open === "files"}
+              onClick={() => toggle("files")}
+              testId="unit-files-toggle"
+              tip={
+                mix?.rows.length
+                  ? mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].label}`).join(" · ")
+                  : undefined
+              }
+            >
+              <IconFile width={12} height={12} className="flex-none" />
+              {files.length} {files.length === 1 ? "file" : "files"}
+              {mix && mix.rows.length > 1 ? <ChangeBar mix={mix} className="h-1 w-8" /> : null}
+            </Count>
+          ) : null}
+          {available.findings ? (
+            <Count
+              open={open === "findings"}
+              onClick={() => toggle("findings")}
+              testId="findings-toggle"
+              tip={[
+                warnings ? `${warnings} warning${warnings === 1 ? "" : "s"}` : "",
+                findings.length - warnings ? `${findings.length - warnings} verified` : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            >
+              {warnings ? (
+                <IconWarning width={12} height={12} className="flex-none" style={{ color: "var(--warn)" }} />
+              ) : (
+                <IconCheck width={12} height={12} className="flex-none" style={{ color: "var(--ok)" }} />
+              )}
+              {warnings || findings.length}
+            </Count>
+          ) : null}
+          {skipped > 0 ? (
+            <Count
+              open={settings.foldSkippableHunks}
+              onClick={() => update({ foldSkippableHunks: !settings.foldSkippableHunks })}
+              testId="unit-skipped-count"
+              tipKey="Z"
+              tip={
+                settings.foldSkippableHunks
+                  ? `${skipped} skippable, folded shut; click or Z shows them muted`
+                  : `${skipped} skippable: shown muted, they count toward nothing. Click or Z folds them shut`
+              }
+            >
+              <IconEyeOff width={12} height={12} className="flex-none" />
+              {skipped}
+            </Count>
+          ) : null}
+          {available.revisions && revisions ? (
+            <Count
+              open={open === "revisions"}
+              onClick={() => toggle("revisions")}
+              testId="changelog-toggle"
+              tip={`Changed in ${revisionCount} revision${revisionCount === 1 ? "" : "s"}`}
+            >
+              <IconHistory
+                width={12}
+                height={12}
+                className="flex-none"
+                style={revisions.latest.revision === detail.state.revision ? { color: "var(--accent)" } : undefined}
+              />
+              {revisionCount}
+            </Count>
+          ) : null}
+          {!generated && (onCite || onMove) ? (
+            <span className="ml-auto flex items-center">
+              {onCite ? (
+                <button
+                  type="button"
+                  className="rounded p-1 hover:bg-[var(--bg-hover)] hover:!text-[var(--fg)]"
+                  style={{ color: "var(--fg-faint)" }}
+                  onClick={onCite}
+                  data-tip="Cite this unit in the chat"
+                  aria-label="Cite this unit in the chat"
+                  data-testid={`cite-unit-${unit.id}`}
+                >
+                  <IconQuote width={12} height={12} />
+                </button>
+              ) : null}
+              {/* Moving is a correction the analysis learns from: rare, so a menu. */}
+              {onMove ? (
+                <OverflowMenu
+                  fixed
+                  testId="move-unit"
+                  label="Move to another group"
+                  buttonClassName="rounded p-1 hover:bg-[var(--bg-hover)] hover:!text-[var(--fg)]"
+                  buttonStyle={{ color: "var(--fg-faint)" }}
+                  items={(["must-read", "skim", "skip"] as const)
+                    .filter((a) => a !== unit.attention)
+                    .map((a) => ({
+                      label: `Move to ${ATTENTION_WORD[a]}`,
+                      icon: <AttentionIcon attention={a} />,
+                      hint: "Corrections are logged for the analysis to learn from",
+                      testId: `move-unit-${a}`,
+                      onClick: () => onMove(a),
+                    }))}
+                />
+              ) : null}
             </span>
           ) : null}
-        </p>
-      ) : null}
+        </div>
+        {open === "heart" ? <UnitHeart segments={heart} files={detail.files.files} onJump={onJumpHunk} /> : null}
+        {open === "files" ? (
+          <div className="flex flex-col gap-1">
+            {mix && mix.rows.length > 1 ? (
+              <p className="text-2xs tabular-nums" style={{ color: "var(--fg-muted)" }} data-testid="unit-mix">
+                {mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].short}`).join(" · ")}
+              </p>
+            ) : null}
+            <UnitFileList detail={detail} unit={unit} onJump={onJumpHunk} />
+          </div>
+        ) : null}
+        {open === "findings" ? <FindingList findings={findings} /> : null}
+        {open === "revisions" ? (
+          <UnitChangelog
+            listOnly
+            className=""
+            changelog={unit.changelog}
+            activeRevisions={changelog?.activeRevisions}
+            onSelectRevision={changelog?.onSelectRevision}
+          />
+        ) : null}
+        {highlight ? <div>{highlight}</div> : null}
+      </div>
     </div>
+  );
+}
+
+/** One count on the open unit's line: an icon and a number, a pill while its list is open. */
+function Count({
+  open,
+  onClick,
+  testId,
+  tip,
+  tipKey,
+  children,
+}: {
+  open: boolean;
+  onClick: () => void;
+  testId: string;
+  tip?: string;
+  tipKey?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      data-testid={testId}
+      data-tip={tip}
+      data-tip-key={tipKey}
+      onClick={onClick}
+      className="inline-flex items-center gap-1 rounded px-1 transition-colors hover:!text-[var(--fg)]"
+      style={open ? { background: "var(--bg-hover)", color: "var(--fg)" } : { color: "var(--fg-muted)" }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -297,33 +392,27 @@ export function UnitHeart({
 }) {
   const pathOf = (hunkId: string) => files.find((f) => f.hunks.some((h) => h.id === hunkId))?.path;
   return (
-    <div className="text-xs" data-testid="unit-heart">
-      <span className="flex items-center gap-1.5" style={{ color: "var(--fg-muted)" }}>
-        <IconHeart width={12} height={12} className="flex-none" style={{ color: "var(--heart)" }} />
-        Where the logic lives
-      </span>
-      <span className="-ml-1 mt-0.5 flex flex-wrap gap-x-1 pl-[18px]">
-        {segments.map((h, i) => {
-          const path = pathOf(h.id);
-          // A range when the heart is part of a hunk; a whole hunk is its file.
-          const lines = h.lines ? `${h.lines[0]}–${h.lines[1]}` : "";
-          return (
-            <button
-              key={`${h.id}:${i}`}
-              type="button"
-              data-testid={`heart-jump-${h.id}`}
-              data-segment={i}
-              className="rounded px-1 font-mono text-2xs transition-colors hover:bg-[var(--bg-hover)]"
-              style={{ color: "var(--accent)" }}
-              onClick={() => onJump(h.id, h.lines?.[0])}
-              data-tip={h.why.replace(/`/g, "")}
-            >
-              {path ? baseName(path) : "hunk"}
-              {lines ? <span style={{ opacity: 0.75 }}> {lines}</span> : null}
-            </button>
-          );
-        })}
-      </span>
+    <div className="-ml-1 flex flex-wrap gap-x-1" data-testid="unit-heart">
+      {segments.map((h, i) => {
+        const path = pathOf(h.id);
+        // A range when the heart is part of a hunk; a whole hunk is its file.
+        const lines = h.lines ? `${h.lines[0]}–${h.lines[1]}` : "";
+        return (
+          <button
+            key={`${h.id}:${i}`}
+            type="button"
+            data-testid={`heart-jump-${h.id}`}
+            data-segment={i}
+            className="rounded px-1 font-mono text-2xs transition-colors hover:bg-[var(--bg-hover)]"
+            style={{ color: "var(--accent)" }}
+            onClick={() => onJump(h.id, h.lines?.[0])}
+            data-tip={h.why.replace(/`/g, "")}
+          >
+            {path ? baseName(path) : "hunk"}
+            {lines ? <span style={{ opacity: 0.75 }}> {lines}</span> : null}
+          </button>
+        );
+      })}
     </div>
   );
 }

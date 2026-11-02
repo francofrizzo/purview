@@ -23,6 +23,7 @@ export function UnitChangelog({
   changelog,
   currentRevision,
   inline = false,
+  listOnly = false,
   className = "mt-1.5",
   activeRevisions = [],
   onSelectRevision,
@@ -31,6 +32,8 @@ export function UnitChangelog({
   /** When the newest entry is this revision, the header says so. */
   currentRevision?: number;
   inline?: boolean;
+  /** just the entries, open: the header is drawn by whoever holds it (the brief's line of counts) */
+  listOnly?: boolean;
   className?: string;
   /** the revisions whose changes the diff is highlighting */
   activeRevisions?: readonly number[];
@@ -41,7 +44,7 @@ export function UnitChangelog({
   const view = changelogView(changelog);
   if (!view) return null;
   const entries = [view.latest, ...view.earlier];
-  const expanded = inline || open;
+  const expanded = inline || listOnly || open;
   const freshHere = currentRevision !== undefined && view.latest.revision === currentRevision;
 
   const heading = (
@@ -57,7 +60,7 @@ export function UnitChangelog({
 
   return (
     <div className={`${className} max-w-4xl text-xs`} data-testid="unit-changelog">
-      {inline ? (
+      {listOnly ? null : inline ? (
         <div className="flex items-center gap-1.5" style={{ color: "var(--fg-muted)" }}>
           {heading}
         </div>
@@ -74,7 +77,7 @@ export function UnitChangelog({
         </button>
       )}
       {expanded ? (
-        <ol className="mt-1.5 space-y-1 pl-[18px]">
+        <ol className={listOnly ? "space-y-1" : "mt-1.5 space-y-1 pl-[18px]"}>
           {entries.map((e) => {
             const active = activeRevisions.includes(e.revision);
             const badge = (

@@ -10,7 +10,7 @@ test("a skippable hunk is muted, labelled, uncounted, and Space passes over it",
   await openPr(page);
   await openUnit(page, UNITS.reconcile);
   // Five hunks, one skippable: the brief says so and the bar is out of four.
-  await expect(page.getByTestId("unit-skipped-count")).toHaveText("1 skippable");
+  await expect(page.getByTestId("unit-skipped-count")).toHaveText("1");
   await expect(page.getByTestId("unit-header").getByTestId("hunk-progress")).toContainText("0/4");
 
   // Step down to it (the pane is virtualized, so it mounts on the way).
@@ -68,7 +68,7 @@ test("the skippable count folds every skippable hunk shut, and the choice sticks
   const header = page.getByTestId(`hunk-header-${SKIPPED}`);
   await expect(header).toHaveAttribute("data-collapsed", "false");
   await page.getByTestId("unit-skipped-count").click();
-  await expect(page.getByTestId("unit-skipped-count")).toHaveAttribute("data-folded", "true");
+  await expect(page.getByTestId("unit-skipped-count")).toHaveAttribute("aria-expanded", "true");
   await expect(header).toHaveAttribute("data-collapsed", "true");
   // Another unit and back: the skippable hunk opens folded.
   await openUnit(page, UNITS.charge);

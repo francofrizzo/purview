@@ -68,6 +68,7 @@ test("a heart with a line range bars only those rows, and its brief entry names 
   await expect(page.locator("[data-index]", { hasText: "throw new ChargeFailed(res.code);" }).nth(1)).toHaveAttribute("data-heart-end", "true");
   await expect(row("const res = await this.gateway.charge(order.total, order.currency);")).not.toHaveAttribute("data-heart-end", "true");
   await expect(row("await this.ledger.recordFailure(key, res.code)")).not.toHaveAttribute("data-heart-end", "true");
+  await page.getByTestId("unit-heart-toggle").click();
   await expect(page.getByTestId(`heart-jump-${HEART[1]}`).first()).toContainText("charge.ts 21–23");
   await expect(page.getByTestId(`heart-jump-${HEART[1]}`).nth(1)).toContainText("charge.ts 29–30");
   // Each why sits right above its segment's first marked row (for the first,
@@ -87,6 +88,7 @@ test("a heart with a line range bars only those rows, and its brief entry names 
 
 test("the unit brief lists the heart, and a jump focuses that hunk", async ({ page }) => {
   await openPr(page);
+  await page.getByTestId("unit-heart-toggle").click();
   const brief = page.getByTestId("unit-heart");
   await expect(brief).toBeVisible();
   // Three segments across two hunks: one row each.
