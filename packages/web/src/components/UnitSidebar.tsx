@@ -490,8 +490,7 @@ const UnitRow = memo(function UnitRow({
                 />
               ) : null}
               {matches ? <MatchBadge count={matches} /> : null}
-              {/* Open, the brief's Files row carries the size. */}
-              {(lines.added || lines.removed) && !(selected && briefOpen) ? <LineDelta added={lines.added} removed={lines.removed} /> : null}
+              {lines.added || lines.removed ? <LineDelta added={lines.added} removed={lines.removed} /> : null}
               {p.total > 0 ? <ProgressRing viewed={p.viewed} total={p.total} /> : null}
             </span>
           </span>
