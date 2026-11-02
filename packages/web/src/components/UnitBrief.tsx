@@ -217,14 +217,13 @@ export function UnitBrief({
               open={open === "files"}
               onClick={() => toggle("files")}
               testId="unit-files-toggle"
-              tip={
-                mix?.rows.length
-                  ? mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].label}`).join(" · ")
-                  : undefined
-              }
+              tip={[
+                `${files.length} ${files.length === 1 ? "file" : "files"}`,
+                ...(mix?.rows ?? []).map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].label}`),
+              ].join(" · ")}
             >
               <IconFile width={12} height={12} className="flex-none" />
-              {files.length} {files.length === 1 ? "file" : "files"}
+              {files.length}
               {mix && mix.rows.length > 1 ? <ChangeBar mix={mix} className="h-1 w-8" /> : null}
             </Count>
           ) : null}
