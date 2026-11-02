@@ -130,3 +130,32 @@ test("a diagram that does not parse shows its source in the reply and nothing ou
   await expect(page.locator('body > [id^="dmmd-"]')).toHaveCount(0);
   await expect(page.getByText("Syntax error in text")).toHaveCount(0);
 });
+
+test("@ in the chat box lists units, concepts and files; picking one attaches it as a chip", async ({ page }) => {
+  const input = page.getByTestId("chat-input");
+  await input.fill("");
+  await input.pressSequentially("why @charge k");
+  const list = page.getByTestId("chat-mentions");
+  await expect(list).toBeVisible();
+  await expect(list.getByTestId("chat-mention").first()).toContainText("Charge key");
+  await input.press("Enter");
+  await expect(list).toHaveCount(0);
+  await expect(input).toHaveValue("why ");
+  await expect(page.getByTestId("chat-refs")).toContainText("Charge key");
+
+  await input.pressSequentially("@ledger.");
+  await expect(list.getByTestId("chat-mention").first()).toContainText("ledger.ts");
+  await input.press("Tab");
+  await expect(page.getByTestId("chat-refs")).toContainText("ledger.ts");
+
+  // Esc closes the list for that word without closing the chat.
+  await input.pressSequentially("@zzq");
+  await expect(list).toHaveCount(0);
+  await input.press("Backspace");
+  await input.press("Backspace");
+  await input.press("Backspace");
+  await expect(list).toBeVisible();
+  await input.press("Escape");
+  await expect(list).toHaveCount(0);
+  await expect(page.getByTestId("chat-panel")).toBeVisible();
+});

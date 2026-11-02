@@ -1089,7 +1089,7 @@ export interface DiscardPendingResult {
  * resolves it into whatever context the agent needs (the unit's hunks, the file's
  * diff, the quoted lines…), so the UI only ever carries the pointer.
  */
-export type ChatRefKind = "unit" | "hunk" | "file" | "line-range" | "comment";
+export type ChatRefKind = "unit" | "hunk" | "file" | "line-range" | "comment" | "concept";
 
 export interface ChatRef {
   kind: ChatRefKind;

@@ -15,6 +15,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ComponentType,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -31,6 +32,8 @@ import type {
 import { capitalized, editSelection, manifestOf, modelLabel, modelOptions } from "../lib/agentSelection";
 import { copyText, handoffDisabledReason, isLoopbackHostname } from "../lib/chatHandoff";
 import { refContext, refKey, refLabel, refTitle } from "../lib/chatRefs";
+import { mentionAt, mentionOptions, rankMentions, removeMention, type MentionOption, type MentionQuery } from "../lib/mentions";
+import { UnitNumber } from "./Chips";
 import { useChat, useChatAgentName, type LocalMessage, type ToolActivity } from "../lib/chat";
 import {
   MAX_CHAT_PANEL_WIDTH,
@@ -43,6 +46,8 @@ import {
   IconArrowDown,
   IconChat,
   IconCheck,
+  IconCode,
+  IconComment,
   IconChevron,
   IconClose,
   IconCopy,
@@ -53,7 +58,9 @@ import {
   IconTrash,
   IconSpinner,
   IconStop,
+  IconConcept,
   IconTerminal,
+  IconUnit,
 } from "./icons";
 
 const STARTERS = [
@@ -63,12 +70,13 @@ const STARTERS = [
   "Are the tests covering the new behaviour?",
 ];
 
-const KIND_GLYPH: Record<ChatRef["kind"], string> = {
-  unit: "▤",
-  hunk: "◧",
-  file: "◈",
-  "line-range": "⌗",
-  comment: "❝",
+const KIND_ICON: Record<ChatRef["kind"], ComponentType<{ width?: number; height?: number }>> = {
+  unit: IconUnit,
+  hunk: IconCode,
+  file: IconFile,
+  "line-range": IconCode,
+  comment: IconComment,
+  concept: IconConcept,
 };
 
 export function RefChip({
@@ -81,24 +89,27 @@ export function RefChip({
   refValue: ChatRef;
   label: string;
   tip?: string;
-  /** the auto-attached chip: dimmed/outline with an "auto" affix, same X */
+  /** the auto-attached chip: fainter, with an "auto" affix, same X */
   auto?: boolean;
   onRemove?: () => void;
 }) {
+  const Icon = KIND_ICON[refValue.kind];
   return (
     <span
       className="chip max-w-full"
       data-testid={auto ? "chat-ref-auto" : undefined}
       data-tip={tip}
-      style={
-        auto
-          ? { background: "transparent", color: "var(--fg-faint)", border: "1px dashed var(--border)" }
-          : { background: "var(--bg-inset)", color: "var(--fg-muted)", border: "1px solid var(--border)" }
-      }
+      style={{
+        background: auto ? "transparent" : "var(--bg-inset)",
+        color: auto ? "var(--fg-faint)" : "var(--fg-muted)",
+        border: "1px solid var(--border)",
+      }}
     >
-      <span style={{ color: auto ? "var(--fg-faint)" : "var(--accent)" }}>{KIND_GLYPH[refValue.kind]}</span>
-      <span className="truncate font-mono">{label}</span>
-      {auto ? <span className="flex-none text-2xs italic">auto</span> : null}
+      <span className="flex flex-none" style={{ color: auto ? "var(--fg-faint)" : "var(--accent)" }}>
+        <Icon width={11} height={11} />
+      </span>
+      <span className="truncate">{label}</span>
+      {auto ? <span className="flex-none text-2xs">· auto</span> : null}
       {onRemove ? (
         <button
           type="button"
@@ -112,6 +123,66 @@ export function RefChip({
         </button>
       ) : null}
     </span>
+  );
+}
+
+/**
+ * The @ list, above the composer: units by number and title, concepts, files
+ * with their folder. Mouse down picks without blurring the textarea.
+ */
+function MentionList({
+  options,
+  active,
+  onHover,
+  onPick,
+}: {
+  options: MentionOption[];
+  active: number;
+  onHover: (i: number) => void;
+  onPick: (o: MentionOption) => void;
+}) {
+  return (
+    <ul
+      role="listbox"
+      data-testid="chat-mentions"
+      className="surface elev-2 absolute inset-x-0 bottom-full z-20 mb-1 rounded-md p-1 text-xs"
+    >
+      {options.map((o, i) => {
+        const Icon = KIND_ICON[o.kind];
+        return (
+          <li
+            key={refKey(o.ref)}
+            role="option"
+            aria-selected={i === active}
+            data-testid="chat-mention"
+            className="flex min-w-0 cursor-pointer items-center gap-2 rounded px-2 py-1"
+            style={{ background: i === active ? "var(--bg-hover)" : undefined, color: "var(--fg)" }}
+            onMouseEnter={() => onHover(i)}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onPick(o);
+            }}
+          >
+            {o.number !== undefined ? (
+              <UnitNumber number={o.number} />
+            ) : (
+              <span className="flex w-[18px] flex-none justify-center" style={{ color: "var(--fg-faint)" }}>
+                <Icon width={12} height={12} />
+              </span>
+            )}
+            <span className="flex-none truncate" style={{ maxWidth: "70%" }}>{o.label}</span>
+            {o.hint ? (
+              <span className="min-w-0 truncate text-2xs" style={{ color: "var(--fg-faint)" }}>
+                {o.hint}
+              </span>
+            ) : null}
+            <span className="ml-auto flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
+              {o.kind}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -334,6 +405,36 @@ export function ChatPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const ctx = useMemo(() => refContext(detail, comments), [detail, comments]);
+
+  // The @ list: open while the caret sits in an @word, unless Esc closed it
+  // for that word (remembered by where its @ is).
+  const [mention, setMention] = useState<MentionQuery | null>(null);
+  const [mentionDismissed, setMentionDismissed] = useState<number | null>(null);
+  const [mentionActive, setMentionActive] = useState(0);
+  const allMentions = useMemo(() => mentionOptions(detail), [detail]);
+  const mentionList = useMemo(
+    () => (mention && mention.start !== mentionDismissed ? rankMentions(allMentions, mention.query) : []),
+    [allMentions, mention, mentionDismissed],
+  );
+  const trackMention = (el: HTMLTextAreaElement) => {
+    const at = el.selectionStart === el.selectionEnd ? mentionAt(el.value, el.selectionStart) : null;
+    setMention((prev) => (prev?.start === at?.start && prev?.query === at?.query ? prev : at));
+    if (!at) setMentionDismissed(null);
+  };
+  useEffect(() => setMentionActive(0), [mention?.query, mention?.start]);
+  const pickMention = (o: MentionOption) => {
+    if (!mention) return;
+    const next = removeMention(draft, mention);
+    setDraft(next.text);
+    setMention(null);
+    chat.attachRef(o.ref, { open: false });
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(next.caret, next.caret);
+    });
+  };
   const labelFor = useCallback((r: ChatRef) => refLabel(r, ctx), [ctx]);
   const titleFor = useCallback((r: ChatRef) => refTitle(r, ctx), [ctx]);
 
@@ -462,6 +563,25 @@ export function ChatPanel({
   };
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionList.length && mention) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const step = e.key === "ArrowDown" ? 1 : -1;
+        setMentionActive((i) => (i + step + mentionList.length) % mentionList.length);
+        return;
+      }
+      if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") {
+        e.preventDefault();
+        pickMention(mentionList[Math.min(mentionActive, mentionList.length - 1)]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setMentionDismissed(mention.start);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -781,6 +901,15 @@ export function ChatPanel({
             ) : null}
           </div>
         ) : null}
+        <div className="relative">
+        {mentionList.length ? (
+          <MentionList
+            options={mentionList}
+            active={Math.min(mentionActive, mentionList.length - 1)}
+            onHover={setMentionActive}
+            onPick={pickMention}
+          />
+        ) : null}
         <textarea
           ref={textareaRef}
           data-testid="chat-input"
@@ -794,9 +923,17 @@ export function ChatPanel({
                 : "Ask about this PR…  (↵ send · ⇧↵ newline)"
           }
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            trackMention(e.target);
+          }}
+          onSelect={(e) => trackMention(e.currentTarget)}
+          onBlur={() => setMention(null)}
           onKeyDown={onKeyDown}
+          aria-autocomplete="list"
+          aria-expanded={mentionList.length > 0}
         />
+        </div>
         {/* One row under the box: what is happening, the model for the next
             message, then the panel's tools and send. */}
         <div className="mt-1.5 flex items-center gap-2">

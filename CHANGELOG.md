@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Mentions in the chat box.** Type `@` in the chat box to attach a unit, a file or a concept to your message. ↑/↓ choose, ↵ or Tab picks, Esc closes the list.
+
 ## 2026.11.2.1
 
 - **Files behind each type.** In the Overview's Size section, click Implementation, Tests, Documentation or Generated to list its files and open one.

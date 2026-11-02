@@ -16,6 +16,7 @@ export function refKey(ref: ChatRef): string {
   switch (ref.kind) {
     case "unit":
     case "comment":
+    case "concept":
       return `${ref.kind}:${ref.id ?? ""}`;
     case "hunk":
       return `hunk:${ref.id ?? ""}`;
@@ -91,6 +92,8 @@ export function refLabel(ref: ChatRef, ctx: RefLabelContext = {}): string {
       const range = ref.end !== undefined && ref.end !== ref.start ? `${ref.start}-${ref.end}` : `${ref.start}`;
       return `${name}:${range}${ref.side === "old" ? " (old)" : ""}`;
     }
+    case "concept":
+      return ref.id || "concept";
     case "comment": {
       const c = ref.id ? ctx.comment?.(ref.id) : undefined;
       const where = c
@@ -116,6 +119,8 @@ export function refTitle(ref: ChatRef, ctx: RefLabelContext = {}): string {
     }
     case "file":
       return `File: ${ref.path ?? ""}`;
+    case "concept":
+      return `Concept: ${ref.id ?? ""}`;
     case "line-range":
       return `${ref.path ?? ""} lines ${ref.start ?? "?"}–${ref.end ?? "?"} (${ref.side ?? "new"} side)`;
     case "comment": {

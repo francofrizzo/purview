@@ -152,6 +152,7 @@ export function buildFixture(
         type: "analysis-set",
         revision: 1,
         summary: "Adds widgets.",
+        concepts: [{ term: "Widget", means: "A small thing the PR adds.", aka: ["WidgetBox"] }],
         units: [
           {
             id: "unit-1",

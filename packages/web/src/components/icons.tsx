@@ -11,6 +11,8 @@ import {
   IconSparkles as TablerSparkles,
   IconTag as TablerTag,
   IconCode as TablerCode,
+  IconStack2,
+  IconBook2,
   IconLayoutSidebarRight,
   IconPictureInPictureOn,
   IconMinus,
@@ -268,3 +270,5 @@ export const IconTag = wrap(TablerTag);
 
 /** Angle brackets — open the code in an editor. */
 export const IconCode = wrap(TablerCode);
+export const IconUnit = wrap(IconStack2);
+export const IconConcept = wrap(IconBook2);

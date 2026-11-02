@@ -42,7 +42,7 @@ import type { HarnessId, ReviewerCommand } from "./agent/types.js";
  */
 
 export const ChatRefSchema = z.object({
-  kind: z.enum(["unit", "hunk", "file", "line-range", "comment"]),
+  kind: z.enum(["unit", "hunk", "file", "line-range", "comment", "concept"]),
   id: z.string().optional(),
   path: z.string().optional(),
   start: z.number().int().optional(),
@@ -230,6 +230,23 @@ export function resolveRefs(key: PrKey, refs: ChatRef[], root = stateRoot()): st
         if (!file) fail(`no file "${ref.path}" in revision ${state.currentRevision}`);
         blocks.push(
           [`### File ${file!.path} (${file!.status})`, ...file!.hunks.map(hunkBlock)].join("\n"),
+        );
+        break;
+      }
+
+      case "concept": {
+        // A concept is named by its term: the analysis has no other id for it.
+        if (!ref.id) fail("no concept given");
+        const concept = (state.concepts ?? []).find((c) => c.term === ref.id);
+        if (!concept) fail(`no concept "${ref.id}" in the current analysis`);
+        blocks.push(
+          [
+            `### Concept ${concept!.term}${concept!.isNew ? " (new in this PR)" : ""}`,
+            concept!.means,
+            concept!.aka.length ? `the code calls it: ${concept!.aka.join(", ")}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n"),
         );
         break;
       }

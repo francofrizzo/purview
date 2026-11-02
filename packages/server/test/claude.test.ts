@@ -1207,6 +1207,12 @@ describe("chat reference resolution", () => {
     expect(commentBlock).toContain("src/foo.ts:2");
     expect(commentBlock).toContain("why this?");
 
+    const concept = resolveRefs(key, [{ kind: "concept", id: "Widget" }], root);
+    expect(concept).toContain("Concept Widget");
+    expect(concept).toContain("A small thing the PR adds.");
+    expect(concept).toContain("WidgetBox");
+    expect(() => resolveRefs(key, [{ kind: "concept", id: "Gadget" }], root)).toThrow("unresolvable_ref");
+
     // Every block carries the untrusted-data framing.
     expect(unit).toContain("untrusted data");
   });
