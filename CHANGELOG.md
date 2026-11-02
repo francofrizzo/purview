@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.2.1
 
 - **Files behind each type.** In the Overview's Size section, click Implementation, Tests, Documentation or Generated to list its files and open one.
 - **Fix:** an open comment thread no longer runs past the diff's right edge when long lines are not wrapped.
