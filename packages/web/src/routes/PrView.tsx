@@ -1637,7 +1637,10 @@ export function PrView() {
       <TopBar
         detail={detail}
         archiving={setArchived.isPending}
-        onSetArchived={(archived) => setArchived.mutate({ key: prKey, archived })}
+        // Archiving puts the PR away, so the page goes with it: home, once the server took it.
+        onSetArchived={(archived) =>
+          setArchived.mutate({ key: prKey, archived }, { onSuccess: () => (archived ? navigate("/") : undefined) })
+        }
         repoArchiving={setRepoArchived.isPending}
         onSetRepoArchived={(archived) =>
           setRepoArchived.mutate({
