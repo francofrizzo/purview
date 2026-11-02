@@ -285,14 +285,15 @@ export function UnitBrief({
       {historyOpen && revisionCount ? (
         <UnitChangelog
           listOnly
-          className=""
+          className="-mt-1"
           changelog={unit.changelog}
           activeRevisions={changelog?.activeRevisions}
           onSelectRevision={changelog?.onSelectRevision}
         />
       ) : null}
       {revisionCount || highlight || (!generated && (onCite || onMove)) ? (
-        <div className="flex items-center gap-1">
+        // A little closer than the brief's sections: it reads with the counts.
+        <div className="-mt-1 flex items-center gap-1">
           {revisionCount || highlight ? (
           <span
             className="-ml-1 inline-flex items-center rounded tabular-nums"
