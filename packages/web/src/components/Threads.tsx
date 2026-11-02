@@ -191,6 +191,27 @@ function ThreadFooterButton({
  * One thread. A standalone Purview comment is just its card; a GitHub thread
  * is root + rail of replies + footer, collapsed to one line while resolved.
  */
+const RAIL = "1px solid var(--border-strong)";
+
+/**
+ * A reply hung on the thread's line: an elbow from the line into the card at
+ * its author's avatar, and the line carrying on past it unless it is the last.
+ * The line starts in the gap above, so it meets the card it hangs from.
+ */
+function ReplyBranch({ last, children }: { last: boolean; children: ReactNode }) {
+  return (
+    <div className="relative">
+      <span
+        aria-hidden
+        className="pointer-events-none absolute -left-3 -top-1.5 h-6 w-3 rounded-bl-[6px]"
+        style={{ borderLeft: RAIL, borderBottom: RAIL }}
+      />
+      {last ? null : <span aria-hidden className="pointer-events-none absolute -left-3 -top-1.5 bottom-0" style={{ borderLeft: RAIL }} />}
+      {children}
+    </div>
+  );
+}
+
 export function ThreadView({
   thread,
   actions,
@@ -290,16 +311,19 @@ export function ThreadView({
         </div>
       ) : null}
       <div data-testid={`thread-item-${t.id}`}>{renderItem(root)}</div>
-      {/* The rail joins the replies to the comment they answer and stops at
-          the last one: run on past the footer, it read as joining the next
-          thread on the line. */}
+      {/* A tree, like the stacked PRs: a line drops from the comment above
+          and turns into each reply at its author, the last turn closing it.
+          It ends at a card, never at the footer, which read as joining the
+          next thread on the line. */}
       <div className="ml-3 flex flex-col gap-1.5 pt-1.5" data-testid="thread-replies">
         {rest.length || replying ? (
-          <div className="flex flex-col gap-1.5 pl-3" style={{ borderLeft: "2px solid var(--border)" }}>
-            {rest.map((item) => (
-              <div key={item.kind === "local" ? item.comment.id : item.comment.id}>{renderItem(item)}</div>
+          <div className="flex flex-col gap-1.5 pl-3">
+            {rest.map((item, i) => (
+              <ReplyBranch key={item.comment.id} last={i === rest.length - 1 && !replying}>
+                {renderItem(item)}
+              </ReplyBranch>
             ))}
-            {replying ? actions.renderReplyComposer?.() : null}
+            {replying ? <ReplyBranch last>{actions.renderReplyComposer?.()}</ReplyBranch> : null}
           </div>
         ) : null}
         <div className="flex flex-wrap items-center gap-0.5 pl-1.5 text-2xs">
