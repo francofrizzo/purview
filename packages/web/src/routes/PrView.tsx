@@ -85,6 +85,7 @@ import { hunkForLine, isLineInDiff } from "../lib/comments";
 import { buildThreadGroups, remoteReplyTarget, replyTarget, type DisplayThread } from "../lib/threads";
 import { Modal } from "../components/Modal";
 import { ViewOptions } from "../components/ViewOptions";
+import { showsReviewers } from "../components/Reviewers";
 import type { CommentActionError } from "../components/CommentCard";
 import { UnitBrief, UnitEnd } from "../components/UnitBrief";
 import { FinishReviewPanel } from "../components/FinishReview";
@@ -2258,6 +2259,11 @@ export function PrView() {
             threads={threadsQuery.data?.threads}
             onJumpToThread={(t) => jumpToComment({ file: t.path, line: t.line, side: t.side, threadId: t.id })}
             unresolvedThreads={threadsQuery.data?.threads.filter((t) => !t.isResolved).length ?? 0}
+            reviewers={
+              detail && showsReviewers(detail.authoredByYou, detail.meta.prState)
+                ? { prKey: detail.key, list: detail.meta.reviewers }
+                : undefined
+            }
             loading={review.isLoading}
             error={review.error as Error | null}
             submitting={submitReview.isPending}

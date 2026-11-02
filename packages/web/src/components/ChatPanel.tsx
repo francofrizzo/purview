@@ -1028,7 +1028,7 @@ export function ChatPanel({
         <textarea
           ref={textareaRef}
           data-testid="chat-input"
-          className="input relative resize-none text-[13px] leading-[20px]"
+          className="input relative block resize-none text-[13px] leading-[20px]"
           style={{ background: "transparent" }}
           onScroll={(e) => {
             if (mirrorRef.current) mirrorRef.current.scrollTop = e.currentTarget.scrollTop;

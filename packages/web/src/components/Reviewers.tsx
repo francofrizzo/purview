@@ -173,7 +173,16 @@ export function ReviewersButton({
   );
 }
 
-function ReviewersPanel({ prKey, reviewers }: { prKey: string; reviewers: Reviewer[] }) {
+export function ReviewersPanel({
+  prKey,
+  reviewers,
+  autoFocus = true,
+}: {
+  prKey: string;
+  reviewers: Reviewer[];
+  /** the header's popover types at once; the review panel's section waits for a click */
+  autoFocus?: boolean;
+}) {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   // Each keystroke would be a GitHub search: wait for a pause.
@@ -189,7 +198,7 @@ function ReviewersPanel({ prKey, reviewers }: { prKey: string; reviewers: Review
   const busy = requests.isPending;
 
   return (
-    <div className="flex flex-col gap-2" data-testid="reviewers-panel">
+    <div className="flex flex-col gap-2 text-xs" data-testid="reviewers-panel">
       {people.length ? (
         <ul className="flex flex-col">
           {people.map((r) => (
@@ -233,7 +242,7 @@ function ReviewersPanel({ prKey, reviewers }: { prKey: string; reviewers: Review
         </ul>
       ) : null}
       <input
-        autoFocus
+        autoFocus={autoFocus}
         className="input text-xs"
         placeholder="Ask someone to review…"
         value={q}

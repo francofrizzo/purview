@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type {
+  Reviewer,
   FilesJson,
   ReanchorProposal,
   ReviewEvent,
@@ -14,6 +15,7 @@ import { CopyBundleControls } from "./CopyForAgent";
 import { commentAnchorLabel, type EditComment } from "./Drafts";
 import { CommentCard } from "./CommentCard";
 import { ReviewerVerdictList } from "./Reviews";
+import { ReviewersPanel } from "./Reviewers";
 import { SavedFlash, useFlash } from "./SavedFlash";
 import type { ReviewerVerdict } from "../lib/reviews";
 import { IconCheck, IconExternal, IconSpinner, IconWarning } from "./icons";
@@ -69,7 +71,10 @@ export function FinishReviewPanel({
   threads,
   onJumpToThread,
   unresolvedThreads = 0,
+  reviewers,
 }: {
+  /** on your own open PR: who is asked to review, with the controls to ask more */
+  reviewers?: { prKey: string; list: Reviewer[] | undefined };
   review?: ReviewStatus;
   /** each reviewer's standing verdict on GitHub, yours included */
   verdicts?: ReviewerVerdict[];
@@ -160,6 +165,14 @@ export function FinishReviewPanel({
 
             <div className="flex flex-col gap-5 px-4 py-4">
               {readiness ? <Readiness readiness={readiness} /> : null}
+              {reviewers ? (
+                <section data-testid="review-panel-reviewers">
+                  <SectionTitle>Reviewers</SectionTitle>
+                  <div className="mt-1.5">
+                    <ReviewersPanel prKey={reviewers.prKey} reviewers={reviewers.list ?? []} autoFocus={false} />
+                  </div>
+                </section>
+              ) : null}
               {verdicts.length || unresolvedThreads ? (
                 <section data-testid="previous-reviews">
                   <SectionTitle>On GitHub so far</SectionTitle>

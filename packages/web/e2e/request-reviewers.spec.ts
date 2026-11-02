@@ -23,3 +23,25 @@ test("on your PR the reviewers open a panel to ask someone, ask again, or stop a
   await panel.getByTestId("reviewers-rerequest-sam").click();
   await expect(panel.getByTestId("reviewers-row").filter({ hasText: "sam" })).toContainText("requested");
 });
+
+test("the Review panel on your PR has the same reviewers section", async ({ page }) => {
+  await page.goto(YOURS_OPEN);
+  await page.getByTestId("topbar-finish-review").click();
+  const section = page.getByTestId("review-panel-reviewers");
+  await expect(section.getByTestId("reviewers-row")).toHaveCount(3);
+  await section.getByTestId("reviewers-search").fill("kai");
+  await section.getByTestId("reviewers-candidate-kai").click();
+  await expect(section.getByTestId("reviewers-row")).toHaveCount(4);
+  // The header's cluster follows.
+  await expect(page.getByTestId("reviewers-button").getByTestId("reviewer")).toHaveCount(4);
+});
+
+test("your PR with nobody on it says request review; once someone is asked, finish review", async ({ page }) => {
+  await page.goto("/pr/github.com/acme/billing/491");
+  const button = page.getByTestId("topbar-finish-review");
+  await expect(button).toContainText("request review");
+  await button.click();
+  const section = page.getByTestId("review-panel-reviewers");
+  await section.getByTestId("reviewers-candidate-maria").click();
+  await expect(button).toContainText("finish review");
+});
