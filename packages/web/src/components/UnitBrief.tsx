@@ -115,13 +115,15 @@ export function UnitFiles({
                 >
                   <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
                     <FileStatusBadge status={f.status} />
+                    {/* The name gives way last: the folder truncates first, then the
+                        name, so neither runs into the counts. */}
                     <span
-                      className="flex-none font-mono text-[11.5px]"
+                      className="min-w-0 shrink truncate font-mono text-[11.5px]"
                       style={{ color: f.status === "added" ? "var(--ok)" : read ? "var(--fg-muted)" : "var(--fg)" }}
                     >
                       {name}
                     </span>
-                    <span className="min-w-0 truncate font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+                    <span className="min-w-0 shrink-[1000] truncate font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
                       {dir}
                     </span>
                   </span>

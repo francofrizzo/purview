@@ -5,13 +5,14 @@ import { changeMix, formatShare, type ChangeKind, type ChangeMix as Mix } from "
 import { useSettings } from "../lib/settings";
 import { DiffSizeStat } from "./Chips";
 
-const CHANGE_LOOK: Record<ChangeKind, { label: string; color: string }> = {
-  implementation: { label: "Implementation", color: "var(--kind-core)" },
-  tests: { label: "Tests", color: "var(--kind-tests)" },
+/** `short` is for the unit's one line, where "documentation" alone would wrap it. */
+const CHANGE_LOOK: Record<ChangeKind, { label: string; short: string; color: string }> = {
+  implementation: { label: "Implementation", short: "implementation", color: "var(--kind-core)" },
+  tests: { label: "Tests", short: "tests", color: "var(--kind-tests)" },
   // Yellow, not the docs chip's grey: two greys side by side in a thin bar
   // read as one. The theme's yellow, which turns orange where yellow is faint.
-  docs: { label: "Documentation", color: "var(--warn)" },
-  generated: { label: "Generated", color: "var(--fg-faint)" },
+  docs: { label: "Documentation", short: "docs", color: "var(--warn)" },
+  generated: { label: "Generated", short: "generated", color: "var(--fg-faint)" },
 };
 
 const CARD_WIDTH = 248;
@@ -141,13 +142,14 @@ export function UnitMix({ files, hunkIds }: { files: FileEntry[]; hunkIds: reado
   return (
     <div
       // A caption of the files line above it: under its text, not its icon.
-      className="-mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 pl-[18px] text-2xs tabular-nums"
+      className="-mt-0.5 flex items-start gap-2 pl-[18px] text-2xs leading-4 tabular-nums"
       style={{ color: "var(--fg-muted)" }}
       data-testid="unit-mix"
       data-tip={mix.rows.map((r) => `${CHANGE_LOOK[r.kind].label}: +${r.added} −${r.removed}`).join("\n")}
     >
-      <ChangeBar mix={mix} className="h-1.5 w-14" />
-      <span>{mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].label.toLowerCase()}`).join(" · ")}</span>
+      {/* The bar keeps its place on the first line; the shares wrap under themselves. */}
+      <ChangeBar mix={mix} className="mt-[5px] h-1.5 w-14" />
+      <span className="min-w-0">{mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].short}`).join(" · ")}</span>
     </div>
   );
 }

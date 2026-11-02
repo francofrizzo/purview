@@ -185,7 +185,7 @@ test("the overview's Size section breaks the lines down by type", async ({ page 
 test("a unit of mixed lines shows what it is made of", async ({ page }) => {
   await openUnit(page, UNITS.wiring);
   await expect(page.getByTestId("unit-mix")).toContainText("implementation");
-  await expect(page.getByTestId("unit-mix")).toContainText("documentation");
+  await expect(page.getByTestId("unit-mix")).toContainText("docs");
 });
 
 test("V marks the whole unit viewed and moves on", async ({ page }) => {
