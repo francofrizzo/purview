@@ -175,9 +175,9 @@ export function TopBar({
       className="flex flex-none flex-wrap items-center gap-x-2 gap-y-1.5 border-b px-2 py-2 sm:flex-nowrap sm:gap-3 sm:px-3"
       style={{
         borderColor: "var(--border)",
-        // A shade under the page: the PR's header reads as its own band above
-        // the diff, in every theme, without a tint of its own.
-        background: "var(--bg-inset)",
+        // Halfway from a pane down to the inset shade: the PR's header reads
+        // as its own band above the diff, in every theme, without a tint.
+        background: "color-mix(in srgb, var(--bg-inset) 50%, var(--bg-raised))",
       }}
     >
       <Link
