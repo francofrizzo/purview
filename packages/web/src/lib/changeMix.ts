@@ -15,6 +15,8 @@ export interface ChangeRow {
   removed: number;
   /** its share of the changed lines, 0 to 100 */
   percent: number;
+  /** the files its lines are in, most lines first */
+  files: { path: string; added: number; removed: number }[];
 }
 
 export interface ChangeMix {
@@ -47,21 +49,34 @@ const removedIn = (h: Hunk) => h.removedLines?.length ?? (h.lines ?? []).filter(
  */
 export function changeMix(files: readonly FileEntry[], only?: ReadonlySet<string>): ChangeMix {
   const lines = new Map<ChangeKind, { added: number; removed: number }>(CHANGE_KINDS.map((k) => [k, { added: 0, removed: 0 }]));
+  const byFile = new Map<ChangeKind, Map<string, { path: string; added: number; removed: number }>>(CHANGE_KINDS.map((k) => [k, new Map()]));
+  const count = (kind: ChangeKind, path: string, added: number, removed: number) => {
+    const row = lines.get(kind)!;
+    row.added += added;
+    row.removed += removed;
+    if (!added && !removed) return;
+    const files = byFile.get(kind)!;
+    const f = files.get(path) ?? { path, added: 0, removed: 0 };
+    f.added += added;
+    f.removed += removed;
+    files.set(path, f);
+  };
   for (const file of files) {
     let added = 0;
     let removed = 0;
     for (const hunk of file.hunks) {
       if (only && !only.has(hunk.id)) continue;
-      const row = lines.get(kindOf(hunkHint(file, hunk)))!;
-      row.added += addedIn(hunk);
-      row.removed += removedIn(hunk);
+      count(kindOf(hunkHint(file, hunk)), file.path, addedIn(hunk), removedIn(hunk));
       added += addedIn(hunk);
       removed += removedIn(hunk);
     }
     if (only) continue;
-    const rest = lines.get(kindOf(fileHint(file)))!;
-    rest.added += Math.max(0, (file.additions ?? added) - added);
-    rest.removed += Math.max(0, (file.deletions ?? removed) - removed);
+    count(
+      kindOf(fileHint(file)),
+      file.path,
+      Math.max(0, (file.additions ?? added) - added),
+      Math.max(0, (file.deletions ?? removed) - removed),
+    );
   }
   const counted = [...lines.entries()];
   const added = counted.reduce((n, [, l]) => n + l.added, 0);
@@ -70,7 +85,14 @@ export function changeMix(files: readonly FileEntry[], only?: ReadonlySet<string
   return {
     rows: counted
       .filter(([, l]) => l.added + l.removed > 0)
-      .map(([kind, l]) => ({ kind, ...l, percent: (100 * (l.added + l.removed)) / total })),
+      .map(([kind, l]) => ({
+        kind,
+        ...l,
+        percent: (100 * (l.added + l.removed)) / total,
+        files: [...byFile.get(kind)!.values()].sort(
+          (a, b) => b.added + b.removed - (a.added + a.removed) || a.path.localeCompare(b.path),
+        ),
+      })),
     added,
     removed,
   };

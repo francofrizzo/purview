@@ -4,6 +4,7 @@ import type { FileEntry } from "../api/types";
 import { changeMix, formatShare, type ChangeKind, type ChangeMix as Mix } from "../lib/changeMix";
 import { useSettings } from "../lib/settings";
 import { DiffSizeStat } from "./Chips";
+import { IconChevron } from "./icons";
 
 /** `short` is for the unit's one line, where "documentation" alone would wrap it. */
 const CHANGE_LOOK: Record<ChangeKind, { label: string; short: string; color: string }> = {
@@ -59,27 +60,79 @@ export function ChangeSize({ files }: { files: FileEntry[] }) {
   );
 }
 
-/** The lines of each kind, its share, and the total. */
-function ChangeTable({ mix }: { mix: Mix }) {
+/**
+ * The lines of each kind, its share, and the total. Given `expand`, each kind
+ * opens into the files counted under it, so a misplaced file shows.
+ */
+function ChangeTable({
+  mix,
+  expand,
+}: {
+  mix: Mix;
+  expand?: { open: ReadonlySet<ChangeKind>; toggle: (kind: ChangeKind) => void; onOpenFile?: (path: string) => void };
+}) {
+  const dot = (kind: ChangeKind) => <span className="h-2 w-2 flex-none rounded-full" style={{ background: CHANGE_LOOK[kind].color }} />;
   return (
-    <div className="grid grid-cols-[1fr_auto_auto_auto] items-baseline gap-x-2 gap-y-1">
-      {mix.rows.map((r) => (
-        <div key={r.kind} className="contents" data-testid={`change-row-${r.kind}`}>
-          <span className="flex items-center gap-1.5" style={{ color: "var(--fg)" }}>
-            <span className="h-2 w-2 flex-none rounded-full" style={{ background: CHANGE_LOOK[r.kind].color }} />
-            {CHANGE_LOOK[r.kind].label}
-          </span>
-          <span className="text-right text-2xs" style={{ color: "var(--fg-faint)" }}>
-            {formatShare(r.percent)}
-          </span>
-          <span className="text-right" style={{ color: "var(--ok)" }}>
-            +{r.added}
-          </span>
-          <span className="text-right" style={{ color: "var(--risk)" }}>
-            −{r.removed}
-          </span>
-        </div>
-      ))}
+    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-2 gap-y-1">
+      {mix.rows.map((r) => {
+        const open = expand?.open.has(r.kind) ?? false;
+        return (
+          <div key={r.kind} className="contents" data-testid={`change-row-${r.kind}`}>
+            {expand ? (
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-1.5 text-left hover:underline"
+                style={{ color: "var(--fg)" }}
+                aria-expanded={open}
+                data-testid={`change-toggle-${r.kind}`}
+                onClick={() => expand.toggle(r.kind)}
+              >
+                {dot(r.kind)}
+                {CHANGE_LOOK[r.kind].label}
+                <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  {r.files.length} {r.files.length === 1 ? "file" : "files"}
+                </span>
+                <IconChevron open={open} width={10} height={10} className="flex-none" />
+              </button>
+            ) : (
+              <span className="flex items-center gap-1.5" style={{ color: "var(--fg)" }}>
+                {dot(r.kind)}
+                {CHANGE_LOOK[r.kind].label}
+              </span>
+            )}
+            <span className="text-right text-2xs" style={{ color: "var(--fg-faint)" }}>
+              {formatShare(r.percent)}
+            </span>
+            <span className="text-right" style={{ color: "var(--ok)" }}>
+              +{r.added}
+            </span>
+            <span className="text-right" style={{ color: "var(--risk)" }}>
+              −{r.removed}
+            </span>
+            {open
+              ? r.files.map((f) => (
+                  <div key={f.path} className="contents text-2xs" data-testid={`change-file-${f.path}`}>
+                    <button
+                      type="button"
+                      className="col-span-2 min-w-0 truncate pl-3.5 text-left font-mono hover:underline"
+                      style={{ color: "var(--fg-muted)" }}
+                      data-tip={f.path}
+                      onClick={() => expand?.onOpenFile?.(f.path)}
+                    >
+                      {f.path}
+                    </button>
+                    <span className="text-right" style={{ color: "var(--ok)" }}>
+                      {f.added ? `+${f.added}` : ""}
+                    </span>
+                    <span className="text-right" style={{ color: "var(--risk)" }}>
+                      {f.removed ? `−${f.removed}` : ""}
+                    </span>
+                  </div>
+                ))
+              : null}
+          </div>
+        );
+      })}
       <span className="col-span-full my-0.5 border-t" style={{ borderColor: "var(--border)" }} />
       <span className="col-span-2" style={{ color: "var(--fg)" }}>
         Total
@@ -106,11 +159,19 @@ function ChangeBar({ mix, className }: { mix: Mix; className: string }) {
 }
 
 /** The overview's size: the kinds in proportion, over the table. */
-export function ChangeBreakdown({ mix }: { mix: Mix }) {
+export function ChangeBreakdown({ mix, onOpenFile }: { mix: Mix; onOpenFile?: (path: string) => void }) {
+  const [open, setOpen] = useState<ReadonlySet<ChangeKind>>(new Set());
+  const toggle = (kind: ChangeKind) =>
+    setOpen((s) => {
+      const next = new Set(s);
+      if (next.has(kind)) next.delete(kind);
+      else next.add(kind);
+      return next;
+    });
   return (
-    <div className="max-w-md text-[13px] tabular-nums" data-testid="change-breakdown">
+    <div className="max-w-xl text-[13px] tabular-nums" data-testid="change-breakdown">
       <ChangeBar mix={mix} className="mb-3 h-1.5 w-full" />
-      <ChangeTable mix={mix} />
+      <ChangeTable mix={mix} expand={{ open, toggle, onOpenFile }} />
     </div>
   );
 }

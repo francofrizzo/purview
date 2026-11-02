@@ -180,6 +180,12 @@ test("the overview's Size section breaks the lines down by type", async ({ page 
   await expect(size).toContainText("Generated");
   await expect(size).toContainText("Total");
   await expect(size).toContainText("+231");
+  // Each type opens into the files it counted; a file opens in Files.
+  await size.getByTestId("change-toggle-docs").click();
+  const doc = size.getByTestId("change-file-docs/billing.md");
+  await expect(doc).toContainText("+5");
+  await doc.getByRole("button").click();
+  await expect(page.getByTestId("sidebar-tab-files")).toHaveAttribute("aria-selected", "true");
 });
 
 test("a unit of mixed lines shows what it is made of", async ({ page }) => {

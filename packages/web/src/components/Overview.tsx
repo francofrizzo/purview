@@ -177,7 +177,7 @@ export function Overview({
         {mix.rows.length ? (
           <section data-testid="overview-size" data-section="size">
             <SectionHead title="Size" />
-            <ChangeBreakdown mix={mix} />
+            <ChangeBreakdown mix={mix} onOpenFile={onOpenFile} />
           </section>
         ) : null}
 

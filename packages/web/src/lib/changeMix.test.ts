@@ -62,6 +62,15 @@ describe("changeMix", () => {
     expect([mix.added, mix.removed]).toEqual([75, 25]);
   });
 
+  it("lists each kind's files, most lines first", () => {
+    const mix = changeMix([file("src/a.ts", 2, 0), file("src/b.ts", 9, 1), file("src/a.test.ts", 3, 0)]);
+    expect(mix.rows[0].files).toEqual([
+      { path: "src/b.ts", added: 9, removed: 1 },
+      { path: "src/a.ts", added: 2, removed: 0 },
+    ]);
+    expect(mix.rows[1].files.map((f) => f.path)).toEqual(["src/a.test.ts"]);
+  });
+
   it("is empty for a change with no lines", () => {
     expect(changeMix([]).rows).toEqual([]);
   });
