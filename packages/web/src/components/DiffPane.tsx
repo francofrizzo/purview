@@ -92,6 +92,7 @@ import {
   IconHeart,
   IconCopy,
   IconQuote,
+  IconHistory,
 } from "./icons";
 
 export interface HunkEntry {
@@ -3431,6 +3432,7 @@ export function DiffPane({
                 data-exact={h.exactAtCurrent ? "true" : "false"}
                 data-tip={label.title}
               >
+                <IconHistory width={10} height={10} className="flex-none" />
                 {label.text}
               </span>
             );

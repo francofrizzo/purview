@@ -340,7 +340,7 @@ export function EffortChip({ effort }: { effort?: ReviewEffort | null }) {
 }
 
 export function ChangedBadge({ tip, testId, onClick }: { tip?: string; testId?: string; onClick?: () => void }) {
-  const content = "changed";
+  const content = "changed since viewed";
   const cls = "chip";
   const style = { color: "var(--warn)", background: "var(--warn-soft)" };
   if (!onClick) {
@@ -351,7 +351,7 @@ export function ChangedBadge({ tip, testId, onClick }: { tip?: string; testId?: 
     );
   }
   return (
-    <button type="button" className={cls} style={style} onClick={onClick}>
+    <button type="button" className={cls} style={style} onClick={onClick} data-tip={tip ?? "Show what changed since you viewed it"}>
       {content}
     </button>
   );

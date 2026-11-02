@@ -173,16 +173,16 @@ describe("buildHighlight", () => {
   it("labels the hunk header: removals, later rewrites, and the exact-marks tooltip", () => {
     const h = buildHighlight(data);
     expect(hunkChangedLabel(h.byHunk.get("a")!)).toEqual({
-      text: "changed in r5 · 3 lines removed · 2 since rewritten",
+      text: "r5 · 3 lines removed · 2 since rewritten",
       title:
         "Changed again after r5. The marks are exact: they follow r5's own lines. 2 of r5's lines were rewritten by later revisions.",
     });
     expect(hunkChangedLabel(h.byHunk.get("b")!)).toEqual({
-      text: "changed in r5",
+      text: "r5",
       title: "Lines this hunk gained in r5",
     });
     const c = hunkChangedLabel(h.byHunk.get("c")!);
-    expect(c.text).toBe("changed in r5");
+    expect(c.text).toBe("r5");
     expect(c.title).toContain("None of r5's lines were rewritten");
   });
 });
@@ -321,17 +321,17 @@ describe("several revisions at once", () => {
   it("labels the hunk chip with every revision, the tooltip in words", () => {
     const h = buildHighlight([r3, r5]);
     expect(hunkChangedLabel(h.byHunk.get("a")!)).toEqual({
-      text: "changed in r3, r5 · 3 lines removed · 1 since rewritten",
+      text: "r3, r5 · 3 lines removed · 1 since rewritten",
       title: "Lines this hunk gained in r3 and r5. 1 of their lines was rewritten by revisions outside the highlight.",
     });
     const r6 = rev(6, [change({ currentHunkId: "a", originHunkId: "a6", lines: [0] })]);
     const later = hunkChangedLabel(buildHighlight([r3, r5, r6]).byHunk.get("a")!);
-    expect(later.text).toBe("changed in r3, r5, r6 · 3 lines removed · 1 since rewritten");
+    expect(later.text).toBe("r3, r5, r6 · 3 lines removed · 1 since rewritten");
     expect(later.title).toBe(
       "Changed again after r6. The marks are exact: they follow each revision's own lines. 1 of their lines was rewritten by revisions outside the highlight.",
     );
     // one revision in the set keeps the single-revision wording
-    expect(hunkChangedLabel(h.byHunk.get("b")!).text).toBe("changed in r3");
+    expect(hunkChangedLabel(h.byHunk.get("b")!).text).toBe("r3");
   });
 
   it("joins revisions for the summary and header chip", () => {

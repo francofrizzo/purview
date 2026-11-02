@@ -318,7 +318,8 @@ export function removalLabel(revisions: readonly number[], count: number): strin
 export function hunkChangedLabel(h: HunkHighlight): { text: string; title: string } {
   const removed = h.removedCount > 0 ? ` · ${plural(h.removedCount, "line")} removed` : "";
   const rewritten = h.rewrittenSince > 0 ? ` · ${h.rewrittenSince} since rewritten` : "";
-  const text = `changed in ${revisionsLabel(h.revisions)}${removed}${rewritten}`;
+  // The chip draws a history icon in front: the words "changed in" are its.
+  const text = `${revisionsLabel(h.revisions)}${removed}${rewritten}`;
   const n = h.rewrittenSince;
   let title: string;
   if (h.revisions.length === 1) {
