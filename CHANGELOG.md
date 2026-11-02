@@ -5,10 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.2.2
 
 - **Mentions in the chat box.** Type `@` in the chat box to attach a unit, a file or a concept to your message. ↑/↓ choose, ↵ or Tab picks, Esc closes the list.
 - **Line of counts in the unit brief.** An open unit shows its heart, files, findings, skippable hunks and revisions as one line of counts; click one to open its list. Moving the unit to another group is in the ⋯ at the end of that line.
+- **Revision highlight in the history count.** While the diff highlights a revision's changes, the open unit's ⟲ count names the revision and its lines, with × to clear.
 
 ## 2026.11.2.1
 
