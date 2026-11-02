@@ -290,16 +290,19 @@ export function ThreadView({
         </div>
       ) : null}
       <div data-testid={`thread-item-${t.id}`}>{renderItem(root)}</div>
-      <div
-        className="ml-3 flex flex-col gap-1.5 pl-3 pt-1.5"
-        style={{ borderLeft: "2px solid var(--border)" }}
-        data-testid="thread-replies"
-      >
-        {rest.map((item) => (
-          <div key={item.kind === "local" ? item.comment.id : item.comment.id}>{renderItem(item)}</div>
-        ))}
-        {replying ? actions.renderReplyComposer?.() : null}
-        <div className="-ml-1.5 flex flex-wrap items-center gap-0.5 text-2xs">
+      {/* The rail joins the replies to the comment they answer and stops at
+          the last one: run on past the footer, it read as joining the next
+          thread on the line. */}
+      <div className="ml-3 flex flex-col gap-1.5 pt-1.5" data-testid="thread-replies">
+        {rest.length || replying ? (
+          <div className="flex flex-col gap-1.5 pl-3" style={{ borderLeft: "2px solid var(--border)" }}>
+            {rest.map((item) => (
+              <div key={item.kind === "local" ? item.comment.id : item.comment.id}>{renderItem(item)}</div>
+            ))}
+            {replying ? actions.renderReplyComposer?.() : null}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-0.5 pl-1.5 text-2xs">
           {actions.onReply && t.viewerCanReply && !replying ? (
             <ThreadFooterButton
               testId={`thread-reply-${t.id}`}

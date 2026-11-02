@@ -91,7 +91,7 @@ export function InlineCommentList({
           <li
             key={t.key}
             data-testid={t.remote ? `inline-thread-${t.key}` : `inline-comment-${t.key.slice("local:".length)}`}
-            className={t.remote && i > 0 ? "mt-1.5" : undefined}
+            className={t.remote && i > 0 ? "mt-3" : undefined}
           >
             <ThreadView thread={t} actions={actions} showPlacement={showPlacement} />
           </li>
