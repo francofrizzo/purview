@@ -3,6 +3,7 @@ import type { Hunk, HunkLineChange, RevisionLineChanges } from "../api/types";
 import { buildRows, buildSplitRows, hunkBodyLines } from "./diffModel";
 import {
   buildHighlight,
+  highlightChipText,
   highlightSummaryText,
   highlightTally,
   hunkChangedLabel,
@@ -15,6 +16,7 @@ import {
   revisionsLabel,
   changedUnitIds,
   splitRemovalMarks,
+  type RevisionHighlight,
 } from "./revisionHighlight";
 
 /** A hunk as the API client hands it over: `lines` from core's `text`. */
@@ -364,5 +366,15 @@ describe("changedUnitIds", () => {
       { id: "u3", hunks: [{ id: "h4" }] },
     ];
     expect([...changedUnitIds(data, units)]).toEqual(["u1", "u3"]);
+  });
+});
+
+describe("highlightChipText", () => {
+  it("names the revisions and the lines, short", () => {
+    const h = { byHunk: new Map([["a", { lineCount: 3 }], ["b", { lineCount: 2 }]]), goneCount: 0 } as unknown as RevisionHighlight;
+    expect(highlightChipText([3], h, null)).toBe("r3 · 5 lines");
+    expect(highlightChipText([3, 5], null, null)).toBe("r3 + r5…");
+    expect(highlightChipText([3], { byHunk: new Map(), goneCount: 0 } as unknown as RevisionHighlight, null)).toBe("r3 · none here");
+    expect(highlightChipText([3], null, { revision: 3, error: new Error("x") })).toBe("r3 · couldn't load");
   });
 });

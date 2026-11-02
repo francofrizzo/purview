@@ -122,9 +122,9 @@ import { codeLinker, hunkAtLine } from "../lib/codeLinks";
 import {
   buildHighlight,
   changedUnitIds,
+  highlightChipText,
   highlightSummaryText,
   revisionsLabel,
-  type RevisionHighlight,
 } from "../lib/revisionHighlight";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { fileFromSearch, prPageTitle, unitFromSearch, viewFromSearch, withUnitParam, withViewParams } from "../lib/prUrl";
@@ -1259,14 +1259,14 @@ export function PrView() {
         ) : null
       }
       highlight={
-        highlightActive ? (
-          <HighlightSummary
-            revisions={highlightRevisions}
-            highlight={highlight}
-            failed={lineChanges.failed}
-            onClear={clearHighlight}
-          />
-        ) : null
+        highlightActive
+          ? {
+              label: highlightChipText(highlightRevisions, highlight, lineChanges.failed),
+              tip: highlightSummaryText(highlightRevisions, highlight, lineChanges.failed),
+              error: !!lineChanges.failed,
+              onClear: clearHighlight,
+            }
+          : undefined
       }
     />
   );
@@ -2433,50 +2433,6 @@ function UnplacedHeader({
   );
 }
 
-/**
- * The line under the changelog while revisions are highlighted: what is
- * marked, what they touched that is gone, and the way out.
- */
-function HighlightSummary({
-  revisions,
-  highlight,
-  failed,
-  onClear,
-}: {
-  revisions: readonly number[];
-  highlight: RevisionHighlight | null;
-  failed: { revision: number; error: Error } | null;
-  onClear: () => void;
-}) {
-  const error = failed?.error ?? null;
-  const body = highlightSummaryText(revisions, highlight, failed);
-  return (
-    <p
-      className="flex flex-wrap items-baseline gap-x-1 text-2xs"
-      data-testid="highlight-summary"
-      style={{ color: error ? "var(--risk)" : "var(--fg-muted)" }}
-    >
-      <span
-        aria-hidden
-        className="mr-1 inline-block h-2.5 w-[3px] flex-none self-center rounded-full"
-        style={{ background: "var(--changed-in-bar)" }}
-      />
-      <span>{body}</span>
-      <span aria-hidden>·</span>
-      <button
-        type="button"
-        data-testid="highlight-clear"
-        className="underline-offset-2 hover:underline"
-        style={{ color: "var(--accent)" }}
-        data-tip="Clear the highlight"
-        data-tip-key="esc"
-        onClick={onClear}
-      >
-        clear
-      </button>
-    </p>
-  );
-}
 
 function Centered({ children }: { children: ReactNode }) {
   return (

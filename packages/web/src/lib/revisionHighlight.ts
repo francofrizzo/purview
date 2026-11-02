@@ -382,6 +382,19 @@ export function highlightSummaryText(
   return parts.join(" · ");
 }
 
+/** The same, short enough for the brief's history count: "r3 · 34 lines". */
+export function highlightChipText(
+  revisions: readonly number[],
+  highlight: RevisionHighlight | null,
+  failed: { revision: number; error: Error } | null,
+): string {
+  const which = revisionsLabel(revisions, " + ");
+  if (failed) return `${which} · couldn't load`;
+  if (!highlight) return `${which}…`;
+  const { lines, hunks } = highlightTally(highlight);
+  return `${which} · ${hunks === 0 ? "none here" : plural(lines, "line")}`;
+}
+
 /** "N lines in M hunks" for the unit header. */
 export function highlightTally(h: RevisionHighlight): { lines: number; hunks: number } {
   let lines = 0;

@@ -13,7 +13,7 @@ import { FindingList } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
 import { OverflowMenu } from "./OverflowMenu";
 import { UnitChangelog } from "./UnitChangelog";
-import { IconCheck, IconEyeOff, IconFile, IconHeart, IconHistory, IconQuote, IconWarning } from "./icons";
+import { IconCheck, IconClose, IconEyeOff, IconFile, IconHeart, IconHistory, IconQuote, IconWarning } from "./icons";
 
 const ATTENTION_WORD: Record<ReviewUnit["attention"], string> = {
   "must-read": "must read",
@@ -156,8 +156,8 @@ export function UnitBrief({
   changelog?: { activeRevisions: readonly number[]; onSelectRevision: (r: number) => void };
   /** under the summary: the generated file list */
   extra?: ReactNode;
-  /** what the revision highlight marks, with the way out */
-  highlight?: ReactNode;
+  /** the revision highlight in the diff, while one is on: the history count shows it and clears it */
+  highlight?: { label: string; tip: string; error: boolean; onClear: () => void };
 }) {
   const { settings, update } = useSettings();
   const generated = isGeneratedUnit(unit);
@@ -167,17 +167,15 @@ export function UnitBrief({
   const mix = generated ? null : changeMix(detail.files.files, new Set(hunkIdsOf(unit)));
   const findings = unit.findings ?? [];
   const warnings = findings.filter((f) => f.severity === "warning").length;
-  // A unit's first entry only says it arrived; the count is worth a place
-  // once a later revision changed it.
+  // Entries are written by refreshes (r2 on): each says what that revision changed here.
   const revisions = changelogView(unit.changelog);
-  const firstRevision = Math.min(...(detail.state.revisions ?? []).map((r) => r.revision), detail.state.revision);
   const revisionCount = revisions ? 1 + revisions.earlier.length : 0;
-  const showRevisions = !!revisions && (revisionCount > 1 || revisions.latest.revision > firstRevision);
+  const currentRevision = detail.state.currentRevision ?? detail.state.revision;
   const available: Record<UnitDetail, boolean> = {
     heart: heart.length > 0,
     files: files.length > 0,
     findings: findings.length > 0,
-    revisions: showRevisions,
+    revisions: revisionCount > 0,
   };
   const open = settings.unitDetail && available[settings.unitDetail] ? settings.unitDetail : null;
   const toggle = (d: UnitDetail) => update({ unitDetail: open === d ? null : d });
@@ -263,21 +261,64 @@ export function UnitBrief({
               {skipped}
             </Count>
           ) : null}
-          {available.revisions && revisions ? (
-            <Count
-              open={open === "revisions"}
-              onClick={() => toggle("revisions")}
-              testId="changelog-toggle"
-              tip={`Changed in ${revisionCount} revision${revisionCount === 1 ? "" : "s"}`}
+          {/* History is one control: the count opens what each revision
+              changed here (each a toggle for the diff's highlight), and while
+              a highlight is on, the count names it, with its way out. */}
+          {available.revisions || highlight ? (
+            <span
+              className="inline-flex items-center rounded"
+              style={highlight ? { background: "var(--bg-hover)" } : undefined}
+              data-testid={highlight ? "highlight-summary" : undefined}
             >
-              <IconHistory
-                width={12}
-                height={12}
-                className="flex-none"
-                style={revisions.latest.revision === detail.state.revision ? { color: "var(--accent)" } : undefined}
-              />
-              {revisionCount}
-            </Count>
+              <Count
+                open={open === "revisions"}
+                onClick={() => (available.revisions ? toggle("revisions") : undefined)}
+                testId="changelog-toggle"
+                tip={
+                  highlight?.tip ??
+                  `What changed here, in ${revisionCount} revision${revisionCount === 1 ? "" : "s"}${
+                    revisions && revisions.latest.revision === currentRevision ? `; updated in r${currentRevision}` : ""
+                  }`
+                }
+              >
+                {highlight ? (
+                  <span
+                    aria-hidden
+                    className="h-2.5 w-[3px] flex-none rounded-full"
+                    style={{ background: "var(--changed-in-bar)" }}
+                  />
+                ) : null}
+                <IconHistory
+                  width={12}
+                  height={12}
+                  className="flex-none"
+                  style={
+                    !highlight && revisions && revisions.latest.revision === currentRevision
+                      ? { color: "var(--accent)" }
+                      : undefined
+                  }
+                />
+                {highlight ? (
+                  <span style={highlight.error ? { color: "var(--risk)" } : undefined}>{highlight.label}</span>
+                ) : (
+                  revisionCount
+                )}
+              </Count>
+              {highlight ? (
+                <button
+                  type="button"
+                  data-testid="highlight-clear"
+                  className="rounded py-1 pl-0.5 pr-1.5 hover:!text-[var(--fg)]"
+                  style={{ color: "var(--fg-muted)" }}
+                  data-tip="Clear the highlight"
+                  data-tip-key="esc"
+                  aria-label="Clear the highlight"
+                  onClick={highlight.onClear}
+                >
+                  <IconClose width={10} height={10} />
+                </button>
+              ) : null}
+            </span>
           ) : null}
           {!generated && (onCite || onMove) ? (
             <span className="ml-auto flex items-center">
@@ -337,7 +378,6 @@ export function UnitBrief({
             onSelectRevision={changelog?.onSelectRevision}
           />
         ) : null}
-        {highlight ? <div>{highlight}</div> : null}
       </div>
     </div>
   );
