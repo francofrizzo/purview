@@ -262,6 +262,93 @@ export function UnitBrief({
               {skipped}
             </Count>
           ) : null}
+        </div>
+        {open === "heart" ? <UnitHeart segments={heart} files={detail.files.files} onJump={onJumpHunk} /> : null}
+        {open === "files" ? (
+          <div className="flex flex-col gap-1">
+            {mix && mix.rows.length > 1 ? (
+              <p className="text-2xs tabular-nums" style={{ color: "var(--fg-muted)" }} data-testid="unit-mix">
+                {mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].short}`).join(" · ")}
+              </p>
+            ) : null}
+            <UnitFileList detail={detail} unit={unit} onJump={onJumpHunk} />
+          </div>
+        ) : null}
+        {open === "findings" ? <FindingList findings={findings} /> : null}
+      </div>
+
+      {/* The last row: the unit's history on the left, the unit's two
+          actions always at the bottom right. History is one control: it
+          opens what each revision changed here (above it, so the row stays
+          last), each a toggle for the diff's highlight; while a highlight is
+          on, it names it, with its way out. */}
+      {historyOpen && revisionCount ? (
+        <UnitChangelog
+          listOnly
+          className=""
+          changelog={unit.changelog}
+          activeRevisions={changelog?.activeRevisions}
+          onSelectRevision={changelog?.onSelectRevision}
+        />
+      ) : null}
+      {revisionCount || highlight || (!generated && (onCite || onMove)) ? (
+        <div className="flex items-center gap-1">
+          {revisionCount || highlight ? (
+          <span
+            className="-ml-1 inline-flex items-center rounded tabular-nums"
+            style={highlight ? { background: "var(--bg-hover)" } : undefined}
+            data-testid={highlight ? "highlight-summary" : undefined}
+          >
+            <Count
+              open={historyOpen}
+              onClick={() => (revisionCount ? setHistoryOpen((v) => !v) : undefined)}
+              testId="changelog-toggle"
+              tip={
+                highlight?.tip ??
+                `What changed here, in ${revisionCount} revision${revisionCount === 1 ? "" : "s"}${
+                  revisions && revisions.latest.revision === currentRevision ? `; updated in r${currentRevision}` : ""
+                }`
+              }
+            >
+              {highlight ? (
+                <span
+                  aria-hidden
+                  className="h-2.5 w-[3px] flex-none rounded-full"
+                  style={{ background: "var(--changed-in-bar)" }}
+                />
+              ) : null}
+              <IconHistory
+                width={12}
+                height={12}
+                className="flex-none"
+                style={
+                  !highlight && revisions && revisions.latest.revision === currentRevision
+                    ? { color: "var(--accent)" }
+                    : undefined
+                }
+              />
+              {highlight ? (
+                <span style={highlight.error ? { color: "var(--risk)" } : undefined}>{highlight.label}</span>
+              ) : (
+                `${revisionCount} ${revisionCount === 1 ? "revision" : "revisions"}`
+              )}
+            </Count>
+            {highlight ? (
+              <button
+                type="button"
+                data-testid="highlight-clear"
+                className="rounded py-1 pl-0.5 pr-1.5 hover:!text-[var(--fg)]"
+                style={{ color: "var(--fg-muted)" }}
+                data-tip="Clear the highlight"
+                data-tip-key="esc"
+                aria-label="Clear the highlight"
+                onClick={highlight.onClear}
+              >
+                <IconClose width={10} height={10} />
+              </button>
+            ) : null}
+          </span>
+          ) : null}
           {!generated && (onCite || onMove) ? (
             <span className="ml-auto flex items-center">
               {onCite ? (
@@ -297,94 +384,6 @@ export function UnitBrief({
                 />
               ) : null}
             </span>
-          ) : null}
-        </div>
-        {open === "heart" ? <UnitHeart segments={heart} files={detail.files.files} onJump={onJumpHunk} /> : null}
-        {open === "files" ? (
-          <div className="flex flex-col gap-1">
-            {mix && mix.rows.length > 1 ? (
-              <p className="text-2xs tabular-nums" style={{ color: "var(--fg-muted)" }} data-testid="unit-mix">
-                {mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].short}`).join(" · ")}
-              </p>
-            ) : null}
-            <UnitFileList detail={detail} unit={unit} onJump={onJumpHunk} />
-          </div>
-        ) : null}
-        {open === "findings" ? <FindingList findings={findings} /> : null}
-      </div>
-
-      {/* History on its own line, not one of the counts: it opens what each
-          revision changed here (each a toggle for the diff's highlight), and
-          while a highlight is on it names it, with its way out. */}
-      {revisionCount || highlight ? (
-        <div className="flex flex-col gap-1.5">
-          {/* History is one control: the count opens what each revision
-              changed here (each a toggle for the diff's highlight), and while
-              a highlight is on, the count names it, with its way out. */}
-          {revisionCount || highlight ? (
-            <span
-              className="-ml-1 inline-flex items-center self-start rounded tabular-nums"
-              style={highlight ? { background: "var(--bg-hover)" } : undefined}
-              data-testid={highlight ? "highlight-summary" : undefined}
-            >
-              <Count
-                open={historyOpen}
-                onClick={() => (revisionCount ? setHistoryOpen((v) => !v) : undefined)}
-                testId="changelog-toggle"
-                tip={
-                  highlight?.tip ??
-                  `What changed here, in ${revisionCount} revision${revisionCount === 1 ? "" : "s"}${
-                    revisions && revisions.latest.revision === currentRevision ? `; updated in r${currentRevision}` : ""
-                  }`
-                }
-              >
-                {highlight ? (
-                  <span
-                    aria-hidden
-                    className="h-2.5 w-[3px] flex-none rounded-full"
-                    style={{ background: "var(--changed-in-bar)" }}
-                  />
-                ) : null}
-                <IconHistory
-                  width={12}
-                  height={12}
-                  className="flex-none"
-                  style={
-                    !highlight && revisions && revisions.latest.revision === currentRevision
-                      ? { color: "var(--accent)" }
-                      : undefined
-                  }
-                />
-                {highlight ? (
-                  <span style={highlight.error ? { color: "var(--risk)" } : undefined}>{highlight.label}</span>
-                ) : (
-                  `${revisionCount} ${revisionCount === 1 ? "revision" : "revisions"}`
-                )}
-              </Count>
-              {highlight ? (
-                <button
-                  type="button"
-                  data-testid="highlight-clear"
-                  className="rounded py-1 pl-0.5 pr-1.5 hover:!text-[var(--fg)]"
-                  style={{ color: "var(--fg-muted)" }}
-                  data-tip="Clear the highlight"
-                  data-tip-key="esc"
-                  aria-label="Clear the highlight"
-                  onClick={highlight.onClear}
-                >
-                  <IconClose width={10} height={10} />
-                </button>
-              ) : null}
-            </span>
-          ) : null}
-          {historyOpen && revisionCount ? (
-            <UnitChangelog
-              listOnly
-              className=""
-              changelog={unit.changelog}
-              activeRevisions={changelog?.activeRevisions}
-              onSelectRevision={changelog?.onSelectRevision}
-            />
           ) : null}
         </div>
       ) : null}
