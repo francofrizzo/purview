@@ -1202,6 +1202,22 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     finish(key, root, revision, "cancelled", undefined, metrics);
     return;
   }
+  // A full analysis over the review tools that ends without one saved
+  // failed, whatever the agent said: every set_analysis it sent was refused,
+  // or it never sent one.
+  if (ok && !incremental && harness.manifest.reviewTools) {
+    const since = new Date(wallStart).toISOString();
+    let saved = true;
+    try {
+      saved = readEvents(key, root).some((e) => e.type === "analysis-set" && e.revision === revision && e.ts >= since);
+    } catch {
+      /* an unreadable log says nothing either way */
+    }
+    if (!saved) {
+      ok = false;
+      error = "The run ended without saving an analysis";
+    }
+  }
   finish(
     key,
     root,

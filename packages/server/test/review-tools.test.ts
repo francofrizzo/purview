@@ -89,6 +89,15 @@ it("saves concepts and file notes through the tools, and a refresh redraws them 
   ops.revoke(); fresh.revoke();
 });
 
+it("tells the agent what core refused in a save, so it can repair the payload", async () => {
+  const ops = createReviewOperations(request("analysis"), "test");
+  const partial = { ...analysis(), units: [{ ...analysis().units[0], hunks: hunkIds.slice(1) }] };
+  await expect(ops.execute("set_analysis", partial)).rejects.toMatchObject({
+    code: "invalid_payload", reviewOperation: true, message: expect.stringContaining(hunkIds[0]),
+  });
+  ops.revoke();
+});
+
 it("keeps the analysis it replaces out of an initial run's sight, so from scratch never copies it back", async () => {
   const concepts = [{ term: "Foo", means: "What the module exports.", aka: ["foo"] }];
   await createReviewOperations(request("analysis"), "test").execute("set_analysis", { ...analysis(), concepts });

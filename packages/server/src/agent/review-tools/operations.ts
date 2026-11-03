@@ -51,6 +51,23 @@ function failure(code: string, message: string): never {
   throw Object.assign(new Error(message), { code, reviewOperation: true });
 }
 
+/**
+ * A core write, with its refusal passed back to the agent: core rejects a
+ * payload with a plain Error that says what to repair (the hunks a coverage
+ * check misses, an unknown unit), and the agent can only fix what it is told.
+ * A system error (it carries an errno code such as ENOENT, and may name host
+ * paths) stays hidden.
+ */
+function validated<T>(write: () => T): T {
+  try {
+    return write();
+  } catch (error) {
+    const e = error as { code?: unknown; reviewOperation?: boolean };
+    if (!(error instanceof Error) || e.reviewOperation || typeof e.code === "string") throw error;
+    failure("invalid_payload", error.message);
+  }
+}
+
 function page<T>(name: string, args: PageArgs, rows: T[]) {
   const { cursor, limit, ...filters } = args;
   const snapshot = createHash("sha256").update(JSON.stringify({ name, filters, rows })).digest("hex");
@@ -216,19 +233,19 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
 
   if (request.task.kind === "analysis") {
     if (context.analysisMode === "initial") add("set_analysis", "Save a complete analysis; core validates coverage, hunk ownership and findings. Evidence max 200 chars; finding text max 300.", core.AnalysisSchema,
-      args => { const result = core.setAnalysis(key, args, {}, root); return { coverage: result.coverage, remaining: core.remainingWorkFor(key, root) }; }, false);
+      args => { const result = validated(() => core.setAnalysis(key, args, {}, root)); return { coverage: result.coverage, remaining: core.remainingWorkFor(key, root) }; }, false);
     else if (context.analysisMode === "incremental") {
       add("patch_units", "Atomically apply unit patches. Existing units accept partial fields; new units need full shape. changelogEntry records this revision's change. Evidence max 200 chars; finding text max 300.", z.object({
         units: z.array(z.object({ id: z.string().min(1), patch: core.ReviewUnitPatchSchema }).strict()).min(1).max(100),
       }).strict(), args => {
-        const result = core.setUnits(key, args.units.map(({ id, patch }) => ({ unitId: id, payload: patch })), root);
+        const result = validated(() => core.setUnits(key, args.units.map(({ id, patch }) => ({ unitId: id, payload: patch })), root));
         return { unitIds: result.unitIds, warnings: result.warnings, remaining: core.remainingWorkFor(key, root) };
       }, false);
       add("set_shape", "Replace the concepts or the file notes without re-sending the analysis. A key present replaces that view whole; null drops it; an absent key leaves it.", core.ShapeSchema, args => {
-        const state = core.setShape(key, args, root);
+        const state = validated(() => core.setShape(key, args, root));
         return { concepts: state.concepts?.length ?? 0, fileNotes: Object.keys(state.fileNotes ?? {}).length };
       }, false);
-      add("set_revision_summary", "Save a nonempty summary of what this revision changed.", z.object({ text: z.string().min(1) }).strict(), args => core.setRevisionSummary(key, args.text, revision, root), false);
+      add("set_revision_summary", "Save a nonempty summary of what this revision changed.", z.object({ text: z.string().min(1) }).strict(), args => validated(() => core.setRevisionSummary(key, args.text, revision, root)), false);
     } else throw new Error("Analysis mode required");
   } else {
     // The running server remains the only comment writer: retain anchoring,
