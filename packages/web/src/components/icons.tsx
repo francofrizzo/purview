@@ -38,6 +38,7 @@ import {
   IconFile as TablerFile,
   IconFilter as TablerFilter,
   IconFolder as TablerFolder,
+  IconSelector,
   IconHistory as TablerHistory,
   IconKey as TablerKey,
   IconLayoutColumns,
@@ -271,4 +272,6 @@ export const IconTag = wrap(TablerTag);
 /** Angle brackets — open the code in an editor. */
 export const IconCode = wrap(TablerCode);
 export const IconUnit = wrap(IconStack2);
+/** Up-and-down chevrons: open every hidden line of a gap in the diff. */
+export const IconUnfold = wrap(IconSelector);
 export const IconConcept = wrap(IconBook2);

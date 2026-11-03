@@ -93,6 +93,8 @@ import {
   IconCopy,
   IconQuote,
   IconHistory,
+  IconCaret,
+  IconUnfold,
 } from "./icons";
 
 export interface HunkEntry {
@@ -2842,7 +2844,7 @@ export function DiffPane({
       return (
         <div
           data-testid="gap-elsewhere"
-          className="flex items-center gap-2 border-y px-3 py-0.5 font-mono text-2xs"
+          className="flex items-center gap-2 border-y px-3 py-0.5 text-2xs tabular-nums"
           style={{ borderColor: "var(--border)", background: "var(--bg-inset)", color: "var(--fg-faint)" }}
           data-tip={
             row.where === "hidden"
@@ -2850,9 +2852,8 @@ export function DiffPane({
               : `These lines changed too; their hunk is shown ${row.where} in this view`
           }
         >
-          <span aria-hidden>⋯</span>
           <span>
-            lines {row.from}–{row.to} changed · {row.where === "hidden" ? "not shown here" : `shown ${row.where}`}
+            Lines {row.from}–{row.to} changed · {row.where === "hidden" ? "not shown here" : `shown ${row.where}`}
           </span>
         </div>
       );
@@ -2895,7 +2896,7 @@ export function DiffPane({
             onClick={() => hideContext(row.gapKey, row.side)}
           >
             {/* toward the hunk the run grew out of */}
-            <span aria-hidden>{row.belowHunk ? "↑" : "↓"}</span>
+            <IconCaret up={row.belowHunk} width={11} height={11} aria-hidden />
             hide {row.runLength}
           </button>
         </div>
@@ -2912,10 +2913,10 @@ export function DiffPane({
     const failed = f?.status === "error" ? f.message : null;
     // Short gaps open in one go; long ones step by EXPAND_STEP from either end.
     const whole = hidden !== null && hidden <= EXPAND_STEP;
-    const button = (label: string, title: string, from: "top" | "bottom" | "all", testId: string) => (
+    const button = (label: ReactNode, title: string, from: "top" | "bottom" | "all", testId: string) => (
       <button
         type="button"
-        className="rounded px-1.5 py-px transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
+        className="inline-flex items-center rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
         style={{ color: "var(--fg-muted)" }}
         data-tip={title}
         aria-label={title}
@@ -2929,18 +2930,18 @@ export function DiffPane({
     return (
       <div
         data-testid={`gap-${gap.key}`}
-        className="flex items-center gap-1 border-y px-2 py-0.5 font-mono text-2xs"
+        className="flex items-center gap-1 border-y px-2 py-0.5 text-2xs tabular-nums"
         style={{ borderColor: "var(--border)", background: "var(--bg-inset)", color: "var(--fg-faint)" }}
       >
         {whole ? (
-          button("↕", `Show the ${hidden} hidden line${hidden === 1 ? "" : "s"}`, "all", "gap-all")
+          button(<IconUnfold width={13} height={13} />, `Show the ${hidden} hidden line${hidden === 1 ? "" : "s"}`, "all", "gap-all")
         ) : (
           <>
             {gap.prevHunkId !== null
-              ? button("↓", `Show ${EXPAND_STEP} more lines below the hunk above`, "top", "gap-down")
+              ? button(<IconCaret width={13} height={13} />, `Show ${EXPAND_STEP} more lines below the hunk above`, "top", "gap-down")
               : null}
             {gap.nextHunkId !== null
-              ? button("↑", `Show ${EXPAND_STEP} more lines above the hunk below`, "bottom", "gap-up")
+              ? button(<IconCaret up width={13} height={13} />, `Show ${EXPAND_STEP} more lines above the hunk below`, "bottom", "gap-up")
               : null}
           </>
         )}
