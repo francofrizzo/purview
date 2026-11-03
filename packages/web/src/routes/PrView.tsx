@@ -2210,7 +2210,6 @@ export function PrView() {
 
         {dock ? (
           <RightDock
-            meetsCode={!overview}
             onPopOutChat={popOutChat}
             chatFloating={chatFloating}
             tab={dock}

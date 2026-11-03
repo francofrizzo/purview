@@ -35,5 +35,9 @@ describe("describeArgs", () => {
     expect(describeArgs({ cursor: "x" })).toBe("");
     expect(describeArgs(undefined)).toBe("");
   });
+  it("names object items, or counts them, instead of [object Object]", () => {
+    expect(describeArgs({ units: [{ id: "u1", title: "Charge path" }, { id: "u2" }] })).toBe("Charge path, u2");
+    expect(describeArgs({ patches: [{ op: "move" }, { op: "drop" }] })).toBe("2 patches");
+  });
   it("caps the line", () => expect(describeArgs({ patterns: ["x".repeat(300)] }).length).toBe(200));
 });

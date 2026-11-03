@@ -13,6 +13,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **Toasts for results.** Refresh, sync, import and share results show at the bottom of the page and fade. Errors stay until closed.
 - **Archive returns home.** Archiving from a PR's ⋯ menu takes you to the home page.
 - **Fix:** your own PRs no longer open with comments going to GitHub, and the audience switch no longer flips back after a moment.
+- **Fix:** the analysis progress line names the units being patched instead of showing "[object Object]".
 - **Fix:** restarting Purview mid-analysis no longer leaves new hunks outside any unit.
 
 ## 2026.11.2.2

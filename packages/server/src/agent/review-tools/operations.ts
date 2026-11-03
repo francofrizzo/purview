@@ -8,6 +8,15 @@ import { readThreadsCache } from "../../github-threads.js";
 import { agentChangeRefusal, readComments } from "../../comments.js";
 import type { AgentAction, AgentRunRequest } from "../types.js";
 
+/** An object argument's name for the reader: its title, id, path or term. */
+function itemName(item: object): string {
+  for (const key of ["title", "id", "path", "term", "name"]) {
+    const v = (item as Record<string, unknown>)[key];
+    if (typeof v === "string" && v) return v;
+  }
+  return "";
+}
+
 /**
  * The one-line detail of a tool call: its arguments, minus paging, in the
  * order given. "src/billing/charge.ts:120", "unit:core, hunk-3", "retry, backoff".
@@ -21,7 +30,11 @@ export function describeArgs(args: unknown): string {
       const start = (args as Record<string, unknown>).start;
       parts.push(typeof start === "number" && start > 1 ? `${v}:${start}` : v);
     } else if (k === "start") continue;
-    else if (Array.isArray(v)) parts.push(v.map(String).join(", "));
+    else if (Array.isArray(v)) {
+      // Objects (a patch's units) go by their name, or are counted.
+      const names = v.map((item) => (item && typeof item === "object" ? itemName(item) : String(item))).filter(Boolean);
+      parts.push(names.length === v.length ? names.join(", ") : `${v.length} ${k}`);
+    }
     else if (typeof v === "string" || typeof v === "number") parts.push(String(v));
     else if (typeof v === "boolean") { if (v) parts.push(k); }
   }
