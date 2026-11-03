@@ -77,16 +77,30 @@ it("saves concepts and file notes through the tools, and a refresh redraws them 
   const concepts = [{ term: "Foo", means: "What the module exports.", aka: ["foo"] }];
   await ops.execute("set_analysis", { ...analysis(), concepts, fileNotes: { "src/foo.ts": "Changes the first value." } });
   expect(loadState(key, root)).toMatchObject({ concepts, fileNotes: { "src/foo.ts": "Changes the first value." } });
-  expect(await ops.execute("review_context", {})).toMatchObject({ concepts });
   await expect(ops.execute("set_shape", { concepts: null })).rejects.toMatchObject({ code: "operation_not_granted" });
 
   nextRevision();
   const fresh = createReviewOperations({ ...request("analysis"), review: { ...request("analysis").review!, revision: 2, analysisMode: "incremental" } }, "test");
+  expect(await fresh.execute("review_context", {})).toMatchObject({ concepts });
   await fresh.execute("set_shape", { concepts: null });
   const state = loadState(key, root);
   expect(state.concepts).toBeUndefined();
   expect(state.fileNotes).toEqual({ "src/foo.ts": "Changes the first value." });
   ops.revoke(); fresh.revoke();
+});
+
+it("keeps the analysis it replaces out of an initial run's sight, so from scratch never copies it back", async () => {
+  const concepts = [{ term: "Foo", means: "What the module exports.", aka: ["foo"] }];
+  await createReviewOperations(request("analysis"), "test").execute("set_analysis", { ...analysis(), concepts });
+  const scratch = createReviewOperations(request("analysis"), "test");
+  const context = await scratch.execute("review_context", {}) as Record<string, unknown>;
+  expect(context.summary).toBeUndefined();
+  expect(context.concepts).toBeUndefined();
+  expect(await scratch.execute("review_units", {})).toMatchObject({ items: [] });
+  await expect(scratch.execute("review_diff", { selectors: ["unit:foo"] })).rejects.toMatchObject({ code: "unknown_selector" });
+  const refresh = createReviewOperations({ ...request("analysis"), review: { ...request("analysis").review!, analysisMode: "incremental" } }, "test");
+  expect(await refresh.execute("review_units", {})).toMatchObject({ items: [{ id: "foo" }] });
+  scratch.revoke(); refresh.revoke();
 });
 
 it("offers set_shape over MCP to a refresh, with both views nullable", async () => {

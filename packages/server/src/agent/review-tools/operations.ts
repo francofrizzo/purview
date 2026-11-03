@@ -95,6 +95,11 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   let active = true;
   let queue: Promise<unknown> = Promise.resolve();
   const current = () => core.loadState(key, root);
+  // An initial run writes the analysis whole, from scratch included: the one
+  // it replaces stays out of sight, or the run copies it back. Purview's own
+  // generated unit and the reader's corrections still show.
+  const fromScratch = context.analysisMode === "initial";
+  const priorUnits = () => current().units.filter(u => !fromScratch || core.isGeneratedUnit(u));
   function check() {
     if (!active) failure("revoked", "This run is no longer active.");
     if (current().currentRevision !== revision) failure("stale_revision", "The PR revision changed; start a new run.");
@@ -131,7 +136,8 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
     const files = core.readFilesJson(key, revision, root).files;
     const meta = core.readMeta(key, root);
     return { pr: { key, title: meta.title, url: meta.url }, revision, task: request.task.kind, analysisMode: context.analysisMode,
-      checkoutAvailable: !!checkout, summary: state.summary, concepts: state.concepts, fileNotes: state.fileNotes,
+      checkoutAvailable: !!checkout,
+      ...(fromScratch ? {} : { summary: state.summary, concepts: state.concepts, fileNotes: state.fileNotes }),
       generatedFiles: files.filter(f => f.generated).map(f => f.path),
       corrections: state.corrections,
       files: page("review_context", args, files.filter(f => !f.generated).flatMap(f => f.hunks.map(h => ({
@@ -147,7 +153,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
     const files = core.readFilesJson(key, args.revision ?? revision, root);
     const selectors = args.selectors.flatMap(selector => {
       if (!selector.startsWith("unit:")) return [selector];
-      const unit = current().units.find(u => u.id === selector.slice(5));
+      const unit = priorUnits().find(u => u.id === selector.slice(5));
       if (!unit) failure("unknown_selector", `Unknown unit: ${selector}`);
       return unit.hunks.map(h => h.id);
     });
@@ -160,14 +166,14 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   add("review_units", "Current units. For a large unit, select its id and section hunks or findings; summary omits those arrays.", z.object({
     id: z.string().optional(), section: z.enum(["all", "summary", "hunks", "findings"]).default("all"), ...pageArgs,
   }).strict(), args => {
-    const units = current().units.filter(u => !args.id || u.id === args.id);
+    const units = priorUnits().filter(u => !args.id || u.id === args.id);
     if (args.section === "hunks") return page("review_units", args, units.flatMap(u => u.hunks.map(h => ({ unitId: u.id, ...h }))));
     if (args.section === "findings") return page("review_units", args, units.flatMap(u => (u.findings ?? []).map(f => ({ unitId: u.id, ...f }))));
     if (args.section === "summary") return page("review_units", args, units.map(({ hunks, findings, ...u }) => ({ ...u, hunkCount: hunks.length })));
     return page("review_units", args, units);
   });
   add("review_changes", "Migration entries and pending incremental work; use revision_diff for bodies across revisions.", z.object(pageArgs).strict(), args => ({
-    remaining: core.remainingWorkFor(key, root), ...page("review_changes", args, current().lastMigration?.entries ?? []),
+    remaining: core.remainingWorkFor(key, root), ...page("review_changes", args, fromScratch ? [] : current().lastMigration?.entries ?? []),
   }));
   add("list_paths", "Tracked checkout paths, optionally filtered by a glob.", z.object({ include: z.string().default("**"), ...pageArgs }).strict(), args =>
     page("list_paths", args, paths().filter(p => core.globToRegExp(args.include).test(p))));

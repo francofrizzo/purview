@@ -9,6 +9,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 - **Import changes skipped on their own.** A hunk that only changes imports in Go, TS/JS or Python shows as skippable, labelled "only imports", once an analysis is saved.
 - **Unit link on lines changed elsewhere.** A "Lines N–M changed" row between hunks names the unit those lines belong to; click it to read them there.
+- **Fix:** Analyze from scratch no longer comes back with the same units, skips and labels as the analysis it replaced.
 
 ## 2026.11.2.3
 
