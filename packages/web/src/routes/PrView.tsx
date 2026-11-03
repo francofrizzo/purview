@@ -2017,25 +2017,15 @@ export function PrView() {
               ref={setHeaderEl}
               data-testid="unit-header"
               data-collapsed={headerCollapsed ? "true" : "false"}
-              className={`flex flex-none items-center gap-2 px-3 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
+              className={`flex flex-none items-center gap-2 pl-2 pr-3 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
                 headerCollapsed ? "py-1" : "py-1.5"
               }`}
             >
-              <button
-                type="button"
-                className="flex-none rounded p-0.5 hover:bg-[var(--bg-hover)]"
-                style={{ color: "var(--fg-faint)" }}
-                data-tip="Open the sidebar"
-                data-tip-key="b"
-                aria-label="Open the sidebar"
-                onClick={openSidebar}
-              >
-                <IconChevron width={11} height={11} />
-              </button>
-              <span className="flex-none text-xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+              {/* As wide as the sidebar's number box, so the brief lines up under the title. */}
+              <span className="w-[18px] flex-none text-center text-xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
                 {unitNumbers.get(selectedUnit.id) ?? ""}
               </span>
-              <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold" data-tip={selectedUnit.title}>
+              <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold" data-tip={selectedUnit.title}>
                 <InlineMarkdown text={selectedUnit.title} />
               </h2>
               {progress ? (
