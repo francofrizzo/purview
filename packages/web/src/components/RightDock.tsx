@@ -34,6 +34,7 @@ export function RightDock({
   onPopOutChat,
   chatFloating = false,
   badges = {},
+  meetsCode = true,
   children,
 }: {
   tab: DockTab;
@@ -44,6 +45,8 @@ export function RightDock({
   /** the chat is out in its own window: its tab brings that window up */
   chatFloating?: boolean;
   badges?: DockBadges;
+  /** the code runs to its bottom-left corner, squared to meet it; the overview does not */
+  meetsCode?: boolean;
   children: ReactNode;
 }) {
   const { settings, update } = useSettings();
@@ -67,7 +70,7 @@ export function RightDock({
 
   return (
     <aside
-      className="pane relative m-[7px] ml-0 rounded-bl-none flex flex-none flex-col overflow-hidden"
+      className={`pane relative m-[7px] ml-0 ${meetsCode ? "rounded-bl-none" : ""} flex flex-none flex-col overflow-hidden`}
       data-testid="right-dock"
       data-tab={tab}
       style={{ width }}
