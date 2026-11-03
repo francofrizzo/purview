@@ -918,6 +918,14 @@ export function PrView() {
     };
   }, [tab, units]);
 
+  const unitOfHunk = useCallback(
+    (hunkId: string) => {
+      const unit = unitForHunk(units, hunkId);
+      return unit ? { id: unit.id, title: unit.title, attention: unit.attention } : null;
+    },
+    [units],
+  );
+
   /** Clicking that unit label: jump to the units tab, same unit, same hunk —
    *  the same "switch tab, keep the hunk in view" flow as jumpToDiffHunk. */
   const onHunkUnitClick = useCallback((unitId: string, hunkId: string) => {
@@ -2190,6 +2198,7 @@ export function PrView() {
               labels={labels}
               highlight={tab === "units" ? highlight : null}
               unitForHunkId={unitForHunkId}
+              unitOfHunk={unitOfHunk}
               onUnitClick={onHunkUnitClick}
               renderFileMenu={generatedMenuFor}
               showFileRows={tab === "units"}

@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Unit link on lines changed elsewhere.** A "Lines N–M changed" row between hunks names the unit those lines belong to; click it to read them there.
+
 ## 2026.11.2.3
 
 - **Request reviewers on your PRs.** The reviewer avatars in the PR header, or Reviewers in the Review panel, ask someone, ask again or stop asking.

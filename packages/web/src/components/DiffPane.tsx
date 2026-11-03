@@ -159,7 +159,16 @@ type FlatRow =
    * else (earlier in this unit, or in another one), so they are not "hidden"
    * and no gap may pretend otherwise.
    */
-  | { type: "elsewhere"; key: string; hunkId: string; from: number; to: number; where: "above" | "below" | "hidden" }
+  | {
+      type: "elsewhere";
+      key: string;
+      hunkId: string;
+      /** the hunks those lines belong to, for naming their units */
+      hunkIds: string[];
+      from: number;
+      to: number;
+      where: "above" | "below" | "hidden";
+    }
   /** the comment being written, under the line (or file header) it is about */
   | { type: "compose"; key: string; hunkId: string; indent: string | number }
   | {
@@ -311,6 +320,8 @@ export interface DiffPaneProps {
   unitForHunkId?: (hunkId: string) => { id: string; title: string; attention: Attention } | null;
   /** Clicking that label: host switches to the units tab, same unit, same hunk. */
   onUnitClick?: (unitId: string, hunkId: string) => void;
+  /** Any tab: a hunk's unit, to link the lines this view leaves out to where they are read. */
+  unitOfHunk?: (hunkId: string) => { id: string; title: string; attention: Attention } | null;
   /**
    * The unit changelog's "highlight changes from rN (+ rM…)": per current
    * hunk id, the lines those revisions introduced. Marked rows get the
@@ -405,6 +416,7 @@ export function DiffPane({
   labels,
   unitForHunkId,
   onUnitClick,
+  unitOfHunk,
   highlight = null,
   renderFileMenu,
 }: DiffPaneProps) {
@@ -1236,16 +1248,23 @@ export function DiffPane({
         const from = below.to + 1;
         const to = above ? above.from - 1 : next.hunk.newStart - 1;
         if (to < from) return;
-        const at = file.hunks
-          .filter((h) => h.newStart >= from && h.newStart <= to)
-          .map((h) => shownAt.get(h.id));
+        const between = file.hunks.filter((h) => h.newStart >= from && h.newStart <= to);
+        const at = between.map((h) => shownAt.get(h.id));
         const where =
           at.length === 0 || at.some((i) => i === undefined)
             ? "hidden"
             : at.every((i) => i! < entryIdx)
               ? "above"
               : "below";
-        out.push({ type: "elsewhere", key: `e:${section}:${file.path}:${hunk.id}`, hunkId: hunk.id, from, to, where });
+        out.push({
+          type: "elsewhere",
+          key: `e:${section}:${file.path}:${hunk.id}`,
+          hunkId: hunk.id,
+          hunkIds: between.map((h) => h.id),
+          from,
+          to,
+          where,
+        });
       };
       if (file.path !== lastFile) {
         section++;
@@ -2853,8 +2872,10 @@ export function DiffPane({
           }
         >
           <span>
-            Lines {row.from}–{row.to} changed · {row.where === "hidden" ? "not shown here" : `shown ${row.where}`}
+            Lines {row.from}–{row.to} changed ·{" "}
+            {row.where !== "hidden" ? `shown ${row.where}` : null}
           </span>
+          {row.where === "hidden" ? elsewhereUnits(row.hunkIds) : null}
         </div>
       );
     }
@@ -2903,6 +2924,35 @@ export function DiffPane({
       );
     }
     return renderDiffRow(row);
+  }
+
+  /** The units holding lines this view leaves out, each a link to read them there. */
+  function elsewhereUnits(hunkIds: string[]) {
+    const units = new Map<string, { id: string; title: string; attention: Attention; hunkId: string }>();
+    for (const id of hunkIds) {
+      const unit = unitOfHunk?.(id);
+      if (unit && !units.has(unit.id)) units.set(unit.id, { ...unit, hunkId: id });
+    }
+    if (!units.size) return <span>not in any unit</span>;
+    return (
+      <span className="flex min-w-0 items-center gap-2">
+        <span className="flex-none">in</span>
+        {[...units.values()].map((unit) => (
+          <button
+            key={unit.id}
+            type="button"
+            data-testid={`gap-elsewhere-unit-${unit.id}`}
+            className="flex min-w-0 items-center gap-1.5 hover:underline"
+            style={{ color: "var(--accent)" }}
+            data-tip={`Open ${unit.title}`}
+            onClick={() => onUnitClick?.(unit.id, unit.hunkId)}
+          >
+            <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: attentionColor(unit.attention) }} />
+            <span className="truncate">{unit.title}</span>
+          </button>
+        ))}
+      </span>
+    );
   }
 
   /** The expand-context control standing in for a run of unchanged lines. */
