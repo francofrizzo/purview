@@ -26,32 +26,35 @@ export function DiffSearchBar({
 
   return (
     <div
-      className="flex flex-none items-center gap-2 border-b px-3 py-1.5"
+      // Wraps in a narrow diff pane rather than running under the panel beside it.
+      className="flex flex-none flex-wrap items-center gap-x-2 gap-y-1 border-b px-3 py-1.5"
       data-testid="diff-search"
       style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
     >
-      <IconSearch width={12} height={12} style={{ color: "var(--fg-faint)", flex: "none" }} />
-      <input
-        ref={inputRef}
-        autoFocus
-        type="text"
-        className="input w-64 flex-none px-2 py-0.5 text-xs"
-        data-testid="search-input"
-        placeholder="find in diff"
-        spellCheck={false}
-        value={search.query}
-        onChange={(e) => search.setQuery(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            if (e.shiftKey) search.prev();
-            else search.next();
-          } else if (e.key === "Escape") {
-            e.preventDefault();
-            search.close();
-          }
-        }}
-      />
+      <span className="flex min-w-0 items-center gap-2">
+        <IconSearch width={12} height={12} style={{ color: "var(--fg-faint)", flex: "none" }} />
+        <input
+          ref={inputRef}
+          autoFocus
+          type="text"
+          className="input w-64 min-w-[8rem] shrink px-2 py-0.5 text-xs"
+          data-testid="search-input"
+          placeholder="find in diff"
+          spellCheck={false}
+          value={search.query}
+          onChange={(e) => search.setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (e.shiftKey) search.prev();
+              else search.next();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              search.close();
+            }
+          }}
+        />
+      </span>
       <span
         className="w-20 flex-none tabular-nums text-2xs"
         data-testid="search-count"

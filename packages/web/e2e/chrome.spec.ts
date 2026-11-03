@@ -237,3 +237,17 @@ test("a hunk header shows its range and its signature, not only on hover", async
   const header = page.locator('[data-testid^="hunk-header-"]').first();
   await expect(header).toContainText(/@@ -\d+,\d+ \+\d+,\d+ @@/);
 });
+
+test("the find bar wraps in a narrow diff pane instead of running under the panel beside it", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await openPr(page);
+  await page.getByTestId("topbar-finish-review").click();
+  await page.keyboard.press("/");
+  const bar = page.getByTestId("diff-search");
+  await expect(bar).toBeVisible();
+  const pane = (await scroller(page).boundingBox())!;
+  for (const id of ["search-lines", "search-close"]) {
+    const box = (await page.getByTestId(id).boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width + 1);
+  }
+});
