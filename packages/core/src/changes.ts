@@ -254,6 +254,30 @@ export interface RenderedChanges {
   toc: { label: string; from: number; to: number }[];
 }
 
+/**
+ * The units this revision did not rework, with what they say: written for an
+ * earlier revision, so a change elsewhere can make a line of one untrue (a
+ * number, a rule, code a warning cites). Listed for the run to reread, not to
+ * patch by default.
+ */
+function otherUnits(state: Pick<State, "units">, changes: ChangedUnit[], revision: number): string[] {
+  if (revision < 2) return [];
+  const changed = new Set(changes.map((c) => c.unit.id));
+  const rest = analysisUnits(state).filter((u) => !changed.has(u.id));
+  if (rest.length === 0) return [];
+  return [
+    `Other units, written for an earlier revision. Reread them: patch only a field r${revision} made untrue, with no changelogEntry.`,
+    ...rest.flatMap((u) => [
+      `- ${u.id} — ${u.title}`,
+      `    summary: ${u.summary}`,
+      ...(u.attentionWhy ? [`    attentionWhy: ${u.attentionWhy}`] : []),
+      ...(u.findings ?? [])
+        .filter((f) => f.severity === "warning")
+        .map((f) => `    ! ${f.text}  [${f.evidence}]`),
+    ]),
+  ];
+}
+
 /** What `reviewer-state changes` prints: one block per changed unit. */
 export function renderChanges(input: RenderChangesInput): RenderedChanges {
   const { state, report, revision } = input;
@@ -288,10 +312,12 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
       ? `Revision ${revision} has no summary yet: after the patches, record one with \`set-revision-summary\` (one or two sentences on what r${revision} changed across the PR).`
       : undefined;
 
+  const others = otherUnits(state, changes, revision);
+
   if (changes.length === 0 && priorShare.size === 0) {
     const line = `No units changed in revision ${revision}.`;
     return {
-      body: [line, ...(missingSummary ? ["", missingSummary] : [])].join("\n") + "\n",
+      body: [line, ...(others.length ? ["", ...others] : []), ...(missingSummary ? ["", missingSummary] : [])].join("\n") + "\n",
       summary: line,
       count: 0,
       toc: [],
@@ -451,6 +477,10 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
     );
   }
 
+  if (others.length > 0) {
+    toc.push({ label: "other units, to reread", from: blocks.length + 1, to: blocks.length + others.length });
+    blocks.push(...others, "");
+  }
   if (missingSummary) blocks.push(missingSummary, "");
 
   const summary =

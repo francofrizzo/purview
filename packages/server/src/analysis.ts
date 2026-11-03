@@ -289,8 +289,11 @@ export function changesBlock(cmd: string, keyStr: string): string {
     "the unit holds NOW, re-check kind/attention/riskFlags and each hunk entry's label, skip and heart (a reworked",
     "hunk's skip, label and heart line ranges are already gone, and a reworked heart's why may be stale; set them",
     "again only after reading its new body), add a `changelogEntry` about this revision's code",
-    "change, and re-verify its findings. Don't re-group a listed unit's hunks, and don't patch a unit that",
-    "is neither listed nor taking a new hunk.",
+    "change, and re-verify its findings. Don't re-group a listed unit's hunks.",
+    "OTHER UNITS: `changes` ends with the units this revision did not rework, with what they say. They were written",
+    "for an earlier revision: where this one makes a field untrue (a number, a rule, code a warning cites), patch",
+    "just that field in the same batch, with no changelogEntry; a warning that no longer holds goes by sending the",
+    "unit's `findings` without it. Leave every unit that still reads true alone.",
     `Send EVERY patch in ONE \`${cmd} set-units ${keyStr} --file <scratch>/patches.json\` call`,
     "(`addHunks`/`removeHunkIds` attach, move or re-label a hunk without resending the unit's list). It prints",
     "what is left; there is no need to run `report` afterwards.",
@@ -578,7 +581,7 @@ export function analysisPrompt(
           "to revive one with hunks that genuinely belong to that same decision.",
           "The PR summary was written for an earlier revision. If this revision makes anything it says untrue (a number, a rule, what to judge), rewrite it whole for the PR as it is now with `set-shape` (`{\"summary\": ...}`) after `set-units`, as WRITING.md says to write one; otherwise leave it.",
           state.fileNotes || state.concepts
-            ? "The PR has a shape (concepts, file notes; WRITING.md, 'The shape of the change'). Only if this revision changes something one of them shows (a new concept, a new file or a folder taking a new role), redraw that view with `set-shape` after `set-units`; otherwise leave it."
+            ? "The PR has a shape (concepts, file notes; WRITING.md, 'The shape of the change'). Only if this revision changes something one of them shows (a new concept, a new file or a folder taking a new role) or makes what one says untrue, redraw that view with `set-shape` after `set-units`; otherwise leave it."
             : "",
         ].join(" ") +
         "\n\n" +

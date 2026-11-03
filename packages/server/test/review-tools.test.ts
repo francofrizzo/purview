@@ -274,6 +274,8 @@ it("defaults to Claude Code on the shared tools, lists Legacy beside it, and Cod
     const shared = reviewSystemPrompt(key, root, { task: "analysis", incremental: true });
     expect(shared).toContain("INCREMENTAL:");
     expect(shared).toContain("patch_units");
+    expect(shared).toContain("rewrite it whole with set_shape's summary");
+    expect(shared).toContain("patch only a field this revision made untrue");
     expect(shared).not.toContain("reviewer-state");
   } finally {
     if (previous === undefined) delete process.env.PURVIEW_EXPERIMENTAL_HARNESSES;

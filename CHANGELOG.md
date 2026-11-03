@@ -9,6 +9,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 - **Unit brief over the code.** With the sidebar folded (B), the open unit's card above the diff shows its summary, counts and findings until you scroll into the code.
 - **Fix:** after a new revision shifts unchanged code down a file, its heart marks, risk marks and warning icons no longer sit on the wrong lines.
+- **Fix:** the PR summary in the Overview no longer keeps describing an earlier revision; the analysis of a new revision rewrites what that revision made untrue.
+- **Fix:** a unit a new revision did not touch no longer keeps a summary, why or warning that revision made untrue.
 
 ## 2026.11.3.1
 

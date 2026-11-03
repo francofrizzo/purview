@@ -103,7 +103,12 @@ first three as "carried".
      Only runaway output is truncated;
    - re-verify its findings (see "What happens to findings").
 
-   Units `changes` does not list and that take no new hunk are not patched at all.
+   Units `changes` does not list and that take no new hunk keep their description, with
+   one exception: `changes` ends with them ("Other units") because they were written for
+   an earlier revision. Reread them; where this revision makes a field untrue (a number,
+   a rule, code a warning cites), patch just that field in the same batch, with no
+   `changelogEntry`. A warning that no longer holds goes by sending the unit's `findings`
+   without it. Leave every unit that still reads true alone.
 
 3. **Write every patch in one batch.** Put them all in one file (write tool, scratch
    directory — never stdin/heredoc) and run
@@ -197,7 +202,9 @@ For the skill this means: after a refresh, a unit you are patching may have lost
 it had before. Re-run the verification pass for it (checkout permitting) and send the fresh
 `findings` array in the `set-unit` patch. **Never re-assert a dropped finding from memory**
 — re-check it, or leave it off. Units you are not patching keep whatever survived; don't
-patch a unit just to restore findings on it.
+patch a unit just to restore findings on it. A kept warning can still go stale when it is
+about code outside its unit's hunks (a caller, another file) and this revision changed
+that code: `changes` lists the other units' warnings with their evidence for that reread.
 
 ## `baseOnly` revisions
 

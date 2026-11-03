@@ -526,6 +526,9 @@ describe("analysis job lifecycle", () => {
     expect(claude.promptOf(0)).toContain(`REVISION SUMMARY: after the patches land, run \`${cliCmd} set-revision-summary ${keyToString(key)} --text "<summary>"\` once`);
     expect(claude.promptOf(0)).toContain("write the revision summary (one `set-revision-summary` call) and you are done");
     expect(analysisPrompt(key, root, { incremental: false })).not.toContain("set-revision-summary");
+    // What earlier revisions wrote is reread for anything this one made untrue.
+    expect(claude.promptOf(0)).toContain("rewrite it whole for the PR as it is now with `set-shape`");
+    expect(claude.promptOf(0)).toContain("OTHER UNITS: `changes` ends with the units this revision did not rework");
   });
 
   it("analyzes from scratch on request: the first-analysis flow although units exist", async () => {

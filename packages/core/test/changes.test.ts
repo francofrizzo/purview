@@ -199,9 +199,9 @@ describe("renderChanges", () => {
   it("prints the none line when nothing changed", () => {
     const ev = rev2([]);
     const out = renderChanges({ state: fold([...base, ev]), report: reportOf(ev), revision: 2 });
-    expect(out.body).toBe(
-      "No units changed in revision 2.\n\nRevision 2 has no summary yet: after the patches, record one with `set-revision-summary` (one or two sentences on what r2 changed across the PR).\n",
-    );
+    expect(out.body).toMatch(/^No units changed in revision 2\.\n\nOther units, written for an earlier revision\. Reread them/);
+    expect(out.body).toContain("\n    summary: ");
+    expect(out.body).toMatch(/\n\nRevision 2 has no summary yet: after the patches, record one with `set-revision-summary` \(one or two sentences on what r2 changed across the PR\)\.\n$/);
     expect(out.count).toBe(0);
   });
 
