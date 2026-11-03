@@ -154,6 +154,9 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("warn-banner", "Code and prose", "warn banner (warn on warn-soft)", "warn", 3.4, ["bg-raised", "warn-soft"], "Clear this conversation? It cannot be recovered."),
     s("risk-banner", "Code and prose", "risk banner (risk on risk-soft)", "risk", 3.4, ["bg-raised", "risk-soft"], "Analysis failed: claude exited with code 3"),
     s("divider", "Code and prose", "border on bg (divider)", "border", 1.25, ["bg"], "", { kind: "swatch" }),
+    s("checkbox-on-hunk-header", "Diff rows", "viewed checkbox outline on a hunk header", "fg-muted", 3.0, ["bg", "bg-hover"], "", { kind: "swatch" }),
+    s("checkbox-on-focused-hunk-header", "Diff rows", "viewed checkbox outline on the focused hunk header", "fg-muted", 3.0, ["bg", "bg-hover", "accent-soft"], "", { kind: "swatch" }),
+    s("checkbox-some-on-focused-hunk-header", "Diff rows", "part-viewed checkbox (ok) on the focused hunk header", "ok", 3.0, ["bg", "bg-hover", "accent-soft"], "", { kind: "swatch" }),
     s("outline", "Code and prose", "border-strong on bg-raised (control outline)", "border-strong", 1.5, ["bg-raised"], "", { kind: "swatch" }),
   ];
 

@@ -424,7 +424,8 @@ export function ViewedBox({
       }}
       className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
       style={{
-        borderColor: state === "none" ? "var(--border-strong)" : "var(--ok)",
+        // A control's edge, held to 3:1 on the hunk headers it sits on (contrast.ts).
+        borderColor: state === "none" ? "var(--fg-muted)" : "var(--ok)",
         background: state === "all" ? "var(--ok)" : "transparent",
         color: state === "all" ? "var(--bg)" : "var(--ok)",
       }}

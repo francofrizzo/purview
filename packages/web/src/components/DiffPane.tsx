@@ -3071,7 +3071,7 @@ export function DiffPane({
                 }
                 className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
                 style={{
-                  borderColor: allViewed || someViewed ? "var(--ok)" : "var(--border-strong)",
+                  borderColor: allViewed || someViewed ? "var(--ok)" : "var(--fg-muted)",
                   background: allViewed ? "var(--ok)" : "transparent",
                   color: allViewed ? "var(--bg)" : "var(--ok)",
                 }}
@@ -3363,7 +3363,7 @@ export function DiffPane({
             aria-label={st.viewed ? "Mark as not viewed" : "Mark as viewed"}
             className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
             style={{
-              borderColor: st.viewed ? "var(--ok)" : "var(--border-strong)",
+              borderColor: st.viewed ? "var(--ok)" : "var(--fg-muted)",
               background: st.viewed ? "var(--ok)" : "transparent",
               color: "var(--bg)",
             }}
