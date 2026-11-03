@@ -249,7 +249,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
         const warnings = [...result.warnings, ...renameWarnings(result.state.units.filter(u => touched.has(u.id)))];
         return { unitIds: result.unitIds, warnings, remaining: core.remainingWorkFor(key, root) };
       }, false);
-      add("set_shape", "Replace the concepts or the file notes without re-sending the analysis. A key present replaces that view whole; null drops it; an absent key leaves it.", core.ShapeSchema, args => {
+      add("set_shape", "Replace the PR summary, the concepts or the file notes without re-sending the analysis. A key present replaces that view whole; null drops concepts or file notes; an absent key leaves it.", core.ShapeSchema, args => {
         const state = validated(() => core.setShape(key, args, root));
         return { concepts: state.concepts?.length ?? 0, fileNotes: Object.keys(state.fileNotes ?? {}).length };
       }, false);

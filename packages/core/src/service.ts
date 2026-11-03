@@ -762,9 +762,9 @@ function revisionPaths(key: PrKey, state: State, root: string) {
 }
 
 /**
- * `set-shape`: replace the file notes or the concepts without
+ * `set-shape`: replace the summary, the file notes or the concepts without
  * re-sending the analysis (a refresh redraws them this way). Each key present
- * replaces that view; `null` drops it.
+ * replaces that view; `null` drops a view.
  */
 export function setShape(key: PrKey, input: unknown, root = stateRoot()): State {
   const shape = ShapeSchema.parse(input);

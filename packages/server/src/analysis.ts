@@ -576,6 +576,7 @@ export function analysisPrompt(
           "patch just the affected units, all in one `set-units` batch. Never regenerate the whole analysis",
           "with set-analysis on a refresh. Husks (\"Removed units\"; `~` in `units`) are not patched except",
           "to revive one with hunks that genuinely belong to that same decision.",
+          "The PR summary was written for an earlier revision. If this revision makes anything it says untrue (a number, a rule, what to judge), rewrite it whole for the PR as it is now with `set-shape` (`{\"summary\": ...}`) after `set-units`, as WRITING.md says to write one; otherwise leave it.",
           state.fileNotes || state.concepts
             ? "The PR has a shape (concepts, file notes; WRITING.md, 'The shape of the change'). Only if this revision changes something one of them shows (a new concept, a new file or a folder taking a new role), redraw that view with `set-shape` after `set-units`; otherwise leave it."
             : "",

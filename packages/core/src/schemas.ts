@@ -474,8 +474,12 @@ export type Concept = z.infer<typeof ConceptSchema>;
 export const MAX_CONCEPTS = 8;
 export const ConceptsSchema = z.array(ConceptSchema).min(1).max(MAX_CONCEPTS);
 
-/** Payload of `set-shape`: each key present replaces that view; `null` drops it. */
+/**
+ * Payload of `set-shape`: each key present replaces that view; `null` drops
+ * it. `summary` rewrites the PR summary a later revision made untrue.
+ */
 export const ShapeSchema = z.object({
+  summary: z.string().min(1).optional(),
   fileNotes: FileNotesSchema.nullable().optional(),
   concepts: ConceptsSchema.nullable().optional(),
 });
@@ -1214,14 +1218,16 @@ export const AnalysisSetEventSchema = z.object({
 });
 
 /**
- * `set-shape`: the file notes or the concepts, without re-sending the
- * analysis (how a refresh redraws them). A key that is present replaces that
- * view whole; `null` drops it; an absent key leaves it as it was.
+ * `set-shape`: the summary, the file notes or the concepts, without
+ * re-sending the analysis (how a refresh redraws them). A key that is present
+ * replaces that view whole; `null` drops it; an absent key leaves it as it
+ * was. `summary` is additive and optional: older events parse unchanged.
  */
 export const ShapeSetEventSchema = z.object({
   ...base,
   type: z.literal("shape-set"),
   revision: z.number().int(),
+  summary: z.string().min(1).optional(),
   fileNotes: FileNotesSchema.nullable().optional(),
   concepts: ConceptsSchema.nullable().optional(),
 });

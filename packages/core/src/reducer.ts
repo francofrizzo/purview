@@ -187,9 +187,10 @@ function fromAnalysis<T extends { origin?: unknown }>(unit: T): Omit<T, "origin"
  */
 function applyShape(
   state: State,
-  shape: { fileNotes?: FileNotes | null; concepts?: Concept[] | null },
+  shape: { summary?: string; fileNotes?: FileNotes | null; concepts?: Concept[] | null },
   revision: number,
 ): void {
+  if (shape.summary !== undefined) state.summary = shape.summary;
   if (shape.fileNotes !== undefined) {
     if (shape.fileNotes) state.fileNotes = shape.fileNotes;
     else delete state.fileNotes;

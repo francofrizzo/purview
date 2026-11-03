@@ -158,6 +158,12 @@ first three as "carried".
    same revision; `changes` and `report` say when the revision has none. Revision 1 takes
    none (the PR summary covers it).
 
+   Then reread the PR `summary` (`report` prints it). It was written for an earlier
+   revision; if this one makes anything it says untrue (a number, a rule, what to judge),
+   rewrite it whole for the PR as it is now, as WRITING.md says to write one:
+   `reviewer-state set-shape <key> --file <scratch>/shape.json` with `{"summary": "…"}`.
+   Otherwise leave it.
+
 5. **Husks.** Units listed under "Removed units" in `report` (marked `~` in `units`;
    `removedAtRevision` in state) are husks of decisions the PR dropped: don't patch them,
    except to revive one (give it hunks) when new hunks genuinely belong to that same

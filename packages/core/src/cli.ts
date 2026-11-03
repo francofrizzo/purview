@@ -566,9 +566,9 @@ program
 program
   .command("set-shape")
   .argument("<key>")
-  .requiredOption("--file <json>", 'JSON file with {fileNotes?, concepts?} ("-" for stdin)')
+  .requiredOption("--file <json>", 'JSON file with {summary?, fileNotes?, concepts?} ("-" for stdin)')
   .description(
-    "replace the file notes or the concepts (a key present replaces that view, null drops it); set-analysis takes them too",
+    "replace the summary, the file notes or the concepts (a key present replaces that view, null drops a view); set-analysis takes them too",
   )
   .action((keyArg: string, opts: { file: string }) => {
     const key = requireExistingKey(keyArg);

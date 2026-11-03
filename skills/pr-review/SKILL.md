@@ -415,7 +415,8 @@ pass (step 5). Leave it off entirely here.
 
 `concepts` and `fileNotes` are two top-level fields; `WRITING.md` says what goes in each.
 On a refresh, `set-shape` replaces either one (`{"concepts": …}`, `{"fileNotes": …}`;
-`null` drops it); see the run prompt for when to redraw them.
+`null` drops it), or the overall `summary` (`{"summary": …}`); see the run prompt for
+when to redraw them.
 
 Every prose field — each unit's `summary`, `attentionWhy`, a hunk's `label` and heart
 `why`, and later the findings — is rendered as markdown (the overall `summary`, the
@@ -604,9 +605,9 @@ units, so batch its reads and its re-verification the same way.
 - `reviewer-state set-unit <key> --id <unitId> --file patch.json` /
   `reviewer-state set-units <key> --file patches.json` — patch one unit, or several in one
   all-or-nothing batch; see MIGRATION-NOTES.md.
-- `reviewer-state set-shape <key> --file shape.json` — replace the file notes or the
-  concepts (`{"fileNotes": …, "concepts": …}`; each key present replaces that view, `null`
-  drops it). Validated like the same fields in `set-analysis`.
+- `reviewer-state set-shape <key> --file shape.json` — replace the summary, the file notes
+  or the concepts (`{"summary": …, "fileNotes": …, "concepts": …}`; each key present
+  replaces that view, `null` drops the notes or the concepts). Validated like the same fields in `set-analysis`.
 - `reviewer-state report <key>` — human report: PR header, revision + shas, summary,
   migration report, hunk/file progress, per-unit progress bars, a "Needs classification"
   list of hunks in no unit, and recent archived hunks. Use it to verify your analysis

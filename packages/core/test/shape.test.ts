@@ -145,6 +145,15 @@ describe("the shape through the service", () => {
     expect(state.shapeRevision).toBeUndefined();
   });
 
+  it("set-shape rewrites the PR summary a later revision made untrue, and nothing else", () => {
+    setAnalysis(key, analysis({ fileNotes: { "src/a.ts": "Charges once per key." } }), {}, tmp);
+    setShape(key, { summary: "Charges once per key, now from the 25th." }, tmp);
+    const state = loadState(key, tmp);
+    expect(state.summary).toBe("Charges once per key, now from the 25th.");
+    expect(state.fileNotes).toEqual({ "src/a.ts": "Charges once per key." });
+    expect(() => setShape(key, { summary: "" }, tmp)).toThrow();
+  });
+
   it("refuses notes on files the revision lacks", () => {
     expect(() => setAnalysis(key, analysis({ fileNotes: { "src/b.ts": "x" } }), {}, tmp)).toThrow(
       /fileNotes: "src\/b.ts" is not a file or folder of this revision/,
