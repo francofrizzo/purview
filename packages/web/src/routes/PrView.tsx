@@ -2025,7 +2025,7 @@ export function PrView() {
               <span className="w-[18px] flex-none text-center text-xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
                 {unitNumbers.get(selectedUnit.id) ?? ""}
               </span>
-              <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold" data-tip={selectedUnit.title}>
+              <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold" data-tip={selectedUnit.title}>
                 <InlineMarkdown text={selectedUnit.title} />
               </h2>
               {progress ? (
