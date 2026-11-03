@@ -9,6 +9,9 @@ app, not for git: say what changed in the review, not which file moved.
 
 - **Request reviewers on your PRs.** The reviewer avatars in the PR header, and the Reviewers section of the Review panel, ask a person or a team, ask again, or stop asking.
 - **Mentions stay in your message.** Picking from the `@` list writes `@unit 3`, `@ledger.ts` or `@Charge key` into your text, tinted as you type and a link once sent.
+- **Analysis card in the sidebar.** A PR with no units shows its analysis state at the top of the sidebar, with the button to start or cancel it, instead of a banner over the code.
+- **Re-analysis line.** While a PR with units is analyzed again, one line above the units shows the current step and cancel. A failed run stays there with its reason and retry until you close it.
+- **Toasts for results.** Refresh, sync, import and share results appear at the bottom of the page and fade on their own. An error stays until you close it.
 - **Archive returns home.** Archiving a PR from its page's ⋯ menu takes you back to the home page.
 - **Fix:** the PR header of your own open PR shows its reviewers, or "no reviewers", like its row on the home page.
 - **Fix:** a PR's comment audience keeps your switch after the page refetches, and your own PRs start on notes for the agent.

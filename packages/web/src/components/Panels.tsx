@@ -5,49 +5,61 @@ import type {
   ShareAnalysisResult,
   SyncResult,
 } from "../api/types";
-import { IconChevron, IconClose, IconRefresh } from "./icons";
+import { IconChevron, IconClose } from "./icons";
+import { Modal } from "./Modal";
+import { NOTICE_FADE_MS, Notice } from "./Notices";
 import { revisionFileChanges, revisionNoticeText } from "../lib/revisionNotice";
 
-export function DismissiblePanel({
-  tone = "neutral",
+/**
+ * A question a menu item asks before it acts (replace the analysis, post a
+ * public comment): a small dialog over the page, Cancel or the action.
+ */
+function ConfirmDialog({
   title,
-  onDismiss,
+  action,
+  busyAction,
+  busy,
+  error,
+  testId,
+  onConfirm,
+  onCancel,
   children,
 }: {
-  tone?: "neutral" | "warn" | "error";
   title: string;
-  onDismiss: () => void;
-  children?: ReactNode;
+  action: string;
+  busyAction: string;
+  busy: boolean;
+  /** the last attempt's refusal; the dialog stays open for another try */
+  error?: string | null;
+  testId: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  children: ReactNode;
 }) {
-  const accent =
-    tone === "error" ? "var(--risk)" : tone === "warn" ? "var(--warn)" : "var(--accent)";
-  const bg =
-    tone === "error" ? "var(--risk-soft)" : tone === "warn" ? "var(--warn-soft)" : "var(--accent-soft)";
   return (
-    <div
-      className="flex-none border-b px-3 py-2 text-xs"
-      style={{ background: bg, borderColor: "var(--border)" }}
-    >
-      <div className="flex items-center gap-2">
-        <span className="font-semibold" style={{ color: accent }}>
-          {title}
-        </span>
-        <button
-          type="button"
-          className="ml-auto inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs"
-          style={{ color: "var(--fg-muted)" }}
-          onClick={onDismiss}
-        >
-          dismiss <IconClose width={10} height={10} />
+    <Modal title={title} maxWidth={480} onClose={() => (busy ? undefined : onCancel())} testId={`${testId}-dialog`}>
+      <p className="text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
+        {children}
+      </p>
+      {error ? (
+        <p role="alert" className="mt-2 text-xs" style={{ color: "var(--risk)" }}>
+          {error}
+        </p>
+      ) : null}
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button type="button" className="btn" disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+        <button type="button" className="btn btn-primary" data-testid={testId} disabled={busy} onClick={onConfirm}>
+          {busy ? busyAction : action}
         </button>
       </div>
-      {children ? <div className="mt-1.5">{children}</div> : null}
-    </div>
+    </Modal>
   );
 }
 
 /**
- * What a refresh brought, as one quiet line under the top bar: a sentence in
+ * What a refresh brought, as a toast: a sentence in
  * the reader's words, the analysis's summary of the revision once it has
  * written one, and per file only if they ask. The diff itself already marks
  * what changed; this is the receipt, not the reading.
@@ -65,46 +77,23 @@ export function MigrationReportPanel({
   const [open, setOpen] = useState(false);
   const files = revisionFileChanges(report);
   return (
-    <div
-      className="flex-none border-b px-3 py-1.5 text-xs"
-      style={{ background: "var(--bg-raised)", borderColor: "var(--border)" }}
-      data-testid="revision-notice"
-    >
-      <div className="flex items-center gap-2">
-        <IconRefresh width={12} height={12} className="flex-none" style={{ color: "var(--fg-faint)" }} />
-        <span className="min-w-0 truncate" style={{ color: "var(--fg)" }} data-tip={summary}>
-          {revisionNoticeText(report)}
-          {summary ? (
-            <span className="ml-1.5" style={{ color: "var(--fg-muted)" }} data-testid="revision-notice-summary">
-              {summary}
-            </span>
-          ) : null}
-        </span>
-        {files.length ? (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 text-2xs hover:!text-[var(--fg)]"
-            style={{ color: "var(--fg-muted)" }}
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-          >
-            by file
-            <IconChevron open={open} width={9} height={9} />
-          </button>
-        ) : null}
+    // Held while the file list is open: the reader is in it.
+    <Notice title={revisionNoticeText(report)} fadeMs={open ? undefined : NOTICE_FADE_MS * 1.5} onDismiss={onDismiss} testId="revision-notice">
+      {summary ? <div data-testid="revision-notice-summary">{summary}</div> : null}
+      {files.length ? (
         <button
           type="button"
-          className="ml-auto rounded p-1 hover:bg-[var(--bg-hover)]"
-          style={{ color: "var(--fg-faint)" }}
-          aria-label="Dismiss"
-          data-tip="Dismiss"
-          onClick={onDismiss}
+          className="inline-flex items-center gap-1 text-2xs hover:!text-[var(--fg)]"
+          style={{ color: "var(--fg-muted)" }}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
         >
-          <IconClose width={10} height={10} />
+          by file
+          <IconChevron open={open} width={9} height={9} />
         </button>
-      </div>
+      ) : null}
       {open ? (
-        <ul className="mt-1.5 max-h-48 overflow-y-auto pb-1 pl-5 text-2xs">
+        <ul className="mt-1 max-h-48 overflow-y-auto pb-1 text-2xs">
           {files.map((f) => (
             <li key={f.file} className="flex items-baseline gap-3 leading-5">
               <span className="min-w-0 truncate font-mono" style={{ color: "var(--fg-muted)" }}>
@@ -124,7 +113,7 @@ export function MigrationReportPanel({
           ))}
         </ul>
       ) : null}
-    </div>
+    </Notice>
   );
 }
 
@@ -143,12 +132,12 @@ export function AutoImportedAnalysisPanel({
   onDismiss: () => void;
 }) {
   return (
-    <DismissiblePanel title="analysis imported" onDismiss={onDismiss}>
-      <div style={{ color: "var(--fg-muted)" }}>
+    <Notice title="Analysis imported" fadeMs={NOTICE_FADE_MS} onDismiss={onDismiss} testId="auto-imported-notice">
+      <div>
         A shared analysis{author ? ` by ${author}` : ""} was found on the PR (posted{" "}
         {new Date(postedAt).toLocaleString()}) and imported — no analysis run was needed.
       </div>
-    </DismissiblePanel>
+    </Notice>
   );
 }
 
@@ -160,8 +149,8 @@ export function SyncResultPanel({
   onDismiss: () => void;
 }) {
   return (
-    <DismissiblePanel title="sync" onDismiss={onDismiss}>
-      <div style={{ color: "var(--fg-muted)" }}>
+    <Notice title="Synced to GitHub" fadeMs={NOTICE_FADE_MS} onDismiss={onDismiss} testId="sync-notice">
+      <div>
         {result.filesSynced ?? 0} files marked viewed on GitHub · {result.commentsPosted ?? 0}{" "}
         comments posted as a pending review
         {result.reviewUrl ? (
@@ -185,45 +174,43 @@ export function SyncResultPanel({
           </div>
         ) : null}
       </div>
-    </DismissiblePanel>
+    </Notice>
   );
 }
 
 /**
  * "import analysis from file…" is a two-step act (it replaces the current analysis):
- * this panel is the confirm step, shown after a file was picked and parsed
+ * this dialog is the confirm step, shown after a file was picked and parsed
  * but before anything is posted. `onDismiss`/`onCancel` are the same "back
  * out" action.
  */
 export function AnalysisImportConfirmPanel({
   filename,
   importing,
+  error,
   onConfirm,
   onCancel,
 }: {
   filename: string;
   importing: boolean;
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   return (
-    <DismissiblePanel tone="warn" title="replace current analysis?" onDismiss={onCancel}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span style={{ color: "var(--fg-muted)" }}>
-          Importing <span style={{ color: "var(--fg)" }}>{filename}</span> replaces the current
-          analysis (units, kinds, findings). What you've already viewed is untouched.
-        </span>
-        <button
-          type="button"
-          className="btn btn-primary"
-          data-testid="analysis-import-confirm"
-          disabled={importing}
-          onClick={onConfirm}
-        >
-          {importing ? "importing…" : "import"}
-        </button>
-      </div>
-    </DismissiblePanel>
+    <ConfirmDialog
+      error={error}
+      title="Replace the current analysis?"
+      action="Import"
+      busyAction="Importing…"
+      busy={importing}
+      testId="analysis-import-confirm"
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    >
+      Importing <span style={{ color: "var(--fg)" }}>{filename}</span> replaces the current analysis
+      (units, kinds, findings). What you've already viewed is untouched.
+    </ConfirmDialog>
   );
 }
 
@@ -238,8 +225,8 @@ export function AnalysisImportResultPanel({
   onDismiss: () => void;
 }) {
   return (
-    <DismissiblePanel title="analysis imported" onDismiss={onDismiss}>
-      <div style={{ color: "var(--fg-muted)" }}>
+    <Notice title="Analysis imported" fadeMs={NOTICE_FADE_MS} onDismiss={onDismiss} testId="import-notice">
+      <div>
         {source ? (
           <div className="mb-1">
             shared{source.author ? ` by ${source.author}` : ""} on{" "}
@@ -262,7 +249,7 @@ export function AnalysisImportResultPanel({
           </div>
         ) : null}
       </div>
-    </DismissiblePanel>
+    </Notice>
   );
 }
 
@@ -273,32 +260,30 @@ export function AnalysisImportResultPanel({
  */
 export function ShareAnalysisConfirmPanel({
   sharing,
+  error,
   onConfirm,
   onCancel,
 }: {
   sharing: boolean;
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   return (
-    <DismissiblePanel tone="warn" title="share analysis to this PR?" onDismiss={onCancel}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span style={{ color: "var(--fg-muted)" }}>
-          Posts the current analysis as a comment on this PR's conversation tab, publicly on
-          GitHub. A teammate tracking the same PR can import it from there instead of paying for
-          their own analysis run.
-        </span>
-        <button
-          type="button"
-          className="btn btn-primary"
-          data-testid="share-analysis-confirm"
-          disabled={sharing}
-          onClick={onConfirm}
-        >
-          {sharing ? "sharing…" : "share"}
-        </button>
-      </div>
-    </DismissiblePanel>
+    <ConfirmDialog
+      error={error}
+      title="Share the analysis on this PR?"
+      action="Share"
+      busyAction="Sharing…"
+      busy={sharing}
+      testId="share-analysis-confirm"
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    >
+      Posts the current analysis as a comment on this PR's conversation tab, publicly on GitHub. A
+      teammate tracking the same PR can import it from there instead of paying for their own
+      analysis run.
+    </ConfirmDialog>
   );
 }
 
@@ -310,8 +295,8 @@ export function ShareAnalysisResultPanel({
   onDismiss: () => void;
 }) {
   return (
-    <DismissiblePanel title={result.updated ? "analysis comment updated" : "analysis shared"} onDismiss={onDismiss}>
-      <div style={{ color: "var(--fg-muted)" }}>
+    <Notice title={result.updated ? "Analysis comment updated" : "Analysis shared"} fadeMs={NOTICE_FADE_MS} onDismiss={onDismiss} testId="share-notice">
+      <div>
         {result.updated
           ? "Updated the existing analysis comment on this PR."
           : "Posted a new analysis comment on this PR."}
@@ -326,7 +311,7 @@ export function ShareAnalysisResultPanel({
           view comment
         </a>
       </div>
-    </DismissiblePanel>
+    </Notice>
   );
 }
 
@@ -337,36 +322,34 @@ export function ShareAnalysisResultPanel({
  */
 export function ImportFromPrConfirmPanel({
   importing,
+  error,
   onConfirm,
   onCancel,
 }: {
   importing: boolean;
+  error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   return (
-    <DismissiblePanel tone="warn" title="replace current analysis?" onDismiss={onCancel}>
-      <div className="flex flex-wrap items-center gap-2">
-        <span style={{ color: "var(--fg-muted)" }}>
-          Imports the analysis shared as a comment on this PR, replacing the current one (units,
-          kinds, findings). What you've already viewed is untouched.
-        </span>
-        <button
-          type="button"
-          className="btn btn-primary"
-          data-testid="import-from-pr-confirm"
-          disabled={importing}
-          onClick={onConfirm}
-        >
-          {importing ? "importing…" : "import"}
-        </button>
-      </div>
-    </DismissiblePanel>
+    <ConfirmDialog
+      error={error}
+      title="Replace the current analysis?"
+      action="Import"
+      busyAction="Importing…"
+      busy={importing}
+      testId="import-from-pr-confirm"
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    >
+      Imports the analysis shared as a comment on this PR, replacing the current one (units, kinds,
+      findings). What you've already viewed is untouched.
+    </ConfirmDialog>
   );
 }
 
 /**
- * The PR-view banner for an auto-detected shared analysis: shown only when
+ * The sidebar card for an auto-detected shared analysis: shown only when
  * there is no local analysis, no live analysis job, and the one-shot probe
  * found something. Session-local — `onDismiss` never persists.
  */
@@ -386,41 +369,49 @@ export function SharedAnalysisBanner({
   onDismiss: () => void;
 }) {
   return (
-    <div
+    <section
       data-testid="shared-analysis-banner"
-      className="flex flex-none items-center gap-2 border-b px-3 py-1.5 text-xs"
-      style={{ background: "var(--accent-soft)", borderColor: "var(--border)" }}
+      className="flex-none border-b px-3 py-2.5 text-xs"
+      style={{ borderColor: "var(--border)" }}
     >
-      <span style={{ color: "var(--accent)" }}>
-        Shared analysis{author ? ` by ${author}` : ""} (
-        {sameCommit ? "same commit" : "older commit"})
-      </span>
-      <button
-        type="button"
-        className="btn ml-auto"
-        data-testid="shared-analysis-import"
-        disabled={importing}
-        onClick={onImport}
-      >
-        {importing ? "importing…" : "import"}
-      </button>
-      <button
-        type="button"
-        className="btn"
-        data-testid="shared-analysis-analyze-fresh"
-        onClick={onAnalyzeFresh}
-      >
-        analyze fresh
-      </button>
-      <button
-        type="button"
-        className="inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs"
-        data-testid="shared-analysis-dismiss"
-        style={{ color: "var(--fg-muted)" }}
-        onClick={onDismiss}
-      >
-        dismiss <IconClose width={10} height={10} />
-      </button>
-    </div>
+      <div className="flex items-start gap-2">
+        <span className="min-w-0 flex-1 font-semibold leading-5" style={{ color: "var(--accent)" }}>
+          Shared analysis{author ? ` by ${author}` : ""}
+        </span>
+        <button
+          type="button"
+          className="flex-none rounded p-1 hover:bg-[var(--bg-hover)]"
+          data-testid="shared-analysis-dismiss"
+          aria-label="Dismiss"
+          data-tip="Dismiss"
+          style={{ color: "var(--fg-faint)" }}
+          onClick={onDismiss}
+        >
+          <IconClose width={10} height={10} />
+        </button>
+      </div>
+      <p className="leading-5" style={{ color: "var(--fg-muted)" }}>
+        Posted on this PR for {sameCommit ? "the same commit" : "an older commit"}. Import it instead of running your own.
+      </p>
+      <div className="mt-2 flex items-center gap-1.5">
+        <button
+          type="button"
+          className="btn btn-primary"
+          data-testid="shared-analysis-import"
+          disabled={importing}
+          onClick={onImport}
+        >
+          {importing ? "importing…" : "import"}
+        </button>
+        <button
+          type="button"
+          className="btn"
+          data-testid="shared-analysis-analyze-fresh"
+          onClick={onAnalyzeFresh}
+        >
+          analyze fresh
+        </button>
+      </div>
+    </section>
   );
 }

@@ -118,22 +118,17 @@ export function UnitSidebar({
     ? filterUnits(units, { hide, isFullyViewed, selectedId: selectedUnitId }).hidden
     : 0;
 
+  // No units: the analysis card above the list says why and what to do.
   if (!units.length) {
-    return (
+    return removed.length ? (
       <div className="p-4 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
-        No review units yet — the banner above tracks the analysis of this revision.
-        {removed.length ? <RemovedGroup units={removed} /> : null}
+        <RemovedGroup units={removed} />
       </div>
-    );
+    ) : null;
   }
 
   return (
     <div className="py-1">
-      {!analyzed ? (
-        <p className="px-4 pb-2 pt-3 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
-          No review units yet — the banner above tracks the analysis of this revision.
-        </p>
-      ) : null}
       {hide && totalHidden > 0 ? (
         <p className="px-3 pb-1 text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="hidden-total">
           {totalHidden} read {totalHidden === 1 ? "unit" : "units"} hidden

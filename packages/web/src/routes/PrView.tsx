@@ -106,6 +106,7 @@ import {
   SharedAnalysisBanner,
   SyncResultPanel,
 } from "../components/Panels";
+import { Notice, NoticeStack } from "../components/Notices";
 import { Overview } from "../components/Overview";
 import { visibleDescription } from "../lib/summaryText";
 import { TopBar } from "../components/TopBar";
@@ -386,6 +387,7 @@ export function PrView() {
   // Session-local: dismissing the shared-analysis banner is never persisted,
   // so it comes back on the next visit if it is still applicable.
   const [sharedBannerDismissed, setSharedBannerDismissed] = useState(false);
+  const [dismissedFailure, setDismissedFailure] = useState<string | null>(null);
   // The probe fires once per PR, only once it is actually relevant (no local
   // analysis, no live job) — this guards against re-firing on every render.
   const probedForRef = useRef<string | null>(null);
@@ -1280,7 +1282,11 @@ export function PrView() {
   const analysisPending = isJobLive(job);
   // The banner is for the "nothing to read yet" case: once units exist, the
   // job's state lives in the top bar chip and the overflow menu instead.
-  const showAnalysisBanner = analyzedUnits.length === 0 || analysisPending;
+  // A failed run over units you already have keeps its line until dismissed;
+  // the next run, failed or not, has a new key and shows again.
+  const failureKey = job?.status === "failed" ? `${job.revision}:${job.startedAt ?? ""}` : null;
+  const showAnalysisBanner =
+    analyzedUnits.length === 0 || analysisPending || (failureKey !== null && failureKey !== dismissedFailure);
   // A refresh of this archived PR landed work and auto-analysis skipped it.
   // Hidden while a run is live: the explicit analyze clears the note server-
   // side, and the detail catches up when the run finishes.
@@ -1477,6 +1483,122 @@ export function PrView() {
   // Shared between the column and the drawer — same header row (tabs +
   // collapse/close chevron), same list, same footer legend, just mounted in
   // a different container depending on `sidebarMode`.
+  // The analysis's own state sits at the top of the sidebar, on every tab:
+  // where the units would be, not in a strip over the code.
+  const sidebarShowing =
+    overview || (sidebarMode === "column" && !sidebarCollapsed) || (sidebarMode === "drawer" && drawerOpen);
+  const analysisBlocks = (
+    <>
+      {showSharedAnalysisBanner && sharedProbe.data ? (
+        <SharedAnalysisBanner
+          author={sharedProbe.data.author}
+          sameCommit={sharedProbe.data.sameCommit === true}
+          importing={importFromPr.isPending}
+          onImport={handleBannerImport}
+          onAnalyzeFresh={handleBannerAnalyzeFresh}
+          onDismiss={() => setSharedBannerDismissed(true)}
+        />
+      ) : null}
+      {showArchivedSkipBanner && skipNote ? (
+        <ArchivedSkipBanner
+          revision={skipNote.revision}
+          unplaced={unplacedAll.length}
+          scope={archiveScope ?? "pr"}
+          working={
+            archiveScope === "repo" ? startAnalysis.isPending : unarchiveAndAnalyze.isPending
+          }
+          error={
+            ((archiveScope === "repo" ? startAnalysis.error : unarchiveAndAnalyze.error) as Error | null)
+              ?.message ?? null
+          }
+          onUnarchiveAndAnalyze={() =>
+            archiveScope === "repo" ? startAnalysis.mutate() : unarchiveAndAnalyze.mutate()
+          }
+          onDismiss={() => dismissAnalysisPending.mutate()}
+        />
+      ) : null}
+      {showAnalysisBanner ? (
+        <AnalysisBanner
+          job={job}
+          compact={!noLocalAnalysis}
+          starting={startAnalysis.isPending}
+          cancelling={cancelAnalysis.isPending}
+          error={
+            (startAnalysis.error as Error | null)?.message ??
+            (cancelAnalysis.error as Error | null)?.message ??
+            null
+          }
+          onAnalyze={() => startAnalysis.mutate()}
+          onCancel={() => cancelAnalysis.mutate()}
+          onDismiss={() => setDismissedFailure(failureKey)}
+        />
+      ) : null}
+    </>
+  );
+
+  // What an action came back with, as toasts over the bottom of the workspace.
+  // Results fade on their own; errors stay until closed.
+  const errorNotice = (key: string, message: string, onDismiss: () => void, testId?: string) => (
+    <Notice key={key} tone="error" title={message} onDismiss={onDismiss} testId={testId ?? "error-notice"} />
+  );
+  const notices = (
+    <NoticeStack>
+      {refresh.error ? errorNotice("refresh", `Refresh failed: ${errorText(refresh.error)}`, () => refresh.reset()) : null}
+      {sync.error ? errorNotice("sync", `Sync failed: ${errorText(sync.error)}`, () => sync.reset()) : null}
+      {exportAnalysis.error
+        ? errorNotice("export", `Export failed: ${errorText(exportAnalysis.error)}`, () => exportAnalysis.reset())
+        : null}
+      {rollbackError
+        ? errorNotice(
+            "rollback",
+            rollbackError,
+            () => {
+              setHunkViewed.reset();
+              setHunksViewed.reset();
+              setUnitViewed.reset();
+              patchUnit.reset();
+              setArchived.reset();
+            },
+            "rollback-error",
+          )
+        : null}
+      {importParseError ? errorNotice("parse", importParseError, () => setImportParseError(null)) : null}
+      {importAnalysis.error && !pendingImport
+        ? errorNotice("import", `Import failed: ${errorText(importAnalysis.error)}`, () => importAnalysis.reset())
+        : null}
+      {shareToPr.error && !shareConfirmOpen
+        ? errorNotice("share", `Share failed: ${errorText(shareToPr.error)}`, () => shareToPr.reset())
+        : null}
+      {importFromPr.error && !importFromPrConfirmOpen
+        ? errorNotice("import-pr", `Import from PR failed: ${errorText(importFromPr.error)}`, () => importFromPr.reset())
+        : null}
+      {report ? (
+        <MigrationReportPanel
+          report={report}
+          summary={detail.state.revisions?.find((r) => r.revision === report.revision)?.summary}
+          onDismiss={() => setReport(null)}
+        />
+      ) : null}
+      {syncResult ? <SyncResultPanel result={syncResult} onDismiss={() => setSyncResult(null)} /> : null}
+      {importResult ? <AnalysisImportResultPanel report={importResult} onDismiss={() => setImportResult(null)} /> : null}
+      {shareResult ? <ShareAnalysisResultPanel result={shareResult} onDismiss={() => setShareResult(null)} /> : null}
+      {importFromPrResult ? (
+        <AnalysisImportResultPanel
+          report={importFromPrResult.report}
+          source={{ author: importFromPrResult.author, postedAt: importFromPrResult.postedAt }}
+          onDismiss={() => setImportFromPrResult(null)}
+        />
+      ) : null}
+      {autoImported ? (
+        <AutoImportedAnalysisPanel
+          author={autoImported.author}
+          postedAt={autoImported.postedAt}
+          onDismiss={() => setAutoImported(null)}
+        />
+      ) : null}
+    </NoticeStack>
+  );
+
   const sidebarBody = (
     <>
       {/* Same jump-bar vocabulary as the overview: sentence case, a
@@ -1518,6 +1640,7 @@ export function PrView() {
           </button>
         )}
       </div>
+      {sidebarShowing ? analysisBlocks : null}
       <div className={overview ? "min-h-0 flex-1" : "quiet-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden"}>
         {overview ? (
           <CodeLinkContext.Provider value={textLinks}>
@@ -1730,32 +1853,12 @@ export function PrView() {
         }
       />
 
-      {refresh.error ? (
-        <ErrorBar message={`refresh failed: ${(refresh.error as Error).message}`} />
-      ) : null}
-      {sync.error ? <ErrorBar message={`sync failed: ${(sync.error as Error).message}`} /> : null}
-      {report ? (
-        <MigrationReportPanel
-          report={report}
-          summary={detail.state.revisions?.find((r) => r.revision === report.revision)?.summary}
-          onDismiss={() => setReport(null)}
-        />
-      ) : null}
-      {syncResult ? (
-        <SyncResultPanel result={syncResult} onDismiss={() => setSyncResult(null)} />
-      ) : null}
-      {exportAnalysis.error ? (
-        <ErrorBar message={`export failed: ${(exportAnalysis.error as Error).message}`} />
-      ) : null}
-      {rollbackError ? <ErrorBar message={rollbackError} testId="rollback-error" /> : null}
-      {importParseError ? <ErrorBar message={importParseError} /> : null}
-      {importAnalysis.error ? (
-        <ErrorBar message={`import failed: ${(importAnalysis.error as Error).message}`} />
-      ) : null}
+      {/* Questions a menu item asks before it acts. */}
       {pendingImport ? (
         <AnalysisImportConfirmPanel
           filename={pendingImport.filename}
           importing={importAnalysis.isPending}
+          error={importAnalysis.error ? errorText(importAnalysis.error) : null}
           onConfirm={confirmImportAnalysis}
           onCancel={() => {
             setPendingImport(null);
@@ -1763,15 +1866,10 @@ export function PrView() {
           }}
         />
       ) : null}
-      {importResult ? (
-        <AnalysisImportResultPanel report={importResult} onDismiss={() => setImportResult(null)} />
-      ) : null}
-      {shareToPr.error ? (
-        <ErrorBar message={`share failed: ${(shareToPr.error as Error).message}`} />
-      ) : null}
       {shareConfirmOpen ? (
         <ShareAnalysisConfirmPanel
           sharing={shareToPr.isPending}
+          error={shareToPr.error ? errorText(shareToPr.error) : null}
           onConfirm={confirmShareToPr}
           onCancel={() => {
             setShareConfirmOpen(false);
@@ -1779,76 +1877,15 @@ export function PrView() {
           }}
         />
       ) : null}
-      {shareResult ? (
-        <ShareAnalysisResultPanel result={shareResult} onDismiss={() => setShareResult(null)} />
-      ) : null}
-      {importFromPr.error ? (
-        <ErrorBar message={`import from PR failed: ${(importFromPr.error as Error).message}`} />
-      ) : null}
       {importFromPrConfirmOpen ? (
         <ImportFromPrConfirmPanel
           importing={importFromPr.isPending}
+          error={importFromPr.error ? errorText(importFromPr.error) : null}
           onConfirm={confirmImportFromPr}
           onCancel={() => {
             setImportFromPrConfirmOpen(false);
             importFromPr.reset();
           }}
-        />
-      ) : null}
-      {importFromPrResult ? (
-        <AnalysisImportResultPanel
-          report={importFromPrResult.report}
-          source={{ author: importFromPrResult.author, postedAt: importFromPrResult.postedAt }}
-          onDismiss={() => setImportFromPrResult(null)}
-        />
-      ) : null}
-      {autoImported ? (
-        <AutoImportedAnalysisPanel
-          author={autoImported.author}
-          postedAt={autoImported.postedAt}
-          onDismiss={() => setAutoImported(null)}
-        />
-      ) : null}
-      {showSharedAnalysisBanner && sharedProbe.data ? (
-        <SharedAnalysisBanner
-          author={sharedProbe.data.author}
-          sameCommit={sharedProbe.data.sameCommit === true}
-          importing={importFromPr.isPending}
-          onImport={handleBannerImport}
-          onAnalyzeFresh={handleBannerAnalyzeFresh}
-          onDismiss={() => setSharedBannerDismissed(true)}
-        />
-      ) : null}
-      {showArchivedSkipBanner && skipNote ? (
-        <ArchivedSkipBanner
-          revision={skipNote.revision}
-          unplaced={unplacedAll.length}
-          scope={archiveScope ?? "pr"}
-          working={
-            archiveScope === "repo" ? startAnalysis.isPending : unarchiveAndAnalyze.isPending
-          }
-          error={
-            ((archiveScope === "repo" ? startAnalysis.error : unarchiveAndAnalyze.error) as Error | null)
-              ?.message ?? null
-          }
-          onUnarchiveAndAnalyze={() =>
-            archiveScope === "repo" ? startAnalysis.mutate() : unarchiveAndAnalyze.mutate()
-          }
-          onDismiss={() => dismissAnalysisPending.mutate()}
-        />
-      ) : null}
-      {showAnalysisBanner ? (
-        <AnalysisBanner
-          job={job}
-          starting={startAnalysis.isPending}
-          cancelling={cancelAnalysis.isPending}
-          error={
-            (startAnalysis.error as Error | null)?.message ??
-            (cancelAnalysis.error as Error | null)?.message ??
-            null
-          }
-          onAnalyze={() => startAnalysis.mutate()}
-          onCancel={() => cancelAnalysis.mutate()}
         />
       ) : null}
       {/* The workspace: the diff is the desk — it runs to the edges, unframed —
@@ -1861,6 +1898,7 @@ export function PrView() {
         data-headerless={tab === "units" && !overview && !unplacedSelected ? "true" : undefined}
         style={{ background: "var(--bg)" }}
       >
+        {notices}
         {/* The overview is the sidebar's own tab, grown over the diff's room. */}
         {overview ? (
           <nav
@@ -1955,6 +1993,9 @@ export function PrView() {
             must not act on hunks the reader cannot see. */}
         {overview ? null : (
         <main ref={mainRef} className="relative flex min-w-0 flex-1 flex-col">
+          {/* Folded sidebar: its analysis blocks stand over the code instead, so
+              analyze and cancel stay in reach. */}
+          {sidebarShowing ? null : analysisBlocks}
           {tab === "units" && selectedUnit && !briefInSidebar ? (
             <div
               data-testid="unit-header"
@@ -2447,18 +2488,6 @@ function Centered({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full items-center justify-center text-sm" style={{ color: "var(--fg-muted)" }}>
       {children}
-    </div>
-  );
-}
-
-function ErrorBar({ message, testId }: { message: string; testId?: string }) {
-  return (
-    <div
-      className="flex-none border-b px-3 py-1.5 text-xs"
-      data-testid={testId}
-      style={{ background: "var(--risk-soft)", color: "var(--risk)", borderColor: "var(--border)" }}
-    >
-      {message}
     </div>
   );
 }

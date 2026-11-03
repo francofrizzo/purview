@@ -1,6 +1,7 @@
 /**
  * Surfaces of the automatic analysis job: a chip for the PR list, and the
- * banner the PR view shows while a PR has no analysis to read yet.
+ * block at the top of the PR view's sidebar: a card while a PR has no
+ * analysis to read yet, one line while a run redoes one it already has.
  *
  * The banner replaces what used to be a dead end ("no analysis — go run the
  * skill"): the job is startable, watchable and cancellable from here, and the
@@ -12,7 +13,7 @@ import { FloatingPanel } from "./FloatingPanel";
 import { useAgentName } from "../api/hooks";
 import type { AnalysisJob, AnalysisMetrics } from "../api/types";
 import { capitalized } from "../lib/agentSelection";
-import { IconClose, IconRefresh, IconSpinner } from "./icons";
+import { IconClose, IconRefresh, IconSpinner, IconWarning } from "./icons";
 
 const STATUS_TEXT: Record<AnalysisJob["status"], string> = {
   queued: "queued",
@@ -193,101 +194,138 @@ export function ArchivedSkipBanner({
 }) {
   const text = archivedSkipText(revision, unplaced, scope);
   return (
-    <div
-      className="flex-none border-b px-4 py-3"
+    <section
+      className="flex-none border-b px-3 py-2.5 text-xs"
       data-testid="archived-skip-banner"
-      style={{ borderColor: "var(--border)", background: "var(--bg-inset)" }}
+      style={{ borderColor: "var(--border)" }}
     >
-      <div className="flex items-center gap-2">
-        {working ? <IconSpinner width={12} height={12} /> : null}
-        <span className="text-[13px] font-semibold" style={{ color: "var(--fg-muted)" }}>
+      <div className="flex items-start gap-2">
+        <span className="min-w-0 flex-1 font-semibold leading-5" style={{ color: "var(--fg)" }}>
           {text.title}
         </span>
-        <div className="ml-auto flex flex-none items-center gap-1.5">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1 rounded px-1.5 py-px text-2xs"
-            data-testid="archived-skip-dismiss"
-            data-tip="Hide this note; the hunks stay under Not in any unit"
-            style={{ color: "var(--fg-muted)" }}
-            disabled={working}
-            onClick={onDismiss}
-          >
-            dismiss <IconClose width={10} height={10} />
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            data-testid="archived-skip-analyze"
-            disabled={working}
-            onClick={onUnarchiveAndAnalyze}
-          >
-            <IconRefresh width={11} height={11} />
-            {working ? "starting…" : scope === "repo" ? "Analyze anyway" : "Unarchive and analyze"}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="flex-none rounded p-1 hover:bg-[var(--bg-hover)]"
+          data-testid="archived-skip-dismiss"
+          data-tip="Hide this note; the hunks stay under Not in any unit"
+          aria-label="Dismiss"
+          style={{ color: "var(--fg-faint)" }}
+          disabled={working}
+          onClick={onDismiss}
+        >
+          <IconClose width={10} height={10} />
+        </button>
       </div>
-      <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
+      <p className="leading-5" style={{ color: "var(--fg-muted)" }}>
         {text.detail}
       </p>
+      <button
+        type="button"
+        className="btn btn-primary mt-2"
+        data-testid="archived-skip-analyze"
+        disabled={working}
+        onClick={onUnarchiveAndAnalyze}
+      >
+        {working ? <IconSpinner width={11} height={11} /> : <IconRefresh width={11} height={11} />}
+        {working ? "starting…" : scope === "repo" ? "Analyze anyway" : "Unarchive and analyze"}
+      </button>
       {error ? (
         <p className="mt-1 text-2xs" style={{ color: "var(--risk)" }}>
           {error}
         </p>
       ) : null}
-    </div>
+    </section>
   );
 }
 
+/**
+ * The analysis's own state, at the top of the sidebar. With no units yet it
+ * is a card: what is happening and the one thing to do about it. With units
+ * on screen (`compact`) a run redoing them is one line, the live step and
+ * cancel; a run that failed keeps that line, with the reason and retry, until
+ * dismissed.
+ */
 export function AnalysisBanner({
   job,
   starting,
   cancelling,
   error,
+  compact = false,
   onAnalyze,
   onCancel,
+  onDismiss,
 }: {
   job?: AnalysisJob | null;
   starting: boolean;
   cancelling: boolean;
   error?: string | null;
+  compact?: boolean;
   onAnalyze: () => void;
   onCancel: () => void;
+  /** compact and failed only: hide the line until the next run */
+  onDismiss?: () => void;
 }) {
   const status = job?.status;
   const live = status === "queued" || status === "running";
   const failed = status === "failed";
   // The harness of the last run on record; the default one before any.
   const agentName = useAgentName(job?.metrics?.run?.harness);
-  const tone = failed ? "var(--risk)" : live ? "var(--accent)" : "var(--fg-muted)";
-  // Live sits on the recessed ground like idle: an accent wash here would
-  // match the PR header's own accent band and the two bars would merge.
-  const bg = failed ? "var(--risk-soft)" : "var(--bg-inset)";
+  const tone = failed ? "var(--risk)" : live ? "var(--accent)" : "var(--fg)";
+  const title = live
+    ? status === "queued"
+      ? "Analysis queued"
+      : "Analyzing this pull request…"
+    : failed
+      ? "Analysis failed"
+      : status === "cancelled"
+        ? "Analysis cancelled"
+        : "Not analyzed yet";
+  const retry = (
+    <button type="button" className="btn btn-primary" data-testid="analysis-start" disabled={starting} onClick={onAnalyze}>
+      <IconRefresh width={11} height={11} />
+      {starting ? "starting…" : failed ? "retry analysis" : "analyze this PR"}
+    </button>
+  );
+  const cancel = (
+    <button type="button" className="btn" data-testid="analysis-cancel" disabled={cancelling} onClick={onCancel}>
+      {cancelling ? "cancelling…" : "cancel"}
+    </button>
+  );
+  const errorLine = error ? (
+    <p className="mt-1 text-2xs" style={{ color: "var(--risk)" }}>
+      {error}
+    </p>
+  ) : null;
 
-  return (
-    <div
-      className="flex-none border-b px-4 py-3"
-      data-testid="analysis-banner"
-      style={{ borderColor: "var(--border)", background: bg }}
-    >
-      <div className="flex items-center gap-2">
-        {status === "running" || starting ? <IconSpinner width={12} height={12} /> : null}
-        <span className="text-[13px] font-semibold" style={{ color: tone }}>
-          {live
-            ? status === "queued"
-              ? "Analysis queued"
-              : "Analyzing this pull request…"
-            : failed
-              ? "Analysis failed"
-              : status === "cancelled"
-                ? "Analysis cancelled"
-                : "Not analyzed yet"}
-        </span>
-        <div className="ml-auto flex flex-none items-center gap-1.5">
+  if (compact) {
+    return (
+      <section
+        className="flex-none border-b px-3 py-1.5 text-xs"
+        data-testid="analysis-banner"
+        data-compact="true"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <div className="flex min-h-[26px] items-center gap-2">
+          {live ? (
+            <IconSpinner width={11} height={11} className="flex-none" style={{ color: "var(--accent)" }} />
+          ) : (
+            <IconWarning width={11} height={11} className="flex-none" style={{ color: "var(--risk)" }} />
+          )}
+          <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+            <span className="flex-none font-medium" style={{ color: tone }}>
+              {live ? (status === "queued" ? "Analysis queued" : "Analyzing") : "Analysis failed"}
+            </span>
+            {live && status === "running" && job?.progress ? (
+              <span className="min-w-0 truncate" style={{ color: "var(--fg-muted)" }}>
+                <ProgressText text={job.progress} />
+              </span>
+            ) : null}
+          </span>
           {live ? (
             <button
               type="button"
-              className="btn"
+              className="flex-none rounded px-1.5 py-0.5 text-2xs hover:bg-[var(--bg-hover)]"
+              style={{ color: "var(--fg-muted)" }}
               data-testid="analysis-cancel"
               disabled={cancelling}
               onClick={onCancel}
@@ -295,37 +333,70 @@ export function AnalysisBanner({
               {cancelling ? "cancelling…" : "cancel"}
             </button>
           ) : (
-            <button
-              type="button"
-              className="btn btn-primary"
-              data-testid="analysis-start"
-              disabled={starting}
-              onClick={onAnalyze}
-            >
-              <IconRefresh width={11} height={11} />
-              {starting ? "starting…" : failed ? "retry analysis" : "analyze this PR"}
-            </button>
+            <>
+              <button
+                type="button"
+                className="flex-none rounded px-1.5 py-0.5 text-2xs font-medium hover:bg-[var(--bg-hover)]"
+                style={{ color: "var(--accent)" }}
+                data-testid="analysis-start"
+                disabled={starting}
+                onClick={onAnalyze}
+              >
+                {starting ? "starting…" : "retry"}
+              </button>
+              {onDismiss ? (
+                <button
+                  type="button"
+                  className="flex-none rounded p-1 hover:bg-[var(--bg-hover)]"
+                  style={{ color: "var(--fg-faint)" }}
+                  aria-label="Dismiss"
+                  data-tip="Hide until the next run"
+                  data-testid="analysis-dismiss"
+                  onClick={onDismiss}
+                >
+                  <IconClose width={10} height={10} />
+                </button>
+              ) : null}
+            </>
           )}
         </div>
-      </div>
+        {failed ? (
+          <p className="line-clamp-2 pl-[19px] text-2xs leading-4" style={{ color: "var(--fg-muted)" }} data-tip={job?.error}>
+            {job?.error ?? "The run did not complete."}
+          </p>
+        ) : null}
+        {errorLine}
+      </section>
+    );
+  }
 
-      <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
+  return (
+    <section
+      className="flex-none border-b px-3 py-3 text-xs"
+      data-testid="analysis-banner"
+      style={{ borderColor: "var(--border)" }}
+    >
+      <div className="flex items-center gap-2">
+        {status === "running" || starting ? (
+          <IconSpinner width={12} height={12} className="flex-none" style={{ color: "var(--accent)" }} />
+        ) : null}
+        <span className="text-[13px] font-semibold" style={{ color: tone }}>
+          {title}
+        </span>
+      </div>
+      <p className="mt-1 leading-5" style={{ color: "var(--fg-muted)" }}>
         {live
           ? job?.progress
             ? <ProgressText text={job.progress} />
-            : `${capitalized(agentName)} is reading the diff and grouping it into review units. The units appear here as soon as it finishes.`
+            : `${capitalized(agentName)} is reading the diff and grouping it into review units. They appear here as soon as it finishes.`
           : failed
             ? (job?.error ?? "The analysis run did not complete.")
             : status === "cancelled"
               ? "The run was cancelled before it produced any units."
               : `This pull request has no review units yet. Run the analysis to have ${agentName} read the diff and group it.`}
       </p>
-
-      {error ? (
-        <p className="mt-1 text-2xs" style={{ color: "var(--risk)" }}>
-          {error}
-        </p>
-      ) : null}
-    </div>
+      <div className="mt-2.5 flex items-center gap-1.5">{live ? cancel : retry}</div>
+      {errorLine}
+    </section>
   );
 }
