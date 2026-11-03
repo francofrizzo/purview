@@ -323,7 +323,8 @@ that otherwise matters. It is one of:
   count when the old name is gone from the PR. The uses of a renamed type parameter,
   receiver or local count too, once you have read the hunk that renames it,
 - a block moved unchanged,
-- comments that restate behaviour that did not change,
+- comments that restate behaviour that did not change, or whose only change follows a
+  rename (the new name in a comment, a doc line or a file header),
 - a call site that passes a new parameter the value that keeps the old behaviour.
 
 Never a skip, however small:
