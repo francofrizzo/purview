@@ -390,6 +390,74 @@ describe("skip through the CLI-facing service", () => {
   });
 });
 
+describe("import-only hunks are skipped on save", () => {
+  const key: PrKey = { host: "github.com", owner: "acme", repo: "widgets", number: 45 };
+  let tmp: string;
+  let imp: string;
+  let code: string;
+
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), "reviewer-imports-"));
+    writeMeta(
+      key,
+      { host: key.host, owner: key.owner, repo: key.repo, number: key.number, url: "https://github.com/acme/widgets/pull/45", createdAt: ts, archived: false },
+      tmp,
+    );
+    const mk = (file: string, header: string, added: string[], context: string[]) => ({
+      id: computeHunkId(file, added, []),
+      file,
+      oldStart: 1,
+      oldLines: context.length,
+      newStart: 1,
+      newLines: context.length + added.length,
+      header,
+      addedLines: added,
+      removedLines: [],
+      text: [...context.map((l) => ` ${l}`), ...added.map((l) => `+${l}`)].join("\n") + "\n",
+    });
+    const hImp = mk("main.go", "import (", ['\t"fmt"'], ['\t"os"']);
+    const hCode = mk("main.go", "func main() {", ['\tfmt.Println("hi")'], ["\tos.Exit(0)"]);
+    imp = hImp.id;
+    code = hCode.id;
+    const files: FileDiff[] = [{ path: "main.go", status: "modified", binary: false, hunks: [hImp, hCode] }];
+    writeRevision(key, 1, "diff", files, { baseSha: "b", headSha: "h", mergeBase: "m" }, tmp);
+    appendEvent(
+      key,
+      { type: "revision-added", revision: 1, baseSha: "b", headSha: "h", mergeBase: "m", baseOnly: false, files: toRevisionFiles(files) },
+      tmp,
+    );
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  const save = (hunks: unknown, attention: "must-read" | "skip" = "must-read", unassigned: string[] = []) =>
+    setAnalysis(key, { summary: "s", units: [{ ...unit({ id: "u", attention }), hunks }], unassigned }, {}, tmp).state;
+
+  it("skips an import-only hunk the analysis left in, labelled for it", () => {
+    expect(save([imp, code]).units[0].hunks).toEqual([{ id: imp, skip: true, label: "only imports" }, { id: code }]);
+  });
+
+  it("keeps the analysis's own label, and a heart or risk it put there", () => {
+    expect(save([{ id: imp, label: "import" }, code]).units[0].hunks[0]).toEqual({ id: imp, skip: true, label: "import" });
+    expect(save([{ id: imp, heart: [{ why: "the new dependency" }] }, code]).units[0].hunks[0]).toEqual({
+      id: imp,
+      heart: [{ why: "the new dependency" }],
+    });
+  });
+
+  it("leaves code alone and a skip unit as it is", () => {
+    expect(save([imp, code], "skip").units[0].hunks).toEqual([{ id: imp }, { id: code }]);
+  });
+
+  it("skips one added through a unit patch too", () => {
+    save([code], "must-read", [imp]);
+    const state = setUnit(key, "u", { addHunks: [imp] }, {}, tmp);
+    expect(state.units[0].hunks).toContainEqual({ id: imp, skip: true, label: "only imports" });
+  });
+});
+
 describe("fileOrder through the reducer", () => {
   const rev = (revision: number): ReviewerEvent =>
     ({

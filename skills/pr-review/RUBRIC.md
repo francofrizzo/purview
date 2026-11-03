@@ -156,6 +156,9 @@ first "yes":
 3. **Is this hunk mechanical and correct by construction** (pure rename, generated file,
    lockfile, import path fix with no ambiguity)? → `skip`.
 
+Golden files, snapshots and testdata a unit's tests compare against are the visible spec
+of its behaviour: `skim`, never `skip`, and never a skipped hunk inside the unit.
+
 **Hunk risk marks override attention upward.** A risk-flagged hunk is never `skip`, and is
 `must-read` unless you have a specific reason it's merely `skim` (rare — document the
 reason in `attentionWhy` if you downgrade a risk-flagged unit to skim).

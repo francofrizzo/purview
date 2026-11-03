@@ -202,8 +202,9 @@ migration) — a hint on the triage line is often enough on its own.
 
 A hunk with at most four changed lines has its body printed right under its triage line
 (`-`/`+` prefixed, indented past the id). That body counts as read: bucket such a hunk
-from it, and when it is only imports, a re-export, a renamed call site or a one-line
-constant tweak, mark it `skip` (see section 4) without a `show` call.
+from it, and when it is only a re-export or a renamed call site, mark it `skip` (see
+section 4) without a `show` call. A hunk triage tags `imp` is only imports: Purview skips
+it on save, so you need neither read nor mark it.
 
 **Generated files and lockfiles are not yours.** Purview detects them itself (lockfile
 names, generated-output paths, `.gitattributes` `linguist-generated`, "Code generated"
@@ -310,15 +311,32 @@ hunk that is only `Enqueue`); then leave it off rather than restate the header. 
 the hunk is, not what the unit is: a label that would fit every hunk of the unit is wrong.
 Skip and ripple units need no labels.
 
-**`skip: true`** — a hunk a reader can skip: import changes, re-exports, renamed call
-sites, moved boilerplate, inside a unit that otherwise matters. A skip requires a `label`,
-two to five words giving the reason, shown on the muted hunk: `"adds imports"`,
-`"renamed call site"`, `"re-export only"`. Rules:
+**`skip: true`** — the hunk changes nothing a reviewer could disagree with, inside a unit
+that otherwise matters. It is one of:
+
+- only imports or re-exports (Purview already skips the hunks triage tags `imp`),
+- a rename applied everywhere (the old name is gone from the PR),
+- a block moved unchanged,
+- comments that restate behaviour that did not change,
+- a call site that passes a new parameter the value that keeps the old behaviour.
+
+Never a skip, however small:
+
+- a condition, negation, `return`, `throw` or error path added, removed or inverted;
+- a literal, a constant's value, an enum or persisted string, a default or a config value;
+- a test's expected value, a mock's expected arguments, a golden or testdata file;
+- a comment directive (`//go:embed`, `//go:build`, `eslint-disable`, `@ts-ignore`,
+  swagger `@Router`/`@Param`, `noqa`): it changes what the tools do;
+- the one call site that passes something new: that is where the feature is decided.
+
+A skip requires a `label`, two to five words saying what the body *is*, shown on the
+muted hunk: `"rename A→B"`, `"re-export only"`, `"moved unchanged"`. If you cannot write
+that label truthfully, it is not a skip; a label naming the hunk's role ("pass the prop",
+"mock rename") instead of its content is the sign. Rules:
 
 - Skip only a hunk whose body you actually read. The claim is "there is nothing here",
   and you can only make it after looking. The body triage inlines under a small hunk
-  counts; a larger one goes in the pass 2 `show` call first. The canonical skip is a
-  small hunk whose inlined body is only import lines, labelled `"adds imports"`.
+  counts; a larger one goes in the pass 2 `show` call first.
 - A hunk is never both skip and heart (the payload is rejected), and never make skips
   the majority of a must-read unit: if most of a unit is skippable, the unit is skim,
   not must-read with skips.

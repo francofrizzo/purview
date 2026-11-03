@@ -214,8 +214,9 @@ export type HeartSegment = z.infer<typeof HeartSegmentSchema>;
  * it holds is an entry here, and an entry says what the hunk is to the unit.
  * `label`, on any hunk, is a few words of inline markdown saying what the
  * hunk is when its header and path do not (on a skip, why there is nothing
- * to read). `skip` marks a hunk a reader need not read (an import change, a
- * re-export, a renamed call site inside a unit that otherwise matters): it
+ * to read). `skip` marks a hunk a reader need not read (a re-export, a rename
+ * applied everywhere, a block moved unchanged, inside a unit that otherwise
+ * matters; import-only hunks get it on save, see import-only.ts): it
  * keeps its own `viewed` flag but counts toward no progress total, Purview
  * shows it muted and Space passes over it; it needs a label. `heart` is one
  * to MAX_HEART_SEGMENTS segments where the unit's logic lives, as opposed to
@@ -234,7 +235,7 @@ export const HunkEntrySchema = z.object({
   skip: z
     .literal(true)
     .optional()
-    .describe("The reader need not read this hunk (an import change, a re-export, a renamed call site, moved boilerplate) inside a unit that otherwise matters. Needs a label; never on a heart; only after reading the body."),
+    .describe("The hunk changes nothing a reviewer could disagree with (a re-export, a rename applied everywhere, a block moved unchanged) inside a unit that otherwise matters. Never on a changed condition, literal, test expectation or comment directive. Needs a label saying what the body is; never on a heart; only after reading the body. Import-only hunks are skipped by Purview on save."),
   risks: z.array(RiskMarkSchema).min(1).max(4).optional()
     .describe("Up to four risk marks at the lines concerned, ranges not overlapping; never on a skip. Marks without lines cover the whole hunk and do not mix with ranged ones."),
   heart: z

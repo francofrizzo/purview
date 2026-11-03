@@ -1,4 +1,5 @@
 import type { FileDiff, FilesJson, Hunk } from "./schemas.js";
+import { isImportOnlyHunk } from "./import-only.js";
 
 /**
  * Selector matching for the `show` CLI command: pick hunks out of a revision
@@ -131,7 +132,7 @@ export function renderShowHunk(sh: SelectedHunk): string {
   const { file, hunk } = sh;
   const head =
     `=== ${file.path}   ${hunk.id}   +${hunk.addedLines.length} -${hunk.removedLines.length}   ` +
-    `@@${hunk.header}@@\n`;
+    `@@${hunk.header}@@${isImportOnlyHunk(file.path, hunk) ? "   imp (only imports: Purview skips it for you)" : ""}\n`;
   const lines = hunk.text === "" ? [] : hunk.text.split("\n");
   const width = Math.max(
     String(hunk.oldStart + hunk.oldLines).length,

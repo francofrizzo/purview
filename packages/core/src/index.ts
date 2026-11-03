@@ -13,6 +13,7 @@ export * from "./report.js";
 export * from "./analysis-share.js";
 export * from "./move-detection.js";
 export * from "./triage.js";
+export * from "./import-only.js";
 export * from "./hunk-select.js";
 export * from "./changes.js";
 export * from "./line-changes.js";

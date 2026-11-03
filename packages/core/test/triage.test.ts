@@ -29,6 +29,14 @@ function filesJson(files: FileDiff[], revision = 1): FilesJson {
 }
 
 describe("renderTriage", () => {
+  it("tags a hunk of only imports imp, and not one with code", () => {
+    const imp = mkHunk("main.go", ['\t"fmt"'], [], { header: "import (" });
+    const code = mkHunk("main.go", ["\tfmt.Println()"], []);
+    const out = renderTriage(filesJson([{ path: "main.go", status: "modified", binary: false, hunks: [imp, code] }]));
+    expect(out).toContain(`  ${imp.id}   +1 -0   @@ import (   imp`);
+    expect(out).toMatch(new RegExp(`  ${code.id}   \\+1 -0   @@ func example\\(\\)$`, "m"));
+  });
+
   it("prints a header line, one line per file, one per hunk, in files.json order", () => {
     const h1 = mkHunk("src/a.ts", ["x"], ["y"]);
     const h2 = mkHunk("src/b.ts", ["z"], []);

@@ -1,3 +1,4 @@
+import { importOnlyHunkIds, withImportSkips } from "./import-only.js";
 import fs from "node:fs";
 import {
   fetchMergeBaseAsync,
@@ -844,6 +845,12 @@ export function setAnalysis(
     }
     assertShape(analysis, revisionPaths(key, state, root));
   }
+  // Imports are a fact, not a judgment: Purview skips them where the run
+  // did not (a third of them, in practice).
+  if (opts.origin !== "import") {
+    const importOnly = importOnlyHunkIds(readFilesJson(key, state.currentRevision, root).files);
+    for (const unit of analysis.units) if (unit.attention !== "skip") unit.hunks = withImportSkips(unit.hunks, importOnly);
+  }
   const next = appendEvent(
     key,
     {
@@ -900,6 +907,12 @@ export function setUnits(
 ): { state: State; warnings: string[]; unitIds: string[] } {
   const state = loadState(key, root);
   const planned = planUnitPatches(state, requests);
+  const importOnly = importOnlyHunkIds(readFilesJson(key, state.currentRevision, root).files);
+  for (const e of planned.events) {
+    if (e.type !== "unit-updated" || !e.patch.hunks) continue;
+    const attention = e.patch.attention ?? state.units.find((u) => u.id === e.unitId)?.attention;
+    if (attention !== "skip") e.patch.hunks = withImportSkips(e.patch.hunks, importOnly);
+  }
   validateRiskBounds(planned.events.flatMap((e) => e.type === "unit-updated" && e.patch.hunks ? [{ hunks: e.patch.hunks }] : []), readFilesJson(key, state.currentRevision, root).files);
   const next = appendEvents(key, planned.events, root);
   return { state: next, warnings: planned.warnings, unitIds: planned.unitIds };

@@ -1,5 +1,6 @@
 import { detectMoves, summarizeMoves, type MoveFile } from "./move-detection.js";
 import { GEN_TEXT_RE, GENERATED_UNIT_ID, isGeneratedPath, isLockFile } from "./generated.js";
+import { isImportOnlyHunk } from "./import-only.js";
 import type { FileDiff, FilesJson, Hunk } from "./schemas.js";
 
 /**
@@ -148,7 +149,7 @@ export function renderTriage(filesJson: FilesJson, opts: RenderTriageOptions = {
   );
   out.push(
     "hints: lock=lockfile  gen=generated  docs  tests  snap=snapshot/fixture  " +
-      "mig=db migration  mv-in/mv-out=moved code (see MOVED)",
+      "mig=db migration  mv-in/mv-out=moved code (see MOVED)  imp=only imports (Purview skips it for you)",
   );
   out.push(
     `bodies of hunks with <=${INLINE_BODY_MAX_LINES} changed lines are printed under their line ` +
@@ -194,7 +195,8 @@ export function renderTriage(filesJson: FilesJson, opts: RenderTriageOptions = {
             outTargets,
           )
         : "";
-      const extras = [genHint, mv].filter((s) => s !== "").join("   ");
+      const imp = isImportOnlyHunk(file.path, hunk) ? "imp" : "";
+      const extras = [genHint, imp, mv].filter((s) => s !== "").join("   ");
       out.push(
         `  ${hunk.id}   ${hunkSize(hunk)}   @@ ${truncateHeader(hunk.header)}${
           extras ? "   " + extras : ""
