@@ -4,7 +4,7 @@ import type { Tok } from "../lib/highlight";
 import type { CharRange, DiffRow } from "../lib/diffModel";
 import { identifierAtPoint } from "../lib/identifierAt";
 import { CommentBubble } from "./InlineComments";
-import { IconPlus } from "./icons";
+import { IconPlus, IconWarning } from "./icons";
 
 /**
  * Cmd/ctrl+click "go to definition": resolve the identifier under the click
@@ -313,6 +313,7 @@ function Gutter({
   side,
   background,
   selected,
+  warning,
   onSelectDown,
   onSelectEnter,
 }: {
@@ -320,11 +321,13 @@ function Gutter({
   side: LineSide;
   background: string;
   selected?: boolean;
+  /** the warnings the analysis found on this line (see `warningLines`), marked left of the number */
+  warning?: string;
 } & Pick<GutterSelectProps, "onSelectDown" | "onSelectEnter">) {
   const interactive = Boolean(onSelectDown && number !== undefined);
   return (
     <span
-      className={`diff-gutter${interactive ? " cursor-pointer select-none" : ""}`}
+      className={`diff-gutter relative${interactive ? " cursor-pointer select-none" : ""}`}
       style={{
         background: selected ? "var(--accent-soft)" : background,
         color: selected ? "var(--accent)" : undefined,
@@ -342,6 +345,17 @@ function Gutter({
         interactive && onSelectEnter ? () => onSelectEnter(side, number!) : undefined
       }
     >
+      {warning ? (
+        <span
+          className="absolute left-[4px] top-[3px] inline-flex"
+          style={{ color: "var(--warn)" }}
+          data-tip={warning}
+          aria-label={`Warning: ${warning}`}
+          data-testid="line-warning"
+        >
+          <IconWarning width={11} height={11} />
+        </span>
+      ) : null}
       {number ?? ""}
     </span>
   );
@@ -392,6 +406,8 @@ export interface DiffLineProps extends GutterSelectProps, LineCommentProps, Remo
   pairMoved?: boolean;
   /** the highlighted changelog revision introduced this line (see lib/revisionHighlight.ts) */
   changed?: boolean;
+  /** the analysis's warnings citing this line, shown in the new-side gutter */
+  warning?: string;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -415,6 +431,7 @@ export const DiffLine = memo(function DiffLine({
   moved,
   pairMoved,
   changed,
+  warning,
   removedAbove,
   removedBelow,
   onDefinitionClick,
@@ -456,6 +473,7 @@ export const DiffLine = memo(function DiffLine({
           side="new"
           background={gutterBg}
           selected={selectedNew}
+          warning={warning}
           onSelectDown={onSelectDown}
           onSelectEnter={onSelectEnter}
         />
@@ -501,6 +519,8 @@ export interface SplitHalfProps extends LineCommentProps, RemovalMarkerProps {
    *  a moved line: the pair was positional, not a real edit, so no highlight */
   pairMoved?: boolean;
   changed?: boolean;
+  /** see `DiffLineProps.warning` */
+  warning?: string;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -526,6 +546,7 @@ function SplitHalf({
   moved,
   pairMoved,
   changed,
+  warning,
   removedAbove,
   removedBelow,
   onDefinitionClick,
@@ -569,6 +590,7 @@ function SplitHalf({
           side={side}
           background={gutterBgFor(row.type, moved)}
           selected={selected}
+          warning={warning}
           onSelectDown={onSelectDown}
           onSelectEnter={onSelectEnter}
         />
@@ -643,6 +665,8 @@ export interface SplitDiffLineProps {
   /** "K lines removed in rN" markers; split view draws them on the left (old) half */
   removedAboveLeft?: string;
   removedBelowLeft?: string;
+  /** see `DiffLineProps.warning`; warnings cite new-side lines, so the right half */
+  warningRight?: string;
   onDefinitionClick?: OnDefinitionClick;
   isDefinedInDiff?: IsDefinedInDiff;
 }
@@ -681,6 +705,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   changedRight,
   removedAboveLeft,
   removedBelowLeft,
+  warningRight,
   onDefinitionClick,
   isDefinedInDiff,
 }: SplitDiffLineProps) {
@@ -731,6 +756,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         moved={movedRight}
         pairMoved={movedLeft}
         changed={changedRight}
+        warning={warningRight}
         onDefinitionClick={onDefinitionClick}
         isDefinedInDiff={isDefinedInDiff}
       />

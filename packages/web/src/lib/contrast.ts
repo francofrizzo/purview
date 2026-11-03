@@ -129,6 +129,7 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("moved-out", "Diff rows", "moved-out line (faded del tint)", "fg", 4.5, ["bg", "moved-del-bg"], "→  func contactlessToolCallResults(", mono),
     s("moved-marker-in", "Diff rows", "arrow marker on a moved-in line", "ok", 3.0, ["bg", "moved-add-bg"], "←", mono),
     s("moved-marker-out", "Diff rows", "arrow marker on a moved-out line", "risk", 3.0, ["bg", "moved-del-bg"], "→", mono),
+    ...["gutter", "add-gutter"].map((g) => s(`line-warning-${g}`, "Diff rows", `warning mark in the ${g === "gutter" ? "context" : "add"} gutter`, "warn", 3.0, g === "gutter" ? ["bg"] : ["bg", "add-gutter"], "⚠", { kind: "swatch" })),
     s("gutter-moved-in", "Diff rows", "line number on a moved-in gutter", "fg-faint", 2.4, ["bg", "moved-add-gutter"], "509", mono),
     s("gutter-moved-out", "Diff rows", "line number on a moved-out gutter", "fg-faint", 2.4, ["bg", "moved-del-gutter"], "502", mono),
     s("moved-band-link", "Diff rows", "fold band \"go to\" and hint (fg-muted on the faded tint)", "fg-muted", 3.2, ["bg", "moved-add-bg"], "go to report.ts ←", mono),

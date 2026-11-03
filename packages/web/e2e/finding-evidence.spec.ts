@@ -28,3 +28,13 @@ test("findings show warnings only: a unit whose findings are all notes shows non
   await expect(page.getByTestId("unit-brief")).toBeVisible();
   await expect(page.getByTestId("findings-toggle")).toHaveCount(0);
 });
+
+test("a warning marks the line it cites in the gutter, with its text on hover", async ({ page }) => {
+  await openPr(page);
+  await openUnit(page, UNITS.charge);
+  const header = hunkHeader(page, "a1b2c3d4e5f60005");
+  await header.scrollIntoViewIfNeeded();
+  const mark = page.getByTestId("line-warning");
+  await expect(mark).toHaveCount(1);
+  await expect(mark).toHaveAttribute("data-tip", /refundCharge\(\) still keys off the raw orderId/);
+});

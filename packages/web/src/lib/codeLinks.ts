@@ -7,6 +7,7 @@
 
 import type { FileEntry, Hunk, PrDetail, ReviewUnit } from "../api/types";
 import type { CodeLink } from "../components/Markdown";
+import { shownFindings } from "./diffModel";
 import { unitDisplayNumbers } from "./unitOrder";
 
 export type CodeTarget =
@@ -61,6 +62,31 @@ export function evidenceParts(evidence: string): { text: string; ref?: true }[] 
   }
   if (at < evidence.length) parts.push({ text: evidence.slice(at) });
   return parts;
+}
+
+/**
+ * The diff lines the units' warnings cite, as `path:line` (new side) to the
+ * warnings' text, so the diff can mark each one in its gutter. A place the
+ * diff does not show (a caller outside the PR) has no line to mark; the
+ * unit's findings list still carries it.
+ */
+export function warningLines(
+  units: Pick<ReviewUnit, "findings">[],
+  files: Pick<FileEntry, "path">[],
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const u of units) {
+    for (const f of shownFindings(u.findings)) {
+      const places = new Set<string>();
+      for (const part of evidenceParts(f.evidence)) {
+        if (!part.ref) continue;
+        const t = resolveCodeTarget(part.text, { unitIds: new Set(), files });
+        if (t?.kind === "file" && t.line !== undefined) places.add(`${t.path}:${t.line}`);
+      }
+      for (const key of places) out.set(key, [...(out.get(key) ?? []), f.text]);
+    }
+  }
+  return out;
 }
 
 /** The hunk showing `line` on the new side, if the diff shows it at all. */

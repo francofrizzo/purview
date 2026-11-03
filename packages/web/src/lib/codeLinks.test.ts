@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evidenceParts, hunkAtLine, resolveCodeTarget, resolveDiffPath } from "./codeLinks";
+import { evidenceParts, hunkAtLine, resolveCodeTarget, resolveDiffPath, warningLines } from "./codeLinks";
 
 const files = [
   { path: "pkg/openairesponses/rollout.go" },
@@ -76,5 +76,33 @@ describe("evidenceParts", () => {
     const e = "callers in api/pay.ts:88 (and jobs/retry.ts:~41-50).";
     expect(refs(e)).toEqual(["callers", "in", "api/pay.ts:88", "and", "jobs/retry.ts:~41-50"]);
     expect(join(evidenceParts(e))).toBe(e);
+  });
+});
+
+describe("warningLines", () => {
+  const files = [{ path: "src/billing/ledger.ts" }, { path: "src/api/pay.ts" }];
+
+  it("maps each diff line a warning cites to its text, and leaves out places outside the diff", () => {
+    const out = warningLines(
+      [{ findings: [{ severity: "warning", text: "w", evidence: "src/payments/refund.ts:64, ledger.ts:17" }] }],
+      files,
+    );
+    expect([...out]).toEqual([["src/billing/ledger.ts:17", ["w"]]]);
+  });
+
+  it("gathers two warnings on one line, and ignores notes and places without a line", () => {
+    const out = warningLines(
+      [
+        { findings: [{ severity: "warning", text: "a", evidence: "src/api/pay.ts:9" }] },
+        {
+          findings: [
+            { severity: "warning", text: "b", evidence: "src/api/pay.ts:9, src/api/pay.ts" },
+            { severity: "note", text: "n", evidence: "src/api/pay.ts:12" },
+          ],
+        },
+      ],
+      files,
+    );
+    expect([...out]).toEqual([["src/api/pay.ts:9", ["a", "b"]]]);
   });
 });

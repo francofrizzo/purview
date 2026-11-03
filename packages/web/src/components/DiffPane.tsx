@@ -5,6 +5,7 @@ import { baseName, lineRangeRef } from "../lib/chatRefs";
 import { hunkHint } from "../lib/hunkHints";
 import { InlineMarkdown } from "./Markdown";
 import { isRangeInDiff, lineAnchor } from "../lib/comments";
+import { warningLines } from "../lib/codeLinks";
 import { buildThreadGroups, itemCount, threadRange, type DisplayThread, type ThreadGroups } from "../lib/threads";
 import {
   buildMoveIndex,
@@ -663,6 +664,13 @@ export function DiffPane({
     () => computeMarkedByHunk(hunks, highlight, detail.diff),
     [hunks, highlight, detail.diff],
   );
+  // The lines the analysis's warnings cite, marked in the new-side gutter.
+  const warnings = useMemo(
+    () => warningLines(detail.state.units, detail.files.files),
+    [detail.state.units, detail.files.files],
+  );
+  const warningAt = (path: string, line: number | undefined) =>
+    line === undefined ? undefined : warnings.get(`${path}:${line}`)?.join("\n\n");
   // Its pure deletions: "K lines removed" markers, per hunk, by unified row,
   // and the same by split row (split draws them on the left half).
   const removalsByHunk = useMemo(
@@ -3627,6 +3635,7 @@ export function DiffPane({
             onQuote ? (side, line, shift) => startSelect(path, side, line, shift) : undefined
           }
           onSelectEnter={onQuote ? (side, line) => extendSelect(path, side, line) : undefined}
+          warningRight={warningAt(path, right?.row.newNumber)}
           movedLeft={left ? movedAt(row.hunkId, row.entry.hunk, left.index, left.row.type) : false}
           movedRight={
             right ? movedAt(row.hunkId, row.entry.hunk, right.index, right.row.type) : false
@@ -3656,6 +3665,7 @@ export function DiffPane({
         }
         wholeFileAdded={row.entry.file.status === "added"}
         changed={markedByHunk.get(row.hunkId)?.has(row.lineIdx) ?? false}
+        warning={warningAt(row.entry.file.path, line.newNumber)}
         removedAbove={removalTitle(removal?.above, removal?.aboveIn)}
         removedBelow={removalTitle(removal?.below, removal?.belowIn)}
         comments={anchor ? grouped.byLine.get(anchor) : undefined}
