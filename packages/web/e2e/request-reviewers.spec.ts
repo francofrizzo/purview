@@ -29,6 +29,10 @@ test("the Review panel on your PR has the same reviewers section", async ({ page
   await page.getByTestId("topbar-finish-review").click();
   const section = page.getByTestId("review-panel-reviewers");
   await expect(section.getByTestId("reviewers-row")).toHaveCount(3);
+  // The candidates drop down only while the search has focus.
+  await expect(section.getByTestId("reviewers-candidates")).toHaveCount(0);
+  await section.getByTestId("reviewers-search").focus();
+  await expect(section.getByTestId("reviewers-candidate-maria")).toBeVisible();
   await section.getByTestId("reviewers-search").fill("kai");
   await section.getByTestId("reviewers-candidate-kai").click();
   await expect(section.getByTestId("reviewers-row")).toHaveCount(4);

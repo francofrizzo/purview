@@ -128,8 +128,8 @@ export function ReviewersMark({
 
 /**
  * The cluster on your own PR, as a button: it opens who is on the PR (ask
- * again, or stop asking) and a search to ask someone new, GitHub's
- * suggestions first.
+ * again, or stop asking) and a search to ask someone new, whose candidates
+ * (GitHub's suggestions first) drop down while it has focus.
  */
 export function ReviewersButton({
   prKey,
@@ -185,6 +185,8 @@ export function ReviewersPanel({
 }) {
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
+  // The candidates drop down under the input while it has focus.
+  const [listOpen, setListOpen] = useState(autoFocus);
   // Each keystroke would be a GitHub search: wait for a pause.
   useEffect(() => {
     const t = setTimeout(() => setQuery(q.trim()), 200);
@@ -241,51 +243,72 @@ export function ReviewersPanel({
           ))}
         </ul>
       ) : null}
-      <input
-        autoFocus={autoFocus}
-        className="input text-xs"
-        placeholder="Ask someone to review…"
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        data-testid="reviewers-search"
-      />
-      <ul className="flex max-h-60 flex-col overflow-y-auto">
-        {(candidates.data ?? []).map((c: ReviewerCandidate) => (
-          <li key={`${c.kind}:${c.login}`}>
-            <button
-              type="button"
-              disabled={busy}
-              className="flex w-full min-w-0 items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-[var(--bg-hover)] disabled:opacity-50"
-              data-testid={`reviewers-candidate-${c.login}`}
-              data-tip={c.kind === "team" ? `Ask the ${c.name ?? c.login} team` : `Ask ${c.login}`}
-              onClick={() => {
-                ask(c);
-                setQ("");
-              }}
-            >
-              <AuthorAvatar author={c.login} url={c.avatarUrl ?? undefined} size={16} />
-              <span className="flex-none" style={{ color: "var(--fg)" }}>
-                {c.kind === "team" ? `team/${c.login}` : c.login}
-              </span>
-              {c.name && c.kind === "user" ? (
-                <span className="min-w-0 truncate text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  {c.name}
-                </span>
-              ) : null}
-              {c.suggested ? (
-                <span className="ml-auto flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  suggested
-                </span>
-              ) : null}
-            </button>
-          </li>
-        ))}
-        {candidates.isFetched && !candidates.data?.length ? (
-          <li className="px-1.5 py-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
-            {query ? "Nobody here matches" : "Type a name or a team"}
-          </li>
+      <div className="relative">
+        <input
+          autoFocus={autoFocus}
+          className="input text-xs"
+          placeholder="Ask someone to review…"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setListOpen(true);
+          }}
+          onFocus={() => setListOpen(true)}
+          onBlur={() => setListOpen(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && listOpen) {
+              e.stopPropagation();
+              setListOpen(false);
+            }
+          }}
+          aria-expanded={listOpen}
+          data-testid="reviewers-search"
+        />
+        {listOpen ? (
+          <ul
+            className="surface absolute left-0 right-0 top-full z-20 mt-1 flex max-h-60 flex-col overflow-y-auto rounded-md p-1 elev-2"
+            data-testid="reviewers-candidates"
+            // A press on a candidate would blur the input and close the list before the click lands.
+            onMouseDown={(e) => e.preventDefault()}
+          >
+            {(candidates.data ?? []).map((c: ReviewerCandidate) => (
+              <li key={`${c.kind}:${c.login}`}>
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="flex w-full min-w-0 items-center gap-2 rounded px-1.5 py-1 text-left hover:bg-[var(--bg-hover)] disabled:opacity-50"
+                  data-testid={`reviewers-candidate-${c.login}`}
+                  data-tip={c.kind === "team" ? `Ask the ${c.name ?? c.login} team` : `Ask ${c.login}`}
+                  onClick={() => {
+                    ask(c);
+                    setQ("");
+                  }}
+                >
+                  <AuthorAvatar author={c.login} url={c.avatarUrl ?? undefined} size={16} />
+                  <span className="flex-none" style={{ color: "var(--fg)" }}>
+                    {c.kind === "team" ? `team/${c.login}` : c.login}
+                  </span>
+                  {c.name && c.kind === "user" ? (
+                    <span className="min-w-0 truncate text-2xs" style={{ color: "var(--fg-faint)" }}>
+                      {c.name}
+                    </span>
+                  ) : null}
+                  {c.suggested ? (
+                    <span className="ml-auto flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
+                      suggested
+                    </span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
+            {!candidates.data?.length ? (
+              <li className="px-1.5 py-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
+                {!candidates.isFetched ? "Loading…" : query ? "Nobody here matches" : "Type a name or a team"}
+              </li>
+            ) : null}
+          </ul>
         ) : null}
-      </ul>
+      </div>
       {candidates.error || requests.error ? (
         <p className="px-1.5 text-2xs" style={{ color: "var(--risk)" }} data-testid="reviewers-error">
           {errorText(requests.error ?? candidates.error)}
