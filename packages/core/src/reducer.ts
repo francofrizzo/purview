@@ -215,6 +215,37 @@ export function applyEvents(prev: State, events: ReviewerEvent[]): State {
 }
 
 /** Private mutable step: callers must own the state and event payloads. */
+/** `path:12`, `path:~12`, `path:12-40` as a finding cites a place (an en dash too). */
+const CITATION = /((?:\.\/)?[^\s:`,;()'"]+):(~?)(\d+)(?:(\s*[-–]\s*~?)(\d+))?/g;
+
+/**
+ * A kept finding's citations of lines inside a hunk that moved, renumbered to
+ * where that code sits now. A line outside the unit's moved hunks is left as
+ * written: nothing records where it went.
+ */
+function shiftCitations(
+  findings: NonNullable<ReviewUnit["findings"]>,
+  moves: { file: string; from: [number, number]; by: number }[],
+): NonNullable<ReviewUnit["findings"]> {
+  if (moves.length === 0) return findings;
+  const moveOf = (written: string, line: number) =>
+    moves.find(
+      (m) =>
+        (m.file === written.replace(/^\.\//, "") || m.file.endsWith(`/${written}`)) &&
+        line >= m.from[0] &&
+        line <= m.from[1],
+    );
+  const renumber = (text: string) =>
+    text.replace(CITATION, (whole, p: string, tilde: string, a: string, dash?: string, b?: string) => {
+      const start = Number(a);
+      const by = moveOf(p, start)?.by ?? 0;
+      if (b === undefined) return by ? `${p}:${tilde}${start + by}` : whole;
+      const endBy = moveOf(p, Number(b))?.by ?? by;
+      return by || endBy ? `${p}:${tilde}${start + by}${dash}${Number(b) + endBy}` : whole;
+    });
+  return findings.map((f) => ({ ...f, text: renumber(f.text), evidence: renumber(f.evidence) }));
+}
+
 function applyEventInPlace(state: State, event: ReviewerEvent): State {
   switch (event.type) {
     case "pr-initialized": {
@@ -247,6 +278,7 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
         addedAt: event.ts,
       });
       state.revisions.sort((a, b) => a.revision - b.revision);
+      const fromRevision = state.currentRevision;
       state.currentRevision = event.revision;
 
       // A husk (see ReviewUnit.removedAtRevision) lives for exactly one
@@ -271,6 +303,16 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
        * the finding moved for at least part of it.
        */
       const statusByOldId = new Map<string, string>();
+      /**
+       * old hunk id -> where it sat and how far it moved (MigrationEntry.moved).
+       * Only from the revision the report moved from: a replayed revision
+       * already moved its marks.
+       */
+      const movedByOldId = new Map<string, { file: string; from: [number, number]; by: number }>();
+      const fromHere = event.migration?.previousRevision === fromRevision;
+      for (const entry of fromHere ? event.migration!.entries : []) {
+        if (entry.moved && entry.previousHunkId) movedByOldId.set(entry.previousHunkId, { file: entry.file, ...entry.moved });
+      }
       const noteStatus = (oldId: string, status: string) => {
         const had = statusByOldId.get(oldId);
         if (had === undefined || had === "identical") statusByOldId.set(oldId, status);
@@ -392,19 +434,23 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
         const remapEntry = (e: HunkEntry): HunkEntry[] => {
           const successors = (idRemap.get(e.id) ?? [e.id]).filter((id) => live.has(id));
           const identical = statusByOldId.get(e.id) === "identical";
+          // The same code on other lines: its ranges move with it.
+          const by = movedByOldId.get(e.id)?.by ?? 0;
+          const shift = <T extends { lines?: [number, number] }>(s: T): T =>
+            s.lines && by ? { ...s, lines: [s.lines[0] + by, s.lines[1] + by] } : s;
           return successors.map((id, i) => {
             if (i > 0) return { id };
             const entry: HunkEntry = { id };
             if (identical) {
               if (e.label) entry.label = e.label;
               if (e.skip) entry.skip = true;
-              if (e.heart) entry.heart = e.heart;
+              if (e.heart) entry.heart = e.heart.map(shift);
             } else if (e.heart) {
               // Ranges gone, the segments collapse to one whole-hunk segment
               // carrying the first why.
               entry.heart = [{ why: e.heart[0].why }];
             }
-            if (e.risks) entry.risks = identical ? e.risks : e.risks.map(({ flag, why }) => ({ flag, why }));
+            if (e.risks) entry.risks = identical ? e.risks.map(shift) : e.risks.map(({ flag, why }) => ({ flag, why }));
             return entry;
           });
         };
@@ -412,6 +458,7 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
           const keepFindings = u.findings?.length ? findingsSurvive(u) : false;
           const next: ReviewUnit = normalizeHunks({ ...u, hunks: u.hunks.flatMap(remapEntry) });
           if (!keepFindings) delete next.findings;
+          else next.findings = shiftCitations(next.findings!, u.hunks.flatMap((h) => movedByOldId.get(h.id) ?? []));
           // Every hunk of the unit left the PR: keep it as a visible husk for
           // this one revision (title, summary, kind, attention intact) so the
           // reader sees the decision was dropped rather than it vanishing.

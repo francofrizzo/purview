@@ -353,8 +353,33 @@ export function migrate(input: MigrateInput): MigrationReport {
     previousRevision: input.previousRevision,
     baseOnly: input.baseOnly ?? false,
     counts,
-    entries,
+    entries: withMoves(entries, input.previousFiles, input.nextFiles),
+    positions: true,
   };
+}
+
+/**
+ * The entries with `moved` set on each identical hunk that sits on other
+ * lines now: an edit above it in its file shifted it. Its code is the same,
+ * so what was said about its lines still holds, at the new numbers.
+ */
+export function withMoves(
+  entries: MigrationEntry[],
+  previousFiles: Pick<FileDiff, "hunks">[],
+  nextFiles: Pick<FileDiff, "hunks">[],
+): MigrationEntry[] {
+  const start = (files: Pick<FileDiff, "hunks">[]) =>
+    new Map(files.flatMap((f) => f.hunks.map((h) => [h.id, h] as const)));
+  const before = start(previousFiles);
+  const after = start(nextFiles);
+  return entries.map((e) => {
+    if (e.status !== "identical" || !e.previousHunkId) return e;
+    const old = before.get(e.previousHunkId);
+    const now = after.get(e.hunkId);
+    if (!old || !now || old.newStart === now.newStart) return e;
+    const end = old.newStart + Math.max(old.newLines, 1) - 1;
+    return { ...e, moved: { from: [old.newStart, end], by: now.newStart - old.newStart } };
+  });
 }
 
 /** Human-readable rendering of a migration report (used by the CLI). */

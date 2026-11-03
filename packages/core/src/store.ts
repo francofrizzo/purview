@@ -30,6 +30,7 @@ import type {
 } from "./schemas.js";
 import { applyEvents, fold } from "./reducer.js";
 import { upcastEvent } from "./upcast.js";
+import { withMoves } from "./migration.js";
 import {
   CHECKOUTS_DIR_NAME,
   CODING_DIR_NAME,
@@ -130,7 +131,27 @@ export function readEvents(key: PrKey, root = stateRoot()): ReviewerEvent[] {
           `events.jsonl line ${i + 1} is invalid: ${(err as Error).message}`,
         );
       }
-    });
+    })
+    .map((e) => withPositions(e, key, root));
+}
+
+/**
+ * A revision recorded before migration reports said where identical hunks
+ * moved gets that from the two revisions' files.json, which are still on
+ * disk; the log itself is never rewritten. Without them it stays as it was:
+ * its marks keep their old numbers, as they always did.
+ */
+function withPositions(event: ReviewerEvent, key: PrKey, root: string): ReviewerEvent {
+  if (event.type !== "revision-added" || !event.migration || event.migration.positions) return event;
+  const { migration } = event;
+  if (migration.previousRevision === undefined || migration.counts.identical === 0) return event;
+  try {
+    const before = readFilesJson(key, migration.previousRevision, root).files;
+    const after = readFilesJson(key, event.revision, root).files;
+    return { ...event, migration: { ...migration, entries: withMoves(migration.entries, before, after), positions: true } };
+  } catch {
+    return event;
+  }
 }
 
 /** Append one event and refresh the derived state.json snapshot. */

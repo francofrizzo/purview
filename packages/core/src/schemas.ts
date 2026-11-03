@@ -1124,6 +1124,13 @@ export const MigrationEntrySchema = z.object({
    * predecessor may precede other new hunks too). Absent in older reports.
    */
   match: z.enum(["containment"]).optional(),
+  /**
+   * An `identical` hunk that moved: its new-side lines in the previous
+   * revision, and how many lines down (or up, negative) it sits now. Absent
+   * when it stayed put. The line marks and finding citations inside it follow
+   * it (reducer).
+   */
+  moved: z.object({ from: z.tuple([z.number().int(), z.number().int()]), by: z.number().int() }).optional(),
 });
 export type MigrationEntry = z.infer<typeof MigrationEntrySchema>;
 
@@ -1139,6 +1146,12 @@ export const MigrationReportSchema = z.object({
     new: z.number().int(),
   }),
   entries: z.array(MigrationEntrySchema),
+  /**
+   * Set once the entries say where identical hunks moved (`moved`). Reports
+   * written before that have it filled from the revisions' files.json when
+   * the log is read (store.ts), so their marks follow too.
+   */
+  positions: z.boolean().optional(),
 });
 export type MigrationReport = z.infer<typeof MigrationReportSchema>;
 
@@ -1450,9 +1463,10 @@ export type ArchivedHunk = z.infer<typeof ArchivedHunkSchema>;
  * Bumped whenever the reducer's output for an existing event log changes
  * (a new derived field, a new rule). `loadState` re-folds any state.json
  * written under an older version, so stored PRs pick the change up on their
- * next read instead of only on their next appended event.
+ * next read instead of only on their next appended event. 9 is skipped: the
+ * feat/inline-review-signals branch stamped it on stored PRs.
  */
-export const STATE_SHAPE_VERSION = 8;
+export const STATE_SHAPE_VERSION = 10;
 
 export const StateSchema = z.object({
   /** see STATE_SHAPE_VERSION; absent on every state.json written before it existed */
