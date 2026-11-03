@@ -2984,14 +2984,14 @@ export function DiffPane({
         style={{ borderColor: "var(--border)", background: "var(--bg-inset)", color: "var(--fg-faint)" }}
       >
         {whole ? (
-          button(<IconUnfold width={13} height={13} />, `Show the ${hidden} hidden line${hidden === 1 ? "" : "s"}`, "all", "gap-all")
+          button(<IconUnfold width={11} height={11} />, `Show the ${hidden} hidden line${hidden === 1 ? "" : "s"}`, "all", "gap-all")
         ) : (
           <>
             {gap.prevHunkId !== null
-              ? button(<IconCaret width={13} height={13} />, `Show ${EXPAND_STEP} more lines below the hunk above`, "top", "gap-down")
+              ? button(<IconCaret width={11} height={11} />, `Show ${EXPAND_STEP} more lines below the hunk above`, "top", "gap-down")
               : null}
             {gap.nextHunkId !== null
-              ? button(<IconCaret up width={13} height={13} />, `Show ${EXPAND_STEP} more lines above the hunk below`, "bottom", "gap-up")
+              ? button(<IconCaret up width={11} height={11} />, `Show ${EXPAND_STEP} more lines above the hunk below`, "bottom", "gap-up")
               : null}
           </>
         )}
