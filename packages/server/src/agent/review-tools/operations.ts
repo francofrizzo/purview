@@ -116,6 +116,8 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   // it replaces stays out of sight, or the run copies it back. Purview's own
   // generated unit and the reader's corrections still show.
   const fromScratch = context.analysisMode === "initial";
+  const renameWarnings = (units: core.ReviewUnit[]) =>
+    core.renameUnitWarnings(units.filter(u => !core.isGeneratedUnit(u)), core.renameOnlyHunks(core.readFilesJson(key, revision, root).files));
   const priorUnits = () => current().units.filter(u => !fromScratch || core.isGeneratedUnit(u));
   function check() {
     if (!active) failure("revoked", "This run is no longer active.");
@@ -233,13 +235,19 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
 
   if (request.task.kind === "analysis") {
     if (context.analysisMode === "initial") add("set_analysis", "Save a complete analysis; core validates coverage, hunk ownership and findings. Evidence max 200 chars; finding text max 300.", core.AnalysisSchema,
-      args => { const result = validated(() => core.setAnalysis(key, args, {}, root)); return { coverage: result.coverage, remaining: core.remainingWorkFor(key, root) }; }, false);
+      args => {
+        const result = validated(() => core.setAnalysis(key, args, {}, root));
+        const warnings = renameWarnings(result.state.units);
+        return { coverage: result.coverage, ...(warnings.length ? { warnings } : {}), remaining: core.remainingWorkFor(key, root) };
+      }, false);
     else if (context.analysisMode === "incremental") {
       add("patch_units", "Atomically apply unit patches. Existing units accept partial fields; new units need full shape. changelogEntry records this revision's change. Evidence max 200 chars; finding text max 300.", z.object({
         units: z.array(z.object({ id: z.string().min(1), patch: core.ReviewUnitPatchSchema }).strict()).min(1).max(100),
       }).strict(), args => {
         const result = validated(() => core.setUnits(key, args.units.map(({ id, patch }) => ({ unitId: id, payload: patch })), root));
-        return { unitIds: result.unitIds, warnings: result.warnings, remaining: core.remainingWorkFor(key, root) };
+        const touched = new Set(result.unitIds);
+        const warnings = [...result.warnings, ...renameWarnings(result.state.units.filter(u => touched.has(u.id)))];
+        return { unitIds: result.unitIds, warnings, remaining: core.remainingWorkFor(key, root) };
       }, false);
       add("set_shape", "Replace the concepts or the file notes without re-sending the analysis. A key present replaces that view whole; null drops it; an absent key leaves it.", core.ShapeSchema, args => {
         const state = validated(() => core.setShape(key, args, root));

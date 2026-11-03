@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renameOnlyHunks } from "../src/rename-only.js";
+import { renameOnlyHunks, renameUnitWarnings } from "../src/rename-only.js";
 import type { FileDiff } from "../src/schemas.js";
 
 let n = 0;
@@ -71,5 +71,24 @@ describe("renameOnlyHunks", () => {
   it("leaves generated files out", () => {
     const gen = { ...file("gen.pb.go", ["-\tfoo(a)", "+\tbar(a)"]), generated: true };
     expect(ids([gen])).toEqual([]);
+  });
+});
+
+describe("renameUnitWarnings", () => {
+  const unit = (id: string, attention: string, hunks: { id: string; label?: string; heart?: unknown[] }[]) => ({ id, attention, hunks });
+  const renamesOf = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `r${i}0000000`, label: "email test follows rename" }));
+
+  it("names a read unit that is mostly renames and the hunks to move out of it", () => {
+    const [w] = renameUnitWarnings([unit("u8", "skim", [{ id: "ab2ac2f9aa", label: "stored value changes" }, ...renamesOf(6)])], new Map());
+    expect(w).toContain("unit u8 is mostly renames (6 of 7");
+    expect(w).toContain("move ab2ac2f9 to the unit they belong to");
+  });
+
+  it("counts ren-tagged hunks, and leaves skip units, units with a heart and mixed units alone", () => {
+    const tagged = new Map(Array.from({ length: 5 }, (_, i) => [`t${i}`, "A→B"]));
+    expect(renameUnitWarnings([unit("u1", "skim", [...tagged.keys()].map((id) => ({ id })))], tagged)).toHaveLength(1);
+    expect(renameUnitWarnings([unit("u2", "skip", renamesOf(6))], new Map())).toEqual([]);
+    expect(renameUnitWarnings([unit("u3", "must-read", [{ id: "core", heart: [{}] }, ...renamesOf(6)])], new Map())).toEqual([]);
+    expect(renameUnitWarnings([unit("u4", "skim", [...renamesOf(5), ...Array.from({ length: 6 }, (_, i) => ({ id: `x${i}` }))])], new Map())).toEqual([]);
   });
 });

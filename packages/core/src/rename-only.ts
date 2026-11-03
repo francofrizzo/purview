@@ -192,3 +192,35 @@ export function renameOnlyHunks(files: FileDiff[]): Map<string, string> {
   }
   return out;
 }
+
+/**
+ * The read units that are mostly renames, said back to the analysis when it
+ * saves: renames are a skip unit, and the few hunks of substance that made
+ * it read belong elsewhere. A hunk counts as a rename when triage tagged it
+ * `ren` or the analysis's own label says so ("rename A→B", "follows
+ * rename"): the tag misses a rename the diff cannot show whole. A unit with
+ * a heart is left alone: its logic lives there, and its renames are hunk
+ * skips. A nudge, not a refusal: the analysis may have a reason (a name that
+ * is data).
+ */
+export function renameUnitWarnings(
+  units: { id: string; attention: string; hunks: { id: string; label?: string; heart?: unknown[] }[] }[],
+  renames: Map<string, string>,
+): string[] {
+  const out: string[] = [];
+  const isRename = (h: { id: string; label?: string }) => renames.has(h.id) || /\brenam/i.test(h.label ?? "");
+  for (const u of units) {
+    if (u.attention === "skip" || u.hunks.some((h) => (h.heart?.length ?? 0) > 0)) continue;
+    const renamed = u.hunks.filter(isRename);
+    if (renamed.length < 5 || renamed.length * 2 < u.hunks.length) continue;
+    const others = u.hunks.filter((h) => !isRename(h)).map((h) => h.id.slice(0, 8));
+    out.push(
+      `warning: unit ${u.id} is mostly renames (${renamed.length} of ${u.hunks.length} hunks tagged ren or labelled as one). ` +
+        "Renames are a skip unit: " +
+        (others.length > 0
+          ? `move ${others.join(", ")} to the unit they belong to or a skim unit of their own, then make ${u.id} skip.`
+          : `make ${u.id} skip.`),
+    );
+  }
+  return out;
+}
