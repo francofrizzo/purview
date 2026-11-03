@@ -37,6 +37,12 @@ describe("renderTriage", () => {
     expect(out).toMatch(new RegExp(`  ${code.id}   \\+1 -0   @@ func example\\(\\)$`, "m"));
   });
 
+  it("tags a hunk that only swaps names ren, with the words that changed", () => {
+    const ren = mkHunk("main.go", ["\tc := NewContactlessBot(cfg)"], ["\tc := NewUniversalBot(cfg)"]);
+    const out = renderTriage(filesJson([{ path: "main.go", status: "modified", binary: false, hunks: [ren] }]));
+    expect(out).toContain(`  ${ren.id}   +1 -1   @@ func example()   ren Universal→Contactless`);
+  });
+
   it("prints a header line, one line per file, one per hunk, in files.json order", () => {
     const h1 = mkHunk("src/a.ts", ["x"], ["y"]);
     const h2 = mkHunk("src/b.ts", ["z"], []);

@@ -1,6 +1,7 @@
 import { detectMoves, summarizeMoves, type MoveFile } from "./move-detection.js";
 import { GEN_TEXT_RE, GENERATED_UNIT_ID, isGeneratedPath, isLockFile } from "./generated.js";
 import { isImportOnlyHunk } from "./import-only.js";
+import { RENAME_HINT, renameOnlyHunks } from "./rename-only.js";
 import type { FileDiff, FilesJson, Hunk } from "./schemas.js";
 
 /**
@@ -131,6 +132,7 @@ export function renderTriage(filesJson: FilesJson, opts: RenderTriageOptions = {
     hunks: f.hunks.map((h) => ({ id: h.id, addedLines: h.addedLines, removedLines: h.removedLines })),
   }));
   const moves = detectMoves(moveFiles);
+  const renames = renameOnlyHunks(files);
 
   const totalHunks = files.reduce((n, f) => n + f.hunks.length, 0);
   const totalAdded = files.reduce(
@@ -149,7 +151,8 @@ export function renderTriage(filesJson: FilesJson, opts: RenderTriageOptions = {
   );
   out.push(
     "hints: lock=lockfile  gen=generated  docs  tests  snap=snapshot/fixture  " +
-      "mig=db migration  mv-in/mv-out=moved code (see MOVED)  imp=only imports (Purview skips it for you)",
+      "mig=db migration  mv-in/mv-out=moved code (see MOVED)  imp=only imports (Purview skips it for you)  " +
+      `ren A→B=${RENAME_HINT}`,
   );
   out.push(
     `bodies of hunks with <=${INLINE_BODY_MAX_LINES} changed lines are printed under their line ` +
@@ -195,7 +198,8 @@ export function renderTriage(filesJson: FilesJson, opts: RenderTriageOptions = {
             outTargets,
           )
         : "";
-      const imp = isImportOnlyHunk(file.path, hunk) ? "imp" : "";
+      const ren = renames.get(hunk.id);
+      const imp = isImportOnlyHunk(file.path, hunk) ? "imp" : ren ? `ren ${ren}` : "";
       const extras = [genHint, imp, mv].filter((s) => s !== "").join("   ");
       out.push(
         `  ${hunk.id}   ${hunkSize(hunk)}   @@ ${truncateHeader(hunk.header)}${

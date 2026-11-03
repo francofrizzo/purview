@@ -1,5 +1,6 @@
 import type { FileDiff, FilesJson, Hunk } from "./schemas.js";
 import { isImportOnlyHunk } from "./import-only.js";
+import { RENAME_HINT } from "./rename-only.js";
 
 /**
  * Selector matching for the `show` CLI command: pick hunks out of a revision
@@ -127,12 +128,22 @@ export function allSelectedHunks(filesJson: FilesJson): SelectedHunk[] {
  *   88 90 │ context line
  *   89    │-removed line
  *      91 │+added line
+ *
+ * `renames` (from `renameOnlyHunks` over the whole revision) tags a
+ * rename-only hunk as triage does.
  */
-export function renderShowHunk(sh: SelectedHunk): string {
+export function renderShowHunk(sh: SelectedHunk, renames?: Map<string, string>): string {
   const { file, hunk } = sh;
+  const ren = renames?.get(hunk.id);
   const head =
     `=== ${file.path}   ${hunk.id}   +${hunk.addedLines.length} -${hunk.removedLines.length}   ` +
-    `@@${hunk.header}@@${isImportOnlyHunk(file.path, hunk) ? "   imp (only imports: Purview skips it for you)" : ""}\n`;
+    `@@${hunk.header}@@${
+      isImportOnlyHunk(file.path, hunk)
+        ? "   imp (only imports: Purview skips it for you)"
+        : ren
+          ? `   ren ${ren} (${RENAME_HINT})`
+          : ""
+    }\n`;
   const lines = hunk.text === "" ? [] : hunk.text.split("\n");
   const width = Math.max(
     String(hunk.oldStart + hunk.oldLines).length,

@@ -204,7 +204,11 @@ A hunk with at most four changed lines has its body printed right under its tria
 (`-`/`+` prefixed, indented past the id). That body counts as read: bucket such a hunk
 from it, and when it is only a re-export or a renamed call site, mark it `skip` (see
 section 4) without a `show` call. A hunk triage tags `imp` is only imports: Purview skips
-it on save, so you need neither read nor mark it.
+it on save, so you need neither read nor mark it. A hunk tagged `ren A→B` changes only
+names, and Purview checked the diff for the rest of the rename: A is on no line of the
+new side, B on no line of the old one. Once you know B is A renamed (from the hunk that
+declares it), skip it labelled `rename A→B`; leave it only when the name is data (a
+field serialized by name, a route, an env var).
 
 **Generated files and lockfiles are not yours.** Purview detects them itself (lockfile
 names, generated-output paths, `.gitattributes` `linguist-generated`, "Code generated"
@@ -315,7 +319,9 @@ Skip and ripple units need no labels.
 that otherwise matters. It is one of:
 
 - only imports or re-exports (Purview already skips the hunks triage tags `imp`),
-- a rename applied everywhere (the old name is gone from the PR),
+- a rename applied everywhere: triage tags the ones it could check `ren A→B`; others
+  count when the old name is gone from the PR. The uses of a renamed type parameter,
+  receiver or local count too, once you have read the hunk that renames it,
 - a block moved unchanged,
 - comments that restate behaviour that did not change,
 - a call site that passes a new parameter the value that keeps the old behaviour.
@@ -323,7 +329,9 @@ that otherwise matters. It is one of:
 Never a skip, however small:
 
 - a condition, negation, `return`, `throw` or error path added, removed or inverted;
-- a literal, a constant's value, an enum or persisted string, a default or a config value;
+- a value the program reads: a literal it compares, stores, sends or keys on, a constant's
+  value, an enum or persisted string, a default or a config value. The words of a log line,
+  error message or comment that only follow a rename are not one;
 - a test's expected value, a mock's expected arguments, a golden or testdata file;
 - a comment directive (`//go:embed`, `//go:build`, `eslint-disable`, `@ts-ignore`,
   swagger `@Router`/`@Param`, `noqa`): it changes what the tools do;
@@ -340,6 +348,10 @@ that label truthfully, it is not a skip; a label naming the hunk's role ("pass t
 - A hunk is never both skip and heart (the payload is rejected), and never make skips
   the majority of a must-read unit: if most of a unit is skippable, the unit is skim,
   not must-read with skips.
+- A unit of renames with one or two hunks of substance among them (a persisted string
+  renamed along, a test that also drops a case) stays a skip unit: move those hunks to
+  the unit they belong to, or to a skim unit of their own, rather than making the whole
+  rename unit skim.
 - Purview shows these hunks muted, leaves them out of every progress count, and Space
   passes over them, so a wrong skip steers the reviewer past code. When in doubt, leave
   it out.

@@ -34,6 +34,7 @@ import { visibleDescription } from "./github.js";
 import { formatReport } from "./report.js";
 import { renderTriage } from "./triage.js";
 import { allSelectedHunks, renderShowHunk, selectHunks } from "./hunk-select.js";
+import { renameOnlyHunks } from "./rename-only.js";
 import { renderChanges } from "./changes.js";
 import { showInlineLimit } from "./inline-limit.js";
 import { formatRemaining, needsClassification, renderUnits, type UnitPatchRequest } from "./unit-patch.js";
@@ -335,6 +336,7 @@ program
     const { hunks, unknown } = opts.all
       ? { hunks: allSelectedHunks(filesJson), unknown: [] as string[] }
       : selectHunks(filesJson, expanded);
+    const renames = renameOnlyHunks(filesJson.files);
     unknown.push(...unknownUnits);
 
     const files = new Set(hunks.map((sh) => sh.file.path));
@@ -356,7 +358,7 @@ program
         closeGroup();
         group = { path: sh.file.path, from: line, ids: [] };
       }
-      const text = renderShowHunk(sh);
+      const text = renderShowHunk(sh, renames);
       group.ids.push(`${sh.hunk.id.slice(0, 8)}@L${line}`);
       body += text;
       line += text.split("\n").length - 1;

@@ -28,6 +28,7 @@ import {
   needsClassification,
   GENERATED_UNIT_ID,
   isImportOnlyHunk,
+  renameOnlyHunks,
 } from "@reviewer/core";
 import { cliEnvironment, getHarness } from "./agent/registry.js";
 import { actionGerund, actionLabel } from "./agent/types.js";
@@ -355,8 +356,11 @@ export function hunksToClassifyNote(
     return "HUNKS TO CLASSIFY: none — every hunk of this revision is already in a unit or explicitly unassigned.";
   }
   const byId = new Map<string, { header: string; added: number; removed: number; imp: boolean }>();
+  let renames = new Map<string, string>();
   try {
-    for (const f of readFilesJson(key, state.currentRevision, root).files) {
+    const files = readFilesJson(key, state.currentRevision, root).files;
+    renames = renameOnlyHunks(files);
+    for (const f of files) {
       for (const h of f.hunks)
         byId.set(h.id, { header: h.header, added: h.addedLines.length, removed: h.removedLines.length, imp: isImportOnlyHunk(f.path, h) });
     }
@@ -368,7 +372,8 @@ export function hunksToClassifyNote(
     const h = byId.get(id);
     const header = h?.header ? `  @@ ${h.header.trim().slice(0, 80)}` : "";
     const skip = state.hunks[id]?.defaultAttentionWhy ? `  (default skip: ${state.hunks[id].defaultAttentionWhy})` : "";
-    const imp = h?.imp ? "  imp (only imports: Purview skips it for you)" : "";
+    const ren = renames.get(id);
+    const imp = h?.imp ? "  imp (only imports: Purview skips it for you)" : ren ? `  ren ${ren}` : "";
     return `  ${id}  ${file}${h ? `  +${h.added} -${h.removed}` : ""}${header}${skip}${imp}`;
   });
   return [

@@ -235,7 +235,7 @@ export const HunkEntrySchema = z.object({
   skip: z
     .literal(true)
     .optional()
-    .describe("The hunk changes nothing a reviewer could disagree with (a re-export, a rename applied everywhere, a block moved unchanged) inside a unit that otherwise matters. Never on a changed condition, literal, test expectation or comment directive. Needs a label saying what the body is; never on a heart; only after reading the body. Import-only hunks are skipped by Purview on save."),
+    .describe("The hunk changes nothing a reviewer could disagree with (a re-export, a rename applied everywhere, a block moved unchanged) inside a unit that otherwise matters. Never on a changed condition, a value the program reads (not log or comment words following a rename), a test expectation or a comment directive. Hunks tagged ren A→B are renames Purview checked across the diff. Needs a label saying what the body is; never on a heart; only after reading the body. Import-only hunks are skipped by Purview on save."),
   risks: z.array(RiskMarkSchema).min(1).max(4).optional()
     .describe("Up to four risk marks at the lines concerned, ranges not overlapping; never on a skip. Marks without lines cover the whole hunk and do not mix with ranged ones."),
   heart: z

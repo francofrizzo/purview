@@ -152,9 +152,10 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
       return unit.hunks.map(h => h.id);
     });
     const selected = args.selectors.length ? core.selectHunks(files, selectors) : { hunks: core.allSelectedHunks(files), unknown: [] };
+    const renames = core.renameOnlyHunks(files.files);
     if (selected.unknown.length) failure("unknown_selector", `Unknown selectors: ${selected.unknown.join(", ")}`);
     return { revision: args.revision ?? revision, ...page("review_diff", args, selected.hunks.filter(sh => !sh.file.generated)
-      .flatMap(sh => core.renderShowHunk(sh).split("\n").map(text => ({ file: sh.file.path, hunkId: sh.hunk.id, text })))) };
+      .flatMap(sh => core.renderShowHunk(sh, renames).split("\n").map(text => ({ file: sh.file.path, hunkId: sh.hunk.id, text })))) };
   });
   add("review_units", "Current units. For a large unit, select its id and section hunks or findings; summary omits those arrays.", z.object({
     id: z.string().optional(), section: z.enum(["all", "summary", "hunks", "findings"]).default("all"), ...pageArgs,
