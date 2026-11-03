@@ -348,10 +348,10 @@ that label truthfully, it is not a skip; a label naming the hunk's role ("pass t
 - A hunk is never both skip and heart (the payload is rejected), and never make skips
   the majority of a must-read unit: if most of a unit is skippable, the unit is skim,
   not must-read with skips.
-- A unit of renames with one or two hunks of substance among them (a persisted string
-  renamed along, a test that also drops a case) stays a skip unit: move those hunks to
-  the unit they belong to, or to a skim unit of their own, rather than making the whole
-  rename unit skim.
+- Renames are a skip unit, however many hunks they take. One or two hunks of substance
+  among them (a persisted string renamed along, a test that also drops a case) move to
+  the unit they belong to, or to a skim unit of their own; they never turn the rename
+  unit skim.
 - Purview shows these hunks muted, leaves them out of every progress count, and Space
   passes over them, so a wrong skip steers the reviewer past code. When in doubt, leave
   it out.

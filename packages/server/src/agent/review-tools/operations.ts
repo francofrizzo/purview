@@ -135,13 +135,17 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
     const state = current();
     const files = core.readFilesJson(key, revision, root).files;
     const meta = core.readMeta(key, root);
+    // The facts triage tags a hunk with, so the overview alone can bucket it.
+    const renames = core.renameOnlyHunks(files);
+    const tag = (path: string, h: core.Hunk) =>
+      core.isImportOnlyHunk(path, h) ? "imp" : renames.has(h.id) ? `ren ${renames.get(h.id)}` : undefined;
     return { pr: { key, title: meta.title, url: meta.url }, revision, task: request.task.kind, analysisMode: context.analysisMode,
       checkoutAvailable: !!checkout,
       ...(fromScratch ? {} : { summary: state.summary, concepts: state.concepts, fileNotes: state.fileNotes }),
       generatedFiles: files.filter(f => f.generated).map(f => f.path),
       corrections: state.corrections,
       files: page("review_context", args, files.filter(f => !f.generated).flatMap(f => f.hunks.map(h => ({
-        path: f.path, oldPath: f.oldPath, id: h.id, header: h.header, added: h.addedLines.length, removed: h.removedLines.length,
+        path: f.path, oldPath: f.oldPath, id: h.id, header: h.header, added: h.addedLines.length, removed: h.removedLines.length, tag: tag(f.path, h),
         defaultAttention: state.hunks[h.id]?.defaultAttention, defaultAttentionWhy: state.hunks[h.id]?.defaultAttentionWhy,
       })))) };
   });
