@@ -1,47 +1,35 @@
 import { useContext } from "react";
 import type { Finding } from "../api/types";
 import { evidenceParts } from "../lib/codeLinks";
-import { sortFindings } from "../lib/diffModel";
-import { IconCheck, IconWarning } from "./icons";
+import { shownFindings } from "../lib/diffModel";
+import { IconWarning } from "./icons";
 import { CodeLinkContext, InlineMarkdown } from "./Markdown";
 
 /**
  * Findings are what the analysis *verified* in the local checkout, as opposed
  * to everything else on a unit, which is how it wants the diff read. They are
  * annotations: nothing here is actionable by the app, nothing is posted, and
- * a unit that verified nothing renders exactly as it always did.
+ * a unit that verified nothing renders exactly as it always did. Only
+ * warnings show (see shownFindings).
  */
 
-const SEVERITY = {
-  warning: { icon: IconWarning, color: "var(--warn)", bg: "var(--warn-soft)", label: "warning" },
-  note: { icon: IconCheck, color: "var(--ok)", bg: "var(--ok-soft)", label: "verified" },
-} as const;
-
-/** The unit's findings, warnings first, each with where it was verified. */
+/** The unit's warnings, each with where it was verified. */
 export function FindingList({ findings }: { findings: Finding[] }) {
   return (
     <ul className="space-y-1.5" data-testid="unit-findings">
-      {sortFindings(findings).map((f, i) => {
-        const s = SEVERITY[f.severity] ?? SEVERITY.note;
-        return (
-          <li key={`${f.severity}-${i}-${f.evidence}`} className="flex items-start gap-1.5 text-2xs leading-4">
-            <span
-              className="flex-none pt-[3px]"
-              style={{ color: s.color }}
-              data-tip={s.label}
-              aria-label={s.label}
-            >
-              <s.icon width={10} height={10} />
+      {shownFindings(findings).map((f, i) => (
+        <li key={`${i}-${f.evidence}`} className="flex items-start gap-1.5 text-2xs leading-4">
+          <span className="flex-none pt-[3px]" style={{ color: "var(--warn)" }} data-tip="warning" aria-label="warning">
+            <IconWarning width={10} height={10} />
+          </span>
+          <span className="min-w-0">
+            <span style={{ color: "var(--fg-muted)" }}>
+              <InlineMarkdown text={f.text} />
             </span>
-            <span className="min-w-0">
-              <span style={{ color: "var(--fg-muted)" }}>
-                <InlineMarkdown text={f.text} />
-              </span>
-              <Evidence text={f.evidence} />
-            </span>
-          </li>
-        );
-      })}
+            <Evidence text={f.evidence} />
+          </span>
+        </li>
+      ))}
     </ul>
   );
 }

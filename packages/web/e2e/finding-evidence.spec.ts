@@ -18,3 +18,13 @@ test("a finding's evidence opens the places the diff shows and leaves the rest a
   await expect(header).toHaveAttribute("data-focused", "true");
   await expect(header).toBeInViewport();
 });
+
+test("findings show warnings only: a unit whose findings are all notes shows none", async ({ page }) => {
+  await openPr(page);
+  await openUnit(page, UNITS.charge);
+  await page.getByTestId("findings-toggle").click();
+  await expect(page.getByTestId("unit-findings").locator("li")).toHaveCount(1);
+  await openUnit(page, UNITS.retry);
+  await expect(page.getByTestId("unit-brief")).toBeVisible();
+  await expect(page.getByTestId("findings-toggle")).toHaveCount(0);
+});

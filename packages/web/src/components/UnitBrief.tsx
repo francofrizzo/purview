@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 import type { FileEntry, HeartSegment, Hunk, PrDetail, ReviewUnit } from "../api/types";
 import { isGeneratedUnit } from "../api/types";
-import { orderUnitHunks, skippedIds } from "../lib/diffModel";
+import { orderUnitHunks, shownFindings, skippedIds } from "../lib/diffModel";
 import { changelogView } from "../lib/changelog";
 import { changeMix, formatShare } from "../lib/changeMix";
 import { useSettings, type UnitDetail } from "../lib/settings";
@@ -166,8 +166,7 @@ export function UnitBrief({
   const heart = heartOf(unit).length ? heartSegments(unit) : [];
   const files = generated ? [] : unitFiles(detail, unit);
   const mix = generated ? null : changeMix(detail.files.files, new Set(hunkIdsOf(unit)));
-  const findings = unit.findings ?? [];
-  const warnings = findings.filter((f) => f.severity === "warning").length;
+  const warnings = shownFindings(unit.findings).length;
   // Entries are written by refreshes (r2 on): each says what that revision changed here.
   const revisions = changelogView(unit.changelog);
   const revisionCount = revisions ? 1 + revisions.earlier.length : 0;
@@ -175,7 +174,7 @@ export function UnitBrief({
   const available: Record<UnitDetail, boolean> = {
     heart: heart.length > 0,
     files: files.length > 0,
-    findings: findings.length > 0,
+    findings: warnings > 0,
   };
   const open = settings.unitDetail && available[settings.unitDetail] ? settings.unitDetail : null;
   const toggle = (d: UnitDetail) => update({ unitDetail: open === d ? null : d });
@@ -231,19 +230,10 @@ export function UnitBrief({
               open={open === "findings"}
               onClick={() => toggle("findings")}
               testId="findings-toggle"
-              tip={[
-                warnings ? `${warnings} warning${warnings === 1 ? "" : "s"}` : "",
-                findings.length - warnings ? `${findings.length - warnings} verified` : "",
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+              tip={`${warnings} warning${warnings === 1 ? "" : "s"}`}
             >
-              {warnings ? (
-                <IconWarning width={12} height={12} className="flex-none" style={{ color: "var(--warn)" }} />
-              ) : (
-                <IconCheck width={12} height={12} className="flex-none" style={{ color: "var(--ok)" }} />
-              )}
-              {warnings || findings.length}
+              <IconWarning width={12} height={12} className="flex-none" style={{ color: "var(--warn)" }} />
+              {warnings}
             </Count>
           ) : null}
           {skipped > 0 ? (
@@ -274,7 +264,7 @@ export function UnitBrief({
             <UnitFileList detail={detail} unit={unit} onJump={onJumpHunk} />
           </div>
         ) : null}
-        {open === "findings" ? <FindingList findings={findings} /> : null}
+        {open === "findings" ? <FindingList findings={unit.findings ?? []} /> : null}
       </div>
 
       {/* The last row: the unit's history on the left, the unit's two

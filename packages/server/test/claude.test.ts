@@ -1113,7 +1113,7 @@ describe("POST /repo-path", () => {
     // With a checkout the verification pass is on, and the prompt itself
     // carries the findings schema (not only the skill it points at).
     expect(claude.promptOf(0)).toContain("VERIFICATION PASS: RUN IT");
-    expect(claude.promptOf(0)).toContain('"severity": "warning" | "note"');
+    expect(claude.promptOf(0)).toContain('"severity": "warning"');
     expect(claude.promptOf(0)).toContain("`evidence` is REQUIRED and non-empty");
     expect(claude.promptOf(0)).not.toContain("VERIFICATION PASS: SKIPPED");
   });

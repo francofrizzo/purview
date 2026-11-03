@@ -204,7 +204,7 @@ all the others. These are hard rules, not preferences.
 - **Material.** It would change what the reviewer writes in their review. If knowing it
   changes nothing they would say or do, it is not a finding.
 
-A candidate that fails any one of the three is not downgraded to a `note` — it is dropped.
+A candidate that fails any one of the three is dropped.
 
 ### Attribution: what did this PR do?
 
@@ -212,7 +212,7 @@ Before calling anything a regression, compare base and head — the diff's remov
 context lines are the base side, the checkout is the head side. Every finding states which
 of three things the change did: **introduced** the issue, **exposed** a latent one, or
 **left a pre-existing issue unchanged**. A pre-existing issue the PR does not make worse is
-a `note` at most, never a `warning`, and never a request for an unrelated fix.
+not a finding, and never a request for an unrelated fix.
 
 ### Never a finding
 
@@ -241,18 +241,18 @@ warnings, that is a signal in itself — keep the most material ones and end the
 with "further issues of the same kind" rather than truncating silently. A unit with a
 single sharp `warning` is worth more than one with five diluted ones.
 
-A `note` earns its place only by closing a question the reviewer would otherwise have had
-to chase. "Checked, looks fine" about something nobody was going to check is noise.
+Every finding is a `warning`. A check that holds is not a finding: "checked, looks fine"
+restates what the reader assumed, and readers skip it. Its result shows in `attention`.
 
 ### Boundaries
 
 - Findings are **local annotations for the human reader**. They never block, never approve,
   are never posted to GitHub, and are not review comments. Nothing downstream acts on them.
-- **`attentionWhy` stays exactly ONE line.** Verification outcomes live in `findings`, not
-  in the why. If a `note` answered the only question that made a unit `must-read`, downgrade
-  the unit to `skim` and rewrite `attentionWhy` to describe what is left — do not append the
-  verification result to it.
-- A `warning` never lowers `attention`; it may raise it. A `note` may lower it, per above.
+- **`attentionWhy` stays exactly ONE line.** Problems live in `findings`, not in the why.
+  If a check that held answered the only question that made a unit `must-read`, downgrade
+  the unit to `skim` and rewrite `attentionWhy` to describe what is left — do not append
+  "verified" to it.
+- A `warning` never lowers `attention`; it may raise it. A check that held may lower it.
 - No checkout, no findings. There is no partial credit for a well-reasoned guess.
 
 ## Learned corrections

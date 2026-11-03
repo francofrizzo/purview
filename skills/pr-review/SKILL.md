@@ -508,18 +508,19 @@ answers together.
 
 Then record one of two outcomes on that unit:
 
-- **verified OK → a `note` finding.** State the answer, not the question: "all 3 callers
-  map both error paths to 403" — with the files/lines you read as `evidence`. If that
+- **verified OK → no finding.** A check that holds confirms what the reader assumed;
+  written down it is noise, and readers skip it. What it changes is `attention`: if that
   question was the *only* reason the unit was `must-read`, downgrade it to `skim` and
-  rewrite `attentionWhy` to say what is left to check (e.g. "Shape only — the callers were
-  verified, see findings"). Do not leave a unit `must-read` on the strength of a question
-  you have already answered.
+  rewrite `attentionWhy` to say what is left to check. Do not leave a unit `must-read` on
+  the strength of a question you have already answered. A fact the check turned up that
+  changes how to read the unit (the changed query is called far beyond this PR's feature)
+  goes in `attentionWhy`.
 - **something is off → a `warning` finding.** State what you found and where: "`handleRefund`
   ignores the new `ErrRateLimited` and falls through to the success branch" with
   `evidence: "internal/billing/refund.go:212"`. A warning never changes `attention`
   downward, and may justify raising it.
 
-A finding is `{"severity": "warning" | "note", "text": "...", "evidence": "..."}`; at most
+A finding is `{"severity": "warning", "text": "...", "evidence": "..."}`; at most
 5 per unit; `evidence` is required, non-empty, and is the concrete location(s) you read,
 e.g. `internal/api/handler.go:88, internal/vep/client.go:41`. A `path:line` is always the
 **source file's** line — the new-side number from the `show` gutter, or the line in the

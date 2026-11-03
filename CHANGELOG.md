@@ -9,6 +9,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 - **Import changes skipped on their own.** A hunk that only changes imports in Go, TS/JS or Python shows as skippable, labelled "only imports", once an analysis is saved.
 - **Unit link on lines changed elsewhere.** A "Lines N–M changed" row between hunks names the unit those lines belong to; click it to read them there.
+- **Warnings only in unit findings.** A unit's findings list shows what the analysis found wrong; green "verified" checks no longer appear, on old analyses too.
 - **Fix:** Analyze from scratch no longer comes back with the same units, skips and labels as the analysis it replaced.
 - **Fix:** An analysis no longer finishes with nothing saved when its first save leaves out a few hunks.
 - **Fix:** An analysis that ends without saving shows as failed in the banner, not as done.

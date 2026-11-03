@@ -413,33 +413,12 @@ export function orderUnitHunks(
 }
 
 /**
- * What the sidebar badge should say for a unit's findings, or `null` when
- * there is nothing to badge.
- *
- * One badge, not two: a unit with any warning badges as a warning showing the
- * *total* count, because "this unit has something to look at" is the signal,
- * and splitting it into `⚠ 1 ✓ 2` makes the reader do arithmetic to learn the
- * same thing. Notes-only gets the quieter ok-tinted badge.
+ * The findings worth showing: the warnings. A `note` (an older analysis's
+ * "checked, it holds") restated what the reader assumed anyway, so the
+ * analysis no longer writes them and the ones already stored stay hidden.
  */
-export function findingsBadge(
-  unit: Pick<ReviewUnit, "findings">,
-): { severity: "warning" | "note"; count: number; warnings: number; notes: number } | null {
-  const findings = unit.findings ?? [];
-  if (findings.length === 0) return null;
-  const warnings = findings.filter((f) => f.severity === "warning").length;
-  return {
-    severity: warnings > 0 ? "warning" : "note",
-    count: findings.length,
-    warnings,
-    notes: findings.length - warnings,
-  };
-}
-
-/** Warnings first, then notes; stable within each group. */
-export function sortFindings<T extends { severity: "warning" | "note" }>(findings: T[]): T[] {
-  return [...findings].sort(
-    (a, b) => (a.severity === "warning" ? 0 : 1) - (b.severity === "warning" ? 0 : 1),
-  );
+export function shownFindings<T extends { severity: "warning" | "note" }>(findings: T[] | undefined): T[] {
+  return (findings ?? []).filter((f) => f.severity === "warning");
 }
 
 const LANG_BY_EXT: Record<string, string> = {

@@ -115,8 +115,9 @@ export type FilesJson = z.infer<typeof FilesJsonSchema>;
  *
  *  - `warning` — something is likely wrong (a caller mishandles a new error
  *    path, a missed update, a real mismatch between the diff and its context).
- *  - `note` — a verified-OK answer to a question the reviewer would otherwise
- *    have had to chase ("all 3 callers map both paths to 403").
+ *  - `note` — a verified-OK answer ("all 3 callers map both paths to 403").
+ *    No longer written: readers skipped them, and the web hides stored ones.
+ *    Kept in the enum so older analyses still parse.
  *
  * `evidence` is required and non-empty on purpose: an unsourced finding is
  * indistinguishable from speculation, and speculation is what the discipline
