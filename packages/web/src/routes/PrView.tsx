@@ -1284,6 +1284,9 @@ export function PrView() {
   // The brief sits in the sidebar column; with the column out of view a
   // one-line bar over the diff names the unit instead.
   const briefInSidebar = sidebarMode === "column" && !sidebarCollapsed;
+  // No unit or file open (the first analysis still running, say): the diff
+  // has no code for the panes to meet.
+  const codeless = !overview && (tab === "units" ? !selectedUnit && !unplacedSelected : !selectedPath);
   const unsubmittedDrafts = drafts.filter((d) => d.status !== "submitted");
 
   const job = analysisJob.data ?? detail.analysisJob ?? null;
@@ -1903,7 +1906,8 @@ export function PrView() {
       <div
         className="workspace relative flex min-h-0 flex-1"
         data-flat={settings.flatWorkspace ? "true" : undefined}
-        data-headerless={tab === "units" && !overview && !unplacedSelected ? "true" : undefined}
+        data-headerless={tab === "units" && !overview && !unplacedSelected && briefInSidebar && !codeless ? "true" : undefined}
+        data-codeless={codeless ? "true" : undefined}
         style={{ background: "var(--bg)" }}
       >
         {notices}
@@ -2005,10 +2009,17 @@ export function PrView() {
               analyze and cancel stay in reach. */}
           {sidebarShowing ? null : analysisBlocks}
           {tab === "units" && selectedUnit && !briefInSidebar ? (
+            // With the sidebar out of view the unit's brief rests on the desk
+            // like a file's: its title, and under it the brief until the
+            // reader is into the diff.
+            <div className="pane m-[7px] flex flex-none flex-col overflow-hidden">
             <div
+              ref={setHeaderEl}
               data-testid="unit-header"
-              className="flex flex-none items-center gap-2 border-b px-3 py-1.5"
-              style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
+              data-collapsed={headerCollapsed ? "true" : "false"}
+              className={`flex flex-none items-center gap-2 px-3 transition-[padding] duration-[140ms] motion-reduce:transition-none ${
+                headerCollapsed ? "py-1" : "py-1.5"
+              }`}
             >
               <button
                 type="button"
@@ -2053,6 +2064,12 @@ export function PrView() {
                   />
                 </>
               ) : null}
+            </div>
+            {headerCollapsed ? null : (
+              <div className="max-h-[38vh] overflow-y-auto" data-testid="unit-header-brief">
+                {renderBrief(selectedUnit)}
+              </div>
+            )}
             </div>
           ) : null}
 

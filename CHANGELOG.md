@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Unit brief over the code.** With the sidebar folded (B), the open unit's card above the diff shows its summary, counts and findings until you scroll into the code.
+
 ## 2026.11.3.1
 
 - **Warning marks in the diff gutter.** A warning icon sits beside the line number each analysis warning cites; hover it to read the warning.

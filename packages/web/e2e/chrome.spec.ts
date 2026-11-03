@@ -182,6 +182,28 @@ test("with no card above the diff, it starts level with the panes and pins to th
   await expect(dock).not.toHaveCSS("border-top-left-radius", "0px");
 });
 
+test("with the sidebar folded, the unit's card floats over the diff with its brief, folded once into the diff", async ({ page }) => {
+  await openPr(page);
+  await page.keyboard.press("b");
+  const card = page.locator("main > .pane").first();
+  await expect(card.getByTestId("unit-header")).toContainText(UNITS.charge);
+  await expect(card.getByTestId("unit-brief")).toBeVisible();
+  await expect(card).not.toHaveCSS("border-top-left-radius", "0px");
+  await scroller(page).evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect(card.getByTestId("unit-brief")).toHaveCount(0);
+  await expect(card.getByTestId("unit-header")).toBeVisible();
+});
+
+test("with nothing to read, the panes float whole: every corner round, no rule beside the diff", async ({ page }) => {
+  await page.goto("/pr/github.com/acme/billing/479");
+  await expect(page.getByText("Select a review unit to read its hunks.")).toBeVisible();
+  const nav = page.locator(".workspace nav.pane").first();
+  await expect(nav).toHaveCSS("border-bottom-right-radius", "8px");
+  await expect(nav).toHaveCSS("border-top-right-radius", "8px");
+  const rule = await page.locator("main").first().evaluate((el) => getComputedStyle(el, "::before").content);
+  expect(rule).toBe("none");
+});
+
 test("a unit row's facts rest on the title's last line when they fit, and never on a first line", async ({ page }) => {
   await openPr(page);
   const facts = (id: string) => page.getByTestId(`unit-facts-${id}`);
