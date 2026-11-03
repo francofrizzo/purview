@@ -121,7 +121,10 @@ would not know: the fewest that let them follow the summary and the units. Leave
   function that touches it. Purview marks
   them wherever the guide uses them and shows `means` on hover, so the units can stay
   exact without leaving the reader behind.
-- `isNew`: the PR introduces it.
+- `isNew`: the concept exists nowhere at the merge base; search the base for it and its
+  `aka` before setting it. A concept the PR extends or brings into another part of the
+  code is not new, even when the PR adds names for it (an enum value, a flavor): leave
+  `isNew` off and let `means` say what the PR adds to it.
 - Not general programming terms (cache, migration, retry), and not something only one unit
   mentions: explain that in the unit.
 
