@@ -5,11 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.3.1
 
+- **Warning marks in the diff gutter.** A warning icon sits beside the line number each analysis warning cites; hover it to read the warning.
 - **Import changes skipped on their own.** A hunk that only changes imports in Go, TS/JS or Python shows as skippable, labelled "only imports", once an analysis is saved.
 - **Unit link on lines changed elsewhere.** A "Lines N–M changed" row between hunks names the unit those lines belong to; click it to read them there.
-- **Warning marks in the diff gutter.** A warning icon sits beside the line number each analysis warning cites; hover it to read the warning.
 - **Warnings only in unit findings.** A unit's findings list shows what the analysis found wrong; green "verified" checks no longer appear, on old analyses too.
 - **Fix:** The find bar (⌘F) no longer runs under the Review panel when the diff pane is narrow; its controls wrap onto a second line.
 - **Fix:** Analyze from scratch no longer comes back with the same units, skips and labels as the analysis it replaced.
