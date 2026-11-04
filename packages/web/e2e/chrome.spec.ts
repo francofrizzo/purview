@@ -92,8 +92,10 @@ test("with every unit read, the unit's end says so and opens the review", async 
     await scroller(page).evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
     const next = page.getByTestId("unit-end-next");
     const mark = page.getByTestId("unit-end-mark");
-    if (await next.isVisible()) await next.click();
-    else if (await mark.isVisible()) await mark.click();
+    // The unit's end re-renders as units are read: a button seen a moment ago
+    // may be gone by the click, and the loop looks again.
+    if (await next.isVisible()) await next.click({ timeout: 2000 }).catch(() => {});
+    else if (await mark.isVisible()) await mark.click({ timeout: 2000 }).catch(() => {});
   }
   await expect(page.getByTestId("unit-end-status")).toHaveText(/^All \d+ units read\.$/);
   await expect(page.getByTestId("unit-end")).toContainText(/drafts? and your verdict go out from there/);
