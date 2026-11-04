@@ -22,11 +22,14 @@ export function BehaviorTable({
   units: Set<string>;
   onOpenUnit: (unitId: string) => void;
 }) {
-  const cols = "sm:grid-cols-[minmax(7rem,10rem)_1fr_1fr_1.25rem]";
+  // Room for a behavior's name on a line or two; before and after share the rest evenly.
+  const cols = "sm:grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_minmax(0,1fr)_1.25rem]";
   return (
     <section data-testid="overview-behavior" data-section="behavior">
       <SectionHead title="Behavior changes" />
-      <div className={`mb-1 hidden gap-x-2 px-2 text-2xs font-medium uppercase tracking-wide sm:grid ${cols}`} style={{ color: "var(--fg-faint)" }} aria-hidden>
+      {/* No padding of its own: the rows' cancels their negative margin, so the
+          labels start where the cells' text does. */}
+      <div className={`mb-1 hidden gap-x-2 text-2xs font-medium sm:grid ${cols}`} style={{ color: "var(--fg-faint)" }} aria-hidden>
         <span />
         <span className="px-2">Before</span>
         <span className="px-2">After</span>
