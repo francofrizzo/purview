@@ -44,19 +44,11 @@ export function BehaviorTable({
         {[...changes.filter((c) => !SAME.test(c.after)), ...changes.filter((c) => SAME.test(c.after))].map((c, i) => {
           const unit = c.unit && units.has(c.unit) ? c.unit : undefined;
           const same = SAME.test(c.after);
-          const added = !same && NONE.test(c.before);
-          const removed = !same && NONE.test(c.after);
           const body = (
             <>
-              <span className="flex flex-wrap items-baseline gap-x-1.5 pt-1.5 text-[13px] font-medium leading-5" style={{ color: "var(--fg)" }}>
+              {/* What kind of change it is shows in the cells (a dash, an outline), not in a chip. */}
+              <span className="pt-1.5 text-[13px] font-medium leading-5" style={{ color: "var(--fg)" }}>
                 <InlineMarkdown text={c.what} />
-                {added ? (
-                  <span className="chip" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}><UiText>new</UiText></span>
-                ) : removed ? (
-                  <span className="chip" style={{ color: "var(--fg-muted)", background: "var(--bg-inset)" }}><UiText>removed</UiText></span>
-                ) : same ? (
-                  <span className="chip" style={{ color: "var(--fg-muted)", background: "var(--bg-inset)" }}><UiText>unchanged</UiText></span>
-                ) : null}
               </span>
               {same ? (
                 <BehaviorCell text={c.before} label="Before and after" wide />
