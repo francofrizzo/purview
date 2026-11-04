@@ -38,3 +38,20 @@ test("submitting a review shows each step until the page has settled, then says 
   await expect(progress).toHaveCount(0);
   await expect(page.getByTestId("topbar-review-sending")).toHaveCount(0);
 });
+
+test("from the summary, Ctrl+1, 2, 3 pick the verdict and Cmd+Enter submits it", async ({ page }) => {
+  await openPr(page);
+  await page.getByTestId("topbar-finish-review").click();
+  const panel = page.getByTestId("finish-review-panel");
+  const summary = panel.getByPlaceholder("What should the author take away? (optional)");
+  await summary.fill("Ship it once the ledger write is ordered.");
+  await summary.press("Control+2");
+  await expect(panel.getByTestId("verdict-approve")).toHaveAttribute("aria-checked", "true");
+  await summary.press("Control+3");
+  await expect(panel.getByTestId("verdict-request_changes")).toHaveAttribute("aria-checked", "true");
+  await expect(summary).toHaveValue("Ship it once the ledger write is ordered.");
+  await summary.press("Control+2");
+  // Must-read units are still unread in the fixture: the same confirm as the button.
+  await summary.press("ControlOrMeta+Enter");
+  await expect(panel.getByRole("button", { name: /^yes, approve/ })).toBeVisible();
+});

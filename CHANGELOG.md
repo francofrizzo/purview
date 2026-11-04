@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Review shortcuts.** In the Review panel, Ctrl+1, Ctrl+2 and Ctrl+3 pick Comment, Approve or Request changes, and Cmd+Enter in the summary submits.
+
 ## 2026.11.4.4
 
 - **Zoom in diagrams.** In an enlarged diagram, pinch or Cmd+scroll to zoom, drag to move, and use −, +, 100% and fit in its header. The keys +, −, 1 and 0 do the same.

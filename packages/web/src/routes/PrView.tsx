@@ -2518,6 +2518,13 @@ export function PrView() {
               [["⌘⇧S"], "suggest a change"],
             ]}
           />
+          <ShortcutGroup
+            title="Finishing the review"
+            rows={[
+              [["⌃1", "⌃2", "⌃3"], "comment, approve, request changes"],
+              [["⌘↵"], "submit, from the summary"],
+            ]}
+          />
           </div>
         </Modal>
       ) : null}

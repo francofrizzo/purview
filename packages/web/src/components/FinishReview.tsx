@@ -150,9 +150,24 @@ export function FinishReviewPanel({
 
   const readiness = review?.readiness;
   const unviewed = readiness?.mustRead.unviewed ?? 0;
+  // The submit button, and Cmd+Enter in the summary: the picked verdict, through
+  // the confirm when must-read units are still unread.
+  const submitPicked = () => (unviewed > 0 ? setArming(verdict) : send(verdict));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="finish-review-panel">
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="finish-review-panel"
+      // Ctrl+1, 2, 3 pick the verdict from anywhere in the panel, the summary
+      // included (Cmd+digits switch the browser's tabs).
+      onKeyDown={(e) => {
+        if (!e.ctrlKey || e.metaKey || e.altKey || submitting || arming || result) return;
+        const picked = EVENTS[Number(e.key) - 1];
+        if (!picked) return;
+        e.preventDefault();
+        setVerdict(picked.event);
+      }}
+    >
       {loading ? (
         <p className="p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
           <UiText>Loading review state…</UiText>
@@ -213,9 +228,14 @@ export function FinishReviewPanel({
                 <textarea
                   className="input mt-1.5 h-28 resize-none text-xs leading-5"
                   placeholder="What should the author take away? (optional)"
-                  data-tip="Kept on this machine until you submit"
+                  data-tip="Kept on this machine until you submit. ⌘↵ submits; ⌃1, ⌃2, ⌃3 pick Comment, Approve, Request changes"
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    if (!submitting && !arming && !result) submitPicked();
+                  }}
                   onBlur={() => {
                     if (body === savedBody.current) return;
                     onSaveBody(body).then(
@@ -292,6 +312,7 @@ export function FinishReviewPanel({
                         aria-checked={on}
                         data-testid={`verdict-${e.event.toLowerCase()}`}
                         data-tip={e.blurb}
+                        data-tip-key={`⌃${EVENTS.indexOf(e) + 1}`}
                         disabled={submitting}
                         onClick={() => setVerdict(e.event)}
                         className="flex min-w-0 items-center justify-center gap-1.5 rounded px-1.5 py-1 text-center text-xs leading-4 transition-colors hover:text-[var(--fg)]"
@@ -312,8 +333,10 @@ export function FinishReviewPanel({
                   className="btn w-full justify-center font-semibold hover:brightness-110"
                   style={verdictFill(verdict)}
                   data-testid="submit-review"
+                  data-tip="Submit with the picked verdict"
+                  data-tip-key="⌘↵"
                   disabled={submitting}
-                  onClick={() => (unviewed > 0 ? setArming(verdict) : send(verdict))}
+                  onClick={submitPicked}
                 >
                   <UiText>
                     {submitting
