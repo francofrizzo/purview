@@ -68,6 +68,7 @@ import { TreeLines } from "../components/TreeLines";
 // the first paint, not a request that lands after the header drew without it.
 import logoDark from "../assets/logo-dark.png";
 import logoLight from "../assets/logo-light.png";
+import { UiText } from "../components/UiText";
 
 /**
  * One archive mutation for the whole list, so a refusal (the row already
@@ -221,7 +222,7 @@ export function PrList() {
                   className="absolute left-0 top-full mt-0.5 whitespace-nowrap text-2xs font-normal"
                   style={{ color: "var(--warn)" }}
                 >
-                  mock mode — no server, fixture data
+                  <UiText>mock mode — no server, fixture data</UiText>
                 </span>
               ) : null}
             </h1>
@@ -249,11 +250,11 @@ export function PrList() {
                     data-testid="home-add-pr"
                     disabled={addPr.isPending}
                   >
-                    {addPr.isPending ? "fetching…" : "add PR"}
+                    <UiText>{addPr.isPending ? "fetching…" : "add PR"}</UiText>
                   </button>
                 ) : (
                   <kbd className="mr-1 flex-none" data-tip="Search PRs" data-tip-key="/">
-                    /
+                    <UiText>/</UiText>
                   </kbd>
                 )}
               </label>
@@ -310,7 +311,7 @@ export function PrList() {
                 style={{ color: "var(--fg-faint)" }}
               >
                 <IconSpinner width={12} height={12} />
-                Loading…
+                <UiText>Loading…</UiText>
               </p>
             ) : error ? (
               <p
@@ -324,9 +325,9 @@ export function PrList() {
                 className="surface rounded-md p-4 text-xs leading-5"
                 style={{ color: "var(--fg-faint)" }}
               >
-                No pull requests tracked yet. Paste a GitHub PR URL above; the
-                server fetches it with <span className="font-mono">gh</span> and
-                creates the local state directory.
+                <UiText>No pull requests tracked yet. Paste a GitHub PR URL above; the server fetches it with</UiText>{" "}
+                <span className="font-mono"><UiText>gh</UiText></span>{" "}
+                <UiText>and creates the local state directory.</UiText>
               </p>
             ) : query && !shown.active.length && !shown.archived.length ? (
               <p
@@ -334,7 +335,7 @@ export function PrList() {
                 style={{ color: "var(--fg-muted)" }}
                 data-testid="home-find-empty"
               >
-                No PR matches "{query}". Paste a PR URL to add it.
+                <UiText>{`No PR matches "${query}". Paste a PR URL to add it.`}</UiText>
               </p>
             ) : (
               <div className="flex flex-col gap-[22px] pb-6">
@@ -351,8 +352,7 @@ export function PrList() {
                     className="surface rounded-md p-4 text-xs leading-5"
                     style={{ color: "var(--fg-faint)" }}
                   >
-                    Every repo is archived. Unarchive one below, or paste a PR
-                    URL above.
+                    <UiText>Every repo is archived. Unarchive one below, or paste a PR URL above.</UiText>
                   </p>
                 ) : null}
                 {shown.archived.length ? (
@@ -370,7 +370,7 @@ export function PrList() {
                         width={10}
                         height={10}
                       />
-                      Archived repos ({shown.archived.length})
+                      <UiText>{`Archived repos (${shown.archived.length})`}</UiText>
                     </button>
                     {showArchivedRepos
                       ? shown.archived.map(({ group, full }) => (
@@ -464,7 +464,7 @@ function RepoSection({
             style={{ color: "var(--fg-muted)", background: "var(--bg-hover)" }}
             data-tip="Archived repo: no automatic analyses or watch imports; unarchive from the ⋯ menu"
           >
-            archived
+            <UiText>archived</UiText>
           </span>
         ) : null}
         {(repo?.watchReviews || repo?.watchOwn) && !repoArchived ? (
@@ -479,14 +479,14 @@ function RepoSection({
               className="h-1.5 w-1.5 rounded-full"
               style={{ background: "var(--ok)" }}
             />
-            watching
+            <UiText>watching</UiText>
           </span>
         ) : null}
         <span
           className="ml-auto flex-none text-2xs tabular-nums"
           style={{ color: "var(--fg-faint)" }}
         >
-          {openCount} {openCount === 1 ? "PR" : "PRs"}
+          <UiText>{`${openCount} ${openCount === 1 ? "PR" : "PRs"}`}</UiText>
         </span>
         {repoArchived ? null : (
           <button
@@ -560,7 +560,7 @@ function RepoSection({
           className="border-t px-3 py-2.5 text-2xs leading-4"
           style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
         >
-          Every PR in this repo is archived.
+          <UiText>Every PR in this repo is archived.</UiText>
         </p>
       )}
 
@@ -579,7 +579,7 @@ function RepoSection({
               style={{ color: "var(--fg-faint)" }}
             >
               <IconChevron open={showArchived} width={10} height={10} />
-              archived ({group.archived.length})
+              <UiText>{`archived (${group.archived.length})`}</UiText>
             </button>
           ) : (
             <span className="flex-1" />
@@ -607,8 +607,7 @@ function RepoSection({
                 data-testid={`archived-more-${group.key}`}
                 onClick={() => setArchivedShown((n) => n + ARCHIVED_PAGE)}
               >
-                show {Math.min(ARCHIVED_PAGE, group.archived.length - archivedShown)} more of{" "}
-                {group.archived.length - archivedShown} older
+                <UiText>{`show ${Math.min(ARCHIVED_PAGE, group.archived.length - archivedShown)} more of ${group.archived.length - archivedShown} older`}</UiText>
               </button>
             </li>
           ) : null}
@@ -644,7 +643,7 @@ function PrBlock({
     <div data-testid={testId}>
       {label ? (
         <GroupLabel color={color} count={prs.length}>
-          {label}
+          <UiText>{label}</UiText>
         </GroupLabel>
       ) : null}
       {groups.map((group, i) => {
@@ -701,7 +700,6 @@ function TagBand({
   onToggle: () => void;
 }) {
   const kind = tag ? TAG_COLORS[tagSlot(tag)] : null;
-  const name = tag ?? "untagged";
   return (
     <button
       type="button"
@@ -727,7 +725,7 @@ function TagBand({
         data-testid={tag ? "pr-tag" : undefined}
       >
         <IconTag width={11} height={11} className="flex-none" />
-        {name}
+        {tag ?? <UiText>untagged</UiText>}
       </span>
       <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
         {count}
@@ -822,7 +820,7 @@ function AddByNumberForm({
         />
       </label>
       <button type="submit" className="btn" disabled={!url || addPr.isPending}>
-        {addPr.isPending ? "fetching…" : "add"}
+        <UiText>{addPr.isPending ? "fetching…" : "add"}</UiText>
       </button>
       <button
         type="button"
@@ -830,12 +828,12 @@ function AddByNumberForm({
         disabled={addPr.isPending}
         onClick={onClose}
       >
-        cancel
+        <UiText>cancel</UiText>
       </button>
       {addPr.error ? (
         <span style={{ color: "var(--risk)" }}>{errorText(addPr.error)}</span>
       ) : value.trim() && !url ? (
-        <span style={{ color: "var(--fg-faint)" }}>a number, like 123</span>
+        <span style={{ color: "var(--fg-faint)" }}><UiText>a number, like 123</UiText></span>
       ) : null}
     </form>
   );
@@ -902,7 +900,7 @@ function ImportReviewsForm({
       data-testid={`import-form-${rkey}`}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span style={{ color: "var(--fg-faint)" }}>last</span>
+        <span style={{ color: "var(--fg-faint)" }}><UiText>last</UiText></span>
         <input
           type="number"
           min={1}
@@ -916,7 +914,7 @@ function ImportReviewsForm({
             find.reset();
           }}
         />
-        <span style={{ color: "var(--fg-faint)" }}>days:</span>
+        <span style={{ color: "var(--fg-faint)" }}><UiText>days:</UiText></span>
         {(
           [
             ["requests", "review requests"],
@@ -931,7 +929,7 @@ function ImportReviewsForm({
               disabled={busy}
               onChange={(e) => toggleSource(source, e.target.checked)}
             />
-            {label}
+            <UiText>{label}</UiText>
           </label>
         ))}
         <button
@@ -941,10 +939,10 @@ function ImportReviewsForm({
           disabled={busy || !sources.length}
           onClick={search}
         >
-          {find.isPending ? "looking…" : "find PRs"}
+          <UiText>{find.isPending ? "looking…" : "find PRs"}</UiText>
         </button>
         <button type="button" className="btn" disabled={busy} onClick={onClose}>
-          {importReviews.data ? "close" : "cancel"}
+          <UiText>{importReviews.data ? "close" : "cancel"}</UiText>
         </button>
         {find.error ? (
           <span style={{ color: "var(--risk)" }}>{errorText(find.error)}</span>
@@ -955,7 +953,7 @@ function ImportReviewsForm({
             data-testid="import-result"
             style={{ color: importReviews.data.failed.length ? "var(--risk)" : "var(--fg-faint)" }}
           >
-            {formatImportResult(importReviews.data)}
+            <UiText>{formatImportResult(importReviews.data)}</UiText>
           </span>
         ) : null}
       </div>
@@ -982,13 +980,13 @@ function ImportReviewsForm({
                 disabled={busy || !selected.size}
                 onClick={submit}
               >
-                {importReviews.isPending ? "importing…" : `import ${selected.size}`}
+                <UiText>{importReviews.isPending ? "importing…" : `import ${selected.size}`}</UiText>
               </button>
             </div>
           </div>
         ) : (
           <p className="mt-2" style={{ color: "var(--fg-faint)" }} data-testid="import-none">
-            No open PRs found in the last {days} day{days === 1 ? "" : "s"}.
+            <UiText>{`No open PRs found in the last ${days} day${days === 1 ? "" : "s"}.`}</UiText>
           </p>
         )
       ) : null}
@@ -1038,8 +1036,7 @@ function ImportCandidateRow({
         </span>
         <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
           {c.author ? `${c.author} · ` : ""}
-          {why}
-          {onList ? " · already on the list" : c.archived ? " · archived, brings it back" : ""}
+          <UiText>{`${why}${onList ? " · already on the list" : c.archived ? " · archived, brings it back" : ""}`}</UiText>
         </span>
       </label>
     </li>
@@ -1159,7 +1156,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
                 data-tip={`Targets #${meta.basePr.number}: ${meta.basePr.title}`}
               >
                 <IconBranch width={11} height={11} />
-                on #{meta.basePr.number}
+                <UiText>{`on #${meta.basePr.number}`}</UiText>
               </span>
             ) : null}
             <ReviewRequestWait request={pr.reviewRequest} state={pr.state} />
@@ -1169,7 +1166,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
               <ReviewersMark reviewers={pr.reviewers} />
             ) : null}
             <span className={HOVER_ONLY} data-tip={formatFullTimestamp(pr.addedAt)}>
-              added {formatAddedAt(pr.addedAt)}
+              <UiText>{`added ${formatAddedAt(pr.addedAt)}`}</UiText>
             </span>
             {ciPassing ? (
               <span className={`inline-flex ${HOVER_ONLY}`}>
@@ -1289,7 +1286,7 @@ function UpdateButton({ prKey }: { prKey: string }) {
         height={11}
         className={refresh.isPending ? "animate-spin" : undefined}
       />
-      new commits
+      <UiText>new commits</UiText>
     </button>
   );
 }
@@ -1337,7 +1334,7 @@ function AnalysisSide({ pr }: { pr: PrListEntry }) {
         </span>
       ) : null}
       {pr.totalHunks ? <ProgressRing viewed={pr.viewedHunks ?? 0} total={pr.totalHunks} quiet /> : null}
-      {units ? null : <span data-testid="not-analyzed">not analyzed</span>}
+      {units ? null : <span data-testid="not-analyzed"><UiText>not analyzed</UiText></span>}
     </>
   );
 }
@@ -1359,7 +1356,7 @@ function JobMark({ job }: { job: NonNullable<PrListEntry["analysisJob"]> }) {
       data-status={job.status}
     >
       {mark.icon}
-      {mark.word}
+      <UiText>{mark.word}</UiText>
     </span>
   );
 }

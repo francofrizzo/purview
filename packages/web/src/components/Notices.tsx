@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IconCheck, IconClose, IconWarning } from "./icons";
+import { UiText } from "./UiText";
 
 export type NoticeTone = "neutral" | "warn" | "error";
 
@@ -69,7 +70,7 @@ export function Notice({
       </span>
       <div className="min-w-0 flex-1 leading-5">
         <div className="font-medium" style={{ color: tone === "error" ? "var(--risk)" : "var(--fg)" }}>
-          {title}
+          {typeof title === "string" ? <UiText>{title}</UiText> : title}
         </div>
         {children ? <div style={{ color: "var(--fg-muted)" }}>{children}</div> : null}
       </div>

@@ -3,6 +3,7 @@ import type { UnitChangelogEntry } from "../api/types";
 import { changelogHeading, changelogView } from "../lib/changelog";
 import { IconChevron, IconHistory } from "./icons";
 import { InlineMarkdown } from "./Markdown";
+import { UiText } from "./UiText";
 
 /**
  * A unit's changelog: one line per revision that changed it, newest first.
@@ -50,9 +51,9 @@ export function UnitChangelog({
   const heading = (
     <>
       <IconHistory width={12} height={12} className="flex-none" />
-      <span>{changelogHeading(entries.length)}</span>
+      <UiText>{changelogHeading(entries.length)}</UiText>
       {freshHere ? (
-        <span style={{ color: "var(--accent)" }}>· updated in r{view.latest.revision}</span>
+        <span style={{ color: "var(--accent)" }}><UiText>{`· updated in r${view.latest.revision}`}</UiText></span>
       ) : null}
       {inline ? null : <IconChevron open={open} width={10} height={10} className="flex-none" />}
     </>
@@ -89,7 +90,7 @@ export function UnitChangelog({
                 }}
                 data-tip={`Revision ${e.revision}`}
               >
-                r{e.revision}
+                <UiText>{`r${e.revision}`}</UiText>
               </span>
             );
             const note = (

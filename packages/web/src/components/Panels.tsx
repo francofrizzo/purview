@@ -9,6 +9,7 @@ import { IconChevron, IconClose } from "./icons";
 import { Modal } from "./Modal";
 import { NOTICE_FADE_MS, Notice } from "./Notices";
 import { revisionFileChanges, revisionNoticeText } from "../lib/revisionNotice";
+import { UiText } from "./UiText";
 
 /**
  * A question a menu item asks before it acts (replace the analysis, post a
@@ -48,10 +49,10 @@ function ConfirmDialog({
       ) : null}
       <div className="mt-4 flex items-center justify-end gap-2">
         <button type="button" className="btn" disabled={busy} onClick={onCancel}>
-          Cancel
+          <UiText>Cancel</UiText>
         </button>
         <button type="button" className="btn btn-primary" data-testid={testId} disabled={busy} onClick={onConfirm}>
-          {busy ? busyAction : action}
+          <UiText>{busy ? busyAction : action}</UiText>
         </button>
       </div>
     </Modal>
@@ -88,7 +89,7 @@ export function MigrationReportPanel({
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >
-          by file
+          <UiText>by file</UiText>
           <IconChevron open={open} width={9} height={9} />
         </button>
       ) : null}
@@ -100,14 +101,16 @@ export function MigrationReportPanel({
                 {f.file}
               </span>
               <span className="ml-auto flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
-                {[
-                  f.added ? `${f.added} new` : "",
-                  f.changed ? `${f.changed} changed` : "",
-                  f.moved ? `${f.moved} renamed` : "",
-                  f.gone ? `${f.gone} gone` : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")}
+                <UiText>
+                  {[
+                    f.added ? `${f.added} new` : "",
+                    f.changed ? `${f.changed} changed` : "",
+                    f.moved ? `${f.moved} renamed` : "",
+                    f.gone ? `${f.gone} gone` : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </UiText>
               </span>
             </li>
           ))}
@@ -134,8 +137,9 @@ export function AutoImportedAnalysisPanel({
   return (
     <Notice title="Analysis imported" fadeMs={NOTICE_FADE_MS} onDismiss={onDismiss} testId="auto-imported-notice">
       <div>
-        A shared analysis{author ? ` by ${author}` : ""} was found on the PR (posted{" "}
-        {new Date(postedAt).toLocaleString()}) and imported — no analysis run was needed.
+        <UiText>A shared analysis</UiText>
+        {author ? <>{" "}<UiText>by</UiText> {author}</> : null}{" "}
+        <UiText>{`was found on the PR (posted ${new Date(postedAt).toLocaleString()}) and imported — no analysis run was needed.`}</UiText>
       </div>
     </Notice>
   );
@@ -151,11 +155,10 @@ export function SyncResultPanel({
   return (
     <Notice title="Synced to GitHub" fadeMs={NOTICE_FADE_MS} onDismiss={onDismiss} testId="sync-notice">
       <div>
-        {result.filesSynced ?? 0} files marked viewed on GitHub · {result.commentsPosted ?? 0}{" "}
-        comments posted as a pending review
+        <UiText>{`${result.filesSynced ?? 0} files marked viewed on GitHub · ${result.commentsPosted ?? 0} comments posted as a pending review`}</UiText>
         {result.reviewUrl ? (
           <>
-            {" · "}
+            <UiText>{" · "}</UiText>
             <a
               href={result.reviewUrl}
               target="_blank"
@@ -163,14 +166,14 @@ export function SyncResultPanel({
               className="underline"
               style={{ color: "var(--accent)" }}
             >
-              open review
+              <UiText>open review</UiText>
             </a>
           </>
         ) : null}
         {result.message ? <div className="mt-1">{result.message}</div> : null}
         {result.drift?.length ? (
           <div className="mt-1" style={{ color: "var(--warn)" }}>
-            drift detected on: {result.drift.join(", ")}
+            <UiText>drift detected on:</UiText> {result.drift.join(", ")}
           </div>
         ) : null}
       </div>
@@ -208,8 +211,8 @@ export function AnalysisImportConfirmPanel({
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
-      Importing <span style={{ color: "var(--fg)" }}>{filename}</span> replaces the current analysis
-      (units, kinds, findings). What you've already viewed is untouched.
+      <UiText>Importing</UiText> <span style={{ color: "var(--fg)" }}>{filename}</span>{" "}
+      <UiText>replaces the current analysis (units, kinds, findings). What you've already viewed is untouched.</UiText>
     </ConfirmDialog>
   );
 }
@@ -229,23 +232,26 @@ export function AnalysisImportResultPanel({
       <div>
         {source ? (
           <div className="mb-1">
-            shared{source.author ? ` by ${source.author}` : ""} on{" "}
-            {new Date(source.postedAt).toLocaleDateString()}
+            <UiText>shared</UiText>
+            {source.author ? <>{" "}<UiText>by</UiText> {source.author}</> : null}{" "}
+            <UiText>{`on ${new Date(source.postedAt).toLocaleDateString()}`}</UiText>
           </div>
         ) : null}
-        <span style={{ color: "var(--fg)" }}>{report.unitsImported}</span> unit
-        {report.unitsImported === 1 ? "" : "s"} imported
-        {report.unitsDropped > 0
-          ? `, ${report.unitsDropped} dropped (no longer in this revision)`
-          : ""}
-        {" · "}
-        <span style={{ color: "var(--fg)" }}>{report.hunksMatched}</span> hunk
-        {report.hunksMatched === 1 ? "" : "s"} matched
-        {report.hunksUnassigned > 0 ? `, ${report.hunksUnassigned} left unassigned` : ""}
+        <span style={{ color: "var(--fg)" }}>{report.unitsImported}</span>{" "}
+        <UiText>
+          {`unit${report.unitsImported === 1 ? "" : "s"} imported${
+            report.unitsDropped > 0 ? `, ${report.unitsDropped} dropped (no longer in this revision)` : ""
+          } · `}
+        </UiText>
+        <span style={{ color: "var(--fg)" }}>{report.hunksMatched}</span>{" "}
+        <UiText>
+          {`hunk${report.hunksMatched === 1 ? "" : "s"} matched${
+            report.hunksUnassigned > 0 ? `, ${report.hunksUnassigned} left unassigned` : ""
+          }`}
+        </UiText>
         {!report.sameRevision ? (
           <div className="mt-1" style={{ color: "var(--warn)" }}>
-            imported onto a different revision than it was exported from — unassigned hunks may
-            need classifying.
+            <UiText>imported onto a different revision than it was exported from — unassigned hunks may need classifying.</UiText>
           </div>
         ) : null}
       </div>
@@ -280,9 +286,7 @@ export function ShareAnalysisConfirmPanel({
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
-      Posts the current analysis as a comment on this PR's conversation tab, publicly on GitHub. A
-      teammate tracking the same PR can import it from there instead of paying for their own
-      analysis run.
+      <UiText>Posts the current analysis as a comment on this PR's conversation tab, publicly on GitHub. A teammate tracking the same PR can import it from there instead of paying for their own analysis run.</UiText>
     </ConfirmDialog>
   );
 }
@@ -297,10 +301,9 @@ export function ShareAnalysisResultPanel({
   return (
     <Notice title={result.updated ? "Analysis comment updated" : "Analysis shared"} fadeMs={NOTICE_FADE_MS} onDismiss={onDismiss} testId="share-notice">
       <div>
-        {result.updated
-          ? "Updated the existing analysis comment on this PR."
-          : "Posted a new analysis comment on this PR."}
-        {" · "}
+        <UiText>
+          {`${result.updated ? "Updated the existing analysis comment on this PR." : "Posted a new analysis comment on this PR."} · `}
+        </UiText>
         <a
           href={result.commentUrl}
           target="_blank"
@@ -308,7 +311,7 @@ export function ShareAnalysisResultPanel({
           className="underline"
           style={{ color: "var(--accent)" }}
         >
-          view comment
+          <UiText>view comment</UiText>
         </a>
       </div>
     </Notice>
@@ -342,8 +345,7 @@ export function ImportFromPrConfirmPanel({
       onConfirm={onConfirm}
       onCancel={onCancel}
     >
-      Imports the analysis shared as a comment on this PR, replacing the current one (units, kinds,
-      findings). What you've already viewed is untouched.
+      <UiText>Imports the analysis shared as a comment on this PR, replacing the current one (units, kinds, findings). What you've already viewed is untouched.</UiText>
     </ConfirmDialog>
   );
 }
@@ -376,7 +378,8 @@ export function SharedAnalysisBanner({
     >
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 font-semibold leading-5" style={{ color: "var(--accent)" }}>
-          Shared analysis{author ? ` by ${author}` : ""}
+          <UiText>Shared analysis</UiText>
+          {author ? <>{" "}<UiText>by</UiText> {author}</> : null}
         </span>
         <button
           type="button"
@@ -391,7 +394,7 @@ export function SharedAnalysisBanner({
         </button>
       </div>
       <p className="leading-5" style={{ color: "var(--fg-muted)" }}>
-        Posted on this PR for {sameCommit ? "the same commit" : "an older commit"}. Import it instead of running your own.
+        <UiText>{`Posted on this PR for ${sameCommit ? "the same commit" : "an older commit"}. Import it instead of running your own.`}</UiText>
       </p>
       <div className="mt-2 flex items-center gap-1.5">
         <button
@@ -401,7 +404,7 @@ export function SharedAnalysisBanner({
           disabled={importing}
           onClick={onImport}
         >
-          {importing ? "importing…" : "import"}
+          <UiText>{importing ? "importing…" : "import"}</UiText>
         </button>
         <button
           type="button"
@@ -409,7 +412,7 @@ export function SharedAnalysisBanner({
           data-testid="shared-analysis-analyze-fresh"
           onClick={onAnalyzeFresh}
         >
-          analyze fresh
+          <UiText>analyze fresh</UiText>
         </button>
       </div>
     </section>

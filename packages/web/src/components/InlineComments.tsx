@@ -12,6 +12,7 @@ import { threadMarker, threadsTitle, type DisplayThread } from "../lib/threads";
 import { CommentPill } from "./CommentCard";
 import { IconClose, IconPlus } from "./icons";
 import { ThreadView, type ThreadListActions } from "./Threads";
+import { UiText } from "./UiText";
 
 export type InlineCommentActions = ThreadListActions;
 
@@ -108,7 +109,7 @@ export function InlineCommentList({
             data-tip={`Add a comment on ${label}`}
             onClick={onAdd}
           >
-            <IconPlus width={9} height={9} /> add a comment
+            <IconPlus width={9} height={9} /> <UiText>add a comment</UiText>
           </button>
         ) : (
           <span />
@@ -121,7 +122,7 @@ export function InlineCommentList({
           data-tip="Hide these comments; the marker in the gutter brings them back"
           onClick={onCollapse}
         >
-          hide <IconClose width={9} height={9} />
+          <UiText>hide</UiText> <IconClose width={9} height={9} />
         </button>
       </div>
     </div>

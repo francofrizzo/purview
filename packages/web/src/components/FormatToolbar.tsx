@@ -30,6 +30,7 @@ import {
   type TextEdit,
 } from "../lib/composerFormat";
 import { insertSuggestion, type SuggestionSource } from "../lib/suggestion";
+import { UiText } from "./UiText";
 
 /**
  * Markdown formatting for a comment textarea: the toolbar's buttons and the
@@ -163,7 +164,7 @@ export function SuggestButton({
       onClick={() => fmt.apply("suggestion")}
     >
       <IconFileDiff size={12} stroke={2} />
-      suggest change
+      <UiText>suggest change</UiText>
     </button>
   );
 }

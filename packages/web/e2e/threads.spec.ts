@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { UNITS, openComments, openPr, openUnit } from "./helpers";
+import { UNITS, openComments, openPr, openUnit, ui } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await openPr(page);
@@ -37,7 +37,7 @@ test("the finish-review panel shows the drafts going out and what is on GitHub s
   await maria.getByTestId("verdict-inline-jump").click();
   await expect(page.locator('[data-testid^="hunk-header-"][data-focused="true"]')).toBeVisible();
 
-  await expect(panel.getByText("Comments", { exact: true })).toBeVisible();
+  await expect(ui(panel, "Comments", { exact: true })).toBeVisible();
   await expect(panel.getByTestId("comment-card-draft-1")).toBeVisible();
   await expect(panel.getByTestId("comment-card-draft-11")).toContainText("Stamp the row");
 

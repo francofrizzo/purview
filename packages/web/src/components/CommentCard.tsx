@@ -34,6 +34,7 @@ import {
   IconArchive,
 } from "./icons";
 import { SuggestionContext } from "./Markdown";
+import { UiText } from "./UiText";
 
 export const COMMENT_STATUS: Record<
   CommentStatus,
@@ -173,7 +174,7 @@ export function CommentCard({
         >
           {forAgent ? <IconSparkles width={12} height={12} /> : <IconGithub width={12} height={12} />}
         </span>
-        {comment.outdated && <span data-testid="comment-outdated" className="rounded px-1 font-medium" style={{ color: "var(--warn)", background: "var(--warn-soft)" }} data-tip={outdatedCommentTip(comment)}>outdated</span>}
+        {comment.outdated && <span data-testid="comment-outdated" className="rounded px-1 font-medium" style={{ color: "var(--warn)", background: "var(--warn-soft)" }} data-tip={outdatedCommentTip(comment)}><UiText>outdated</UiText></span>}
         {anchor ? (
           <button
             type="button"
@@ -192,21 +193,21 @@ export function CommentCard({
           style={{ color: meta.ink }}
           data-tip={publishing ? "Posting on GitHub" : meta.hint}
         >
-          {publishing ? "publishing…" : meta.label}
+          <UiText>{publishing ? "publishing…" : meta.label}</UiText>
         </span>
         {/* Inline, the covered lines light up; the words still say so (and
             are all there is when the card sits in a file block or a list
             that names no anchor). */}
         {!anchor && isRange(comment) ? (
           <span className="flex-none font-mono" style={{ color: "var(--fg-faint)" }} data-testid="comment-lines">
-            lines {lineLabel(comment)}
+            <UiText>lines</UiText> {lineLabel(comment)}
           </span>
         ) : null}
         <ByAgentChip comment={comment} />
         <PendingImagesChip comment={comment} />
         {Number.isFinite(age) ? (
           <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(comment.createdAt!)}>
-            {formatCompactAge(age) === "just now" ? "just now" : `${formatCompactAge(age)} ago`}
+            <UiText>{formatCompactAge(age) === "just now" ? "just now" : `${formatCompactAge(age)} ago`}</UiText>
           </span>
         ) : null}
         {/* The actions belong to the card the pointer is on; at rest the
@@ -282,10 +283,10 @@ export function CommentCard({
       {notice}
       {forAgent && comment.pickedUp ? (
         <div className="text-[11px]" style={{ color: "var(--fg-muted)" }} title={formatFullTimestamp(comment.pickedUp.at)}>
-          Picked up by {comment.pickedUp.by} · {(() => {
+          <UiText>Picked up by</UiText> {comment.pickedUp.by} · <UiText>{(() => {
             const age = formatCompactAge(Math.max(0, Date.now() - Date.parse(comment.pickedUp.at)));
             return age === "just now" ? age : `${age} ago`;
-          })()}
+          })()}</UiText>
         </div>
       ) : null}
       <CommentBody
@@ -307,12 +308,12 @@ export function CommentCard({
           data-testid={`confirm-publish-${comment.id}`}
         >
           {publishing ? (
-            <span className="min-w-0 flex-1 animate-pulse">Posting on GitHub…</span>
+            <UiText className="min-w-0 flex-1 animate-pulse">Posting on GitHub…</UiText>
           ) : (
             <>
-              <span className="min-w-0 flex-1">Post it on GitHub now? It is public at once, outside any review.</span>
+              <UiText className="min-w-0 flex-1">Post it on GitHub now? It is public at once, outside any review.</UiText>
               <button type="button" className="btn" onClick={() => setConfirmPublish(false)}>
-                keep
+                <UiText>keep</UiText>
               </button>
               <button
                 type="button"
@@ -320,7 +321,7 @@ export function CommentCard({
                 data-testid={`publish-inline-${comment.id}`}
                 onClick={() => onPublish?.(comment)}
               >
-                publish
+                <UiText>publish</UiText>
               </button>
             </>
           )}
@@ -332,13 +333,13 @@ export function CommentCard({
           style={{ background: "var(--risk-soft)", color: "var(--risk)" }}
           data-testid={`confirm-delete-${comment.id}`}
         >
-          <span className="min-w-0 flex-1">
+          <UiText className="min-w-0 flex-1">
             {status === "pushed"
               ? "Delete it? It also leaves your pending review on GitHub."
               : "Delete this draft?"}
-          </span>
+          </UiText>
           <button type="button" className="btn" onClick={() => setConfirmDelete(false)}>
-            keep
+            <UiText>keep</UiText>
           </button>
           <button
             type="button"
@@ -351,7 +352,7 @@ export function CommentCard({
               onDelete?.(comment);
             }}
           >
-            {deleting ? "deleting…" : "delete"}
+            <UiText>{deleting ? "deleting…" : "delete"}</UiText>
           </button>
         </div>
       ) : null}
@@ -381,7 +382,7 @@ function PendingImagesChip({ comment }: { comment: Pick<DraftComment, "body" | "
       style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
       data-tip={`${n === 1 ? "This image is" : "These images are"} only on this machine; uploaded to GitHub when the comment is pushed`}
     >
-      {n} {n === 1 ? "image" : "images"}
+      <UiText>{`${n} ${n === 1 ? "image" : "images"}`}</UiText>
     </span>
   );
 }

@@ -5,6 +5,7 @@ import { changeMix, formatShare, type ChangeKind, type ChangeMix as Mix } from "
 import { useSettings } from "../lib/settings";
 import { DiffSizeStat } from "./Chips";
 import { IconChevron } from "./icons";
+import { UiText } from "./UiText";
 
 /** `short` is for the unit's one line, where "documentation" alone would wrap it. */
 export const CHANGE_LOOK: Record<ChangeKind, { label: string; short: string; color: string }> = {
@@ -88,16 +89,16 @@ function ChangeTable({
                 onClick={() => expand.toggle(r.kind)}
               >
                 {dot(r.kind)}
-                {CHANGE_LOOK[r.kind].label}
+                <UiText>{CHANGE_LOOK[r.kind].label}</UiText>
                 <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  {r.files.length} {r.files.length === 1 ? "file" : "files"}
+                  <UiText>{`${r.files.length} ${r.files.length === 1 ? "file" : "files"}`}</UiText>
                 </span>
                 <IconChevron open={open} width={10} height={10} className="flex-none" />
               </button>
             ) : (
               <span className="flex items-center gap-1.5" style={{ color: "var(--fg)" }}>
                 {dot(r.kind)}
-                {CHANGE_LOOK[r.kind].label}
+                <UiText>{CHANGE_LOOK[r.kind].label}</UiText>
               </span>
             )}
             <span className="text-right text-2xs" style={{ color: "var(--fg-faint)" }}>
@@ -135,7 +136,7 @@ function ChangeTable({
       })}
       <span className="col-span-full my-0.5 border-t" style={{ borderColor: "var(--border)" }} />
       <span className="col-span-2" style={{ color: "var(--fg)" }}>
-        Total
+        <UiText>Total</UiText>
       </span>
       <span className="text-right" style={{ color: "var(--ok)" }}>
         +{mix.added}
@@ -187,7 +188,7 @@ function ChangeCard({ mix, all, anchor }: { mix: Mix; all: boolean; anchor: DOMR
     >
       <ChangeTable mix={mix} />
       <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-        {all ? "Click to count implementation lines" : "Click to count all lines"}
+        <UiText>{all ? "Click to count implementation lines" : "Click to count all lines"}</UiText>
       </p>
     </div>
   );

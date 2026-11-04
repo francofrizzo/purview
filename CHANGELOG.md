@@ -5,6 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Browser find over the panels.** Over the comments, chat, review or overview, Cmd+F opens the browser's find. In the diff's find bar, press Cmd+F again for it.
+- **Find skips the app's words.** The browser's find matches what the PR and the review say, not button labels, tabs or headings.
+
 ## 2026.11.4.1
 
 - **Home search and rows.** Type in the field at the top of the home to filter PRs, or paste a PR URL and press Enter to add it. Each PR's state sits at the right of its title line, the lines icon shows one line per PR, and a tag's band folds its PRs.

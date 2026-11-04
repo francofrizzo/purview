@@ -922,6 +922,13 @@ html[data-mode="light"] .logo-for-light {
   scrollbar-color: var(--border-strong) transparent;
 }
 
+/* The app's own words (button labels, tabs, headings) drawn by CSS, so the
+   browser's find matches only what the PR and the review say. Screen readers
+   still read them. See UiText.tsx. */
+[data-ui]::before {
+  content: attr(data-ui);
+}
+
 /* The overview's jump bar. With margins wide enough for it, it leaves the top
    for a contents list beside the text. The pane's width decides, not the
    window's: the dock takes some of it. The 74rem is the text's measure plus

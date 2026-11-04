@@ -176,3 +176,8 @@ export async function openComments(page: Page): Promise<void> {
   await page.getByTestId("dock-tab-comments").click();
   await expect(page.getByTestId("comments-panel")).toBeVisible();
 }
+
+/** One of the app's own words (UiText): its text is a hidden copy, so this
+ *  steps up to the span that paints it. */
+export const ui = (root: Page | Locator, text: string | RegExp, opts?: { exact?: boolean }) =>
+  root.getByText(text, opts).locator("xpath=..");

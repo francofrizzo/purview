@@ -8,6 +8,7 @@ import {
 import { IconCheck, IconChevron, IconClose, IconCopy } from "./icons";
 import { OverflowMenu } from "./OverflowMenu";
 import { useSettings } from "../lib/settings";
+import { UiText } from "./UiText";
 
 /**
  * Copy-to-clipboard for the agent-facing markdown.
@@ -123,10 +124,10 @@ export function CopyForAgentButton({
       {copied ? (
         <>
           <IconCheck width={11} height={11} />
-          copied
+          <UiText>copied</UiText>
         </>
       ) : (
-        (label ?? "copy for agent")
+        <UiText>{label ?? "copy for agent"}</UiText>
       )}
     </button>
   );
@@ -273,7 +274,7 @@ export function CopyBundleControls({
           ) : phase === "working" || phase === "confirm" ? null : (
             <IconCopy width={11} height={11} />
           )}
-          {label}
+          <UiText>{label}</UiText>
         </button>
         {onArchiveCopied ? (
           <OverflowMenu
@@ -321,12 +322,12 @@ export function CopyBundleControls({
           checked={includeSubmitted}
           onChange={(e) => setIncludeSubmitted(e.target.checked)}
         />
-        include submitted
+        <UiText>include submitted</UiText>
       </label>
       )}
       {phase === "error" && message ? (
         <span className="text-2xs" style={{ color: "var(--risk)" }}>
-          copied, but archiving failed: {message}
+          <UiText>copied, but archiving failed:</UiText> {message}
         </span>
       ) : null}
       {fallback !== null ? <CopyFallback text={fallback} onClose={dismissFallback} /> : null}
@@ -358,9 +359,9 @@ function CopyFallback({ text, onClose }: { text: string; onClose: () => void }) 
         }}
       >
         <div className="mb-1.5 flex items-center gap-2">
-          <span className="text-xs font-semibold">Copy this by hand</span>
+          <span className="text-xs font-semibold"><UiText>Copy this by hand</UiText></span>
           <span className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-            The clipboard was not available — the text is selected, press ⌘C.
+            <UiText>The clipboard was not available — the text is selected, press ⌘C.</UiText>
           </span>
           <button type="button" className="ml-auto text-xs" onClick={onClose} style={{ color: "var(--fg-faint)" }}>
             <IconClose width={10} height={10} />

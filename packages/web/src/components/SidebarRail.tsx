@@ -5,6 +5,7 @@ import { workUnits } from "../lib/generated";
 import { unitDisplayOrder } from "../lib/unitOrder";
 import { UNPLACED_ID, unplacedHunkIds } from "../lib/unplaced";
 import { IconChevron, IconGenerated } from "./icons";
+import { UiText } from "./UiText";
 
 /**
  * The sidebar collapsed to a narrow strip: one square per review unit, same
@@ -146,7 +147,7 @@ function UnplacedCell({
         boxShadow: selected ? "0 0 0 2px var(--accent)" : "none",
       }}
     >
-      ?
+      <UiText>?</UiText>
       {match ? (
         <span
           className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full"

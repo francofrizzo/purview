@@ -73,6 +73,7 @@ import {
   IconTerminal,
   IconUnit,
 } from "./icons";
+import { UiText } from "./UiText";
 
 const STARTERS = [
   "Summarize the riskiest changes in this PR.",
@@ -120,7 +121,7 @@ export function RefChip({
         <Icon width={11} height={11} />
       </span>
       <span className="truncate">{label}</span>
-      {auto ? <span className="flex-none text-2xs">· auto</span> : null}
+      {auto ? <span className="flex-none text-2xs">· <UiText>auto</UiText></span> : null}
       {onRemove ? (
         <button
           type="button"
@@ -241,7 +242,7 @@ function MentionList({
               </span>
             ) : null}
             <span className="ml-auto flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
-              {o.kind}
+              <UiText>{o.kind}</UiText>
             </span>
           </li>
         );
@@ -275,7 +276,7 @@ function RoleLabel({ role }: { role: "user" | "assistant" }) {
       className="text-xs font-semibold"
       style={{ color: role === "user" ? "var(--fg-muted)" : "var(--accent)" }}
     >
-      {role === "user" ? "You" : capitalized(agentName)}
+      {role === "user" ? <UiText>You</UiText> : capitalized(agentName)}
     </span>
   );
 }
@@ -352,7 +353,7 @@ function MessageBlock({
                 className="inline-flex items-center gap-0.5 hover:underline"
               >
                 <IconEdit width={10} height={10} />
-                edit
+                <UiText>edit</UiText>
               </button>
             ) : null}
             {rewindConfirming ? (
@@ -365,10 +366,10 @@ function MessageBlock({
                   className="hover:underline disabled:opacity-60"
                   style={{ color: "var(--risk)" }}
                 >
-                  {rewinding ? "discarding…" : `discard ${discardCount} message${discardCount === 1 ? "" : "s"}?`}
+                  <UiText>{rewinding ? "discarding…" : `discard ${discardCount} message${discardCount === 1 ? "" : "s"}?`}</UiText>
                 </button>
                 <button type="button" onClick={onRewindCancel} className="hover:underline" disabled={rewinding}>
-                  cancel
+                  <UiText>cancel</UiText>
                 </button>
               </span>
             ) : (
@@ -381,7 +382,7 @@ function MessageBlock({
                 className="inline-flex items-center gap-0.5 hover:underline"
               >
                 <IconRewind width={10} height={10} />
-                rewind here
+                <UiText>rewind here</UiText>
               </button>
             )}
           </div>
@@ -409,7 +410,7 @@ function MessageBlock({
                 onClick={() => setToolsOpen((v) => !v)}
               >
                 <IconChevron open={toolsOpen} width={9} height={9} />
-                {message.tools.length} tool {message.tools.length === 1 ? "call" : "calls"}
+                <UiText>{`${message.tools.length} tool ${message.tools.length === 1 ? "call" : "calls"}`}</UiText>
               </button>
               {toolsOpen ? (
                 <div className="mt-0.5 space-y-0.5">
@@ -437,7 +438,7 @@ function StoppedMarker({ trailing }: { trailing: boolean }) {
       style={{ color: "var(--fg-faint)" }}
     >
       <IconStop width={8} height={8} />
-      stopped by you
+      <UiText>stopped by you</UiText>
     </div>
   );
 }
@@ -739,15 +740,15 @@ export function ChatPanel({
       >
         {chat.loading ? (
           <p className="p-3 text-xs" style={{ color: "var(--fg-faint)" }}>
-            Loading the conversation…
+            <UiText>Loading the conversation…</UiText>
           </p>
         ) : null}
 
         {empty ? (
           <div className="p-3">
             <p className="text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
-              Ask about this pull request. Cite a unit, a hunk, a file, a range of lines or one of
-              your comments to point {agentName} at exactly what you mean.
+              <UiText>Ask about this pull request. Cite a unit, a hunk, a file, a range of lines or one of your comments to point</UiText>{" "}
+              {agentName} <UiText>at exactly what you mean.</UiText>
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {STARTERS.map((s) => (
@@ -762,7 +763,7 @@ export function ChatPanel({
                   }}
                   onClick={() => submit(s)}
                 >
-                  {s}
+                  <UiText>{s}</UiText>
                 </button>
               ))}
             </div>
@@ -809,7 +810,7 @@ export function ChatPanel({
               // swept by a light, which reads as alive where a static
               // ellipsis read as stuck.
               <span className="chat-working text-xs" data-testid="chat-working">
-                {chat.streaming.tools.length ? "Working" : "Thinking"}
+                <UiText>{chat.streaming.tools.length ? "Working" : "Thinking"}</UiText>
               </span>
             )}
           </div>
@@ -825,11 +826,11 @@ export function ChatPanel({
             <div className="mt-1.5 flex gap-1.5">
               {chat.failure.retry ? (
                 <button type="button" className="btn" onClick={chat.retry} disabled={chat.busy}>
-                  retry
+                  <UiText>retry</UiText>
                 </button>
               ) : (
                 <button type="button" className="btn" data-testid="chat-dismiss-failure" onClick={chat.dismissFailure}>
-                  dismiss
+                  <UiText>dismiss</UiText>
                 </button>
               )}
               {chat.queue.length ? (
@@ -840,7 +841,7 @@ export function ChatPanel({
                   onClick={chat.dismissFailure}
                   data-tip="Leave this one unanswered and send the queued messages"
                 >
-                  skip, send queued ({chat.queue.length})
+                  <UiText>{`skip, send queued (${chat.queue.length})`}</UiText>
                 </button>
               ) : null}
             </div>
@@ -860,7 +861,7 @@ export function ChatPanel({
           style={{ background: "var(--bg-hover)", border: "1px solid var(--border-strong)", color: "var(--fg)" }}
         >
           <IconArrowDown width={10} height={10} />
-          jump to latest
+          <UiText>jump to latest</UiText>
         </button>
       ) : null}
 
@@ -869,14 +870,14 @@ export function ChatPanel({
           className="flex flex-none items-center gap-2 border-t px-3 py-2 text-2xs"
           style={{ borderColor: "var(--border)", background: "var(--warn-soft)", color: "var(--warn)" }}
         >
-          Clear this conversation? It cannot be recovered.
+          <UiText>Clear this conversation? It cannot be recovered.</UiText>
           <button
             type="button"
             className="btn ml-auto"
             disabled={chat.pending === "clear"}
             onClick={() => setConfirmClear(false)}
           >
-            cancel
+            <UiText>cancel</UiText>
           </button>
           <button
             type="button"
@@ -887,7 +888,7 @@ export function ChatPanel({
               void chat.clearConversation().then(() => setConfirmClear(false));
             }}
           >
-            {chat.pending === "clear" ? "clearing…" : "clear"}
+            <UiText>{chat.pending === "clear" ? "clearing…" : "clear"}</UiText>
           </button>
         </div>
       ) : null}
@@ -898,10 +899,13 @@ export function ChatPanel({
             data-testid="chat-editing-banner"
             style={{ color: "var(--fg-muted)" }}
           >
-            editing — sending will discard {chat.messages.length - chat.editingIndex - 1} later message
-            {chat.messages.length - chat.editingIndex - 1 === 1 ? "" : "s"}
+            <UiText>
+              {`editing — sending will discard ${chat.messages.length - chat.editingIndex - 1} later message${
+                chat.messages.length - chat.editingIndex - 1 === 1 ? "" : "s"
+              }`}
+            </UiText>
             <button type="button" className="btn ml-auto" onClick={cancelEditing}>
-              cancel
+              <UiText>cancel</UiText>
             </button>
           </div>
         ) : null}
@@ -911,7 +915,7 @@ export function ChatPanel({
             data-testid="chat-session-reset-note"
             style={{ color: "var(--fg-faint)" }}
           >
-            starting a fresh session next — the conversation so far will be replayed
+            <UiText>starting a fresh session next — the conversation so far will be replayed</UiText>
           </div>
         ) : null}
         {chat.queue.length ? (
@@ -923,14 +927,14 @@ export function ChatPanel({
                 style={{ borderColor: "var(--border)", background: "var(--bg-inset)", borderStyle: "dashed" }}
               >
                 <span className="flex-none pt-px text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-                  {i === 0 ? (chat.failure ? "held" : "next") : `${i + 1}.`}
+                  <UiText>{i === 0 ? (chat.failure ? "held" : "next") : `${i + 1}.`}</UiText>
                 </span>
                 <span className="line-clamp-2 min-w-0 flex-1 whitespace-pre-wrap" style={{ color: "var(--fg-muted)" }}>
                   {q.text}
                   {q.refs.length ? (
                     <span style={{ color: "var(--fg-faint)" }}>
                       {" "}
-                      · {q.refs.length} ref{q.refs.length === 1 ? "" : "s"}
+                      · <UiText>{`${q.refs.length} ref${q.refs.length === 1 ? "" : "s"}`}</UiText>
                     </span>
                   ) : null}
                 </span>
@@ -943,7 +947,7 @@ export function ChatPanel({
                     data-testid="chat-queue-send-now"
                     onClick={() => chat.sendQueuedNow(q.id)}
                   >
-                    send now
+                    <UiText>send now</UiText>
                   </button>
                 ) : null}
                 <button
@@ -959,7 +963,7 @@ export function ChatPanel({
                     requestAnimationFrame(() => textareaRef.current?.focus());
                   }}
                 >
-                  edit
+                  <UiText>edit</UiText>
                 </button>
                 <button
                   type="button"
@@ -998,7 +1002,7 @@ export function ChatPanel({
                 style={{ color: "var(--fg-faint)" }}
                 onClick={chat.clearRefs}
               >
-                clear all
+                <UiText>clear all</UiText>
               </button>
             ) : null}
           </div>
@@ -1060,7 +1064,7 @@ export function ChatPanel({
           {chat.busy ? (
             <span className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--accent)" }}>
               <IconSpinner width={10} height={10} />
-              {chat.stopping ? null : "thinking…"}
+              {chat.stopping ? null : <UiText>thinking…</UiText>}
               <button
                 type="button"
                 data-testid="chat-stop"
@@ -1073,7 +1077,7 @@ export function ChatPanel({
                 onClick={() => void chat.stop()}
               >
                 <IconStop width={8} height={8} />
-                {chat.stopping ? "stopping…" : "stop"}
+                <UiText>{chat.stopping ? "stopping…" : "stop"}</UiText>
               </button>
             </span>
           ) : null}
@@ -1130,7 +1134,7 @@ export function ChatPanel({
             disabled={!draft.trim() || (chat.busy && chat.editingIndex !== null)}
             onClick={() => submit()}
           >
-            {chat.editingIndex !== null ? "resend" : chat.busy || chat.queue.length ? "queue" : "send"}
+            <UiText>{chat.editingIndex !== null ? "resend" : chat.busy || chat.queue.length ? "queue" : "send"}</UiText>
           </button>
         </div>
       </div>
@@ -1170,7 +1174,7 @@ function ModelSelect({
 }) {
   return (
     <label className={`flex items-center ${className ?? ""}`}>
-      <span className="sr-only">Model for the next message</span>
+      <UiText className="sr-only">Model for the next message</UiText>
       <select
         data-testid="chat-model-select"
         className="select pl-1 py-px text-2xs font-medium"
@@ -1274,7 +1278,7 @@ function HandoffButton({ prKey, busy }: { prKey: string; busy: boolean }) {
         style={{ color: open ? "var(--fg)" : "var(--fg-muted)" }}
       >
         <IconTerminal width={12} height={12} />
-        terminal
+        <UiText>terminal</UiText>
       </button>
       {state ? (
         <div
@@ -1287,7 +1291,7 @@ function HandoffButton({ prKey, busy }: { prKey: string; busy: boolean }) {
           {state.phase === "loading" ? (
             <p className="flex items-center gap-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
               <IconSpinner width={10} height={10} />
-              Preparing the worktree…
+              <UiText>Preparing the worktree…</UiText>
             </p>
           ) : state.phase === "error" ? (
             <p className="text-2xs leading-4" data-testid="chat-handoff-error" style={{ color: "var(--risk)" }}>
@@ -1296,18 +1300,19 @@ function HandoffButton({ prKey, busy }: { prKey: string; busy: boolean }) {
           ) : (
             <>
               <p className="text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
-                {state.copied ? "Copied. Paste it" : "Paste this"} into a terminal to open Claude Code on this
-                PR, free to edit code and run tests.
+                <UiText>
+                  {`${state.copied ? "Copied. Paste it" : "Paste this"} into a terminal to open Claude Code on this PR, free to edit code and run tests.`}
+                </UiText>
               </p>
               <dl className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
-                <dt style={{ color: "var(--fg-faint)" }}>{state.handoff.owned ? "Worktree" : "Your checkout"}</dt>
+                <dt style={{ color: "var(--fg-faint)" }}><UiText>{state.handoff.owned ? "Worktree" : "Your checkout"}</UiText></dt>
                 <dd className="break-all font-mono" data-testid="chat-handoff-cwd">{state.handoff.cwd}</dd>
-                <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>Branch</dt>
+                <dt className="mt-1" style={{ color: "var(--fg-faint)" }}><UiText>Branch</UiText></dt>
                 <dd className="break-all font-mono">{state.handoff.branch}</dd>
-                <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>Reviewed commit</dt>
+                <dt className="mt-1" style={{ color: "var(--fg-faint)" }}><UiText>Reviewed commit</UiText></dt>
                 <dd className="font-mono">{state.handoff.startSha.slice(0, 12)}</dd>
                 {state.handoff.headSha !== state.handoff.startSha ? <>
-                  <dt className="mt-1" style={{ color: "var(--fg-faint)" }}>HEAD now</dt>
+                  <dt className="mt-1" style={{ color: "var(--fg-faint)" }}><UiText>HEAD now</UiText></dt>
                   <dd className="font-mono">{state.handoff.headSha.slice(0, 12)}</dd>
                 </> : null}
               </dl>
@@ -1330,14 +1335,17 @@ function HandoffButton({ prKey, busy }: { prKey: string; busy: boolean }) {
                   style={recopied ? { color: "var(--ok)", borderColor: "var(--ok)" } : undefined}
                 >
                   {recopied ? <IconCheck width={11} height={11} /> : <IconCopy width={11} height={11} />}
-                  {recopied ? "copied" : "copy"}
+                  <UiText>{recopied ? "copied" : "copy"}</UiText>
                 </button>
               </div>
               <p className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-                {state.handoff.owned
-                  ? "Purview keeps this worktree as you leave it, even when the PR changes, and never deletes it."
-                  : "Your own checkout of the PR's branch, used as it stands."}{" "}
-                Claude starts fresh, with this chat as context. What you do there won&apos;t appear here.
+                <UiText>
+                  {`${
+                    state.handoff.owned
+                      ? "Purview keeps this worktree as you leave it, even when the PR changes, and never deletes it."
+                      : "Your own checkout of the PR's branch, used as it stands."
+                  } Claude starts fresh, with this chat as context. What you do there won't appear here.`}
+                </UiText>
               </p>
             </>
           )}
@@ -1399,7 +1407,7 @@ export function QuoteButton({
         style={{ color: "var(--fg-muted)" }}
       >
         <IconQuote width={12} height={12} />
-        cite in chat
+        <UiText>cite in chat</UiText>
       </button>
     );
   }

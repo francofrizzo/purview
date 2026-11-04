@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { UNITS, hunkHeader, openComposerOnLine, openPr, openUnit, scroller } from "./helpers";
+import { UNITS, hunkHeader, openComposerOnLine, openPr, openUnit, scroller, ui } from "./helpers";
 
 test("the view options hold the layout, wrapping, folding, read units and thread filters", async ({ page }) => {
   await openPr(page);
@@ -214,7 +214,7 @@ test("with the sidebar folded, the unit's card floats over the diff with its bri
 
 test("with nothing to read, the panes float whole: every corner round, no rule beside the diff", async ({ page }) => {
   await page.goto("/pr/github.com/acme/billing/479");
-  await expect(page.getByText("Select a review unit to read its hunks.")).toBeVisible();
+  await expect(ui(page, "Select a review unit to read its hunks.")).toBeVisible();
   const nav = page.locator(".workspace nav.pane").first();
   await expect(nav).toHaveCSS("border-bottom-right-radius", "8px");
   await expect(nav).toHaveCSS("border-top-right-radius", "8px");

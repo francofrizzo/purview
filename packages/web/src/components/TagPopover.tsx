@@ -4,6 +4,7 @@ import { errorText } from "../api/errors";
 import { stackOf } from "../lib/prList";
 import { normalizeTag, TAG_COLORS, tagSlot } from "../lib/tags";
 import { FloatingPanel } from "./FloatingPanel";
+import { UiText } from "./UiText";
 
 /** A PR's tag as a chip in the tag's colour; the same tag is the same colour everywhere. */
 export function TagChip({ tag, className = "" }: { tag: string; className?: string }) {
@@ -94,7 +95,7 @@ export function TagPopover({
       />
       {tooLong ? (
         <p role="alert" className="mt-1 px-0.5 text-2xs" style={{ color: "var(--risk)" }}>
-          At most 24 characters.
+          <UiText>At most 24 characters.</UiText>
         </p>
       ) : null}
       {used.length ? (
@@ -128,11 +129,11 @@ export function TagPopover({
             disabled={save.isPending}
             onChange={(e) => setWholeStack(e.target.checked)}
           />
-          Whole stack ({stack.length} PRs)
+          <UiText>{`Whole stack (${stack.length} PRs)`}</UiText>
         </label>
       ) : null}
       <div className="mt-2 flex items-center justify-between px-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-        <span>{save.isPending ? "Saving…" : "Enter saves"}</span>
+        <UiText>{save.isPending ? "Saving…" : "Enter saves"}</UiText>
         {current ? (
           <button
             type="button"
@@ -141,7 +142,7 @@ export function TagPopover({
             disabled={save.isPending}
             onClick={() => submit(null)}
           >
-            Remove tag
+            <UiText>Remove tag</UiText>
           </button>
         ) : null}
       </div>

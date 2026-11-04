@@ -4,6 +4,7 @@ import type { PrState } from "../api/types";
 import { formatAddedAt, formatFullTimestamp } from "../lib/prList";
 import { discardAvailability, discardConfirmText } from "../lib/revisionDiscard";
 import { formatRevisionSummary, revisionSummaryLines } from "../lib/revisionSummary";
+import { UiText } from "./UiText";
 
 /**
  * The header's "rev N": opens a small popover saying which head the revision
@@ -74,8 +75,7 @@ export function RevisionMenu({
         className="-mx-1 rounded px-1 text-2xs transition-colors hover:bg-[var(--bg-hover)]"
         style={{ color: open ? "var(--fg)" : "var(--fg-faint)" }}
       >
-        rev {state.revision}
-        {state.baseOnly ? " (base only)" : ""}
+        <UiText>{`rev ${state.revision}${state.baseOnly ? " (base only)" : ""}`}</UiText>
       </button>
       {open ? (
         <FloatingPanel
@@ -85,19 +85,19 @@ export function RevisionMenu({
           className="w-[26rem] p-2.5 text-xs"
         >
           <div style={{ color: "var(--fg)" }}>
-            Revision {state.revision}
-            {state.baseOnly ? <span style={{ color: "var(--fg-faint)" }}> · base moved only</span> : null}
+            <UiText>{`Revision ${state.revision}`}</UiText>
+            {state.baseOnly ? <span style={{ color: "var(--fg-faint)" }}><UiText>{" · base moved only"}</UiText></span> : null}
           </div>
           {info?.headSha || info?.addedAt ? (
             <div className="mt-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
               {info.headSha ? (
                 <>
-                  head <span className="font-mono">{info.headSha.slice(0, 10)}</span>
+                  <UiText>head</UiText> <span className="font-mono">{info.headSha.slice(0, 10)}</span>
                 </>
               ) : null}
-              {info.headSha && info.addedAt ? " · " : null}
+              {info.headSha && info.addedAt ? <UiText>{" · "}</UiText> : null}
               {info.addedAt ? (
-                <span data-tip={formatFullTimestamp(info.addedAt)}>fetched {formatAddedAt(info.addedAt)}</span>
+                <span data-tip={formatFullTimestamp(info.addedAt)}><UiText>{`fetched ${formatAddedAt(info.addedAt)}`}</UiText></span>
               ) : null}
             </div>
           ) : null}
@@ -105,7 +105,7 @@ export function RevisionMenu({
           {later.length > 0 && (onToggleHighlight || later.some((r) => summaryOf(r.revision))) ? (
             <div className="mt-2.5 border-t pt-2" style={{ borderColor: "var(--border)" }}>
               <div className="mb-1.5 text-2xs" style={{ color: "var(--fg-muted)" }}>
-                {onToggleHighlight ? "Show what changed in" : "What each revision changed"}
+                <UiText>{onToggleHighlight ? "Show what changed in" : "What each revision changed"}</UiText>
               </div>
               <ul className="space-y-1.5">
                 {later.map((r) => {
@@ -131,11 +131,11 @@ export function RevisionMenu({
                           style={on ? { color: "var(--accent)", borderColor: "var(--accent)", background: "var(--accent-soft)" } : undefined}
                           onClick={() => onToggleHighlight(r.revision)}
                         >
-                          r{r.revision}
+                          <UiText>{`r${r.revision}`}</UiText>
                         </button>
                       ) : (
                         <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-                          r{r.revision}
+                          <UiText>{`r${r.revision}`}</UiText>
                         </span>
                       )}
                       {r.addedAt ? (
@@ -145,7 +145,7 @@ export function RevisionMenu({
                           data-testid={`revision-when-${r.revision}`}
                           data-tip={formatFullTimestamp(r.addedAt)}
                         >
-                          {formatAddedAt(r.addedAt)}
+                          <UiText>{formatAddedAt(r.addedAt)}</UiText>
                         </span>
                       ) : null}
                       </span>
@@ -166,9 +166,11 @@ export function RevisionMenu({
               </ul>
               {onToggleHighlight ? (
                 <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  {highlightAvailable
-                    ? "Lines those revisions changed light up in each unit; esc clears."
-                    : "Switch to the guide to see them."}
+                  <UiText>
+                    {highlightAvailable
+                      ? "Lines those revisions changed light up in each unit; esc clears."
+                      : "Switch to the guide to see them."}
+                  </UiText>
                 </p>
               ) : null}
             </div>
@@ -176,13 +178,13 @@ export function RevisionMenu({
 
           {previous === null ? (
             <p className="mt-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
-              The only revision so far: nothing to fall back to.
+              <UiText>The only revision so far: nothing to fall back to.</UiText>
             </p>
           ) : (
             <div className="mt-2.5 border-t pt-2" style={{ borderColor: "var(--border)" }}>
               {confirming ? (
                 <p className="mb-2 text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
-                  {discardConfirmText(state.revision, previous)}
+                  <UiText>{discardConfirmText(state.revision, previous)}</UiText>
                 </p>
               ) : null}
               <div className="flex items-center gap-1.5">
@@ -201,21 +203,23 @@ export function RevisionMenu({
                     onDiscard(state.revision);
                   }}
                 >
-                  {discarding
-                    ? "discarding…"
-                    : confirming
-                      ? `discard r${state.revision}`
-                      : `discard revision ${state.revision}`}
+                  <UiText>
+                    {discarding
+                      ? "discarding…"
+                      : confirming
+                        ? `discard r${state.revision}`
+                        : `discard revision ${state.revision}`}
+                  </UiText>
                 </button>
                 {confirming && !discarding ? (
                   <button type="button" className="btn" onClick={() => setConfirming(false)}>
-                    cancel
+                    <UiText>cancel</UiText>
                   </button>
                 ) : null}
               </div>
               {blockedWhy ? (
                 <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  {blockedWhy}
+                  <UiText>{blockedWhy}</UiText>
                 </p>
               ) : null}
               {error ? (

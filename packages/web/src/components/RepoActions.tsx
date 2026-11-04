@@ -13,6 +13,7 @@ import { sweepLabel } from "../lib/prList";
 import { useModalBackground } from "./Modal";
 import { OverflowMenu } from "./TopBar";
 import { IconArchive, IconInbox, IconTrash } from "./icons";
+import { UiText } from "./UiText";
 
 /**
  * Repo-level archive and removal: the ⋯ menu on a PR-list repo header, and
@@ -137,7 +138,7 @@ export function AutoArchiveButton({
       style={{ color: "var(--fg-muted)" }}
     >
       <IconArchive width={11} height={11} />
-      archive {label}
+      <UiText>{`archive ${label}`}</UiText>
     </button>
   );
 }
@@ -202,22 +203,22 @@ export function RepoDangerZone({
         stopConfirming();
       }}
     >
-      {setRepoArchived.isPending ? (archived ? "unarchiving…" : "archiving…") : label}
+      <UiText>{setRepoArchived.isPending ? (archived ? "unarchiving…" : "archiving…") : label}</UiText>
     </button>
   );
 
   return (
     <section ref={sectionRef} className="surface mb-4 rounded-md p-4" data-testid="repo-danger-zone">
-      <h2 className="text-[13px] font-semibold">Archive or remove</h2>
+      <h2 className="text-[13px] font-semibold"><UiText>Archive or remove</UiText></h2>
       <p className="mb-3 mt-0.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        Both are local to this machine. Nothing on GitHub changes either way.
+        <UiText>Both are local to this machine. Nothing on GitHub changes either way.</UiText>
       </p>
 
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-xs">{archived ? "This repo is archived" : "Archive this repo"}</div>
+          <div className="text-xs"><UiText>{archived ? "This repo is archived" : "Archive this repo"}</UiText></div>
           <p className="mt-0.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-            {archived ? REPO_UNARCHIVE_HINT : REPO_ARCHIVE_HINT}
+            <UiText>{archived ? REPO_UNARCHIVE_HINT : REPO_ARCHIVE_HINT}</UiText>
           </p>
         </div>
         {archiveButton(archived ? "unarchive repo" : "archive repo", "repo-archive-toggle")}
@@ -231,9 +232,9 @@ export function RepoDangerZone({
       <div className="mt-4 border-t pt-3" style={{ borderColor: "var(--border)" }}>
         <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-xs">Remove from Purview</div>
+            <div className="text-xs"><UiText>Remove from Purview</UiText></div>
             <p className="mt-0.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-              Deletes everything Purview keeps locally for this repo. It cannot be undone.
+              <UiText>Deletes everything Purview keeps locally for this repo. It cannot be undone.</UiText>
             </p>
           </div>
           {!confirming ? (
@@ -243,7 +244,7 @@ export function RepoDangerZone({
               data-testid="repo-remove-start"
               onClick={() => setConfirming(true)}
             >
-              remove from Purview…
+              <UiText>remove from Purview…</UiText>
             </button>
           ) : null}
         </div>
@@ -256,7 +257,7 @@ export function RepoDangerZone({
           >
             {removal.isLoading ? (
               <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
-                Counting what would be removed…
+                <UiText>Counting what would be removed…</UiText>
               </p>
             ) : removal.error ? (
               <p className="text-2xs" role="alert" style={{ color: "var(--risk)" }}>
@@ -265,7 +266,7 @@ export function RepoDangerZone({
             ) : removal.data ? (
               <>
                 <p className="text-xs" style={{ color: "var(--fg)" }}>
-                  This removes:
+                  <UiText>This removes:</UiText>
                 </p>
                 <ul
                   className="mt-1 list-disc pl-4 text-2xs leading-5"
@@ -273,21 +274,23 @@ export function RepoDangerZone({
                   style={{ color: "var(--fg-muted)" }}
                 >
                   {removalLossLines(removal.data).map((line) => (
-                    <li key={line}>{line}</li>
+                    <li key={line}><UiText>{line}</UiText></li>
                   ))}
                 </ul>
                 <p className="mt-2 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-                  Your own clones are not touched.{" "}
-                  {watchReviews
-                    ? "Its review watch goes with its settings, so nothing re-imports it on its own; adding one of its PRs again starts it over from scratch."
-                    : "Adding one of its PRs again starts it over from scratch."}{" "}
-                  To stop it without losing anything, archive it instead.
+                  <UiText>
+                    {`Your own clones are not touched. ${
+                      watchReviews
+                        ? "Its review watch goes with its settings, so nothing re-imports it on its own; adding one of its PRs again starts it over from scratch."
+                        : "Adding one of its PRs again starts it over from scratch."
+                    } To stop it without losing anything, archive it instead.`}
+                  </UiText>
                 </p>
               </>
             ) : null}
 
             <label className="mt-3 block text-2xs" style={{ color: "var(--fg-muted)" }}>
-              Type <span className="font-mono">{name}</span> to confirm
+              <UiText>Type</UiText> <span className="font-mono">{name}</span> <UiText>to confirm</UiText>
               <input
                 className="input mt-1 font-mono text-xs"
                 data-testid="repo-remove-name"
@@ -312,7 +315,7 @@ export function RepoDangerZone({
                 style={canRemove ? { color: "var(--risk)", borderColor: "var(--risk)" } : undefined}
                 onClick={doRemove}
               >
-                {remove.isPending ? "removing…" : `remove ${name}`}
+                {remove.isPending ? <UiText>removing…</UiText> : <><UiText>remove</UiText> {name}</>}
               </button>
               {!archived ? archiveButton("archive instead", "repo-remove-archive-instead") : null}
               <button
@@ -321,12 +324,12 @@ export function RepoDangerZone({
                 disabled={remove.isPending}
                 onClick={stopConfirming}
               >
-                cancel
+                <UiText>cancel</UiText>
               </button>
             </div>
             {blockedWhy ? (
               <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                {blockedWhy}
+                <UiText>{blockedWhy}</UiText>
               </p>
             ) : null}
             {remove.error ? (

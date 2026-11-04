@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState } from "react";
 import { errorText } from "../api/errors";
 import { IconCheck } from "./icons";
+import { UiText } from "./UiText";
 
 export function useFlash(): [boolean, () => void] {
   const [shown, setShown] = useState(false);
@@ -37,7 +38,7 @@ export function SavedFlash({ shown, error }: { shown: boolean; error: unknown })
       data-testid="saved-flash"
     >
       <IconCheck width={10} height={10} />
-      saved
+      <UiText>saved</UiText>
     </span>
   );
 }

@@ -29,6 +29,7 @@ import { Markdown } from "./Markdown";
 import { withoutHeadings } from "../lib/summaryText";
 import { BotChip, age } from "./Threads";
 import { IconCheck, IconChevron, IconClose } from "./icons";
+import { UiText } from "./UiText";
 
 /** Collapsed body height: six lines of 20px. */
 const CLAMP_PX = 120;
@@ -45,7 +46,7 @@ function StateChip({ state }: { state: Verdict }) {
   return (
     <span className="chip" data-testid={`review-state-${state}`} style={{ background: look.bg, color: look.fg }}>
       {state === "APPROVED" ? <IconCheck width={10} height={10} /> : state === "CHANGES_REQUESTED" ? <IconClose width={10} height={10} /> : null}
-      {look.label}
+      <UiText>{look.label}</UiText>
     </span>
   );
 }
@@ -113,7 +114,7 @@ function ClampedBody({ text }: { text: string }) {
           }}
         >
           <IconChevron open={expanded} width={10} height={10} />
-          {expanded ? "Show less" : "Show more"}
+          <UiText>{expanded ? "Show less" : "Show more"}</UiText>
         </button>
       ) : null}
     </div>
@@ -160,19 +161,18 @@ function TimelineItem({
     <>
       {when ? (
         <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(entry.at)}>
-          {body ? "" : "· "}
-          {when}
+          <UiText>{`${body ? "" : "· "}${when}`}</UiText>
         </span>
       ) : null}
       {edited ? (
         <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={`Edited ${formatFullTimestamp(entry.comment.updatedAt!)}`}>
-          · edited
+          <UiText>· edited</UiText>
         </span>
       ) : null}
       {review && review.commentCount > 0 ? <InlineCommentsJump review={review} threads={threads} onJump={onJumpToThread} lead /> : null}
       {stale ? (
         <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-testid="review-revision">
-          · {stale}
+          <UiText>{`· ${stale}`}</UiText>
         </span>
       ) : null}
       <GithubLink url={url} what={review ? "review" : "comment"} />
@@ -203,7 +203,7 @@ function TimelineItem({
               style={{ color: review ? STATE_LOOK[review.state].fg : "var(--fg-muted)" }}
               data-testid={review ? `review-state-${review.state}` : undefined}
             >
-              {review ? verdictVerb(review.state) : "commented"}
+              <UiText>{review ? verdictVerb(review.state) : "commented"}</UiText>
             </span>
           )}
           {meta}
@@ -247,7 +247,7 @@ export function ReviewTimeline({
       ) : null}
       {hidden ? (
         <p className="mt-2 text-2xs" style={{ color: "var(--fg-faint)" }} data-testid="review-timeline-hidden">
-          {hidden} from AI reviewers hidden by your thread filters
+          <UiText>{`${hidden} from AI reviewers hidden by your thread filters`}</UiText>
         </p>
       ) : null}
     </div>
@@ -342,15 +342,15 @@ export function ReviewerVerdictList({
               what else there is to know about the review goes under it. */}
           <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap">
             <AuthorAvatar author={name} url={v.author.avatarUrl} size={16} />
-            <span className="min-w-0 truncate" style={{ color: "var(--fg)" }}>{v.isMine ? "You" : name}</span>
+            <span className="min-w-0 truncate" style={{ color: "var(--fg)" }}>{v.isMine ? <UiText>You</UiText> : name}</span>
             {v.author.bot ? <BotChip /> : null}
             <span className="inline-flex flex-none items-center gap-1" style={{ color: mark ? mark.bg : "var(--fg-muted)" }}>
               {v.verdict === "APPROVED" ? <IconCheck width={11} height={11} /> : null}
               {v.verdict === "CHANGES_REQUESTED" ? <IconClose width={10} height={10} /> : null}
-              {verdictVerb(v.verdict)}
+              <UiText>{verdictVerb(v.verdict)}</UiText>
             </span>
             <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(v.at)}>
-              {age(v.at)}
+              <UiText>{age(v.at) ?? ""}</UiText>
             </span>
             {detailed ? (
               <span className="ml-auto flex-none">
@@ -362,7 +362,7 @@ export function ReviewerVerdictList({
             <div className="flex flex-wrap items-center gap-x-1.5 pl-[22px] text-2xs">
               {revisionNote(v.revision) ? (
                 <span className="whitespace-nowrap" style={{ color: "var(--warn)" }} data-testid={`verdict-stale-${v.author.login}`}>
-                  {revisionNote(v.revision)}
+                  <UiText>{revisionNote(v.revision) ?? ""}</UiText>
                 </span>
               ) : null}
               {detailed && inline > 0 ? (
@@ -405,8 +405,7 @@ function InlineCommentsJump({
   if (!own.length) {
     return (
       <span className="flex-none whitespace-nowrap text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="verdict-inline-count">
-        {lead ? "· " : null}
-        {label}
+        <UiText>{`${lead ? "· " : ""}${label}`}</UiText>
       </span>
     );
   }
@@ -422,8 +421,7 @@ function InlineCommentsJump({
         next.current += 1;
       }}
     >
-      {lead ? "· " : null}
-      {label}
+      <UiText>{`${lead ? "· " : ""}${label}`}</UiText>
     </button>
   );
 }

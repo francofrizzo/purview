@@ -5,6 +5,7 @@ import type { ThreadFilters } from "../lib/threads";
 import { FloatingPanel } from "./FloatingPanel";
 import { ThreadFilterFields } from "./Threads";
 import { IconViewOptions } from "./icons";
+import { UiText } from "./UiText";
 
 /**
  * How the diff is drawn and what it lists, behind one button: the layout,
@@ -72,7 +73,7 @@ export function ViewOptions({
       {open ? (
         <FloatingPanel anchorRef={ref} onClose={() => setOpen(false)} label="View options" className="w-64 p-2.5 text-xs">
           <div className="mb-1.5 text-2xs font-semibold" style={{ color: "var(--fg-muted)" }}>
-            Diff
+            <UiText>Diff</UiText>
           </div>
           <div
             role="group"
@@ -95,13 +96,13 @@ export function ViewOptions({
                     : { color: "var(--fg-muted)" }
                 }
               >
-                {m}
+                <UiText>{m}</UiText>
               </button>
             ))}
           </div>
           {narrow && viewMode === "split" ? (
             <p className="mb-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-              Too narrow for side by side right now; shown unified.
+              <UiText>Too narrow for side by side right now; shown unified.</UiText>
             </p>
           ) : null}
           <Check testId="toggle-wrap" checked={wrap} onChange={onWrap} label="Wrap long lines" kbd="w" />
@@ -167,8 +168,8 @@ function Check({
         onChange={(e) => onChange(e.target.checked)}
         style={{ accentColor: "var(--accent)" }}
       />
-      <span className="min-w-0 flex-1">{label}</span>
-      {kbd ? <kbd>{kbd}</kbd> : null}
+      <UiText className="min-w-0 flex-1">{label}</UiText>
+      {kbd ? <kbd><UiText>{kbd}</UiText></kbd> : null}
     </label>
   );
 }

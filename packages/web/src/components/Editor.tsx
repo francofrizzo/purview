@@ -8,6 +8,7 @@ import { Modal } from "./Modal";
 import { FloatingPanel } from "./FloatingPanel";
 import { IconCode, IconSpinner } from "./icons";
 import { Section } from "./SettingsSections";
+import { UiText } from "./UiText";
 
 type Selection = NonNullable<GlobalConfig["editor"]>;
 
@@ -40,11 +41,11 @@ export function useOpenInEditor(prKey: string) {
     },
     dialog: confirm || error ? <Modal title={error ? "Could not open editor" : "Open in editor"} maxWidth={520} onClose={() => { if (!busy) { setConfirm(false); setError(undefined); } }} testId="editor-confirm">
       {error ? <p role="alert" className="text-xs" style={{ color: "var(--risk)" }}>{error}</p> : <>
-        <p className="text-xs leading-5">This opens Purview's own copy of the PR in {selection?.name ?? "your editor"}, detached at its head commit. Edits there are on no branch.</p>
-        <label className="my-3 flex items-center gap-2 text-xs"><input type="checkbox" disabled={busy} checked={remember} onChange={e => setRemember(e.target.checked)} />Don't show again</label>
+        <p className="text-xs leading-5"><UiText>This opens Purview's own copy of the PR in</UiText> {selection?.name ?? <UiText>your editor</UiText>}<UiText>, detached at its head commit. Edits there are on no branch.</UiText></p>
+        <label className="my-3 flex items-center gap-2 text-xs"><input type="checkbox" disabled={busy} checked={remember} onChange={e => setRemember(e.target.checked)} /><UiText>Don't show again</UiText></label>
         <div className="flex items-center gap-2">
-          <button className="btn" disabled={busy} onClick={() => setConfirm(false)}>Cancel</button>
-          <button className="btn btn-primary" disabled={busy} onClick={() => selection && void open(selection.id === "custom" ? selection : { id: selection.id })}>{busy ? "Preparing checkout…" : "Open"}</button>
+          <button className="btn" disabled={busy} onClick={() => setConfirm(false)}><UiText>Cancel</UiText></button>
+          <button className="btn btn-primary" disabled={busy} onClick={() => selection && void open(selection.id === "custom" ? selection : { id: selection.id })}><UiText>{busy ? "Preparing checkout…" : "Open"}</UiText></button>
           {busy ? <IconSpinner width={12} height={12} /> : null}
         </div>
       </>}
@@ -59,9 +60,9 @@ function CustomEditorForm({ initial, busy, onSave }: { initial?: Selection | nul
     <div className="flex flex-wrap gap-2">
       <input className="input min-w-0 flex-1" aria-label="Custom editor name" placeholder="Nova" value={name} onChange={e => setName(e.target.value)} />
       <input className="input min-w-0 flex-1" aria-label="Custom editor command" placeholder="nova {path}" value={command} onChange={e => setCommand(e.target.value)} />
-      <button className="btn" disabled={!command.includes("{path}") || busy}>Save</button>
+      <button className="btn" disabled={!command.includes("{path}") || busy}><UiText>Save</UiText></button>
     </div>
-    <p className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}>The folder replaces {"{path}"}. Quoted arguments are fine; no shell variables or pipes.</p>
+    <p className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}><UiText>{"The folder replaces {path}. Quoted arguments are fine; no shell variables or pipes."}</UiText></p>
   </form>;
 }
 
@@ -81,16 +82,16 @@ export function EditorButton({ prKey }: { prKey: string }) {
       {flow.busy ? <IconSpinner width={12} height={12} /> : <IconCode width={12} height={12} />}
     </button>
     {panel && <FloatingPanel anchorRef={anchor} onClose={() => setPanel(false)} label="Open in editor" className="w-80 max-w-[calc(100vw-16px)] p-2">
-      {editors.isLoading || config.isLoading ? <p className="text-xs">Finding editors…</p> : custom || choices.length === 0 ? <>
-        {choices.length === 0 && <p className="text-xs">No editor found on this machine</p>}
+      {editors.isLoading || config.isLoading ? <p className="text-xs"><UiText>Finding editors…</UiText></p> : custom || choices.length === 0 ? <>
+        {choices.length === 0 && <p className="text-xs"><UiText>No editor found on this machine</UiText></p>}
         <CustomEditorForm initial={config.data?.editor} busy={flow.busy || !config.data} onSave={editor => choose(editor, editor.name || "your editor")} />
-        {choices.length > 0 && <button className="btn mt-2" onClick={() => setCustom(false)}>Back</button>}
+        {choices.length > 0 && <button className="btn mt-2" onClick={() => setCustom(false)}><UiText>Back</UiText></button>}
       </> : <>
         {choices.map(editor => <button key={editor.id} type="button" className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--bg-inset)]" data-testid={`editor-pick-${editor.id}`} onClick={() => choose(editor.id === "custom" ? { id: editor.id, name: editor.name, command: editor.command } : { id: editor.id }, editor.name)}>
           {editor.name}
         </button>)}
         <div className="my-1 border-t border-[var(--border)]" />
-        <button className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--bg-inset)]" onClick={() => setCustom(true)}>Custom command…</button>
+        <button className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--bg-inset)]" onClick={() => setCustom(true)}><UiText>Custom command…</UiText></button>
       </>}
       {(editors.error || config.error) && <p role="alert" className="text-xs">{errorText(editors.error || config.error)}</p>}
     </FloatingPanel>}
@@ -107,8 +108,8 @@ export function EditorSection() {
   const selected = config.data?.editor;
   const value = choosingCustom ? "custom" : selected?.id ?? "";
   return <Section id="editor" title="Editor">
-    {editors.isLoading ? <p>Finding editors…</p> : <>
-      {available.length === 0 && <p>No editor found on this machine</p>}
+    {editors.isLoading ? <p><UiText>Finding editors…</UiText></p> : <>
+      {available.length === 0 && <p><UiText>No editor found on this machine</UiText></p>}
       <select aria-label="Editor" className="input" value={value} disabled={!config.data || save.isPending} onChange={e => {
         const id = e.target.value;
         setChoosingCustom(id === "custom");
@@ -120,7 +121,7 @@ export function EditorSection() {
       </select>
       {(value === "custom" || available.length === 0) && <CustomEditorForm key={`${selected?.name}:${selected?.command}`} initial={selected} busy={save.isPending || !config.data} onSave={editor => save.mutate({ editor })} />}
     </>}
-    <p className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}>Opens Purview's own copy of the PR, detached at its head commit, under ~/.purview/checkouts.</p>
+    <p className="mt-2 text-xs" style={{ color: "var(--fg-muted)" }}><UiText>Opens Purview's own copy of the PR, detached at its head commit, under ~/.purview/checkouts.</UiText></p>
     {(save.error || editors.error || config.error) && <p role="alert">{errorText(save.error || editors.error || config.error)}</p>}
   </Section>;
 }

@@ -20,6 +20,7 @@ import { ReviewersPanel } from "./Reviewers";
 import { SavedFlash, useFlash } from "./SavedFlash";
 import type { ReviewerVerdict } from "../lib/reviews";
 import { IconCheck, IconExternal, IconSpinner, IconWarning } from "./icons";
+import { UiText } from "./UiText";
 
 const EVENTS: { event: ReviewEvent; label: string; tone: string; blurb: string }[] = [
   {
@@ -154,10 +155,10 @@ export function FinishReviewPanel({
     <div className="flex min-h-0 flex-1 flex-col" data-testid="finish-review-panel">
       {loading ? (
         <p className="p-4 text-xs" style={{ color: "var(--fg-faint)" }}>
-          Loading review state…
+          <UiText>Loading review state…</UiText>
         </p>
       ) : error ? (
-        <Notice tone="error">Could not load the review: {error.message}</Notice>
+        <Notice tone="error"><UiText>Could not load the review:</UiText> {error.message}</Notice>
       ) : !review ? null : (
         <>
           {/* While a submit runs the panel holds still under the checklist:
@@ -201,7 +202,7 @@ export function FinishReviewPanel({
                   ) : null}
                   {unresolvedThreads ? (
                     <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                      {unresolvedThreads} unresolved {unresolvedThreads === 1 ? "thread" : "threads"}
+                      <UiText>{`${unresolvedThreads} unresolved ${unresolvedThreads === 1 ? "thread" : "threads"}`}</UiText>
                     </p>
                   ) : null}
                 </section>
@@ -301,7 +302,7 @@ export function FinishReviewPanel({
                         }
                       >
                         <span className="h-1.5 w-1.5 flex-none rounded-full" style={{ background: e.tone }} />
-                        {e.label}
+                        <UiText>{e.label}</UiText>
                       </button>
                     );
                   })}
@@ -314,13 +315,15 @@ export function FinishReviewPanel({
                   disabled={submitting}
                   onClick={() => (unviewed > 0 ? setArming(verdict) : send(verdict))}
                 >
-                  {submitting
-                    ? "submitting…"
-                    : `Submit review${
-                        review.included.length
-                          ? ` · ${review.included.length} ${review.included.length === 1 ? "comment" : "comments"}`
-                          : ""
-                      }`}
+                  <UiText>
+                    {submitting
+                      ? "submitting…"
+                      : `Submit review${
+                          review.included.length
+                            ? ` · ${review.included.length} ${review.included.length === 1 ? "comment" : "comments"}`
+                            : ""
+                        }`}
+                  </UiText>
                 </button>
               </div>
             )}
@@ -331,10 +334,10 @@ export function FinishReviewPanel({
   );
 }
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
+function SectionTitle({ children }: { children: string }) {
   return (
     <div className="text-xs font-medium" style={{ color: "var(--fg-muted)" }}>
-      {children}
+      <UiText>{children}</UiText>
     </div>
   );
 }
@@ -359,9 +362,11 @@ function Readiness({ readiness }: { readiness: NonNullable<ReviewStatus["readine
         ) : (
           <IconCheck width={12} height={12} />
         )}
-        {unviewed > 0
-          ? `${unviewed} must-read ${unviewed === 1 ? "unit is" : "units are"} still unviewed`
-          : "Every must-read unit has been read"}
+        <UiText>
+          {unviewed > 0
+            ? `${unviewed} must-read ${unviewed === 1 ? "unit is" : "units are"} still unviewed`
+            : "Every must-read unit has been read"}
+        </UiText>
       </div>
       <div
         className="mt-2 h-1 overflow-hidden rounded-full"
@@ -373,10 +378,11 @@ function Readiness({ readiness }: { readiness: NonNullable<ReviewStatus["readine
         />
       </div>
       <p className="mt-1.5 text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-        {viewed}/{total} hunks read
-        {readiness.changedSinceViewed > 0
-          ? ` · ${readiness.changedSinceViewed} changed since you read them`
-          : ""}
+        <UiText>
+          {`${viewed}/${total} hunks read${
+            readiness.changedSinceViewed > 0 ? ` · ${readiness.changedSinceViewed} changed since you read them` : ""
+          }`}
+        </UiText>
       </p>
     </section>
   );
@@ -436,7 +442,7 @@ function SubmitProgress({ event, step }: { event: ReviewEvent; step: SubmitStep 
                 <span className="h-1 w-1 rounded-full" style={{ background: "var(--fg-faint)" }} />
               )}
             </span>
-            <span className={state === "now" ? "font-medium" : undefined}>{r.label}</span>
+            <UiText className={state === "now" ? "font-medium" : undefined}>{r.label}</UiText>
           </div>
         );
       })}
@@ -459,10 +465,10 @@ function SubmittedNotice({ result }: { result: SubmitReviewResult }) {
     >
       <IconCheck width={12} height={12} className="flex-none" />
       <span className="font-medium">
-        {SUBMITTED_AS[result.event] ?? labelFor(result.event)} on GitHub
+        <UiText>{`${SUBMITTED_AS[result.event] ?? labelFor(result.event)} on GitHub`}</UiText>
       </span>
       <span style={{ color: "var(--fg-muted)" }}>
-        {n === 0 ? "no comments" : `${n} ${n === 1 ? "comment" : "comments"}`}
+        <UiText>{n === 0 ? "no comments" : `${n} ${n === 1 ? "comment" : "comments"}`}</UiText>
       </span>
       {result.url ? (
         <a
@@ -472,7 +478,7 @@ function SubmittedNotice({ result }: { result: SubmitReviewResult }) {
           className="ml-auto inline-flex flex-none items-center gap-1 hover:underline"
           style={{ color: "var(--accent)" }}
         >
-          view <IconExternal width={10} height={10} />
+          <UiText>view</UiText> <IconExternal width={10} height={10} />
         </a>
       ) : null}
     </div>
@@ -504,18 +510,20 @@ function ConfirmStep({
       style={{ borderColor: "var(--warn)", background: "var(--warn-soft)" }}
     >
       <div className="text-xs font-semibold" style={{ color: "var(--warn)" }}>
-        Submit “{labelFor(event)}” to GitHub?
+        <UiText>{`Submit “${labelFor(event)}” to GitHub?`}</UiText>
       </div>
       <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
-        This posts publicly and cannot be undone. {commentCount}{" "}
-        {commentCount === 1 ? "comment goes" : "comments go"} out with it.
-        {unviewed > 0
-          ? ` ${unviewed} must-read ${unviewed === 1 ? "unit is" : "units are"} still unviewed.`
-          : ""}
+        <UiText>
+          {`This posts publicly and cannot be undone. ${commentCount} ${
+            commentCount === 1 ? "comment goes" : "comments go"
+          } out with it.${
+            unviewed > 0 ? ` ${unviewed} must-read ${unviewed === 1 ? "unit is" : "units are"} still unviewed.` : ""
+          }`}
+        </UiText>
       </p>
       <div className="mt-2 flex items-center gap-1.5">
         <button type="button" className="btn" onClick={onCancel} disabled={submitting}>
-          cancel
+          <UiText>cancel</UiText>
         </button>
         <button
           type="button"
@@ -527,10 +535,10 @@ function ConfirmStep({
           {submitting ? (
             <span className="inline-flex items-center gap-1.5" data-testid="finish-review-submitting">
               <IconSpinner width={11} height={11} />
-              submitting…
+              <UiText>submitting…</UiText>
             </span>
           ) : (
-            `yes, ${labelFor(event).toLowerCase()}`
+            <UiText>{`yes, ${labelFor(event).toLowerCase()}`}</UiText>
           )}
         </button>
       </div>
@@ -556,7 +564,7 @@ function PendingBanner({
   if (!review.pending.known) {
     return (
       <Notice tone="warn">
-        Could not reach GitHub to check for a pending review
+        <UiText>Could not reach GitHub to check for a pending review</UiText>
         {review.pending.error ? `: ${review.pending.error}` : "."}
       </Notice>
     );
@@ -565,25 +573,26 @@ function PendingBanner({
   return (
     <div className="border-b px-4 py-2.5" style={{ borderColor: "var(--border)" }}>
       <div className="text-xs" style={{ color: "var(--fg-muted)" }}>
-        You have a <strong>pending review</strong> on GitHub holding{" "}
-        {review.counts.pushed} pushed {review.counts.pushed === 1 ? "comment" : "comments"}. It is
-        private until you submit.
+        <UiText>You have a</UiText> <strong><UiText>pending review</UiText></strong>{" "}
+        <UiText>
+          {`on GitHub holding ${review.counts.pushed} pushed ${review.counts.pushed === 1 ? "comment" : "comments"}. It is private until you submit.`}
+        </UiText>
       </div>
       {confirming ? (
         <div className="mt-1.5 flex items-center gap-1.5">
           <span className="text-2xs" style={{ color: "var(--warn)" }}>
-            Discard it? Comments return to local drafts.
+            <UiText>Discard it? Comments return to local drafts.</UiText>
           </span>
           <button type="button" className="btn ml-auto" onClick={onCancel}>
-            cancel
+            <UiText>cancel</UiText>
           </button>
           <button type="button" className="btn" onClick={onConfirm} disabled={discarding}>
-            {discarding ? "discarding…" : "discard"}
+            <UiText>{discarding ? "discarding…" : "discard"}</UiText>
           </button>
         </div>
       ) : (
         <button type="button" className="btn mt-1.5" onClick={onAsk} disabled={discarding}>
-          discard pending review
+          <UiText>discard pending review</UiText>
         </button>
       )}
     </div>
@@ -621,7 +630,7 @@ function IncludedComments({
         <SectionTitle>Comments</SectionTitle>
         <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
           {n}
-          {review.counts.submitted > 0 ? ` · ${review.counts.submitted} already submitted` : ""}
+          {review.counts.submitted > 0 ? <UiText>{` · ${review.counts.submitted} already submitted`}</UiText> : ""}
         </span>
       </div>
       {bundle && n > 0 ? (
@@ -634,7 +643,7 @@ function IncludedComments({
       ) : null}
       {review.included.length === 0 ? (
         <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
-          No inline comments; only the summary goes out.
+          <UiText>No inline comments; only the summary goes out.</UiText>
         </p>
       ) : (
         <ul className="mt-1.5 flex flex-col gap-1.5">
@@ -724,11 +733,11 @@ function OutsideDiffNotice({
     <div className="mt-1 flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
         <span className="chip" style={{ background: "var(--warn-soft)", color: "var(--warn)" }}>
-          outside current diff
+          <UiText>outside current diff</UiText>
         </span>
         {onProposeReanchor && !proposal ? (
           <button type="button" className="btn text-2xs" disabled={loading} onClick={() => void suggest()}>
-            {loading ? "thinking…" : "Suggest new anchor"}
+            <UiText>{loading ? "thinking…" : "Suggest new anchor"}</UiText>
           </button>
         ) : null}
       </div>
@@ -745,7 +754,7 @@ function OutsideDiffNotice({
           {proposal.applicable ? (
             <>
               <div style={{ color: "var(--fg-muted)" }}>
-                Move to <span className="font-mono">{proposal.file}:{proposal.line}</span>
+                <UiText>Move to</UiText> <span className="font-mono">{proposal.file}:{proposal.line}</span>
               </div>
               {proposal.reason ? (
                 <div style={{ color: "var(--fg-faint)" }}>{proposal.reason}</div>
@@ -757,7 +766,7 @@ function OutsideDiffNotice({
                   onClick={() => setProposal(null)}
                   disabled={applying}
                 >
-                  dismiss
+                  <UiText>dismiss</UiText>
                 </button>
                 {onApplyReanchor ? (
                   <button
@@ -774,14 +783,14 @@ function OutsideDiffNotice({
           ) : (
             <>
               <div style={{ color: "var(--fg-faint)" }}>
-                {proposal.reason || "Not applicable — no safe anchor found."}
+                {proposal.reason || <UiText>Not applicable — no safe anchor found.</UiText>}
               </div>
               <button
                 type="button"
                 className="btn mt-1 text-2xs"
                 onClick={() => setProposal(null)}
               >
-                dismiss
+                <UiText>dismiss</UiText>
               </button>
             </>
           )}
@@ -799,7 +808,7 @@ export function StatusChip({ status }: { status: "draft" | "pushed" | "submitted
   }[status];
   return (
     <span className="chip ml-auto" style={{ background: meta.bg, color: meta.fg }}>
-      {meta.label}
+      <UiText>{meta.label}</UiText>
     </span>
   );
 }

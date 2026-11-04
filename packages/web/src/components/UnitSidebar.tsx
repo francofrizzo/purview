@@ -12,6 +12,7 @@ import { LineDelta, unitFiles } from "./UnitBrief";
 import { UnitChangelog } from "./UnitChangelog";
 import { IconChevron, IconGenerated, RISK_META } from "./icons";
 import { InlineMarkdown } from "./Markdown";
+import { UiText } from "./UiText";
 
 export const UNPLACED_TITLE =
   "Hunks the analysis hasn't placed in a unit yet, usually new commits since the last analysis";
@@ -131,7 +132,7 @@ export function UnitSidebar({
     <div className="py-1">
       {hide && totalHidden > 0 ? (
         <p className="px-3 pb-1 text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }} data-testid="hidden-total">
-          {totalHidden} read {totalHidden === 1 ? "unit" : "units"} hidden
+          <UiText>{`${totalHidden} read ${totalHidden === 1 ? "unit" : "units"} hidden`}</UiText>
         </p>
       ) : null}
       {GROUPS.map((g) => {
@@ -166,11 +167,11 @@ export function UnitSidebar({
             >
               <AttentionIcon attention={g.attention} />
               <span className="font-semibold" style={{ color: "var(--fg-muted)" }}>
-                {g.label}
+                <UiText>{g.label}</UiText>
               </span>
               {hidden > 0 ? (
                 <span data-testid={`hidden-${g.attention}`}>
-                  {hiddenHint(hidden)}
+                  <UiText>{hiddenHint(hidden)}</UiText>
                 </span>
               ) : null}
               <span className="ml-auto tabular-nums">
@@ -253,7 +254,7 @@ function UnplacedGroup({
           className="inline-block h-1.5 w-1.5 flex-none rounded-full border"
           style={{ borderColor: "var(--fg-faint)" }}
         />
-        Not in any unit
+        <UiText>Not in any unit</UiText>
         <span>({hunkIds.length})</span>
         {matches ? <MatchBadge count={matches} /> : null}
         <span className="ml-auto tabular-nums">
@@ -283,7 +284,7 @@ function RemovedGroup({ units }: { units: ReviewUnit[] }) {
         style={{ color: "var(--fg-faint)" }}
       >
         <span className="inline-block h-1.5 w-1.5 flex-none rounded-full" style={{ background: "var(--border-strong)" }} />
-        Removed
+        <UiText>Removed</UiText>
         <span>({units.length})</span>
         <span className="ml-auto">
           <IconChevron open={isOpen} width={9} height={9} />
@@ -328,8 +329,7 @@ function RemovedRow({ unit }: { unit: ReviewUnit }) {
           </span>
         </div>
         <div className="mt-1 pl-5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-          removed in revision {unit.removedAtRevision ?? "?"}
-          {unit.readBeforeRemoval ? " · you had read it" : ""}
+          <UiText>{`removed in revision ${unit.removedAtRevision ?? "?"}${unit.readBeforeRemoval ? " · you had read it" : ""}`}</UiText>
         </div>
         {expanded && unit.summary ? (
           <p className="mt-1.5 pl-5 text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
@@ -409,7 +409,7 @@ const UnitRow = memo(function UnitRow({
       }
       data-testid={`unit-risk-${unit.id}`}
     >
-      {risks.join(" · ")}
+      <UiText>{risks.join(" · ")}</UiText>
     </span>
   ) : null;
   const rowRef = useRef<HTMLLIElement>(null);

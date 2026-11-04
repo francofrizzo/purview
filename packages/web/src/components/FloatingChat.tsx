@@ -10,6 +10,7 @@ import {
 } from "../lib/floatRect";
 import type { ChatFloatRect } from "../lib/settings";
 import { IconChat, IconClose, IconDock, IconMinimizeWindow, IconSpinner } from "./icons";
+import { UiText } from "./UiText";
 
 const CURSORS: Record<FloatHandle, string> = {
   n: "ns-resize",
@@ -186,7 +187,7 @@ export function FloatingChat({
             }}
           >
             <IconChat width={12} height={12} style={{ color: "var(--fg-faint)" }} />
-            <span>Chat</span>
+            <UiText>Chat</UiText>
             {busy ? <IconSpinner width={10} height={10} style={{ color: "var(--accent)" }} /> : null}
             <span className="ml-auto flex items-center" style={{ color: "var(--fg-faint)" }}>
               <button
@@ -248,7 +249,7 @@ export function FloatingChat({
           data-tip-key="c"
         >
           <IconChat width={12} height={12} />
-          Chat
+          <UiText>Chat</UiText>
           {busy ? <IconSpinner width={10} height={10} style={{ color: "var(--accent)" }} /> : null}
         </button>
       ) : null}

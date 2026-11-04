@@ -33,6 +33,7 @@ import { Markdown, SuggestionContext } from "./Markdown";
 import { anchoredLines } from "../lib/suggestion";
 import type { DiffContext } from "../lib/agentExport";
 import { ReactionError, ReactionPicker, ReactionPills, type ReactionActions } from "./Reactions";
+import { UiText } from "./UiText";
 
 /** What a thread can do, on top of what each of its comments can. */
 export interface ThreadActions extends ReactionActions {
@@ -74,7 +75,7 @@ export function BotChip({ tip }: { tip?: string }) {
       }}
       data-tip={tip ?? "An AI reviewer on GitHub"}
     >
-      bot
+      <UiText>bot</UiText>
     </span>
   );
 }
@@ -95,7 +96,7 @@ export function RemoteCommentCard({ comment, thread, exportCtx, onReact, reactin
       <header className="flex min-h-[22px] items-center gap-1.5 text-2xs">
         <AuthorAvatar author={author.kind === "bot" ? author.name : comment.author.login} url={comment.author.avatarUrl} size={16} />
         <span className="min-w-0 truncate font-medium" style={{ color: "var(--fg)" }} data-tip={comment.author.login}>
-          {author.kind === "bot" ? author.name : author.kind === "you" ? `${comment.author.login} (you)` : comment.author.login}
+          {author.kind === "bot" ? author.name : author.kind === "you" ? <>{comment.author.login} <UiText>(you)</UiText></> : comment.author.login}
         </span>
         {author.kind === "bot" ? <BotChip tip={`${comment.author.login}, an AI reviewer`} /> : null}
         {comment.reviewState === "PENDING" ? (
@@ -104,17 +105,17 @@ export function RemoteCommentCard({ comment, thread, exportCtx, onReact, reactin
             style={{ color: "var(--accent)" }}
             data-tip="In your pending review on GitHub; not public until you submit"
           >
-            pending
+            <UiText>pending</UiText>
           </span>
         ) : null}
         {created ? (
           <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={formatFullTimestamp(comment.createdAt)}>
-            {created}
+            <UiText>{created}</UiText>
           </span>
         ) : null}
         {edited ? (
           <span className="flex-none" style={{ color: "var(--fg-faint)" }} data-tip={`Edited ${formatFullTimestamp(comment.updatedAt!)}`}>
-            · edited
+            · <UiText>edited</UiText>
           </span>
         ) : null}
         <span className="ml-auto flex flex-none items-center gap-1">
@@ -268,7 +269,7 @@ export function ThreadView({
         onClick={() => setOpen(true)}
       >
         <IconCheck width={11} height={11} style={{ color: "var(--ok)", flex: "none" }} />
-        <span className="flex-none font-medium">Resolved</span>
+        <UiText className="flex-none font-medium">Resolved</UiText>
         {label ? (
           <span className="flex-none font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
             · {label}
@@ -279,7 +280,7 @@ export function ThreadView({
         </span>
         {replies ? (
           <span className="flex-none text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
-            {replies} {replies === 1 ? "reply" : "replies"}
+            <UiText>{`${replies} ${replies === 1 ? "reply" : "replies"}`}</UiText>
           </span>
         ) : null}
         <IconChevron width={10} height={10} style={{ color: "var(--fg-faint)", flex: "none", marginLeft: "auto" }} />
@@ -333,7 +334,7 @@ export function ThreadView({
               tip="Reply in this thread; a draft until you submit"
               onClick={() => actions.onReply!(thread)}
             >
-              <IconReply width={11} height={11} /> Reply
+              <IconReply width={11} height={11} /> <UiText>Reply</UiText>
             </ThreadFooterButton>
           ) : null}
           {actions.onResolve && canResolve ? (
@@ -344,7 +345,7 @@ export function ThreadView({
               onClick={() => actions.onResolve!(t, !t.isResolved)}
             >
               <IconCheck width={11} height={11} />
-              {busy ? (t.isResolved ? "unresolving…" : "resolving…") : t.isResolved ? "Unresolve" : "Resolve"}
+              <UiText>{busy ? (t.isResolved ? "unresolving…" : "resolving…") : t.isResolved ? "Unresolve" : "Resolve"}</UiText>
             </ThreadFooterButton>
           ) : null}
           {t.comments[0] ? (
@@ -356,16 +357,16 @@ export function ThreadView({
               style={{ color: "var(--fg-muted)" }}
               data-tip="Open this thread on GitHub"
             >
-              GitHub ↗
+              <UiText>GitHub ↗</UiText>
             </a>
           ) : null}
           {t.isResolved ? (
             <>
               <span className="ml-auto" style={{ color: "var(--ok)" }}>
-                resolved{t.resolvedBy ? ` by @${t.resolvedBy}` : ""}
+                <UiText>resolved</UiText>{t.resolvedBy ? <> <UiText>by</UiText> @{t.resolvedBy}</> : null}
               </span>
               <ThreadFooterButton tip="Collapse this resolved thread" onClick={() => setOpen(false)}>
-                collapse
+                <UiText>collapse</UiText>
               </ThreadFooterButton>
             </>
           ) : null}
@@ -407,7 +408,7 @@ export function ThreadFilterFields({
   return (
     <>
       <div className="mb-1.5 text-2xs font-semibold" style={{ color: "var(--fg-muted)" }}>
-        GitHub threads
+        <UiText>GitHub threads</UiText>
       </div>
       <FilterCheck
         testId="filter-resolved"
@@ -435,6 +436,7 @@ export function ThreadFilterFields({
                 disabled={!filters.showAiReviewers}
                 onChange={(v) => onBotHidden(b.key, !v)}
                 label={b.name}
+                labelIsName
                 count={b.count}
               />
             ))}
@@ -442,7 +444,7 @@ export function ThreadFilterFields({
         </>
       ) : null}
       <p className="mt-2 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-        Threads holding a reply you haven't sent always show.
+        <UiText>Threads holding a reply you haven't sent always show.</UiText>
       </p>
     </>
   );
@@ -456,6 +458,7 @@ function FilterCheck({
   hint,
   disabled,
   testId,
+  labelIsName,
 }: {
   checked: boolean;
   onChange: (v: boolean) => void;
@@ -464,6 +467,8 @@ function FilterCheck({
   hint?: string;
   disabled?: boolean;
   testId?: string;
+  /** the label is a reviewer's name (content), not one of the app's words */
+  labelIsName?: boolean;
 }) {
   return (
     <label
@@ -479,7 +484,7 @@ function FilterCheck({
         onChange={(e) => onChange(e.target.checked)}
         style={{ accentColor: "var(--accent)" }}
       />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {labelIsName ? <span className="min-w-0 flex-1 truncate">{label}</span> : <UiText className="min-w-0 flex-1 truncate">{label}</UiText>}
       {count !== undefined ? (
         <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
           {count}

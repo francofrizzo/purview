@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { openPr, openUnit, RECONCILE_HUNKS, UNITS } from "./helpers";
+import { openPr, openUnit, RECONCILE_HUNKS, UNITS, ui } from "./helpers";
 
 // The fixture's reconciliation unit marks its fourth hunk (…0011, "renamed
 // call site") skippable: it shows muted with that label, counts toward
@@ -38,7 +38,7 @@ test("the files tab leaves skippable hunks out of a file's count", async ({ page
   await openPr(page);
   await page.getByRole("tab", { name: /files/i }).click();
   await page.getByText("reconcileNightly.ts").first().click();
-  await expect(page.getByText("0/1 hunks viewed")).toBeVisible();
+  await expect(ui(page, "0/1 hunks viewed")).toBeVisible();
 });
 
 test("v passes over a skippable hunk, and entering a unit never lands on one", async ({ page }) => {

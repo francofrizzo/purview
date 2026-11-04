@@ -1,5 +1,6 @@
 import type { CommentAudience } from "../api/types";
 import { IconGithub, IconSparkles } from "./icons";
+import { UiText } from "./UiText";
 
 /**
  * The global switch: who new comments are for. "GitHub" means part of your
@@ -61,7 +62,7 @@ export function AudienceSwitch({
             style={on ? { color: ink, background: tint, borderColor: ink } : undefined}
           >
             {o.icon}
-            {compact ? null : AUDIENCE_LABEL[o.id]}
+            {compact ? null : <UiText>{AUDIENCE_LABEL[o.id]}</UiText>}
           </button>
         );
       })}

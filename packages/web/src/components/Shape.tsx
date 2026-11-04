@@ -5,6 +5,7 @@ import { FileStatusBadge } from "./Chips";
 import { TreeLines } from "./TreeLines";
 import { InlineMarkdown } from "./Markdown";
 import { IconFile, IconFolder } from "./icons";
+import { UiText } from "./UiText";
 
 /** Past this, a chain of folders keeps its first and last two names (`internal/…/skills/SKILL.md`); the full path is on hover. */
 const NAME_MAX = 44;
@@ -131,7 +132,7 @@ export function FileShape({
                   {shortName(l.name)}/
                   {l.folded || l.more ? (
                     <span className="ml-1.5 font-sans text-2xs" style={{ color: "var(--fg-faint)" }}>
-                      {l.folded ? `${l.folded} files` : `${l.more} more`}
+                      <UiText>{l.folded ? `${l.folded} files` : `${l.more} more`}</UiText>
                     </span>
                   ) : null}
                 </span>
@@ -165,7 +166,7 @@ export function FileShape({
           <div key={r.label} className="col-span-full grid py-[3px] sm:[grid-template-columns:subgrid]" data-testid="file-shape-foot">
             <div className="flex min-w-0 items-start gap-1.5 text-2xs leading-5 sm:pr-4" style={{ color: "var(--fg-faint)" }}>
               <span className="w-3.5 flex-none text-center">+</span>
-              {r.label}
+              <UiText>{r.label}</UiText>
               {counts ? (
                 <span className="sm:hidden">
                   <LineCounts added={r.added} removed={r.removed} muted />
@@ -242,7 +243,7 @@ export function FileLegend({ files }: { files: FileEntry[] }) {
         const count = own.filter((f) => (f.status ?? "modified") === status).length;
         return count ? (
           <span key={status} className="flex items-center gap-1">
-            <FileStatusBadge status={status} /> {count} {word}
+            <FileStatusBadge status={status} /> <UiText>{`${count} ${word}`}</UiText>
           </span>
         ) : null;
       })}

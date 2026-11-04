@@ -96,6 +96,7 @@ import {
   IconCaret,
   IconUnfold,
 } from "./icons";
+import { UiText } from "./UiText";
 
 export interface HunkEntry {
   hunk: Hunk;
@@ -2576,7 +2577,7 @@ export function DiffPane({
         className="flex h-full items-center justify-center px-8 text-center text-sm"
         style={{ color: "var(--fg-faint)" }}
       >
-        {emptyMessage}
+        <UiText>{emptyMessage}</UiText>
       </div>
     );
   }
@@ -2618,7 +2619,7 @@ export function DiffPane({
           }}
         >
           <span className="text-2xs" style={{ color: "var(--fg-muted)" }}>
-            comment on <span className="font-mono">{linePrompt.file.split("/").pop()}:</span>
+            <UiText>comment on</UiText> <span className="font-mono">{linePrompt.file.split("/").pop()}:</span>
           </span>
           <input
             autoFocus
@@ -2643,7 +2644,7 @@ export function DiffPane({
             </span>
           ) : (
             <span className="flex items-center gap-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
-              <kbd>↵</kbd> comment · <kbd>esc</kbd>
+              <kbd><UiText>↵</UiText></kbd> <UiText>comment</UiText> · <kbd><UiText>esc</UiText></kbd>
             </span>
           )}
         </form>
@@ -2675,7 +2676,7 @@ export function DiffPane({
             onClick={commentOnSelection}
           >
             <IconComment width={10} height={10} />
-            comment
+            <UiText>comment</UiText>
           </button>
           <button
             type="button"
@@ -2684,7 +2685,7 @@ export function DiffPane({
             onClick={quoteSelection}
           >
             <IconQuote width={10} height={10} />
-            cite in chat
+            <UiText>cite in chat</UiText>
           </button>
           <button
             type="button"
@@ -2877,8 +2878,8 @@ export function DiffPane({
           }
         >
           <span>
-            Lines {row.from}–{row.to} changed ·{" "}
-            {row.where !== "hidden" ? `shown ${row.where}` : null}
+            <UiText>Lines</UiText> {row.from}–{row.to} <UiText>changed ·</UiText>{" "}
+            {row.where !== "hidden" ? <UiText>{`shown ${row.where}`}</UiText> : null}
           </span>
           {row.where === "hidden" ? elsewhereUnits(row.hunkIds) : null}
         </div>
@@ -2923,7 +2924,7 @@ export function DiffPane({
           >
             {/* toward the hunk the run grew out of */}
             <IconCaret up={row.belowHunk} width={11} height={11} aria-hidden />
-            hide {row.runLength}
+            <UiText>{`hide ${row.runLength}`}</UiText>
           </button>
         </div>
       );
@@ -2938,10 +2939,10 @@ export function DiffPane({
       const unit = unitOfHunk?.(id);
       if (unit && !units.has(unit.id)) units.set(unit.id, { ...unit, hunkId: id });
     }
-    if (!units.size) return <span>not in any unit</span>;
+    if (!units.size) return <UiText>not in any unit</UiText>;
     return (
       <span className="flex min-w-0 items-center gap-2">
-        <span className="flex-none">in</span>
+        <UiText className="flex-none">in</UiText>
         {[...units.values()].map((unit) => (
           <button
             key={unit.id}
@@ -3000,7 +3001,7 @@ export function DiffPane({
               : null}
           </>
         )}
-        <span className="ml-1">
+        <UiText className="ml-1">
           {loading
             ? "loading…"
             : failed
@@ -3008,9 +3009,9 @@ export function DiffPane({
               : hidden === null
                 ? "more of the file below"
                 : `${hidden} hidden line${hidden === 1 ? "" : "s"}`}
-        </span>
+        </UiText>
         {!whole && hidden !== null ? (
-          <span className="ml-auto">{button("show all", `Show all ${hidden} hidden lines`, "all", "gap-show-all")}</span>
+          <span className="ml-auto">{button(<UiText>show all</UiText>, `Show all ${hidden} hidden lines`, "all", "gap-show-all")}</span>
         ) : null}
       </div>
     );
@@ -3105,7 +3106,7 @@ export function DiffPane({
                 }}
               >
                 <IconComment width={12} height={12} />
-                comment
+                <UiText>comment</UiText>
               </button>
               {onQuote ? (
                 <QuoteButton
@@ -3204,7 +3205,7 @@ export function DiffPane({
             <IconChevron open={!row.folded} width={12} height={12} className="diff-fold-row-chevron" />
           )}
           <span className="min-w-0 truncate">{row.label}</span>
-          {row.exempt ? null : <span className="diff-fold-row-hint">{row.folded ? "expand" : "fold"}</span>}
+          {row.exempt ? null : <UiText className="diff-fold-row-hint">{row.folded ? "expand" : "fold"}</UiText>}
         </span>
       );
       return (
@@ -3237,7 +3238,7 @@ export function DiffPane({
                 jumpToMove(target);
               }}
             >
-              go to {targetLabel(target, baseName(target.path))} {row.kind === "in" ? "←" : "→"}
+              <UiText>go to</UiText> {targetLabel(target, baseName(target.path))} {row.kind === "in" ? "←" : "→"}
             </button>
           ) : null}
         </div>
@@ -3417,7 +3418,7 @@ export function DiffPane({
               style={{ background: "var(--bg-inset)", color: "var(--fg-faint)" }}
               data-tip="Counts toward nothing; Space passes over it"
             >
-              skippable
+              <UiText>skippable</UiText>
             </span>
           ) : null}
           {hint ? (
@@ -3427,7 +3428,7 @@ export function DiffPane({
               style={{ background: "var(--bg-inset)", color: "var(--fg-faint)" }}
               data-tip="What this hunk is, from its path and lines; the heart is elsewhere in the unit"
             >
-              {hint}
+              <UiText>{hint}</UiText>
             </span>
           ) : null}
           {folded ? (
@@ -3436,7 +3437,7 @@ export function DiffPane({
               data-testid="collapsed-hint"
               style={{ color: "var(--fg-faint)" }}
             >
-              {lineCount} {lineCount === 1 ? "line" : "lines"} folded
+              <UiText>{`${lineCount} ${lineCount === 1 ? "line" : "lines"} folded`}</UiText>
             </span>
           ) : null}
           {inside?.length ? (
@@ -3465,7 +3466,7 @@ export function DiffPane({
           ) : null}
           {st.migration === "new" ? (
             <span className="chip" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
-              new
+              <UiText>new</UiText>
             </span>
           ) : null}
           {(() => {
@@ -3480,7 +3481,7 @@ export function DiffPane({
                 data-tip={label.title}
               >
                 <IconHistory width={10} height={10} className="flex-none" />
-                {label.text}
+                <UiText>{label.text}</UiText>
               </span>
             );
           })()}
@@ -3512,7 +3513,7 @@ export function DiffPane({
                   jumpToMove(first);
                 }}
               >
-                moved {arrow} {targetLabel(first, baseName(first.path))}
+                <UiText>moved</UiText> {arrow} {targetLabel(first, baseName(first.path))}
               </button>
             );
           })()}
@@ -3716,7 +3717,7 @@ function FileName({
 export function CommentIndicatorLegend() {
   return (
     <span className="inline-flex items-center gap-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
-      <IconComment width={11} height={11} /> hover a line to draft
+      <IconComment width={11} height={11} /> <UiText>hover a line to draft</UiText>
     </span>
   );
 }
@@ -3754,7 +3755,7 @@ export function CopyPathButton({ path, what = "path", label }: { path: string; w
       }}
     >
       {copied ? <IconCheck width={12} height={12} /> : <IconCopy width={12} height={12} />}
-      {label ? <span>{copied ? "Copied" : label}</span> : null}
+      {label ? <UiText>{copied ? "Copied" : label}</UiText> : null}
     </button>
   );
 }

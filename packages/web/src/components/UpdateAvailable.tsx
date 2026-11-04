@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useVersion } from "../api/hooks";
 import { IconDownload } from "./icons";
+import { UiText } from "./UiText";
 
 /** How to move a checkout to the newest release; the server restarts on `pnpm start`. */
 export const UPDATE_COMMAND = "git pull && pnpm start";
@@ -74,10 +75,9 @@ function UpdateChip({ latest, className }: { latest: string; className: string }
           data-testid="update-card"
           className="surface elev-3 absolute right-0 top-full z-20 mt-1 w-72 rounded-lg p-3 text-xs"
         >
-          <p className="font-medium">Purview {latest} is available</p>
+          <p className="font-medium"><UiText>{`Purview ${latest} is available`}</UiText></p>
           <p className="mt-1 leading-4" style={{ color: "var(--fg-muted)" }}>
-            Pull the checkout and start it again. The server restarts on its own; reload this tab
-            once it is back.
+            <UiText>Pull the checkout and start it again. The server restarts on its own; reload this tab once it is back.</UiText>
           </p>
           <div className="mt-2 flex items-center gap-2">
             <code
@@ -87,11 +87,11 @@ function UpdateChip({ latest, className }: { latest: string; className: string }
               {UPDATE_COMMAND}
             </code>
             <button type="button" className="btn flex-none" onClick={copy}>
-              {copied ? "copied" : "copy"}
+              <UiText>{copied ? "copied" : "copy"}</UiText>
             </button>
           </div>
           <p className="mt-2 text-2xs" style={{ color: "var(--fg-faint)" }}>
-            You can turn this check off in Settings → About.
+            <UiText>You can turn this check off in Settings → About.</UiText>
           </p>
         </div>
       ) : null}

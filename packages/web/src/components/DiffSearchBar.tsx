@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { DiffSearch } from "../lib/useDiffSearch";
 import { IconCaret, IconClose, IconSearch } from "./icons";
+import { UiText } from "./UiText";
 
 /**
  * Compact find bar docked above the diff. It deliberately hijacks Cmd/Ctrl+F:
@@ -60,7 +61,7 @@ export function DiffSearchBar({
         data-testid="search-count"
         style={{ color: total || !search.activeQuery ? "var(--fg-muted)" : "var(--warn)" }}
       >
-        {status}
+        <UiText>{status}</UiText>
       </span>
       <div className="flex flex-none items-center gap-0.5">
         <StepButton
@@ -92,7 +93,7 @@ export function DiffSearchBar({
         tip={search.caseSensitive ? "Matching case; click to ignore it" : "Ignoring case; click to match it"}
         onClick={() => search.setCaseSensitive(!search.caseSensitive)}
       >
-        Aa
+        <UiText>Aa</UiText>
       </Toggle>
       <Segmented
         testId="search-lines"
@@ -188,7 +189,7 @@ function Segmented<V extends string>({
               color: on ? "var(--accent)" : "var(--fg-faint)",
             }}
           >
-            {o.label}
+            <UiText>{o.label}</UiText>
           </button>
         );
       })}

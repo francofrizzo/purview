@@ -1,4 +1,5 @@
 import { test, expect, type Locator } from "@playwright/test";
+import { ui } from "./helpers";
 
 /**
  * The two Watch switches save on their own. The checkboxes are controlled
@@ -30,7 +31,7 @@ test("watch switches save independently", async ({ page }) => {
   // Closing and reopening keeps the mock's state; the home dot names what is polled.
   await page.getByTestId("modal-close").click();
   const billing = page.locator("section", { hasText: "acme/billing" }).first();
-  await expect(billing.getByText("watching", { exact: true })).toHaveAttribute("data-tip", /Polling for your PRs;/);
+  await expect(ui(billing, "watching", { exact: true }).locator("xpath=..")).toHaveAttribute("data-tip", /Polling for your PRs;/);
   await settings.click();
   await expect(own).toBeChecked();
   await expect(reviews).not.toBeChecked();
@@ -38,7 +39,7 @@ test("watch switches save independently", async ({ page }) => {
   await toggle(reviews, true);
   await toggle(own, false);
   await page.getByTestId("modal-close").click();
-  await expect(billing.getByText("watching", { exact: true })).toHaveAttribute("data-tip", /Polling for review requests;/);
+  await expect(ui(billing, "watching", { exact: true }).locator("xpath=..")).toHaveAttribute("data-tip", /Polling for review requests;/);
   await settings.click();
   await expect(reviews).toBeChecked();
   await expect(own).not.toBeChecked();

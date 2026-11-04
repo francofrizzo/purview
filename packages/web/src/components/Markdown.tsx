@@ -17,6 +17,7 @@ import { useSettings } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 import { IconCheck, IconChevron, IconCopy, IconExpand, IconWrap } from "./icons";
 import { Modal } from "./Modal";
+import { UiText } from "./UiText";
 
 /** Stable, cheap cache key for a snippet (shiki's cache is keyed by string). */
 function hashCode(text: string): string {
@@ -165,7 +166,7 @@ function MediaNode({ href, alt, local }: { href?: string; alt?: string; local: L
       className="underline underline-offset-2"
       style={{ color: "var(--accent)" }}
     >
-      🖼 {alt || "image"}
+      🖼 {alt || <UiText>image</UiText>}
     </a>
   ) : null;
 }
@@ -460,7 +461,7 @@ function SuggestionBlock({ code }: { code: string }) {
         className="border-b px-2 py-0.5 text-2xs font-medium"
         style={{ borderColor: "var(--border)", color: "var(--fg-muted)" }}
       >
-        Suggested change
+        <UiText>Suggested change</UiText>
       </div>
       {original ? side(original, "del") : null}
       {side(added, "add")}

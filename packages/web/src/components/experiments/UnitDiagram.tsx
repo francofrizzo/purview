@@ -4,6 +4,7 @@ import { useExperiment } from "../../lib/experiments";
 import { isSafeDiagram } from "../../lib/unitDiagram";
 import { MermaidBlock } from "../Markdown";
 import { IconChevron } from "../icons";
+import { UiText } from "../UiText";
 
 const KIND_WORD: Record<UnitDiagramData["kind"], string> = {
   sequence: "Sequence",
@@ -30,7 +31,7 @@ function UnitDiagramBlock({ diagram }: { diagram: UnitDiagramData }) {
   const caption = diagram.title ?? `${KIND_WORD[diagram.kind]} diagram`;
   const failed = (
     <p className="text-2xs" style={{ color: "var(--fg-faint)" }} data-testid="unit-diagram-error">
-      diagram could not be drawn
+      <UiText>diagram could not be drawn</UiText>
     </p>
   );
   return (
@@ -44,7 +45,7 @@ function UnitDiagramBlock({ diagram }: { diagram: UnitDiagramData }) {
         onClick={() => setFolded((f) => !f)}
       >
         <IconChevron open={!folded} width={10} height={10} className="flex-none" />
-        <span className="uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}>{KIND_WORD[diagram.kind]}</span>
+        <span className="uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}><UiText>{KIND_WORD[diagram.kind]}</UiText></span>
         {diagram.title ? <span className="truncate">{diagram.title}</span> : null}
       </button>
       {folded ? null : !isSafeDiagram(diagram.mermaid) ? (

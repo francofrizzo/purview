@@ -37,6 +37,7 @@ import {
   IconWarning,
   IconWeight,
 } from "./icons";
+import { UiText } from "./UiText";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
 // distinguishable — and coherent with the syntax colors — on every theme.
@@ -126,7 +127,7 @@ export function PrStateMark({ state }: { state: PrGithubState }) {
   return (
     <span className="inline-flex items-center gap-1" style={{ color: s.color }} data-tip={`GitHub state: ${state}`} data-testid="pr-state">
       <s.Icon width={11} height={11} />
-      {state}
+      <UiText>{state}</UiText>
     </span>
   );
 }
@@ -171,7 +172,7 @@ export function CiMark({ ci, interactive = false }: { ci?: Ci; interactive?: boo
             {ci.checks.map((check, i) => (
               <li key={i} data-testid="ci-check" className="flex items-start justify-between gap-3">
                 {check.url ? <a className="underline break-words" href={check.url} target="_blank" rel="noreferrer">{check.name}</a> : <span>{check.name}</span>}
-                <span className="flex-none">{check.state}</span>
+                <UiText className="flex-none">{check.state}</UiText>
               </li>
             ))}
           </ul>
@@ -204,7 +205,7 @@ export function ReviewDecisionMark({ decision }: { decision: ReviewDecision | nu
   return (
     <span className="inline-flex items-center gap-1" style={{ color: s.color }} data-tip={s.title} data-testid="review-decision">
       <s.Icon width={11} height={11} />
-      {s.label}
+      <UiText>{s.label}</UiText>
     </span>
   );
 }
@@ -236,7 +237,7 @@ export function ReviewRequestAge({
       data-tip={reviewRequestTooltip(shown)}
       data-testid="review-request-age"
     >
-      {formatRequestedAgo(shown.at, at, shown.via)}
+      <UiText>{formatRequestedAgo(shown.at, at, shown.via)}</UiText>
     </span>
   );
 }
@@ -285,7 +286,7 @@ export function StackedOnChip({ link }: { link: StackedOnLink | null }) {
   const style = { color: "var(--fg-faint)", background: "var(--bg-inset)" };
   return link.internal ? (
     <Link to={link.href} className={cls} style={style} data-tip={link.title} data-testid="stacked-on-chip">
-      {link.label}
+      <UiText>{link.label}</UiText>
     </Link>
   ) : (
     <a
@@ -297,7 +298,7 @@ export function StackedOnChip({ link }: { link: StackedOnLink | null }) {
       data-tip={link.title}
       data-testid="stacked-on-chip"
     >
-      {link.label}
+      <UiText>{link.label}</UiText>
     </a>
   );
 }
@@ -306,7 +307,7 @@ export function KindChip({ kind }: { kind: Kind }) {
   const s = KIND_STYLE[kind] ?? KIND_STYLE.wiring;
   return (
     <span className="chip" style={{ color: s.color, background: s.bg }} data-tip={s.tip}>
-      {s.label}
+      <UiText>{s.label}</UiText>
     </span>
   );
 }
@@ -316,7 +317,7 @@ export function AttentionChip({ attention }: { attention: Attention }) {
   return (
     <span className="chip" style={{ color: s.color, background: s.bg }} data-attention={attention} data-tip={s.tip}>
       <s.icon width={10} height={10} />
-      {s.label}
+      <UiText>{s.label}</UiText>
     </span>
   );
 }
@@ -396,8 +397,8 @@ export function ChangedBadge({
 }) {
   const content = (
     <>
-      changed since viewed
-      {viewedAt !== undefined ? <span className="tabular-nums"> (r{viewedAt})</span> : null}
+      <UiText>changed since viewed</UiText>
+      {viewedAt !== undefined ? <UiText className="tabular-nums">{` (r${viewedAt})`}</UiText> : null}
     </>
   );
   const when = viewedAt !== undefined ? ` in r${viewedAt}` : "";
@@ -609,9 +610,7 @@ export function DiffSizeStat({
       data-tip={tip ? `${n} ${n === 1 ? "file" : "files"} changed: ${additions} ${additions === 1 ? "line" : "lines"} added, ${deletions} removed` : undefined}
     >
       {files ? (
-        <span>
-          {n} {n === 1 ? "file" : "files"}
-        </span>
+        <UiText>{`${n} ${n === 1 ? "file" : "files"}`}</UiText>
       ) : null}
       {quiet ? (
         <>
@@ -648,7 +647,7 @@ export function FileStatusBadge({ status, tip }: { status?: FileEntry["status"];
       data-tip={tip ?? word}
       aria-label={tip ?? word}
     >
-      {letter}
+      <UiText>{letter}</UiText>
     </span>
   );
 }

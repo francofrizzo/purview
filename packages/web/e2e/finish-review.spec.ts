@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openPr } from "./helpers";
+import { openPr, ui } from "./helpers";
 
 test("the summary says \"saved\" when a blur puts it on disk, and only after an edit", async ({ page }) => {
   await openPr(page);
@@ -34,7 +34,7 @@ test("submitting a review shows each step until the page has settled, then says 
   await expect(progress.locator('[data-step="post"]')).toHaveAttribute("data-state", "now");
   await expect(progress.locator('[data-step="submit"]')).toHaveAttribute("data-state", "done");
   // …and only when it is gone does the panel say what was sent.
-  await expect(panel.getByText(/on GitHub/)).toBeVisible();
+  await expect(ui(panel, /on GitHub/)).toBeVisible();
   await expect(progress).toHaveCount(0);
   await expect(page.getByTestId("topbar-review-sending")).toHaveCount(0);
 });

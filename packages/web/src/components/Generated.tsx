@@ -4,6 +4,7 @@ import { generatedReason, generatedTag, generatedToggle, type GeneratedUnitFile 
 import { FloatingPanel } from "./FloatingPanel";
 import { IconMore } from "./icons";
 import { MiddleTruncate } from "./Truncate";
+import { UiText } from "./UiText";
 
 /** "gen" / "lock" next to a generated file's name; the tooltip says which signal fired. */
 export function GeneratedTag({ generated }: { generated: FileGenerated }) {
@@ -14,7 +15,7 @@ export function GeneratedTag({ generated }: { generated: FileGenerated }) {
       data-tip={generatedReason(generated)}
       style={{ background: "var(--bg-inset)", color: "var(--fg-faint)" }}
     >
-      {generatedTag(generated)}
+      <UiText>{generatedTag(generated)}</UiText>
     </span>
   );
 }
@@ -71,7 +72,7 @@ export function GeneratedFileMenu({
         >
           {file.generated ? (
             <p className="mb-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-              {generatedReason(file.generated)}
+              <UiText>{generatedReason(file.generated)}</UiText>
             </p>
           ) : null}
           <button
@@ -81,10 +82,10 @@ export function GeneratedFileMenu({
             disabled={pending}
             onClick={() => onSet(file.path, toggle.generated, close)}
           >
-            {pending ? "saving…" : toggle.label}
+            <UiText>{pending ? "saving…" : toggle.label}</UiText>
           </button>
           <p className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-muted)" }}>
-            {toggle.explain}
+            <UiText>{toggle.explain}</UiText>
           </p>
           {error ? (
             <p className="mt-1.5 text-2xs leading-4" role="alert" style={{ color: "var(--risk)" }}>

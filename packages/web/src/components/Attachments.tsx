@@ -28,6 +28,7 @@ import {
 } from "../lib/attachments";
 import { IconClose, IconPaperclip, IconSpinner } from "./icons";
 import type { AttachmentScope, LocalMedia } from "./Markdown";
+import { UiText } from "./UiText";
 
 /**
  * Pictures in a comment editor. One hook owns the whole flow — paste, drop,
@@ -306,7 +307,7 @@ export function DropHint({ active }: { active: boolean }) {
       style={{ background: "var(--accent-soft)", color: "var(--accent)", border: "1px dashed var(--accent)" }}
       data-testid="attachment-drop-hint"
     >
-      Drop to attach
+      <UiText>Drop to attach</UiText>
     </div>
   );
 }

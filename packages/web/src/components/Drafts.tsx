@@ -48,6 +48,7 @@ import { ComposerPreview, useWritePreview, WritePreviewToggle } from "./WritePre
 import { FormatRow, FormattingToggle, SuggestButton, useComposerFormat, type ComposerFormat } from "./FormatToolbar";
 import { EmojiPicker } from "./EmojiPicker";
 import { CommentCard, IconAction, type CommentActionError } from "./CommentCard";
+import { UiText } from "./UiText";
 
 /**
  * What the composer is pointed at. A file-level target carries no line and no
@@ -193,11 +194,6 @@ export function CommentComposer({
   const ink = forAgent ? "var(--agent)" : "var(--accent)";
   const ranged = !fileLevel && isRange(target);
   const lines = fileLevel ? "" : `${lineLabel(target)}${target.side === "LEFT" ? " (old)" : ""}`;
-  const where = reply
-    ? `to ${target.replyTo ?? "the thread"}`
-    : fileLevel
-      ? "on this file"
-      : `on ${ranged ? "lines" : "line"} ${lines}`;
 
   useEffect(() => {
     const el = ref.current;
@@ -250,10 +246,10 @@ export function CommentComposer({
         <div className="flex items-center gap-2 px-3 pt-2 text-2xs">
           <span className="flex min-w-0 flex-1 items-center gap-2">
             <span className="flex-none font-medium" style={{ color: ink }}>
-              {reply ? "Reply" : forAgent ? "Note for agent" : "New comment"}
+              <UiText>{reply ? "Reply" : forAgent ? "Note for agent" : "New comment"}</UiText>
             </span>
             <span className="min-w-0 truncate" style={{ color: "var(--fg-faint)" }}>
-              {reply ? `${where} · ` : null}
+              {reply ? <><UiText>to</UiText> {target.replyTo ?? <UiText>the thread</UiText>}{" · "}</> : null}
               <span className="font-mono" data-testid="composer-anchor">
                 {target.file}
                 {fileLevel ? "" : `:${lines}`}
@@ -360,7 +356,7 @@ export function CommentComposer({
             disabled={!body.trim() || pending}
             onClick={() => onSubmit(body.trim())}
           >
-            {pending ? "saving…" : forAgent ? "save note" : "save draft"}
+            <UiText>{pending ? "saving…" : forAgent ? "save note" : "save draft"}</UiText>
           </button>
       </EditorTools>
     </div>
@@ -453,7 +449,7 @@ export function ByAgentChip({ comment }: { comment: Pick<DraftComment, "author">
       style={{ background: "var(--accent-soft)", color: "var(--accent)" }}
       data-tip={`Drafted by ${name} in the review chat`}
     >
-      by {name}
+      <UiText>by</UiText> {name}
     </span>
   );
 }
@@ -476,7 +472,7 @@ export function AgentEditNote({
   const movedFrom = comment.history?.at(-1)?.audience;
   return (
     <p className="mt-1 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
-      {movedFrom ? "moved" : "edited"} by {name}
+      <UiText>{movedFrom ? "moved by" : "edited by"}</UiText> {name}
       {onUndo ? (
         <>
           {" · "}
@@ -493,7 +489,7 @@ export function AgentEditNote({
                 : `Go back to the text before ${name}'s edit`
             }
           >
-            undo
+            <UiText>undo</UiText>
           </button>
         </>
       ) : null}
@@ -653,7 +649,7 @@ export function CommentBody({
             className="mt-1 rounded px-1.5 py-1 text-2xs leading-4"
             style={{ background: "var(--warn-soft)", color: "var(--warn)" }}
           >
-            Saved locally, but GitHub was not updated: {warning}
+            <UiText>Saved locally, but GitHub was not updated:</UiText> {warning}
           </p>
         ) : null}
         {edit && !controlled ? (
@@ -666,7 +662,7 @@ export function CommentBody({
               setMode("edit");
             }}
           >
-            {editLabel ?? "edit"}
+            <UiText>{editLabel ?? "edit"}</UiText>
           </button>
         ) : null}
       </div>
@@ -680,12 +676,12 @@ export function CommentBody({
         style={{ background: "var(--risk-soft)", border: "1px solid var(--risk)" }}
       >
         <p className="text-2xs leading-4" style={{ color: "var(--risk)" }}>
-          This comment is already <strong>submitted and publicly visible</strong> on GitHub. Editing
-          it changes what everyone else sees, and GitHub will show it as edited.
+          <UiText>This comment is already</UiText> <strong><UiText>submitted and publicly visible</UiText></strong>{" "}
+          <UiText>on GitHub. Editing it changes what everyone else sees, and GitHub will show it as edited.</UiText>
         </p>
         <div className="mt-1.5 flex items-center gap-1.5">
           <button type="button" className="btn" disabled={busy} onClick={() => setMode("edit")}>
-            back
+            <UiText>back</UiText>
           </button>
           <button
             type="button"
@@ -695,7 +691,7 @@ export function CommentBody({
             disabled={busy}
             onClick={() => void save(true)}
           >
-            {busy ? "saving…" : "edit publicly"}
+            <UiText>{busy ? "saving…" : "edit publicly"}</UiText>
           </button>
         </div>
       </div>
@@ -779,7 +775,7 @@ export function CommentBody({
           disabled={busy || !value.trim()}
           onClick={() => void save()}
         >
-          {busy ? "saving…" : "save"}
+          <UiText>{busy ? "saving…" : "save"}</UiText>
         </button>
       </EditorTools>
     </div>
@@ -926,7 +922,7 @@ export function DraftsDrawer({
           className="flex flex-none items-center gap-2 border-b px-3 py-2 text-2xs"
           style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
         >
-          <span>New comments go to</span>
+          <UiText>New comments go to</UiText>
           <AudienceSwitch value={audience} onChange={onAudienceChange} testId="drawer-audience" />
         </div>
       ) : null}
@@ -940,7 +936,7 @@ export function DraftsDrawer({
               style={{ background: "var(--bg-inset)", color: "var(--fg-muted)" }}
             >
               <span className="min-w-0 flex-1 truncate" data-tip={d.body}>
-                <AgentName actor={d.deletedBy} /> deleted a draft on{" "}
+                <AgentName actor={d.deletedBy} /> <UiText>deleted a draft on</UiText>{" "}
                 <span className="font-mono">{commentAnchorLabel(d)}</span>
               </span>
               <button
@@ -950,7 +946,7 @@ export function DraftsDrawer({
                 disabled={undoing}
                 onClick={() => onRestore?.(d.id)}
               >
-                undo
+                <UiText>undo</UiText>
               </button>
               <button
                 type="button"
@@ -969,8 +965,7 @@ export function DraftsDrawer({
       <div className="quiet-scroll flex-1 overflow-auto">
         {drafts.length === 0 && threadCount === 0 && archived.length === 0 ? (
           <p className="p-3 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
-            No comments yet. Hover a diff line and press the + button to write one, or use the
-            file header to comment on a whole file.
+            <UiText>No comments yet. Hover a diff line and press the + button to write one, or use the file header to comment on a whole file.</UiText>
           </p>
         ) : (
           <div className="flex flex-col gap-4 p-2.5">
@@ -995,7 +990,7 @@ export function DraftsDrawer({
                     <section key={title} data-testid={`drawer-group-${title.toLowerCase()}`}>
                       <h4 className="mb-1.5 flex items-baseline gap-1.5 px-0.5 text-2xs" data-tip={hint}>
                         <span className="font-medium" style={{ color: "var(--fg-muted)" }}>
-                          {title}
+                          <UiText>{title}</UiText>
                         </span>
                         <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
                           {list.length}
@@ -1006,12 +1001,12 @@ export function DraftsDrawer({
                   ))}
                 {onFinishReview && unsent > 0 ? (
                   <div className="flex items-center gap-2 px-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                    <span className="min-w-0 flex-1 truncate">
-                      {unsent} {unsent === 1 ? "comment goes" : "comments go"} out with the review
-                    </span>
+                    <UiText className="min-w-0 flex-1 truncate">
+                      {`${unsent} ${unsent === 1 ? "comment goes" : "comments go"} out with the review`}
+                    </UiText>
                     <button type="button" className="btn flex-none" data-testid="drawer-finish-review" onClick={onFinishReview}>
                       <IconCheck width={11} height={11} />
-                      finish review
+                      <UiText>finish review</UiText>
                     </button>
                   </div>
                 ) : null}
@@ -1046,7 +1041,7 @@ export function DraftsDrawer({
                         onClick={() => onSendToChat(notes)}
                       >
                         <IconSend width={11} height={11} />
-                        {chatBusy ? "queue for chat" : "send to chat"}
+                        <UiText>{chatBusy ? "queue for chat" : "send to chat"}</UiText>
                       </button>
                     ) : null}
                     {onArchiveMany && pickedUp.length ? (
@@ -1058,7 +1053,7 @@ export function DraftsDrawer({
                         onClick={() => void onArchiveMany(pickedUp.map((d) => d.id))}
                       >
                         <IconArchive width={11} height={11} />
-                        archive picked up ({pickedUp.length})
+                        <UiText>{`archive picked up (${pickedUp.length})`}</UiText>
                       </button>
                     ) : null}
                   </div>
@@ -1106,7 +1101,7 @@ function ArchivedSection({
           <IconChevron width={11} height={11} open={open} />
         </span>
         <span className="font-semibold" style={{ color: "var(--fg-muted)" }}>
-          Archived
+          <UiText>Archived</UiText>
         </span>
         <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
           {archived.length}
@@ -1123,7 +1118,7 @@ function ArchivedSection({
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                 <span className="truncate font-mono text-2xs" style={{ color: "var(--fg-faint)" }} data-tip={commentAnchorLabel(c)}>
-                  {isForAgent(c) ? "for agent · " : ""}
+                  {isForAgent(c) ? <><UiText>for agent</UiText>{" · "}</> : ""}
                   {commentAnchorLabel(c)}
                 </span>
                 <span className="line-clamp-2" style={{ color: "var(--fg-muted)" }} data-tip={c.body}>
@@ -1138,7 +1133,7 @@ function ArchivedSection({
                   data-tip="Back into the review, as a draft"
                   onClick={() => onRestore(c.id)}
                 >
-                  restore
+                  <UiText>restore</UiText>
                 </button>
               ) : null}
               {onDelete ? (
@@ -1179,7 +1174,7 @@ function DrawerSectionTitle({
         {icon}
       </span>
       <span className="font-semibold" style={{ color: ink }}>
-        {title}
+        <UiText>{title}</UiText>
       </span>
       <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
         {count}
@@ -1221,13 +1216,13 @@ function GithubThreadsSection({ github }: { github: DrawerThreads }) {
     <section data-testid="drawer-group-github">
       <h3 className="mb-1.5 flex items-baseline gap-1.5 px-0.5 text-2xs">
         <span className="font-semibold" style={{ color: "var(--fg-muted)" }}>
-          On GitHub
+          <UiText>On GitHub</UiText>
         </span>
         <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
           {drawerThreads(github.threads).length}
         </span>
         <span className="truncate" style={{ color: "var(--fg-faint)" }}>
-          · Everyone's review threads
+          · <UiText>Everyone's review threads</UiText>
         </span>
       </h3>
       <div className="flex flex-col gap-2.5">
@@ -1239,11 +1234,11 @@ function GithubThreadsSection({ github }: { github: DrawerThreads }) {
             <div key={g.key} data-testid={`drawer-threads-${g.key}`}>
               <div className="mb-1 flex items-center gap-1.5 px-0.5 text-2xs">
                 <span className="font-medium" style={{ color: g.bot ? "var(--bot)" : "var(--fg-muted)" }}>
-                  {g.label}
+                  {g.bot ? g.label : <UiText>{g.label}</UiText>}
                 </span>
                 {g.bot ? <BotChip /> : null}
                 <span className="tabular-nums" style={{ color: "var(--fg-faint)" }} data-tip={`${open} unresolved of ${g.threads.length}`}>
-                  {open}/{g.threads.length} open
+                  {open}/{g.threads.length} <UiText>open</UiText>
                 </span>
                 {g.bot ? (
                   <button
@@ -1261,13 +1256,13 @@ function GithubThreadsSection({ github }: { github: DrawerThreads }) {
                     }
                     onClick={() => github.onBotHidden(g.key, !hidden)}
                   >
-                    {hidden ? (filters.showAiReviewers ? "show" : "hidden") : "hide this bot"}
+                    <UiText>{hidden ? (filters.showAiReviewers ? "show" : "hidden") : "hide this bot"}</UiText>
                   </button>
                 ) : null}
               </div>
               {hidden ? null : shown.length === 0 ? (
                 <p className="px-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                  All resolved.
+                  <UiText>All resolved.</UiText>
                 </p>
               ) : (
                 <ul className="flex flex-col gap-1">
@@ -1368,17 +1363,17 @@ function GithubThreadRow({ thread, github }: { thread: RemoteThread; github: Dra
         ))}
         {thread.isOutdated ? (
           <span className="flex-none" style={{ color: "var(--warn)" }}>
-            outdated
+            <UiText>outdated</UiText>
           </span>
         ) : null}
         <span className="ml-auto flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
-          {replies ? `${replies} ${replies === 1 ? "reply" : "replies"}` : ""}
+          {replies ? <UiText>{`${replies} ${replies === 1 ? "reply" : "replies"}`}</UiText> : ""}
         </span>
       </span>
       <span className="mt-0.5 block truncate text-xs" style={{ color: "var(--fg)" }}>
         {author.kind === "bot" ? null : (
           <span className="font-medium" style={{ color: "var(--fg-muted)" }}>
-            {author.kind === "you" ? "you" : root.author.login}:{" "}
+            {author.kind === "you" ? <UiText>you</UiText> : root.author.login}:{" "}
           </span>
         )}
         {excerpt(root.body, 120)}

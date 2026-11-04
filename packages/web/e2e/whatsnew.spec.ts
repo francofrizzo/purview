@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { ui } from "./helpers";
 
 test("What's new shows once after an update, and About has the version", async ({ page }) => {
   await page.goto("/");
@@ -9,7 +10,7 @@ test("What's new shows once after an update, and About has the version", async (
   await expect(panel).toHaveCount(0);
   // Seen: a reload does not bring it back.
   await page.reload();
-  await expect(page.getByText("Waiting on your review").first()).toBeVisible();
+  await expect(ui(page, "Waiting on your review").first()).toBeVisible();
   await expect(page.getByTestId("whats-new")).toHaveCount(0);
 
   await page.goto("/settings");

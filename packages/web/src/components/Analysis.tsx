@@ -14,6 +14,7 @@ import { useAgentName } from "../api/hooks";
 import type { AnalysisJob, AnalysisMetrics } from "../api/types";
 import { capitalized } from "../lib/agentSelection";
 import { IconClose, IconRefresh, IconSpinner, IconWarning } from "./icons";
+import { UiText } from "./UiText";
 
 const STATUS_TEXT: Record<AnalysisJob["status"], string> = {
   queued: "queued",
@@ -77,7 +78,7 @@ export function AnalysisStatsPanel({
           {rows.map(([label, value]) => (
             <tr key={label}>
               <td className="py-0.5 pr-3 align-top" style={{ color: "var(--fg-faint)" }}>
-                {label}
+                <UiText>{label}</UiText>
               </td>
               <td className="py-0.5 text-right" style={{ color: "var(--fg-muted)" }}>
                 {value}
@@ -109,7 +110,7 @@ export function AnalysisChip({ job }: { job?: AnalysisJob | null }) {
     >
       {job.status === "running" ? <IconSpinner width={9} height={9} /> : null}
       {live && job.status === "queued" ? <span>◔</span> : null}
-      {STATUS_TEXT[job.status]}
+      <UiText>{STATUS_TEXT[job.status]}</UiText>
     </span>
   );
 }
@@ -201,7 +202,7 @@ export function ArchivedSkipBanner({
     >
       <div className="flex items-start gap-2">
         <span className="min-w-0 flex-1 font-semibold leading-5" style={{ color: "var(--fg)" }}>
-          {text.title}
+          <UiText>{text.title}</UiText>
         </span>
         <button
           type="button"
@@ -217,7 +218,7 @@ export function ArchivedSkipBanner({
         </button>
       </div>
       <p className="leading-5" style={{ color: "var(--fg-muted)" }}>
-        {text.detail}
+        <UiText>{text.detail}</UiText>
       </p>
       <button
         type="button"
@@ -227,7 +228,7 @@ export function ArchivedSkipBanner({
         onClick={onUnarchiveAndAnalyze}
       >
         {working ? <IconSpinner width={11} height={11} /> : <IconRefresh width={11} height={11} />}
-        {working ? "starting…" : scope === "repo" ? "Analyze anyway" : "Unarchive and analyze"}
+        <UiText>{working ? "starting…" : scope === "repo" ? "Analyze anyway" : "Unarchive and analyze"}</UiText>
       </button>
       {error ? (
         <p className="mt-1 text-2xs" style={{ color: "var(--risk)" }}>
@@ -283,12 +284,12 @@ export function AnalysisBanner({
   const retry = (
     <button type="button" className="btn btn-primary" data-testid="analysis-start" disabled={starting} onClick={onAnalyze}>
       <IconRefresh width={11} height={11} />
-      {starting ? "starting…" : failed ? "retry analysis" : "analyze this PR"}
+      <UiText>{starting ? "starting…" : failed ? "retry analysis" : "analyze this PR"}</UiText>
     </button>
   );
   const cancel = (
     <button type="button" className="btn" data-testid="analysis-cancel" disabled={cancelling} onClick={onCancel}>
-      {cancelling ? "cancelling…" : "cancel"}
+      <UiText>{cancelling ? "cancelling…" : "cancel"}</UiText>
     </button>
   );
   const errorLine = error ? (
@@ -313,7 +314,7 @@ export function AnalysisBanner({
           )}
           <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
             <span className="flex-none font-medium" style={{ color: tone }}>
-              {live ? (status === "queued" ? "Analysis queued" : "Analyzing") : "Analysis failed"}
+              <UiText>{live ? (status === "queued" ? "Analysis queued" : "Analyzing") : "Analysis failed"}</UiText>
             </span>
             {live && status === "running" && job?.progress ? (
               <span className="min-w-0 truncate" style={{ color: "var(--fg-muted)" }}>
@@ -330,7 +331,7 @@ export function AnalysisBanner({
               disabled={cancelling}
               onClick={onCancel}
             >
-              {cancelling ? "cancelling…" : "cancel"}
+              <UiText>{cancelling ? "cancelling…" : "cancel"}</UiText>
             </button>
           ) : (
             <>
@@ -342,7 +343,7 @@ export function AnalysisBanner({
                 disabled={starting}
                 onClick={onAnalyze}
               >
-                {starting ? "starting…" : "retry"}
+                <UiText>{starting ? "starting…" : "retry"}</UiText>
               </button>
               {onDismiss ? (
                 <button
@@ -362,7 +363,7 @@ export function AnalysisBanner({
         </div>
         {failed ? (
           <p className="line-clamp-2 pl-[19px] text-2xs leading-4" style={{ color: "var(--fg-muted)" }} data-tip={job?.error}>
-            {job?.error ?? "The run did not complete."}
+            {job?.error ?? <UiText>The run did not complete.</UiText>}
           </p>
         ) : null}
         {errorLine}
@@ -381,19 +382,19 @@ export function AnalysisBanner({
           <IconSpinner width={12} height={12} className="flex-none" style={{ color: "var(--accent)" }} />
         ) : null}
         <span className="text-[13px] font-semibold" style={{ color: tone }}>
-          {title}
+          <UiText>{title}</UiText>
         </span>
       </div>
       <p className="mt-1 leading-5" style={{ color: "var(--fg-muted)" }}>
         {live
           ? job?.progress
             ? <ProgressText text={job.progress} />
-            : `${capitalized(agentName)} is reading the diff and grouping it into review units. They appear here as soon as it finishes.`
+            : <UiText>{`${capitalized(agentName)} is reading the diff and grouping it into review units. They appear here as soon as it finishes.`}</UiText>
           : failed
-            ? (job?.error ?? "The analysis run did not complete.")
+            ? (job?.error ?? <UiText>The analysis run did not complete.</UiText>)
             : status === "cancelled"
-              ? "The run was cancelled before it produced any units."
-              : `This pull request has no review units yet. Run the analysis to have ${agentName} read the diff and group it.`}
+              ? <UiText>The run was cancelled before it produced any units.</UiText>
+              : <UiText>{`This pull request has no review units yet. Run the analysis to have ${agentName} read the diff and group it.`}</UiText>}
       </p>
       <div className="mt-2.5 flex items-center gap-1.5">{live ? cancel : retry}</div>
       {errorLine}

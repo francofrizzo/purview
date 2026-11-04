@@ -15,6 +15,7 @@ import { OverflowMenu } from "./OverflowMenu";
 import { UnitChangelog } from "./UnitChangelog";
 import { UnitDiagram } from "./experiments/UnitDiagram";
 import { IconCheck, IconClose, IconEyeOff, IconFile, IconHeart, IconHistory, IconQuote, IconWarning } from "./icons";
+import { UiText } from "./UiText";
 
 const ATTENTION_WORD: Record<ReviewUnit["attention"], string> = {
   "must-read": "must read",
@@ -261,7 +262,7 @@ export function UnitBrief({
           <div className="flex flex-col gap-1">
             {mix && mix.rows.length > 1 ? (
               <p className="text-2xs tabular-nums" style={{ color: "var(--fg-muted)" }} data-testid="unit-mix">
-                {mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].short}`).join(" · ")}
+                <UiText>{mix.rows.map((r) => `${formatShare(r.percent)} ${CHANGE_LOOK[r.kind].short}`).join(" · ")}</UiText>
               </p>
             ) : null}
             <UnitFileList detail={detail} unit={unit} onJump={onJumpHunk} />
@@ -322,9 +323,9 @@ export function UnitBrief({
                 }
               />
               {highlight ? (
-                <span style={highlight.error ? { color: "var(--risk)" } : undefined}>{highlight.label}</span>
+                <span style={highlight.error ? { color: "var(--risk)" } : undefined}><UiText>{highlight.label}</UiText></span>
               ) : (
-                `${revisionCount} ${revisionCount === 1 ? "revision" : "revisions"}`
+                <UiText>{`${revisionCount} ${revisionCount === 1 ? "revision" : "revisions"}`}</UiText>
               )}
             </Count>
             {highlight ? (
@@ -449,7 +450,7 @@ export function UnitHeart({
             onClick={() => onJump(h.id, h.lines?.[0])}
             data-tip={h.why.replace(/`/g, "")}
           >
-            {path ? baseName(path) : "hunk"}
+            {path ? baseName(path) : <UiText>hunk</UiText>}
             {lines ? <span style={{ opacity: 0.75 }}> {lines}</span> : null}
           </button>
         );
@@ -493,7 +494,7 @@ export function UnitEnd({
       ? [
           `${left} ${left === 1 ? "hunk" : "hunks"} not marked viewed.`,
           <button type="button" className="btn" onClick={onMarkViewed} data-tip-key="V" data-testid="unit-end-mark">
-            Mark viewed and go on
+            <UiText>Mark viewed and go on</UiText>
           </button>,
           null,
         ]
@@ -501,7 +502,7 @@ export function UnitEnd({
         ? [
             "Unit read.",
             <button type="button" className="btn" onClick={onOpenNext} data-tip-key="J" data-testid="unit-end-next">
-              Next: {next.number !== undefined ? `${next.number} · ` : ""}
+              <UiText>{`Next: ${next.number !== undefined ? `${next.number} · ` : ""}`}</UiText>
               <span className="max-w-[28rem] truncate">
                 <InlineMarkdown text={next.title} />
               </span>
@@ -511,7 +512,7 @@ export function UnitEnd({
         : [
             unitCount === 1 ? "The unit is read." : `All ${unitCount} units read.`,
             <button type="button" className="btn btn-primary" onClick={onFinish} data-testid="unit-end-finish">
-              Finish review
+              <UiText>Finish review</UiText>
             </button>,
             draftCount > 0
               ? `${draftCount} ${draftCount === 1 ? "draft" : "drafts"} and your verdict go out from there.`
@@ -519,15 +520,15 @@ export function UnitEnd({
           ];
   return (
     <div className="flex flex-col items-start gap-2 px-6 pt-10 text-xs" data-testid="unit-end">
-      <p style={{ color: "var(--fg-faint)" }}>{number !== undefined ? `End of unit ${number}` : "End of this unit"}</p>
+      <p style={{ color: "var(--fg-faint)" }}><UiText>{number !== undefined ? `End of unit ${number}` : "End of this unit"}</UiText></p>
       <p className="text-sm" style={{ color: "var(--fg)" }} data-testid="unit-end-status">
-        {status}
+        <UiText>{status}</UiText>
       </p>
       <div className="flex items-center gap-2">
         {action}
-        <kbd style={{ color: "var(--fg-faint)" }}>{left > 0 ? "V" : next ? "J" : "r"}</kbd>
+        <kbd style={{ color: "var(--fg-faint)" }}><UiText>{left > 0 ? "V" : next ? "J" : "r"}</UiText></kbd>
       </div>
-      {hint ? <p style={{ color: "var(--fg-faint)" }}>{hint}</p> : null}
+      {hint ? <p style={{ color: "var(--fg-faint)" }}><UiText>{hint}</UiText></p> : null}
     </div>
   );
 }

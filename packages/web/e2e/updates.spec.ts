@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { ui } from "./helpers";
 
 test("a newer release on origin shows an update chip, with the command; the check can be turned off", async ({ page }) => {
   await page.goto("/");
@@ -22,7 +23,7 @@ test("a newer release on origin shows an update chip, with the command; the chec
   // Only the home page says so.
   await expect(page.getByTestId("update-available")).toHaveCount(0);
   await page.goBack();
-  await expect(page.getByText("Waiting on your review").first()).toBeVisible();
+  await expect(ui(page, "Waiting on your review").first()).toBeVisible();
 
   // Open settings from the header so the app (and the mock's in-memory config) stays alive.
   await page.getByRole("link", { name: "Settings", exact: true }).click();
@@ -37,6 +38,6 @@ test("a newer release on origin shows an update chip, with the command; the chec
   await expect(page.getByTestId("about-update")).toHaveCount(0);
 
   await page.keyboard.press("Escape");
-  await expect(page.getByText("Waiting on your review").first()).toBeVisible();
+  await expect(ui(page, "Waiting on your review").first()).toBeVisible();
   await expect(page.getByTestId("update-available")).toHaveCount(0);
 });

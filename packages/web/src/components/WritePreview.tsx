@@ -9,6 +9,7 @@ import {
 } from "../lib/composerMode";
 import { Markdown } from "./Markdown";
 import { IconEdit, IconEye } from "./icons";
+import { UiText } from "./UiText";
 
 /**
  * Write / Preview for a comment editor. The textarea stays mounted (hidden)
@@ -114,7 +115,7 @@ export function WritePreviewToggle({
       style={{ color: previewing ? "var(--fg)" : "var(--fg-muted)", background: previewing ? "var(--bg-hover)" : undefined }}
     >
       <Icon width={12} height={12} />
-      {previewing ? "edit" : "preview"}
+      <UiText>{previewing ? "edit" : "preview"}</UiText>
     </button>
   );
 }
@@ -148,7 +149,7 @@ export function ComposerPreview({
     >
       {empty ? (
         <p className={textClass} style={{ color: "var(--fg-faint)" }}>
-          Nothing to preview
+          <UiText>Nothing to preview</UiText>
         </p>
       ) : (
         <Markdown text={body} textClass={textClass} ink="var(--fg)" />

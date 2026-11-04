@@ -40,6 +40,7 @@ import {
   IconTag,
   IconSpinner,
 } from "./icons";
+import { UiText } from "./UiText";
 
 export function TopBar({
   detail,
@@ -297,7 +298,7 @@ export function TopBar({
               onClick={() => onSetArchived(false)}
             >
               <IconArchive out width={10} height={10} />
-              {archiving ? "unarchiving…" : "archived · unarchive"}
+              <UiText>{archiving ? "unarchiving…" : "archived · unarchive"}</UiText>
             </button>
           ) : detail.repoArchived && onSetRepoArchived ? (
             // Archived through its repo, not on its own: the way out is the
@@ -312,7 +313,7 @@ export function TopBar({
               onClick={() => onSetRepoArchived(false)}
             >
               <IconArchive out width={10} height={10} />
-              {repoArchiving ? "unarchiving repo…" : "repo archived · unarchive repo"}
+              <UiText>{repoArchiving ? "unarchiving repo…" : "repo archived · unarchive repo"}</UiText>
             </button>
           ) : null}
           {/* Only interesting while the analysis is not a plain success. */}
@@ -336,7 +337,7 @@ export function TopBar({
             style={{ background: "var(--agent-soft)", color: "var(--agent)" }}
             onClick={() => onAudienceChange("github")}
           >
-            notes for agent
+            <UiText>notes for agent</UiText>
           </button>
         ) : null}
         {viewOptions}
@@ -393,7 +394,7 @@ export function TopBar({
           style={stale ? { color: "var(--accent)", borderColor: "var(--accent)" } : undefined}
         >
           <IconRefresh width={12} height={12} className={refreshing ? "animate-spin" : undefined} />
-          {stale ? <span className="hidden md:inline">new commits</span> : null}
+          {stale ? <UiText className="hidden md:inline">new commits</UiText> : null}
         </button>
         <input
           ref={importInputRef}
@@ -566,9 +567,9 @@ export function TopBar({
           {submittingReview ? <IconSpinner width={12} height={12} /> : <IconCheck width={12} height={12} />}
           {/* One flex item, so the button's gap never lands between the words. */}
           <span data-testid={submittingReview ? "topbar-review-sending" : undefined}>
-            {submittingReview ? "sending" : "finish"}
-            <span className="hidden sm:inline"> review</span>
-            {submittingReview ? "…" : null}
+            <UiText>{submittingReview ? "sending" : "finish"}</UiText>
+            <UiText className="hidden sm:inline">{" review"}</UiText>
+            {submittingReview ? <UiText>…</UiText> : null}
           </span>
           {pendingReview ? (
             <span
@@ -578,7 +579,7 @@ export function TopBar({
               style={{ background: "var(--bg)", color: "var(--accent)" }}
               data-tip="You have a pending review on GitHub"
             >
-              pending
+              <UiText>pending</UiText>
             </span>
           ) : null}
         </button>
@@ -643,7 +644,7 @@ function BranchesButton({ head, base }: { head: string; base?: string }) {
           >
             {rows.map(([which, name]) => (
               <Fragment key={which}>
-                <span style={{ color: "var(--fg-faint)" }}>{which}</span>
+                <span style={{ color: "var(--fg-faint)" }}><UiText>{which}</UiText></span>
                 <span className="truncate font-mono" style={{ color: "var(--fg)" }} data-tip={name}>
                   {name}
                 </span>
@@ -695,7 +696,7 @@ function SinceReviewChip({
         style={{ color: "var(--fg-faint)" }}
         data-tip={`No hunk changed since ${when}: the new revision only moved the base or context.${sinceNote}`}
       >
-        no changes since your review
+        <UiText>no changes since your review</UiText>
       </span>
     );
   }
@@ -717,9 +718,9 @@ function SinceReviewChip({
       }
       onClick={onToggle}
     >
-      since review r{since.revision}
+      <UiText>{`since review r${since.revision}`}</UiText>
       <span className="tabular-nums" style={{ opacity: 0.75 }}>
-        · {n}
+        <UiText>{`· ${n}`}</UiText>
       </span>
     </button>
   );

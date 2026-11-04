@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { clampChatPanelWidth, useSettings } from "../lib/settings";
 import { IconChat, IconCheck, IconClose, IconComment, IconPopOut, IconSpinner } from "./icons";
+import { UiText } from "./UiText";
 
 /**
  * The one panel on the right: comments, the review chat, and finishing the
@@ -103,7 +104,7 @@ export function RightDock({
               style={{ color: on ? "var(--fg)" : "var(--fg-faint)" }}
             >
               {t.icon}
-              <span>{t.label}</span>
+              <UiText>{t.label}</UiText>
               {badge ? (
                 <span
                   className="rounded-full px-1 text-2xs tabular-nums"

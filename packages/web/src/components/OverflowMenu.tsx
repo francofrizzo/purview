@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconMore } from "./icons";
+import { UiText } from "./UiText";
 
 export interface MenuItem {
   label: string;
@@ -114,7 +115,7 @@ export function OverflowMenu({
           <span className="flex w-3.5 flex-none items-center justify-center" style={{ color: item.danger ? "var(--risk)" : "var(--fg-muted)" }}>
             {item.icon}
           </span>
-          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+          <UiText className="min-w-0 flex-1 truncate">{item.label}</UiText>
         </button>
       ))}
     </div>

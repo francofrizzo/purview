@@ -2,6 +2,7 @@ import type { BehaviorChange } from "../../api/types";
 import { UnitNumber } from "../Chips";
 import { InlineMarkdown } from "../Markdown";
 import { SectionHead } from "../SectionHead";
+import { UiText } from "../UiText";
 
 /** A cell the analysis left empty: the behavior did not exist, or no longer does. */
 const NONE = /^\s*[—–-]?\s*$/;
@@ -31,8 +32,8 @@ export function BehaviorTable({
           labels start where the cells' text does. */}
       <div className={`mb-1 hidden gap-x-2 text-2xs font-medium sm:grid ${cols}`} style={{ color: "var(--fg-faint)" }} aria-hidden>
         <span />
-        <span className="px-2">Before</span>
-        <span className="px-2">After</span>
+        <UiText className="px-2">Before</UiText>
+        <UiText className="px-2">After</UiText>
         <span />
       </div>
       <ul className="flex flex-col gap-1">
@@ -45,9 +46,9 @@ export function BehaviorTable({
               <span className="flex flex-wrap items-baseline gap-x-1.5 pt-1.5 text-[13px] font-medium leading-5" style={{ color: "var(--fg)" }}>
                 <InlineMarkdown text={c.what} />
                 {added ? (
-                  <span className="chip" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}>new</span>
+                  <span className="chip" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}><UiText>new</UiText></span>
                 ) : removed ? (
-                  <span className="chip" style={{ color: "var(--fg-muted)", background: "var(--bg-inset)" }}>removed</span>
+                  <span className="chip" style={{ color: "var(--fg-muted)", background: "var(--bg-inset)" }}><UiText>removed</UiText></span>
                 ) : null}
               </span>
               <BehaviorCell text={c.before} tint="var(--del-bg)" label="Before" />
@@ -90,7 +91,7 @@ function BehaviorCell({ text, tint, label }: { text: string; tint: string; label
   }
   return (
     <span className="rounded px-2 py-1.5 text-[13px] leading-5" style={{ color: "var(--fg)", background: tint }}>
-      <span className="sr-only">{label}: </span>
+      <UiText className="sr-only">{`${label}: `}</UiText>
       <InlineMarkdown text={text} />
     </span>
   );

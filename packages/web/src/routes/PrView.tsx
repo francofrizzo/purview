@@ -153,6 +153,7 @@ import { AttachmentContext, CodeLinkContext, GlossaryContext, InlineMarkdown } f
 import { buildGlossary } from "../lib/glossary";
 import { noteFor } from "../lib/shape";
 import { useAttachmentScope } from "../components/Attachments";
+import { UiText } from "../components/UiText";
 
 /** No changelog highlight; one shared array, so nothing downstream sees a new one each render. */
 const NO_REVISIONS: number[] = [];
@@ -1000,9 +1001,24 @@ export function PrView() {
     [definitionIndex, jumpToDiffHunk],
   );
 
+  // Where the reader last pointed or focused: Cmd+F finds in the diff only
+  // when that is the diff, and leaves the browser's find to the panels.
+  const lastTouched = useRef<Element | null>(null);
+  useEffect(() => {
+    const touch = (e: Event) => {
+      lastTouched.current = e.target instanceof Element ? e.target : null;
+    };
+    document.addEventListener("pointerover", touch, { passive: true });
+    document.addEventListener("focusin", touch);
+    return () => {
+      document.removeEventListener("pointerover", touch);
+      document.removeEventListener("focusin", touch);
+    };
+  }, []);
+
   // `c` toggles the chat, `s` the summary overlay, `/` opens the find bar — all
-  // single-letter, all suppressed while typing. Cmd/Ctrl+F is taken over from the browser on
-  // purpose: rows are virtualized, so native find can only see what is mounted.
+  // single-letter, all suppressed while typing. Cmd/Ctrl+F is taken over from the browser
+  // over the diff: rows are virtualized, so native find can only see what is mounted.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -1010,7 +1026,13 @@ export function PrView() {
         t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable),
       );
       // Cmd+F searches what the pane shows; Cmd+Shift+F widens to the whole diff.
+      // Pressed again in the find bar, or anywhere outside the diff (comments,
+      // chat, the overview), it is the browser's.
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "f") {
+        if (t === searchInputRef.current) return;
+        // Nothing touched yet, or what was is gone: the diff is where you are.
+        const at = lastTouched.current;
+        if (at?.isConnected && at !== document.body && !mainRef.current?.contains(at)) return;
         e.preventDefault();
         openSearch(e.shiftKey ? "all" : "visible");
         return;
@@ -1244,7 +1266,7 @@ export function PrView() {
       <Centered>
         <span className="inline-flex items-center gap-2">
           <IconSpinner width={12} height={12} />
-          Loading {prKey}…
+          <UiText>{`Loading ${prKey}…`}</UiText>
         </span>
       </Centered>
     );
@@ -1252,7 +1274,7 @@ export function PrView() {
   if (error || !detail) {
     return (
       <Centered>
-        <div style={{ color: "var(--risk)" }}>{(error as Error)?.message ?? "PR not found"}</div>
+        <div style={{ color: "var(--risk)" }}>{(error as Error)?.message ?? <UiText>PR not found</UiText>}</div>
       </Centered>
     );
   }
@@ -1697,7 +1719,7 @@ export function PrView() {
             }}
           >
             {t === "overview" ? <IconOverview width={12} height={12} /> : t === "units" ? <IconUnit width={12} height={12} /> : <IconFiles width={12} height={12} />}
-            {t === "overview" ? "Overview" : t === "units" ? "Guide" : "Files"}
+            <UiText>{t === "overview" ? "Overview" : t === "units" ? "Guide" : "Files"}</UiText>
           </button>
         ))}
         <span className="flex-1" />
@@ -1764,7 +1786,7 @@ export function PrView() {
         {/* The way in to every key, in sight: a list reachable only by a key
             nobody knows about would never be found. */}
         <span className="float-right tabular-nums" data-testid={allUnitsViewed ? "all-units-viewed" : "overall-progress"}>
-          {allUnitsViewed ? "every unit read" : `${overall.viewed}/${overall.total} viewed`}
+          <UiText>{allUnitsViewed ? "every unit read" : `${overall.viewed}/${overall.total} viewed`}</UiText>
         </span>
         <button
           type="button"
@@ -1772,8 +1794,8 @@ export function PrView() {
           data-testid="shortcuts-button"
           onClick={() => setShowShortcuts(true)}
         >
-          keyboard shortcuts
-          <kbd>?</kbd>
+          <UiText>keyboard shortcuts</UiText>
+          <kbd><UiText>?</UiText></kbd>
         </button>
       </div>
     </>
@@ -2163,8 +2185,7 @@ export function PrView() {
                   className="flex-none text-2xs"
                   style={{ color: "var(--fg-faint)", fontFamily: "var(--font-ui)" }}
                 >
-                  {detail.state.files[selectedPath].viewedHunks}/
-                  {detail.state.files[selectedPath].totalHunks} hunks viewed
+                  <UiText>{`${detail.state.files[selectedPath].viewedHunks}/${detail.state.files[selectedPath].totalHunks} hunks viewed`}</UiText>
                 </span>
               ) : null}
               <div className="ml-auto flex flex-none items-center gap-2">
@@ -2185,7 +2206,7 @@ export function PrView() {
                   }
                 >
                   <IconComment width={13} height={13} />
-                  comment
+                  <UiText>comment</UiText>
                 </button>
                 {selectedFile ? generatedMenuFor(selectedFile) : null}
               </div>
@@ -2480,6 +2501,7 @@ export function PrView() {
               [["m", "c", "r"], "comments, chat, review"],
               [["b"], "sidebar"],
               [["/"], "search"],
+              [["⌘F"], "find in the diff; again, or over a panel: the browser's find"],
                 [["?"], "this list"],
               [["⌘", "click"], "go to definition"],
             ]}
@@ -2537,7 +2559,7 @@ function UnplacedHeader({
     >
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="min-w-0 flex-1 basis-64 text-[13px] font-semibold leading-tight">
-          Not in any unit
+          <UiText>Not in any unit</UiText>
         </h2>
         <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
           <Progress viewed={viewed} total={total} />
@@ -2549,7 +2571,7 @@ function UnplacedHeader({
               disabled={analyzing}
               onClick={onAnalyze}
             >
-              {analyzing ? "starting…" : "Analyze"}
+              <UiText>{analyzing ? "starting…" : "Analyze"}</UiText>
             </button>
           ) : null}
           <button
@@ -2558,12 +2580,12 @@ function UnplacedHeader({
             disabled={markingViewed || viewed === total}
             onClick={onMarkViewed}
           >
-            mark all viewed
+            <UiText>mark all viewed</UiText>
           </button>
         </div>
       </div>
       <p className="mt-1 max-w-4xl text-xs leading-5" style={{ color: "var(--fg-muted)" }}>
-        {UNPLACED_TITLE}.
+        <UiText>{`${UNPLACED_TITLE}.`}</UiText>
       </p>
       {analyzeError ? (
         <p className="mt-1 text-2xs" style={{ color: "var(--risk)" }}>
@@ -2594,7 +2616,7 @@ function ShortcutGroup({ title, rows }: { title: string; rows: [string[], string
   return (
     <div>
       <div className="mb-1 text-2xs font-medium" style={{ color: "var(--fg-muted)" }}>
-        {title}
+        <UiText>{title}</UiText>
       </div>
       <dl className="grid grid-cols-[max-content_max-content] items-baseline gap-x-2.5 gap-y-1">
         {rows.map(([keys, what]) => (
@@ -2602,13 +2624,13 @@ function ShortcutGroup({ title, rows }: { title: string; rows: [string[], string
             <dt className="flex items-center gap-0.5 whitespace-nowrap">
               {keys.map((k, i) => (
                 <Fragment key={k}>
-                  {i > 0 ? <span style={{ color: "var(--fg-faint)" }}>/</span> : null}
-                  <kbd>{k}</kbd>
+                  {i > 0 ? <span style={{ color: "var(--fg-faint)" }}><UiText>/</UiText></span> : null}
+                  <kbd><UiText>{k}</UiText></kbd>
                 </Fragment>
               ))}
             </dt>
             <dd className="text-2xs" style={{ color: "var(--fg-muted)" }}>
-              {what}
+              <UiText>{what}</UiText>
             </dd>
           </Fragment>
         ))}
@@ -2650,7 +2672,7 @@ function ActionFailed({
           onRetry();
         }}
       >
-        Try again
+        <UiText>Try again</UiText>
       </button>
     </Notice>
   );

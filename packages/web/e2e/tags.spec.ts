@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { ui } from "./helpers";
 
 /**
  * Tags and stacks on the home page: a block groups its rows under a tag
@@ -59,7 +60,7 @@ test("tags group rows, stacks hang under their base, and edits persist", async (
   // Tag the base with "whole stack" on: both rows move to the new group, still a tree.
   await base.hover();
   await base.getByTestId(`tag-${baseKey}`).click();
-  await expect(page.getByText(/Whole stack \(3 PRs\)/)).toBeVisible();
+  await expect(ui(page, /Whole stack \(3 PRs\)/)).toBeVisible();
   await page.getByTestId("tag-input").fill("ledger");
   await page.getByTestId("tag-input").press("Enter");
   await expect(page.getByTestId("tag-input")).toHaveCount(0);

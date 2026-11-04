@@ -5,6 +5,7 @@ import { useReviewerCandidates, useReviewRequests } from "../api/hooks";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { FloatingPanel } from "./FloatingPanel";
 import { IconCheck, IconClock, IconClose, IconRefresh, IconWarning } from "./icons";
+import { UiText } from "./UiText";
 
 /** How many avatars the cluster shows before folding the rest into "+N". */
 const MAX_SHOWN = 4;
@@ -72,7 +73,7 @@ export function ReviewersMark({
         data-testid="no-reviewers"
       >
         <IconWarning width={10} height={10} />
-        no reviewers
+        <UiText>no reviewers</UiText>
       </span>
     );
   }
@@ -158,7 +159,7 @@ export function ReviewersButton({
       >
         {reviewers === undefined ? (
           <span className="text-2xs" style={{ color: "var(--fg-muted)" }}>
-            reviewers
+            <UiText>reviewers</UiText>
           </span>
         ) : (
           <ReviewersMark reviewers={reviewers} ring={ring} />
@@ -210,7 +211,7 @@ export function ReviewersPanel({
                 {r.login}
               </span>
               <span className="flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
-                {STATE_LABEL[r.state]}
+                <UiText>{STATE_LABEL[r.state]}</UiText>
               </span>
               {r.state === "requested" ? (
                 <button
@@ -295,7 +296,7 @@ export function ReviewersPanel({
                   ) : null}
                   {c.suggested ? (
                     <span className="ml-auto flex-none text-2xs" style={{ color: "var(--fg-faint)" }}>
-                      suggested
+                      <UiText>suggested</UiText>
                     </span>
                   ) : null}
                 </button>
@@ -303,7 +304,7 @@ export function ReviewersPanel({
             ))}
             {!candidates.data?.length ? (
               <li className="px-1.5 py-1 text-2xs" style={{ color: "var(--fg-faint)" }}>
-                {!candidates.isFetched ? "Loading…" : query ? "Nobody here matches" : "Type a name or a team"}
+                <UiText>{!candidates.isFetched ? "Loading…" : query ? "Nobody here matches" : "Type a name or a team"}</UiText>
               </li>
             ) : null}
           </ul>
