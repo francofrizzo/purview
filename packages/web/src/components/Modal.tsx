@@ -175,7 +175,7 @@ export function Modal({
           className="flex flex-none items-baseline gap-3 border-b px-4 py-3"
           style={{ borderColor: "var(--border)", background: "var(--bg-raised)" }}
         >
-          <h1 className="flex flex-none items-center gap-2 whitespace-nowrap text-sm font-semibold tracking-tight">
+          <h1 className="flex flex-none items-baseline gap-2 whitespace-nowrap [&>*]:self-center text-sm font-semibold tracking-tight">
             {icon}
             {title}
           </h1>

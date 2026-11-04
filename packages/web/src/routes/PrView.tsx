@@ -1687,7 +1687,7 @@ export function PrView() {
         {overview ? null : (
           <button
             type="button"
-            className="flex-none px-2 pb-2"
+            className="-mb-px box-content flex h-4 flex-none items-center border-b-2 border-transparent px-2 pb-1.5 pt-1"
             style={{ color: "var(--fg-faint)" }}
             data-tip={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}
             aria-label={sidebarMode === "drawer" ? "Close sidebar" : "Collapse sidebar"}

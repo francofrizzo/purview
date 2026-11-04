@@ -64,7 +64,7 @@ export function Notice({
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
     >
-      <span className="mt-[2px] flex-none" style={{ color }}>
+      <span className="flex h-5 flex-none items-center" style={{ color }}>
         {tone === "neutral" ? <IconCheck width={12} height={12} /> : <IconWarning width={12} height={12} />}
       </span>
       <div className="min-w-0 flex-1 leading-5">
