@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { FileEntry, HeartSegment, Hunk, PrDetail, ReviewUnit } from "../api/types";
 import { isGeneratedUnit } from "../api/types";
 import { orderUnitHunks, shownFindings, skippedIds } from "../lib/diffModel";
@@ -180,7 +180,13 @@ export function UnitBrief({
   };
   const open = settings.unitDetail && available[settings.unitDetail] ? settings.unitDetail : null;
   const toggle = (d: UnitDetail) => update({ unitDetail: open === d ? null : d });
-  const [historyOpen, setHistoryOpen] = useState(false);
+  // Highlighting a revision (here, or from a hunk's "changed since viewed")
+  // opens the list that says which ones are on and takes them off.
+  const highlighting = (changelog?.activeRevisions.length ?? 0) > 0;
+  const [historyOpen, setHistoryOpen] = useState(highlighting);
+  useEffect(() => {
+    if (highlighting) setHistoryOpen(true);
+  }, [highlighting]);
 
   return (
     <div className="flex flex-col gap-3 pb-3 pl-[34px] pr-4 text-xs leading-5" data-testid="unit-brief">

@@ -8,6 +8,8 @@ test("changed since viewed (rN) marks on the code what changed after rN, in Unit
   await chip.click();
   await expect(chip).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator('[data-changed="true"]').first()).toBeVisible();
+  // The unit's revisions open, so the reader sees which are on.
+  await expect(page.getByTestId("unit-brief").getByTestId("unit-changelog")).toBeVisible();
   await chip.click();
   await expect(chip).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator('[data-changed="true"]')).toHaveCount(0);
