@@ -154,6 +154,18 @@ export interface Concept {
   isNew?: boolean;
 }
 
+/** What behaves differently once the PR merges (core's BehaviorChangeSchema). */
+export interface BehaviorChange {
+  /** the behavior, named as its users would */
+  what: string;
+  /** how it behaved; "—" when the behavior is new */
+  before: string;
+  /** how it behaves; "—" when the PR removes it */
+  after: string;
+  /** the unit whose code makes the change */
+  unit?: string;
+}
+
 export interface HunkEntry {
   id: string;
   /** inline markdown */
@@ -161,6 +173,15 @@ export interface HunkEntry {
   skip?: true;
   heart?: HeartSegment[];
   risks?: RiskMark[];
+}
+
+/** A small Mermaid diagram of a unit's logic (core's UnitDiagramSchema; the `unitDiagrams` experiment). */
+export interface UnitDiagram {
+  kind: "sequence" | "state" | "flow" | "er";
+  /** a short caption */
+  title?: string;
+  /** untrusted Mermaid source: lib/unitDiagram.ts checks it before rendering */
+  mermaid: string;
 }
 
 export interface ReviewUnit {
@@ -193,6 +214,8 @@ export interface ReviewUnit {
    * re-analysis starts it fresh.
    */
   changelog?: UnitChangelogEntry[];
+  /** one diagram of the unit's logic, when the analysis drew one */
+  diagram?: UnitDiagram;
   /**
    * Set only on a "husk": a unit every hunk of which left the PR in this
    * revision. Husks never appear in `PrState.units` — the client adapter
@@ -418,6 +441,8 @@ export interface PrState {
   /** The analysis's words for the PR's terms, and its notes on files (see core's shape). */
   concepts?: Concept[];
   fileNotes?: FileNotes;
+  /** what behaves differently once the PR merges, before and after */
+  behaviorChanges?: BehaviorChange[];
   /** the mock's spelling of the revision in force; the server sends `currentRevision` */
   revision: number;
   /** the revision in force, as the server names it */
@@ -757,6 +782,8 @@ export interface GlobalConfig {
   extraAuthors?: string[];
   /** ask origin once a day for a newer release and show it on the home page */
   updateCheck?: boolean;
+  /** features being tried, all off by default (lib/experiments.ts). Absent on a server that predates them. */
+  experiments?: Partial<Record<"behaviorChanges" | "changeMap" | "unitDiagrams" | "blastRadius" | "revisionStrip", boolean>>;
   /** what this layer resolves to on its own — the end of the chain */
   effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }
@@ -771,6 +798,8 @@ export interface GlobalConfigPatch {
   aiReviewers?: string[];
   extraAuthors?: string[];
   updateCheck?: boolean;
+  /** the experiments to change; the ones left out keep their value */
+  experiments?: GlobalConfig["experiments"];
 }
 
 /**
@@ -1544,3 +1573,81 @@ export interface SkillManifest {
 export interface PickedUp { at: string; by: string }
 
 export interface Editor { id: string; name: string; available: boolean; command: string }
+
+/* ------------------------------------- experiments: change map, blast radius */
+
+/** Why a change-map or blast-radius answer is missing (no checkout, no head content…). */
+export interface ChangeGraphUnavailable {
+  available: false;
+  reason: string;
+}
+
+/** A changed function (server: change-graph/graph.ts). */
+export interface ChangeMapNode {
+  id: string;
+  name: string;
+  /** the class or receiver type a method belongs to */
+  qualifier?: string;
+  path: string;
+  /** first line at the head (at the base for a removed function) */
+  line: number;
+  status: "added" | "changed" | "removed";
+  /** lines the diff added or removed inside it */
+  lines: number;
+  unit?: string;
+  /** an added function whose name the diff removed from this other file */
+  movedFrom?: string;
+}
+
+export interface ChangeMapEdge {
+  from: string;
+  to: string;
+  calls: number;
+}
+
+export type ChangeMap =
+  | ChangeGraphUnavailable
+  | {
+      available: true;
+      sha: string;
+      nodes: ChangeMapNode[];
+      edges: ChangeMapEdge[];
+      /** changed functions found; `total - nodes.length` were left out */
+      total: number;
+      unsupportedFiles: number;
+      unreadFiles: number;
+    };
+
+export interface BlastCallSite {
+  path: string;
+  line: number;
+  text: string;
+  enclosing?: string;
+  /** the line on GitHub at the head commit */
+  url: string;
+}
+
+export interface BlastFunction {
+  id: string;
+  name: string;
+  qualifier?: string;
+  path: string;
+  line: number;
+  unit?: string;
+  total: number;
+  sites: BlastCallSite[];
+  /** other changed methods of the same name, whose callers cannot be told apart */
+  sameName?: string[];
+}
+
+export type BlastRadius =
+  | ChangeGraphUnavailable
+  | {
+      available: true;
+      sha: string;
+      functions: BlastFunction[];
+      skipped: { name: string; reason: "too short" | "too common" }[];
+      uncalled: number;
+      notSearched: number;
+      tests: number;
+    };

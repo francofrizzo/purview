@@ -356,6 +356,7 @@ export function renderUnits(
         (skip.length ? `, ${skip.length} skippable` : "") +
         (labelled ? `, ${labelled} labelled` : "") +
         (findings ? `, ${findings} finding${findings === 1 ? "" : "s"}` : "") +
+        (u.diagram ? `, ${u.diagram.kind} diagram` : "") +
         (heart.length ? `, heart: ${heartIds.join(" ")}` : "") +
         (skip.length ? `, skip: ${skip.map((h) => short(h.id)).join(" ")}` : "") +
         (husk ? `; husk: every hunk left the PR in r${u.removedAtRevision}` : "") +

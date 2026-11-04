@@ -34,7 +34,8 @@ import { cliEnvironment, getHarness } from "./agent/registry.js";
 import { actionGerund, actionLabel } from "./agent/types.js";
 import type { AgentAction, AgentRun, HarnessManifest, ReviewerCommand } from "./agent/types.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
-import { readConfig } from "./config.js";
+import { experimentOn, readConfig } from "./config.js";
+import { withExperiments } from "./experiment-docs.js";
 import { effectiveAnalysisAgent, type AgentChoice } from "./repo-config.js";
 import { languageRule, rubricSection } from "./rubric.js";
 import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
@@ -407,7 +408,7 @@ export function languageNote(
   return [
     "LANGUAGE:",
     "Write everything new or rewritten (titles, summaries, attentionWhy, hunk labels and heart whys, changelog entries,",
-    "findings, the concepts and the file notes, the revision summary) in the language this PR's analysis is already written in" +
+    "findings, the concepts, the file notes and the behavior changes, the revision summary) in the language this PR's analysis is already written in" +
       `${quoted ? ` (it reads like: "${quoted}")` : ""}, so the guide never mixes two.`,
     "Code identifiers, paths and quoted code stay as they are; JSON keys and enum values (kind, attention, risk flags…) stay exactly as the schema spells them.",
   ].join("\n");
@@ -432,9 +433,11 @@ export function headlessDoc(md: string): string {
   );
 }
 
-function readSkillFile(skills: string, name: string): string {
+/** `on`: which experiments' guidance the file keeps (experiment-docs.ts); omitted, none. */
+function readSkillFile(skills: string, name: string, on: (id: string) => boolean = () => false): string {
   try {
-    return headlessDoc(fs.readFileSync(path.join(skills, name), "utf8"));
+    // Experiments first: headlessDoc drops every comment, their markers too.
+    return headlessDoc(withExperiments(fs.readFileSync(path.join(skills, name), "utf8"), on));
   } catch {
     return `(${name} is missing from the skill directory)\n`;
   }
@@ -470,7 +473,8 @@ function hardRules(tools: HarnessManifest["toolNames"]): string {
  * run-specific goes in the user prompt (`analysisPrompt`), after it.
  */
 export function analysisSystemPrompt(
-  opts: { incremental: boolean },
+  /** `experiments`: which flagged guidance the skill files keep (experiment-docs.ts); omitted, none */
+  opts: { incremental: boolean; experiments?: Partial<Record<string, boolean>> },
   skills = skillDir(),
   // The skill prompt is for harnesses with a shell; Legacy is the one.
   tools: HarnessManifest["toolNames"] = getHarness("claude-code").manifest.toolNames,
@@ -483,7 +487,7 @@ export function analysisSystemPrompt(
     "",
     hardRules(tools),
     "",
-    ...files.flatMap((name) => [`===== ${name} =====`, "", readSkillFile(skills, name).trimEnd(), ""]),
+    ...files.flatMap((name) => [`===== ${name} =====`, "", readSkillFile(skills, name, (id) => opts.experiments?.[id] === true).trimEnd(), ""]),
     "===== END OF SKILL FILES =====",
   ].join("\n");
 }
@@ -583,6 +587,14 @@ export function analysisPrompt(
           state.fileNotes || state.concepts
             ? "The PR has a shape (concepts, file notes; WRITING.md, 'The shape of the change'). Only if this revision changes something one of them shows (a new concept, a new file or a folder taking a new role) or makes what one says untrue, redraw that view with `set-shape` after `set-units`; otherwise leave it."
             : "",
+          experimentOn("behaviorChanges", root)
+            ? state.behaviorChanges
+              ? "The PR has behavior changes (WRITING.md, 'Behavior changes'). If this revision changes a behavior a row shows or makes a row untrue, redraw them with `set-shape` after `set-units`; otherwise leave them."
+              : "This PR has no `behaviorChanges` yet: if it changes what the system does, write them with `set-shape` (WRITING.md, 'Behavior changes')."
+            : "",
+          experimentOn("unitDiagrams", root)
+            ? "A patched unit may carry a `diagram` (WRITING.md, 'Unit diagrams'): send one in its patch when this revision makes it a sequence, state machine or data model prose struggles with, redraw one this revision makes wrong, and `\"diagram\": null` drops one that no longer earns its place."
+            : "",
         ].join(" ") +
         "\n\n" +
         changesBlock(cmd, keyStr)
@@ -590,6 +602,12 @@ export function analysisPrompt(
           "This PR has no analysis yet. Produce the full analysis and write it with",
           `\`${cmd} set-analysis ${keyStr} --file <analysis.json>\`.`,
           "Lead the reader in from broad to narrow (WRITING.md): a plain `summary` with no code, then the shape ('The shape of the change'): `concepts` as that section says, and `fileNotes` always: a shallow tree, one note per folder where its files share a role and per file only where one has its own.",
+          experimentOn("behaviorChanges", root)
+            ? "Write `behaviorChanges` when the PR changes what the system does (WRITING.md, 'Behavior changes')."
+            : "",
+          experimentOn("unitDiagrams", root)
+            ? "Give a unit a `diagram` only where its logic is a sequence across components, a state machine or data relationships prose struggles with (WRITING.md, 'Unit diagrams'): most units none, a few per PR at most."
+            : "",
           "Every hunk id the triage lists must be covered by a unit or listed in \"unassigned\".",
           "Generated files and lockfiles (triage's GENERATED line) are already in Purview's own",
           `\`${GENERATED_UNIT_ID}\` unit: leave their hunks out, don't read them, and don't use that unit id.`,
@@ -1096,7 +1114,7 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
   const incremental = !slot.fresh && analysisUnits(state).length > 0;
   const instructions = harness.manifest.reviewTools
     ? reviewSystemPrompt(key, root, { task: "analysis", incremental, committed })
-    : analysisSystemPrompt({ incremental }, skillDir(), harness.manifest.toolNames);
+    : analysisSystemPrompt({ incremental, experiments: readConfig(root).experiments }, skillDir(), harness.manifest.toolNames);
 
   const metrics = emptyMetrics();
   // Recorded before the spawn so a run that dies early still says what it was.

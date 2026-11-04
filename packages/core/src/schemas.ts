@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { UnitDiagramSchema } from "./diagram.js";
 
 /* ---------------------------------------------------------------- taxonomy */
 
@@ -365,6 +366,12 @@ export const ReviewUnitBaseSchema = z.object({
    */
   changelog: z.array(UnitChangelogEntrySchema).optional(),
   /**
+   * Optional, an experiment (`unitDiagrams`): one small Mermaid diagram of
+   * the unit's logic where prose struggles (see diagram.ts). A unit patch
+   * replaces it whole, and `null` there drops it.
+   */
+  diagram: UnitDiagramSchema.optional(),
+  /**
    * Set by the reducer, never by analysis: the revision in which every hunk
    * of this unit left the PR. Such a unit is a "husk" — kept for exactly one
    * revision so the reader can see a decision was dropped, then deleted on
@@ -411,12 +418,15 @@ const changelogEntryField = z.string().min(1).max(CHANGELOG_TEXT_MAX).optional()
  * label, skip and heart. `set-unit`/`set-units` resolve short ids
  * and write the list the unit ends up with; the reducer applies all three.
  */
-export const ReviewUnitPatchSchema = ReviewUnitBaseSchema.partial()
-  .extend({
-    changelogEntry: changelogEntryField,
-    addHunks: HunkListSchema.optional(),
-    removeHunkIds: z.array(z.string().min(1)).optional(),
-  })
+/** The patch's fields before its hunk-list rules (for a tool schema that leaves one out). */
+export const ReviewUnitPatchObject = ReviewUnitBaseSchema.partial().extend({
+  changelogEntry: changelogEntryField,
+  /** replaces the unit's diagram; `null` drops it */
+  diagram: UnitDiagramSchema.nullable().optional(),
+  addHunks: HunkListSchema.optional(),
+  removeHunkIds: z.array(z.string().min(1)).optional(),
+});
+export const ReviewUnitPatchSchema = ReviewUnitPatchObject
   .superRefine((p, ctx) => {
     refineHunkList(false)(p.hunks, ctx);
     refineHunkList(true)(p.addHunks, ctx);
@@ -474,6 +484,28 @@ export type Concept = z.infer<typeof ConceptSchema>;
 export const MAX_CONCEPTS = 8;
 export const ConceptsSchema = z.array(ConceptSchema).min(1).max(MAX_CONCEPTS);
 
+/* ------------------------------------------------------ behavior changes */
+
+/**
+ * One thing the running system does differently once the PR merges, as the
+ * people who use it would notice: what it is, how it behaved, how it
+ * behaves. Purview lists them under the summary, a row per change, so a
+ * reviewer can check each against the code and catch one nobody asked for.
+ */
+export const BehaviorChangeSchema = z.object({
+  /** the behavior, named as its users would: "Debt month of a late batch" */
+  what: z.string().min(1).max(60),
+  /** how it behaved before the PR; "—" when the behavior is new */
+  before: z.string().min(1).max(160),
+  /** how it behaves after; "—" when the PR removes it */
+  after: z.string().min(1).max(160),
+  /** the unit whose code makes the change, when one does */
+  unit: z.string().optional(),
+});
+export type BehaviorChange = z.infer<typeof BehaviorChangeSchema>;
+export const MAX_BEHAVIOR_CHANGES = 10;
+export const BehaviorChangesSchema = z.array(BehaviorChangeSchema).min(1).max(MAX_BEHAVIOR_CHANGES);
+
 /**
  * Payload of `set-shape`: each key present replaces that view; `null` drops
  * it. `summary` rewrites the PR summary a later revision made untrue.
@@ -482,6 +514,7 @@ export const ShapeSchema = z.object({
   summary: z.string().min(1).optional(),
   fileNotes: FileNotesSchema.nullable().optional(),
   concepts: ConceptsSchema.nullable().optional(),
+  behaviorChanges: BehaviorChangesSchema.nullable().optional(),
 });
 export type Shape = z.infer<typeof ShapeSchema>;
 
@@ -495,6 +528,8 @@ export const AnalysisSchema = z.object({
   fileNotes: FileNotesSchema.optional(),
   /** optional: the terms a reader new to this code needs (see ConceptSchema) */
   concepts: ConceptsSchema.optional(),
+  /** optional: what behaves differently once it merges (see BehaviorChangeSchema) */
+  behaviorChanges: BehaviorChangesSchema.optional(),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -527,6 +562,7 @@ export const AnalysisExportSchema = z.object({
   /** additive: exports made before the shape existed have none */
   fileNotes: FileNotesSchema.optional(),
   concepts: ConceptsSchema.optional(),
+  behaviorChanges: BehaviorChangesSchema.optional(),
 });
 export type AnalysisExport = z.infer<typeof AnalysisExportSchema>;
 
@@ -1228,6 +1264,7 @@ export const AnalysisSetEventSchema = z.object({
   /** the shape of the change; each absent when the analysis drew none */
   fileNotes: FileNotesSchema.optional(),
   concepts: ConceptsSchema.optional(),
+  behaviorChanges: BehaviorChangesSchema.optional(),
 });
 
 /**
@@ -1243,6 +1280,7 @@ export const ShapeSetEventSchema = z.object({
   summary: z.string().min(1).optional(),
   fileNotes: FileNotesSchema.nullable().optional(),
   concepts: ConceptsSchema.nullable().optional(),
+  behaviorChanges: BehaviorChangesSchema.nullable().optional(),
 });
 
 export const UnitUpdatedEventSchema = z.object({
@@ -1491,6 +1529,8 @@ export const StateSchema = z.object({
   fileNotes: FileNotesSchema.optional(),
   /** the terms the PR leans on, explained wherever the guide uses them */
   concepts: ConceptsSchema.optional(),
+  /** what behaves differently once the PR merges */
+  behaviorChanges: BehaviorChangesSchema.optional(),
   /** the revision the shape was last drawn for */
   shapeRevision: z.number().int().optional(),
   units: z.array(ReviewUnitSchema).default([]),

@@ -10,6 +10,7 @@ import type {
   ReviewerCandidate,
   AnalysisImportReport,
   Attachment,
+  BehaviorChange,
   Concept,
   FileNotes,
   AnalysisJob,
@@ -221,6 +222,7 @@ export interface WireState {
   unassignedHunkIds: string[];
   fileNotes?: FileNotes;
   concepts?: Concept[];
+  behaviorChanges?: BehaviorChange[];
 }
 
 export interface WirePrDetail {
@@ -337,6 +339,7 @@ export function adaptState(s: WireState): PrState {
     removedUnits: (s.units ?? []).filter(isRemovedUnit),
     ...(s.fileNotes ? { fileNotes: s.fileNotes } : {}),
     ...(s.concepts ? { concepts: s.concepts } : {}),
+    ...(s.behaviorChanges ? { behaviorChanges: s.behaviorChanges } : {}),
     hunks: s.hunks ?? {},
     files,
     baseOnly: s.revisions?.find((r) => r.revision === s.currentRevision)?.baseOnly ?? false,
@@ -695,6 +698,18 @@ export const api = {
   async fileLines(key: string, path: string): Promise<{ sha: string; lines: string[] | null }> {
     if (MOCK) return mockApi.fileLines(key, path);
     return request(`/prs/${encodeKey(key)}/file?path=${encodeURIComponent(path)}`);
+  },
+
+  /** Experiment: the changed functions and the calls between them. 404 while it is off. */
+  async changeMap(key: string): Promise<import("./types").ChangeMap> {
+    if (MOCK) return mockApi.changeMap(key);
+    return request(`/prs/${encodeKey(key)}/change-map`);
+  },
+
+  /** Experiment: code outside the diff that calls a changed function. 404 while it is off. */
+  async blastRadius(key: string): Promise<import("./types").BlastRadius> {
+    if (MOCK) return mockApi.blastRadius(key);
+    return request(`/prs/${encodeKey(key)}/blast-radius`);
   },
 
   /** The lines revision `n` changed, keyed by the current revision's hunk ids. */

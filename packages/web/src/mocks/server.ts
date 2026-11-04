@@ -1,4 +1,6 @@
 import { hydrateFiles } from "../lib/hunkBodies";
+import { mockBlastRadius, mockChangeMap } from "./changeGraph";
+import type { BlastRadius, ChangeMap } from "../api/types";
 import { stackOf } from "../lib/prList";
 import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
@@ -229,6 +231,7 @@ const globalConfig: {
   aiReviewers: string[];
   extraAuthors: string[];
   updateCheck: boolean;
+  experiments: NonNullable<GlobalConfig["experiments"]>;
 } = {
   analysisAgent: null,
   chatAgent: null,
@@ -240,6 +243,7 @@ const globalConfig: {
   // The fixture's bot-opened PR (billing #502) lands under "Your PRs" through this.
   extraAuthors: ["acme-agent[bot]"],
   updateCheck: true,
+  experiments: {},
 };
 
 /**
@@ -1017,6 +1021,7 @@ export const mockApi = {
     if (patch.editor !== undefined) globalConfig.editor = patch.editor;
     if (patch.editorConfirmed !== undefined) globalConfig.editorConfirmed = patch.editorConfirmed;
     if (patch.extraAuthors !== undefined) globalConfig.extraAuthors = patch.extraAuthors;
+    if (patch.experiments !== undefined) globalConfig.experiments = { ...globalConfig.experiments, ...patch.experiments };
     if (patch.updateCheck !== undefined) globalConfig.updateCheck = patch.updateCheck;
     for (const rkey of Object.keys(repoConfigs)) relayer(rkey);
     return globalPayload();
@@ -1429,6 +1434,19 @@ export const mockApi = {
    * The fixture carries hunks, not files: fill a plausible file around them
    * (numbered placeholder lines) so expanding context has something to show.
    */
+  /** Experiments: only the fixture's billing PR has a map; any other PR has no checkout. */
+  async changeMap(key: string): Promise<ChangeMap> {
+    await delay(200);
+    if (key !== mockDetail.key) return { available: false, reason: "No local clone has the PR's head commit." };
+    return structuredClone(mockChangeMap);
+  },
+
+  async blastRadius(key: string): Promise<BlastRadius> {
+    await delay(300);
+    if (key !== mockDetail.key) return { available: false, reason: "No local clone has the PR's head commit." };
+    return structuredClone(mockBlastRadius);
+  },
+
   async fileLines(key: string, path: string): Promise<{ sha: string; lines: string[] | null }> {
     await delay(150);
     const file = details[key]?.files.files.find((f) => f.path === path);

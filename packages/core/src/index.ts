@@ -1,4 +1,5 @@
 export * from "./schemas.js";
+export * from "./diagram.js";
 export * from "./hunk-id.js";
 export * from "./parse-diff.js";
 export * from "./paths.js";

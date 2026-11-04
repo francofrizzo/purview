@@ -741,12 +741,17 @@ export function fileNoteProblems(notes: FileNotes, paths: ReadonlySet<string>, g
 }
 
 function assertShape(
-  shape: { fileNotes?: FileNotes | null },
-  ctx: { paths: ReadonlySet<string>; generated: ReadonlySet<string> },
+  shape: { fileNotes?: FileNotes | null; behaviorChanges?: { unit?: string }[] | null },
+  ctx: { paths: ReadonlySet<string>; generated: ReadonlySet<string>; unitIds: ReadonlySet<string> },
 ): void {
   const problems = shape.fileNotes
     ? fileNoteProblems(shape.fileNotes, ctx.paths, ctx.generated).map((p) => `fileNotes: ${p}`)
     : [];
+  (shape.behaviorChanges ?? []).forEach((c, i) => {
+    if (c.unit !== undefined && !ctx.unitIds.has(c.unit)) {
+      problems.push(`behaviorChanges[${i}]: unit "${c.unit}" is not a unit of this analysis`);
+    }
+  });
   if (problems.length > 0) {
     throw new Error(`The shape of the change does not hold together:\n  ${problems.join("\n  ")}`);
   }
@@ -769,7 +774,7 @@ function revisionPaths(key: PrKey, state: State, root: string) {
 export function setShape(key: PrKey, input: unknown, root = stateRoot()): State {
   const shape = ShapeSchema.parse(input);
   const state = loadState(key, root);
-  assertShape(shape, revisionPaths(key, state, root));
+  assertShape(shape, { ...revisionPaths(key, state, root), unitIds: new Set(state.units.map((u) => u.id)) });
   return appendEvent(key, { type: "shape-set", revision: state.currentRevision, ...shape }, root);
 }
 
@@ -843,7 +848,7 @@ export function setAnalysis(
           dupes.map((d) => `${d.hunkId}: ${d.owners.join(", ")}`).join("\n  "),
       );
     }
-    assertShape(analysis, revisionPaths(key, state, root));
+    assertShape(analysis, { ...revisionPaths(key, state, root), unitIds: new Set(analysis.units.map((u) => u.id)) });
   }
   // Imports are a fact, not a judgment: Purview skips them where the run
   // did not (a third of them, in practice).
@@ -862,6 +867,7 @@ export function setAnalysis(
       origin: opts.origin,
       fileNotes: analysis.fileNotes,
       concepts: analysis.concepts,
+      behaviorChanges: analysis.behaviorChanges,
     },
     root,
   );

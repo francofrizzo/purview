@@ -1,6 +1,12 @@
 import { Fragment, useMemo, useRef, useState } from "react";
 import type { Concept, PrDetail, RemoteConversationComment, RemoteReview, RemoteThread, ReviewUnit } from "../api/types";
 import { changeMix } from "../lib/changeMix";
+import { useExperiment } from "../lib/experiments";
+import { BehaviorTable } from "./experiments/BehaviorTable";
+import { BlastRadius } from "./experiments/BlastRadius";
+import { ChangeMap } from "./experiments/ChangeMap";
+import { RevisionStrip } from "./experiments/RevisionStrip";
+import { revisionStrip } from "../lib/revisionStrip";
 import { unitProgress } from "../lib/diffModel";
 import { workUnits } from "../lib/generated";
 import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/reviews";
@@ -15,6 +21,7 @@ import { AuthorAvatar } from "./AuthorAvatar";
 import { InlineMarkdown, Markdown } from "./Markdown";
 import { ReviewTimeline, ReviewerVerdicts } from "./Reviews";
 import { IconArrowRight } from "./icons";
+import { SectionHead } from "./SectionHead";
 
 /**
  * The PR before its parts, from broad to narrow: why it exists (the
@@ -65,12 +72,28 @@ export function Overview({
   const mix = useMemo(() => changeMix(detail.files.files), [detail.files.files]);
   const { settings, update } = useSettings();
   const descriptionFirst = settings.descriptionFirst && Boolean(description);
+  const behaviorOn = useExperiment("behaviorChanges");
+  const behaviorChanges = behaviorOn ? state.behaviorChanges : undefined;
+  const stripOn = useExperiment("revisionStrip");
+  // null below two revisions: nothing to lay side by side
+  const strip = useMemo(
+    () => (stripOn ? revisionStrip(state, ordered, numbers, { reviewedAt: detail.sinceReview?.revision }) : null),
+    [stripOn, state, ordered, numbers, detail.sinceReview?.revision],
+  );
+  const mapOn = useExperiment("changeMap");
+  const blastOn = useExperiment("blastRadius");
+  // The map and blast radius are asked again when the head or the units move.
+  const graphVersion = `${state.revisions?.find((r) => r.revision === state.currentRevision)?.headSha ?? state.currentRevision}|${ordered.map((u) => `${u.id}:${u.hunks.length}`).join(",")}`;
   const sections = [
     descriptionFirst ? { id: "description", label: "Description" } : null,
     summary ? { id: "summary", label: "Summary" } : null,
+    behaviorChanges?.length ? { id: "behavior", label: "Behavior" } : null,
     state.concepts?.length ? { id: "concepts", label: "Concepts" } : null,
     state.fileNotes ? { id: "files", label: "Where it lands" } : null,
+    mapOn ? { id: "map", label: "Map" } : null,
+    blastOn ? { id: "blast", label: "Blast radius" } : null,
     mix.rows.length ? { id: "size", label: "Size" } : null,
+    strip ? { id: "revisions", label: "Revisions" } : null,
     ordered.length ? { id: "reading", label: "Must read" } : null,
     description && !descriptionFirst ? { id: "description", label: "Description" } : null,
     hasReviews ? { id: "reviews", label: "Reviews" } : null,
@@ -174,6 +197,15 @@ export function Overview({
             </section>
           ) : null}
 
+          {behaviorChanges?.length ? (
+            <BehaviorTable
+              changes={behaviorChanges}
+              numbers={numbers}
+              units={new Set(ordered.map((u) => u.id))}
+              onOpenUnit={onOpenUnit}
+            />
+          ) : null}
+
           {state.concepts?.length ? <ConceptList concepts={state.concepts} /> : null}
 
           {/* Where the change lands, in the code: the shallow tree the analysis
@@ -187,6 +219,28 @@ export function Overview({
             </section>
           ) : null}
 
+          {mapOn ? (
+            <ChangeMap
+              prKey={detail.key}
+              version={graphVersion}
+              numbers={numbers}
+              units={new Set(ordered.map((u) => u.id))}
+              onOpenUnit={onOpenUnit}
+              onOpenFile={onOpenFile}
+            />
+          ) : null}
+
+          {blastOn ? (
+            <BlastRadius
+              prKey={detail.key}
+              version={graphVersion}
+              numbers={numbers}
+              units={new Set(ordered.map((u) => u.id))}
+              onOpenUnit={onOpenUnit}
+              onOpenFile={onOpenFile}
+            />
+          ) : null}
+
           {/* Shown even when it is all one kind: "all implementation" is an answer too. */}
           {mix.rows.length ? (
             <section data-testid="overview-size" data-section="size">
@@ -194,6 +248,8 @@ export function Overview({
               <ChangeBreakdown mix={mix} onOpenFile={onOpenFile} />
             </section>
           ) : null}
+
+          {strip ? <RevisionStrip model={strip} onOpenUnit={onOpenUnit} /> : null}
 
           {/* Where to spend attention: only what needs a close read, each with
               the analysis's why. The rest is counted; the guide lists it all. */}
@@ -236,7 +292,9 @@ export function Overview({
           ) : null}
     </>
   );
-  const purviewShows = Boolean(summary || state.concepts?.length || state.fileNotes || mix.rows.length || ordered.length);
+  const purviewShows = Boolean(
+    summary || behaviorChanges?.length || state.concepts?.length || state.fileNotes || mapOn || blastOn || mix.rows.length || strip || ordered.length,
+  );
   const reviewsSection = (
     <>
           {hasReviews ? (
@@ -352,16 +410,6 @@ function restLine(close: number, skim: number, skip: number): string {
   return close ? `Then ${parts.join(" and ")}.` : `Nothing needs a close read: ${parts.join(", ")}.`;
 }
 
-function SectionHead({ title, children }: { title: React.ReactNode; children?: React.ReactNode }) {
-  return (
-    <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-      <h2 className="text-base font-semibold" style={{ color: "var(--fg)" }}>
-        {title}
-      </h2>
-      {children ? <div className="ml-auto flex items-center gap-2">{children}</div> : null}
-    </div>
-  );
-}
 
 function ReadingRow({
   unit,

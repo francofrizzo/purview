@@ -13,6 +13,7 @@ import { FindingList } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
 import { OverflowMenu } from "./OverflowMenu";
 import { UnitChangelog } from "./UnitChangelog";
+import { UnitDiagram } from "./experiments/UnitDiagram";
 import { IconCheck, IconClose, IconEyeOff, IconFile, IconHeart, IconHistory, IconQuote, IconWarning } from "./icons";
 
 const ATTENTION_WORD: Record<ReviewUnit["attention"], string> = {
@@ -195,6 +196,8 @@ export function UnitBrief({
             <InlineMarkdown text={unit.attentionWhy} />
           </p>
         ) : null}
+        {/* After the prose it illustrates, before the counts. */}
+        <UnitDiagram diagram={unit.diagram} />
       </div>
 
       <div className="flex flex-col gap-1.5">

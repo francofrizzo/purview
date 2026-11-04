@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import * as core from "@reviewer/core";
 import { readThreadsCache } from "../../github-threads.js";
+import { experimentOn } from "../../config.js";
 import { agentChangeRefusal, readComments } from "../../comments.js";
 import type { AgentAction, AgentRunRequest } from "../types.js";
 
@@ -160,7 +161,8 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
       core.isImportOnlyHunk(path, h) ? "imp" : renames.has(h.id) ? `ren ${renames.get(h.id)}` : undefined;
     return { pr: { key, title: meta.title, url: meta.url }, revision, task: request.task.kind, analysisMode: context.analysisMode,
       checkoutAvailable: !!checkout,
-      ...(fromScratch ? {} : { summary: state.summary, concepts: state.concepts, fileNotes: state.fileNotes }),
+      ...(fromScratch ? {} : { summary: state.summary, concepts: state.concepts, fileNotes: state.fileNotes,
+        ...(experimentOn("behaviorChanges", root) ? { behaviorChanges: state.behaviorChanges } : {}) }),
       generatedFiles: files.filter(f => f.generated).map(f => f.path),
       corrections: state.corrections,
       files: page("review_context", args, files.filter(f => !f.generated).flatMap(f => f.hunks.map(h => ({
@@ -234,7 +236,19 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   add("list_comments", "Comments with author, audience, status and anchors. Never publishes.", z.object(pageArgs).strict(), args => page("list_comments", args, readComments(key, root)));
 
   if (request.task.kind === "analysis") {
-    if (context.analysisMode === "initial") add("set_analysis", "Save a complete analysis; core validates coverage, hunk ownership and findings. Evidence max 200 chars; finding text max 300.", core.AnalysisSchema,
+    // An experiment that is off leaves no trace in what the run is shown:
+    // its fields are dropped from the tool schemas (core still validates the
+    // whole payload on save, so the stripped schema checks nothing less).
+    const behaviorOn = experimentOn("behaviorChanges", root);
+    const diagramsOn = experimentOn("unitDiagrams", root);
+    const tools = {
+      analysis: core.AnalysisSchema.omit(behaviorOn ? {} : { behaviorChanges: true }).extend(
+        diagramsOn ? {} : { units: z.array(core.ReviewUnitBaseSchema.omit({ diagram: true })) },
+      ),
+      patch: diagramsOn ? core.ReviewUnitPatchSchema : core.ReviewUnitPatchObject.omit({ diagram: true }),
+      shape: behaviorOn ? core.ShapeSchema : core.ShapeSchema.omit({ behaviorChanges: true }),
+    };
+    if (context.analysisMode === "initial") add("set_analysis", "Save a complete analysis; core validates coverage, hunk ownership and findings. Evidence max 200 chars; finding text max 300.", tools.analysis,
       args => {
         const result = validated(() => core.setAnalysis(key, args, {}, root));
         const warnings = renameWarnings(result.state.units);
@@ -242,16 +256,17 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
       }, false);
     else if (context.analysisMode === "incremental") {
       add("patch_units", "Atomically apply unit patches. Existing units accept partial fields; new units need full shape. changelogEntry records this revision's change. Evidence max 200 chars; finding text max 300.", z.object({
-        units: z.array(z.object({ id: z.string().min(1), patch: core.ReviewUnitPatchSchema }).strict()).min(1).max(100),
+        units: z.array(z.object({ id: z.string().min(1), patch: tools.patch }).strict()).min(1).max(100),
       }).strict(), args => {
         const result = validated(() => core.setUnits(key, args.units.map(({ id, patch }) => ({ unitId: id, payload: patch })), root));
         const touched = new Set(result.unitIds);
         const warnings = [...result.warnings, ...renameWarnings(result.state.units.filter(u => touched.has(u.id)))];
         return { unitIds: result.unitIds, warnings, remaining: core.remainingWorkFor(key, root) };
       }, false);
-      add("set_shape", "Replace the PR summary, the concepts or the file notes without re-sending the analysis. A key present replaces that view whole; null drops concepts or file notes; an absent key leaves it.", core.ShapeSchema, args => {
+      add("set_shape", "Replace the PR summary, the concepts or the file notes without re-sending the analysis. A key present replaces that view whole; null drops concepts or file notes; an absent key leaves it.", tools.shape, args => {
         const state = validated(() => core.setShape(key, args, root));
-        return { concepts: state.concepts?.length ?? 0, fileNotes: Object.keys(state.fileNotes ?? {}).length };
+        return { concepts: state.concepts?.length ?? 0, fileNotes: Object.keys(state.fileNotes ?? {}).length,
+          ...(behaviorOn ? { behaviorChanges: state.behaviorChanges?.length ?? 0 } : {}) };
       }, false);
       add("set_revision_summary", "Save a nonempty summary of what this revision changed.", z.object({ text: z.string().min(1) }).strict(), args => validated(() => core.setRevisionSummary(key, args.text, revision, root)), false);
     } else throw new Error("Analysis mode required");

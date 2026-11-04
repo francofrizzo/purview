@@ -836,6 +836,29 @@ const units: ReviewUnit[] = [
       },
       { id: "a1b2c3d4e5f60005", label: "ledger table and its writes" },
     ],
+    // The unitDiagrams experiment: how a retried charge comes back once.
+    diagram: {
+      kind: "sequence",
+      title: "A retried charge",
+      mermaid: [
+        "sequenceDiagram",
+        "  participant Client",
+        "  participant API as Pay route",
+        "  participant Ledger as Charge ledger",
+        "  participant Gateway",
+        "  Client->>API: charge(order)",
+        "  API->>Ledger: look up charge key",
+        "  alt first attempt",
+        "    Ledger-->>API: no row",
+        "    API->>Gateway: charge card",
+        "    Gateway-->>API: result",
+        "    API->>Ledger: record result",
+        "  else retry with the same key",
+        "    Ledger-->>API: first result",
+        "  end",
+        "  API-->>Client: result",
+      ].join("\n"),
+    },
     order: 1,
   },
   {
@@ -868,6 +891,7 @@ const units: ReviewUnit[] = [
       { id: "a1b2c3d4e5f60002", risks: [{ flag: "concurrency", why: "Concurrent retries can submit the same charge twice." }], heart: [{ why: "the backoff loop: only `isTransient()` errors retry, and the delay doubles with jitter" }] },
       { id: "a1b2c3d4e5f60008" },
     ],
+    changelog: [{ revision: 2, text: "the backoff delay gained jitter, so parallel retries spread out" }],
     order: 2,
   },
   {
@@ -883,6 +907,8 @@ const units: ReviewUnit[] = [
     // The analysis's reading order: the route that threads the id, then the
     // container that builds the ledger; docs and the reconcile stub follow.
     fileOrder: ["src/api/routes/orders.ts", "src/container.ts"],
+    // Read back in r1; r2 changed it (the revision strip's "since r1").
+    changelog: [{ revision: 2, text: "the pay route threads the order's currency through to charge()" }],
     order: 3,
   },
   {
@@ -909,6 +935,21 @@ const units: ReviewUnit[] = [
       { id: "a1b2c3d4e5f60011", skip: true, label: "renamed call site" },
       { id: "a1b2c3d4e5f60012" },
     ],
+    diagram: {
+      kind: "state",
+      title: "A ledger row's verdict",
+      mermaid: [
+        "stateDiagram-v2",
+        "  [*] --> Unchecked",
+        "  Unchecked --> Match: gateway has it, same amount",
+        "  Unchecked --> AmountMismatch: amounts differ",
+        "  Unchecked --> MissingAtGateway: gateway has no charge",
+        "  AmountMismatch --> Alerted",
+        "  MissingAtGateway --> Alerted",
+        "  Match --> [*]",
+        "  Alerted --> [*]",
+      ].join("\n"),
+    },
     order: 4,
   },
   {
@@ -997,16 +1038,23 @@ const state: PrState = {
   removedUnits,
   fileNotes: mockFileNotes,
   concepts: mockConcepts,
+  behaviorChanges: [
+    { what: "Client retries a charge", before: "The card is charged again.", after: "The first charge's result comes back; the card is charged once.", unit: "idempotent-charge-path" },
+    { what: "Gateway times out", before: "The charge fails at once.", after: "Retried up to 3 times with backoff, under the same charge key.", unit: "transient-retry-backoff" },
+    { what: "Two orders, same amount", before: "Two charges.", after: "Two charges: the key includes the order id.", unit: "idempotent-charge-path" },
+    { what: "Nightly ledger reconciliation", before: "—", after: "Each night, ledger rows are matched against the gateway's settlements.", unit: "ledger-reconciliation" },
+    { what: "Ledger retention job", before: "Deletes ledger rows older than 30 days.", after: "—" },
+  ],
   hunks: {
     a1b2c3d4e5f60001: { viewed: true, viewedAtRevision: 2, changedSinceViewed: true, migration: "fuzzy", predecessorId: "a1b2c3d4e5f6ff01" },
     a1b2c3d4e5f60002: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false, migration: "identical" },
     a1b2c3d4e5f60003: { viewed: false, changedSinceViewed: false, migration: "identical" },
     a1b2c3d4e5f60004: { viewed: false, changedSinceViewed: false, migration: "new" },
     a1b2c3d4e5f60005: { viewed: false, changedSinceViewed: false, migration: "identical" },
-    a1b2c3d4e5f60006: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false },
+    a1b2c3d4e5f60006: { viewed: true, viewedAtRevision: 1, changedSinceViewed: false },
     a1b2c3d4e5f60007: { viewed: false, changedSinceViewed: false },
     a1b2c3d4e5f60008: { viewed: false, changedSinceViewed: false, migration: "new" },
-    a1b2c3d4e5f60009: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false },
+    a1b2c3d4e5f60009: { viewed: true, viewedAtRevision: 1, changedSinceViewed: false },
     a1b2c3d4e5f6000a: { viewed: false, changedSinceViewed: false, migration: "new" },
     a1b2c3d4e5f6000b: { viewed: false, changedSinceViewed: false, migration: "new" },
     a1b2c3d4e5f6000c: { viewed: false, changedSinceViewed: false, migration: "identical" },

@@ -3,6 +3,7 @@ import { GENERATED_UNIT_ID, buildGeneratedUnit, isGeneratedUnit } from "./genera
 import { hunkIdsOf, normalizeHunks, skipOf, toHunkEntry, upsertHunks } from "./units.js";
 import { upcastEvent } from "./upcast.js";
 import type {
+  BehaviorChange,
   Concept,
   FileNotes,
   ReviewUnit,
@@ -113,6 +114,8 @@ function applyUnitPatch(unit: ReviewUnit, patch: ReviewUnitPatch, revision: numb
   }
   if (addHunks) list = upsertHunks(list, entries(addHunks));
   const next = { ...unit, ...fields, hunks: list } as ReviewUnit;
+  // `diagram: null` in a patch drops the diagram.
+  if (fields.diagram === null) delete next.diagram;
   if (changelogEntry) next.changelog = upsertChangelog(next.changelog, revision, changelogEntry);
   return normalizeHunks(next);
 }
@@ -187,7 +190,7 @@ function fromAnalysis<T extends { origin?: unknown }>(unit: T): Omit<T, "origin"
  */
 function applyShape(
   state: State,
-  shape: { summary?: string; fileNotes?: FileNotes | null; concepts?: Concept[] | null },
+  shape: { summary?: string; fileNotes?: FileNotes | null; concepts?: Concept[] | null; behaviorChanges?: BehaviorChange[] | null },
   revision: number,
 ): void {
   if (shape.summary !== undefined) state.summary = shape.summary;
@@ -199,7 +202,11 @@ function applyShape(
     if (shape.concepts) state.concepts = shape.concepts;
     else delete state.concepts;
   }
-  if (state.fileNotes || state.concepts) state.shapeRevision = revision;
+  if (shape.behaviorChanges !== undefined) {
+    if (shape.behaviorChanges) state.behaviorChanges = shape.behaviorChanges;
+    else delete state.behaviorChanges;
+  }
+  if (state.fileNotes || state.concepts || state.behaviorChanges) state.shapeRevision = revision;
   else delete state.shapeRevision;
 }
 
@@ -512,6 +519,7 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
         {
           fileNotes: event.fileNotes ?? null,
           concepts: event.concepts ?? null,
+          behaviorChanges: event.behaviorChanges ?? null,
         },
         event.revision,
       );

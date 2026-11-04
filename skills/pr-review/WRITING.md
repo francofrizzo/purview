@@ -84,6 +84,42 @@ snapshot brings its ingestion ids, incremental its key" under a summary that say
 that). Say what these lines do that the summary leaves out: the condition, the order, the
 edge case.
 
+<!-- experiment:unitDiagrams -->
+### Unit diagrams
+
+A small Mermaid diagram on a unit, shown under its summary, for logic that prose struggles
+with: a sequence of calls across components (client, API, ledger, gateway), a state
+machine (a charge goes pending, settled, refunded), or the relationships between records
+a migration introduces. Most units get none; a PR gets a few at most. A unit that is a
+single function, a rename, wiring, tests or docs never needs one, and a diagram that says
+what the summary already says is noise.
+
+```json
+"diagram": {
+  "kind": "sequence",
+  "title": "Retrying a charge",
+  "mermaid": "sequenceDiagram\n  participant Client\n  participant API\n  participant Ledger\n  participant Gateway\n  Client->>API: charge(order)\n  API->>Ledger: look up charge key\n  alt first attempt\n    API->>Gateway: charge card\n    Gateway-->>API: result\n    API->>Ledger: store result\n  else retry\n    Ledger-->>API: first result\n  end\n  API-->>Client: result"
+}
+```
+
+- `kind` and the first line of `mermaid` agree: `sequence` is `sequenceDiagram`, `state`
+  is `stateDiagram-v2`, `flow` is `flowchart TD`, `er` is `erDiagram`. Purview refuses
+  anything else.
+- The diagram sits in the guide's narrow column: draw a flowchart top to bottom (`TD`),
+  never left to right, and keep a sequence diagram to four participants.
+- Name participants, states and entities in the reader's words, the concepts' terms where
+  there are some ("Ledger", "Pending charge"), not class or function names. Messages are a
+  few words; in the analysis's language.
+- Twelve nodes or participants at most; one diagram per unit. If it needs more, the unit
+  is two decisions or the diagram is the wrong tool.
+- `title`: a short caption, under 60 characters, saying what the diagram shows.
+- No styling, no configuration, no links: `%%{init}`, `style`, `linkStyle`, `classDef`,
+  `class`, `:::`, `click`, `link` and HTML tags are refused. Purview themes the diagram
+  itself.
+- On a refresh, a patch that sends `diagram` replaces it whole; `"diagram": null` drops it.
+  Redraw or drop a diagram the revision made wrong.
+<!-- /experiment:unitDiagrams -->
+
 ## The shape of the change
 
 Units cut the PR into decisions; the reader reads them one at a time and loses how the
@@ -95,6 +131,10 @@ write the data.
   read it with.
 - **`fileNotes`** (write it on every analysis): where the change lands, as a shallow tree
   of the folders and files that carry it.
+<!-- experiment:behaviorChanges -->
+- **`behaviorChanges`** (when the PR changes what the running system does): each
+  behavior, before and after.
+<!-- /experiment:behaviorChanges -->
 
 Each view costs the reader attention. Draw what this PR needs, not what the format allows.
 
@@ -127,6 +167,36 @@ would not know: the fewest that let them follow the summary and the units. Leave
   `isNew` off and let `means` say what the PR adds to it.
 - Not general programming terms (cache, migration, retry), and not something only one unit
   mentions: explain that in the unit.
+
+<!-- experiment:behaviorChanges -->
+### Behavior changes
+
+What the running system does differently once the PR merges, one row per behavior, each
+with how it behaved and how it behaves. Purview shows them as a table under the summary:
+the reviewer checks each row against the code, and notices the change nobody asked for.
+Leave `behaviorChanges` off for a PR that changes no behavior (a refactor, tests, docs,
+tooling); a refactor with one row saying "nothing changes" is noise.
+
+```json
+"behaviorChanges": [
+  { "what": "Retry after a timeout", "before": "Charges the card again.", "after": "Returns the first charge's result; the card is charged once.", "unit": "charge-once" },
+  { "what": "Two orders, same amount, same minute", "before": "Two charges.", "after": "Two charges: the key includes the order id.", "unit": "charge-key" },
+  { "what": "Charge ledger", "before": "—", "after": "Keeps each charge's outcome for 30 days.", "unit": "ledger-table" }
+]
+```
+
+- `what`: the behavior as the people who use or operate the system would name it, under
+  60 characters. A situation ("Retry after a timeout", "A batch arriving after the
+  25th"), not a function.
+- `before` and `after`: one plain sentence each, under 160 characters, no `code`. Concrete
+  where the rule turns on values: the date, the amount, the threshold. `—` for a behavior
+  that did not exist (before) or no longer does (after).
+- A row whose `before` and `after` read the same is worth writing when a reviewer would
+  fear it changed (the second row above): it says the edge case was thought about.
+- `unit`: the id of the unit whose code makes the change, so the row opens it. Leave it
+  out when the change spreads across several.
+- Two to six rows, ten at most. Order by what a user would notice first.
+<!-- /experiment:behaviorChanges -->
 
 ### File notes
 

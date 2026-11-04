@@ -7,7 +7,7 @@
  * is coloured by exactly the same theme as the diff next to it.
  */
 
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { parseInline, parseMarkdown, type MdBlock, type MdInline } from "../lib/markdown";
 import { cachedTokens, tokenizeLines, type Tok } from "../lib/highlight";
 import { diagramCaption, renderMermaid } from "../lib/mermaid";
@@ -481,7 +481,21 @@ function SuggestionBlock({ code }: { code: string }) {
 const MERMAID_RETRIES = 3;
 const MERMAID_RETRY_MS = 3000;
 
-function MermaidBlock({ code, open, caption }: { code: string; open: boolean; caption: string | null }) {
+export function MermaidBlock({
+  code,
+  open,
+  caption,
+  pending,
+  failed,
+}: {
+  code: string;
+  open: boolean;
+  caption: string | null;
+  /** shown while it renders; the raw source when omitted */
+  pending?: ReactNode;
+  /** shown when it cannot be drawn; the raw source when omitted */
+  failed?: ReactNode;
+}) {
   const { appearance } = useSettings();
   const dark = appearance.theme.mode === "dark";
   const fontFamily = appearance.uiFont;
@@ -522,6 +536,8 @@ function MermaidBlock({ code, open, caption }: { code: string; open: boolean; ca
     };
   }, [code, open, dark, fontFamily, colors, attempt]);
 
+  if (result.status === "pending" && pending !== undefined) return <>{pending}</>;
+  if ((result.status !== "ok" || !result.svg) && result.status !== "pending" && failed !== undefined) return <>{failed}</>;
   if (result.status !== "ok" || !result.svg) return <CodeBlock code={code} lang="mermaid" />;
   // mermaid runs under securityLevel "strict": no script/foreignObject
   // survives into this markup, so this is safe to inject as-is.

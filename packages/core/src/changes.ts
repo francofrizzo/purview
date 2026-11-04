@@ -356,6 +356,8 @@ export function renderChanges(input: RenderChangesInput): RenderedChanges {
     ];
     const lastLog = u.changelog?.[u.changelog.length - 1];
     if (lastLog) lines.push(`last changelog: r${lastLog.revision} · ${lastLog.text}`);
+    // A diagram drawn against the old code may now be wrong: redraw it or drop it (`"diagram": null`).
+    if (u.diagram) lines.push(`diagram: ${u.diagram.kind}${u.diagram.title ? ` · ${u.diagram.title}` : ""} (redraw or drop it if this revision changes what it shows)`);
     // What the unit holds *now*, so a unit that shrank (or grew) is obvious:
     // its title and summary must describe exactly these hunks. Grouped by
     // file with short ids (accepted by `show` and the patch commands), so an

@@ -179,7 +179,7 @@ import {
 } from "./repo-config.js";
 import { agentView, checkAgentSelection, resolveAgent, resolveChatAgent } from "./repo-config.js";
 import { DEFAULT_HARNESS, getHarness, listedHarnessIds, registeredHarnessIds } from "./agent/registry.js";
-import { AnalysisLanguageSchema, EditorSelectionSchema, generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
+import { AnalysisLanguageSchema, EditorSelectionSchema, EXPERIMENT_IDS, generateLanToken, readConfig, writeConfig, type ReviewerConfig } from "./config.js";
 import { cachedCommitted, loadCommittedConfig } from "./team-config.js";
 import {
   findImportCandidates,
@@ -195,6 +195,7 @@ import { ensurePrCheckout, localDiffSource, pruneCheckouts } from "./pr-checkout
 import { removeRepo, repoRemovalSummary } from "./repo-removal.js";
 import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
 import { fileLinesAtHead } from "./file-content.js";
+import { blastRadius, changeMap } from "./change-graph/index.js";
 import { agentSkillRoutes } from "./agent-skill.js";
 import { sinceLastReview } from "./since-review.js";
 
@@ -1321,6 +1322,26 @@ export function createApp(opts: AppOptions = {}): Hono {
     }
   });
 
+  /**
+   * Experiments: the changed functions and the calls between them (change
+   * map), and the code outside the diff that calls them (blast radius).
+   * Heuristic, no model; `{ available: false, reason }` when the code at the
+   * head cannot be read. 404 while the experiment is off.
+   */
+  app.get("/api/prs/:key/change-map", async (c) => {
+    const key = keyParam(c);
+    if (readConfig(root).experiments.changeMap !== true) throw new HttpError(404, "experiment_off", "The change map experiment is off");
+    readMeta(key, root);
+    return c.json(await changeMap(key, root));
+  });
+
+  app.get("/api/prs/:key/blast-radius", async (c) => {
+    const key = keyParam(c);
+    if (readConfig(root).experiments.blastRadius !== true) throw new HttpError(404, "experiment_off", "The blast radius experiment is off");
+    readMeta(key, root);
+    return c.json(await blastRadius(key, root));
+  });
+
   app.get("/api/prs/:key/hunks/:id/diff-of-diffs", (c) => {
     const key = keyParam(c);
     const hunkId = c.req.param("id");
@@ -2343,6 +2364,7 @@ export function createApp(opts: AppOptions = {}): Hono {
       editor: config.editor,
       editorConfirmed: config.editorConfirmed,
       updateCheck: config.updateCheck,
+      experiments: config.experiments,
       /** what this layer resolves to on its own — the end of the inheritance chain */
       effective: {
         analysisAgent: agentView(resolveAgent("analysis", [["global", config.analysisAgent]], true)),
@@ -2374,7 +2396,8 @@ export function createApp(opts: AppOptions = {}): Hono {
       editor: EditorSelectionSchema.nullable().optional(),
       editorConfirmed: z.boolean().optional(),
       updateCheck: z.boolean().optional(),
-      /** what new comments are for: the GitHub review, or notes for an agent */
+      /** experiments to turn on or off; the ones left out keep their value */
+      experiments: z.object(Object.fromEntries(EXPERIMENT_IDS.map((id) => [id, z.boolean().optional()]))).strict().optional(),
     })
     .strict();
 
@@ -2485,6 +2508,11 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (body.editorConfirmed !== undefined) patch.editorConfirmed = body.editorConfirmed;
     if (body.extraAuthors !== undefined) patch.extraAuthors = dedupeLogins(body.extraAuthors);
     if (body.updateCheck !== undefined) patch.updateCheck = body.updateCheck;
+    if (body.experiments !== undefined) {
+      const current = readConfig(root).experiments;
+      const changed = Object.fromEntries(Object.entries(body.experiments).filter(([, on]) => on !== undefined));
+      patch.experiments = { ...current, ...changed } as typeof current;
+    }
     if (Object.keys(patch).length > 0) writeConfig(patch, root);
     return c.json(globalConfigPayload());
   });

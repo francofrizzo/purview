@@ -49,6 +49,24 @@ export const AnalysisLanguageSchema = z
   .max(40)
   .regex(/^\p{L}[\p{L}\p{M} '’(),-]*$/u, "a language name: letters, spaces, ( ) , ' -");
 
+/**
+ * Experiments: features still being tried, each off until the reader turns
+ * it on in Settings. One flag gates both what the analysis is asked to write
+ * and what the app shows, so an experiment that is off costs nothing.
+ */
+export const EXPERIMENT_IDS = ["behaviorChanges", "changeMap", "unitDiagrams", "blastRadius", "revisionStrip"] as const;
+export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
+export const ExperimentsSchema = z
+  .object(Object.fromEntries(EXPERIMENT_IDS.map((id) => [id, z.boolean().default(false)])) as Record<ExperimentId, z.ZodDefault<z.ZodBoolean>>)
+  .default({})
+  .catch(() => Object.fromEntries(EXPERIMENT_IDS.map((id) => [id, false])) as Record<ExperimentId, boolean>);
+export type Experiments = Record<ExperimentId, boolean>;
+
+/** Whether an experiment is on in this state directory's config. */
+export function experimentOn(id: ExperimentId, root?: string): boolean {
+  return readConfig(root).experiments[id] === true;
+}
+
 export const ConfigSchema = z.object({
   /** Consent for the automatic Claude analysis run on init/refresh. */
   autoAnalyze: z.boolean().default(true),
@@ -86,6 +104,8 @@ export const ConfigSchema = z.object({
    * `PURVIEW_ANALYSIS_CONCURRENCY` overrides without editing the file.
    */
   analysisConcurrency: z.number().int().min(1).max(4).default(2),
+  /** features being tried, all off by default (see EXPERIMENT_IDS) */
+  experiments: ExperimentsSchema,
   /**
    * Give every analysis run and chat turn Purview's own detached worktree of
    * the PR's exact head commit, under `~/.purview/checkouts/` (see

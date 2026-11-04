@@ -48,6 +48,7 @@ import {
   type Settings as SettingsShape,
 } from "../lib/settings";
 import { parseLoginList } from "../lib/threads";
+import { EXPERIMENTS } from "../lib/experiments";
 import { MONOKAI_PRO_NOTE, THEMES, previewColors, shikiThemeFor } from "../lib/themes";
 
 /** App-wide appearance settings, floating over whatever route is underneath. */
@@ -77,6 +78,7 @@ const APP_SETTINGS_NAV: SettingsNavGroup[] = [
       { id: "network", title: "Network access" },
       { id: "coding-agents", title: "Coding agents" },
       { id: "editor", title: "Editor" },
+      { id: "experiments", title: "Experiments" },
       { id: "about", title: "About" },
     ],
   },
@@ -211,6 +213,7 @@ export function SettingsModal() {
       <NetworkSection />
       <CodingAgentsSection />
       <EditorSection />
+      <ExperimentsSection />
       <AboutSection />
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Stored under <span className="font-mono">reviewer.settings</span> in localStorage · active
@@ -778,6 +781,46 @@ function AgentsSection() {
               </span>
             </span>
           </label>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+/** Features being tried, each off until turned on here (lib/experiments.ts). */
+function ExperimentsSection() {
+  const config = useGlobalConfig();
+  const save = useSaveGlobalConfig();
+  return (
+    <Section id="experiments" title="Experiments" hint="Features still being tried. Each is off until you turn it on.">
+      {!config.data ? null : (
+        <div className="flex flex-col gap-3">
+          {EXPERIMENTS.map((x) => (
+            <label key={x.id} className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                data-testid={`experiment-${x.id}`}
+                checked={config.data.experiments?.[x.id] === true}
+                disabled={save.isPending}
+                onChange={(e) => save.mutate({ experiments: { [x.id]: e.target.checked } })}
+                style={{ accentColor: "var(--accent)" }}
+              />
+              <span className="flex flex-col gap-0.5">
+                <span className="text-xs" style={{ color: "var(--fg-muted)" }}>
+                  {x.title}
+                </span>
+                <span className="text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
+                  {x.hint}
+                </span>
+              </span>
+            </label>
+          ))}
+          {save.error ? (
+            <p className="text-2xs" style={{ color: "var(--risk)" }}>
+              {errorText(save.error)}
+            </p>
+          ) : null}
         </div>
       )}
     </Section>
