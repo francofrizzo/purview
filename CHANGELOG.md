@@ -8,6 +8,7 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **Review shortcuts.** In the Review panel, Ctrl+1, Ctrl+2 and Ctrl+3 pick Comment, Approve or Request changes, and Cmd+Enter in the summary submits.
+- **Archive from the diff.** A comment in the code has the archive icon too, next to edit and delete on hover.
 - **Fix:** a unit's revision notes use the panel's full width, and a long name in one no longer runs past the edge.
 
 ## 2026.11.4.4

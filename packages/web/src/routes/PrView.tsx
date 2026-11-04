@@ -1436,6 +1436,7 @@ export function PrView() {
       editComment.mutateAsync(input),
     onDelete: (c: { id: string }) => deleteComment.mutate(c.id),
     deleting: deleteComment.isPending ? (deleteComment.variables ?? null) : null,
+    onArchive: (c: { id: string }) => void archiveComments.mutateAsync([c.id]),
     onQuote: quote,
     exportCtx,
     onUndoEdit: (id: string) => undoCommentEdit.mutate(id),

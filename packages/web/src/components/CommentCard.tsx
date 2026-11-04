@@ -215,7 +215,8 @@ export function CommentCard({
         ) : null}
         {/* The actions belong to the card the pointer is on; at rest the
             card is only its words. */}
-        <span className="ml-auto flex flex-none items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/comment:opacity-100 [@media(hover:none)]:opacity-100">
+        {/* One size for every action's icon, whichever component draws it. */}
+        <span className="ml-auto flex flex-none items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover/comment:opacity-100 [@media(hover:none)]:opacity-100 [&_svg]:!h-3.5 [&_svg]:!w-3.5">
           {onQuote ? (
             <QuoteButton about="this comment" onClick={() => onQuote(commentRef(comment))} />
           ) : null}
@@ -285,7 +286,7 @@ export function CommentCard({
       </header>
       {notice}
       {forAgent && comment.pickedUp ? (
-        <div className="text-[11px]" style={{ color: "var(--fg-muted)" }} title={formatFullTimestamp(comment.pickedUp.at)}>
+        <div className="text-[11px]" style={{ color: "var(--fg-muted)" }} data-tip={formatFullTimestamp(comment.pickedUp.at)}>
           <UiText>Picked up by</UiText> {comment.pickedUp.by} · <UiText>{(() => {
             const age = formatCompactAge(Math.max(0, Date.now() - Date.parse(comment.pickedUp.at)));
             return age === "just now" ? age : `${age} ago`;
