@@ -1052,6 +1052,10 @@ const HOVER_ONLY =
   "opacity-0 transition-opacity duration-150 ease-in-out group-focus-within:opacity-100 group-hover:opacity-100 max-sm:hidden";
 
 /** The stack tree's lines: quieter than faint text. */
+/** The room tag and archive take after the number (two 20px buttons, their
+ *  6px margin), plus a gap; GitHub's side takes it as `pl-[52px]` the same way. */
+const ACTIONS_ROOM = "group-hover:pr-[52px] group-focus-within:pr-[52px]";
+
 const STACK_LINE_COLOR = "color-mix(in srgb, var(--fg-faint) 45%, transparent)";
 
 /**
@@ -1073,7 +1077,9 @@ function PrRow({ row }: { row: ArrangedRow }) {
   const meta = pr.meta;
   const ciPassing = pr.ci?.state === "success";
   const title = (
-    <div className={`flex min-w-0 items-baseline gap-2 ${compact ? "flex-auto" : ""}`}>
+    // While tag and archive show, what follows the number keeps clear of them:
+    // the title gives way when the line is full, nothing moves when it is not.
+    <div className={`flex min-w-0 items-baseline gap-2 ${compact ? `flex-auto ${ACTIONS_ROOM}` : ""}`}>
       <span className="truncate text-[13px] font-medium">
         {pr.title ?? meta?.title ?? pr.key}
       </span>
@@ -1085,7 +1091,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
         <RowActions pr={pr} />
       </span>
       {compact ? null : (
-        <span className={`${SIDE_LINE} ml-auto self-center pl-4 max-sm:hidden`}>
+        <span className={`${SIDE_LINE} ml-auto self-center pl-4 max-sm:hidden group-hover:pl-[52px] group-focus-within:pl-[52px]`}>
           <GithubSide pr={pr} />
         </span>
       )}
