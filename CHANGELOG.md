@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.4.4
 
 - **Zoom in diagrams.** In an enlarged diagram, pinch or Cmd+scroll to zoom, drag to move, and use −, +, 100% and fit in its header. The keys +, −, 1 and 0 do the same.
 - **Fix:** after a CI re-run, the checks no longer list the earlier failed or cancelled attempts beside the new ones, or call the PR failing.
