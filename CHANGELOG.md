@@ -8,24 +8,18 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **Search and add on the home.** Type in the field at the top of the home to filter PRs by title, number, author, repo or tag, or paste a PR URL and press Enter to add it. Press / to jump to it and Esc to clear it.
-- **Compact rows.** The lines icon at the top right of the home shows one line per PR, and stays on until you click it again.
-- **Foldable tag groups.** Click a tag's band on the home to fold its PRs away; it stays folded per repo and group.
-- **Home rows.** Each PR's GitHub state sits at the right of its title line, and tag and archive appear after its number on hover. Line counts, the hunk count and a passing CI take color only while you hover the row.
-- **Fix:** the archive button under a repo said "merged & closed" for any mix; it now names each, as in "archive 1 merged, 1 closed & 2 reviewed".
+- **Home list.** Each PR's GitHub state sits at the right of its title line, with tag and archive after its number on hover. The lines icon at the top right switches to one line per PR, and clicking a tag's band folds its PRs.
 
-- **Archived comments.** The archive icon on a comment sets it aside in a folded Archived section of the Comments panel, to restore or delete later. "archive picked up" under For agent archives every note an agent took.
-- **Copy mode menu.** The arrow beside "copy all for agent" picks copy or copy & archive, and the button remembers it. It replaces "copy & delete".
+- **Archived comments.** The archive icon on a comment sets it aside in a folded Archived section of the Comments panel, to restore or delete later. The arrow beside "copy all for agent" picks copy or copy & archive, replacing "copy & delete".
 - **Unit brief over the code.** With the sidebar folded (B), the card above the diff shows the unit's summary and findings.
 - **Diagrams in your theme.** Mermaid diagrams take the app theme's colors, with decisions and loops in the accent. Click anywhere on one to open it larger, titled by the sentence that introduced it.
 - **What changed since you viewed a hunk.** Click "changed since viewed (rN)" on a hunk to mark on the code what every revision after rN changed, in Units or Files. It replaces the separate before/after box.
-- **Line counts in Where it lands.** "±lines" in the section's header shows each file's and folder's added and removed lines. Off until you turn it on.
-- **Description position.** "show at the top" in the overview's Description, or Settings → Overview, puts it first.
+- **Overview options.** "±lines" in Where it lands shows each file's added and removed lines, and "show at the top" in the Description puts it first.
 - **Fix:** Refresh or Sync failing with "Failed to fetch" when Purview's server is down; the notice says the server did not answer and offers Try again.
 - **Fix:** submitting a review shows each step (posting comments, the verdict, the PR's status, updating Purview) in the Review panel and the top bar, and the comments no longer change under you until it is done.
 - **Fix:** a file and line link in the chat no longer switches you to Files while you read by Units.
 - **Fix:** the code font box in Settings → Typography no longer drops the spaces you type.
-- **Fix:** a revision highlight no longer hides under the heart and risk bars; the changed lines' bar shows beside them.
-- **Fix:** after a new revision shifts unchanged code, its heart marks, risk marks and warnings no longer sit on the wrong lines.
+- **Fix:** after a new revision shifts unchanged code, its heart marks, risk marks and warnings no longer sit on the wrong lines, nor hide the revision highlight.
 - **Fix:** the PR summary and untouched units no longer keep text a new revision made untrue.
 
 ## 2026.11.3.1
