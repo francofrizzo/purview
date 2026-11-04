@@ -456,9 +456,11 @@
   .diff-fold-row {
     --fold-tint: var(--bg-inset);
     --fold-edge: var(--fg-muted);
-    @apply flex w-full items-stretch font-mono;
+    /* The app's words about the code, in the app's face: it sits among the
+       code lines without reading as one. */
+    @apply flex w-full items-stretch font-sans;
     height: var(--code-line-height);
-    font-size: var(--code-font-size);
+    font-size: 12px;
     line-height: var(--code-line-height);
     white-space: nowrap;
     color: var(--fg);
@@ -485,7 +487,7 @@
   /* The trailing "go to": its own control at the band's right edge, muted
      like the header badge; a hover underlines it like a link. */
   .diff-fold-row-jump {
-    @apply flex flex-none items-center;
+    @apply flex flex-none items-center gap-1;
     padding: 0 0.75rem;
     color: var(--fg-muted);
     cursor: pointer;

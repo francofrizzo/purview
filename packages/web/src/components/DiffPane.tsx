@@ -2869,7 +2869,7 @@ export function DiffPane({
       return (
         <div
           data-testid="gap-elsewhere"
-          className="flex items-center gap-2 border-y px-3 py-0.5 text-2xs tabular-nums"
+          className="flex items-center gap-2 border-y px-3 py-0.5 font-sans text-2xs tabular-nums"
           style={{ borderColor: "var(--border)", background: "var(--bg-inset)", color: "var(--fg-faint)" }}
           data-tip={
             row.where === "hidden"
