@@ -1122,7 +1122,7 @@ function ArchivedSection({
               style={{ background: "var(--bg-inset)" }}
             >
               <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+                <span className="truncate font-mono text-2xs" style={{ color: "var(--fg-faint)" }} data-tip={commentAnchorLabel(c)}>
                   {isForAgent(c) ? "for agent · " : ""}
                   {commentAnchorLabel(c)}
                 </span>

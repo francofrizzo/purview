@@ -268,7 +268,11 @@ export function CopyBundleControls({
             void run(mode);
           }}
         >
-          {phase === "done" ? <IconCheck width={11} height={11} /> : null}
+          {phase === "done" ? (
+            <IconCheck width={11} height={11} />
+          ) : phase === "working" || phase === "confirm" ? null : (
+            <IconCopy width={11} height={11} />
+          )}
           {label}
         </button>
         {onArchiveCopied ? (
