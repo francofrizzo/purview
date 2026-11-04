@@ -1128,6 +1128,15 @@ export interface SubmitReviewResult {
   commentCount: number;
 }
 
+/** Where a submit is: posting the drafts (how many), submitting the verdict,
+ *  re-reading the PR's review status on GitHub, then reloading what Purview
+ *  shows (the last one is the app's own, after the server answered). */
+export type SubmitStep =
+  | { step: "post"; count: number }
+  | { step: "submit" }
+  | { step: "status" }
+  | { step: "reload" };
+
 export interface DiscardPendingResult {
   discarded: boolean;
   resetToDraft: number;

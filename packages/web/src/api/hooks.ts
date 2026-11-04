@@ -56,6 +56,7 @@ import type {
   SharedAnalysisProbe,
   Staleness,
   SubmitReviewResult,
+  SubmitStep,
   SyncResult,
   VersionInfo,
   SkillManifest,
@@ -1155,20 +1156,48 @@ export function useSaveReviewBody(key: string) {
   });
 }
 
+/**
+ * PRs with a submit in flight. While one runs, the server's "comments
+ * changed" events are not acted on: the push rewrites comments.json several
+ * times, and the cards would flip draft → pushed → submitted under the
+ * reader. The submit reloads everything once, at the end.
+ */
+const submitting = new Set<string>();
+
+/**
+ * Submit, then reload everything the review touched (the review, comments
+ * and GitHub threads, the PR and the list, the staleness check) before
+ * resolving: the mutation stays pending, and the panel's checklist on its
+ * last step, until the page has settled, so nothing moves after "sent".
+ */
 export function useSubmitReview(
   key: string,
-): UseMutationResult<SubmitReviewResult, Error, { event: ReviewEvent; body?: string }> {
+): UseMutationResult<SubmitReviewResult, Error, { event: ReviewEvent; body?: string; onStep?: (step: SubmitStep) => void }> {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { event: ReviewEvent; body?: string }) => api.submitReview(key, input),
-    onSuccess: () => {
+    mutationFn: async ({ onStep, ...input }) => {
+      submitting.add(key);
+      try {
+        const result = await api.submitReview(key, input, onStep);
+        onStep?.({ step: "reload" });
+        // The server re-read the decision and the review request: the list's
+        // "waiting on your review" and approval chips move with it.
+        await Promise.all([
+          qc.invalidateQueries({ queryKey: qk.review(key) }),
+          qc.invalidateQueries({ queryKey: qk.comments(key) }),
+          qc.invalidateQueries({ queryKey: qk.pr(key) }),
+          qc.invalidateQueries({ queryKey: qk.prs }),
+          qc.invalidateQueries({ queryKey: qk.staleness(key) }),
+        ]);
+        return result;
+      } finally {
+        submitting.delete(key);
+      }
+    },
+    // A failed submit may have pushed some drafts: show where things are.
+    onError: () => {
       void qc.invalidateQueries({ queryKey: qk.review(key) });
       void qc.invalidateQueries({ queryKey: qk.comments(key) });
-      void qc.invalidateQueries({ queryKey: qk.pr(key) });
-      // The server re-read the decision and the review request: the list's
-      // "waiting on your review" and approval chips move with it.
-      void qc.invalidateQueries({ queryKey: qk.prs });
-      void qc.invalidateQueries({ queryKey: qk.staleness(key) });
     },
   });
 }
@@ -1213,7 +1242,9 @@ export function useAnalysisEvents(key: string) {
         void qc.invalidateQueries({ queryKey: qk.pr(key) });
         void qc.invalidateQueries({ queryKey: qk.prs });
       }
-    }, () => { void qc.invalidateQueries({ queryKey: qk.comments(key) }); });
+    }, () => {
+      if (!submitting.has(key)) void qc.invalidateQueries({ queryKey: qk.comments(key) });
+    });
     return unsubscribe;
   }, [key, qc]);
 }

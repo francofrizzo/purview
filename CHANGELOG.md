@@ -13,6 +13,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **Diagrams in your theme.** Mermaid diagrams take the app theme's colors, with decisions and loops in the accent. Click anywhere on one to open it larger, titled by the sentence that introduced it.
 - **Line counts in Where it lands.** The overview's file tree shows each file's and folder's added and removed lines.
 - **Description position.** "show at the top" in the overview's Description, or Settings → Overview, puts it first.
+- **Fix:** submitting a review shows each step (posting comments, the verdict, the PR's status, updating Purview) in the Review panel and the top bar, and the comments no longer change under you until it is done.
 - **Fix:** a file and line link in the chat no longer switches you to Files while you read by Units.
 - **Fix:** the code font box in Settings → Typography no longer drops the spaces you type.
 - **Fix:** after a new revision shifts unchanged code, its heart marks, risk marks and warnings no longer sit on the wrong lines.

@@ -11,6 +11,7 @@ import type {
   ReviewUnit,
   ShareAnalysisResult,
   SubmitReviewResult,
+  SubmitStep,
   SyncResult, CommentAudience, ReactionContent } from "../api/types";
 import { isGeneratedUnit, isJobLive } from "../api/types";
 import {
@@ -374,6 +375,7 @@ export function PrView() {
   const [report, setReport] = useState<MigrationReport | null>(null);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [submitResult, setSubmitResult] = useState<SubmitReviewResult | null>(null);
+  const [submitStep, setSubmitStep] = useState<SubmitStep | null>(null);
   // "import analysis from file…" is two steps: a file is picked and parsed (armed, not
   // yet sent), then explicitly confirmed — it replaces the current analysis.
   const [pendingImport, setPendingImport] = useState<{ filename: string; envelope: unknown } | null>(
@@ -1797,6 +1799,7 @@ export function PrView() {
         }
         draftCount={unsubmittedDrafts.length}
         pendingReview={review.data?.pending.exists}
+        submittingReview={submitReview.isPending}
         refreshing={refresh.isPending}
         stale={stale}
         staleTooltip={stalenessTooltip(staleness.data)}
@@ -2343,6 +2346,7 @@ export function PrView() {
             loading={review.isLoading}
             error={review.error as Error | null}
             submitting={submitReview.isPending}
+            progress={submitStep}
             discarding={discardPending.isPending}
             result={submitResult}
             submitError={submitReview.error as Error | null}
@@ -2351,7 +2355,10 @@ export function PrView() {
             onSaveBody={(body) => saveReviewBody.mutateAsync(body)}
             saveBodyError={saveReviewBody.error}
             onSubmit={(event: ReviewEvent, body: string) =>
-              submitReview.mutate({ event, body }, { onSuccess: setSubmitResult })
+              {
+                setSubmitStep(null);
+                submitReview.mutate({ event, body, onStep: setSubmitStep }, { onSuccess: setSubmitResult });
+              }
             }
             onDiscardPending={() => discardPending.mutate()}
             onJumpToComment={(file) => jumpToFile(file)}

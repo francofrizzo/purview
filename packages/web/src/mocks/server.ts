@@ -66,6 +66,7 @@ import type {
   Staleness,
   StalenessReason,
   SubmitReviewResult,
+  SubmitStep,
   SyncResult,
   ChangelogEntry,
   VersionInfo,
@@ -1869,9 +1870,15 @@ export const mockApi = {
   async submitReview(
     _key: string,
     input: { event: ReviewEvent; body?: string },
+    onStep?: (step: SubmitStep) => void,
   ): Promise<SubmitReviewResult> {
-    await delay(500);
-    const included = drafts.filter((d) => d.status !== "submitted");
+    const included = drafts.filter((d) => d.status !== "submitted" && d.audience !== "agent");
+    onStep?.({ step: "post", count: included.filter((d) => d.status === "draft").length });
+    await delay(400);
+    onStep?.({ step: "submit" });
+    await delay(300);
+    onStep?.({ step: "status" });
+    await delay(200);
     for (const d of included) d.status = "submitted";
     for (const t of threads) for (const c of t.comments) if (c.reviewState === "PENDING") c.reviewState = "SUBMITTED";
     review.pending = false;

@@ -19,7 +19,7 @@ test("the summary says \"saved\" when a blur puts it on disk, and only after an 
   await expect(panel.getByTestId("saved-flash")).toHaveCount(0, { timeout: 5_000 });
 });
 
-test("submitting a review says so until GitHub answers", async ({ page }) => {
+test("submitting a review shows each step until the page has settled, then says what was sent", async ({ page }) => {
   await openPr(page);
   await page.getByTestId("topbar-finish-review").click();
   const panel = page.getByTestId("finish-review-panel");
@@ -27,9 +27,14 @@ test("submitting a review says so until GitHub answers", async ({ page }) => {
   // Must-read units are still unread in the fixture, so submit asks first.
   await panel.getByTestId("submit-review").click();
   await panel.getByRole("button", { name: /^yes, comment/ }).click();
-  // The confirm step stays up with a spinner while the mock takes its time…
-  await expect(panel.getByTestId("finish-review-submitting")).toBeVisible();
-  // …then the submitted notice replaces it.
+  // The checklist takes the decision's place, one step at a time…
+  const progress = panel.getByTestId("submit-progress");
+  await expect(progress).toBeVisible();
+  await expect(page.getByTestId("topbar-review-sending")).toBeVisible();
+  await expect(progress.locator('[data-step="post"]')).toHaveAttribute("data-state", "now");
+  await expect(progress.locator('[data-step="submit"]')).toHaveAttribute("data-state", "done");
+  // …and only when it is gone does the panel say what was sent.
   await expect(panel.getByText(/on GitHub/)).toBeVisible();
-  await expect(panel.getByTestId("finish-review-submitting")).toHaveCount(0);
+  await expect(progress).toHaveCount(0);
+  await expect(page.getByTestId("topbar-review-sending")).toHaveCount(0);
 });

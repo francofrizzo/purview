@@ -5,6 +5,7 @@ import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
 import { isGeneratedUnit, isRemovedUnit, TOOL_KINDS } from "./types";
 import type {
+  SubmitStep,
   AddCommentInput,
   Reviewer,
   ReviewerCandidate,
@@ -988,12 +989,39 @@ export const api = {
   async submitReview(
     key: string,
     input: { event: ReviewEvent; body?: string },
+    onStep?: (step: SubmitStep) => void,
   ): Promise<SubmitReviewResult> {
-    if (MOCK) return mockApi.submitReview(key, input);
-    return post<SubmitReviewResult>(`/prs/${encodeKey(key)}/review/submit`, {
-      ...input,
-      confirm: true,
+    if (MOCK) return mockApi.submitReview(key, input, onStep);
+    // Streamed: each step arrives as it starts, the result or the error last.
+    const res = await fetch(`/api/prs/${encodeKey(key)}/review/submit`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify({ ...input, confirm: true }),
     });
+    if (!res.ok || !res.body) {
+      const text = await res.text().catch(() => "");
+      let body: unknown = text;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        /* not JSON: the text is the message */
+      }
+      const code = typeof body === "object" && body && "error" in body ? String((body as { error: unknown }).error) : text;
+      throw new ApiError(code || `${res.status} ${res.statusText}`, res.status, body);
+    }
+    for await (const frame of readSseStream(res.body)) {
+      if (frame.event === "step") {
+        const step = frameJson<SubmitStep>(frame);
+        if (step) onStep?.(step);
+      } else if (frame.event === "result") {
+        const result = frameJson<SubmitReviewResult>(frame);
+        if (result) return result;
+      } else if (frame.event === "error") {
+        const e = frameJson<{ error: string; detail?: unknown; status: number }>(frame);
+        throw new ApiError(e?.error ?? "submit_failed", e?.status ?? 500, e);
+      }
+    }
+    throw new ApiError("The submit ended without a result; check the PR on GitHub", 502, null);
   },
 
   async discardPendingReview(key: string): Promise<DiscardPendingResult> {

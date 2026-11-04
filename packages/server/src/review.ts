@@ -133,6 +133,10 @@ export interface SubmitResult {
   draft: ReviewDraft;
 }
 
+/** Where a submit is, for the panel's checklist: posting the drafts (how
+ *  many), submitting the verdict, re-reading the PR's review status. */
+export type SubmitStep = { step: "post"; count: number } | { step: "submit" } | { step: "status" };
+
 /**
  * Finish the review.
  *
@@ -152,9 +156,14 @@ export async function submitReview(
   key: PrKey,
   input: { event: SubmitEvent; body?: string },
   root?: string,
+  onStep?: (step: SubmitStep) => void,
 ): Promise<SubmitResult> {
   const bodyText = input.body ?? readReviewDraft(key, root).body;
 
+  onStep?.({
+    step: "post",
+    count: readComments(key, root).filter((c) => c.status === "draft" && c.audience !== "agent").length,
+  });
   const push = await pushDraftComments(key, root);
   if (!push.ok) {
     throw new ReviewError(
@@ -201,6 +210,7 @@ export async function submitReview(
     }
   };
 
+  onStep?.({ step: "submit" });
   const { url } = await run(0);
 
   const ids = pushedIds.length
@@ -231,6 +241,7 @@ export async function submitReview(
   );
 
   log.info("github", `${shortKey(key)}  review submitted`);
+  onStep?.({ step: "status" });
   await refreshAfterReview(key, root);
 
   return { ok: true, event: input.event, url, commentCount: ids.length, push, draft };

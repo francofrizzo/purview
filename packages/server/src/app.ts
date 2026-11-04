@@ -124,6 +124,7 @@ import {
   reviewStatus,
   saveReviewBody,
   submitReview,
+  type SubmitStep,
 } from "./review.js";
 import {
   classifyGhReviewError,
@@ -2195,14 +2196,27 @@ export function createApp(opts: AppOptions = {}): Hono {
         "Submitting a review is public and irreversible; resend with { confirm: true }",
       );
     }
-    const result = await submitReview(
-      key,
-      { event: body.event as SubmitEvent, body: body.body },
-      root,
-    );
-    // Its cached answer predates the review's effect on the decision.
-    clearStalenessCache(key, root);
-    return c.json({ ...result, state: loadState(key, root) });
+    const input = { event: body.event as SubmitEvent, body: body.body };
+    const finish = async (onStep?: (step: SubmitStep) => void) => {
+      const result = await submitReview(key, input, root, onStep);
+      // Its cached answer predates the review's effect on the decision.
+      clearStalenessCache(key, root);
+      return { ...result, state: loadState(key, root) };
+    };
+    if (!(c.req.header("accept") ?? "").includes("text/event-stream")) return c.json(await finish());
+    // Streamed, the panel shows each step as it starts and the result or the
+    // error closes the stream. The submit runs to the end even if the reader
+    // leaves: it is already public halfway through.
+    return streamSSE(c, async (stream) => {
+      const write = (event: string, data: unknown) => stream.writeSSE({ event, data: JSON.stringify(data) }).catch(() => {});
+      try {
+        const result = await finish((step) => void write("step", step));
+        await write("result", result);
+      } catch (err) {
+        const e = classifyError(err);
+        await write("error", { error: e.message, detail: e.detail, status: e.status });
+      }
+    });
   });
 
   app.delete("/api/prs/:key/review/pending", async (c) => {

@@ -6,6 +6,7 @@ import type {
   ReviewEvent,
   ReviewStatus,
   SubmitReviewResult,
+  SubmitStep,
   RemoteThread,
 } from "../api/types";
 import { errorText } from "../api/errors";
@@ -53,6 +54,7 @@ export function FinishReviewPanel({
   loading,
   error,
   submitting,
+  progress = null,
   discarding,
   result,
   submitError,
@@ -87,6 +89,8 @@ export function FinishReviewPanel({
   loading: boolean;
   error?: Error | null;
   submitting: boolean;
+  /** the step a running submit is on, for the checklist */
+  progress?: SubmitStep | null;
   discarding: boolean;
   result?: SubmitReviewResult | null;
   submitError?: Error | null;
@@ -116,6 +120,12 @@ export function FinishReviewPanel({
   const [savedFlash, flashSaved] = useFlash();
   const [arming, setArming] = useState<ReviewEvent | null>(null);
   const [verdict, setVerdict] = useState<ReviewEvent>("COMMENT");
+  // The verdict on its way, named by the checklist while it runs.
+  const [sending, setSending] = useState<ReviewEvent>("COMMENT");
+  const send = (event: ReviewEvent) => {
+    setSending(event);
+    onSubmit(event, body);
+  };
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
 
   // Seed from the server draft once it arrives; never clobber in-flight typing.
@@ -150,8 +160,15 @@ export function FinishReviewPanel({
         <Notice tone="error">Could not load the review: {error.message}</Notice>
       ) : !review ? null : (
         <>
-          <div className="quiet-scroll min-h-0 flex-1 overflow-auto">
-            {result ? <SubmittedNotice result={result} /> : null}
+          {/* While a submit runs the panel holds still under the checklist:
+              nothing in it can be changed, and what the submit changes
+              shows once, when it is done. */}
+          <div
+            className="quiet-scroll min-h-0 flex-1 overflow-auto transition-opacity"
+            style={submitting ? { opacity: 0.45, pointerEvents: "none" } : undefined}
+            aria-busy={submitting}
+          >
+            {result && !submitting ? <SubmittedNotice result={result} /> : null}
             {submitError ? <Notice tone="error">{errorText(submitError)}</Notice> : null}
 
             <PendingBanner
@@ -239,7 +256,9 @@ export function FinishReviewPanel({
             className="flex-none border-t px-4 py-3"
             style={{ borderColor: "var(--border)", background: "var(--bg)" }}
           >
-            {arming ? (
+            {submitting ? (
+              <SubmitProgress event={sending} step={progress} />
+            ) : arming ? (
               <ConfirmStep
                 event={arming}
                 commentCount={review.included.length}
@@ -248,7 +267,7 @@ export function FinishReviewPanel({
                 onCancel={() => setArming(null)}
                 // The step stays up while the request runs, so "submitting…"
                 // has somewhere to show; it leaves once the result is in.
-                onConfirm={() => onSubmit(arming, body)}
+                onConfirm={() => send(arming)}
               />
             ) : (
               <div className="flex flex-col gap-2">
@@ -293,7 +312,7 @@ export function FinishReviewPanel({
                   style={verdictFill(verdict)}
                   data-testid="submit-review"
                   disabled={submitting}
-                  onClick={() => (unviewed > 0 ? setArming(verdict) : onSubmit(verdict, body))}
+                  onClick={() => (unviewed > 0 ? setArming(verdict) : send(verdict))}
                 >
                   {submitting
                     ? "submitting…"
@@ -360,6 +379,68 @@ function Readiness({ readiness }: { readiness: NonNullable<ReviewStatus["readine
           : ""}
       </p>
     </section>
+  );
+}
+
+const SENDING_AS: Record<ReviewEvent, string> = {
+  APPROVE: "Approving",
+  REQUEST_CHANGES: "Requesting changes",
+  COMMENT: "Submitting the review",
+};
+
+/**
+ * A running submit, step by step: what is done, what is under way, what is
+ * left. It replaces the decision until the page has settled; then the panel
+ * says what was sent.
+ */
+function SubmitProgress({ event, step }: { event: ReviewEvent; step: SubmitStep | null }) {
+  const order: SubmitStep["step"][] = ["post", "submit", "status", "reload"];
+  const at = step ? order.indexOf(step.step) : 0;
+  const posted = step?.step === "post" ? step.count : null;
+  const [count, setCount] = useState<number | null>(posted);
+  useEffect(() => {
+    if (posted !== null) setCount(posted);
+  }, [posted]);
+  const rows: { id: SubmitStep["step"]; label: string }[] = [
+    {
+      id: "post",
+      label:
+        count === null
+          ? "Posting your comments"
+          : count === 0
+            ? "No new comments to post"
+            : `Posting ${count} ${count === 1 ? "comment" : "comments"}`,
+    },
+    { id: "submit", label: `${SENDING_AS[event]} on GitHub` },
+    { id: "status", label: "Reading the PR's review status" },
+    { id: "reload", label: "Updating Purview" },
+  ];
+  return (
+    <div role="status" aria-live="polite" className="flex flex-col gap-1.5 py-0.5" data-testid="submit-progress">
+      {rows.map((r, i) => {
+        const state = i < at ? "done" : i === at ? "now" : "next";
+        return (
+          <div
+            key={r.id}
+            className="flex items-center gap-2 text-xs"
+            data-step={r.id}
+            data-state={state}
+            style={{ color: state === "next" ? "var(--fg-faint)" : state === "now" ? "var(--fg)" : "var(--fg-muted)" }}
+          >
+            <span className="flex w-3 flex-none justify-center">
+              {state === "done" ? (
+                <IconCheck width={11} height={11} style={{ color: "var(--ok)" }} />
+              ) : state === "now" ? (
+                <IconSpinner width={11} height={11} />
+              ) : (
+                <span className="h-1 w-1 rounded-full" style={{ background: "var(--fg-faint)" }} />
+              )}
+            </span>
+            <span className={state === "now" ? "font-medium" : undefined}>{r.label}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

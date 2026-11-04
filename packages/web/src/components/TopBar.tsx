@@ -38,6 +38,7 @@ import {
   IconUpload,
   IconDock,
   IconTag,
+  IconSpinner,
 } from "./icons";
 
 export function TopBar({
@@ -47,6 +48,7 @@ export function TopBar({
   dockBusy = false,
   onToggleDock,
   pendingReview,
+  submittingReview = false,
   refreshing,
   stale,
   staleTooltip,
@@ -99,6 +101,8 @@ export function TopBar({
   onToggleDock: () => void;
   /** true when a PENDING review exists on GitHub (undefined = not checked) */
   pendingReview?: boolean;
+  /** a review is on its way to GitHub: the button says so wherever the panel is */
+  submittingReview?: boolean;
   refreshing: boolean;
   /** upstream moved since the last fetch — marks the refresh button */
   stale?: boolean;
@@ -559,10 +563,12 @@ export function TopBar({
           data-testid="topbar-finish-review"
           onClick={onFinishReview}
         >
-          <IconCheck width={12} height={12} />
+          {submittingReview ? <IconSpinner width={12} height={12} /> : <IconCheck width={12} height={12} />}
           {/* One flex item, so the button's gap never lands between the words. */}
-          <span>
-            finish<span className="hidden sm:inline"> review</span>
+          <span data-testid={submittingReview ? "topbar-review-sending" : undefined}>
+            {submittingReview ? "sending" : "finish"}
+            <span className="hidden sm:inline"> review</span>
+            {submittingReview ? "…" : null}
           </span>
           {pendingReview ? (
             <span

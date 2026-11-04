@@ -420,6 +420,44 @@ describe("POST /api/prs/:key/review/submit", () => {
     },
   );
 
+  /** The streamed submit's frames, as [event, data] pairs. */
+  async function submitStreamed(body: unknown): Promise<[string, any][]> {
+    const res = await app.request(`/api/prs/${encodedKey}/review/submit`, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "text/event-stream" },
+      body: JSON.stringify(body),
+    });
+    expect(res.status).toBe(200);
+    return (await res.text())
+      .split("\n\n")
+      .filter((f) => f.trim())
+      .map((f) => {
+        const event = /^event: (.*)$/m.exec(f)?.[1] ?? "";
+        const data = /^data: (.*)$/m.exec(f)?.[1] ?? "null";
+        return [event, JSON.parse(data)];
+      });
+  }
+
+  it("streams each step as it starts, then the result", async () => {
+    await addDraft("nit");
+    await addDraft("another", 11);
+    const frames = await submitStreamed({ event: "APPROVE", confirm: true });
+    expect(frames.map(([e, d]) => (e === "step" ? d.step : e))).toEqual(["post", "submit", "status", "result"]);
+    expect(frames[0][1]).toEqual({ step: "post", count: 2 });
+    expect(frames[3][1]).toMatchObject({ ok: true, event: "APPROVE", commentCount: 2 });
+    expect(gh.reviews[0].state).toBe("APPROVED");
+  });
+
+  it("ends the stream with the error, named as the plain request names it", async () => {
+    await addDraft("first");
+    await sync();
+    await addDraft("stale anchor", 999);
+    const frames = await submitStreamed({ event: "COMMENT", confirm: true });
+    expect(frames.map(([e]) => e)).toEqual(["step", "error"]);
+    expect(frames[1][1]).toMatchObject({ error: "comment_outside_diff", status: 422 });
+    expect(gh.reviews[0].state).toBe("PENDING");
+  });
+
   it("clears the saved summary once the review is submitted", async () => {
     await app.request(`/api/prs/${encodedKey}/review`, {
       method: "POST",
