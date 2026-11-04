@@ -487,7 +487,7 @@
   /* The trailing "go to": its own control at the band's right edge, muted
      like the header badge; a hover underlines it like a link. */
   .diff-fold-row-jump {
-    @apply flex flex-none items-center gap-1;
+    @apply flex flex-none items-center;
     padding: 0 0.75rem;
     color: var(--fg-muted);
     cursor: pointer;

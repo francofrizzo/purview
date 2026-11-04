@@ -3243,9 +3243,11 @@ export function DiffPane({
                 jumpToMove(target);
               }}
             >
-              <UiText>go to</UiText>
-              <span className="font-mono">{targetLabel(target, baseName(target.path))}</span>
-              {row.kind === "in" ? "←" : "→"}
+              {/* One inline run, so its spaces are real ones: a flex item's whitespace collapses. */}
+              <span>
+                <UiText>go to</UiText> <span className="font-mono">{targetLabel(target, baseName(target.path))}</span>{" "}
+                {row.kind === "in" ? "←" : "→"}
+              </span>
             </button>
           ) : null}
         </div>
