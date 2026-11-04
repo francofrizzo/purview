@@ -3465,6 +3465,8 @@ export function DiffPane({
           ) : null}
           {st.changedSinceViewed ? (
             <ChangedBadge
+              viewedAt={st.viewedAtRevision}
+              testId={`changed-since-viewed-${row.hunkId}`}
               onClick={() =>
                 setExpandedDod((prev) => {
                   const next = new Set(prev);

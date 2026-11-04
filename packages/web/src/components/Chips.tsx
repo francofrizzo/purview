@@ -339,19 +339,36 @@ export function EffortChip({ effort }: { effort?: ReviewEffort | null }) {
   );
 }
 
-export function ChangedBadge({ tip, testId, onClick }: { tip?: string; testId?: string; onClick?: () => void }) {
-  const content = "changed since viewed";
+export function ChangedBadge({
+  tip,
+  testId,
+  onClick,
+  viewedAt,
+}: {
+  tip?: string;
+  testId?: string;
+  onClick?: () => void;
+  /** the revision you viewed it in, shown as (rN) */
+  viewedAt?: number;
+}) {
+  const content = (
+    <>
+      changed since viewed
+      {viewedAt !== undefined ? <span className="tabular-nums"> (r{viewedAt})</span> : null}
+    </>
+  );
+  const when = viewedAt !== undefined ? ` in r${viewedAt}` : "";
   const cls = "chip";
   const style = { color: "var(--warn)", background: "var(--warn-soft)" };
   if (!onClick) {
     return (
-      <span className={cls} style={style} data-testid={testId} data-tip={tip ?? "Changed since you viewed it"}>
+      <span className={cls} style={style} data-testid={testId} data-tip={tip ?? `Changed since you viewed it${when}`}>
         {content}
       </span>
     );
   }
   return (
-    <button type="button" className={cls} style={style} onClick={onClick} data-tip={tip ?? "Show what changed since you viewed it"}>
+    <button type="button" className={cls} style={style} onClick={onClick} data-testid={testId} data-tip={tip ?? `Show what changed since you viewed it${when}`}>
       {content}
     </button>
   );

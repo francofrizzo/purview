@@ -1,6 +1,12 @@
 import { useDiffOfDiffs } from "../api/hooks";
 import type { DiffOfDiffsLine, HunkState } from "../api/types";
 
+/** How the hunk was carried over, when that says something about the change. */
+const MOVED: Record<string, string> = {
+  fuzzy: "the hunk was partly rewritten",
+  renamed: "its file was renamed",
+};
+
 /**
  * "Diff of diffs": how this hunk's own content changed after you marked it
  * viewed. Fetched on demand from
@@ -22,11 +28,18 @@ export function DiffOfDiffs({
     <div
       className="border-y px-3 py-2"
       style={{ background: "var(--warn-soft)", borderColor: "var(--border)" }}
+      data-testid="diff-of-diffs"
     >
-      <div className="mb-1.5 text-2xs uppercase tracking-wide" style={{ color: "var(--warn)" }}>
-        changed since you viewed it
-        {state.viewedAtRevision !== undefined ? ` · viewed at revision ${state.viewedAtRevision}` : ""}
-        {state.migration ? ` · ${state.migration} match` : ""}
+      <div className="mb-1.5 flex items-baseline gap-2 text-xs">
+        <span className="font-medium" style={{ color: "var(--fg)" }}>
+          What changed since you viewed it
+          {state.viewedAtRevision !== undefined ? ` in r${state.viewedAtRevision}` : ""}
+        </span>
+        {MOVED[state.migration ?? ""] ? (
+          <span className="text-2xs" style={{ color: "var(--fg-muted)" }}>
+            {MOVED[state.migration ?? ""]}
+          </span>
+        ) : null}
       </div>
 
       {isLoading ? (
