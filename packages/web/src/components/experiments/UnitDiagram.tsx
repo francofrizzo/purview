@@ -16,7 +16,7 @@ const KIND_WORD: Record<UnitDiagramData["kind"], string> = {
 
 /**
  * A unit's diagram (the `unitDiagrams` experiment), under its brief: one
- * line, "Diagram: its caption", that opens it in the diagram viewer. Nothing
+ * line, the diagram icon and its caption, that opens it in the diagram viewer. Nothing
  * is drawn until then. Source the app refuses, or Mermaid cannot parse, is
  * one faint line, never a crash. Renders nothing while the experiment is off
  * or the unit has none.
@@ -37,9 +37,6 @@ export function UnitDiagram({ diagram }: { diagram?: UnitDiagramData }) {
         onClick={() => setOpened(true)}
       >
         <IconDiagram width={14} height={14} className="flex-none" style={{ color: "var(--accent)" }} />
-        <span className="flex-none" style={{ color: "var(--fg-muted)" }}>
-          <UiText>Diagram:</UiText>
-        </span>
         <span className="truncate" style={{ color: "var(--fg)" }}>
           {caption}
         </span>

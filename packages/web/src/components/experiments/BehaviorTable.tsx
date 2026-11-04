@@ -13,7 +13,7 @@ const SAME = /^\s*=\s*$/;
  * What behaves differently once the PR merges, a row per behavior: before on
  * the diff's removed tint, after on its added tint, so it reads like the diff
  * the reader is about to open. A behavior that stays the same (`after` is
- * "=") is one outlined cell across both, after the ones that change. A row
+ * "=") is one cell across both, on the accent's tint,, after the ones that change. A row
  * whose code lives in one unit opens it.
  */
 export function BehaviorTable({
@@ -51,7 +51,7 @@ export function BehaviorTable({
                 <InlineMarkdown text={c.what} />
               </span>
               {same ? (
-                <BehaviorCell text={c.before} label="Before and after" wide />
+                <BehaviorCell text={c.before} tint="var(--accent-soft)" label="Before and after" wide />
               ) : (
                 <>
                   <BehaviorCell text={c.before} tint="var(--del-bg)" label="Before" />
@@ -86,8 +86,8 @@ export function BehaviorTable({
   );
 }
 
-/** `tint`: the diff's colour for its side; without one, an outline (a behavior that stays the same). */
-function BehaviorCell({ text, tint, label, wide }: { text: string; tint?: string; label: string; wide?: boolean }) {
+/** `tint`: the diff's colour for its side, or the accent's for a behavior that stays the same. */
+function BehaviorCell({ text, tint, label, wide }: { text: string; tint: string; label: string; wide?: boolean }) {
   if (NONE.test(text)) {
     return (
       <span className="hidden px-2 py-1.5 text-[13px] leading-5 sm:block" style={{ color: "var(--fg-faint)" }} aria-label={`${label}: none`}>
@@ -96,7 +96,7 @@ function BehaviorCell({ text, tint, label, wide }: { text: string; tint?: string
     );
   }
   return (
-    <span className={`rounded px-2 py-1.5 text-[13px] leading-5${wide ? " sm:col-span-2" : ""}`} style={{ color: "var(--fg)", ...(tint ? { background: tint } : { boxShadow: "inset 0 0 0 1px var(--border-strong)" }) }}>
+    <span className={`rounded px-2 py-1.5 text-[13px] leading-5${wide ? " sm:col-span-2" : ""}`} style={{ color: "var(--fg)", background: tint }}>
       <UiText className="sr-only">{`${label}: `}</UiText>
       <InlineMarkdown text={text} />
     </span>
