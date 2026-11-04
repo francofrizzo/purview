@@ -162,7 +162,10 @@ export function CommentCard({
       className="group/comment rounded-lg px-3 pb-2.5 pt-2"
       style={{
         background: "var(--bg-raised)",
-        border: `1px solid color-mix(in srgb, ${meta.edge} 45%, var(--border))`,
+        // While editing, the card is the editor's frame, in the composer's ink.
+        border: editing
+          ? `1px solid ${forAgent ? "var(--agent)" : "var(--accent)"}`
+          : `1px solid color-mix(in srgb, ${meta.edge} 45%, var(--border))`,
       }}
     >
       <header className="flex min-h-[22px] items-center gap-2 text-2xs">

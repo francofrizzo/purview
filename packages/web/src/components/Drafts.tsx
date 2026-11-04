@@ -700,9 +700,11 @@ export function CommentBody({
 
   return (
     <div
-      className="relative mt-1 rounded-md"
+      // In a card (controlled) the card is the frame: the editor runs to its
+      // edges instead of drawing a second border inside the first.
+      className={controlled ? "relative -mx-3 -mb-2.5 mt-1 rounded-b-lg" : "relative mt-1 rounded-md"}
       data-testid={`comment-editor-${comment.id}`}
-      style={{ background: "var(--bg-raised)", border: `1px solid ${ink}` }}
+      style={controlled ? undefined : { background: "var(--bg-raised)", border: `1px solid ${ink}` }}
       {...(prKey && wp.writing ? attach.dropProps : {})}
       onKeyDown={(e) => {
         if (wp.onKeyDown(e)) return;
