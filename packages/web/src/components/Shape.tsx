@@ -78,9 +78,10 @@ export function FileShape({
 
   return (
     <div data-testid="file-shape">
-      {/* Notes start at one column, as wide as the longest name needs; on a
-          phone they go under their line. */}
-      <div className="grid sm:grid-cols-[fit-content(45%)_minmax(0,1fr)] sm:gap-x-6">
+      {/* Names, then the line counts (added right-aligned, removed left, so
+          the numbers meet at one seam), then the notes; on a phone the counts
+          sit after the name and the note goes under its line. */}
+      <div className="grid sm:grid-cols-[fit-content(45%)_auto_auto_minmax(0,1fr)]">
         {lines.map((l, i) => (
           <div
             key={`${i}:${l.path}`}
@@ -97,7 +98,7 @@ export function FileShape({
               elbowWidth={INDENT_PX - ICON_X - LINE_GAP}
               stemFrom={l.open ? ICON_Y + 6 + LINE_GAP : undefined}
             />
-            <div className="flex min-w-0 items-start gap-1.5 pl-[var(--indent)] font-mono text-[12px] leading-5">
+            <div className="flex min-w-0 items-start gap-1.5 pl-[var(--indent)] font-mono text-[12px] leading-5 sm:pr-4">
               <span className="flex h-5 w-3.5 flex-none items-center justify-center" style={{ color: "var(--fg-faint)" }}>
                 {l.dir ? (
                   <IconFolder width={12} height={12} />
@@ -128,8 +129,11 @@ export function FileShape({
                   {shortName(l.name)}
                 </button>
               )}
-              <LineCounts {...size(l.path, Boolean(l.dir))} />
+              <span className="sm:hidden">
+                <LineCounts {...size(l.path, Boolean(l.dir))} />
+              </span>
             </div>
+            <LineCounts {...size(l.path, Boolean(l.dir))} columns />
             {l.note ? (
               <div className="min-w-0 pl-[calc(var(--indent)+1.25rem)] text-xs leading-5 sm:pl-0" style={{ color: "var(--fg-muted)" }}>
                 <InlineMarkdown text={l.note} />
@@ -148,8 +152,22 @@ export function FileShape({
 }
 
 /** The tree's key, as counts: each badge the way the rows show it. */
-/** `+12 −3` beside a name, quiet: the size of what sits there. */
-function LineCounts({ added, removed }: { added: number; removed: number }) {
+/** `+12 −3`, quiet: the size of what sits there. As `columns`, two grid
+ *  cells (always there, so the note keeps its column), shown from `sm` up. */
+function LineCounts({ added, removed, columns }: { added: number; removed: number; columns?: boolean }) {
+  if (columns) {
+    const cell = "hidden whitespace-nowrap font-sans text-2xs leading-5 tabular-nums sm:block";
+    return (
+      <>
+        <span className={`${cell} text-right`} style={{ color: "var(--ok)" }} data-testid="file-shape-counts">
+          {added ? `+${added}` : null}
+        </span>
+        <span className={`${cell} pl-1.5 pr-6`} style={{ color: "var(--risk)" }}>
+          {removed ? `−${removed}` : null}
+        </span>
+      </>
+    );
+  }
   if (!added && !removed) return null;
   return (
     <span className="flex-none whitespace-nowrap font-sans text-2xs tabular-nums" data-testid="file-shape-counts">
