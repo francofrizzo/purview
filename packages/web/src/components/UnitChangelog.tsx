@@ -83,7 +83,9 @@ export function UnitChangelog({
             const active = activeRevisions.includes(e.revision);
             const badge = (
               <span
-                className="chip flex-none font-mono"
+                // Inline at the note's start, so the note's lines wrap under it
+                // rather than leaving a column of empty space beside it.
+                className="chip mr-1.5 inline-block font-mono"
                 style={{
                   background: active ? "var(--warn-soft)" : "var(--bg-inset)",
                   color: active ? "var(--warn)" : "var(--fg-muted)",
@@ -94,13 +96,13 @@ export function UnitChangelog({
               </span>
             );
             const note = (
-              <span style={{ color: "var(--fg)" }}>
+              <span className="[overflow-wrap:anywhere]" style={{ color: "var(--fg)" }}>
                 <InlineMarkdown text={e.text} />
               </span>
             );
             if (inline || !onSelectRevision) {
               return (
-                <li key={e.revision} className="flex items-baseline gap-2 leading-[18px]">
+                <li key={e.revision} className="leading-[18px]">
                   {badge}
                   {note}
                 </li>
@@ -121,7 +123,7 @@ export function UnitChangelog({
                         : `Highlight the lines r${e.revision} changed`
                   }
                   onClick={() => onSelectRevision(e.revision)}
-                  className="changelog-row -mx-1.5 flex w-[calc(100%+0.75rem)] items-baseline gap-2 rounded px-1.5 text-left leading-[18px]"
+                  className="changelog-row -mx-1.5 block w-[calc(100%+0.75rem)] rounded px-1.5 text-left leading-[18px]"
                   data-active={active ? "true" : undefined}
                 >
                   {badge}
