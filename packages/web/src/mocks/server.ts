@@ -691,7 +691,7 @@ Three things I would push on:
 - The retry wrapper's jitter is applied *after* the attempt counter check, so
   the final attempt has no backoff at all (see \`transient-retry-backoff\`).
 - \`charge_ledger\` (created in \`idempotency.ts:3\`) has no index on \`key\`, and the replay lookup is on the hot
-  path of every payment.
+  path of every payment (\`src/billing/ledger.ts\`).
 
 The write-before-call shape looks like this:
 

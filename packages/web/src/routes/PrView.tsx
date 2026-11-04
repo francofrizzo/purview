@@ -1183,18 +1183,25 @@ export function PrView() {
   );
   const openFileFromText = useCallback(
     (path: string, line?: number) => {
-      // A line inside the diff lands on it (in whichever tab shows it);
-      // anything else opens the file.
+      // A line inside the diff lands on it (in whichever tab shows it). Any
+      // other link opens the file: in the units tab, at its first hunk inside
+      // the unit that holds it, so reading by units does not drop you into
+      // Files (jumpToDiffHunk falls back there when no unit holds it).
       const file = detail?.files.files.find((f) => f.path === path);
       const hunkId = file && line !== undefined ? hunkAtLine(file.hunks, line) : null;
-      if (hunkId) jumpToDiffHunk(hunkId, path, { line });
-      else {
+      if (hunkId) {
+        setOverview(false);
+        jumpToDiffHunk(hunkId, path, { line });
+      } else if (tab === "units" && file?.hunks.length) {
+        setOverview(false);
+        jumpToDiffHunk(file.hunks[0].id, path);
+      } else {
         setOverview(false);
         setTab("files");
         setSelectedPath(path);
       }
     },
-    [detail, jumpToDiffHunk],
+    [detail, tab, jumpToDiffHunk],
   );
   const textLinks = useMemo(
     () => codeLinker(detail, { onOpenUnit: openUnitFromText, onOpenFile: openFileFromText }),

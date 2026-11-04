@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openPr } from "./helpers";
+import { hunkHeader, openPr } from "./helpers";
 
 test.beforeEach(async ({ page }) => {
   await openPr(page);
@@ -177,4 +177,13 @@ test("a diagram opens larger from anywhere on it, titled by the sentence that in
   const modal = page.getByTestId("mermaid-modal");
   await expect(modal).toContainText("The states a charge moves through");
   await expect(modal.locator("svg").first()).toBeVisible();
+});
+
+test("a file named in a reply opens in the unit that holds it while you read by units", async ({ page }) => {
+  await page.getByTestId("chat-input").fill("What is risky here?");
+  await page.getByTestId("chat-send").click();
+  await expect(page.getByTestId("chat-stop")).toHaveCount(0, { timeout: 20_000 });
+  await page.getByTestId("chat-transcript").getByRole("button", { name: "src/billing/ledger.ts" }).click();
+  await expect(page.getByTestId("sidebar-tab-units")).toHaveAttribute("aria-selected", "true");
+  await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toBeInViewport();
 });
