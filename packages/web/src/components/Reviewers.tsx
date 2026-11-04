@@ -188,6 +188,14 @@ export function ReviewersPanel({
   const [query, setQuery] = useState("");
   // The candidates drop down under the input while it has focus.
   const [listOpen, setListOpen] = useState(autoFocus);
+  // The popover positions itself after a measure; focus once it has (an
+  // `autoFocus` on a panel not yet placed is dropped by the browser).
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!autoFocus) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [autoFocus]);
   // Each keystroke would be a GitHub search: wait for a pause.
   useEffect(() => {
     const t = setTimeout(() => setQuery(q.trim()), 200);
@@ -246,7 +254,7 @@ export function ReviewersPanel({
       ) : null}
       <div className="relative">
         <input
-          autoFocus={autoFocus}
+          ref={inputRef}
           className="input text-xs"
           placeholder="Ask someone to review…"
           value={q}

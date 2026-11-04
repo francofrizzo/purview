@@ -9,6 +9,8 @@ test("on your PR the reviewers open a panel to ask someone, ask again, or stop a
   await button.click();
   const panel = page.getByTestId("reviewers-panel");
   await expect(panel.getByTestId("reviewers-row")).toHaveCount(3);
+  // Typing goes straight into the search.
+  await expect(panel.getByTestId("reviewers-search")).toBeFocused();
 
   // GitHub's suggestions show before anything is typed.
   await expect(panel.getByTestId("reviewers-candidate-maria")).toContainText("suggested");
