@@ -344,12 +344,15 @@ export function ChangedBadge({
   testId,
   onClick,
   viewedAt,
+  active = false,
 }: {
   tip?: string;
   testId?: string;
   onClick?: () => void;
   /** the revision you viewed it in, shown as (rN) */
   viewedAt?: number;
+  /** what changed is marked on the code right now */
+  active?: boolean;
 }) {
   const content = (
     <>
@@ -368,7 +371,15 @@ export function ChangedBadge({
     );
   }
   return (
-    <button type="button" className={cls} style={style} onClick={onClick} data-testid={testId} data-tip={tip ?? `Show what changed since you viewed it${when}`}>
+    <button
+      type="button"
+      className={cls}
+      style={active ? { ...style, boxShadow: "inset 0 0 0 1px var(--warn)" } : style}
+      onClick={onClick}
+      aria-pressed={active}
+      data-testid={testId}
+      data-tip={tip ?? (active ? "Stop marking what changed" : `Mark on the code what changed since you viewed it${when}`)}
+    >
       {content}
     </button>
   );

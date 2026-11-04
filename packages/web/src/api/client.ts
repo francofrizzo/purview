@@ -32,7 +32,6 @@ import type {
   DeletedComment,
   ArchivedComment,
   ArchiveCommentsResult,
-  DiffOfDiffs,
   DiscardPendingResult,
   DiscardRevisionResult,
   DraftComment,
@@ -679,17 +678,6 @@ export const api = {
   async sync(key: string): Promise<SyncResult> {
     if (MOCK) return mockApi.sync(key);
     return adaptSync(await post<WireSync>(`/prs/${encodeKey(key)}/sync`));
-  },
-
-  /**
-   * Word-level diff of a changed-since-viewed hunk against its predecessor.
-   * Served on demand — it is not inlined on the hunk state.
-   */
-  async diffOfDiffs(key: string, hunkId: string): Promise<DiffOfDiffs> {
-    if (MOCK) return mockApi.diffOfDiffs(key, hunkId);
-    return request<DiffOfDiffs>(
-      `/prs/${encodeKey(key)}/hunks/${encodeURIComponent(hunkId)}/diff-of-diffs`,
-    );
   },
 
   /**

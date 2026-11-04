@@ -14,7 +14,6 @@ import type {
   AnalysisImportReport,
   AnalysisJob,
   Attachment,
-  DiffOfDiffs,
   RevisionLineChanges,
   DiscardPendingResult,
   DiscardRevisionResult,
@@ -89,7 +88,6 @@ export const qk = {
   review: (key: string) => ["review", key] as const,
   analysisJob: (key: string) => ["analysis-job", key] as const,
   staleness: (key: string) => ["staleness", key] as const,
-  diffOfDiffs: (key: string, hunkId: string) => ["dod", key, hunkId] as const,
   lineChanges: (key: string, n: number, currentRevision: number) =>
     ["line-changes", key, n, currentRevision] as const,
 };
@@ -120,20 +118,6 @@ export function useRevisionsLineChanges(key: string, revisions: readonly number[
         failed,
       };
     },
-  });
-}
-
-/**
- * Fetched lazily, only when the reader expands a changed hunk's badge: the
- * payload is per-hunk and the server computes it on demand.
- */
-export function useDiffOfDiffs(key: string, hunkId: string | null) {
-  return useQuery<DiffOfDiffs>({
-    queryKey: qk.diffOfDiffs(key, hunkId ?? ""),
-    queryFn: () => api.diffOfDiffs(key, hunkId!),
-    enabled: Boolean(key && hunkId),
-    staleTime: Infinity,
-    retry: false,
   });
 }
 

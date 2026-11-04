@@ -252,24 +252,6 @@ export function isRemovedUnit(u: Pick<ReviewUnit, "removedAtRevision">): boolean
  * `GET /api/prs/:key/hunks/:id/diff-of-diffs`. It is line-oriented: each line
  * is unchanged/added/removed, or `modified` with a word-level breakdown.
  */
-export interface WordPart {
-  value: string;
-  type: "same" | "added" | "removed";
-}
-
-export interface DiffOfDiffsLine {
-  type: "unchanged" | "added" | "removed" | "modified";
-  oldLine?: string;
-  newLine?: string;
-  /** word-level breakdown, only for `modified` lines */
-  parts?: WordPart[];
-}
-
-export interface DiffOfDiffs {
-  lines: DiffOfDiffsLine[];
-  changed: boolean;
-}
-
 /**
  * The lines one revision changed, mapped onto the current revision's hunks —
  * `GET /api/prs/:key/revisions/:n/line-changes` (core's RevisionLineChanges).

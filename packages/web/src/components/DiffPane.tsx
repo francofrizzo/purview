@@ -81,7 +81,6 @@ import {
   type LineSide,
   type OnDefinitionClick,
 } from "./DiffLine";
-import { DiffOfDiffs } from "./DiffOfDiffs";
 import { GeneratedTag } from "./Generated";
 import { targetKey, type CommentTarget } from "./Drafts";
 import { CommentBubble, InlineCommentList, type InlineCommentActions } from "./InlineComments";
@@ -123,7 +122,6 @@ type FlatRow =
   /** the analysis's why, under a heart hunk's header (shown folded too) */
   | { type: "risk"; key: string; hunkId: string; flag: string; why: string }
   | { type: "heart"; key: string; hunkId: string; seg: number; why: string }
-  | { type: "dod"; key: string; hunkId: string }
   | { type: "line"; key: string; hunkId: string; entry: HunkEntry; lineIdx: number }
   | { type: "split"; key: string; hunkId: string; entry: HunkEntry; rowIdx: number }
   /** expanded comments hanging off one line anchor; height is whatever it is */
@@ -331,6 +329,11 @@ export interface DiffPaneProps {
    */
   highlight?: RevisionHighlight | null;
   /**
+   * A hunk's "changed since viewed (rN)": mark what changed after rN, by
+   * turning the highlight on for those revisions (the host's to own).
+   */
+  onShowChangesSince?: (viewedAt: number | undefined) => void;
+  /**
    * A file row's ⋯ (the host owns what is in it — today the generated-file
    * override). Rendered at the end of the row's actions; absent, no ⋯.
    */
@@ -419,6 +422,7 @@ export function DiffPane({
   onUnitClick,
   unitOfHunk,
   highlight = null,
+  onShowChangesSince,
   renderFileMenu,
 }: DiffPaneProps) {
   const { appearance, settings } = useSettings();
@@ -428,7 +432,6 @@ export function DiffPane({
   const measureRef = useRef<HTMLSpanElement>(null);
   const pastTopRef = useRef<HTMLDivElement>(null);
   const nearTopRef = useRef<HTMLDivElement>(null);
-  const [expandedDod, setExpandedDod] = useState<Set<string>>(new Set());
   const [wide, setWide] = useState(true);
   const [charWidth, setCharWidth] = useState(7.2);
 
@@ -1332,9 +1335,6 @@ export function DiffPane({
       // Folded, the captions fold with the code they explain; the header
       // keeps a mark of each, its words on hover (see the hunk header).
       if (open && marks?.length && captions === null) marks.forEach((m, seg) => out.push(heartRow(seg, m.why)));
-      if (expandedDod.has(hunk.id)) {
-        out.push({ type: "dod", key: `d:${hunk.id}`, hunkId: hunk.id });
-      }
       // A folded hunk contributes its header and nothing else. Dropping the
       // rows (rather than hiding them) is what makes folding actually cheap:
       // the virtualizer never mounts or measures them at all.
@@ -1440,7 +1440,6 @@ export function DiffPane({
     contextReveal,
     entries,
     detail.diff,
-    expandedDod,
     expandedAnchors,
     expandedFiles,
     grouped,
@@ -1565,7 +1564,6 @@ export function DiffPane({
       if (r.type === "split") return codeLineHeight;
       // A fold placeholder is one row, always — no wrapping content inside it.
       if (r.type === "fold") return codeLineHeight;
-      if (r.type === "dod") return 170;
       if (r.type === "heart" || r.type === "risk") return 26;
       if (r.type === "compose") return 150;
       // Comment blocks are the one genuinely variable row. The estimate only
@@ -1908,7 +1906,6 @@ export function DiffPane({
     if (!(visiting && entries.some((e) => e.hunk.id === target.hunkId))) {
       scrollRef.current?.scrollTo({ top: 0 });
     }
-    setExpandedDod(new Set());
     // Collapse is per hunk and per sitting; hunks that left the pane have no
     // state worth keeping. Comment expansion is keyed by file anchor, not by
     // hunk, so it deliberately survives — the reader comes back to it open.
@@ -3277,11 +3274,6 @@ export function DiffPane({
       );
     }
 
-    if (row.type === "dod") {
-      const st = detail.state.hunks[row.hunkId];
-      return st ? <DiffOfDiffs prKey={detail.key} hunkId={row.hunkId} state={st} /> : null;
-    }
-
     if (row.type === "hunk") {
       const st = detail.state.hunks[row.hunkId] ?? { viewed: false, changedSinceViewed: false };
       const focused = focusedHunkId === row.hunkId;
@@ -3467,14 +3459,8 @@ export function DiffPane({
             <ChangedBadge
               viewedAt={st.viewedAtRevision}
               testId={`changed-since-viewed-${row.hunkId}`}
-              onClick={() =>
-                setExpandedDod((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(row.hunkId)) next.delete(row.hunkId);
-                  else next.add(row.hunkId);
-                  return next;
-                })
-              }
+              active={Boolean(highlight?.byHunk.has(row.hunkId))}
+              onClick={onShowChangesSince ? () => onShowChangesSince(st.viewedAtRevision) : undefined}
             />
           ) : null}
           {st.migration === "new" ? (

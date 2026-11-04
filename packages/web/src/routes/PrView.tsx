@@ -707,10 +707,18 @@ export function PrView() {
     atRevision: number;
   } | null>(null);
   const highlightStale = highlightFor !== null && highlightFor.atRevision !== currentRevision;
+  // The hunks it marks: the unit's, or the file's on the files tab.
+  const highlightScope = useMemo(
+    () =>
+      tab === "units"
+        ? selectedUnit
+          ? hunkIdsOf(selectedUnit)
+          : null
+        : (detail?.files.files.find((f) => f.path === selectedPath)?.hunks.map((h) => h.id) ?? null),
+    [tab, selectedUnit, selectedPath, detail],
+  );
   const highlightRevisions =
-    highlightFor && !highlightStale && tab === "units" && selectedUnit
-      ? highlightFor.revisions
-      : NO_REVISIONS;
+    highlightFor && !highlightStale && highlightScope ? highlightFor.revisions : NO_REVISIONS;
   useEffect(() => {
     if (highlightStale) setHighlightFor(null);
   }, [highlightStale]);
@@ -729,9 +737,32 @@ export function PrView() {
   const highlightActive = highlightRevisions.length > 0;
   const lineChanges = useRevisionsLineChanges(prKey, highlightRevisions, currentRevision);
   const highlight = useMemo(() => {
-    if (!highlightActive || !selectedUnit || !lineChanges.data) return null;
-    return buildHighlight(lineChanges.data, { hunkIds: hunkIdsOf(selectedUnit), unitId: selectedUnit.id });
-  }, [highlightActive, selectedUnit, lineChanges.data]);
+    if (!highlightActive || !highlightScope || !lineChanges.data) return null;
+    return buildHighlight(lineChanges.data, {
+      hunkIds: highlightScope,
+      unitId: tab === "units" ? selectedUnit?.id : undefined,
+    });
+  }, [highlightActive, highlightScope, lineChanges.data, tab, selectedUnit]);
+  /**
+   * A hunk's "changed since viewed (rN)": the same highlight, for every
+   * revision after the one you read it in, so what changed is marked on the
+   * code itself. Clicked again with that set showing, it clears.
+   */
+  const showChangesSince = useCallback(
+    (viewedAt: number | undefined) => {
+      const after = (detail?.state.revisions ?? [])
+        .map((r) => r.revision)
+        .filter((r) => r > (viewedAt ?? currentRevision - 1))
+        .sort((a, b) => a - b);
+      if (!after.length) return;
+      setHighlightFor((prev) =>
+        prev && prev.atRevision === currentRevision && prev.revisions.join() === after.join()
+          ? null
+          : { revisions: after, atRevision: currentRevision },
+      );
+    },
+    [detail, currentRevision],
+  );
   // The sidebar's "changed" badge: the units those revisions touched.
   const changedUnits = useMemo(
     () =>
@@ -2219,7 +2250,8 @@ export function PrView() {
               heart={heart}
               skip={skip}
               labels={labels}
-              highlight={tab === "units" ? highlight : null}
+              highlight={highlight}
+              onShowChangesSince={showChangesSince}
               unitForHunkId={unitForHunkId}
               unitOfHunk={unitOfHunk}
               onUnitClick={onHunkUnitClick}

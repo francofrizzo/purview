@@ -2,7 +2,6 @@ import { hydrateFiles } from "../lib/hunkBodies";
 import { mockBlastRadius, mockChangeMap } from "./changeGraph";
 import type { BlastRadius, ChangeMap } from "../api/types";
 import { stackOf } from "../lib/prList";
-import { diffWordsWithSpace } from "diff";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import { isFileComment, isGeneratedUnit } from "../api/types";
 import { skippedHunkIds } from "../lib/diffModel";
@@ -21,7 +20,6 @@ import type {
   ChatMessage,
   ChatRef,
   ChatState,
-  DiffOfDiffs,
   DiscardPendingResult,
   AddCommentInput,
   DeletedComment,
@@ -88,25 +86,6 @@ import { buildGeneratedUnit } from "./generated";
 import { loginListed } from "../lib/threads";
 import { isForAgent } from "../lib/comments";
 import { diffTotals } from "../lib/prList";
-
-/** Stand-in for the previous revision's body of the one hunk that changed. */
-const MOCK_DOD_BEFORE: Record<string, string[]> = {
-  a1b2c3d4e5f60001: [
-    "  async charge(order: Order): Promise<ChargeResult> {",
-    "    const key = idempotencyKey(order.id, order.total);",
-    "    const existing = await this.ledger.findByKey(key);",
-    "    if (existing) return existing.result;",
-  ],
-};
-
-const MOCK_DOD_AFTER: Record<string, string[]> = {
-  a1b2c3d4e5f60001: [
-    "  async charge(order: Order): Promise<ChargeResult> {",
-    "    const key = idempotencyKey(order.id, order.total, order.currency);",
-    "    const existing = await this.ledger.findByKey(key);",
-    "    if (existing) return existing.result;",
-  ],
-};
 
 /** In-memory mutable copy so the UI behaves like a real backend under VITE_MOCK=1. */
 const detail: PrDetail = structuredClone(mockDetail);
@@ -1455,29 +1434,6 @@ export const mockApi = {
     const end = Math.max(0, ...file.hunks.map((h) => h.newStart + h.newLines - 1));
     const lines = Array.from({ length: end + 30 }, (_, i) => `  // ${path.split("/").pop()} line ${i + 1}`);
     return { sha: "mock", lines };
-  },
-
-  async diffOfDiffs(_key: string, hunkId: string): Promise<DiffOfDiffs> {
-    await delay(150);
-    const before = MOCK_DOD_BEFORE[hunkId];
-    const after = MOCK_DOD_AFTER[hunkId];
-    if (!before || !after) {
-      throw new Error(`No predecessor recorded for hunk ${hunkId}`);
-    }
-    const lines: DiffOfDiffs["lines"] = before.map((oldLine, i) => {
-      const newLine = after[i] ?? "";
-      if (oldLine === newLine) return { type: "unchanged", oldLine, newLine };
-      return {
-        type: "modified",
-        oldLine,
-        newLine,
-        parts: diffWordsWithSpace(oldLine, newLine).map((p) => ({
-          value: p.value,
-          type: p.added ? "added" : p.removed ? "removed" : "same",
-        })),
-      };
-    });
-    return { lines, changed: lines.some((l) => l.type !== "unchanged") };
   },
 
   /**

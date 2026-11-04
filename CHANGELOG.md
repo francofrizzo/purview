@@ -11,11 +11,13 @@ app, not for git: say what changed in the review, not which file moved.
 - **Copy mode menu.** The arrow beside "copy all for agent" picks copy or copy & archive, and the button remembers it. It replaces "copy & delete".
 - **Unit brief over the code.** With the sidebar folded (B), the card above the diff shows the unit's summary and findings.
 - **Diagrams in your theme.** Mermaid diagrams take the app theme's colors, with decisions and loops in the accent. Click anywhere on one to open it larger, titled by the sentence that introduced it.
+- **What changed since you viewed a hunk.** Click "changed since viewed (rN)" on a hunk to mark on the code what every revision after rN changed, in Units or Files. It replaces the separate before/after box.
 - **Line counts in Where it lands.** "±lines" in the section's header shows each file's and folder's added and removed lines. Off until you turn it on.
 - **Description position.** "show at the top" in the overview's Description, or Settings → Overview, puts it first.
 - **Fix:** submitting a review shows each step (posting comments, the verdict, the PR's status, updating Purview) in the Review panel and the top bar, and the comments no longer change under you until it is done.
 - **Fix:** a file and line link in the chat no longer switches you to Files while you read by Units.
 - **Fix:** the code font box in Settings → Typography no longer drops the spaces you type.
+- **Fix:** a revision highlight no longer hides under the heart and risk bars; the changed lines' bar shows beside them.
 - **Fix:** after a new revision shifts unchanged code, its heart marks, risk marks and warnings no longer sit on the wrong lines.
 - **Fix:** the PR summary and untouched units no longer keep text a new revision made untrue.
 
