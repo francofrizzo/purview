@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.4.1
 
 - **Home search and rows.** Type in the field at the top of the home to filter PRs, or paste a PR URL and press Enter to add it. Each PR's state sits at the right of its title line, the lines icon shows one line per PR, and a tag's band folds its PRs.
 - **What changed since you viewed a hunk.** Click "changed since viewed (rN)" on a hunk to mark on the code what every revision after rN changed, in Units or Files.
