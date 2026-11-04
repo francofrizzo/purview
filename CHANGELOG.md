@@ -14,6 +14,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **What changed since you viewed a hunk.** Click "changed since viewed (rN)" on a hunk to mark on the code what every revision after rN changed, in Units or Files. It replaces the separate before/after box.
 - **Line counts in Where it lands.** "±lines" in the section's header shows each file's and folder's added and removed lines. Off until you turn it on.
 - **Description position.** "show at the top" in the overview's Description, or Settings → Overview, puts it first.
+- **Fix:** Refresh or Sync failing with "Failed to fetch" when Purview's server is down; the notice says the server did not answer and offers Try again.
 - **Fix:** submitting a review shows each step (posting comments, the verdict, the PR's status, updating Purview) in the Review panel and the top bar, and the comments no longer change under you until it is done.
 - **Fix:** a file and line link in the chat no longer switches you to Files while you read by Units.
 - **Fix:** the code font box in Settings → Typography no longer drops the spaces you type.

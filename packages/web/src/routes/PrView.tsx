@@ -65,7 +65,7 @@ import {
   useResolveThread,
   useReact,
 } from "../api/hooks";
-import { errorText } from "../api/errors";
+import { errorText, isNetworkError } from "../api/errors";
 import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
 import { FloatingChat } from "../components/FloatingChat";
@@ -1600,8 +1600,24 @@ export function PrView() {
   );
   const notices = (
     <NoticeStack>
-      {refresh.error ? errorNotice("refresh", `Refresh failed: ${errorText(refresh.error)}`, () => refresh.reset()) : null}
-      {sync.error ? errorNotice("sync", `Sync failed: ${errorText(sync.error)}`, () => sync.reset()) : null}
+      {refresh.error ? (
+        <ActionFailed
+          key="refresh"
+          action="Refresh"
+          error={refresh.error}
+          onDismiss={() => refresh.reset()}
+          onRetry={() => refresh.mutate(undefined, { onSuccess: setReport })}
+        />
+      ) : null}
+      {sync.error ? (
+        <ActionFailed
+          key="sync"
+          action="Sync"
+          error={sync.error}
+          onDismiss={() => sync.reset()}
+          onRetry={() => sync.mutate(undefined, { onSuccess: setSyncResult })}
+        />
+      ) : null}
       {exportAnalysis.error
         ? errorNotice("export", `Export failed: ${errorText(exportAnalysis.error)}`, () => exportAnalysis.reset())
         : null}
@@ -2595,5 +2611,44 @@ function ShortcutGroup({ title, rows }: { title: string; rows: [string[], string
         ))}
       </dl>
     </div>
+  );
+}
+
+/**
+ * A refresh or sync that failed: the action in the title, the reason under
+ * it, and "try again". When the server never answered, the reason says so
+ * and that the action may still have gone through.
+ */
+function ActionFailed({
+  action,
+  error,
+  onDismiss,
+  onRetry,
+}: {
+  action: string;
+  error: unknown;
+  onDismiss: () => void;
+  onRetry: () => void;
+}) {
+  const unanswered = isNetworkError(error);
+  return (
+    <Notice tone="error" title={`${action} failed`} onDismiss={onDismiss} testId="error-notice">
+      <span data-testid="error-notice-reason">
+        {errorText(error)}
+        {unanswered ? ` The ${action.toLowerCase()} may have finished anyway.` : ""}
+      </span>{" "}
+      <button
+        type="button"
+        className="font-medium hover:underline"
+        style={{ color: "var(--accent)" }}
+        data-testid="error-notice-retry"
+        onClick={() => {
+          onDismiss();
+          onRetry();
+        }}
+      >
+        Try again
+      </button>
+    </Notice>
   );
 }
