@@ -410,8 +410,9 @@ export interface ArrangedRow {
   guides: boolean[];
   /** the last child of its base: the elbow closes instead of continuing down */
   last: boolean;
-  /** the next row is stacked on this one: no rule between them, the tree joins them */
-  hasChildren: boolean;
+  /** the next row is still in this stack (a child, or a sibling further down
+   *  the tree): no rule between them, the tree joins them */
+  joinsNext: boolean;
 }
 
 /**
@@ -461,7 +462,7 @@ export function arrangeBlock(
           depth,
           guides,
           last,
-          hasChildren: kids.length > 0,
+          joinsNext: false,
         });
         kids.forEach((child, i) =>
           visit(
@@ -476,6 +477,7 @@ export function arrangeBlock(
         if (!byKey.has(parentKey(pr))) visit(pr, 0, [], true);
       // A component with no root is a cycle: break it at its first row.
       for (const pr of group) visit(pr, 0, [], true);
+      arranged.forEach((r, i) => (r.joinsNext = (arranged[i + 1]?.depth ?? 0) > 0));
       return { tag, prs: arranged };
     });
 }

@@ -595,7 +595,7 @@ function RepoSection({
           {group.archived.slice(0, archivedShown).map((pr) => (
             <PrRow
               key={pr.key}
-              row={{ pr, depth: 0, guides: [], last: true, hasChildren: false }}
+              row={{ pr, depth: 0, guides: [], last: true, joinsNext: false }}
             />
           ))}
           {group.archived.length > archivedShown ? (
@@ -1070,7 +1070,7 @@ const STACK_LINE_COLOR = "color-mix(in srgb, var(--fg-faint) 45%, transparent)";
  * phone width GitHub's side moves down beside the analysis.
  */
 function PrRow({ row }: { row: ArrangedRow }) {
-  const { pr, depth, hasChildren } = row;
+  const { pr, depth, joinsNext } = row;
   const { settings } = useSettings();
   const compact = settings.compactRows;
   const archived = pr.archived;
@@ -1106,7 +1106,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
         opacity: archived ? 0.55 : 1,
         paddingLeft: depth * STACK_INDENT,
         // A base and its stack read as one block: the tree joins them, no rule between.
-        ...(hasChildren ? { borderBottomWidth: 0 } : {}),
+        ...(joinsNext ? { borderBottomWidth: 0 } : {}),
       }}
       data-testid={`pr-row-${pr.key}`}
       data-depth={depth || undefined}

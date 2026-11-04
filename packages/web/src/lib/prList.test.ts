@@ -368,14 +368,14 @@ describe("arrangeBlock", () => {
       { tag: "a", rows: [[2, 0], [3, 0]] }, { tag: "b", rows: [[1, 0]] },
     ]);
   });
-  it("tells each row how to draw its tree: guides for continuing ancestors, elbow kind, children", () => {
+  it("tells each row how to draw its tree: guides for continuing ancestors, elbow kind, whether the stack goes on", () => {
     // 1 ─┬ 2 ─ 3 (3 is 2's only child; 2 continues to sibling 4)
     //    └ 4
     const rows = arrangeBlock([row(1, "a"), row(2, "a", 1), row(3, "a", 2), row(4, "a", 1)])[0]!.prs;
-    expect(rows.map((r) => [r.pr.meta.number, r.depth, r.guides, r.last, r.hasChildren])).toEqual([
+    expect(rows.map((r) => [r.pr.meta.number, r.depth, r.guides, r.last, r.joinsNext])).toEqual([
       [1, 0, [], true, true],
       [2, 1, [], false, true],
-      [3, 2, [true], true, false],
+      [3, 2, [true], true, true],
       [4, 1, [], true, false],
     ]);
   });
