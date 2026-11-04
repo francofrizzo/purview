@@ -540,7 +540,7 @@ function MermaidBlock({ code, open, caption }: { code: string; open: boolean; ca
         data-testid="mermaid-enlarge"
         onClick={() => setEnlarged(true)}
       >
-        <span className="mermaid-diagram block [&_svg]:mx-auto" dangerouslySetInnerHTML={svg} />
+        <span className="block [&_svg]:mx-auto" dangerouslySetInnerHTML={svg} />
         <span
           className="btn pointer-events-none absolute right-1.5 top-1.5 px-1.5 py-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
           aria-hidden
@@ -554,7 +554,7 @@ function MermaidBlock({ code, open, caption }: { code: string; open: boolean; ca
             className="flex justify-center p-6 [&_svg]:!h-auto [&_svg]:!max-h-[calc(85vh-7rem)] [&_svg]:!w-full"
             style={{ background: "var(--bg-inset)" }}
           >
-            <div className="mermaid-diagram w-full [&_svg]:!max-w-[var(--mmd-max)]" style={{ "--mmd-max": natural ? `${natural * 2}px` : "none" } as CSSProperties}
+            <div className="w-full [&_svg]:!max-w-[var(--mmd-max)]" style={{ "--mmd-max": natural ? `${natural * 2}px` : "none" } as CSSProperties}
               dangerouslySetInnerHTML={svg}
             />
           </div>

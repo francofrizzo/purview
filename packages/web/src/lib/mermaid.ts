@@ -81,6 +81,48 @@ export function themeVariables(c: MermaidColors, dark: boolean): Record<string, 
   };
 }
 
+/**
+ * The look, on top of the colors: the svg is inlined into the page, so these
+ * rules read the app's tokens directly. Flat, rounded, thin: nodes sit on the
+ * raised surface like the app's panes, and the one accent goes to where the
+ * flow branches (a decision, an alt or a loop) so the eye finds it first.
+ * Edge labels are small pills on the canvas, clear of the lines they name.
+ */
+const THEME_CSS = `
+  * { filter: none !important; }
+  .node rect, .node polygon, .node circle, .node path, rect.actor, .note, .labelBox {
+    stroke-width: 1px !important;
+  }
+  .node rect.label-container, rect.actor, rect.note { rx: 6px; ry: 6px; }
+  .node polygon { fill: var(--accent-soft) !important; stroke: var(--accent) !important; }
+  .nodeLabel, .nodeLabel p { font-size: 13px; color: var(--fg) !important; }
+  .flowchart-link, .messageLine0, .messageLine1 {
+    stroke: var(--fg-muted) !important;
+    stroke-width: 1.25px !important;
+  }
+  .messageLine1 { stroke-dasharray: 4 3 !important; }
+  .arrowMarkerPath, #arrowhead path, .marker { fill: var(--fg-muted) !important; stroke: none !important; }
+  .labelBkg { background: transparent !important; }
+  .edgeLabel p, span.edgeLabel {
+    margin: 0;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--bg-inset) !important;
+    color: var(--fg-muted) !important;
+    font-size: 11.5px;
+  }
+  .actor-line { stroke: var(--border-strong) !important; stroke-dasharray: 2 4 !important; stroke-width: 1px !important; }
+  text.actor > tspan, .messageText { fill: var(--fg) !important; font-size: 13px !important; }
+  .messageText { fill: var(--fg-muted) !important; font-size: 12px !important; }
+  .note { fill: var(--bg-hover) !important; stroke: var(--border) !important; }
+  .noteText > tspan, .noteText { fill: var(--fg-muted) !important; font-size: 12px !important; }
+  .loopLine { stroke: var(--accent) !important; stroke-width: 1px !important; stroke-dasharray: 3 3 !important; opacity: 0.7; }
+  .labelBox { fill: var(--accent-soft) !important; stroke: var(--accent) !important; }
+  .labelText, .labelText > tspan { fill: var(--accent) !important; font-size: 11.5px !important; }
+  .loopText, .loopText > tspan { fill: var(--fg-muted) !important; font-size: 11.5px !important; }
+  .cluster rect { rx: 8px; ry: 8px; fill: var(--bg-hover) !important; stroke: var(--border) !important; }
+`;
+
 /** What to call a diagram when it is opened on its own: its own title
  *  (front matter `title:` or `accTitle:`), else the sentence that introduced
  *  it, without the colon ("The states a charge moves through:"). */
@@ -126,7 +168,13 @@ async function getMermaid(opts: MermaidRenderOptions): Promise<MermaidApi | null
       suppressErrorRendering: true,
       fontFamily: opts.fontFamily,
       ...(opts.colors
-        ? { theme: "base", themeVariables: themeVariables(opts.colors, opts.dark) }
+        ? {
+            theme: "base",
+            themeVariables: themeVariables(opts.colors, opts.dark),
+            themeCSS: THEME_CSS,
+            flowchart: { nodeSpacing: 36, rankSpacing: 44, padding: 14 },
+            sequence: { mirrorActors: false, actorMargin: 64, boxMargin: 8, noteMargin: 12, messageMargin: 36 },
+          }
         : { theme: opts.dark ? "dark" : "base" }),
     });
     initializedFor = key;

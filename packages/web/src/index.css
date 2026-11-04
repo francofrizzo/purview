@@ -1013,9 +1013,3 @@ html[data-mode="light"] .logo-for-light {
 .workspace[data-flat] main ~ .pane {
   border-left-width: 1px;
 }
-
-/* mermaid lifts nodes and notes with a drop shadow that belongs to none of
-   the app's themes; a diagram sits flat like the rest of the chat. */
-.mermaid-diagram svg * {
-  filter: none !important;
-}
