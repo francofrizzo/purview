@@ -7,15 +7,13 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Line counts in Where it lands.** Each file and folder in the overview's "Where it lands" shows the lines it adds and removes.
-- **Description position.** "show at the top" beside the overview's Description, or Settings → Overview, puts the PR description before Purview's sections.
-- **Archived comments.** The archive icon on a comment, or "copy & archive", moves it to a folded Archived section in the Comments panel. Restore it as a draft or delete it for good from there.
-- **Copy mode menu.** The arrow beside "copy all for agent" picks a plain copy or "copy & archive", and the button keeps the one you used last. It replaces "copy & delete".
-- **Archive picked up.** The "archive picked up" button under For agent archives every note an agent already picked up.
-- **Unit brief over the code.** With the sidebar folded (B), the open unit's card above the diff shows its summary, counts and findings until you scroll into the code.
-- **Fix:** after a new revision shifts unchanged code down a file, its heart marks, risk marks and warning icons no longer sit on the wrong lines.
-- **Fix:** the PR summary in the Overview no longer keeps describing an earlier revision; the analysis of a new revision rewrites what that revision made untrue.
-- **Fix:** a unit a new revision did not touch no longer keeps a summary, why or warning that revision made untrue.
+- **Archived comments.** The archive icon on a comment sets it aside in a folded Archived section of the Comments panel, where you restore or delete it. "archive picked up" under For agent archives every note an agent took.
+- **Copy mode menu.** The arrow beside "copy all for agent" picks copy or copy & archive, and the button remembers it. It replaces "copy & delete".
+- **Unit brief over the code.** With the sidebar folded (B), the card above the diff shows the unit's summary and findings.
+- **Line counts in Where it lands.** The overview's file tree shows each file's and folder's added and removed lines.
+- **Description position.** "show at the top" in the overview's Description, or Settings → Overview, puts it first.
+- **Fix:** after a new revision shifts unchanged code, its heart marks, risk marks and warnings no longer sit on the wrong lines.
+- **Fix:** the PR summary and untouched units no longer keep text a new revision made untrue.
 
 ## 2026.11.3.1
 
