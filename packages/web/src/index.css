@@ -993,6 +993,12 @@ html[data-mode="light"] .logo-for-light {
 .workspace[data-codeless]:not([data-flat]) nav.pane:not(.elev-3) {
   border-bottom-right-radius: 0.5rem;
 }
+/* The dock meets the diff the way the sidebar does: square at the bottom
+   corner beside it, where the rule runs on. Beside the overview (no diff) or
+   with nothing to read it stays round. */
+.workspace:not([data-flat]):not([data-codeless]) main ~ .pane {
+  border-bottom-left-radius: 0;
+}
 
 /* No card above the diff (a unit's brief lives in the sidebar). At rest the
    diff starts level with the panes (DiffPane's topGutter) and the corners
