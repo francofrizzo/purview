@@ -14,7 +14,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **Enlarge a diagram.** Click anywhere on a diagram to open it larger, titled by the sentence that introduced it.
 - **Line counts in Where it lands.** The overview's file tree shows each file's and folder's added and removed lines.
 - **Description position.** "show at the top" in the overview's Description, or Settings → Overview, puts it first.
-- **Fix:** a file link in the chat no longer switches you to Files while you read by Units; it opens the unit that holds the file.
+- **Fix:** a file and line link in the chat no longer switches you to Files while you read by Units; it opens the unit nearest that line.
 - **Fix:** after a new revision shifts unchanged code, its heart marks, risk marks and warnings no longer sit on the wrong lines.
 - **Fix:** the PR summary and untouched units no longer keep text a new revision made untrue.
 

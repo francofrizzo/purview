@@ -124,7 +124,7 @@ import { buildDefinitionIndex } from "../lib/definitions";
 import { repoLabel } from "../lib/agentExport";
 import { rollbackMessage } from "../lib/rollback";
 import { unitForHunk } from "../lib/diffSearch";
-import { codeLinker, hunkAtLine } from "../lib/codeLinks";
+import { codeLinker, hunkAtLine, nearestHunk } from "../lib/codeLinks";
 import {
   buildHighlight,
   changedUnitIds,
@@ -1183,25 +1183,23 @@ export function PrView() {
   );
   const openFileFromText = useCallback(
     (path: string, line?: number) => {
-      // A line inside the diff lands on it (in whichever tab shows it). Any
-      // other link opens the file: in the units tab, at its first hunk inside
-      // the unit that holds it, so reading by units does not drop you into
-      // Files (jumpToDiffHunk falls back there when no unit holds it).
+      // A link with a line lands in the diff: on its hunk, or the file's
+      // nearest one when the line is outside every hunk, in the unit that
+      // holds it (or in Files, if that is where you are reading). Without a
+      // line it is unclear which unit to open, so the file opens in Files.
       const file = detail?.files.files.find((f) => f.path === path);
-      const hunkId = file && line !== undefined ? hunkAtLine(file.hunks, line) : null;
+      const inside = file && line !== undefined ? hunkAtLine(file.hunks, line) : null;
+      const hunkId = inside ?? (file && line !== undefined ? nearestHunk(file.hunks, line) : null);
       if (hunkId) {
         setOverview(false);
-        jumpToDiffHunk(hunkId, path, { line });
-      } else if (tab === "units" && file?.hunks.length) {
-        setOverview(false);
-        jumpToDiffHunk(file.hunks[0].id, path);
+        jumpToDiffHunk(hunkId, path, inside ? { line } : undefined);
       } else {
         setOverview(false);
         setTab("files");
         setSelectedPath(path);
       }
     },
-    [detail, tab, jumpToDiffHunk],
+    [detail, jumpToDiffHunk],
   );
   const textLinks = useMemo(
     () => codeLinker(detail, { onOpenUnit: openUnitFromText, onOpenFile: openFileFromText }),

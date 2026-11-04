@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evidenceParts, hunkAtLine, resolveCodeTarget, resolveDiffPath, warningLines } from "./codeLinks";
+import { evidenceParts, hunkAtLine, nearestHunk, resolveCodeTarget, resolveDiffPath, warningLines } from "./codeLinks";
 
 const files = [
   { path: "pkg/openairesponses/rollout.go" },
@@ -59,6 +59,20 @@ describe("hunkAtLine", () => {
     expect(hunkAtLine(hunks, 12)).toBe("a");
     expect(hunkAtLine(hunks, 15)).toBeNull();
     expect(hunkAtLine(hunks, 40)).toBe("b");
+  });
+});
+
+describe("nearestHunk", () => {
+  const hunks = [
+    { id: "a", newStart: 10, newLines: 5 },
+    { id: "b", newStart: 40, newLines: 3 },
+  ];
+  it("picks the hunk whose range ends closest to a line outside every hunk", () => {
+    expect(nearestHunk(hunks, 2)).toBe("a");
+    expect(nearestHunk(hunks, 20)).toBe("a");
+    expect(nearestHunk(hunks, 30)).toBe("b");
+    expect(nearestHunk(hunks, 90)).toBe("b");
+    expect(nearestHunk([], 5)).toBeNull();
   });
 });
 

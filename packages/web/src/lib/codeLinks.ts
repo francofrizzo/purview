@@ -98,6 +98,18 @@ export function hunkAtLine(
   return h?.id ?? null;
 }
 
+/** The hunk closest to a line outside every hunk: the one whose new-side
+ *  range ends nearest to it, before or after. */
+export function nearestHunk(hunks: Pick<Hunk, "id" | "newStart" | "newLines">[], line: number): string | null {
+  let best: { id: string; d: number } | null = null;
+  for (const h of hunks) {
+    const end = h.newStart + Math.max(h.newLines, 1) - 1;
+    const d = line < h.newStart ? h.newStart - line : Math.max(0, line - end);
+    if (!best || d < best.d) best = { id: h.id, d };
+  }
+  return best?.id ?? null;
+}
+
 /** Unit ids, for the linker's exact-match lookup. */
 export const unitIdSet = (units: Pick<ReviewUnit, "id">[]) => new Set(units.map((u) => u.id));
 
