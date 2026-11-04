@@ -80,6 +80,30 @@ version bump. Neither do small tweaks the reader would not look for in a
 changelog: a label's wording, a spacing or color nudge, a tooltip. An entry is
 for something the reader can do, see or configure that they could not before.
 
+Experiments get no entry either, nor do changes to one while it stays an
+experiment. An experiment is a feature behind a flag in Settings → Experiments,
+off by default. It gets its bullet in the release that takes it out of
+experiments and turns it on for everyone, written like any new feature.
+Nor does the Experiments section in Settings, or any change to it (a new
+experiment's checkbox, an edited hint).
+
+## Experiments
+
+A feature still being tried ships as an experiment: one id in
+`EXPERIMENT_IDS` (`packages/server/src/config.ts`) and one entry in
+`EXPERIMENTS` (`packages/web/src/lib/experiments.ts`), off by default. The flag
+lives in the server's `config.json`, so one switch gates both what the app shows
+(`useExperiment(id)`) and what the analysis is asked to write
+(`experimentOn(id, root)` around the prompt lines). With the flag off, the app
+and the analysis behave exactly as without the experiment: no prompt text, no
+fetch, no section. A change it needs that would show with the flag off is not
+part of it; ship that on its own, under the usual rules. Its components
+go under `packages/web/src/components/experiments/`, and a `WRITING.md` section
+it adds says it is written only when the run's instructions ask for it.
+
+To graduate one: drop its flag (id, entry and every check), keep the feature,
+and add its changelog bullet.
+
 ## Themes and contrast
 
 `packages/web/src/lib/contrast.ts` lists every surface where one color is
