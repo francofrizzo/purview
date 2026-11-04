@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.4.3
 
 - **Fix:** on the home, a stack with branches no longer shows a rule between two PRs of the same stack.
 
