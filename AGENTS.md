@@ -37,7 +37,11 @@ Changelog): name the thing, say what you can do with it and where, stop.
 6. Banned words: improvements, better, tidier, smoother, enhanced, various,
    now supports, seamless, we, excited. If a sentence could appear in any
    product's changelog, replace it with the specific thing in this one.
-7. Test before saving: a reader with the app open must find the change in ten
+7. Say what the reader can do, not that it was done right. A detail that
+   only makes the feature behave as it should (find skips the app's labels,
+   a list keeps its scroll) gets no words; it earns a bullet only as a fix,
+   when it was wrong before.
+8. Test before saving: a reader with the app open must find the change in ten
    seconds from the bullet alone. If not, the bullet is missing the where.
 
 Wrong (slogan lead-in, three changes, "tidier", no where):
