@@ -177,13 +177,19 @@ export function ReviewersButton({
 export function ReviewersPanel({
   prKey,
   reviewers,
-  autoFocus = true,
+  embedded = false,
 }: {
   prKey: string;
   reviewers: Reviewer[];
-  /** the header's popover types at once; the review panel's section waits for a click */
-  autoFocus?: boolean;
+  /**
+   * Inside another panel (the review panel's section): waits for a click, and
+   * the candidates drop down under the field while it has focus. On its own
+   * (the header's popover) the field takes focus and the candidates are
+   * simply listed under it.
+   */
+  embedded?: boolean;
 }) {
+  const autoFocus = !embedded;
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   // The candidates drop down under the input while it has focus.
@@ -265,17 +271,22 @@ export function ReviewersPanel({
           onFocus={() => setListOpen(true)}
           onBlur={() => setListOpen(false)}
           onKeyDown={(e) => {
-            if (e.key === "Escape" && listOpen) {
+            // Escape folds the drop-down first; a list that is always there leaves it to the popover.
+            if (e.key === "Escape" && listOpen && embedded) {
               e.stopPropagation();
               setListOpen(false);
             }
           }}
-          aria-expanded={listOpen}
+          aria-expanded={embedded ? listOpen : undefined}
           data-testid="reviewers-search"
         />
-        {listOpen ? (
+        {listOpen || !embedded ? (
           <ul
-            className="surface absolute left-0 right-0 top-full z-20 mt-1 flex max-h-60 flex-col overflow-y-auto rounded-md p-1 elev-2"
+            className={
+              embedded
+                ? "surface absolute left-0 right-0 top-full z-20 mt-1 flex max-h-60 flex-col overflow-y-auto rounded-md p-1 elev-2"
+                : "-mx-1.5 mt-1 flex max-h-60 flex-col overflow-y-auto"
+            }
             data-testid="reviewers-candidates"
             // A press on a candidate would blur the input and close the list before the click lands.
             onMouseDown={(e) => e.preventDefault()}

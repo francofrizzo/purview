@@ -205,7 +205,7 @@ export function FinishReviewPanel({
                 <section data-testid="review-panel-reviewers">
                   <SectionTitle>Reviewers</SectionTitle>
                   <div className="mt-1.5">
-                    <ReviewersPanel prKey={reviewers.prKey} reviewers={reviewers.list ?? []} autoFocus={false} />
+                    <ReviewersPanel prKey={reviewers.prKey} reviewers={reviewers.list ?? []} embedded />
                   </div>
                 </section>
               ) : null}
