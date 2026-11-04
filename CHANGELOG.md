@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Stack tags for new PRs.** A PR you add or that watching brings in takes the tag of the tracked PR it is stacked on.
 - **Browser find over the panels.** Over the comments, chat, review or overview, Cmd+F opens the browser's find. In the diff's find bar, press Cmd+F again for it.
 - **Find skips the app's words.** The browser's find matches what the PR and the review say, not button labels, tabs or headings.
 

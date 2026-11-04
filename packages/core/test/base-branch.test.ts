@@ -241,3 +241,49 @@ describe("default branch cache", () => {
     expect(findOpenPrByHead(repo, "nope")).toBeUndefined();
   });
 });
+
+describe("a new PR joins its stack's tag", () => {
+  const parent: PrKey = { ...repo, number: 8501 };
+
+  function trackParent(tag?: string, archived = false) {
+    remote.heads[8501] = "codex/deuda";
+    initPr(parent, root);
+    updateMeta(parent, { ...(tag ? { tag } : {}), archived }, root);
+    remote.baseRef = "codex/deuda";
+  }
+
+  it("takes the tag of the tracked PR it sits on", () => {
+    trackParent("payments");
+    initPr(key, root);
+    expect(readMeta(key, root).tag).toBe("payments");
+  });
+
+  it("stays untagged when the PR it sits on is untagged", () => {
+    trackParent(undefined);
+    initPr(key, root);
+    expect(readMeta(key, root).tag).toBeUndefined();
+  });
+
+  it("ignores an archived parent", () => {
+    trackParent("payments", true);
+    initPr(key, root);
+    expect(readMeta(key, root).tag).toBeUndefined();
+  });
+
+  it("takes the one tag the tracked PRs on top of it share", () => {
+    const child: PrKey = { ...repo, number: 8510 };
+    remote.heads[8505] = "feature-8505";
+    // The child is tracked first, stacked on 8505 (not tracked yet, found via gh).
+    initPr(child, root);
+    updateMeta(child, { tag: "ledger", basePr: { number: 8505, title: "PR 8505", url: "u" } }, root);
+    initPr(key, root);
+    expect(readMeta(key, root).tag).toBe("ledger");
+  });
+
+  it("leaves a PR already tracked alone on refresh", () => {
+    initPr(key, root);
+    trackParent("payments");
+    initPr(key, root);
+    expect(readMeta(key, root).tag).toBeUndefined();
+  });
+});

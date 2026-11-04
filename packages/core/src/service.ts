@@ -104,6 +104,31 @@ export function findTrackedPrByHead(
   return { number: m.number, title: m.title ?? "", url: m.url };
 }
 
+/**
+ * A newly tracked PR joins its stack's tag: the PR it sits on's, or else the
+ * one tag the tracked PRs sitting on it share. Untouched when it already has
+ * a tag, when no neighbor has one, or when they disagree. Archived PRs are
+ * out of the stack, as in the tag editor's "Whole stack".
+ */
+export function inheritStackTag(key: PrKey, root = stateRoot()): void {
+  const meta = readMeta(key, root);
+  if (meta.tag) return;
+  const neighbors: Meta[] = [];
+  for (const other of listPrs(root)) {
+    if (other.host !== key.host || other.owner !== key.owner || other.repo !== key.repo || other.number === key.number) continue;
+    try {
+      const m = readMeta(other, root);
+      if (!m.archived) neighbors.push(m);
+    } catch {
+      // skip unreadable state
+    }
+  }
+  const parent = meta.basePr ? neighbors.find((m) => m.number === meta.basePr!.number) : undefined;
+  const childTags = new Set(neighbors.filter((m) => m.basePr?.number === key.number && m.tag).map((m) => m.tag!));
+  const tag = parent?.tag ?? (childTags.size === 1 ? [...childTags][0] : undefined);
+  if (tag) updateMeta(key, { tag }, root);
+}
+
 const sameBasePr = (a: BasePr | null | undefined, b: BasePr | null | undefined) =>
   (a ?? null) === (b ?? null) ||
   (!!a && !!b && a.number === b.number && a.title === b.title && a.url === b.url);
@@ -230,6 +255,8 @@ export function initPr(key: PrKey, root = stateRoot(), opts: RefreshSyncOptions 
   }
 
   const res = refreshPr(key, root, opts);
+  // After the refresh: it is what finds the PR this one sits on.
+  if (created) inheritStackTag(key, root);
   return { key, state: res.state, revision: res.revision, created };
 }
 
@@ -1205,6 +1232,7 @@ export async function initPrAsync(key: PrKey, root = stateRoot(), opts: RefreshO
   }
 
   const res = await refreshPrAsync(key, root, opts);
+  if (created) inheritStackTag(key, root);
   return { key, state: res.state, revision: res.revision, created };
 }
 
