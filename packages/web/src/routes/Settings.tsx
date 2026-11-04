@@ -225,6 +225,28 @@ export function SettingsModal() {
 // typography
 // ---------------------------------------------------------------------------
 
+/** The family as typed: settings keep it trimmed, so the box holds its own
+ *  text and a space typed at the end ("Rec Mono ") stays while you type on.
+ *  A family picked elsewhere (a chip, the installed list) replaces it. */
+function FontFamilyInput({ value, onChange }: { value: string; onChange: (family: string) => void }) {
+  const [text, setText] = useState(value);
+  useEffect(() => {
+    setText((cur) => (cur.trim() === value ? cur : value));
+  }, [value]);
+  return (
+    <input
+      className="input font-mono text-xs"
+      style={{ width: "18rem", fontFamily: "var(--font-code)" }}
+      placeholder="default monospace stack"
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(e.target.value);
+      }}
+    />
+  );
+}
+
 function FontSection({
   settings,
   update,
@@ -253,13 +275,7 @@ function FontSection({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-4">
         <Field label="Code font family">
-          <input
-            className="input font-mono text-xs"
-            style={{ width: "18rem", fontFamily: "var(--font-code)" }}
-            placeholder="default monospace stack"
-            value={settings.codeFont}
-            onChange={(e) => update({ codeFont: e.target.value })}
-          />
+          <FontFamilyInput value={settings.codeFont} onChange={(codeFont) => update({ codeFont })} />
         </Field>
         <Field label={`Size — ${settings.codeFontSize}px`}>
           <input

@@ -16,6 +16,7 @@ export const CURATED_MONO_FONTS = [
   "JetBrains Mono",
   "Fira Code",
   "Cascadia Code",
+  "Rec Mono Linear",
   "IBM Plex Mono",
   "Source Code Pro",
   "Roboto Mono",
