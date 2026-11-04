@@ -292,16 +292,27 @@ export interface MoveFoldRegion {
 /** One label per fold direction, naming where the lines went (or came from):
  *  the file and lines there, or how many files when they split up. */
 export function foldLabel(kind: "in" | "out", hidden: number, targets: readonly MoveTarget[]): string {
+  const { lead, place } = foldLabelParts(kind, hidden, targets);
+  return place ? `${lead} ${place.text}` : lead;
+}
+
+/** {@link foldLabel} in its two voices: the app's words, and the place,
+ *  `path` when it is a file and its lines (set in the code's face). */
+export function foldLabelParts(
+  kind: "in" | "out",
+  hidden: number,
+  targets: readonly MoveTarget[],
+): { lead: string; place?: { text: string; path: boolean } } {
   const paths = [...new Set(targets.map((t) => t.path))];
   const noun = hidden === 1 ? "line" : "lines";
   const verb = kind === "in" ? "from" : "to";
-  let where = "";
-  if (paths.length > 1) where = ` ${verb} ${paths.length} files`;
-  else if (paths.length === 1) {
-    const ranges = targets.map(targetLines).filter(Boolean);
-    where = ` ${verb} ${paths[0]}${ranges.length ? `:${ranges.join(", ")}` : ""}`;
-  }
-  return `${hidden} ${noun} moved${where}`;
+  if (paths.length > 1) return { lead: `${hidden} ${noun} moved ${verb} ${paths.length} files` };
+  if (paths.length === 0) return { lead: `${hidden} ${noun} moved` };
+  const ranges = targets.map(targetLines).filter(Boolean);
+  return {
+    lead: `${hidden} ${noun} moved ${verb}`,
+    place: { text: `${paths[0]}${ranges.length ? `:${ranges.join(", ")}` : ""}`, path: true },
+  };
 }
 
 /**

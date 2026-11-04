@@ -32,6 +32,7 @@ import {
   setFoldRegionFolded,
   splitMoveCandidates,
   targetLabel,
+  foldLabelParts,
   toggleFoldRegionKey,
   unifiedMoveCandidates,
   type FoldPlaceholder,
@@ -3197,6 +3198,7 @@ export function DiffPane({
       // Separate buttons, so Enter on the focused band still toggles and the
       // jump never steals the band's click.
       const target = row.targets[0];
+      const parts = foldLabelParts(row.kind, row.hidden, row.targets);
       const label = (
         <span className="row-head-fixed diff-fold-row-label">
           {row.exempt ? (
@@ -3204,7 +3206,10 @@ export function DiffPane({
           ) : (
             <IconChevron open={!row.folded} width={12} height={12} className="diff-fold-row-chevron" />
           )}
-          <span className="min-w-0 truncate">{row.label}</span>
+          <span className="min-w-0 truncate">
+            <UiText>{parts.lead}</UiText>
+            {parts.place ? <> <span className="font-mono">{parts.place.text}</span></> : null}
+          </span>
           {row.exempt ? null : <UiText className="diff-fold-row-hint">{row.folded ? "expand" : "fold"}</UiText>}
         </span>
       );
@@ -3238,7 +3243,9 @@ export function DiffPane({
                 jumpToMove(target);
               }}
             >
-              <UiText>go to</UiText> {targetLabel(target, baseName(target.path))} {row.kind === "in" ? "←" : "→"}
+              <UiText>go to</UiText>
+              <span className="font-mono">{targetLabel(target, baseName(target.path))}</span>
+              {row.kind === "in" ? "←" : "→"}
             </button>
           ) : null}
         </div>
