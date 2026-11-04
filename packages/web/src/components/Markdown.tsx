@@ -7,7 +7,7 @@
  * is coloured by exactly the same theme as the diff next to it.
  */
 
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { parseInline, parseMarkdown, type MdBlock, type MdInline } from "../lib/markdown";
 import { cachedTokens, tokenizeLines, type Tok } from "../lib/highlight";
 import { diagramCaption, renderMermaid } from "../lib/mermaid";
@@ -16,7 +16,7 @@ import type { Concept } from "../api/types";
 import { useSettings } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 import { IconCheck, IconChevron, IconCopy, IconExpand, IconWrap } from "./icons";
-import { Modal } from "./Modal";
+import { DiagramViewer } from "./DiagramViewer";
 import { UiText } from "./UiText";
 
 /** Stable, cheap cache key for a snippet (shiki's cache is keyed by string). */
@@ -482,21 +482,11 @@ function SuggestionBlock({ code }: { code: string }) {
 const MERMAID_RETRIES = 3;
 const MERMAID_RETRY_MS = 3000;
 
-export function MermaidBlock({
-  code,
-  open,
-  caption,
-  pending,
-  failed,
-}: {
-  code: string;
-  open: boolean;
-  caption: string | null;
-  /** shown while it renders; the raw source when omitted */
-  pending?: ReactNode;
-  /** shown when it cannot be drawn; the raw source when omitted */
-  failed?: ReactNode;
-}) {
+/**
+ * A Mermaid source drawn in the app theme's look: pending until it is drawn,
+ * then the SVG, or why not. `open` (an unclosed fence) stays pending.
+ */
+export function useMermaid(code: string, open: boolean) {
   const { appearance } = useSettings();
   const dark = appearance.theme.mode === "dark";
   const fontFamily = appearance.uiFont;
@@ -515,7 +505,6 @@ export function MermaidBlock({
   const [result, setResult] = useState<{ status: "pending" | "ok" | "error" | "unavailable"; svg?: string }>({
     status: "pending",
   });
-  const [enlarged, setEnlarged] = useState(false);
   // Counts the retries after the module failed to load (see lib/mermaid.ts):
   // a few, spaced out, cover the rebuild window without hammering the server.
   const [attempt, setAttempt] = useState(0);
@@ -536,6 +525,26 @@ export function MermaidBlock({
       if (timer) clearTimeout(timer);
     };
   }, [code, open, dark, fontFamily, colors, attempt]);
+  return result;
+}
+
+export function MermaidBlock({
+  code,
+  open,
+  caption,
+  pending,
+  failed,
+}: {
+  code: string;
+  open: boolean;
+  caption: string | null;
+  /** shown while it renders; the raw source when omitted */
+  pending?: ReactNode;
+  /** shown when it cannot be drawn; the raw source when omitted */
+  failed?: ReactNode;
+}) {
+  const result = useMermaid(code, open);
+  const [enlarged, setEnlarged] = useState(false);
 
   if (result.status === "pending" && pending !== undefined) return <>{pending}</>;
   if ((result.status !== "ok" || !result.svg) && result.status !== "pending" && failed !== undefined) return <>{failed}</>;
@@ -543,9 +552,6 @@ export function MermaidBlock({
   // mermaid runs under securityLevel "strict": no script/foreignObject
   // survives into this markup, so this is safe to inject as-is.
   const svg = { __html: result.svg };
-  // In the dialog a diagram grows to fill it, but no further than twice its
-  // own size: a small chart stays a chart instead of a poster.
-  const natural = Number(/viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+)/.exec(result.svg)?.[1]) || 0;
   return (
     <div className="my-1.5">
       {/* The whole diagram opens it larger; the icon only says so. */}
@@ -566,16 +572,7 @@ export function MermaidBlock({
         </span>
       </button>
       {enlarged ? (
-        <Modal title={caption ?? "Diagram"} maxWidth={1400} onClose={() => setEnlarged(false)} testId="mermaid-modal">
-          <div
-            className="flex justify-center p-6 [&_svg]:!h-auto [&_svg]:!max-h-[calc(85vh-7rem)] [&_svg]:!w-full"
-            style={{ background: "var(--bg-inset)" }}
-          >
-            <div className="w-full [&_svg]:!max-w-[var(--mmd-max)]" style={{ "--mmd-max": natural ? `${natural * 2}px` : "none" } as CSSProperties}
-              dangerouslySetInnerHTML={svg}
-            />
-          </div>
-        </Modal>
+        <DiagramViewer svg={result.svg} title={caption ?? "Diagram"} onClose={() => setEnlarged(false)} />
       ) : null}
     </div>
   );

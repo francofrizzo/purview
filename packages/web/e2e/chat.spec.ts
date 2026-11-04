@@ -177,6 +177,15 @@ test("a diagram opens larger from anywhere on it, titled by the sentence that in
   const modal = page.getByTestId("mermaid-modal");
   await expect(modal).toContainText("The states a charge moves through");
   await expect(modal.locator("svg").first()).toBeVisible();
+  // Zoom: a notch in, 100% from the level, and 0 fits it again.
+  const level = modal.getByTestId("diagram-zoom-level");
+  const fitted = await level.textContent();
+  await modal.getByRole("button", { name: "Zoom in" }).click();
+  await expect(level).not.toHaveText(fitted!);
+  await level.click();
+  await expect(level).toHaveText("100%");
+  await page.keyboard.press("0");
+  await expect(level).toHaveText(fitted!);
 });
 
 test("a file and line in a reply open in the unit that holds the nearest hunk while you read by units", async ({ page }) => {

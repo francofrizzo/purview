@@ -39,6 +39,9 @@ import {
   IconFiles as TablerFiles,
   IconLayoutDashboard,
   IconPlusMinus,
+  IconSitemap,
+  IconZoomIn as TablerZoomIn,
+  IconZoomOut as TablerZoomOut,
   IconFilter as TablerFilter,
   IconFolder as TablerFolder,
   IconSelector,
@@ -293,6 +296,9 @@ export const IconOverview = wrap(IconLayoutDashboard);
 export const IconFiles = wrap(TablerFiles);
 /** Lines added and removed: the toggle for line counts. */
 export const IconLineCounts = wrap(IconPlusMinus);
+export const IconDiagram = wrap(IconSitemap);
+export const IconZoomIn = wrap(TablerZoomIn);
+export const IconZoomOut = wrap(TablerZoomOut);
 /** Up-and-down chevrons: open every hidden line of a gap in the diff. */
 export const IconUnfold = wrap(IconSelector);
 export const IconConcept = wrap(IconBook2);

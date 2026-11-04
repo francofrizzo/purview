@@ -172,7 +172,8 @@ async function getMermaid(opts: MermaidRenderOptions): Promise<MermaidApi | null
             theme: "base",
             themeVariables: themeVariables(opts.colors, opts.dark),
             themeCSS: THEME_CSS,
-            flowchart: { nodeSpacing: 36, rankSpacing: 44, padding: 14 },
+            // Edges turn at right angles with a rounded corner, not as loose curves.
+            flowchart: { nodeSpacing: 36, rankSpacing: 44, padding: 14, curve: "rounded" },
             sequence: { mirrorActors: false, actorMargin: 64, boxMargin: 8, noteMargin: 12, messageMargin: 36 },
           }
         : { theme: opts.dark ? "dark" : "base" }),

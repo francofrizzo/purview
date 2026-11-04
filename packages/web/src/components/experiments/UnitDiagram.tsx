@@ -2,8 +2,9 @@ import { useState } from "react";
 import type { UnitDiagram as UnitDiagramData } from "../../api/types";
 import { useExperiment } from "../../lib/experiments";
 import { isSafeDiagram } from "../../lib/unitDiagram";
-import { MermaidBlock } from "../Markdown";
-import { IconChevron } from "../icons";
+import { DiagramViewer } from "../DiagramViewer";
+import { useMermaid } from "../Markdown";
+import { IconDiagram } from "../icons";
 import { UiText } from "../UiText";
 
 const KIND_WORD: Record<UnitDiagramData["kind"], string> = {
@@ -14,51 +15,57 @@ const KIND_WORD: Record<UnitDiagramData["kind"], string> = {
 };
 
 /**
- * A unit's diagram (the `unitDiagrams` experiment), under its brief: a
- * caption that folds it, and the diagram drawn the way the app draws every
- * Mermaid diagram (MermaidBlock: the theme's look, a click to see it larger).
- * Source the app refuses, or Mermaid cannot parse, is one faint line, never
- * a crash. Renders nothing while the experiment is off or the unit has none.
+ * A unit's diagram (the `unitDiagrams` experiment), under its brief: one
+ * line, "Diagram: its caption", that opens it in the diagram viewer. Nothing
+ * is drawn until then. Source the app refuses, or Mermaid cannot parse, is
+ * one faint line, never a crash. Renders nothing while the experiment is off
+ * or the unit has none.
  */
 export function UnitDiagram({ diagram }: { diagram?: UnitDiagramData }) {
   const on = useExperiment("unitDiagrams");
+  const [opened, setOpened] = useState(false);
   if (!on || !diagram) return null;
-  return <UnitDiagramBlock diagram={diagram} />;
+  const caption = diagram.title ?? `${KIND_WORD[diagram.kind]} diagram`;
+  if (!isSafeDiagram(diagram.mermaid)) return <Failed />;
+  return (
+    <div data-testid="unit-diagram" data-kind={diagram.kind}>
+      <button
+        type="button"
+        className="-ml-1 inline-flex max-w-full items-center gap-1.5 rounded px-1 py-0.5 text-xs hover:bg-[var(--bg-hover)]"
+        data-testid="unit-diagram-open"
+        data-tip={`Open the ${KIND_WORD[diagram.kind].toLowerCase()} diagram`}
+        onClick={() => setOpened(true)}
+      >
+        <IconDiagram width={14} height={14} className="flex-none" style={{ color: "var(--accent)" }} />
+        <span className="flex-none" style={{ color: "var(--fg-muted)" }}>
+          <UiText>Diagram:</UiText>
+        </span>
+        <span className="truncate" style={{ color: "var(--fg)" }}>
+          {caption}
+        </span>
+      </button>
+      {opened ? <Viewer code={diagram.mermaid} caption={caption} onClose={() => setOpened(false)} /> : null}
+    </div>
+  );
 }
 
-function UnitDiagramBlock({ diagram }: { diagram: UnitDiagramData }) {
-  const [folded, setFolded] = useState(false);
-  const caption = diagram.title ?? `${KIND_WORD[diagram.kind]} diagram`;
-  const failed = (
+/** Drawn only once opened: a unit's diagram costs nothing while it stays shut. */
+function Viewer({ code, caption, onClose }: { code: string; caption: string; onClose: () => void }) {
+  const result = useMermaid(code, false);
+  return (
+    <DiagramViewer
+      svg={result.status === "ok" && result.svg ? result.svg : null}
+      title={caption}
+      onClose={onClose}
+      fallback={result.status === "pending" ? <UiText className="text-xs text-[var(--fg-faint)]">drawing…</UiText> : <Failed />}
+    />
+  );
+}
+
+function Failed() {
+  return (
     <p className="text-2xs" style={{ color: "var(--fg-faint)" }} data-testid="unit-diagram-error">
       <UiText>diagram could not be drawn</UiText>
     </p>
-  );
-  return (
-    <div className="flex flex-col gap-1" data-testid="unit-diagram" data-kind={diagram.kind}>
-      <button
-        type="button"
-        className="-ml-1 inline-flex max-w-full items-center gap-1 self-start rounded px-1 text-2xs font-medium hover:bg-[var(--bg-hover)]"
-        style={{ color: "var(--fg-muted)" }}
-        aria-expanded={!folded}
-        data-testid="unit-diagram-toggle"
-        onClick={() => setFolded((f) => !f)}
-      >
-        <IconChevron open={!folded} width={10} height={10} className="flex-none" />
-        <span className="uppercase tracking-wide" style={{ color: "var(--fg-faint)" }}><UiText>{KIND_WORD[diagram.kind]}</UiText></span>
-        {diagram.title ? <span className="truncate">{diagram.title}</span> : null}
-      </button>
-      {folded ? null : !isSafeDiagram(diagram.mermaid) ? (
-        failed
-      ) : (
-        <MermaidBlock
-          code={diagram.mermaid}
-          open={false}
-          caption={caption}
-          pending={<div className="h-16 rounded" style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }} aria-busy />}
-          failed={failed}
-        />
-      )}
-    </div>
   );
 }
