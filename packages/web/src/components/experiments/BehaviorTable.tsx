@@ -6,11 +6,15 @@ import { UiText } from "../UiText";
 
 /** A cell the analysis left empty: the behavior did not exist, or no longer does. */
 const NONE = /^\s*[—–-]?\s*$/;
+/** An `after` saying the behavior stays as `before` describes it. */
+const SAME = /^\s*=\s*$/;
 
 /**
  * What behaves differently once the PR merges, a row per behavior: before on
  * the diff's removed tint, after on its added tint, so it reads like the diff
- * the reader is about to open. A row whose code lives in one unit opens it.
+ * the reader is about to open. A behavior that stays the same (`after` is
+ * "=") is one outlined cell across both, after the ones that change. A row
+ * whose code lives in one unit opens it.
  */
 export function BehaviorTable({
   changes,
@@ -37,10 +41,11 @@ export function BehaviorTable({
         <span />
       </div>
       <ul className="flex flex-col gap-1">
-        {changes.map((c, i) => {
+        {[...changes.filter((c) => !SAME.test(c.after)), ...changes.filter((c) => SAME.test(c.after))].map((c, i) => {
           const unit = c.unit && units.has(c.unit) ? c.unit : undefined;
-          const added = NONE.test(c.before);
-          const removed = NONE.test(c.after);
+          const same = SAME.test(c.after);
+          const added = !same && NONE.test(c.before);
+          const removed = !same && NONE.test(c.after);
           const body = (
             <>
               <span className="flex flex-wrap items-baseline gap-x-1.5 pt-1.5 text-[13px] font-medium leading-5" style={{ color: "var(--fg)" }}>
@@ -49,10 +54,18 @@ export function BehaviorTable({
                   <span className="chip" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}><UiText>new</UiText></span>
                 ) : removed ? (
                   <span className="chip" style={{ color: "var(--fg-muted)", background: "var(--bg-inset)" }}><UiText>removed</UiText></span>
+                ) : same ? (
+                  <span className="chip" style={{ color: "var(--fg-muted)", background: "var(--bg-inset)" }}><UiText>unchanged</UiText></span>
                 ) : null}
               </span>
-              <BehaviorCell text={c.before} tint="var(--del-bg)" label="Before" />
-              <BehaviorCell text={c.after} tint="var(--add-bg)" label="After" />
+              {same ? (
+                <BehaviorCell text={c.before} label="Before and after" wide />
+              ) : (
+                <>
+                  <BehaviorCell text={c.before} tint="var(--del-bg)" label="Before" />
+                  <BehaviorCell text={c.after} tint="var(--add-bg)" label="After" />
+                </>
+              )}
               <span className="hidden justify-center pt-1.5 sm:flex">
                 {unit ? <UnitNumber number={numbers.get(unit) ?? 0} /> : null}
               </span>
@@ -81,7 +94,8 @@ export function BehaviorTable({
   );
 }
 
-function BehaviorCell({ text, tint, label }: { text: string; tint: string; label: string }) {
+/** `tint`: the diff's colour for its side; without one, an outline (a behavior that stays the same). */
+function BehaviorCell({ text, tint, label, wide }: { text: string; tint?: string; label: string; wide?: boolean }) {
   if (NONE.test(text)) {
     return (
       <span className="hidden px-2 py-1.5 text-[13px] leading-5 sm:block" style={{ color: "var(--fg-faint)" }} aria-label={`${label}: none`}>
@@ -90,7 +104,7 @@ function BehaviorCell({ text, tint, label }: { text: string; tint: string; label
     );
   }
   return (
-    <span className="rounded px-2 py-1.5 text-[13px] leading-5" style={{ color: "var(--fg)", background: tint }}>
+    <span className={`rounded px-2 py-1.5 text-[13px] leading-5${wide ? " sm:col-span-2" : ""}`} style={{ color: "var(--fg)", ...(tint ? { background: tint } : { boxShadow: "inset 0 0 0 1px var(--border-strong)" }) }}>
       <UiText className="sr-only">{`${label}: `}</UiText>
       <InlineMarkdown text={text} />
     </span>

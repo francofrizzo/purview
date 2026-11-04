@@ -1041,7 +1041,7 @@ const state: PrState = {
   behaviorChanges: [
     { what: "Client retries a charge", before: "The card is charged again.", after: "The first charge's result comes back; the card is charged once.", unit: "idempotent-charge-path" },
     { what: "Gateway times out", before: "The charge fails at once.", after: "Retried up to 3 times with backoff, under the same charge key.", unit: "transient-retry-backoff" },
-    { what: "Two orders, same amount", before: "Two charges.", after: "Two charges: the key includes the order id.", unit: "idempotent-charge-path" },
+    { what: "Two orders, same amount", before: "Two charges: the key includes the order id.", after: "=", unit: "idempotent-charge-path" },
     { what: "Nightly ledger reconciliation", before: "—", after: "Each night, ledger rows are matched against the gateway's settlements.", unit: "ledger-reconciliation" },
     { what: "Ledger retention job", before: "Deletes ledger rows older than 30 days.", after: "—" },
   ],

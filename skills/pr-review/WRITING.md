@@ -180,7 +180,7 @@ tooling); a refactor with one row saying "nothing changes" is noise.
 ```json
 "behaviorChanges": [
   { "what": "Retry after a timeout", "before": "Charges the card again.", "after": "Returns the first charge's result; the card is charged once.", "unit": "charge-once" },
-  { "what": "Two orders, same amount, same minute", "before": "Two charges.", "after": "Two charges: the key includes the order id.", "unit": "charge-key" },
+  { "what": "Two orders, same amount, same minute", "before": "Two charges: the key includes the order id.", "after": "=", "unit": "charge-key" },
   { "what": "Charge ledger", "before": "—", "after": "Keeps each charge's outcome for 30 days.", "unit": "ledger-table" }
 ]
 ```
@@ -191,8 +191,9 @@ tooling); a refactor with one row saying "nothing changes" is noise.
 - `before` and `after`: one plain sentence each, under 160 characters, no `code`. Concrete
   where the rule turns on values: the date, the amount, the threshold. `—` for a behavior
   that did not exist (before) or no longer does (after).
-- A row whose `before` and `after` read the same is worth writing when a reviewer would
-  fear it changed (the second row above): it says the edge case was thought about.
+- A behavior that stays the same is worth a row when a reviewer would fear it changed
+  (the second row above): it says the edge case was thought about. Its `before` says what
+  it does, and `after` is `=`. Never restate it in `after` ("The same: …").
 - `unit`: the id of the unit whose code makes the change, so the row opens it. Leave it
   out when the change spreads across several.
 - Two to six rows, ten at most. Order by what a user would notice first.

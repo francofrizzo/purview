@@ -497,7 +497,8 @@ export const BehaviorChangeSchema = z.object({
   what: z.string().min(1).max(60),
   /** how it behaved before the PR; "—" when the behavior is new */
   before: z.string().min(1).max(160),
-  /** how it behaves after; "—" when the PR removes it */
+  /** how it behaves after; "—" when the PR removes it, "=" when it stays as
+   *  `before` says (a behavior a reviewer would fear changed) */
   after: z.string().min(1).max(160),
   /** the unit whose code makes the change, when one does */
   unit: z.string().optional(),
