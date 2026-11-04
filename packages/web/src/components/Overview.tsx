@@ -213,9 +213,28 @@ export function Overview({
           {state.fileNotes ? (
             <section data-testid="overview-files" data-section="files">
               <SectionHead title="Where it lands">
-                <FileLegend files={detail.files.files} />
+                <span className="flex items-center gap-3">
+                  <FileLegend files={detail.files.files} />
+                  <button
+                    type="button"
+                    className="text-2xs tabular-nums transition-colors hover:text-[var(--fg-muted)]"
+                    style={{ color: settings.landsLineCounts ? "var(--fg-muted)" : "var(--fg-faint)" }}
+                    aria-pressed={settings.landsLineCounts}
+                    data-tip={settings.landsLineCounts ? "Hide lines added and removed" : "Show lines added and removed"}
+                    data-testid="lands-line-counts"
+                    onClick={() => update({ landsLineCounts: !settings.landsLineCounts })}
+                  >
+                    ±lines
+                  </button>
+                </span>
               </SectionHead>
-              <FileShape files={detail.files.files} units={work} notes={state.fileNotes} onOpenFile={onOpenFile} />
+              <FileShape
+                files={detail.files.files}
+                units={work}
+                notes={state.fileNotes}
+                onOpenFile={onOpenFile}
+                counts={settings.landsLineCounts}
+              />
             </section>
           ) : null}
 

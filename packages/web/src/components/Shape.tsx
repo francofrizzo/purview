@@ -48,11 +48,14 @@ export function FileShape({
   units,
   notes = {},
   onOpenFile,
+  counts = false,
 }: {
   files: FileEntry[];
   units: ReviewUnit[];
   notes?: FileNotes;
   onOpenFile?: (path: string) => void;
+  /** each row's lines added and removed, in a column of their own */
+  counts?: boolean;
 }) {
   const own = useMemo(() => files.filter((f) => !f.generated), [files]);
   const aside = useMemo(() => asideFiles(own, units), [own, units]);
@@ -81,7 +84,9 @@ export function FileShape({
       {/* Names, then the line counts (added right-aligned, removed left, so
           the numbers meet at one seam), then the notes; on a phone the counts
           sit after the name and the note goes under its line. */}
-      <div className="grid sm:grid-cols-[fit-content(45%)_auto_auto_minmax(0,1fr)]">
+      <div
+        className={`grid ${counts ? "sm:grid-cols-[fit-content(45%)_auto_auto_minmax(0,1fr)]" : "sm:grid-cols-[fit-content(45%)_minmax(0,1fr)]"}`}
+      >
         {lines.map((l, i) => (
           <div
             key={`${i}:${l.path}`}
@@ -129,11 +134,13 @@ export function FileShape({
                   {shortName(l.name)}
                 </button>
               )}
-              <span className="sm:hidden">
-                <LineCounts {...size(l.path, Boolean(l.dir))} />
-              </span>
+              {counts ? (
+                <span className="sm:hidden">
+                  <LineCounts {...size(l.path, Boolean(l.dir))} />
+                </span>
+              ) : null}
             </div>
-            <LineCounts {...size(l.path, Boolean(l.dir))} columns />
+            {counts ? <LineCounts {...size(l.path, Boolean(l.dir))} columns /> : null}
             {l.note ? (
               <div className="min-w-0 pl-[calc(var(--indent)+1.25rem)] text-xs leading-5 sm:pl-0" style={{ color: "var(--fg-muted)" }}>
                 <InlineMarkdown text={l.note} />
@@ -156,7 +163,7 @@ export function FileShape({
  *  cells (always there, so the note keeps its column), shown from `sm` up. */
 function LineCounts({ added, removed, columns }: { added: number; removed: number; columns?: boolean }) {
   if (columns) {
-    const cell = "hidden whitespace-nowrap font-sans text-2xs leading-5 tabular-nums sm:block";
+    const cell = "hidden whitespace-nowrap font-sans text-[10px] leading-5 tabular-nums sm:block";
     return (
       <>
         <span className={`${cell} text-right`} style={{ color: "var(--ok)" }} data-testid="file-shape-counts">
@@ -170,7 +177,7 @@ function LineCounts({ added, removed, columns }: { added: number; removed: numbe
   }
   if (!added && !removed) return null;
   return (
-    <span className="flex-none whitespace-nowrap font-sans text-2xs tabular-nums" data-testid="file-shape-counts">
+    <span className="flex-none whitespace-nowrap font-sans text-[10px] tabular-nums" data-testid="file-shape-counts">
       {added ? <span style={{ color: "var(--ok)" }}>+{added}</span> : null}
       {added && removed ? " " : null}
       {removed ? <span style={{ color: "var(--risk)" }}>−{removed}</span> : null}

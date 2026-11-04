@@ -101,10 +101,17 @@ test("the description moves to the top of the overview and back, and stays where
   await expect(page.getByTestId("pr-description").locator("h2")).toContainText(/^Descriptionby\s*\S*dana$/);
 });
 
-test("where it lands shows each file's and each folder's lines added and removed", async ({ page }) => {
+test("where it lands shows each file's and each folder's lines when you turn them on, and remembers it", async ({ page }) => {
   await page.keyboard.press("s");
-  await expect(page.getByTestId("overview-files")).toContainText("reconcile.ts+80 −14");
-  await expect(page.getByTestId("overview-files")).toContainText("billing/+153 −24");
+  const files = page.getByTestId("overview-files");
+  await expect(files.getByTestId("file-shape-counts")).toHaveCount(0);
+  await page.getByTestId("lands-line-counts").click();
+  await expect(files).toContainText("reconcile.ts+80 −14");
+  await expect(files).toContainText("billing/+153 −24");
+  await page.reload();
+  await expect(page.getByTestId("lands-line-counts")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("lands-line-counts").click();
+  await expect(files.getByTestId("file-shape-counts")).toHaveCount(0);
 });
 
 test("the overview's jump bar moves to the margin where the pane has room, and comes back where it does not", async ({ page }) => {

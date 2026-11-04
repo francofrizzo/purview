@@ -58,6 +58,8 @@ export interface Settings {
   foldSkippableHunks: boolean;
   /** The PR's own description opens the overview, before Purview's sections, instead of after them. */
   descriptionFirst: boolean;
+  /** Where it lands shows each file's and folder's lines added and removed. */
+  landsLineCounts: boolean;
   /** What "copy all for agent" does: copy, or copy and archive what it copied. The last one used. */
   copyBundleMode: "copy" | "archive";
   /** Moved-code blocks open folded behind their band. */
@@ -132,6 +134,7 @@ export const DEFAULT_SETTINGS: Settings = {
   foldSkippableHunks: false,
   copyBundleMode: "copy",
   descriptionFirst: false,
+  landsLineCounts: false,
   foldMovedBlocks: false,
   hideReviewedUnits: false,
   composerFormatting: false,
@@ -188,6 +191,7 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   }
   if (typeof r.foldSkippableHunks === "boolean") out.foldSkippableHunks = r.foldSkippableHunks;
   if (typeof r.descriptionFirst === "boolean") out.descriptionFirst = r.descriptionFirst;
+  if (typeof r.landsLineCounts === "boolean") out.landsLineCounts = r.landsLineCounts;
   if (r.copyBundleMode === "copy" || r.copyBundleMode === "archive") out.copyBundleMode = r.copyBundleMode;
   if (typeof r.foldMovedBlocks === "boolean") out.foldMovedBlocks = r.foldMovedBlocks;
   if (typeof r.hideReviewedUnits === "boolean") out.hideReviewedUnits = r.hideReviewedUnits;
