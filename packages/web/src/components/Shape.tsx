@@ -1,6 +1,6 @@
 import { useMemo, type CSSProperties } from "react";
 import type { FileEntry, FileNotes, ReviewUnit } from "../api/types";
-import { asideFiles, fileTree } from "../lib/shape";
+import { asideFiles, fileTree, type TreeLine } from "../lib/shape";
 import { FileStatusBadge } from "./Chips";
 import { TreeLines } from "./TreeLines";
 import { InlineMarkdown } from "./Markdown";
@@ -60,18 +60,26 @@ export function FileShape({
   const own = useMemo(() => files.filter((f) => !f.generated), [files]);
   const aside = useMemo(() => asideFiles(own, units), [own, units]);
   const lines = useMemo(() => fileTree(own, notes, aside), [own, notes, aside]);
-  // Lines added and removed under each line: a file's own, a folder's summed.
+  // Lines added and removed on each line, every changed line counted once: a
+  // file's own on its row, and on a folder's row only those of the files it
+  // hides ("3 files", "12 more"). The numbers on screen add up to the total.
   const size = useMemo(() => {
-    const ofFile = own.map((f) => ({
-      path: f.path,
-      added: f.additions ?? f.hunks.reduce((n, h) => n + (h.addedLines?.length ?? 0), 0),
-      removed: f.deletions ?? f.hunks.reduce((n, h) => n + (h.removedLines?.length ?? 0), 0),
-    }));
-    return (path: string, dir: boolean) =>
-      ofFile
-        .filter((f) => (dir ? f.path.startsWith(`${path}/`) : f.path === path))
-        .reduce((t, f) => ({ added: t.added + f.added, removed: t.removed + f.removed }), { added: 0, removed: 0 });
-  }, [own]);
+    const shownFiles = new Set(lines.filter((l) => !l.dir).map((l) => l.path));
+    const dirs = lines.filter((l) => l.dir).map((l) => l.path);
+    const totals = new Map<string, { added: number; removed: number; files: number }>();
+    for (const f of own) {
+      const added = f.additions ?? f.hunks.reduce((n, h) => n + (h.addedLines?.length ?? 0), 0);
+      const removed = f.deletions ?? f.hunks.reduce((n, h) => n + (h.removedLines?.length ?? 0), 0);
+      // its own row, else the deepest folder row it sits under
+      const at = shownFiles.has(f.path)
+        ? f.path
+        : dirs.filter((d) => f.path.startsWith(`${d}/`)).sort((a, b) => b.length - a.length)[0];
+      if (at === undefined) continue;
+      const t = totals.get(at) ?? { added: 0, removed: 0, files: 0 };
+      totals.set(at, { added: t.added + added, removed: t.removed + removed, files: t.files + 1 });
+    }
+    return (path: string) => totals.get(path) ?? { added: 0, removed: 0, files: 0 };
+  }, [own, lines]);
   const generated = files.length - own.length;
   const asideCount = own.filter((f) => aside.has(f.path) && notes[f.path] === undefined).length;
   const foot = [
@@ -136,11 +144,11 @@ export function FileShape({
               )}
               {counts ? (
                 <span className="sm:hidden">
-                  <LineCounts {...size(l.path, Boolean(l.dir))} />
+                  <LineCounts {...size(l.path)} hidden={hiddenTip(l, size(l.path).files)} />
                 </span>
               ) : null}
             </div>
-            {counts ? <LineCounts {...size(l.path, Boolean(l.dir))} columns /> : null}
+            {counts ? <LineCounts {...size(l.path)} hidden={hiddenTip(l, size(l.path).files)} columns /> : null}
             {l.note ? (
               <div className="min-w-0 pl-[calc(var(--indent)+1.25rem)] text-xs leading-5 sm:pl-0" style={{ color: "var(--fg-muted)" }}>
                 <InlineMarkdown text={l.note} />
@@ -158,18 +166,37 @@ export function FileShape({
   );
 }
 
+/** What a folder row's numbers count: only the files it hides, never the rows under it. */
+function hiddenTip(l: TreeLine, files: number): string | undefined {
+  if (!l.dir || !files) return undefined;
+  const n = `${files} ${files === 1 ? "file" : "files"}`;
+  return l.folded ? `Lines in its ${n}` : `Lines in the ${n} not listed under it`;
+}
+
 /** The tree's key, as counts: each badge the way the rows show it. */
 /** `+12 −3`, quiet: the size of what sits there. As `columns`, two grid
  *  cells (always there, so the note keeps its column), shown from `sm` up. */
-function LineCounts({ added, removed, columns }: { added: number; removed: number; columns?: boolean }) {
+function LineCounts({
+  added,
+  removed,
+  hidden,
+  columns,
+}: {
+  added: number;
+  removed: number;
+  /** on a folder's row, which files the numbers are of */
+  hidden?: string;
+  columns?: boolean;
+}) {
+  const tip = hidden && (added || removed) ? hidden : undefined;
   if (columns) {
     const cell = "hidden whitespace-nowrap font-sans text-[10px] leading-5 tabular-nums sm:block";
     return (
       <>
-        <span className={`${cell} text-right`} style={{ color: "var(--ok)" }} data-testid="file-shape-counts">
+        <span className={`${cell} text-right`} style={{ color: "var(--ok)" }} data-tip={tip} data-testid="file-shape-counts">
           {added ? `+${added}` : null}
         </span>
-        <span className={`${cell} pl-1.5 pr-6`} style={{ color: "var(--risk)" }}>
+        <span className={`${cell} pl-1.5 pr-6`} style={{ color: "var(--risk)" }} data-tip={tip}>
           {removed ? `−${removed}` : null}
         </span>
       </>
@@ -177,7 +204,7 @@ function LineCounts({ added, removed, columns }: { added: number; removed: numbe
   }
   if (!added && !removed) return null;
   return (
-    <span className="flex-none whitespace-nowrap font-sans text-[10px] tabular-nums" data-testid="file-shape-counts">
+    <span className="flex-none whitespace-nowrap font-sans text-[10px] tabular-nums" data-tip={tip} data-testid="file-shape-counts">
       {added ? <span style={{ color: "var(--ok)" }}>+{added}</span> : null}
       {added && removed ? " " : null}
       {removed ? <span style={{ color: "var(--risk)" }}>−{removed}</span> : null}

@@ -101,13 +101,18 @@ test("the description moves to the top of the overview and back, and stays where
   await expect(page.getByTestId("pr-description").locator("h2")).toContainText(/^Descriptionby\s*\S*dana$/);
 });
 
-test("where it lands shows each file's and each folder's lines when you turn them on, and remembers it", async ({ page }) => {
+test("where it lands counts every line once when you turn the counts on, and remembers it", async ({ page }) => {
   await page.keyboard.press("s");
   const files = page.getByTestId("overview-files");
   await expect(files.getByTestId("file-shape-counts")).toHaveCount(0);
   await page.getByTestId("lands-line-counts").click();
   await expect(files).toContainText("reconcile.ts+80 −14");
-  await expect(files).toContainText("billing/+153 −24");
+  // A folder counts only the files it hides, not the rows under it.
+  await expect(files).toContainText("billing/+49 −10");
+  await expect(files.getByTestId("file-shape-dir-src/billing").locator("..").locator("..").getByTestId("file-shape-counts").first()).toHaveAttribute(
+    "data-tip",
+    "Lines in the 3 files not listed under it",
+  );
   await page.reload();
   await expect(page.getByTestId("lands-line-counts")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("lands-line-counts").click();

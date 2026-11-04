@@ -73,8 +73,8 @@ export function Overview({
   const sections = [
     descriptionFirst ? { id: "description", label: "Description" } : null,
     summary ? { id: "summary", label: "Summary" } : null,
-    behaviorChanges?.length ? { id: "behavior", label: "Behavior" } : null,
     state.concepts?.length ? { id: "concepts", label: "Concepts" } : null,
+    behaviorChanges?.length ? { id: "behavior", label: "Behavior" } : null,
     state.fileNotes ? { id: "files", label: "Where it lands" } : null,
     mix.rows.length ? { id: "size", label: "Size" } : null,
     ordered.length ? { id: "reading", label: "Must read" } : null,
@@ -180,6 +180,8 @@ export function Overview({
             </section>
           ) : null}
 
+          {state.concepts?.length ? <ConceptList concepts={state.concepts} /> : null}
+
           {behaviorChanges?.length ? (
             <BehaviorTable
               changes={behaviorChanges}
@@ -188,8 +190,6 @@ export function Overview({
               onOpenUnit={onOpenUnit}
             />
           ) : null}
-
-          {state.concepts?.length ? <ConceptList concepts={state.concepts} /> : null}
 
           {/* Where the change lands, in the code: the shallow tree the analysis
               noted, before the units that read it. */}
