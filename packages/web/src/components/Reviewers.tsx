@@ -67,7 +67,7 @@ export function ReviewersMark({
     return (
       <span
         className={`chip px-0 font-normal ${className ?? ""}`}
-        style={{ color: "var(--warn)", background: "transparent" }}
+        style={{ color: "var(--fg-muted)", background: "transparent" }}
         data-tip="Nobody has been asked to review this PR"
         data-testid="no-reviewers"
       >

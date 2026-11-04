@@ -242,9 +242,9 @@ export function ReviewRequestAge({
 }
 
 /**
- * The home row's "you · 15m": a clock, who was asked and how long ago. Faint
- * until the request reaches the middle age threshold in Settings (3 days by
- * default), then warm; the tooltip spells out when, by whom and how.
+ * The home row's "you · 15m": a clock, who was asked and how long ago, warming
+ * through the age thresholds in Settings; the tooltip spells out when, by whom
+ * and how.
  */
 export function ReviewRequestWait({
   request,
@@ -258,14 +258,16 @@ export function ReviewRequestWait({
   const shown = visibleReviewRequest(request, state);
   if (!shown) return null;
   const at = new Date(now);
-  const old = requestAgeLevel(shown.at, at, settings.requestAgeDays) >= 2;
+  // The same scale as everywhere: faint, then yellow, orange and red as it
+  // crosses the thresholds in Settings.
+  const level = requestAgeLevel(shown.at, at, settings.requestAgeDays);
   return (
     <span
       className="inline-flex flex-none items-center gap-1"
-      style={{ color: old ? "var(--warn)" : "var(--fg-faint)" }}
+      style={{ color: REQUEST_AGE_COLORS[level] }}
       data-tip={reviewRequestTooltip(shown)}
       data-testid="review-request-age"
-      data-old={old || undefined}
+      data-level={level}
     >
       <IconClock width={11} height={11} />
       {formatRequestWait(shown.at, at, shown.via)}
