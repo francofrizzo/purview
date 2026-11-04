@@ -40,8 +40,8 @@ const STATUS_COUNTS: [NonNullable<FileEntry["status"]>, string][] = [
 /**
  * Where the change lands: the PR's files as a shallow tree, each noted folder
  * or file with the analysis's line beside it. A file carries the same badge
- * as in the Files view, and opens there. Tests, docs and generated files are
- * counted at the foot.
+ * as in the Files view, and opens there. Tests and docs the tree leaves out,
+ * and generated files, close it as rows of their own: "+ 12 generated".
  */
 export function FileShape({
   files,
@@ -61,31 +61,36 @@ export function FileShape({
   const aside = useMemo(() => asideFiles(own, units), [own, units]);
   const lines = useMemo(() => fileTree(own, notes, aside), [own, notes, aside]);
   // Lines added and removed on each line, every changed line counted once: a
-  // file's own on its row, and on a folder's row only those of the files it
-  // hides ("3 files", "12 more"). The numbers on screen add up to the total.
-  const size = useMemo(() => {
+  // file's own on its row, on a folder's row only those of the files it hides
+  // ("3 files", "12 more"), and the rest on the closing rows. The numbers on
+  // screen add up to the PR's.
+  const { size, loose } = useMemo(() => {
     const shownFiles = new Set(lines.filter((l) => !l.dir).map((l) => l.path));
     const dirs = lines.filter((l) => l.dir).map((l) => l.path);
-    const totals = new Map<string, { added: number; removed: number; files: number }>();
-    for (const f of own) {
-      const added = f.additions ?? f.hunks.reduce((n, h) => n + (h.addedLines?.length ?? 0), 0);
-      const removed = f.deletions ?? f.hunks.reduce((n, h) => n + (h.removedLines?.length ?? 0), 0);
-      // its own row, else the deepest folder row it sits under
-      const at = shownFiles.has(f.path)
-        ? f.path
-        : dirs.filter((d) => f.path.startsWith(`${d}/`)).sort((a, b) => b.length - a.length)[0];
-      if (at === undefined) continue;
-      const t = totals.get(at) ?? { added: 0, removed: 0, files: 0 };
-      totals.set(at, { added: t.added + added, removed: t.removed + removed, files: t.files + 1 });
+    const totals = new Map<string, Size>();
+    // the closing rows: tests and docs no row holds, and generated files
+    const loose = { aside: { ...NONE }, generated: { ...NONE } };
+    for (const f of files) {
+      const at = f.generated
+        ? undefined
+        : shownFiles.has(f.path)
+          ? f.path
+          : // the deepest folder row it sits under
+            dirs.filter((d) => f.path.startsWith(`${d}/`)).sort((a, b) => b.length - a.length)[0];
+      const into = at !== undefined ? (totals.get(at) ?? { ...NONE }) : f.generated ? loose.generated : loose.aside;
+      into.added += f.additions ?? f.hunks.reduce((n, h) => n + (h.addedLines?.length ?? 0), 0);
+      into.removed += f.deletions ?? f.hunks.reduce((n, h) => n + (h.removedLines?.length ?? 0), 0);
+      into.files += 1;
+      if (at !== undefined) totals.set(at, into);
     }
-    return (path: string) => totals.get(path) ?? { added: 0, removed: 0, files: 0 };
-  }, [own, lines]);
-  const generated = files.length - own.length;
-  const asideCount = own.filter((f) => aside.has(f.path) && notes[f.path] === undefined).length;
+    return { size: (path: string) => totals.get(path) ?? NONE, loose };
+  }, [files, lines]);
   const foot = [
-    asideCount ? `${asideCount} test and doc ${asideCount === 1 ? "file" : "files"}` : null,
-    generated ? `${generated} generated` : null,
-  ].filter(Boolean);
+    loose.aside.files
+      ? { label: `${loose.aside.files} test and doc ${loose.aside.files === 1 ? "file" : "files"}`, ...loose.aside }
+      : null,
+    loose.generated.files ? { label: `${loose.generated.files} generated`, ...loose.generated } : null,
+  ].filter((r) => r !== null);
 
   return (
     <div data-testid="file-shape">
@@ -156,15 +161,27 @@ export function FileShape({
             ) : null}
           </div>
         ))}
+        {foot.map((r) => (
+          <div key={r.label} className="col-span-full grid py-[3px] sm:[grid-template-columns:subgrid]" data-testid="file-shape-foot">
+            <div className="flex min-w-0 items-start gap-1.5 text-2xs leading-5 sm:pr-4" style={{ color: "var(--fg-faint)" }}>
+              <span className="w-3.5 flex-none text-center">+</span>
+              {r.label}
+              {counts ? (
+                <span className="sm:hidden">
+                  <LineCounts added={r.added} removed={r.removed} muted />
+                </span>
+              ) : null}
+            </div>
+            {counts ? <LineCounts added={r.added} removed={r.removed} muted columns /> : null}
+          </div>
+        ))}
       </div>
-      {foot.length ? (
-        <p className="mt-2 text-2xs" style={{ color: "var(--fg-faint)" }} data-testid="file-shape-foot">
-          Not listed: {foot.join(", ")}
-        </p>
-      ) : null}
     </div>
   );
 }
+
+type Size = { added: number; removed: number; files: number };
+const NONE: Size = { added: 0, removed: 0, files: 0 };
 
 /** What a folder row's numbers count: only the files it hides, never the rows under it. */
 function hiddenTip(l: TreeLine, files: number): string | undefined {
@@ -180,23 +197,28 @@ function LineCounts({
   added,
   removed,
   hidden,
+  muted,
   columns,
 }: {
   added: number;
   removed: number;
   /** on a folder's row, which files the numbers are of */
   hidden?: string;
+  /** faint instead of green and red: the closing rows' */
+  muted?: boolean;
   columns?: boolean;
 }) {
   const tip = hidden && (added || removed) ? hidden : undefined;
+  const plus = muted ? "var(--fg-faint)" : "var(--ok)";
+  const minus = muted ? "var(--fg-faint)" : "var(--risk)";
   if (columns) {
     const cell = "hidden whitespace-nowrap font-sans text-[10px] leading-5 tabular-nums sm:block";
     return (
       <>
-        <span className={`${cell} text-right`} style={{ color: "var(--ok)" }} data-tip={tip} data-testid="file-shape-counts">
+        <span className={`${cell} text-right`} style={{ color: plus }} data-tip={tip} data-testid="file-shape-counts">
           {added ? `+${added}` : null}
         </span>
-        <span className={`${cell} pl-1.5 pr-6`} style={{ color: "var(--risk)" }} data-tip={tip}>
+        <span className={`${cell} pl-1.5 pr-6`} style={{ color: minus }} data-tip={tip}>
           {removed ? `−${removed}` : null}
         </span>
       </>
@@ -205,9 +227,9 @@ function LineCounts({
   if (!added && !removed) return null;
   return (
     <span className="flex-none whitespace-nowrap font-sans text-[10px] tabular-nums" data-tip={tip} data-testid="file-shape-counts">
-      {added ? <span style={{ color: "var(--ok)" }}>+{added}</span> : null}
+      {added ? <span style={{ color: plus }}>+{added}</span> : null}
       {added && removed ? " " : null}
-      {removed ? <span style={{ color: "var(--risk)" }}>−{removed}</span> : null}
+      {removed ? <span style={{ color: minus }}>−{removed}</span> : null}
     </span>
   );
 }
