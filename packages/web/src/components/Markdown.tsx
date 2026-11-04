@@ -7,10 +7,10 @@
  * is coloured by exactly the same theme as the diff next to it.
  */
 
-import { createContext, memo, useContext, useEffect, useRef, useState } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { parseInline, parseMarkdown, type MdBlock, type MdInline } from "../lib/markdown";
 import { cachedTokens, tokenizeLines, type Tok } from "../lib/highlight";
-import { renderMermaid } from "../lib/mermaid";
+import { diagramCaption, renderMermaid } from "../lib/mermaid";
 import { conceptTip, type Glossary } from "../lib/glossary";
 import type { Concept } from "../api/types";
 import { useSettings } from "../lib/settings";
@@ -481,10 +481,22 @@ function SuggestionBlock({ code }: { code: string }) {
 const MERMAID_RETRIES = 3;
 const MERMAID_RETRY_MS = 3000;
 
-function MermaidBlock({ code, open }: { code: string; open: boolean }) {
+function MermaidBlock({ code, open, caption }: { code: string; open: boolean; caption: string | null }) {
   const { appearance } = useSettings();
   const dark = appearance.theme.mode === "dark";
   const fontFamily = appearance.uiFont;
+  const t = appearance.tokens;
+  const colors = useMemo(
+    () => ({
+      bg: t["bg-inset"],
+      surface: t["bg-raised"],
+      muted: t["bg-hover"],
+      border: t["border-strong"],
+      fg: t.fg,
+      line: t["fg-muted"],
+    }),
+    [t],
+  );
   const [result, setResult] = useState<{ status: "pending" | "ok" | "error" | "unavailable"; svg?: string }>({
     status: "pending",
   });
@@ -497,7 +509,7 @@ function MermaidBlock({ code, open }: { code: string; open: boolean }) {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     setResult({ status: "pending" });
-    void renderMermaid(code, open, { dark, fontFamily }).then((r) => {
+    void renderMermaid(code, open, { dark, fontFamily, colors }).then((r) => {
       if (!alive) return;
       setResult(r);
       if (r.status === "unavailable" && attempt < MERMAID_RETRIES) {
@@ -508,37 +520,44 @@ function MermaidBlock({ code, open }: { code: string; open: boolean }) {
       alive = false;
       if (timer) clearTimeout(timer);
     };
-  }, [code, open, dark, fontFamily, attempt]);
+  }, [code, open, dark, fontFamily, colors, attempt]);
 
   if (result.status !== "ok" || !result.svg) return <CodeBlock code={code} lang="mermaid" />;
   // mermaid runs under securityLevel "strict": no script/foreignObject
   // survives into this markup, so this is safe to inject as-is.
   const svg = { __html: result.svg };
+  // In the dialog a diagram grows to fill it, but no further than twice its
+  // own size: a small chart stays a chart instead of a poster.
+  const natural = Number(/viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+)/.exec(result.svg)?.[1]) || 0;
   return (
-    <div className="group relative my-1.5">
-      <div
-        className="overflow-x-auto rounded p-2"
-        style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
-        dangerouslySetInnerHTML={svg}
-      />
+    <div className="my-1.5">
+      {/* The whole diagram opens it larger; the icon only says so. */}
       <button
         type="button"
-        className="btn absolute right-1.5 top-1.5 px-1.5 py-0.5 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
-        data-tip="Enlarge diagram"
-        aria-label="Enlarge diagram"
+        className="group relative block w-full cursor-zoom-in overflow-x-auto rounded p-2 text-left"
+        style={{ background: "var(--bg-inset)", border: "1px solid var(--border)" }}
+        aria-label={caption ? `Enlarge diagram: ${caption}` : "Enlarge diagram"}
         data-testid="mermaid-enlarge"
         onClick={() => setEnlarged(true)}
       >
-        <IconExpand width={11} height={11} />
+        <span className="mermaid-diagram block [&_svg]:mx-auto" dangerouslySetInnerHTML={svg} />
+        <span
+          className="btn pointer-events-none absolute right-1.5 top-1.5 px-1.5 py-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+          aria-hidden
+        >
+          <IconExpand width={11} height={11} />
+        </span>
       </button>
       {enlarged ? (
-        <Modal title="Diagram" maxWidth={1400} onClose={() => setEnlarged(false)} testId="mermaid-modal">
-          {/* mermaid pins a max-width on its svg; here it fills the dialog's
-              width, capped to its height so a tall chart scales to fit too */}
+        <Modal title={caption ?? "Diagram"} maxWidth={1400} onClose={() => setEnlarged(false)} testId="mermaid-modal">
           <div
-            className="p-4 [&_svg]:!h-auto [&_svg]:!max-h-[calc(85vh-6rem)] [&_svg]:!w-full [&_svg]:!max-w-none"
-            dangerouslySetInnerHTML={svg}
-          />
+            className="flex justify-center p-6 [&_svg]:!h-auto [&_svg]:!max-h-[calc(85vh-7rem)] [&_svg]:!w-full"
+            style={{ background: "var(--bg-inset)" }}
+          >
+            <div className="mermaid-diagram w-full [&_svg]:!max-w-[var(--mmd-max)]" style={{ "--mmd-max": natural ? `${natural * 2}px` : "none" } as CSSProperties}
+              dangerouslySetInnerHTML={svg}
+            />
+          </div>
         </Modal>
       ) : null}
     </div>
@@ -607,13 +626,21 @@ function ListItem({ item }: { item: string }) {
 }
 
 /** Rendered blocks; recursive, since a `<details>` holds blocks of its own. */
-function BlockList({ blocks }: { blocks: MdBlock[] }) {
+function BlockList({ blocks, lead }: { blocks: MdBlock[]; lead?: string }) {
+  /** The text a diagram follows: the paragraph or heading before it, or the
+   *  summary of the `<details>` it opens. */
+  const leadOf = (i: number) => {
+    const prev = blocks[i - 1];
+    if (!prev) return lead;
+    return prev.type === "paragraph" || prev.type === "heading" ? prev.text : undefined;
+  };
   return (
     <>
       {blocks.map((block, i) => {
         switch (block.type) {
           case "code":
-            if (block.lang === "mermaid") return <MermaidBlock key={i} code={block.code} open={block.open} />;
+            if (block.lang === "mermaid")
+              return <MermaidBlock key={i} code={block.code} open={block.open} caption={diagramCaption(block.code, leadOf(i))} />;
             if (block.lang === "suggestion") return <SuggestionBlock key={i} code={block.code} />;
             return <CodeBlock key={i} code={block.code} lang={block.lang} />;
           case "table":
@@ -750,7 +777,7 @@ function BlockList({ blocks }: { blocks: MdBlock[] }) {
                   </span>
                 </summary>
                 <div className="border-t px-2 pb-1.5 pt-1" style={{ borderColor: "var(--border)" }}>
-                  <BlockList blocks={block.blocks} />
+                  <BlockList blocks={block.blocks} lead={block.summary} />
                 </div>
               </details>
             );

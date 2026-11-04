@@ -10,6 +10,8 @@ app, not for git: say what changed in the review, not which file moved.
 - **Archived comments.** The archive icon on a comment sets it aside in a folded Archived section of the Comments panel, where you restore or delete it. "archive picked up" under For agent archives every note an agent took.
 - **Copy mode menu.** The arrow beside "copy all for agent" picks copy or copy & archive, and the button remembers it. It replaces "copy & delete".
 - **Unit brief over the code.** With the sidebar folded (B), the card above the diff shows the unit's summary and findings.
+- **Diagrams in your theme.** Mermaid diagrams in the chat and descriptions use the app theme's colors instead of mermaid's own.
+- **Enlarge a diagram.** Click anywhere on a diagram to open it larger, titled by the sentence that introduced it.
 - **Line counts in Where it lands.** The overview's file tree shows each file's and folder's added and removed lines.
 - **Description position.** "show at the top" in the overview's Description, or Settings → Overview, puts it first.
 - **Fix:** after a new revision shifts unchanged code, its heart marks, risk marks and warnings no longer sit on the wrong lines.

@@ -168,3 +168,13 @@ test("@ in the chat box writes a mention into the message, and the sent message 
   await expect(links.nth(0)).toHaveText("@Charge key");
   await expect(links.nth(1)).toHaveText("@ledger.ts");
 });
+
+test("a diagram opens larger from anywhere on it, titled by the sentence that introduced it", async ({ page }) => {
+  await page.getByTestId("chat-input").fill("Walk me through the retry wrapper.");
+  await page.getByTestId("chat-send").click();
+  await expect(page.getByTestId("chat-stop")).toHaveCount(0, { timeout: 20_000 });
+  await page.getByTestId("mermaid-enlarge").click({ position: { x: 20, y: 20 } });
+  const modal = page.getByTestId("mermaid-modal");
+  await expect(modal).toContainText("The states a charge moves through");
+  await expect(modal.locator("svg").first()).toBeVisible();
+});

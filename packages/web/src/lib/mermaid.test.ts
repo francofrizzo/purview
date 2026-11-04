@@ -89,3 +89,34 @@ describe("renderMermaid", () => {
     vi.resetModules();
   });
 });
+
+describe("diagram theme and caption", () => {
+  const colors = { bg: "#0a0b0e", surface: "#131519", muted: "#1a1d23", border: "#333844", fg: "#e6e6e6", line: "#9aa0aa" };
+
+  it("paints a diagram with the app's colors on mermaid's base theme, and re-inits when they change", async () => {
+    // An earlier test unmocks mermaid; put the mock back for this one.
+    vi.doMock("mermaid", () => ({ default: { initialize, render } }));
+    vi.resetModules();
+    const { renderMermaid } = await import("./mermaid");
+    initialize.mockClear();
+    await renderMermaid("graph TD\n  A --> B", false, { ...OPTS, colors });
+    expect(initialize).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        theme: "base",
+        themeVariables: expect.objectContaining({ darkMode: true, primaryColor: "#131519", lineColor: "#9aa0aa", noteBkgColor: "#1a1d23" }),
+      }),
+    );
+    await renderMermaid("graph TD\n  A --> B", false, { ...OPTS, colors: { ...colors, surface: "#ffffff" } });
+    expect(initialize).toHaveBeenCalledTimes(2);
+  });
+
+  it("names a diagram by its own title, else by the sentence that introduced it", async () => {
+    const { diagramCaption } = await import("./mermaid");
+    expect(diagramCaption("---\ntitle: Charge states\n---\nflowchart LR\n  A --> B", "Ignored:")).toBe("Charge states");
+    expect(diagramCaption("sequenceDiagram\n  accTitle: Retry path\n  A->>B: x")).toBe("Retry path");
+    expect(diagramCaption("flowchart LR\n  A --> B", "The states a **charge** moves through:")).toBe("The states a charge moves through");
+    expect(diagramCaption("flowchart LR\n  A --> B", "📜 Sequence diagram")).toBe("Sequence diagram");
+    expect(diagramCaption("flowchart LR\n  A --> B")).toBeNull();
+    expect(diagramCaption("flowchart LR\n  A --> B", "x".repeat(200))).toBeNull();
+  });
+});
