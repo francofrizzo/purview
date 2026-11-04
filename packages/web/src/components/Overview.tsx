@@ -7,6 +7,7 @@ import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/revi
 import { sectionInView, withoutHeadings } from "../lib/summaryText";
 import type { ThreadFilters } from "../lib/threads";
 import { unitDisplayNumbers, unitDisplayOrder } from "../lib/unitOrder";
+import { useSettings } from "../lib/settings";
 import { ChangeBreakdown } from "./ChangeMix";
 import { ProgressRing, UnitNumber } from "./Chips";
 import { FileLegend, FileShape } from "./Shape";
@@ -62,15 +63,60 @@ export function Overview({
   );
   const hasReviews = timeline.entries.length > 0 || timeline.hidden > 0;
   const mix = useMemo(() => changeMix(detail.files.files), [detail.files.files]);
+  const { settings, update } = useSettings();
+  const descriptionFirst = settings.descriptionFirst && Boolean(description);
   const sections = [
+    descriptionFirst ? { id: "description", label: "Description" } : null,
     summary ? { id: "summary", label: "Summary" } : null,
     state.concepts?.length ? { id: "concepts", label: "Concepts" } : null,
     state.fileNotes ? { id: "files", label: "Where it lands" } : null,
     mix.rows.length ? { id: "size", label: "Size" } : null,
     ordered.length ? { id: "reading", label: "Must read" } : null,
-    description ? { id: "description", label: "Description" } : null,
+    description && !descriptionFirst ? { id: "description", label: "Description" } : null,
     hasReviews ? { id: "reviews", label: "Reviews" } : null,
   ].filter((x): x is { id: string; label: string } => x !== null);
+  // The author's words, where the reader chose to have them: first, or after
+  // what Purview made of the change. The switch is in Settings and here.
+  const descriptionSection = description ? (
+    <section data-testid="pr-description" data-section="description">
+      <SectionHead
+        title={
+          <span className="flex items-center gap-1.5">
+            Description
+            {meta.author ? (
+              <span className="flex items-center gap-1 text-[13px] font-normal" style={{ color: "var(--fg-faint)" }}>
+                by
+                <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={16} />
+                {meta.author}
+              </span>
+            ) : null}
+          </span>
+        }
+      >
+        {summary || state.fileNotes || ordered.length ? (
+          <button
+            type="button"
+            className="text-2xs transition-colors hover:text-[var(--fg-muted)]"
+            style={{ color: "var(--fg-faint)" }}
+            data-testid="description-position"
+            data-tip="Also in Settings → Overview"
+            onClick={() => {
+              update({ descriptionFirst: !settings.descriptionFirst });
+              // Follow it to its new place rather than leave the reader where it was.
+              requestAnimationFrame(() =>
+                scrollRef.current?.querySelector('[data-section="description"]')?.scrollIntoView({ block: "start" }),
+              );
+            }}
+          >
+            {settings.descriptionFirst ? "show at the bottom" : "show at the top"}
+          </button>
+        ) : null}
+      </SectionHead>
+      <div className="[&>div]:text-[13px] [&>div]:leading-[21px]">
+        <Markdown text={description} />
+      </div>
+    </section>
+  ) : null;
   const scrollRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(0);
@@ -149,6 +195,8 @@ export function Overview({
       ) : null}
       {/* Text keeps a reading measure. */}
       <div className="flex flex-col gap-10 px-6 pb-16 pt-8 sm:px-10 [&>section]:mx-auto [&>section]:w-full [&>section]:max-w-[54rem]">
+        {descriptionFirst ? descriptionSection : null}
+
         {summary ? (
           <section data-testid="pr-summary" data-section="summary">
             <p className="mb-2 text-2xs" style={{ color: "var(--fg-faint)" }} data-testid="pr-summary-byline">
@@ -221,26 +269,7 @@ export function Overview({
           </section>
         ) : null}
 
-        {description ? (
-          <section data-testid="pr-description" data-section="description">
-            <SectionHead
-              title={
-                <span className="flex items-center gap-1.5">
-                  {meta.author ? <AuthorAvatar author={meta.author} url={meta.authorAvatarUrl} size={16} /> : null}
-                  Description
-                  {meta.author ? (
-                    <span className="text-[13px] font-normal" style={{ color: "var(--fg-faint)" }}>
-                      by {meta.author}
-                    </span>
-                  ) : null}
-                </span>
-              }
-            />
-            <div className="[&>div]:text-[13px] [&>div]:leading-[21px]">
-              <Markdown text={description} />
-            </div>
-          </section>
-        ) : null}
+        {description && !descriptionFirst ? descriptionSection : null}
 
         {hasReviews ? (
           <section data-testid="pr-reviews" data-section="reviews">

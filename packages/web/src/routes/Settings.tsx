@@ -59,6 +59,7 @@ const APP_SETTINGS_NAV: SettingsNavGroup[] = [
       { id: "typography", title: "Typography" },
       { id: "spacing", title: "Spacing" },
       { id: "diff", title: "Diff defaults" },
+      { id: "overview", title: "Overview" },
       { id: "pr-list", title: "PR list" },
     ],
   },
@@ -182,6 +183,20 @@ export function SettingsModal() {
           fold or unfold a hunk by hand from its <span className="font-mono">@@</span> header, and
           that choice sticks until its viewed state next changes.
         </p>
+      </Section>
+      <Section id="overview" title="Overview" hint="A PR's overview page: what Purview made of it, and the author's description.">
+        <div className="flex flex-wrap items-center gap-6">
+          <Field label="Description">
+            <Segmented
+              value={settings.descriptionFirst ? "first" : "last"}
+              options={[
+                { value: "last", label: "after Purview's sections" },
+                { value: "first", label: "first" },
+              ]}
+              onChange={(v) => update({ descriptionFirst: v === "first" })}
+            />
+          </Field>
+        </div>
       </Section>
       <Section
         id="pr-list"

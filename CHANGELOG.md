@@ -7,6 +7,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Line counts in Where it lands.** Each file and folder in the overview's "Where it lands" shows the lines it adds and removes.
+- **Description position.** "show at the top" beside the overview's Description, or Settings → Overview, puts the PR description before Purview's sections.
 - **Archived comments.** The archive icon on a comment, or "copy & archive", moves it to a folded Archived section in the Comments panel. Restore it as a draft or delete it for good from there.
 - **Copy mode menu.** The arrow beside "copy all for agent" picks a plain copy or "copy & archive", and the button keeps the one you used last. It replaces "copy & delete".
 - **Archive picked up.** The "archive picked up" button under For agent archives every note an agent already picked up.

@@ -57,6 +57,18 @@ export function FileShape({
   const own = useMemo(() => files.filter((f) => !f.generated), [files]);
   const aside = useMemo(() => asideFiles(own, units), [own, units]);
   const lines = useMemo(() => fileTree(own, notes, aside), [own, notes, aside]);
+  // Lines added and removed under each line: a file's own, a folder's summed.
+  const size = useMemo(() => {
+    const ofFile = own.map((f) => ({
+      path: f.path,
+      added: f.additions ?? f.hunks.reduce((n, h) => n + (h.addedLines?.length ?? 0), 0),
+      removed: f.deletions ?? f.hunks.reduce((n, h) => n + (h.removedLines?.length ?? 0), 0),
+    }));
+    return (path: string, dir: boolean) =>
+      ofFile
+        .filter((f) => (dir ? f.path.startsWith(`${path}/`) : f.path === path))
+        .reduce((t, f) => ({ added: t.added + f.added, removed: t.removed + f.removed }), { added: 0, removed: 0 });
+  }, [own]);
   const generated = files.length - own.length;
   const asideCount = own.filter((f) => aside.has(f.path) && notes[f.path] === undefined).length;
   const foot = [
@@ -116,6 +128,7 @@ export function FileShape({
                   {shortName(l.name)}
                 </button>
               )}
+              <LineCounts {...size(l.path, Boolean(l.dir))} />
             </div>
             {l.note ? (
               <div className="min-w-0 pl-[calc(var(--indent)+1.25rem)] text-xs leading-5 sm:pl-0" style={{ color: "var(--fg-muted)" }}>
@@ -135,6 +148,18 @@ export function FileShape({
 }
 
 /** The tree's key, as counts: each badge the way the rows show it. */
+/** `+12 −3` beside a name, quiet: the size of what sits there. */
+function LineCounts({ added, removed }: { added: number; removed: number }) {
+  if (!added && !removed) return null;
+  return (
+    <span className="flex-none whitespace-nowrap font-sans text-2xs tabular-nums" data-testid="file-shape-counts">
+      {added ? <span style={{ color: "var(--ok)" }}>+{added}</span> : null}
+      {added && removed ? " " : null}
+      {removed ? <span style={{ color: "var(--risk)" }}>−{removed}</span> : null}
+    </span>
+  );
+}
+
 export function FileLegend({ files }: { files: FileEntry[] }) {
   const own = files.filter((f) => !f.generated);
   return (

@@ -88,6 +88,25 @@ test("s opens the overview in the sidebar over the diff's room, and its bar jump
   await expect(page.locator("[data-diff-scroller]")).toBeVisible();
 });
 
+test("the description moves to the top of the overview and back, and stays where it was put", async ({ page }) => {
+  await page.keyboard.press("s");
+  const jumps = page.locator('[data-testid^="overview-jump-"]');
+  await expect(jumps.last()).toHaveAttribute("data-testid", "overview-jump-reviews");
+  await page.getByTestId("description-position").click();
+  await expect(jumps.first()).toHaveAttribute("data-testid", "overview-jump-description");
+  await expect(page.getByTestId("pr-description")).toBeInViewport();
+  await page.reload();
+  await expect(page.getByTestId("description-position")).toHaveText("show at the bottom");
+  // The author's picture sits by their name, not at the start of the line.
+  await expect(page.getByTestId("pr-description").locator("h2")).toContainText(/^Descriptionby\s*\S*dana$/);
+});
+
+test("where it lands shows each file's and each folder's lines added and removed", async ({ page }) => {
+  await page.keyboard.press("s");
+  await expect(page.getByTestId("overview-files")).toContainText("reconcile.ts+80 −14");
+  await expect(page.getByTestId("overview-files")).toContainText("billing/+153 −24");
+});
+
 test("the overview's jump bar moves to the margin where the pane has room, and comes back where it does not", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 800 });
   await page.keyboard.press("s");

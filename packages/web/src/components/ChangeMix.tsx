@@ -81,7 +81,7 @@ function ChangeTable({
             {expand ? (
               <button
                 type="button"
-                className="flex min-w-0 items-center gap-1.5 text-left hover:underline"
+                className="flex min-w-0 items-center gap-1.5 text-left"
                 style={{ color: "var(--fg)" }}
                 aria-expanded={open}
                 data-testid={`change-toggle-${r.kind}`}
