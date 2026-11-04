@@ -1785,6 +1785,8 @@ export function PrView() {
         number={unitNumbers.get(selectedUnit.id)}
         progress={progress}
         next={nextUnread ? { number: unitNumbers.get(nextUnread.id), title: nextUnread.title } : null}
+        unitCount={analyzedUnits.length}
+        draftCount={unsubmittedDrafts.filter((d) => d.audience !== "agent").length}
         onMarkViewed={() => markUnitViewed(selectedUnit.id)}
         onOpenNext={() => nextUnread && setSelectedUnitId(nextUnread.id)}
         onFinish={() => {

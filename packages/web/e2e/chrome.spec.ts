@@ -79,8 +79,26 @@ test("past the last hunk the unit offers its next step", async ({ page }) => {
   await openPr(page);
   await openUnit(page, UNITS.reconcile);
   await scroller(page).evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect(page.getByTestId("unit-end-status")).toContainText("not marked viewed");
   await page.getByTestId("unit-end-mark").click();
   await expect(page.getByTestId("unit-header")).not.toContainText(UNITS.reconcile.slice(0, 30));
+});
+
+test("with every unit read, the unit's end says so and opens the review", async ({ page }) => {
+  await openPr(page);
+  await openUnit(page, UNITS.reconcile);
+  const finish = page.getByTestId("unit-end-finish");
+  for (let i = 0; i < 20 && !(await finish.isVisible()); i++) {
+    await scroller(page).evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+    const next = page.getByTestId("unit-end-next");
+    const mark = page.getByTestId("unit-end-mark");
+    if (await next.isVisible()) await next.click();
+    else if (await mark.isVisible()) await mark.click();
+  }
+  await expect(page.getByTestId("unit-end-status")).toHaveText(/^All \d+ units read\.$/);
+  await expect(page.getByTestId("unit-end")).toContainText(/drafts? and your verdict go out from there/);
+  await finish.click();
+  await expect(page.getByTestId("finish-review-panel")).toBeVisible();
 });
 
 test("the sidebar column resizes by dragging its edge; a double click restores it", async ({ page }) => {

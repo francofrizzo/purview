@@ -469,6 +469,8 @@ export function UnitEnd({
   number,
   progress,
   next,
+  unitCount,
+  draftCount,
   onMarkViewed,
   onOpenNext,
   onFinish,
@@ -477,37 +479,55 @@ export function UnitEnd({
   progress: { viewed: number; total: number };
   /** the next unit with hunks still to read, if any */
   next: { number?: number; title: string } | null;
+  unitCount: number;
+  /** drafts that go out with the review */
+  draftCount: number;
   onMarkViewed: () => void;
   onOpenNext: () => void;
   onFinish: () => void;
 }) {
   const left = progress.total - progress.viewed;
-  const label = number !== undefined ? `unit ${number}` : "this unit";
+  // The state is a sentence, the next step a plain verb on its own button.
+  const [status, action, hint] =
+    left > 0
+      ? [
+          `${left} ${left === 1 ? "hunk" : "hunks"} not marked viewed.`,
+          <button type="button" className="btn" onClick={onMarkViewed} data-tip-key="V" data-testid="unit-end-mark">
+            Mark viewed and go on
+          </button>,
+          null,
+        ]
+      : next
+        ? [
+            "Unit read.",
+            <button type="button" className="btn" onClick={onOpenNext} data-tip-key="J" data-testid="unit-end-next">
+              Next: {next.number !== undefined ? `${next.number} · ` : ""}
+              <span className="max-w-[28rem] truncate">
+                <InlineMarkdown text={next.title} />
+              </span>
+            </button>,
+            null,
+          ]
+        : [
+            unitCount === 1 ? "The unit is read." : `All ${unitCount} units read.`,
+            <button type="button" className="btn btn-primary" onClick={onFinish} data-testid="unit-end-finish">
+              Finish review
+            </button>,
+            draftCount > 0
+              ? `${draftCount} ${draftCount === 1 ? "draft" : "drafts"} and your verdict go out from there.`
+              : null,
+          ];
   return (
     <div className="flex flex-col items-start gap-2 px-6 pt-10 text-xs" data-testid="unit-end">
-      <p style={{ color: "var(--fg-faint)" }}>
-        {left > 0
-          ? `End of ${label} · ${left} ${left === 1 ? "hunk" : "hunks"} not marked viewed`
-          : `End of ${label} · read`}
+      <p style={{ color: "var(--fg-faint)" }}>{number !== undefined ? `End of unit ${number}` : "End of this unit"}</p>
+      <p className="text-sm" style={{ color: "var(--fg)" }} data-testid="unit-end-status">
+        {status}
       </p>
-      {left > 0 ? (
-        <button type="button" className="btn" onClick={onMarkViewed} data-tip-key="V" data-testid="unit-end-mark">
-          <IconCheck width={12} height={12} />
-          Mark it viewed and go on
-        </button>
-      ) : next ? (
-        <button type="button" className="btn" onClick={onOpenNext} data-tip-key="J" data-testid="unit-end-next">
-          Next: {next.number !== undefined ? `${next.number} · ` : ""}
-          <span className="max-w-[28rem] truncate">
-            <InlineMarkdown text={next.title} />
-          </span>
-        </button>
-      ) : (
-        <button type="button" className="btn btn-primary" onClick={onFinish} data-tip-key="r" data-testid="unit-end-finish">
-          <IconCheck width={12} height={12} />
-          Every unit read · finish review
-        </button>
-      )}
+      <div className="flex items-center gap-2">
+        {action}
+        <kbd style={{ color: "var(--fg-faint)" }}>{left > 0 ? "V" : next ? "J" : "r"}</kbd>
+      </div>
+      {hint ? <p style={{ color: "var(--fg-faint)" }}>{hint}</p> : null}
     </div>
   );
 }
