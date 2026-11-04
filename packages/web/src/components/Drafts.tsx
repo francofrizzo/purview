@@ -8,6 +8,7 @@ import {
   type CommentAudience,
   type CommentStatus,
   type DeletedComment,
+  type ArchivedComment,
   type DraftComment,
   type EditCommentResult,
   type RemoteAuthor,
@@ -37,7 +38,7 @@ import {
 } from "../lib/comments";
 import { AUDIENCE_HINT, AudienceSwitch } from "./AudienceSwitch";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
-import { IconChat, IconCheck, IconClose, IconGithub, IconReact, IconReply, IconSend, IconSparkles } from "./icons";
+import { IconArchive, IconChat, IconCheck, IconChevron, IconClose, IconGithub, IconReact, IconReply, IconSend, IconSparkles, IconTrash } from "./icons";
 import { ReactionError, ReactionPicker, REACTION_EMOJI, type ReactionActions } from "./Reactions";
 import { BotChip } from "./Threads";
 import { AttachmentContext, Markdown, SuggestionContext } from "./Markdown";
@@ -46,7 +47,7 @@ import { AttachButton, AttachmentStrip, DropHint, useAttachmentEditor } from "./
 import { ComposerPreview, useWritePreview, WritePreviewToggle } from "./WritePreview";
 import { FormatRow, FormattingToggle, SuggestButton, useComposerFormat, type ComposerFormat } from "./FormatToolbar";
 import { EmojiPicker } from "./EmojiPicker";
-import { CommentCard, type CommentActionError } from "./CommentCard";
+import { CommentCard, IconAction, type CommentActionError } from "./CommentCard";
 
 /**
  * What the composer is pointed at. A file-level target carries no line and no
@@ -796,7 +797,10 @@ export function DraftsDrawer({
   bundle,
   onJump,
   onDelete,
-  onDeleteMany,
+  onArchiveMany,
+  archived = [],
+  onRestoreArchived,
+  onDeleteArchived,
   onEdit,
   onQuote,
   deleted = [],
@@ -831,8 +835,12 @@ export function DraftsDrawer({
   bundle?: Omit<BundleSource, "comments">;
   onJump: (draft: DraftComment) => void;
   onDelete?: (draft: DraftComment) => void;
-  /** bulk delete, for "copy & delete" */
-  onDeleteMany?: (ids: string[]) => Promise<unknown>;
+  /** bulk archive: "copy & archive", "archive picked up", a card's archive */
+  onArchiveMany?: (ids: string[]) => Promise<unknown>;
+  /** comments set aside, listed folded at the bottom */
+  archived?: ArchivedComment[];
+  onRestoreArchived?: (id: string) => void;
+  onDeleteArchived?: (id: string) => void;
   onEdit?: EditComment;
   onQuote?: (ref: ChatRef) => void;
   /** the global switch: who new comments are for */
@@ -861,6 +869,7 @@ export function DraftsDrawer({
   // agent" can never read differently.
   const forGithub = drafts.filter((d) => !isForAgent(d));
   const notes = drafts.filter(isForAgent).sort(compareCommentOrder);
+  const pickedUp = notes.filter((d) => d.pickedUp && (d.status ?? "draft") === "draft");
   const local = forGithub.filter((d) => (d.status ?? "draft") === "draft").sort(compareCommentOrder);
   const pushed = forGithub.filter((d) => d.status === "pushed").sort(compareCommentOrder);
   const submitted = forGithub.filter((d) => d.status === "submitted").sort(compareCommentOrder);
@@ -873,6 +882,7 @@ export function DraftsDrawer({
   const cardActions = {
     onEdit,
     onDelete,
+    onArchive: onArchiveMany ? (d: DraftComment) => void onArchiveMany([d.id]) : undefined,
     deleting,
     onQuote,
     exportCtx: bundle?.ctx,
@@ -957,7 +967,7 @@ export function DraftsDrawer({
         </ul>
       ) : null}
       <div className="quiet-scroll flex-1 overflow-auto">
-        {drafts.length === 0 && threadCount === 0 ? (
+        {drafts.length === 0 && threadCount === 0 && archived.length === 0 ? (
           <p className="p-3 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
             No comments yet. Hover a diff line and press the + button to write one, or use the
             file header to comment on a whole file.
@@ -1021,7 +1031,7 @@ export function DraftsDrawer({
                     <CopyBundleControls
                       testId="copy-bundle-drawer"
                       source={{ ...bundle, comments: notes }}
-                      onDeleteCopied={onDeleteMany}
+                      onArchiveCopied={onArchiveMany}
                     />
                     {onSendToChat ? (
                       <button
@@ -1039,16 +1049,113 @@ export function DraftsDrawer({
                         {chatBusy ? "queue for chat" : "send to chat"}
                       </button>
                     ) : null}
+                    {onArchiveMany && pickedUp.length ? (
+                      <button
+                        type="button"
+                        className="btn"
+                        data-testid="drawer-archive-picked-up"
+                        data-tip={`Archive the ${pickedUp.length} ${pickedUp.length === 1 ? "note" : "notes"} an agent already picked up`}
+                        onClick={() => void onArchiveMany(pickedUp.map((d) => d.id))}
+                      >
+                        <IconArchive width={11} height={11} />
+                        archive picked up ({pickedUp.length})
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
                 {cards(notes)}
               </section>
+            ) : null}
+            {archived.length ? (
+              <ArchivedSection archived={archived} onRestore={onRestoreArchived} onDelete={onDeleteArchived} />
             ) : null}
             {github && threadCount ? <GithubThreadsSection github={github} /> : null}
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Comments set aside, newest first, folded until opened: out of the review,
+ * kept until restored (back as a draft) or deleted for good.
+ */
+function ArchivedSection({
+  archived,
+  onRestore,
+  onDelete,
+}: {
+  archived: ArchivedComment[];
+  onRestore?: (id: string) => void;
+  onDelete?: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const list = [...archived].sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));
+  return (
+    <section data-testid="drawer-section-archived" className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        className="flex items-center gap-1.5 px-0.5 text-xs"
+        aria-expanded={open}
+        data-testid="drawer-archived-toggle"
+        data-tip="Set aside: out of the review until you restore or delete them"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="flex flex-none" style={{ color: "var(--fg-muted)" }}>
+          <IconChevron width={11} height={11} open={open} />
+        </span>
+        <span className="font-semibold" style={{ color: "var(--fg-muted)" }}>
+          Archived
+        </span>
+        <span className="text-2xs tabular-nums" style={{ color: "var(--fg-faint)" }}>
+          {archived.length}
+        </span>
+      </button>
+      {open ? (
+        <ul className="flex flex-col gap-1">
+          {list.map((c) => (
+            <li
+              key={c.id}
+              data-testid={`archived-${c.id}`}
+              className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs"
+              style={{ background: "var(--bg-inset)" }}
+            >
+              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <span className="font-mono text-2xs" style={{ color: "var(--fg-faint)" }}>
+                  {isForAgent(c) ? "for agent · " : ""}
+                  {commentAnchorLabel(c)}
+                </span>
+                <span className="line-clamp-2" style={{ color: "var(--fg-muted)" }} data-tip={c.body}>
+                  {c.body}
+                </span>
+              </span>
+              {onRestore ? (
+                <button
+                  type="button"
+                  className="btn flex-none"
+                  data-testid={`archived-restore-${c.id}`}
+                  data-tip="Back into the review, as a draft"
+                  onClick={() => onRestore(c.id)}
+                >
+                  restore
+                </button>
+              ) : null}
+              {onDelete ? (
+                <IconAction
+                  tip="Delete for good"
+                  testId={`archived-delete-${c.id}`}
+                  danger
+                  onClick={() => onDelete(c.id)}
+                >
+                  <IconTrash width={11} height={11} />
+                </IconAction>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 

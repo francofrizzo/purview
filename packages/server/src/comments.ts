@@ -432,6 +432,28 @@ function hostArgs(host: string): string[] {
 }
 
 /**
+ * Take a `pushed` comment back out of the pending review on GitHub. Only
+ * `pushed` comments are ours to retract: a `submitted` one is public, and
+ * removing it silently on a local action would be a surprise. Reported,
+ * never thrown (see `deleteComment`).
+ */
+async function retractPushed(key: PrKey, target: Comment): Promise<DeleteCommentResult["remote"]> {
+  if (target.status !== "pushed" || target.githubCommentId === undefined) return undefined;
+  try {
+    await ghAsync([
+      "api",
+      "--method",
+      "DELETE",
+      ...hostArgs(key.host),
+      `repos/${key.owner}/${key.repo}/pulls/comments/${target.githubCommentId}`,
+    ]);
+    return { attempted: true, ok: true };
+  } catch (err) {
+    return { attempted: true, ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
  * Deleting a `pushed` comment should also remove it from the pending review on
  * GitHub, but a failure there must never fail the request: the local drafts
  * file is the source of truth, and a stale pending comment is recoverable (the
@@ -448,27 +470,7 @@ export async function deleteComment(
   const target = comments.find((c) => c.id === id);
   if (!target) return { removed: false };
 
-  let remote: DeleteCommentResult["remote"];
-  // Only `pushed` comments are ours to retract: a `submitted` one is public
-  // and deleting it silently on a local delete would be a surprise.
-  if (target.status === "pushed" && target.githubCommentId !== undefined) {
-    try {
-      await ghAsync([
-        "api",
-        "--method",
-        "DELETE",
-        ...hostArgs(key.host),
-        `repos/${key.owner}/${key.repo}/pulls/comments/${target.githubCommentId}`,
-      ]);
-      remote = { attempted: true, ok: true };
-    } catch (err) {
-      remote = {
-        attempted: true,
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  }
+  const remote = await retractPushed(key, target);
 
   // A draft never left this machine, so deleting it would lose the text for
   // good: it goes to the trash instead, restorable for a while. Pushed and
@@ -565,6 +567,93 @@ export function restoreDeletedComment(
     root,
   );
   return restored;
+}
+
+/* ---------------------------------------------------------------- archive */
+
+/**
+ * Archived comments are set aside, not gone: the notes handed to an agent,
+ * a draft not worth sending yet. Their own file, `archived-comments.json`,
+ * for the trash's reason: nothing that reads comments.json can push one by
+ * mistake. Unlike the trash they stay until restored or deleted.
+ */
+export const ArchivedCommentSchema = CommentObjectSchema.extend({ archivedAt: z.string() });
+export type ArchivedComment = z.infer<typeof ArchivedCommentSchema>;
+
+export function archivedCommentsPath(key: PrKey, root = stateRoot()): string {
+  return path.join(path.dirname(commentsPath(key, root)), "archived-comments.json");
+}
+
+export function readArchivedComments(key: PrKey, root = stateRoot()): ArchivedComment[] {
+  const file = archivedCommentsPath(key, root);
+  if (!fs.existsSync(file)) return [];
+  return z.array(ArchivedCommentSchema).parse(JSON.parse(fs.readFileSync(file, "utf8")));
+}
+
+function writeArchivedComments(key: PrKey, entries: ArchivedComment[], root = stateRoot()): void {
+  const file = archivedCommentsPath(key, root);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(entries, null, 2) + "\n", "utf8");
+  commentEvents.emit("comments", { key });
+}
+
+export interface ArchiveCommentsResult {
+  archived: string[];
+  /** submitted ones: public review history, never archived */
+  skipped: string[];
+  /** pushed ones GitHub would not take back; archived anyway (see `deleteComment`) */
+  remoteErrors: string[];
+}
+
+/**
+ * Archive comments by id. A pushed one leaves the pending review on GitHub
+ * first and is archived as a draft, so restoring it pushes it again rather
+ * than duplicating it.
+ */
+export async function archiveComments(key: PrKey, ids: string[], root = stateRoot()): Promise<ArchiveCommentsResult> {
+  const wanted = new Set(ids);
+  const targets = readComments(key, root).filter((c) => wanted.has(c.id));
+  const result: ArchiveCommentsResult = { archived: [], skipped: [], remoteErrors: [] };
+  const entries: ArchivedComment[] = [];
+  const archivedAt = new Date().toISOString();
+  for (const target of targets) {
+    if (target.status === "submitted") {
+      result.skipped.push(target.id);
+      continue;
+    }
+    const remote = await retractPushed(key, target);
+    if (remote && !remote.ok) result.remoteErrors.push(`${target.id}: ${remote.error ?? "failed"}`);
+    const { githubCommentId, githubCommentNodeId, githubThreadId, pushedAt, ...rest } = target;
+    entries.push({ ...rest, status: "draft", archivedAt });
+    result.archived.push(target.id);
+  }
+  if (entries.length === 0) return result;
+  const done = new Set(result.archived);
+  // Re-read: the remote calls above may have given a concurrent edit time to land.
+  writeComments(key, readComments(key, root).filter((c) => !done.has(c.id)), root);
+  writeArchivedComments(key, [...readArchivedComments(key, root).filter((e) => !done.has(e.id)), ...entries], root);
+  return result;
+}
+
+/** Put an archived comment back as a draft (same id). `undefined` when it is not archived. */
+export function restoreArchivedComment(key: PrKey, id: string, root = stateRoot()): Comment | undefined {
+  const archive = readArchivedComments(key, root);
+  const entry = archive.find((e) => e.id === id);
+  if (!entry) return undefined;
+  const { archivedAt: _at, ...comment } = entry;
+  const comments = readComments(key, root);
+  if (!comments.some((c) => c.id === id)) comments.push(comment);
+  writeComments(key, comments, root);
+  writeArchivedComments(key, archive.filter((e) => e.id !== id), root);
+  return comment;
+}
+
+/** Delete an archived comment for good. False when it is not archived. */
+export function deleteArchivedComment(key: PrKey, id: string, root = stateRoot()): boolean {
+  const archive = readArchivedComments(key, root);
+  if (!archive.some((e) => e.id === id)) return false;
+  writeArchivedComments(key, archive.filter((e) => e.id !== id), root);
+  return true;
 }
 
 export interface UpdateCommentBodyResult {
@@ -765,7 +854,11 @@ export function allCommentBodies(key: PrKey, root = stateRoot()): string[] {
     c.body,
     ...(c.history ?? []).map((h) => h.body),
   ]);
-  return [...live, ...trashed];
+  const archived = readArchivedComments(key, root).flatMap((c) => [
+    c.body,
+    ...(c.history ?? []).map((h) => h.body),
+  ]);
+  return [...live, ...trashed, ...archived];
 }
 
 /** The review went public: every pushed comment went with it. */

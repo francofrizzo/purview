@@ -956,6 +956,17 @@ export type CommentActor = "you" | { agent: string };
 /** A deleted draft, still restorable for a while (the server's trash). */
 export type DeletedComment = DraftComment & { deletedAt: string; deletedBy: CommentActor };
 
+/** A comment set aside: out of the review, kept until restored or deleted. */
+export type ArchivedComment = DraftComment & { archivedAt: string };
+
+export interface ArchiveCommentsResult {
+  archived: string[];
+  /** submitted ones are public history and stay put */
+  skipped: string[];
+  /** pushed ones GitHub would not take back (archived anyway) */
+  remoteErrors: string[];
+}
+
 /** The one predicate the whole UI branches on. Tolerant of older payloads. */
 export function isFileComment(c: {
   subjectType?: CommentSubject;

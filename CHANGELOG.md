@@ -7,6 +7,9 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Archived comments.** The archive icon on a comment, or "copy & archive", moves it to a folded Archived section in the Comments panel. Restore it as a draft or delete it for good from there.
+- **Copy mode menu.** The arrow beside "copy all for agent" picks a plain copy or "copy & archive", and the button keeps the one you used last. It replaces "copy & delete".
+- **Archive picked up.** The "archive picked up" button under For agent archives every note an agent already picked up.
 - **Unit brief over the code.** With the sidebar folded (B), the open unit's card above the diff shows its summary, counts and findings until you scroll into the code.
 - **Fix:** after a new revision shifts unchanged code down a file, its heart marks, risk marks and warning icons no longer sit on the wrong lines.
 - **Fix:** the PR summary in the Overview no longer keeps describing an earlier revision; the analysis of a new revision rewrites what that revision made untrue.

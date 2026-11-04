@@ -28,6 +28,8 @@ import type {
   CommentActor,
   CommentStatus,
   DeletedComment,
+  ArchivedComment,
+  ArchiveCommentsResult,
   DiffOfDiffs,
   DiscardPendingResult,
   DiscardRevisionResult,
@@ -854,6 +856,31 @@ export const api = {
       deletedAt: c.deletedAt,
       deletedBy: c.deletedBy,
     }));
+  },
+
+  /** Comments set aside: out of the review until restored or deleted. */
+  async listArchivedComments(key: string): Promise<ArchivedComment[]> {
+    if (MOCK) return mockApi.listArchivedComments(key);
+    const res = await request<{ archived?: (WireComment & { archivedAt: string })[] }>(`/prs/${encodeKey(key)}/comments`);
+    return (res.archived ?? []).map((c) => ({ ...adaptComment(c), archivedAt: c.archivedAt }));
+  },
+
+  async archiveComments(key: string, ids: string[]): Promise<ArchiveCommentsResult> {
+    if (MOCK) return mockApi.archiveComments(key, ids);
+    return post<ArchiveCommentsResult>(`/prs/${encodeKey(key)}/comments/archive`, { ids });
+  },
+
+  async restoreArchivedComment(key: string, id: string): Promise<DraftComment> {
+    if (MOCK) return mockApi.restoreArchivedComment(key, id);
+    const res = await post<{ comment: WireComment }>(
+      `/prs/${encodeKey(key)}/comments/archived/${encodeURIComponent(id)}/restore`,
+    );
+    return adaptComment(res.comment);
+  },
+
+  async deleteArchivedComment(key: string, id: string): Promise<void> {
+    if (MOCK) return mockApi.deleteArchivedComment(key, id);
+    await del(`/prs/${encodeKey(key)}/comments/archived/${encodeURIComponent(id)}`);
   },
 
   /** Put a deleted draft back (same id, still a draft). */

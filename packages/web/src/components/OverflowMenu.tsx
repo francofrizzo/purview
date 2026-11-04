@@ -30,6 +30,8 @@ export function OverflowMenu({
   buttonClassName = "btn",
   buttonStyle,
   fixed = false,
+  trigger,
+  align = "right",
 }: {
   items: MenuItem[];
   testId?: string;
@@ -43,6 +45,10 @@ export function OverflowMenu({
    * than drifting away from its button.
    */
   fixed?: boolean;
+  /** what the button shows instead of ⋯ (a split button's caret) */
+  trigger?: React.ReactNode;
+  /** which edge of the button the menu lines up with (not with `fixed`) */
+  align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
   // Below the button, or above it when the button sits low on the screen
@@ -85,7 +91,7 @@ export function OverflowMenu({
   const menu = (
     <div
       ref={menuRef}
-      className={`surface z-40 w-52 rounded-md p-1 elev-2 ${fixed ? "fixed" : "absolute right-0 top-7"}`}
+      className={`surface z-40 w-52 rounded-md p-1 elev-2 ${fixed ? "fixed" : `absolute top-7 ${align === "left" ? "left-0" : "right-0"}`}`}
       style={fixed && anchor ? { top: anchor.top, bottom: anchor.bottom, right: anchor.right } : undefined}
     >
       {items.map((item) => (
@@ -139,7 +145,7 @@ export function OverflowMenu({
           setOpen((v) => !v);
         }}
       >
-        <IconMore width={12} height={12} />
+        {trigger ?? <IconMore width={12} height={12} />}
       </button>
       {open ? (fixed ? createPortal(menu, document.body) : menu) : null}
     </div>

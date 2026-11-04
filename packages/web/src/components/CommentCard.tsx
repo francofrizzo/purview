@@ -31,6 +31,7 @@ import {
   IconSparkles,
   IconSwap,
   IconTrash,
+  IconArchive,
 } from "./icons";
 import { SuggestionContext } from "./Markdown";
 
@@ -74,6 +75,8 @@ export const AGENT_LOOK = {
 export interface CommentActions {
   onEdit?: EditComment;
   onDelete?: (comment: DraftComment) => void;
+  /** set it aside: out of the review, kept in Archived until restored or deleted */
+  onArchive?: (comment: DraftComment) => void;
   /** the id of the comment whose delete is in flight */
   deleting?: string | null;
   onQuote?: (ref: ChatRef) => void;
@@ -120,7 +123,7 @@ export function CommentCard({
   const status: CommentStatus = comment.status ?? "draft";
   const forAgent = isForAgent(comment);
   const meta = forAgent ? AGENT_LOOK : COMMENT_STATUS[status];
-  const { onEdit, onDelete, onQuote, exportCtx, onUndoEdit, undoing, onMove, moving, onPublish } = actions;
+  const { onEdit, onDelete, onArchive, onQuote, exportCtx, onUndoEdit, undoing, onMove, moving, onPublish } = actions;
   const deleting = actions.deleting === comment.id;
   const publishing = actions.publishing === comment.id;
   const actionError = actions.error?.id === comment.id ? actions.error.message : null;
@@ -134,6 +137,7 @@ export function CommentCard({
     if (!publishing) setConfirmPublish(false);
   }, [publishing]);
   const canDelete = Boolean(onDelete) && status !== "submitted";
+  const canArchive = Boolean(onArchive) && status !== "submitted";
   // Only a draft changes hands; a reply stays with its thread on GitHub.
   const canMove = Boolean(onMove) && status === "draft" && !comment.inReplyTo;
   const canPublish = Boolean(onPublish) && status === "draft" && !forAgent && !comment.inReplyTo;
@@ -246,6 +250,20 @@ export function CommentCard({
               onClick={() => setEditing(true)}
             >
               <IconEdit width={11} height={11} />
+            </IconAction>
+          ) : null}
+          {canArchive ? (
+            <IconAction
+              tip={
+                status === "pushed"
+                  ? "Archive: out of the review and your pending review on GitHub, kept in Archived"
+                  : "Archive: out of the review, kept in Archived"
+              }
+              testId={`archive-${comment.id}`}
+              disabled={deleting}
+              onClick={() => onArchive?.(comment)}
+            >
+              <IconArchive width={11} height={11} />
             </IconAction>
           ) : null}
           {canDelete ? (
@@ -368,7 +386,7 @@ function PendingImagesChip({ comment }: { comment: Pick<DraftComment, "body" | "
   );
 }
 
-function IconAction({
+export function IconAction({
   tip,
   testId,
   onClick,

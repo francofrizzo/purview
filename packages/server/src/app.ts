@@ -81,6 +81,10 @@ import {
   markPickedUp,
   readDeletedComments,
   restoreDeletedComment,
+  archiveComments,
+  readArchivedComments,
+  restoreArchivedComment,
+  deleteArchivedComment,
   setCommentBody,
   setCommentNodeId,
   undoCommentEdit,
@@ -1430,7 +1434,39 @@ export function createApp(opts: AppOptions = {}): Hono {
     const key = keyParam(c);
     // `deleted` is the trash (deleted drafts, restorable for a while) — see
     // comments.ts. It is never mixed into `comments`.
-    return c.json({ comments: readComments(key, root), deleted: readDeletedComments(key, root) });
+    return c.json({
+      comments: readComments(key, root),
+      deleted: readDeletedComments(key, root),
+      archived: readArchivedComments(key, root),
+    });
+  });
+
+  /**
+   * Set comments aside (the notes copied for an agent, say): out of the
+   * review, kept until restored or deleted. Submitted ones are skipped; a
+   * pushed one leaves the pending review on GitHub first.
+   */
+  app.post("/api/prs/:key/comments/archive", async (c) => {
+    const key = keyParam(c);
+    const parsed = z.object({ ids: z.array(z.string().min(1)).min(1) }).safeParse(await readJsonBody(c));
+    if (!parsed.success) throw new HttpError(400, "invalid_body", "Send { ids: [...] }");
+    return c.json(await archiveComments(key, parsed.data.ids, root));
+  });
+
+  app.post("/api/prs/:key/comments/archived/:id/restore", (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    const comment = restoreArchivedComment(key, id, root);
+    if (!comment) throw new HttpError(404, "not_found", `No archived comment "${id}"`);
+    return c.json({ comment });
+  });
+
+  app.delete("/api/prs/:key/comments/archived/:id", (c) => {
+    const key = keyParam(c);
+    const id = c.req.param("id");
+    if (!deleteArchivedComment(key, id, root)) throw new HttpError(404, "not_found", `No archived comment "${id}"`);
+    pruneAttachments(key, allCommentBodies(key, root), root);
+    return c.json({ ok: true });
   });
 
   /**

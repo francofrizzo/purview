@@ -5,7 +5,9 @@ import {
   type DiffContext,
   type ExportableComment,
 } from "../lib/agentExport";
-import { IconCheck, IconClose, IconCopy } from "./icons";
+import { IconCheck, IconChevron, IconClose, IconCopy } from "./icons";
+import { OverflowMenu } from "./OverflowMenu";
+import { useSettings } from "../lib/settings";
 
 /**
  * Copy-to-clipboard for the agent-facing markdown.
@@ -149,26 +151,42 @@ export interface BundleSource {
  * The bundle action plus the one decision it takes: whether already-public
  * comments ride along. The count on the button is the honest answer to "what
  * am I about to paste", so it tracks the checkbox.
+ *
+ * With `onArchiveCopied` the button is split: its caret picks between a plain
+ * copy and "copy & archive" (the hand-off to an agent that will act on the
+ * comments, so they leave the review but stay findable). The pick runs at once
+ * and becomes the button's mode until the next pick.
  */
 export function CopyBundleControls({
   source,
   testId,
   className,
-  onDeleteCopied,
+  onArchiveCopied,
 }: {
   source: BundleSource;
   testId?: string;
   className?: string;
   /**
-   * Offer "copy & delete": after the bundle really reaches the clipboard,
-   * delete the copied comments that can be deleted (never submitted ones).
-   * Omitted, the button isn't shown.
+   * Offer "copy & archive": after the bundle really reaches the clipboard,
+   * archive the copied comments that can be (never submitted ones). Omitted,
+   * only the plain copy is offered.
    */
-  onDeleteCopied?: (ids: string[]) => Promise<unknown>;
+  onArchiveCopied?: (ids: string[]) => Promise<unknown>;
 }) {
+  const { settings, update } = useSettings();
+  const { copy, fallback, dismissFallback } = useCopyForAgent();
   const [includeSubmitted, setIncludeSubmitted] = useState(false);
-  const count = selectForBundle(source.comments, includeSubmitted).length;
+  const [phase, setPhase] = useState<"idle" | "confirm" | "working" | "done" | "error">("idle");
+  const [message, setMessage] = useState<string | null>(null);
+  const selected = selectForBundle(source.comments, includeSubmitted);
+  const count = selected.length;
   const submitted = source.comments.filter((c) => (c.status ?? "draft") === "submitted").length;
+  const mode = onArchiveCopied ? settings.copyBundleMode : "copy";
+  const archivable = selected.filter(
+    (c): c is ExportableComment & { id: string } =>
+      (c.status ?? "draft") !== "submitted" && typeof (c as { id?: unknown }).id === "string",
+  );
+  const pushed = archivable.filter((c) => c.status === "pushed").length;
   const bundleText = () =>
     formatBundle(source.comments, source.ctx, {
       repoLabel: source.repoLabel,
@@ -177,22 +195,116 @@ export function CopyBundleControls({
       includeSubmitted,
     });
 
+  useEffect(() => {
+    if (phase !== "confirm" && phase !== "done") return;
+    const t = window.setTimeout(() => setPhase("idle"), phase === "confirm" ? 4000 : FLASH_MS);
+    return () => window.clearTimeout(t);
+  }, [phase]);
+
+  const run = async (as: "copy" | "archive", confirmed = phase === "confirm") => {
+    setMessage(null);
+    if (as === "copy" || !onArchiveCopied) {
+      if (await copy(bundleText())) setPhase("done");
+      return;
+    }
+    // Archiving a pushed comment takes it out of the pending review on GitHub: a second click.
+    if (pushed > 0 && !confirmed) {
+      setPhase("confirm");
+      return;
+    }
+    setPhase("working");
+    if (!(await copy(bundleText()))) {
+      setPhase("idle");
+      return;
+    }
+    try {
+      await onArchiveCopied(archivable.map((c) => c.id));
+      setPhase("done");
+    } catch (err) {
+      setPhase("error");
+      setMessage((err as Error).message);
+    }
+  };
+
+  const label =
+    phase === "confirm"
+      ? `also leaves the GitHub review (${pushed}) — click to confirm`
+      : phase === "working"
+        ? "copying…"
+        : phase === "done"
+          ? mode === "archive"
+            ? "copied · archived"
+            : "copied"
+          : mode === "archive"
+            ? `copy & archive (${count})`
+            : `copy all for agent (${count})`;
+
   return (
     <div className={`flex flex-wrap items-center gap-1.5 ${className ?? ""}`}>
-      <CopyForAgentButton
-        testId={testId}
-        disabled={count === 0}
-        label={`copy all for agent (${count})`}
-        tip="Copy them all as one markdown work order"
-        text={() =>
-          formatBundle(source.comments, source.ctx, {
-            repoLabel: source.repoLabel,
-            revision: source.revision,
-            reviewBody: source.reviewBody,
-            includeSubmitted,
-          })
-        }
-      />
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          className={`btn ${onArchiveCopied ? "rounded-r-none" : ""}`}
+          data-testid={testId}
+          data-mode={mode}
+          data-copied={phase === "done" ? "1" : undefined}
+          disabled={count === 0 || phase === "working"}
+          data-tip={
+            mode === "archive"
+              ? pushed > 0
+                ? `Copy them as one markdown work order, then archive the ${archivable.length} copied; ${pushed} pushed ${pushed === 1 ? "one leaves" : "ones leave"} the pending review on GitHub`
+                : `Copy them as one markdown work order, then archive the ${archivable.length} copied`
+              : "Copy them all as one markdown work order"
+          }
+          style={
+            phase === "confirm"
+              ? { color: "var(--warn)", borderColor: "var(--warn)" }
+              : phase === "done"
+                ? { color: "var(--ok)", borderColor: "var(--ok)" }
+                : undefined
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            void run(mode);
+          }}
+        >
+          {phase === "done" ? <IconCheck width={11} height={11} /> : null}
+          {label}
+        </button>
+        {onArchiveCopied ? (
+          <OverflowMenu
+            testId={testId ? `${testId}-mode` : undefined}
+            label="Copy, or copy and archive"
+            buttonClassName="btn h-full rounded-l-none border-l-0 px-1"
+            align="left"
+            trigger={<IconChevron width={10} height={10} open />}
+            items={[
+              {
+                label: `copy all for agent (${count})`,
+                hint: "Copy them all as one markdown work order",
+                icon: mode === "copy" ? <IconCheck width={11} height={11} /> : null,
+                disabled: count === 0,
+                testId: testId ? `${testId}-mode-copy` : undefined,
+                onClick: () => {
+                  update({ copyBundleMode: "copy" });
+                  void run("copy");
+                },
+              },
+              {
+                label: `copy & archive (${archivable.length})`,
+                hint: "Copy them, then archive them: out of the review, kept in Archived until you restore or delete them",
+                icon: mode === "archive" ? <IconCheck width={11} height={11} /> : null,
+                disabled: archivable.length === 0,
+                testId: testId ? `${testId}-mode-archive` : undefined,
+                onClick: () => {
+                  update({ copyBundleMode: "archive" });
+                  void run("archive", false);
+                },
+              },
+            ]}
+          />
+        ) : null}
+      </div>
       {submitted === 0 ? null : (
       <label
         className="flex cursor-pointer items-center gap-1 text-2xs"
@@ -208,117 +320,13 @@ export function CopyBundleControls({
         include submitted
       </label>
       )}
-      {onDeleteCopied ? (
-        <CopyAndDeleteButton
-          testId={testId ? `${testId}-and-delete` : undefined}
-          comments={selectForBundle(source.comments, includeSubmitted)}
-          text={bundleText}
-          onDelete={onDeleteCopied}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-/**
- * "Copy all, then clear them": the hand-off to an agent that is going to act
- * on the comments, so they don't need to stay. Deletes only after the copy
- * really succeeded — on the manual-copy fallback nothing is deleted, since
- * the text never reached the clipboard. Submitted comments are public review
- * history and are never deleted. Deleting a *pushed* one also removes it from
- * the pending review on GitHub, so that case asks for a second click.
- */
-function CopyAndDeleteButton({
-  comments,
-  text,
-  onDelete,
-  testId,
-}: {
-  comments: ExportableComment[];
-  text: () => string;
-  onDelete: (ids: string[]) => Promise<unknown>;
-  testId?: string;
-}) {
-  const { copy, fallback, dismissFallback } = useCopyForAgent();
-  const [phase, setPhase] = useState<"idle" | "confirm" | "working" | "done" | "error">("idle");
-  const [message, setMessage] = useState<string | null>(null);
-  const deletable = comments.filter(
-    (c): c is ExportableComment & { id: string } =>
-      (c.status ?? "draft") !== "submitted" && typeof (c as { id?: unknown }).id === "string",
-  );
-  const pushed = deletable.filter((c) => c.status === "pushed").length;
-
-  useEffect(() => {
-    if (phase !== "confirm" && phase !== "done") return;
-    const t = window.setTimeout(() => setPhase("idle"), phase === "confirm" ? 4000 : FLASH_MS);
-    return () => window.clearTimeout(t);
-  }, [phase]);
-
-  const run = async () => {
-    if (pushed > 0 && phase !== "confirm") {
-      setPhase("confirm");
-      return;
-    }
-    setPhase("working");
-    setMessage(null);
-    const ids = deletable.map((c) => c.id);
-    if (!(await copy(text()))) {
-      setPhase("idle");
-      return;
-    }
-    try {
-      await onDelete(ids);
-      setPhase("done");
-    } catch (err) {
-      setPhase("error");
-      setMessage((err as Error).message);
-    }
-  };
-
-  const n = deletable.length;
-  const label =
-    phase === "confirm"
-      ? `also deletes ${pushed} on GitHub — click to confirm`
-      : phase === "working"
-        ? "copying…"
-        : phase === "done"
-          ? "copied · deleted"
-          : `copy & delete (${n})`;
-
-  return (
-    <>
-      <button
-        type="button"
-        className="btn"
-        data-testid={testId}
-        disabled={n === 0 || phase === "working"}
-        data-tip={
-          pushed > 0
-            ? `Copy for an agent, then delete the ${n} copied; ${pushed} pushed ${pushed === 1 ? "one leaves" : "ones leave"} the pending review on GitHub too`
-            : `Copy for an agent, then delete the ${n} copied`
-        }
-        style={
-          phase === "confirm"
-            ? { color: "var(--warn)", borderColor: "var(--warn)" }
-            : phase === "done"
-              ? { color: "var(--ok)", borderColor: "var(--ok)" }
-              : undefined
-        }
-        onClick={(e) => {
-          e.stopPropagation();
-          void run();
-        }}
-      >
-        {phase === "done" ? <IconCheck width={11} height={11} /> : null}
-        {label}
-      </button>
       {phase === "error" && message ? (
         <span className="text-2xs" style={{ color: "var(--risk)" }}>
-          copied, but deleting failed: {message}
+          copied, but archiving failed: {message}
         </span>
       ) : null}
       {fallback !== null ? <CopyFallback text={fallback} onClose={dismissFallback} /> : null}
-    </>
+    </div>
   );
 }
 

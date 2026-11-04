@@ -23,6 +23,8 @@ import type {
   DiscardPendingResult,
   AddCommentInput,
   DeletedComment,
+  ArchivedComment,
+  ArchiveCommentsResult,
   DraftComment,
   EditCommentResult,
   ImportFromPrResult,
@@ -118,6 +120,7 @@ const drafts: DraftComment[] = structuredClone(mockDrafts);
 const pickedUpNote = drafts.find((c) => c.id === "draft-agent-1");
 if (pickedUpNote) pickedUpNote.pickedUp = { at: new Date(Date.now() - 5 * 60_000).toISOString(), by: "Claude Code" };
 const deletedDrafts: DeletedComment[] = [];
+const archivedDrafts: ArchivedComment[] = [];
 const threads: RemoteThread[] = structuredClone(mockThreads);
 let nextGithubId = 95000;
 const aiReviewer = (login: string) => loginListed(login, globalConfig.aiReviewers);
@@ -1668,7 +1671,7 @@ export const mockApi = {
     await delay(40);
     const i = attachments.findIndex((a) => a.id === id);
     if (i < 0) throw new ApiError("not_found", 404, `No attachment "${id}"`);
-    const inUse = [...drafts, ...deletedDrafts].some((d) => d.body.includes(`purview-attachment:${id})`));
+    const inUse = [...drafts, ...deletedDrafts, ...archivedDrafts].some((d) => d.body.includes(`purview-attachment:${id})`));
     if (inUse) throw new ApiError("attachment_in_use", 409, "A comment still refers to this attachment");
     URL.revokeObjectURL(attachments[i].objectUrl);
     attachments.splice(i, 1);
@@ -1690,6 +1693,45 @@ export const mockApi = {
     const [{ deletedAt: _at, deletedBy: _by, ...comment }] = deletedDrafts.splice(i, 1);
     drafts.push(comment);
     return structuredClone(comment);
+  },
+
+  async listArchivedComments(_key: string): Promise<ArchivedComment[]> {
+    await delay(40);
+    return structuredClone(archivedDrafts);
+  },
+
+  async archiveComments(_key: string, ids: string[]): Promise<ArchiveCommentsResult> {
+    await delay(80);
+    const result: ArchiveCommentsResult = { archived: [], skipped: [], remoteErrors: [] };
+    const archivedAt = new Date().toISOString();
+    for (const id of ids) {
+      const i = drafts.findIndex((d) => d.id === id);
+      if (i < 0) continue;
+      if (drafts[i].status === "submitted") {
+        result.skipped.push(id);
+        continue;
+      }
+      const [gone] = drafts.splice(i, 1);
+      archivedDrafts.push({ ...gone, status: "draft", archivedAt });
+      result.archived.push(id);
+    }
+    return result;
+  },
+
+  async restoreArchivedComment(_key: string, id: string): Promise<DraftComment> {
+    await delay(80);
+    const i = archivedDrafts.findIndex((d) => d.id === id);
+    if (i < 0) throw new ApiError("not_found", 404, `No archived comment "${id}"`);
+    const [{ archivedAt: _at, ...comment }] = archivedDrafts.splice(i, 1);
+    drafts.push(comment);
+    return structuredClone(comment);
+  },
+
+  async deleteArchivedComment(_key: string, id: string): Promise<void> {
+    await delay(60);
+    const i = archivedDrafts.findIndex((d) => d.id === id);
+    if (i < 0) throw new ApiError("not_found", 404, `No archived comment "${id}"`);
+    archivedDrafts.splice(i, 1);
   },
 
   async undoCommentEdit(_key: string, id: string): Promise<DraftComment> {

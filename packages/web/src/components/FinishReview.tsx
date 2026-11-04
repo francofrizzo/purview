@@ -63,6 +63,7 @@ export function FinishReviewPanel({
   onJumpToComment,
   onEditComment,
   onDeleteComments,
+  onArchiveComments,
   bundle,
   files,
   onProposeReanchor,
@@ -96,8 +97,10 @@ export function FinishReviewPanel({
   onDiscardPending: () => void;
   onJumpToComment: (file: string, line: number | null) => void;
   onEditComment?: EditComment;
-  /** bulk delete, for "copy & delete"; omit to offer only the plain copy */
+  /** bulk delete: a comment's own delete in the list */
   onDeleteComments?: (ids: string[]) => Promise<unknown>;
+  /** bulk archive, for "copy & archive"; omit to offer only the plain copy */
+  onArchiveComments?: (ids: string[]) => Promise<unknown>;
   /** diff + PR identity for the agent-facing copy; omit to hide the action */
   bundle?: Omit<BundleSource, "comments" | "reviewBody">;
   /** the current diff, used to flag drafts that fell outside it — omit to skip the check */
@@ -220,7 +223,8 @@ export function FinishReviewPanel({
                 review={review}
                 onJump={onJumpToComment}
                 onEdit={onEditComment}
-                onDeleteCopied={onDeleteComments}
+                onDelete={onDeleteComments}
+                onArchiveCopied={onArchiveComments}
                 bundle={bundle}
                 reviewBody={body}
                 files={files}
@@ -509,7 +513,8 @@ function IncludedComments({
   review,
   onJump,
   onEdit,
-  onDeleteCopied,
+  onDelete,
+  onArchiveCopied,
   bundle,
   reviewBody,
   files,
@@ -519,7 +524,8 @@ function IncludedComments({
   review: ReviewStatus;
   onJump: (file: string, line: number | null) => void;
   onEdit?: EditComment;
-  onDeleteCopied?: (ids: string[]) => Promise<unknown>;
+  onDelete?: (ids: string[]) => Promise<unknown>;
+  onArchiveCopied?: (ids: string[]) => Promise<unknown>;
   bundle?: Omit<BundleSource, "comments" | "reviewBody">;
   /** the live textarea contents, so the copy matches what is on screen */
   reviewBody?: string;
@@ -542,7 +548,7 @@ function IncludedComments({
           testId="copy-bundle-review"
           className="mt-1.5"
           source={{ ...bundle, comments: review.included, reviewBody }}
-          onDeleteCopied={onDeleteCopied}
+          onArchiveCopied={onArchiveCopied}
         />
       ) : null}
       {review.included.length === 0 ? (
@@ -562,7 +568,7 @@ function IncludedComments({
                   anchor={{ label: commentAnchorLabel(c), onJump: () => onJump(c.file, c.line) }}
                   actions={{
                     onEdit,
-                    onDelete: onDeleteCopied ? (comment) => void onDeleteCopied([comment.id]) : undefined,
+                    onDelete: onDelete ? (comment) => void onDelete([comment.id]) : undefined,
                   }}
                   notice={
                     outside ? (

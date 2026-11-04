@@ -20,6 +20,7 @@ import type {
   DiscardRevisionResult,
   AddCommentInput,
   DeletedComment,
+  ArchivedComment,
   DraftComment,
   EditCommentResult,
   AgentsInfo,
@@ -76,6 +77,7 @@ export const qk = {
   comments: (key: string) => ["comments", key] as const,
   /** under qk.comments, so every comments invalidation refreshes the trash too */
   deletedComments: (key: string) => ["comments", key, "deleted"] as const,
+  archivedComments: (key: string) => ["comments", key, "archived"] as const,
   /**
    * Under qk.comments too: whatever changes Purview's comments (push, submit,
    * discard, a reply, an edit mirrored to GitHub) changes the threads.
@@ -983,6 +985,45 @@ export function useDeletedComments(key: string) {
   });
 }
 
+/** Comments set aside: out of the review until restored or deleted. */
+export function useArchivedComments(key: string) {
+  return useQuery<ArchivedComment[]>({
+    queryKey: qk.archivedComments(key),
+    queryFn: () => api.listArchivedComments(key),
+    enabled: Boolean(key),
+  });
+}
+
+export function useArchiveComments(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: string[]) => api.archiveComments(key, ids),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
+export function useRestoreArchivedComment(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.restoreArchivedComment(key, id),
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: qk.comments(key) });
+      void qc.invalidateQueries({ queryKey: qk.review(key) });
+    },
+  });
+}
+
+export function useDeleteArchivedComment(key: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteArchivedComment(key, id),
+    onSettled: () => void qc.invalidateQueries({ queryKey: qk.archivedComments(key) }),
+  });
+}
+
 export function useRestoreComment(key: string) {
   const qc = useQueryClient();
   return useMutation({
@@ -1017,7 +1058,7 @@ export function useDeleteComment(key: string) {
 }
 
 /**
- * Delete several comments ("copy & delete"). There is no bulk route, so it is
+ * Delete several comments. There is no bulk route, so it is
  * a few parallel single deletes; every one is attempted, and the first error
  * (if any) is thrown after the lists are refreshed, so a partial failure still
  * shows what is left.

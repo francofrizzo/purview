@@ -56,6 +56,8 @@ export interface Settings {
   autoCollapseViewedHunks: boolean;
   /** Hunks the analysis marks skippable open folded shut. */
   foldSkippableHunks: boolean;
+  /** What "copy all for agent" does: copy, or copy and archive what it copied. The last one used. */
+  copyBundleMode: "copy" | "archive";
   /** Moved-code blocks open folded behind their band. */
   foldMovedBlocks: boolean;
   /** Drop fully-viewed units out of the sidebar (except the selected one). */
@@ -126,6 +128,7 @@ export const DEFAULT_SETTINGS: Settings = {
   diffWrap: true,
   autoCollapseViewedHunks: true,
   foldSkippableHunks: false,
+  copyBundleMode: "copy",
   foldMovedBlocks: false,
   hideReviewedUnits: false,
   composerFormatting: false,
@@ -181,6 +184,7 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
     out.autoCollapseViewedHunks = r.autoCollapseViewedHunks;
   }
   if (typeof r.foldSkippableHunks === "boolean") out.foldSkippableHunks = r.foldSkippableHunks;
+  if (r.copyBundleMode === "copy" || r.copyBundleMode === "archive") out.copyBundleMode = r.copyBundleMode;
   if (typeof r.foldMovedBlocks === "boolean") out.foldMovedBlocks = r.foldMovedBlocks;
   if (typeof r.hideReviewedUnits === "boolean") out.hideReviewedUnits = r.hideReviewedUnits;
   if (typeof r.chatPanelWidth === "number" && Number.isFinite(r.chatPanelWidth)) {

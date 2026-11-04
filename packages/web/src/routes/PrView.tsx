@@ -33,6 +33,10 @@ import {
   useRestoreComment,
   useUndoCommentEdit,
   useDeleteComments,
+  useArchivedComments,
+  useArchiveComments,
+  useRestoreArchivedComment,
+  useDeleteArchivedComment,
   useEditComment,
   useMoveComment,
   useProposeReanchor,
@@ -198,6 +202,10 @@ export function PrView() {
   const restoreComment = useRestoreComment(prKey);
   const undoCommentEdit = useUndoCommentEdit(prKey);
   const deleteComments = useDeleteComments(prKey);
+  const archivedComments = useArchivedComments(prKey);
+  const archiveComments = useArchiveComments(prKey);
+  const restoreArchived = useRestoreArchivedComment(prKey);
+  const deleteArchived = useDeleteArchivedComment(prKey);
   const editComment = useEditComment(prKey);
   const setAudience = useSetCommentAudience(prKey);
   const publishComment = usePublishComment(prKey);
@@ -2244,7 +2252,10 @@ export function PrView() {
             bundle={bundle}
             onJump={(d) => jumpToComment(d)}
             onDelete={(d) => deleteComment.mutate(d.id)}
-            onDeleteMany={(ids) => deleteComments.mutateAsync(ids)}
+            onArchiveMany={(ids) => archiveComments.mutateAsync(ids)}
+            archived={archivedComments.data}
+            onRestoreArchived={(id) => restoreArchived.mutate(id)}
+            onDeleteArchived={(id) => deleteArchived.mutate(id)}
             onEdit={(input) => editComment.mutateAsync(input)}
             onQuote={quote}
             deleted={deletedComments.data}
@@ -2331,6 +2342,7 @@ export function PrView() {
             result={submitResult}
             submitError={submitReview.error as Error | null}
             onDeleteComments={(ids) => deleteComments.mutateAsync(ids)}
+            onArchiveComments={(ids) => archiveComments.mutateAsync(ids)}
             onSaveBody={(body) => saveReviewBody.mutateAsync(body)}
             saveBodyError={saveReviewBody.error}
             onSubmit={(event: ReviewEvent, body: string) =>
