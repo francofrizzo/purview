@@ -184,11 +184,10 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("risk-banner", "Code and prose", "risk banner (risk on risk-soft)", "risk", 3.4, ["bg-raised", "risk-soft"], "Analysis failed: claude exited with code 3"),
     // The home list's rows sit on the repo card (bg-raised), and on bg-hover under the pointer.
     ...homeStates(),
-    s("home-tag-band-name", "Home list", "a tag band's name (fg-muted on the band's fg tint)", "fg-muted", 3.2, ["bg-raised", HOME_TAG_BAND], "payments"),
-    s("home-tag-band-hover", "Home list", "a tag band's name under the pointer (fg on the band)", "fg", 4.5, ["bg-raised", HOME_TAG_BAND], "payments"),
+    s("home-tag-band-untagged", "Home list", "a tag band's \"untagged\" (fg-muted on the band's fg tint)", "fg-muted", 3.2, ["bg-raised", HOME_TAG_BAND], "untagged"),
     s("home-tag-band-count", "Home list", "a tag band's count and chevron (fg-faint on the band)", "fg-faint", 2.4, ["bg-raised", HOME_TAG_BAND], "3"),
     ...TAG_KINDS.map((k) =>
-      s(`home-tag-band-icon-${k}`, "Home list", `a tag band's ${k} tag icon`, `kind-${k}`, 3.0, ["bg-raised", HOME_TAG_BAND], "", { kind: "swatch" }),
+      s(`home-tag-band-chip-${k}`, "Home list", `a tag band's ${k} tag chip (kind-${k} on its soft tint, on the band)`, `kind-${k}`, 3.0, ["bg-raised", HOME_TAG_BAND, `kind-${k}-soft`], "payments", { kind: "chip" }),
     ),
     s("home-update-dot", "Home list", "the update dot on the header (accent on bg)", "accent", 3.0, ["bg"], "", { kind: "swatch" }),
     s("divider", "Code and prose", "border on bg (divider)", "border", 1.25, ["bg"], "", { kind: "swatch" }),

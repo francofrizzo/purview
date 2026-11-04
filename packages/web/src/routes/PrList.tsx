@@ -700,7 +700,7 @@ function TagBand({
   open: boolean;
   onToggle: () => void;
 }) {
-  const color = tag ? `var(--kind-${TAG_COLORS[tagSlot(tag)]})` : "var(--fg-faint)";
+  const kind = tag ? TAG_COLORS[tagSlot(tag)] : null;
   const name = tag ?? "untagged";
   return (
     <button
@@ -716,8 +716,17 @@ function TagBand({
       }}
     >
       <IconChevron open={open} width={10} height={10} className="flex-none" style={{ color: "var(--fg-faint)" }} />
-      <IconTag width={12} height={12} className="flex-none" style={{ color }} />
-      <span className="font-medium" data-testid={tag ? "pr-tag" : undefined}>
+      {/* The tag as the chip it is everywhere else; "untagged" stays plain. */}
+      <span
+        className="chip gap-1"
+        style={
+          kind
+            ? { color: `var(--kind-${kind})`, background: `var(--kind-${kind}-soft)` }
+            : { color: "var(--fg-muted)", background: "transparent", paddingLeft: 0 }
+        }
+        data-testid={tag ? "pr-tag" : undefined}
+      >
+        <IconTag width={11} height={11} className="flex-none" />
         {name}
       </span>
       <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
