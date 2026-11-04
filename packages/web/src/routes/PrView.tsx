@@ -97,7 +97,7 @@ import { FinishReviewPanel } from "../components/FinishReview";
 import { RightDock, type DockTab } from "../components/RightDock";
 import { isForAgent } from "../lib/comments";
 import { FileTree } from "../components/FileTree";
-import { IconChevron, IconComment, IconSpinner } from "../components/icons";
+import { IconChevron, IconComment, IconFiles, IconOverview, IconSpinner, IconUnit } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
 import { generatedUnitFiles, reviewProgress, workUnits } from "../lib/generated";
 import {
@@ -1690,12 +1690,13 @@ export function PrView() {
               setOverview(t === "overview");
               if (t !== "overview") setTab(t);
             }}
-            className="sidebar-tab-btn -mb-px border-b-2 px-2 pb-1.5 pt-1 text-xs font-medium transition-colors"
+            className="sidebar-tab-btn -mb-px inline-flex items-center gap-1.5 border-b-2 px-2 pb-1.5 pt-1 text-xs font-medium transition-colors"
             style={{
               borderColor: view === t ? "var(--accent)" : "transparent",
               color: view === t ? "var(--fg)" : "var(--fg-muted)",
             }}
           >
+            {t === "overview" ? <IconOverview width={12} height={12} /> : t === "units" ? <IconUnit width={12} height={12} /> : <IconFiles width={12} height={12} />}
             {t === "overview" ? "Overview" : t === "units" ? "Guide" : "Files"}
           </button>
         ))}

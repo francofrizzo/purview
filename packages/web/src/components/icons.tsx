@@ -36,6 +36,8 @@ import {
   IconDatabase as TablerDatabase,
   IconDots,
   IconFile as TablerFile,
+  IconFiles as TablerFiles,
+  IconLayoutDashboard,
   IconFilter as TablerFilter,
   IconFolder as TablerFolder,
   IconSelector,
@@ -272,6 +274,9 @@ export const IconTag = wrap(TablerTag);
 /** Angle brackets — open the code in an editor. */
 export const IconCode = wrap(TablerCode);
 export const IconUnit = wrap(IconStack2);
+/** The PR view's sidebar tabs: the overview, and the files tree (Guide uses IconUnit). */
+export const IconOverview = wrap(IconLayoutDashboard);
+export const IconFiles = wrap(TablerFiles);
 /** Up-and-down chevrons: open every hidden line of a gap in the diff. */
 export const IconUnfold = wrap(IconSelector);
 export const IconConcept = wrap(IconBook2);
