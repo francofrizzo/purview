@@ -19,7 +19,7 @@ test("tags group rows, stacks hang under their base, and edits persist", async (
   await expect(base.getByTestId("pr-tag")).toHaveCount(0);
 
   // The child hangs under its base, indented, with the tree beside it and no
-  // "stacked on" text (the tree says it).
+  // "on #491" text (the tree says it).
   await expect(base.locator("+ li")).toHaveAttribute("data-testid", `pr-row-${childKey}`);
   await expect(child).toHaveAttribute("data-depth", "1");
   await expect(child.getByTestId("stack-tree")).toBeAttached();
@@ -41,7 +41,7 @@ test("tags group rows, stacks hang under their base, and edits persist", async (
   await expect(block.getByTestId("pr-tag-heading").getByTestId("pr-tag")).toHaveText(["alpha", "payments"]);
   await expect(child).not.toHaveAttribute("data-depth");
   // Out of the tree, the base is still named in the detail line.
-  await expect(child.getByTestId("pr-stacked-on")).toHaveText("stacked on #491");
+  await expect(child.getByTestId("pr-stacked-on")).toHaveText("on #491");
 
   // The header shows the tag; the mock persisted it.
   await child.getByRole("link").first().click();

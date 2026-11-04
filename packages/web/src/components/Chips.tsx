@@ -16,6 +16,7 @@ import { Link } from "react-router-dom";
 import { formatMustReadLines } from "../lib/prList";
 import {
   formatRequestedAgo,
+  formatRequestWait,
   REQUEST_AGE_COLORS,
   requestAgeLevel,
   reviewRequestTooltip,
@@ -24,7 +25,18 @@ import {
 import { useSettings } from "../lib/settings";
 import { useNow } from "../lib/useNow";
 import type { StackedOnLink } from "../lib/stacked";
-import { IconArrowDown, IconBolt, IconCheck, IconEye, IconWarning, IconWeight } from "./icons";
+import {
+  IconArrowDown,
+  IconBolt,
+  IconCheck,
+  IconClock,
+  IconEye,
+  IconMerged,
+  IconPrClosed,
+  IconPrDraft,
+  IconWarning,
+  IconWeight,
+} from "./icons";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
 // distinguishable — and coherent with the syntax colors — on every theme.
@@ -97,22 +109,24 @@ const ATTENTION_STYLE: Record<
 };
 
 /**
- * GitHub's own lifecycle state. The hues are the conventional ones (green /
- * gray / purple / red) but every one of them is a theme token, so the chips
- * track the active theme's palette instead of pinning GitHub's brand colors.
+ * GitHub's own lifecycle state on the home row, as an icon and a word. Only
+ * the out-of-the-ordinary ones: an open PR says nothing. The hues are the
+ * conventional ones (purple / red / gray), each a theme token.
  */
-const PR_STATE_STYLE: Record<PrGithubState, { label: string; color: string; bg: string }> = {
-  open: { label: "open", color: "var(--ok)", bg: "var(--ok-soft)" },
-  draft: { label: "draft", color: "var(--kind-wiring)", bg: "var(--kind-wiring-soft)" },
-  merged: { label: "merged", color: "var(--kind-core)", bg: "var(--kind-core-soft)" },
-  closed: { label: "closed", color: "var(--risk)", bg: "var(--risk-soft)" },
+const PR_STATE_MARK: Record<Exclude<PrGithubState, "open">, { color: string; Icon: (p: { width?: number; height?: number }) => JSX.Element }> = {
+  merged: { color: "var(--kind-core)", Icon: IconMerged },
+  closed: { color: "var(--risk)", Icon: IconPrClosed },
+  draft: { color: "var(--fg-muted)", Icon: IconPrDraft },
 };
 
-export function PrStateChip({ state }: { state: PrGithubState }) {
-  const s = PR_STATE_STYLE[state] ?? PR_STATE_STYLE.open;
+export function PrStateMark({ state }: { state: PrGithubState }) {
+  if (state === "open") return null;
+  const s = PR_STATE_MARK[state];
+  if (!s) return null;
   return (
-    <span className="chip" style={{ color: s.color, background: s.bg }} data-tip={`GitHub state: ${state}`}>
-      {s.label}
+    <span className="inline-flex items-center gap-1" style={{ color: s.color }} data-tip={`GitHub state: ${state}`} data-testid="pr-state">
+      <s.Icon width={11} height={11} />
+      {state}
     </span>
   );
 }
@@ -167,41 +181,30 @@ export function CiMark({ ci, interactive = false }: { ci?: Ci; interactive?: boo
   );
 }
 
-const DECISION_STYLE: Record<
-  ReviewDecision,
-  { label: string; check?: boolean; color: string; title: string }
+const DECISION_MARK: Partial<
+  Record<ReviewDecision, { label: string; color: string; title: string; Icon: (p: { width?: number; height?: number }) => JSX.Element }>
 > = {
-  approved: { label: "approved", check: true, color: "var(--ok)", title: "Approved on GitHub" },
+  approved: { label: "approved", color: "var(--ok)", title: "Approved on GitHub", Icon: IconCheck },
   changes_requested: {
     label: "changes requested",
     color: "var(--warn)",
     title: "Changes requested on GitHub",
-  },
-  // Not "review requested": this is the PR's merge gate, not a request of the
-  // reader. Whether *you* were asked is ReviewRequestAge's "asked you 3d ago".
-  review_required: {
-    label: "awaiting approval",
-    color: "var(--fg-faint)",
-    title: "GitHub still needs an approving review before this can merge (from anyone, not necessarily you)",
+    Icon: IconWarning,
   },
 };
 
 /**
- * Deliberately quieter than the state chip: text-only, no fill, so it reads as
- * a qualifier on the state rather than as a second status of equal weight.
+ * GitHub's review decision beside the state, once there is one to tell:
+ * "awaiting approval" is the merge gate nearly every open PR sits behind, so
+ * it says nothing. Whether *you* were asked is the request's "you · 3d".
  */
-export function ReviewDecisionChip({ decision }: { decision: ReviewDecision | null }) {
-  if (!decision) return null;
-  const s = DECISION_STYLE[decision];
+export function ReviewDecisionMark({ decision }: { decision: ReviewDecision | null }) {
+  const s = decision ? DECISION_MARK[decision] : undefined;
   if (!s) return null;
   return (
-    <span
-      className="chip px-0 font-normal"
-      style={{ color: s.color, background: "transparent" }}
-      data-tip={s.title}
-    >
+    <span className="inline-flex items-center gap-1" style={{ color: s.color }} data-tip={s.title} data-testid="review-decision">
+      <s.Icon width={11} height={11} />
       {s.label}
-      {s.check ? <IconCheck width={10} height={10} /> : null}
     </span>
   );
 }
@@ -234,6 +237,38 @@ export function ReviewRequestAge({
       data-testid="review-request-age"
     >
       {formatRequestedAgo(shown.at, at, shown.via)}
+    </span>
+  );
+}
+
+/**
+ * The home row's "you · 15m": a clock, who was asked and how long ago. Faint
+ * until the request reaches the middle age threshold in Settings (3 days by
+ * default), then warm; the tooltip spells out when, by whom and how.
+ */
+export function ReviewRequestWait({
+  request,
+  state,
+}: {
+  request: ReviewRequest | null | undefined;
+  state?: PrGithubState | null;
+}) {
+  const now = useNow();
+  const { settings } = useSettings();
+  const shown = visibleReviewRequest(request, state);
+  if (!shown) return null;
+  const at = new Date(now);
+  const old = requestAgeLevel(shown.at, at, settings.requestAgeDays) >= 2;
+  return (
+    <span
+      className="inline-flex flex-none items-center gap-1"
+      style={{ color: old ? "var(--warn)" : "var(--fg-faint)" }}
+      data-tip={reviewRequestTooltip(shown)}
+      data-testid="review-request-age"
+      data-old={old || undefined}
+    >
+      <IconClock width={11} height={11} />
+      {formatRequestWait(shown.at, at, shown.via)}
     </span>
   );
 }
@@ -308,33 +343,36 @@ export function attentionSoftBg(attention: Attention): string {
 
 const EFFORT_STYLE: Record<
   Exclude<EffortBadge, null>,
-  { label: string; icon: (p: { width?: number; height?: number }) => JSX.Element; color: string; bg: string }
+  { label: string; icon: (p: { width?: number; height?: number }) => JSX.Element; color: string }
 > = {
-  fast: { label: "fast", icon: IconBolt, color: "var(--ok)", bg: "var(--ok-soft)" },
-  heavy: { label: "heavy", icon: IconWeight, color: "var(--warn)", bg: "var(--warn-soft)" },
+  fast: { label: "Fast", icon: IconBolt, color: "var(--ok)" },
+  heavy: { label: "Heavy", icon: IconWeight, color: "var(--warn)" },
 };
 
 /**
- * The PR list's effort badge — "fast" (small, low-risk must-read surface) or
- * "heavy" (large or risky). Renders nothing for the unbadged middle (most
- * PRs) and for PRs without an analysis: an absent chip says nothing, where a
- * placeholder would read as "checked, found nothing".
+ * The PR list's effort mark, an icon alone: a bolt for "fast" (small, low-risk
+ * must-read surface), a barbell for "heavy" (large or risky); the tooltip says
+ * which and why. Renders nothing for the unbadged middle (most PRs) and for
+ * PRs without an analysis: an absent mark says nothing, where a placeholder
+ * would read as "checked, found nothing".
  */
-export function EffortChip({ effort }: { effort?: ReviewEffort | null }) {
+export function EffortMark({ effort }: { effort?: ReviewEffort | null }) {
   if (!effort?.badge) return null;
   const s = EFFORT_STYLE[effort.badge];
   const Icon = s.icon;
   const lines = formatMustReadLines(effort.weightedMustReadLines);
   const flags = effort.riskCount === 1 ? "flag" : "flags";
+  const tip = `${s.label} review: ~${lines} must-read lines · ${effort.riskCount} risk ${flags}`;
   return (
     <span
-      className="chip"
-      data-testid="effort-chip"
-      data-tip={`~${lines} must-read lines · ${effort.riskCount} risk ${flags}`}
-      style={{ color: s.color, background: s.bg }}
+      className="inline-flex items-center"
+      data-testid="effort-mark"
+      data-effort={effort.badge}
+      data-tip={tip}
+      aria-label={tip}
+      style={{ color: s.color }}
     >
-      <Icon width={10} height={10} />
-      {s.label}
+      <Icon width={12} height={12} />
     </span>
   );
 }
@@ -471,14 +509,26 @@ export function ViewedBox({
  * How far through the hunks, as a ring and the count: the home list's right
  * edge. The tooltip carries the rest (units, effort) the row no longer spells out.
  */
-export function ProgressRing({ viewed, total, tip }: { viewed: number; total: number; tip?: string }) {
+export function ProgressRing({
+  viewed,
+  total,
+  tip,
+  quiet = false,
+}: {
+  viewed: number;
+  total: number;
+  tip?: string;
+  /** the home row: the count sits closer and stays faint until the pointer is on
+   *  the row around it (a `group`), then takes the ring's color */
+  quiet?: boolean;
+}) {
   const done = total > 0 && viewed === total;
   const r = 6;
   const c = 2 * Math.PI * r;
   const frac = total ? viewed / total : 0;
   return (
     <span
-      className="inline-flex items-center gap-1.5"
+      className={`inline-flex items-center ${quiet ? "gap-1" : "gap-1.5"}`}
       data-tip={tip ?? `${viewed} of ${total} hunks viewed`}
       data-testid="hunk-progress"
     >
@@ -497,9 +547,19 @@ export function ProgressRing({ viewed, total, tip }: { viewed: number; total: nu
           />
         ) : null}
       </svg>
-      <span className="text-2xs tabular-nums" style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}>
-        {viewed}/{total}
-      </span>
+      {quiet ? (
+        <span
+          className={`text-2xs tabular-nums text-[var(--fg-faint)] transition-colors duration-150 ease-in-out ${
+            done ? "group-hover:text-[var(--ok)]" : frac > 0 ? "group-hover:text-[var(--accent)]" : ""
+          }`}
+        >
+          {viewed}/{total}
+        </span>
+      ) : (
+        <span className="text-2xs tabular-nums" style={{ color: done ? "var(--ok)" : "var(--fg-faint)" }}>
+          {viewed}/{total}
+        </span>
+      )}
     </span>
   );
 }
@@ -529,11 +589,14 @@ export function DiffSizeStat({
   size,
   files = true,
   tip = true,
+  quiet = false,
 }: {
   size: DiffSize | null | undefined;
   files?: boolean;
   /** false when something around it explains the numbers instead */
   tip?: boolean;
+  /** faint until the pointer is on the row around it (a `group`): the home list */
+  quiet?: boolean;
 }) {
   if (!size || size.files === 0) return null;
   const { files: n, additions, deletions } = size;
@@ -548,8 +611,17 @@ export function DiffSizeStat({
           {n} {n === 1 ? "file" : "files"}
         </span>
       ) : null}
-      <span style={{ color: "var(--ok)" }}>+{additions}</span>
-      <span style={{ color: "var(--risk)" }}>−{deletions}</span>
+      {quiet ? (
+        <>
+          <span className="text-[var(--fg-faint)] transition-colors duration-150 ease-in-out group-hover:text-[var(--ok)]">+{additions}</span>
+          <span className="text-[var(--fg-faint)] transition-colors duration-150 ease-in-out group-hover:text-[var(--risk)]">−{deletions}</span>
+        </>
+      ) : (
+        <>
+          <span style={{ color: "var(--ok)" }}>+{additions}</span>
+          <span style={{ color: "var(--risk)" }}>−{deletions}</span>
+        </>
+      )}
     </span>
   );
 }

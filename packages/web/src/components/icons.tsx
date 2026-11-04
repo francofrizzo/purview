@@ -68,6 +68,11 @@ import {
   IconArrowRight as TablerArrowRight,
   IconAdjustmentsHorizontal,
   IconGitBranch as TablerGitBranch,
+  IconGitMerge,
+  IconGitPullRequestClosed,
+  IconGitPullRequestDraft,
+  IconHourglass as TablerHourglass,
+  IconBaselineDensitySmall,
   IconKeyboard as TablerKeyboard,
   IconTerminal2,
   IconTextWrap,
@@ -214,6 +219,14 @@ export const IconStopwatch = wrap(TablerStopwatch);
 export const IconArrowRight = wrap(TablerArrowRight);
 export const IconViewOptions = wrap(IconAdjustmentsHorizontal);
 export const IconBranch = wrap(TablerGitBranch);
+/** The PR's GitHub state on the home list: merged, closed, draft. */
+export const IconMerged = wrap(IconGitMerge);
+export const IconPrClosed = wrap(IconGitPullRequestClosed);
+export const IconPrDraft = wrap(IconGitPullRequestDraft);
+/** An hourglass — an analysis waiting its turn. */
+export const IconHourglass = wrap(TablerHourglass);
+/** Four close lines — the home list's compact rows. */
+export const IconDensity = wrap(IconBaselineDensitySmall);
 export const IconKeyboard = wrap(TablerKeyboard);
 
 /** A barbell — the "heavy" effort badge. */

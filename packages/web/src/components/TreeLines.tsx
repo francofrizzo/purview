@@ -13,6 +13,7 @@ export function TreeLines({
   elbowY,
   elbowWidth = indent - lineAt,
   stemFrom,
+  color = "var(--fg-faint)",
   testId,
 }: {
   depth: number;
@@ -27,10 +28,11 @@ export function TreeLines({
   elbowY: number;
   elbowWidth?: number;
   stemFrom?: number;
+  color?: string;
   testId?: string;
 }) {
   const x = (level: number) => level * indent + lineAt;
-  const line = "1px solid var(--fg-faint)";
+  const line = `1px solid ${color}`;
   return (
     <span aria-hidden className="pointer-events-none absolute inset-y-0 left-0" data-testid={testId}>
       {guides.map((continues, level) =>

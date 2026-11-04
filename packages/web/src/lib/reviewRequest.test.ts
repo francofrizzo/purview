@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatCompactAge,
   formatRequestedAgo,
+  formatRequestWait,
   requestAgeLevel,
   reviewRequestTooltip,
   reviewRequestVia,
@@ -102,5 +103,14 @@ describe("visibleReviewRequest", () => {
     expect(visibleReviewRequest(rr, "open")).toBe(rr);
     expect(visibleReviewRequest(rr, "draft")).toBe(rr);
     expect(visibleReviewRequest(rr, undefined)).toBe(rr);
+  });
+});
+
+describe("formatRequestWait", () => {
+  it("names you or the team, then the compact age", () => {
+    expect(formatRequestWait(ago(15 * MINUTE), NOW)).toBe("you · 15m");
+    expect(formatRequestWait(ago(6 * DAY), NOW, "team:web-platform")).toBe("web-platform · 6d");
+    expect(formatRequestWait(ago(10_000), NOW, "you")).toBe("you · just now");
+    expect(formatRequestWait("nope", NOW)).toBe("");
   });
 });

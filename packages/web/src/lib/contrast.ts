@@ -16,7 +16,7 @@
  * separately as the stricter yardstick.
  */
 
-import { composite, contrast, mix, parseColor, toHex } from "./color";
+import { composite, contrast, mix, parseColor, rgba, toHex } from "./color";
 import type { ChromeTokens, ThemeDef } from "./themes";
 
 /** The colors a theme's shiki grammar paints for three scopes. */
@@ -35,7 +35,8 @@ export interface Surface {
   label: string;
   /** a chrome token, or `syntax:<scope>` for a shiki color */
   fg: string;
-  /** background layers, innermost first; each a token name or a color */
+  /** background layers, innermost first; each a token name, a color, or
+   *  `token@alpha` for a token laid on at that opacity (a `color-mix` tint) */
   layers: string[];
   floor: number;
   kind: SurfaceKind;
@@ -67,6 +68,31 @@ const textOn = (surface: string): Surface[] => [
   s(`muted-on-${surface}`, "Text on surfaces", `muted text on ${surface}`, "fg-muted", 3.2, [surface], "why must-read: the money-safety decision"),
   s(`faint-on-${surface}`, "Text on surfaces", `faint text on ${surface}`, "fg-faint", 2.4, [surface], "4/15 viewed · asked you 4d ago"),
 ];
+
+/** The tint under a tag's band on the home list: `color-mix(in srgb, var(--fg) 2.5%, transparent)`. */
+const HOME_TAG_BAND = "fg@0.025";
+const TAG_KINDS = ["core", "glue", "refactor", "data", "wiring", "ripple", "tests", "docs"];
+
+/**
+ * The right column's state words (merged, closed, draft, changes requested,
+ * approved, new commits) and the hovered row's size, on the row at rest and
+ * under the pointer.
+ */
+const homeStates = (): Surface[] =>
+  (
+    [
+      ["kind-core", "merged"],
+      ["risk", "closed · −31"],
+      ["fg-muted", "draft"],
+      ["warn", "changes requested · you · 4d"],
+      ["ok", "approved · +256"],
+      ["accent", "new commits"],
+    ] as const
+  ).flatMap(([fg, sample]) =>
+    (["bg-raised", "bg-hover"] as const).map((on) =>
+      s(`home-state-${fg}-on-${on}`, "Home list", `${sample.split(" · ")[0]} on a row${on === "bg-hover" ? " under the pointer" : ""} (${fg} on ${on})`, fg, fg === "fg-muted" ? 3.2 : 3.0, on === "bg-hover" ? ["bg-raised", "bg-hover"] : ["bg-raised"], sample),
+    ),
+  );
 
 /** Every surface, in the order the sheet shows them. Syntax rows need `syntax`. */
 export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
@@ -156,6 +182,15 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("agent-card", "Code and prose", "agent note card (fg on agent-soft)", "fg", 4.5, ["bg-raised", "agent-soft"], "Rename this before merging; the old name leaks."),
     s("warn-banner", "Code and prose", "warn banner (warn on warn-soft)", "warn", 3.4, ["bg-raised", "warn-soft"], "Clear this conversation? It cannot be recovered."),
     s("risk-banner", "Code and prose", "risk banner (risk on risk-soft)", "risk", 3.4, ["bg-raised", "risk-soft"], "Analysis failed: claude exited with code 3"),
+    // The home list's rows sit on the repo card (bg-raised), and on bg-hover under the pointer.
+    ...homeStates(),
+    s("home-tag-band-name", "Home list", "a tag band's name (fg-muted on the band's fg tint)", "fg-muted", 3.2, ["bg-raised", HOME_TAG_BAND], "payments"),
+    s("home-tag-band-hover", "Home list", "a tag band's name under the pointer (fg on the band)", "fg", 4.5, ["bg-raised", HOME_TAG_BAND], "payments"),
+    s("home-tag-band-count", "Home list", "a tag band's count and chevron (fg-faint on the band)", "fg-faint", 2.4, ["bg-raised", HOME_TAG_BAND], "3"),
+    ...TAG_KINDS.map((k) =>
+      s(`home-tag-band-icon-${k}`, "Home list", `a tag band's ${k} tag icon`, `kind-${k}`, 3.0, ["bg-raised", HOME_TAG_BAND], "", { kind: "swatch" }),
+    ),
+    s("home-update-dot", "Home list", "the update dot on the header (accent on bg)", "accent", 3.0, ["bg"], "", { kind: "swatch" }),
     s("divider", "Code and prose", "border on bg (divider)", "border", 1.25, ["bg"], "", { kind: "swatch" }),
     s("checkbox-on-hunk-header", "Diff rows", "viewed checkbox outline on a hunk header", "fg-muted", 3.0, ["bg", "bg-hover"], "", { kind: "swatch" }),
     s("checkbox-on-focused-hunk-header", "Diff rows", "viewed checkbox outline on the focused hunk header", "fg-muted", 3.0, ["bg", "bg-hover", "accent-soft"], "", { kind: "swatch" }),
@@ -215,8 +250,13 @@ export interface SurfaceResult extends Surface {
 
 /** Resolve one surface against a token set (and shiki colors). */
 export function measure(surface: Surface, tokens: ChromeTokens, syntax: SyntaxColors): SurfaceResult | null {
-  const color = (ref: string): string | undefined =>
-    ref.startsWith("syntax:") ? syntax[ref.slice(7) as keyof SyntaxColors] : ((tokens as Record<string, string>)[ref] ?? ref);
+  const token = (ref: string): string | undefined => (tokens as Record<string, string>)[ref];
+  const color = (ref: string): string | undefined => {
+    if (ref.startsWith("syntax:")) return syntax[ref.slice(7) as keyof SyntaxColors];
+    const tint = /^([a-z0-9-]+)@([\d.]+)$/.exec(ref);
+    if (tint && token(tint[1])) return rgba(toHex(parseColor(token(tint[1])!)), Number(tint[2]));
+    return token(ref) ?? ref;
+  };
   const fgRaw = color(surface.fg);
   if (!fgRaw) return null;
   const bgColor = surface.layers.reduce((under, layer) => composite(color(layer) ?? layer, under), tokens.bg);

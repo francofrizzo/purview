@@ -249,13 +249,78 @@ export function reviewedPrKeys(group: Pick<RepoGroup, "prs">): string[] {
 }
 
 /** A repo's merged or closed PRs that are not archived yet: what auto-archive sweeps. */
+export function finishedPrs(
+  group: Pick<RepoGroup, "needsReview" | "mine" | "prs">,
+): PrListEntry[] {
+  return [...group.needsReview, ...group.mine, ...group.prs].filter(
+    (pr) => pr.state === "merged" || pr.state === "closed",
+  );
+}
+
 export function finishedPrKeys(
   group: Pick<RepoGroup, "needsReview" | "mine" | "prs">,
 ): string[] {
-  return [...group.needsReview, ...group.mine, ...group.prs]
-    .filter((pr) => pr.state === "merged" || pr.state === "closed")
-    .map((pr) => pr.key);
+  return finishedPrs(group).map((pr) => pr.key);
 }
+
+/**
+ * What the archive sweep takes, each kind named and zeros left out:
+ * "1 merged, 1 closed & 2 reviewed", "1 merged", "3 closed".
+ */
+export function sweepLabel(counts: { merged: number; closed: number; reviewed: number }): string {
+  const parts = [
+    counts.merged ? `${counts.merged} merged` : "",
+    counts.closed ? `${counts.closed} closed` : "",
+    counts.reviewed ? `${counts.reviewed} reviewed` : "",
+  ].filter(Boolean);
+  if (parts.length < 2) return parts[0] ?? "";
+  return `${parts.slice(0, -1).join(", ")} & ${parts[parts.length - 1]}`;
+}
+
+/* --------------------------------------------------------------- search */
+
+/** A pull request URL, as the server's `parsePrUrl` reads one: pasting it adds the PR. */
+export function isPrUrl(value: string): boolean {
+  return /^https?:\/\/[^/\s]+\/[^/\s]+\/[^/\s]+\/pulls?\/\d+/.test(value.trim());
+}
+
+/**
+ * The home search: every word of the query is found, case-insensitively, in
+ * the PR's title, number ("#482" or "482"), author, repo or tag.
+ */
+export function prMatchesQuery(pr: PrListEntry, query: string): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const meta = pr.meta;
+  const hay = [
+    pr.title ?? meta?.title ?? "",
+    meta?.number !== undefined ? `#${meta.number}` : "",
+    meta?.author ?? "",
+    `${meta?.owner ?? ""}/${meta?.repo ?? ""}`,
+    meta?.tag ?? "",
+  ]
+    .join("\n")
+    .toLowerCase();
+  return words.every((w) => hay.includes(w));
+}
+
+/** A repo group cut down to the PRs that match; null when none does. */
+export function filterRepoGroup(group: RepoGroup, query: string): RepoGroup | null {
+  if (!query.trim()) return group;
+  const keep = (prs: PrListEntry[]) => prs.filter((pr) => prMatchesQuery(pr, query));
+  const out = {
+    ...group,
+    needsReview: keep(group.needsReview),
+    mine: keep(group.mine),
+    prs: keep(group.prs),
+    archived: keep(group.archived),
+  };
+  return out.needsReview.length + out.mine.length + out.prs.length + out.archived.length ? out : null;
+}
+
+/** Where a tag group's fold is remembered: one key per repo, block and tag ("" for untagged). */
+export const tagFoldKey = (repoKey: string, block: string, tag: string | null) =>
+  `${repoKey}|${block}|${tag ?? ""}`;
 
 /**
  * The PR's size the way GitHub states it in its header: files changed, lines

@@ -216,3 +216,21 @@ describe("review-thread filters", () => {
     expect(parseSettings({ showAiReviewers: false }).showAiReviewers).toBe(false);
   });
 });
+
+describe("home list", () => {
+  it("defaults to comfortable rows and nothing folded", () => {
+    const out = parseSettings({});
+    expect(out.compactRows).toBe(false);
+    expect(out.foldedTagGroups).toEqual([]);
+  });
+
+  it("keeps a boolean compactRows and only non-empty, distinct fold keys", () => {
+    const out = parseSettings({
+      compactRows: true,
+      foldedTagGroups: ["github.com/acme/billing|mine|payments", 3, "", "github.com/acme/billing|mine|payments"],
+    });
+    expect(out.compactRows).toBe(true);
+    expect(out.foldedTagGroups).toEqual(["github.com/acme/billing|mine|payments"]);
+    expect(parseSettings({ compactRows: "yes", foldedTagGroups: "x" })).toMatchObject({ compactRows: false, foldedTagGroups: [] });
+  });
+});

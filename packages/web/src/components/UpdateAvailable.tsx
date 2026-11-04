@@ -6,18 +6,19 @@ import { IconDownload } from "./icons";
 export const UPDATE_COMMAND = "git pull && pnpm start";
 
 /**
- * "A newer Purview is on origin": a chip that opens a short card with the
- * version and the command to run. It lives on the home page and renders
+ * "A newer Purview is on origin": the download icon with an accent dot, in
+ * the home header's row of icon buttons (`className` is theirs). It opens a
+ * short card with the version and the command to run. It renders
  * nothing while there is no update. Nothing here updates anything —
  * the server cannot replace itself while serving — so the card says exactly
  * what to type and leaves it there.
  */
-export function UpdateAvailable() {
+export function UpdateAvailable({ className }: { className: string }) {
   const latest = useVersion().data?.latest ?? null;
-  return latest ? <UpdateChip latest={latest} /> : null;
+  return latest ? <UpdateChip latest={latest} className={className} /> : null;
 }
 
-function UpdateChip({ latest }: { latest: string }) {
+function UpdateChip({ latest, className }: { latest: string; className: string }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
@@ -52,16 +53,19 @@ function UpdateChip({ latest }: { latest: string }) {
     <div ref={wrap} className="relative">
       <button
         type="button"
-        className="btn relative"
+        className={`relative ${className}`}
         data-testid="update-available"
         aria-expanded={open}
         aria-label={`Purview ${latest} is available`}
         data-tip={`Purview ${latest} is available`}
         onClick={() => setOpen((v) => !v)}
-        style={{ color: "var(--accent)", borderColor: "var(--accent)" }}
       >
-        <IconDownload width={12} height={12} />
-        Update available
+        <IconDownload width={15} height={15} />
+        <span
+          aria-hidden
+          className="absolute right-[3px] top-[3px] h-[7px] w-[7px] rounded-full"
+          style={{ background: "var(--accent)", boxShadow: "0 0 0 2px var(--bg)" }}
+        />
       </button>
       {open ? (
         <div

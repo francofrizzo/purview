@@ -31,7 +31,7 @@ test("a PR with new commits upstream carries an update button that refreshes it 
   // The What's new dialog of a first visit sits over the list.
   await page.getByTestId("whats-new-close").click();
   const row = page.getByTestId(`pr-row-${YOURS_DRAFT}`);
-  // The status cluster is rendered twice (phone and wide layouts); only one is shown.
+  // GitHub's side is rendered twice (phone and wide layouts); only one is shown.
   const button = row.getByTestId("update-button").locator("visible=true");
   await expect(button).toHaveAttribute("data-tip", "New commits on GitHub · refresh this PR");
   await expect(page.getByTestId(`pr-row-github.com/acme/billing/502`).getByTestId("update-button")).toHaveCount(0);

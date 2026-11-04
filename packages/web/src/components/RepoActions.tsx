@@ -8,6 +8,8 @@ import {
   removalConfirmName,
   removalLossLines,
 } from "../lib/repoRemoval";
+import type { PrListEntry } from "../api/types";
+import { sweepLabel } from "../lib/prList";
 import { useModalBackground } from "./Modal";
 import { OverflowMenu } from "./TopBar";
 import { IconArchive, IconInbox, IconTrash } from "./icons";
@@ -102,19 +104,22 @@ export function RepoMenu({
  */
 export function AutoArchiveButton({
   repo,
-  finishedKeys,
+  finished,
   reviewedKeys = [],
 }: {
   repo: RepoRef;
-  finishedKeys: string[];
+  /** the merged and closed PRs to sweep */
+  finished: Pick<PrListEntry, "key" | "state">[];
   reviewedKeys?: string[];
 }) {
   const archiveMany = useArchiveMany();
   const rkey = rkeyOf(repo);
+  const finishedKeys = finished.map((pr) => pr.key);
   const n = finishedKeys.length;
   const r = reviewedKeys.length;
   if (!n && !r) return null;
-  const label = [n ? `${n} merged & closed` : "", r ? `${r} reviewed` : ""].filter(Boolean).join(", ");
+  const merged = finished.filter((pr) => pr.state === "merged").length;
+  const label = sweepLabel({ merged, closed: n - merged, reviewed: r });
   const tip = [
     n ? `the ${n} merged or closed PR${n === 1 ? "" : "s"}` : "",
     r ? `the ${r} open PR${r === 1 ? "" : "s"} you already reviewed` : "",

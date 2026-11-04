@@ -7,6 +7,14 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Search on the home.** Type in the field at the top of the home to filter PRs by title, number, author, repo or tag. Press / to jump to it and Esc to clear it.
+- **Add a PR from the search field.** Paste a PR URL into the field at the top of the home and press Enter, or click "add PR" inside it.
+- **Compact rows.** The lines icon at the top right of the home shows one line per PR, and stays on until you click it again.
+- **Foldable tag groups.** Click a tag's band on the home to fold its PRs away; it stays folded per repo and group.
+- **PR row layout.** On the home, GitHub's state (merged, closed, draft, approved, changes requested, new commits) sits at the right of the title line and the analysis under it. Tag and archive appear after the PR number on hover.
+- **Quieter home rows.** Line counts, the hunk count and a passing CI show in color only while you hover a row, and "waiting on your review" rows no longer carry a colored bar.
+- **Fix:** the archive button under a repo said "merged & closed" for any mix; it now names each, as in "archive 1 merged, 1 closed & 2 reviewed".
+
 - **Archived comments.** The archive icon on a comment sets it aside in a folded Archived section of the Comments panel, to restore or delete later. "archive picked up" under For agent archives every note an agent took.
 - **Copy mode menu.** The arrow beside "copy all for agent" picks copy or copy & archive, and the button remembers it. It replaces "copy & delete".
 - **Unit brief over the code.** With the sidebar folded (B), the card above the diff shows the unit's summary and findings.

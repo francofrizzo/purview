@@ -15,7 +15,7 @@ test("the repo menu is lean, and the merged/closed cleanup sits by the archived 
   // #474 is merged and #479 is open but already approved by you: the footer
   // offers to sweep both.
   const sweep = billing.getByTestId(/^repo-auto-archive-/);
-  await expect(sweep).toContainText("archive 1 merged & closed, 1 reviewed");
+  await expect(sweep).toContainText("archive 1 merged & 1 reviewed");
   await sweep.click();
   await expect(sweep).toHaveCount(0);
   await expect(billing.getByTestId(/^archived-toggle-/)).toContainText("archived (3)");

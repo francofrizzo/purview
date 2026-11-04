@@ -9,7 +9,7 @@ test("a newer release on origin shows an update chip, with the command; the chec
 
   const chip = page.getByTestId("update-available");
   await expect(chip).toBeVisible();
-  await expect(chip).toHaveText("Update available");
+  await expect(chip).toHaveAttribute("aria-label", "Purview 2026.10.15.1 is available");
   await chip.click();
   const card = page.getByTestId("update-card");
   await expect(card).toContainText("Purview 2026.10.15.1 is available");
@@ -25,7 +25,7 @@ test("a newer release on origin shows an update chip, with the command; the chec
   await expect(page.getByText("Waiting on your review").first()).toBeVisible();
 
   // Open settings from the header so the app (and the mock's in-memory config) stays alive.
-  await page.getByRole("link", { name: "settings", exact: true }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
   const toggle = page.getByTestId("global-update-check");
   await toggle.scrollIntoViewIfNeeded();
   await expect(page.getByTestId("about-update")).toContainText("2026.10.15.1 is available");

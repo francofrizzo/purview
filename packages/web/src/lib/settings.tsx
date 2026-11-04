@@ -94,6 +94,10 @@ export interface Settings {
   showAiReviewers: boolean;
   /** AI reviewers hidden one by one, by bot key (lib/threads.ts `botKey`). */
   hiddenBots: string[];
+  /** The home list shows one line per PR. */
+  compactRows: boolean;
+  /** The home list's folded tag groups, as `repo|block|tag` (lib/prList.ts `tagFoldKey`). */
+  foldedTagGroups: string[];
 }
 
 export type RequestAgeDays = [number, number, number];
@@ -150,6 +154,8 @@ export const DEFAULT_SETTINGS: Settings = {
   showResolvedThreads: true,
   showAiReviewers: true,
   hiddenBots: [],
+  compactRows: false,
+  foldedTagGroups: [],
 };
 
 export function clampSidebarWidth(width: number): number {
@@ -235,6 +241,10 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
         r.hiddenBots.filter((b): b is string => typeof b === "string" && b.trim() !== "").map((b) => b.trim().toLowerCase()),
       ),
     ];
+  }
+  if (typeof r.compactRows === "boolean") out.compactRows = r.compactRows;
+  if (Array.isArray(r.foldedTagGroups)) {
+    out.foldedTagGroups = [...new Set(r.foldedTagGroups.filter((k): k is string => typeof k === "string" && k !== ""))];
   }
   return out;
 }

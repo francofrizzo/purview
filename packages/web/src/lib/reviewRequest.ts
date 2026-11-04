@@ -45,6 +45,17 @@ export function formatRequestedAgo(
   return compact === "just now" ? `asked ${who} just now` : `asked ${who} ${compact} ago`;
 }
 
+/**
+ * The home row's short form: who was asked and how long ago, "you · 15m" or
+ * "billing-core · 6d" (the team's slug); "" for an unparseable stamp.
+ */
+export function formatRequestWait(iso: string, now: Date = new Date(), via: string = "you"): string {
+  const age = ageOf(iso, now);
+  if (Number.isNaN(age)) return "";
+  const who = via.startsWith("team:") ? via.slice("team:".length) : "you";
+  return `${who} · ${formatCompactAge(age)}`;
+}
+
 export type RequestAgeLevel = 0 | 1 | 2 | 3;
 
 /**

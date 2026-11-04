@@ -12,7 +12,12 @@ import {
   groupKeyOf,
   groupPrsByRepo,
   finishedPrKeys,
+  filterRepoGroup,
+  isPrUrl,
   partitionRepoGroups,
+  prMatchesQuery,
+  sweepLabel,
+  tagFoldKey,
   reviewedPrKeys,
   prUrlForNumber,
 } from "./prList";
@@ -389,5 +394,55 @@ describe("reviewedPrKeys", () => {
         prs: [pr("a", "open", true), pr("b", "draft", true), pr("c", "open"), pr("d", "merged", true)],
       }),
     ).toEqual(["a", "b"]);
+  });
+});
+
+describe("sweepLabel", () => {
+  it("names each kind, leaving out zeros", () => {
+    expect(sweepLabel({ merged: 1, closed: 1, reviewed: 2 })).toBe("1 merged, 1 closed & 2 reviewed");
+    expect(sweepLabel({ merged: 1, closed: 0, reviewed: 0 })).toBe("1 merged");
+    expect(sweepLabel({ merged: 0, closed: 3, reviewed: 0 })).toBe("3 closed");
+    expect(sweepLabel({ merged: 2, closed: 0, reviewed: 1 })).toBe("2 merged & 1 reviewed");
+    expect(sweepLabel({ merged: 0, closed: 0, reviewed: 0 })).toBe("");
+  });
+});
+
+describe("home search", () => {
+  const tagged = (p: PrListEntry, extra: Partial<PrListEntry["meta"]>, title?: string): PrListEntry => ({
+    ...p,
+    title,
+    meta: { ...p.meta, ...extra },
+  });
+  const charge = tagged(pr("github.com/acme/billing/482", "acme", "billing", ago(DAY)), { author: "dana", tag: "payments" }, "Charge retries: idempotency keys");
+  const docs = tagged(pr("github.com/acme/web/12", "acme", "web", ago(DAY)), { author: "lee" }, "Fix the docs");
+
+  it("tells a PR URL from a search", () => {
+    expect(isPrUrl("https://github.com/acme/billing/pull/482")).toBe(true);
+    expect(isPrUrl("  https://git.acme.dev/infra/tf/pull/7/files ")).toBe(true);
+    expect(isPrUrl("github.com/acme/billing/pull/482")).toBe(false);
+    expect(isPrUrl("charge")).toBe(false);
+  });
+
+  it("matches title, number, author, repo and tag, every word, any case", () => {
+    expect(prMatchesQuery(charge, "IDEMPOTENCY")).toBe(true);
+    expect(prMatchesQuery(charge, "#482")).toBe(true);
+    expect(prMatchesQuery(charge, "482")).toBe(true);
+    expect(prMatchesQuery(charge, "dana")).toBe(true);
+    expect(prMatchesQuery(charge, "acme/billing")).toBe(true);
+    expect(prMatchesQuery(charge, "payments retries")).toBe(true);
+    expect(prMatchesQuery(charge, "payments docs")).toBe(false);
+    expect(prMatchesQuery(docs, "")).toBe(true);
+  });
+
+  it("cuts a repo down to its matches, and drops it when none is left", () => {
+    const [billing] = groupPrsByRepo([charge]);
+    expect(filterRepoGroup(billing, "")).toBe(billing);
+    expect(filterRepoGroup(billing, "charge")?.prs.map((p) => p.key)).toEqual([charge.key]);
+    expect(filterRepoGroup(billing, "docs")).toBeNull();
+  });
+
+  it("keys a tag group's fold by repo, block and tag", () => {
+    expect(tagFoldKey("github.com/acme/billing", "mine", "payments")).toBe("github.com/acme/billing|mine|payments");
+    expect(tagFoldKey("github.com/acme/billing", "other", null)).toBe("github.com/acme/billing|other|");
   });
 });
