@@ -148,7 +148,7 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
 
     s("behavior-before", "Overview", "a behavior change's before (fg on the removed tint)", "fg", 4.5, ["bg", "del-bg"], "Debt month is the batch's month"),
     s("behavior-after", "Overview", "a behavior change's after (fg on the added tint)", "fg", 4.5, ["bg", "add-bg"], "Debt month is the month before"),
-    s("behavior-same", "Overview", "a behavior that stays the same (fg on the accent's tint)", "fg", 4.5, ["bg", "accent-soft"], "Two charges: the key includes the order id"),
+    s("behavior-same", "Overview", "a behavior that stays the same (fg on bg-hover; bg-inset under the pointer)", "fg", 4.5, ["bg-raised", "bg-hover"], "Two charges: the key includes the order id"),
     s("diff-add", "Diff rows", "added line", "fg", 4.5, ["bg", "add-bg"], '+  return createHash("sha256")', mono),
     s("diff-del", "Diff rows", "removed line", "fg", 4.5, ["bg", "del-bg"], "-  return md5(orderId)", mono),
     s("diff-add-strong", "Diff rows", "added, strong (word highlight)", "fg", 4.0, ["bg", "add-bg", "add-bg-strong"], "createHash", mono),
