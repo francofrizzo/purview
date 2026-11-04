@@ -5,11 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.4.2
 
-- **Stack tags for new PRs.** A PR you add or that watching brings in takes the tag of the tracked PR it is stacked on.
 - **Browser find over the panels.** Over the comments, chat, review or overview, Cmd+F opens the browser's find. In the diff's find bar, press Cmd+F again for it.
-- **Find skips the app's words.** The browser's find matches what the PR and the review say, not button labels, tabs or headings.
+- **Stack tags for new PRs.** A PR you add or that watching brings in takes the tag of the tracked PR it is stacked on.
 - **Fix:** on the home, the tag and archive buttons no longer cover "new commits" or the review state when you hover a PR with a long title.
 
 ## 2026.11.4.1
