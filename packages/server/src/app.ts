@@ -196,7 +196,6 @@ import { ensurePrCheckout, localDiffSource, pruneCheckouts } from "./pr-checkout
 import { removeRepo, repoRemovalSummary } from "./repo-removal.js";
 import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
 import { fileLinesAtHead } from "./file-content.js";
-import { blastRadius, changeMap } from "./change-graph/index.js";
 import { agentSkillRoutes } from "./agent-skill.js";
 import { sinceLastReview } from "./since-review.js";
 
@@ -1321,26 +1320,6 @@ export function createApp(opts: AppOptions = {}): Hono {
     } catch (err) {
       throw new HttpError(502, "file_unavailable", `Could not read ${filePath}: ${(err as Error).message}`);
     }
-  });
-
-  /**
-   * Experiments: the changed functions and the calls between them (change
-   * map), and the code outside the diff that calls them (blast radius).
-   * Heuristic, no model; `{ available: false, reason }` when the code at the
-   * head cannot be read. 404 while the experiment is off.
-   */
-  app.get("/api/prs/:key/change-map", async (c) => {
-    const key = keyParam(c);
-    if (readConfig(root).experiments.changeMap !== true) throw new HttpError(404, "experiment_off", "The change map experiment is off");
-    readMeta(key, root);
-    return c.json(await changeMap(key, root));
-  });
-
-  app.get("/api/prs/:key/blast-radius", async (c) => {
-    const key = keyParam(c);
-    if (readConfig(root).experiments.blastRadius !== true) throw new HttpError(404, "experiment_off", "The blast radius experiment is off");
-    readMeta(key, root);
-    return c.json(await blastRadius(key, root));
   });
 
   app.get("/api/prs/:key/hunks/:id/diff-of-diffs", (c) => {

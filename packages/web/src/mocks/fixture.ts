@@ -907,7 +907,7 @@ const units: ReviewUnit[] = [
     // The analysis's reading order: the route that threads the id, then the
     // container that builds the ledger; docs and the reconcile stub follow.
     fileOrder: ["src/api/routes/orders.ts", "src/container.ts"],
-    // Read back in r1; r2 changed it (the revision strip's "since r1").
+    // Read back in r1; r2 changed it.
     changelog: [{ revision: 2, text: "the pay route threads the order's currency through to charge()" }],
     order: 3,
   },

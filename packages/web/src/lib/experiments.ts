@@ -13,24 +13,9 @@ export const EXPERIMENTS = [
     hint: "A before and after table under the overview's summary. Analyses write it once this is on.",
   },
   {
-    id: "changeMap",
-    title: "Change map",
-    hint: "The changed functions and the calls between them, drawn in the overview.",
-  },
-  {
     id: "unitDiagrams",
     title: "Unit diagrams",
     hint: "A sequence, state or data diagram beside a unit when one helps. Analyses draw them once this is on.",
-  },
-  {
-    id: "blastRadius",
-    title: "Blast radius",
-    hint: "Code outside the diff that calls a changed function, listed in the overview.",
-  },
-  {
-    id: "revisionStrip",
-    title: "Revision strip",
-    hint: "Each revision, the units it changed and how far you had read, in the overview.",
   },
 ] as const;
 

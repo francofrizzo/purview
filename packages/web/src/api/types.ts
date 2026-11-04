@@ -765,7 +765,7 @@ export interface GlobalConfig {
   /** ask origin once a day for a newer release and show it on the home page */
   updateCheck?: boolean;
   /** features being tried, all off by default (lib/experiments.ts). Absent on a server that predates them. */
-  experiments?: Partial<Record<"behaviorChanges" | "changeMap" | "unitDiagrams" | "blastRadius" | "revisionStrip", boolean>>;
+  experiments?: Partial<Record<"behaviorChanges" | "unitDiagrams", boolean>>;
   /** what this layer resolves to on its own — the end of the chain */
   effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }
@@ -1564,81 +1564,3 @@ export interface SkillManifest {
 export interface PickedUp { at: string; by: string }
 
 export interface Editor { id: string; name: string; available: boolean; command: string }
-
-/* ------------------------------------- experiments: change map, blast radius */
-
-/** Why a change-map or blast-radius answer is missing (no checkout, no head content…). */
-export interface ChangeGraphUnavailable {
-  available: false;
-  reason: string;
-}
-
-/** A changed function (server: change-graph/graph.ts). */
-export interface ChangeMapNode {
-  id: string;
-  name: string;
-  /** the class or receiver type a method belongs to */
-  qualifier?: string;
-  path: string;
-  /** first line at the head (at the base for a removed function) */
-  line: number;
-  status: "added" | "changed" | "removed";
-  /** lines the diff added or removed inside it */
-  lines: number;
-  unit?: string;
-  /** an added function whose name the diff removed from this other file */
-  movedFrom?: string;
-}
-
-export interface ChangeMapEdge {
-  from: string;
-  to: string;
-  calls: number;
-}
-
-export type ChangeMap =
-  | ChangeGraphUnavailable
-  | {
-      available: true;
-      sha: string;
-      nodes: ChangeMapNode[];
-      edges: ChangeMapEdge[];
-      /** changed functions found; `total - nodes.length` were left out */
-      total: number;
-      unsupportedFiles: number;
-      unreadFiles: number;
-    };
-
-export interface BlastCallSite {
-  path: string;
-  line: number;
-  text: string;
-  enclosing?: string;
-  /** the line on GitHub at the head commit */
-  url: string;
-}
-
-export interface BlastFunction {
-  id: string;
-  name: string;
-  qualifier?: string;
-  path: string;
-  line: number;
-  unit?: string;
-  total: number;
-  sites: BlastCallSite[];
-  /** other changed methods of the same name, whose callers cannot be told apart */
-  sameName?: string[];
-}
-
-export type BlastRadius =
-  | ChangeGraphUnavailable
-  | {
-      available: true;
-      sha: string;
-      functions: BlastFunction[];
-      skipped: { name: string; reason: "too short" | "too common" }[];
-      uncalled: number;
-      notSearched: number;
-      tests: number;
-    };

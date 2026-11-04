@@ -689,18 +689,6 @@ export const api = {
     return request(`/prs/${encodeKey(key)}/file?path=${encodeURIComponent(path)}`);
   },
 
-  /** Experiment: the changed functions and the calls between them. 404 while it is off. */
-  async changeMap(key: string): Promise<import("./types").ChangeMap> {
-    if (MOCK) return mockApi.changeMap(key);
-    return request(`/prs/${encodeKey(key)}/change-map`);
-  },
-
-  /** Experiment: code outside the diff that calls a changed function. 404 while it is off. */
-  async blastRadius(key: string): Promise<import("./types").BlastRadius> {
-    if (MOCK) return mockApi.blastRadius(key);
-    return request(`/prs/${encodeKey(key)}/blast-radius`);
-  },
-
   /** The lines revision `n` changed, keyed by the current revision's hunk ids. */
   async revisionLineChanges(key: string, n: number): Promise<RevisionLineChanges> {
     if (MOCK) return mockApi.revisionLineChanges(key, n);

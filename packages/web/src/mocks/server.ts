@@ -1,6 +1,4 @@
 import { hydrateFiles } from "../lib/hunkBodies";
-import { mockBlastRadius, mockChangeMap } from "./changeGraph";
-import type { BlastRadius, ChangeMap } from "../api/types";
 import { stackOf } from "../lib/prList";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import { isFileComment, isGeneratedUnit } from "../api/types";
@@ -1417,19 +1415,6 @@ export const mockApi = {
    * The fixture carries hunks, not files: fill a plausible file around them
    * (numbered placeholder lines) so expanding context has something to show.
    */
-  /** Experiments: only the fixture's billing PR has a map; any other PR has no checkout. */
-  async changeMap(key: string): Promise<ChangeMap> {
-    await delay(200);
-    if (key !== mockDetail.key) return { available: false, reason: "No local clone has the PR's head commit." };
-    return structuredClone(mockChangeMap);
-  },
-
-  async blastRadius(key: string): Promise<BlastRadius> {
-    await delay(300);
-    if (key !== mockDetail.key) return { available: false, reason: "No local clone has the PR's head commit." };
-    return structuredClone(mockBlastRadius);
-  },
-
   async fileLines(key: string, path: string): Promise<{ sha: string; lines: string[] | null }> {
     await delay(150);
     const file = details[key]?.files.files.find((f) => f.path === path);

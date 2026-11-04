@@ -121,27 +121,6 @@ export function useRevisionsLineChanges(key: string, revisions: readonly number[
   });
 }
 
-/** Experiments: fetched only while the experiment is on; `version` (head sha and units) keys the answer. */
-export function useChangeMap(key: string, version: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ["change-map", key, version] as const,
-    queryFn: () => api.changeMap(key),
-    enabled: Boolean(key) && enabled,
-    staleTime: Infinity,
-    retry: false,
-  });
-}
-
-export function useBlastRadius(key: string, version: string, enabled: boolean) {
-  return useQuery({
-    queryKey: ["blast-radius", key, version] as const,
-    queryFn: () => api.blastRadius(key),
-    enabled: Boolean(key) && enabled,
-    staleTime: Infinity,
-    retry: false,
-  });
-}
-
 export function usePrs() {
   return useQuery<PrListEntry[]>({
     queryKey: qk.prs,
