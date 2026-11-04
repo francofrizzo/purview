@@ -38,6 +38,7 @@ import {
   IconFile as TablerFile,
   IconFiles as TablerFiles,
   IconLayoutDashboard,
+  IconPlusMinus,
   IconFilter as TablerFilter,
   IconFolder as TablerFolder,
   IconSelector,
@@ -290,6 +291,8 @@ export const IconUnit = wrap(IconStack2);
 /** The PR view's sidebar tabs: the overview, and the files tree (Guide uses IconUnit). */
 export const IconOverview = wrap(IconLayoutDashboard);
 export const IconFiles = wrap(TablerFiles);
+/** Lines added and removed: the toggle for line counts. */
+export const IconLineCounts = wrap(IconPlusMinus);
 /** Up-and-down chevrons: open every hidden line of a gap in the diff. */
 export const IconUnfold = wrap(IconSelector);
 export const IconConcept = wrap(IconBook2);

@@ -16,7 +16,7 @@ import { FileLegend, FileShape } from "./Shape";
 import { AuthorAvatar } from "./AuthorAvatar";
 import { InlineMarkdown, Markdown } from "./Markdown";
 import { ReviewTimeline, ReviewerVerdicts } from "./Reviews";
-import { IconArrowRight } from "./icons";
+import { IconArrowRight, IconLineCounts } from "./icons";
 import { SectionHead } from "./SectionHead";
 
 /**
@@ -200,14 +200,18 @@ export function Overview({
                   <FileLegend files={detail.files.files} />
                   <button
                     type="button"
-                    className="text-2xs tabular-nums transition-colors hover:text-[var(--fg-muted)]"
-                    style={{ color: settings.landsLineCounts ? "var(--fg-muted)" : "var(--fg-faint)" }}
+                    className="inline-flex h-5 w-5 items-center justify-center rounded transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]"
+                    style={{
+                      color: settings.landsLineCounts ? "var(--fg)" : "var(--fg-faint)",
+                      background: settings.landsLineCounts ? "var(--bg-hover)" : undefined,
+                    }}
                     aria-pressed={settings.landsLineCounts}
+                    aria-label="Lines added and removed"
                     data-tip={settings.landsLineCounts ? "Hide lines added and removed" : "Show lines added and removed"}
                     data-testid="lands-line-counts"
                     onClick={() => update({ landsLineCounts: !settings.landsLineCounts })}
                   >
-                    ±lines
+                    <IconLineCounts width={13} height={13} />
                   </button>
                 </span>
               </SectionHead>

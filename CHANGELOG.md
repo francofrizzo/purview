@@ -12,7 +12,7 @@ app, not for git: say what changed in the review, not which file moved.
 - **Archived comments.** The archive icon on a comment sets it aside in a folded Archived section of the Comments panel; "copy all for agent" can copy & archive instead of copy & delete.
 - **Unit brief over the code.** With the sidebar folded (B), the card above the diff shows the unit's summary and findings.
 - **Diagrams in your theme.** Mermaid diagrams take the app theme's colors; click anywhere on one to open it larger.
-- **Overview options.** "±lines" in Where it lands shows the lines added and removed, each counted once, and "show at the top" in the Description puts it first.
+- **Overview options.** The ± button in Where it lands' header shows the lines added and removed, each counted once, and "show at the top" in the Description puts it first.
 - **Fix:** submitting a review shows each step in the Review panel and the top bar, and the comments no longer change under you until it is done.
 - **Fix:** after a new revision, heart marks, risk marks and warnings stay on their lines, and the summary and untouched units drop text it made untrue.
 - **Fix:** a file link in the chat keeps you in Units, the code font box in Settings keeps your spaces, and a failed Refresh says the server did not answer.
