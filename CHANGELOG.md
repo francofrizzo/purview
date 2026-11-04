@@ -8,6 +8,7 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **Zoom in diagrams.** In an enlarged diagram, pinch or Cmd+scroll to zoom, drag to move, and use −, +, 100% and fit in its header. The keys +, −, 1 and 0 do the same.
+- **Fix:** after a CI re-run, the checks no longer list the earlier failed or cancelled attempts beside the new ones, or call the PR failing.
 - **Fix:** the "go to" on a moved block no longer runs into the file name.
 
 ## 2026.11.4.3

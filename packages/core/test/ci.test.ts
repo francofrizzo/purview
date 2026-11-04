@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ciFromRollup, fetchPrStatuses, fetchReviewStatus, reviewersChanged, reviewersFromPr, setGhRunner } from "../src/github.js";
 
 const key = { host: "github.com", owner: "acme", repo: "app", number: 1 };
-const run = (conclusion: string | null, status = "COMPLETED") => ({
-  __typename: "CheckRun", name: "Tests", conclusion, status, detailsUrl: "https://example.com/run",
+const run = (conclusion: string | null, status = "COMPLETED", name = "Tests", startedAt?: string, workflow?: string) => ({
+  __typename: "CheckRun", name, conclusion, status, detailsUrl: "https://example.com/run",
+  ...(startedAt ? { startedAt } : {}),
+  ...(workflow ? { checkSuite: { workflowRun: { workflow: { name: workflow } } } } : {}),
 });
 const commit = (nodes: ReturnType<typeof run>[]) => ({
   oid: "head1", statusCheckRollup: { contexts: { nodes } },
@@ -29,10 +31,33 @@ describe("CI normalization", () => {
     ] } } })).toEqual({ state: expected, headSha: "sha", checks: [{ name: "legacy", state: expected, url: null }] });
   });
   it("aggregates failure before pending before success and preserves check details", () => {
-    const result = ciFromRollup(commit([run("SUCCESS"), run(null), run("FAILURE")]));
+    const result = ciFromRollup(commit([run("SUCCESS", "COMPLETED", "a"), run(null, "QUEUED", "b"), run("FAILURE", "COMPLETED", "c")]));
     expect(result.state).toBe("failure");
-    expect(result.checks[2]).toEqual({ name: "Tests", state: "failure", url: "https://example.com/run" });
-    expect(ciFromRollup(commit([run("SUCCESS"), run(null)])).state).toBe("pending");
+    expect(result.checks[2]).toEqual({ name: "c", state: "failure", url: "https://example.com/run" });
+    expect(ciFromRollup(commit([run("SUCCESS", "COMPLETED", "a"), run(null, "QUEUED", "b")])).state).toBe("pending");
+  });
+  it("counts only the latest attempt of a re-run job, in the first one's place", () => {
+    // primo-devs/core#9718: every job failed, was re-run and passed; the rollup lists both attempts.
+    const result = ciFromRollup(commit([
+      run("FAILURE", "COMPLETED", "build", "2026-11-04T10:00:00Z", "CI"),
+      run("FAILURE", "COMPLETED", "lint", "2026-11-04T10:00:00Z", "CI"),
+      run("SUCCESS", "COMPLETED", "build", "2026-11-04T11:00:00Z", "CI"),
+      run("SUCCESS", "COMPLETED", "lint", "2026-11-04T11:00:00Z", "CI"),
+    ]));
+    expect(result.state).toBe("success");
+    expect(result.checks.map(c => [c.name, c.state])).toEqual([["build", "success"], ["lint", "success"]]);
+    // A re-run still queued (not started) is the newest attempt.
+    expect(ciFromRollup(commit([run("FAILURE", "COMPLETED", "build", "2026-11-04T10:00:00Z"), run(null, "QUEUED", "build")])).state).toBe("pending");
+    // An older attempt listed after the newer one does not win.
+    expect(ciFromRollup(commit([run("SUCCESS", "COMPLETED", "build", "2026-11-04T11:00:00Z"), run("FAILURE", "COMPLETED", "build", "2026-11-04T10:00:00Z")])).state).toBe("success");
+  });
+  it("keeps same-named jobs of different workflows apart", () => {
+    const result = ciFromRollup(commit([
+      run("FAILURE", "COMPLETED", "build", "2026-11-04T10:00:00Z", "CI"),
+      run("SUCCESS", "COMPLETED", "build", "2026-11-04T11:00:00Z", "Release"),
+    ]));
+    expect(result.state).toBe("failure");
+    expect(result.checks).toHaveLength(2);
   });
   it("accepts missing and empty rollups", () => {
     for (const raw of [null, { oid: "sha", statusCheckRollup: null }, commit([])]) {

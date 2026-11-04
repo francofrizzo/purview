@@ -333,7 +333,7 @@ export function setFileViewedOnGithub(
 
 const CI_FIELDS = `commits(last: 1) { nodes { commit { oid statusCheckRollup {
   state contexts(first: 50) { nodes { __typename
-    ... on CheckRun { name status conclusion detailsUrl }
+    ... on CheckRun { name status conclusion detailsUrl startedAt checkSuite { workflowRun { workflow { name } } } }
     ... on StatusContext { context state targetUrl }
   } }
 } } } }`;
@@ -431,23 +431,39 @@ interface RawCiCommit {
   statusCheckRollup?: { state?: string; contexts?: { nodes?: ({
     __typename?: string; name?: string; context?: string; status?: string;
     conclusion?: string | null; state?: string; detailsUrl?: string | null; targetUrl?: string | null;
+    startedAt?: string | null; checkSuite?: { workflowRun?: { workflow?: { name?: string | null } | null } | null } | null;
   } | null)[] | null } | null } | null;
+}
+
+function checkRunState(conclusion: string | null | undefined): Ci["checks"][number]["state"] {
+  if (conclusion === "SUCCESS" || conclusion === "NEUTRAL") return "success";
+  if (["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"].includes(conclusion ?? "")) return "failure";
+  if (conclusion === "SKIPPED") return "skipped";
+  return "pending";
 }
 
 /** Pure normalization; timestamps are supplied by the fetching boundary. */
 export function ciFromRollup(raw: RawCiCommit | null | undefined): Omit<Ci, "checkedAt"> {
   const checks: Ci["checks"] = [];
+  // A re-run job is a new check run beside the old one, and the rollup lists
+  // both: only the latest attempt of each job (by workflow and name) counts,
+  // in the place of the first. One not started yet is the newest.
+  const latest = new Map<string, { at: number; index: number }>();
   for (const node of raw?.statusCheckRollup?.contexts?.nodes ?? []) {
-    if (!node) continue;
-    let state: Ci["checks"][number]["state"] = "pending";
-    if (node.__typename === "CheckRun") {
-      if (node.conclusion === "SUCCESS" || node.conclusion === "NEUTRAL") state = "success";
-      else if (["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE"].includes(node.conclusion ?? "")) state = "failure";
-      else if (node.conclusion === "SKIPPED") state = "skipped";
-      checks.push({ name: node.name ?? "", state, url: node.detailsUrl ?? null });
-    } else if (node.__typename === "StatusContext") {
-      if (node.state === "SUCCESS") state = "success";
-      else if (node.state === "ERROR" || node.state === "FAILURE") state = "failure";
+    if (node?.__typename === "CheckRun") {
+      const job = `${node.checkSuite?.workflowRun?.workflow?.name ?? ""}\u0000${node.name ?? ""}`;
+      const at = node.startedAt ? Date.parse(node.startedAt) : Infinity;
+      const check = { name: node.name ?? "", state: checkRunState(node.conclusion), url: node.detailsUrl ?? null };
+      const seen = latest.get(job);
+      if (!seen) {
+        latest.set(job, { at, index: checks.length });
+        checks.push(check);
+      } else if (at >= seen.at) {
+        seen.at = at;
+        checks[seen.index] = check;
+      }
+    } else if (node?.__typename === "StatusContext") {
+      const state = node.state === "SUCCESS" ? "success" : node.state === "ERROR" || node.state === "FAILURE" ? "failure" : "pending";
       checks.push({ name: node.context ?? "", state, url: node.targetUrl ?? null });
     }
   }
