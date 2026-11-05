@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Check states in the CI list.** Each check in the header's CI popover has an icon in its state's color, and failures are listed first.
+
 ## 2026.11.5.1
 
 - **Leave generated files out of line counts.** Settings → Diff defaults → Line counts takes them out of the PR list's sizes, the units' counts and the PR header's count.

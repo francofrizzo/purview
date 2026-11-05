@@ -141,6 +141,15 @@ function ciSummary(ci: Ci) {
   return { token, label, count, mixed, Icon, firstFailure: ci.checks.find((c) => c.state === "failure")?.name };
 }
 
+type CheckState = Ci["checks"][number]["state"];
+/** A check's state in the list: the mark's icons and colors, failures first. */
+const CHECK_LOOK: Record<CheckState, { color: string; order: number; Icon?: (p: { width?: number; height?: number }) => JSX.Element }> = {
+  failure: { color: "var(--risk)", order: 0, Icon: IconWarning },
+  pending: { color: "var(--warn)", order: 1, Icon: IconBolt },
+  success: { color: "var(--ok)", order: 2, Icon: IconCheck },
+  skipped: { color: "var(--fg-faint)", order: 3 },
+};
+
 /**
  * CI beside the line counts: the icon in the state's color, the count only
  * when the checks disagree, the words in the tip. Interactive, it opens the
@@ -168,13 +177,31 @@ export function CiMark({ ci, interactive = false }: { ci?: Ci; interactive?: boo
       </button>
       {open ? (
         <FloatingPanel anchorRef={anchorRef} onClose={close} label="CI checks" className="w-80 max-h-80 overflow-y-auto p-3 text-xs">
-          <ul className="space-y-2" style={{ color: "var(--fg)" }}>
-            {ci.checks.map((check, i) => (
-              <li key={i} data-testid="ci-check" className="flex items-start justify-between gap-3">
-                {check.url ? <a className="underline break-words" href={check.url} target="_blank" rel="noreferrer">{check.name}</a> : <span>{check.name}</span>}
-                <UiText className="flex-none">{check.state}</UiText>
-              </li>
-            ))}
+          <ul className="space-y-1.5" style={{ color: "var(--fg)" }}>
+            {[...ci.checks]
+              .sort((a, b) => CHECK_LOOK[a.state].order - CHECK_LOOK[b.state].order)
+              .map((check, i) => {
+                const look = CHECK_LOOK[check.state];
+                return (
+                  <li key={i} data-testid="ci-check" data-state={check.state} className="flex items-start gap-2">
+                    <span className="flex h-4 w-3 flex-none items-center justify-center" style={{ color: look.color }} aria-hidden>
+                      {look.Icon ? <look.Icon width={11} height={11} /> : "–"}
+                    </span>
+                    <span className="min-w-0 flex-1 break-words" style={{ color: check.state === "skipped" ? "var(--fg-muted)" : undefined }}>
+                      {check.url ? (
+                        <a className="hover:underline" href={check.url} target="_blank" rel="noreferrer">
+                          {check.name}
+                        </a>
+                      ) : (
+                        check.name
+                      )}
+                    </span>
+                    <span className="flex-none text-2xs leading-4" style={{ color: check.state === "failure" ? look.color : "var(--fg-faint)" }}>
+                      <UiText>{check.state}</UiText>
+                    </span>
+                  </li>
+                );
+              })}
           </ul>
         </FloatingPanel>
       ) : null}
