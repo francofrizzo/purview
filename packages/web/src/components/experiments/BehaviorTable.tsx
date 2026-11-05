@@ -87,8 +87,9 @@ export function BehaviorTable({
 }
 
 /** `tint`: the diff's colour for its side. Without one (a behavior that stays
- *  the same) a neutral grey, one step deeper while its row is hovered, so the
- *  row's own hover grey does not swallow it. */
+ *  the same) a neutral grey, a touch of the text colour deeper while its row is
+ *  hovered, so the row's own hover grey does not swallow it: lighter on a dark
+ *  theme, darker on a light one (bg-inset would sink it into a well). */
 function BehaviorCell({ text, tint, label, wide }: { text: string; tint?: string; label: string; wide?: boolean }) {
   if (NONE.test(text)) {
     return (
@@ -100,7 +101,7 @@ function BehaviorCell({ text, tint, label, wide }: { text: string; tint?: string
   return (
     <span
       className={`rounded px-2 py-1.5 text-[13px] leading-5${wide ? " sm:col-span-2" : ""}${
-        tint ? "" : " bg-[var(--bg-hover)] group-hover/behavior:bg-[var(--bg-inset)]"
+        tint ? "" : " bg-[var(--bg-hover)] group-hover/behavior:bg-[color-mix(in_srgb,var(--bg-hover),var(--fg)_6%)]"
       }`}
       style={{ color: "var(--fg)", background: tint }}
     >
