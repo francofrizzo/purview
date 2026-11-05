@@ -98,6 +98,7 @@ import {
   IconUnfold,
 } from "./icons";
 import { UiText } from "./UiText";
+import { MatchBadge } from "./UnitSidebar";
 
 export interface HunkEntry {
   hunk: Hunk;
@@ -917,10 +918,14 @@ export function DiffPane({
   const pendingJumpRef = useRef<typeof jumpToHunk>(null);
   pendingJumpRef.current = jumpToHunk && jumpedNonce.current !== jumpToHunk.nonce ? jumpToHunk : null;
 
+  /** Folded hunks a search visit opened, to fold again once it moves on;
+   *  one the reader folds or opens themselves is theirs from then on. */
+  const searchOpenedRef = useRef(new Set<string>());
   const toggleHunkCollapsed = useCallback((hunkId: string) => {
     // Keep the toggled hunk's own header where it is on screen (pinned or
     // not); the generic focused-hunk anchor lost a pinned header off the top.
     pendingScrollRef.current = { anchor: foldAnchorRef.current(hunkId), at: performance.now() };
+    searchOpenedRef.current.delete(hunkId);
     setCollapsedState((prev) => toggleCollapsed(prev, hunkId));
   }, []);
 
@@ -2163,6 +2168,7 @@ export function DiffPane({
     if (landedMatchRef.current === matchKey) return;
     // A match inside a folded hunk is unreachable; unfold before looking.
     if (isCollapsed(collapsed, activeMatch.hunkId)) {
+      searchOpenedRef.current.add(activeMatch.hunkId);
       setCollapsedState((prev) => setCollapsed(prev, activeMatch.hunkId, false));
       return;
     }
@@ -2184,6 +2190,28 @@ export function DiffPane({
     return () => cancelAnimationFrame(frame);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchKey, findRowIndex, rows, virtualizer, onFocusHunk, collapsed]);
+
+  // A hunk opened only to show a match folds again once the cursor leaves
+  // it (or the search closes), so walking the matches leaves the pane as the
+  // reader had it.
+  const activeHunkId = activeMatch?.hunkId ?? null;
+  useEffect(() => {
+    const opened = searchOpenedRef.current;
+    const done = [...opened].filter((id) => id !== activeHunkId);
+    if (!done.length) return;
+    for (const id of done) opened.delete(id);
+    setCollapsedState((prev) => done.reduce((acc, id) => setCollapsed(acc, id, true), prev));
+  }, [activeHunkId]);
+
+  /** Search hits per hunk, for the count a folded hunk's header shows. */
+  const hitsByHunk = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const [key, ranges] of searchMarks ?? []) {
+      const id = key.slice(0, key.lastIndexOf(":"));
+      out.set(id, (out.get(id) ?? 0) + ranges.length);
+    }
+    return out;
+  }, [searchMarks]);
 
   useEffect(() => {
     if (!flashKey) return;
@@ -3449,6 +3477,7 @@ export function DiffPane({
               <UiText>{`${lineCount} ${lineCount === 1 ? "line" : "lines"} folded`}</UiText>
             </span>
           ) : null}
+          {folded && hitsByHunk.get(row.hunkId) ? <MatchBadge count={hitsByHunk.get(row.hunkId)!} /> : null}
           {inside?.length ? (
             <CommentBubble
               threads={inside}

@@ -96,7 +96,7 @@ import { UnitBrief, UnitEnd } from "../components/UnitBrief";
 import { FinishReviewPanel } from "../components/FinishReview";
 import { RightDock, type DockTab } from "../components/RightDock";
 import { isForAgent } from "../lib/comments";
-import { FileTree } from "../components/FileTree";
+import { FileTree, fileTreeOrder } from "../components/FileTree";
 import { IconChevron, IconComment, IconFiles, IconOverview, IconSpinner, IconUnit } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
 import { generatedUnitFiles, reviewProgress, workUnits } from "../lib/generated";
@@ -852,7 +852,28 @@ export function PrView() {
   // What the pane is currently showing — the default (Cmd+F) search scope.
   const visibleHunkIds = useMemo(() => new Set(entries.map((e) => e.hunk.id)), [entries]);
 
-  const search = useDiffSearch(detail, units, visibleHunkIds);
+  // Reading order, which the matches follow: the sidebar's units, each with
+  // its hunks as the pane lists them, then the unplaced ones; or the file tree.
+  const searchRank = useMemo(() => {
+    const rank = new Map<string, number>();
+    if (!detail) return rank;
+    const add = (id: string) => {
+      if (!rank.has(id)) rank.set(id, rank.size);
+    };
+    if (tab === "units") {
+      for (const u of sortUnitsForDisplay(units)) {
+        for (const e of orderUnitHunks(detail.files.files, hunkIdsOf(u), heartOf(u), u.fileOrder)) add(e.hunk.id);
+      }
+      for (const e of orderUnitHunks(detail.files.files, unplaced, undefined)) add(e.hunk.id);
+    } else {
+      const byPath = new Map(detail.files.files.map((f) => [f.path, f]));
+      for (const path of fileTreeOrder(detail.files.files.map((f) => f.path))) {
+        for (const h of byPath.get(path)?.hunks ?? []) add(h.id);
+      }
+    }
+    return rank;
+  }, [detail, tab, units, unplaced]);
+  const search = useDiffSearch(detail, units, visibleHunkIds, searchRank);
   // Search hits per unit, plus the pseudo-unit's under its reserved id so the
   // sidebar group and the rail cell can badge it like any unit.
   const unitMatchCounts = useMemo(() => {

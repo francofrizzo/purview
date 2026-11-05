@@ -9,6 +9,11 @@ app, not for git: say what changed in the review, not which file moved.
 
 - **Review shortcuts.** In the Review panel, Ctrl+1, Ctrl+2 and Ctrl+3 pick Comment, Approve or Request changes, and Cmd+Enter in the summary submits.
 - **Archive from the diff.** A comment in the code has the archive icon too, next to edit and delete on hover.
+- **Search matches in folded hunks.** A folded hunk's header shows how many matches of the find bar's search it holds.
+- **Fix:** Enter in the find bar's whole-diff search no longer jumps back and forth between units; matches go in the sidebar's order, units or files.
+- **Fix:** opening another unit or file while searching no longer sends the next Enter back to the old match; it goes to the first match from where you are.
+- **Fix:** a new search no longer takes you to another unit when the one you are reading has a match.
+- **Fix:** a folded hunk opened to show a search match folds again when you move to the next match.
 - **Fix:** a unit's revision notes use the panel's full width, and a long name in one no longer runs past the edge.
 
 ## 2026.11.4.4

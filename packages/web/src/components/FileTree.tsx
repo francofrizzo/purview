@@ -51,6 +51,26 @@ function buildTree(paths: TreeFile[]): TreeNode {
   return collapse(root);
 }
 
+/** Directories first, then by name: the order the tree lists a level in. */
+function byTreeOrder(a: TreeNode, b: TreeNode): number {
+  const aDir = a.children.size > 0 ? 0 : 1;
+  const bDir = b.children.size > 0 ? 0 : 1;
+  return aDir - bDir || a.name.localeCompare(b.name);
+}
+
+/** The paths in the order the tree shows them, top to bottom, folders open. */
+export function fileTreeOrder(paths: string[]): string[] {
+  const out: string[] = [];
+  const walk = (n: TreeNode) => {
+    for (const kid of [...n.children.values()].sort(byTreeOrder)) {
+      if (kid.children.size > 0) walk(kid);
+      else if (kid.file) out.push(kid.file.path);
+    }
+  };
+  walk(buildTree(paths.map((path) => ({ path, hunkCount: 0 }))));
+  return out;
+}
+
 /** A row's hover: its path, and what the analysis says about it when it does. */
 function fileTip(path: string, note?: string): string {
   return note ? `${path}\n${note.replace(/`/g, "")}` : path;
@@ -86,11 +106,7 @@ export function FileTree({
 
   const renderNode = (node: TreeNode, depth: number): JSX.Element[] => {
     const out: JSX.Element[] = [];
-    const kids = [...node.children.values()].sort((a, b) => {
-      const aDir = a.children.size > 0 ? 0 : 1;
-      const bDir = b.children.size > 0 ? 0 : 1;
-      return aDir - bDir || a.name.localeCompare(b.name);
-    });
+    const kids = [...node.children.values()].sort(byTreeOrder);
     for (const kid of kids) {
       if (kid.children.size > 0) {
         const isCollapsed = collapsed.has(kid.path);

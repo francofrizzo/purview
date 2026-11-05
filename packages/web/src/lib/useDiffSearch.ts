@@ -33,9 +33,14 @@ export interface DiffSearch {
   changedOnly: boolean;
   scope: SearchScope;
   setScope: (s: SearchScope) => void;
+  /** in reading order: the sidebar's units, or its files */
   matches: SearchMatch[];
-  /** 0-based index of the current match, or -1 when there are none */
+  /** 0-based index of the current match, or -1 when there is none (no
+   *  matches, or the cursor waits where the reader is: see `parked`) */
   index: number;
+  /** No current match: the reader is somewhere without one. Next and previous
+   *  go to the nearest match from there. */
+  parked: boolean;
   current: SearchMatch | null;
   marksByLine: Map<string, CharRange[]>;
   fileCounts: Map<string, number>;
@@ -54,11 +59,20 @@ function matchKey(m: SearchMatch): string {
   return `${m.hunkId}:${m.lineIdx}:${m.side}:${m.start}`;
 }
 
+/**
+ * `rank` orders hunks the way the reader walks them (the sidebar's units and
+ * each unit's hunks as the pane lists them, or the files); matches follow it.
+ * `here` is what the pane shows now: a new query starts there, and when the
+ * reader moves somewhere else the cursor waits there instead of pulling them
+ * back. Nothing here ever moves the reader on its own except next and previous.
+ */
 export function useDiffSearch(
   detail: PrDetail | undefined,
   units: ReviewUnit[],
   /** hunk ids the pane is currently showing; null disables the visible scope */
-  visibleHunkIds: Set<string> | null = null,
+  here: Set<string> | null = null,
+  /** a hunk's place in reading order; unknown hunks go last, in diff order */
+  rank: ReadonlyMap<string, number> | null = null,
 ): DiffSearch {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -68,7 +82,9 @@ export function useDiffSearch(
   // miss on changed lines alone reads as "not in this PR" when it may well be.
   const [changedOnly, setChangedOnly] = useState(false);
   const [scope, setScope] = useState<SearchScope>("visible");
-  const [index, setIndex] = useState(0);
+  /** The current match by identity (`key`), and where in reading order the
+   *  cursor is (`at`): with no current match, where it waits. */
+  const [cursor, setCursor] = useState<{ key?: string; at: number } | null>(null);
 
   useEffect(() => {
     if (query === debounced) return;
@@ -86,49 +102,81 @@ export function useDiffSearch(
     [open, detail],
   );
 
-  const allMatches = useMemo(
-    () =>
-      searchIndex && debounced
-        ? searchDiff(searchIndex, debounced, { caseSensitive, changedOnly })
-        : [],
-    [searchIndex, debounced, caseSensitive, changedOnly],
-  );
+  const allMatches = useMemo(() => {
+    if (!searchIndex || !debounced) return [];
+    const found = searchDiff(searchIndex, debounced, { caseSensitive, changedOnly });
+    if (!rank) return found;
+    // Stable: within a hunk, and among unranked hunks, diff order stands.
+    const r = (m: SearchMatch) => rank.get(m.hunkId) ?? Number.MAX_SAFE_INTEGER;
+    return found.map((m, i) => ({ m, i })).sort((a, b) => r(a.m) - r(b.m) || a.i - b.i).map((x) => x.m);
+  }, [searchIndex, debounced, caseSensitive, changedOnly, rank]);
 
   // The visible scope is a post-filter over the full result set, so widening
   // to "all" is free and the per-file/unit counts always reflect the scope
   // the navigation actually cycles through.
   const matches = useMemo(
-    () =>
-      scope === "visible" && visibleHunkIds
-        ? allMatches.filter((m) => visibleHunkIds.has(m.hunkId))
-        : allMatches,
-    [allMatches, scope, visibleHunkIds],
+    () => (scope === "visible" && here ? allMatches.filter((m) => here.has(m.hunkId)) : allMatches),
+    [allMatches, scope, here],
   );
 
-  // The result set is recomputed not only when the query changes but whenever
-  // the visible rows do — a comment composer closing, a hunk toggling viewed —
-  // and resetting to the first match on every recompute yanked the reader
-  // across the diff for no reason. Stay on the match they were on whenever it
-  // survives; only a set that no longer contains it starts over.
-  const currentKey = useRef<string | null>(null);
+  const rankOf = useCallback((hunkId: string) => rank?.get(hunkId) ?? Number.MAX_SAFE_INTEGER, [rank]);
+  /** Where the pane is, in reading order: its first hunk. */
+  const hereAt = useMemo(() => {
+    let at = Number.MAX_SAFE_INTEGER;
+    for (const id of here ?? []) at = Math.min(at, rankOf(id));
+    return at;
+  }, [here, rankOf]);
+
+  // A new query (or option) lands on the first match where the reader is;
+  // none there, it waits there rather than taking them to another unit.
   useEffect(() => {
-    const prev = currentKey.current;
-    const at = prev === null ? -1 : matches.findIndex((m) => matchKey(m) === prev);
-    setIndex(at >= 0 ? at : 0);
-  }, [matches]);
+    const first = matches.find((m) => here?.has(m.hunkId));
+    setCursor(first ? { key: matchKey(first), at: rankOf(first.hunkId) } : { at: hereAt });
+    // Only on a new result set for a new question, not on every recompute.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced, caseSensitive, changedOnly]);
+
+  // The reader went somewhere else (the sidebar, a link): the cursor follows
+  // them and waits there, instead of the next step pulling them back.
+  const lastHere = useRef(here);
+  useEffect(() => {
+    if (lastHere.current === here) return;
+    lastHere.current = here;
+    setCursor((c) => {
+      const m = c?.key ? matches.find((x) => matchKey(x) === c.key) : undefined;
+      return m && here?.has(m.hunkId) ? c : { at: hereAt };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [here]);
+
+  const found = cursor?.key ? matches.findIndex((m) => matchKey(m) === cursor.key) : -1;
+  // A current match that dropped out of the set (changed lines only, a
+  // narrower scope) leaves the cursor where it was, not on the first match.
+  const waitAt = cursor ? cursor.at : hereAt;
 
   const marksByLine = useMemo(() => matchRangesByLine(matches), [matches]);
   const fileCounts = useMemo(() => countsByFile(matches), [matches]);
   const unitCounts = useMemo(() => countsByUnit(matches, units), [matches, units]);
 
   const step = useCallback(
-    (delta: number) =>
-      setIndex((i) => {
-        const n = matches.length;
-        if (!n) return 0;
-        return (((i + delta) % n) + n) % n;
-      }),
-    [matches.length],
+    (delta: 1 | -1) => {
+      const n = matches.length;
+      if (!n) return;
+      let i: number;
+      if (found >= 0) i = (found + delta + n) % n;
+      else if (delta > 0) {
+        i = matches.findIndex((m) => rankOf(m.hunkId) >= waitAt);
+        if (i < 0) i = 0;
+      } else {
+        i = -1;
+        matches.forEach((m, j) => {
+          if (rankOf(m.hunkId) < waitAt) i = j;
+        });
+        if (i < 0) i = n - 1;
+      }
+      setCursor({ key: matchKey(matches[i]), at: rankOf(matches[i].hunkId) });
+    },
+    [matches, found, waitAt, rankOf],
   );
 
   const close = useCallback(() => {
@@ -137,12 +185,7 @@ export function useDiffSearch(
     setDebounced("");
   }, []);
 
-  const current = matches.length ? (matches[Math.min(index, matches.length - 1)] ?? null) : null;
-  // Recorded after the reset effect above has read it, so a recompute sees
-  // the match that was current before it, not the interim one.
-  useEffect(() => {
-    currentKey.current = current ? matchKey(current) : null;
-  }, [current]);
+  const current = found >= 0 ? matches[found] : null;
 
   return {
     open,
@@ -153,7 +196,8 @@ export function useDiffSearch(
     scope,
     setScope,
     matches,
-    index: matches.length ? Math.min(index, matches.length - 1) : -1,
+    index: found,
+    parked: found < 0 && matches.length > 0,
     current,
     marksByLine,
     fileCounts,

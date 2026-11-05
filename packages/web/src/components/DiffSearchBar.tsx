@@ -22,7 +22,7 @@ export function DiffSearchBar({
   const status = !search.activeQuery
     ? ""
     : total
-      ? `${search.index + 1}/${total}`
+      ? `${search.parked ? "–" : search.index + 1}/${total}`
       : "no matches";
 
   return (
