@@ -7,22 +7,15 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## 2026.11.5.2
 
-- **Revision timeline.** The rev menu in the PR header lists every revision on a timeline with its head, age and summary; click one to light up what it changed.
-- **Pushes that change no line.** A push that leaves every line of the PR as it was moves the current revision to the new commits instead of adding one. The rev menu shows how many such pushes it took.
-- **Check states in the CI list.** Each check in the header's CI popover has an icon in its state's color, a spinner while it runs, and failures are listed first.
+- **Revision timeline.** The rev menu lists every revision with its head, age and summary; click one to light up what it changed. A push that changes no line moves the current revision instead of adding one.
+- **CI checks by state.** The CI popover shows each check's state as a colored icon, failures first.
 
 ## 2026.11.5.1
 
-- **Leave generated files out of line counts.** Settings → Diff defaults → Line counts takes them out of the PR list's sizes, the units' counts and the PR header's count.
-- **All but generated in the header's size.** A click on the PR header's line count goes from implementation lines to all lines but generated ones, then to all lines.
-- **Review shortcuts.** In the Review panel, Ctrl+1, Ctrl+2 and Ctrl+3 pick Comment, Approve or Request changes, and Cmd+Enter in the summary submits.
-- **Search matches in folded hunks.** A folded hunk's header shows how many matches of the find bar's search it holds.
-- **Archive from the diff.** A comment in the code has the archive icon too, next to edit and delete on hover.
-- **Fix:** Enter in the find bar's whole-diff search no longer jumps back and forth between units; matches go in the sidebar's order, units or files.
-- **Fix:** opening another unit or file while searching no longer sends the next Enter back to the old match; it goes to the first match from where you are.
-- **Fix:** a new search no longer takes you to another unit when the one you are reading has a match.
-- **Fix:** a folded hunk opened to show a search match folds again when you move to the next match.
-- **Fix:** a unit's revision notes use the panel's full width, and a long name in one no longer runs past the edge.
+- **Line counts without generated files.** Click the PR header's size to count implementation, all but generated, or all lines. Settings → Diff defaults → Line counts leaves generated files out everywhere.
+- **Review shortcuts.** In the Review panel, Ctrl+1, 2 and 3 pick the verdict and Cmd+Enter submits.
+- **Search that stays where you are.** Find goes through matches in the sidebar's order, starting from what you are reading, and a folded hunk shows how many it holds.
+- **Archive from the diff.** A comment in the code has the archive icon beside edit and delete.
 
 ## 2026.11.4.4
 
