@@ -14,14 +14,14 @@ test("the rev menu shows what each revision changed, under its row", async ({ pa
   await expect(r3).toHaveAttribute("aria-label", /^r3 · Charges are keyed/);
   await expect(page.getByTestId("revision-summary-2")).toContainText("retry wrapper gained jitter");
   await expect(page.getByTestId("revision-summary-1")).toHaveCount(0);
-  // Newest first, each summary right under its revision's button.
+  // Newest first, each summary part of its revision's row, the row the toggle.
   const rows = page.locator("[data-testid^=revision-row-]");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText("r3");
-  await expect(rows.nth(0).getByTestId("highlight-revision-3")).toBeVisible();
-  const button = await rows.nth(0).getByTestId("highlight-revision-3").boundingBox();
-  const line = await r3.boundingBox();
-  expect(line!.y).toBeGreaterThan(button!.y + button!.height - 1);
+  await expect(rows.nth(0).getByTestId("highlight-revision-3").getByTestId("revision-summary-3")).toBeVisible();
+  // The first revision is on the timeline too, with nothing to light up.
+  await expect(page.getByTestId("revision-first")).toContainText("r1");
+  await expect(page.getByTestId("highlight-revision-1")).toHaveCount(0);
 });
 
 test("the since-review chip's tip lists the revisions that landed since, newest first", async ({ page }) => {
