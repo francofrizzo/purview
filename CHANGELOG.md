@@ -5,10 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.5.2
 
-- **Pushes that change no line.** A push that leaves every line of the PR as it was moves the current revision to the new commits instead of adding one. The rev menu shows how many such pushes it took.
 - **Revision timeline.** The rev menu in the PR header lists every revision on a timeline with its head, age and summary; click one to light up what it changed.
+- **Pushes that change no line.** A push that leaves every line of the PR as it was moves the current revision to the new commits instead of adding one. The rev menu shows how many such pushes it took.
 - **Check states in the CI list.** Each check in the header's CI popover has an icon in its state's color, a spinner while it runs, and failures are listed first.
 
 ## 2026.11.5.1
