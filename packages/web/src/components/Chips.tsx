@@ -34,6 +34,7 @@ import {
   IconMerged,
   IconPrClosed,
   IconPrDraft,
+  IconSpinner,
   IconWarning,
   IconWeight,
 } from "./icons";
@@ -142,10 +143,11 @@ function ciSummary(ci: Ci) {
 }
 
 type CheckState = Ci["checks"][number]["state"];
-/** A check's state in the list: the mark's icons and colors, failures first. */
+/** A check's state in the list: the mark's colors, failures first. A pending
+ *  check spins: in the list it is one run still going, not the PR's state. */
 const CHECK_LOOK: Record<CheckState, { color: string; order: number; Icon?: (p: { width?: number; height?: number }) => JSX.Element }> = {
   failure: { color: "var(--risk)", order: 0, Icon: IconWarning },
-  pending: { color: "var(--warn)", order: 1, Icon: IconBolt },
+  pending: { color: "var(--warn)", order: 1, Icon: IconSpinner },
   success: { color: "var(--ok)", order: 2, Icon: IconCheck },
   skipped: { color: "var(--fg-faint)", order: 3 },
 };
