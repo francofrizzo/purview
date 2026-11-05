@@ -1166,7 +1166,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
               </span>
             ) : null}
             <ReviewRequestWait request={pr.reviewRequest} state={pr.state} />
-            <DiffSizeStat size={pr.diffSize} files={false} quiet />
+            <DiffSizeStat size={pr.diffSize} files={false} quiet omitGenerated={settings.omitGeneratedLines} />
             {ciPassing ? null : <CiMark ci={pr.ci} />}
             {showsReviewers(pr.authoredByYou, pr.state) ? (
               <ReviewersMark reviewers={pr.reviewers} />

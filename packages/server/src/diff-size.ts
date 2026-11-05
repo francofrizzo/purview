@@ -10,6 +10,24 @@ export interface DiffSize {
   files: number;
   additions: number;
   deletions: number;
+  /** the part of it in generated files, when there are any */
+  generated?: DiffSize;
+}
+
+/** The size with the generated files' part attached, from the state's list of them. */
+export function withGenerated(
+  size: DiffSize | null,
+  generated: readonly { added: number; removed: number }[] | undefined,
+): DiffSize | null {
+  if (!size || !generated?.length) return size;
+  return {
+    ...size,
+    generated: {
+      files: generated.length,
+      additions: generated.reduce((n, g) => n + g.added, 0),
+      deletions: generated.reduce((n, g) => n + g.removed, 0),
+    },
+  };
 }
 
 export function sumDiffSize(

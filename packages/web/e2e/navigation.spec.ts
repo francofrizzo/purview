@@ -182,8 +182,9 @@ test("a review's inline comments jump from the overview to the diff", async ({ p
   await expect(page.locator("[data-diff-scroller]")).toBeVisible();
 });
 
-test("the header counts implementation lines, shows the rest on hover, and counts all of them on a click", async ({ page }) => {
+test("the header counts implementation lines, shows the rest on hover, and a click moves to all but generated, then all", async ({ page }) => {
   const size = page.getByTestId("change-size");
+  await expect(size).toHaveAttribute("data-counts", "implementation");
   await expect(page.getByTestId("change-size-mark")).toBeVisible();
   const implementation = await size.innerText();
   await size.hover();
@@ -193,10 +194,15 @@ test("the header counts implementation lines, shows the rest on hover, and count
   await expect(card).toContainText("Generated");
   await expect(card).toContainText("Total");
   await size.click();
-  await expect(page.getByTestId("change-size-mark")).toHaveCount(0);
+  await expect(size).toHaveAttribute("data-counts", "authored");
   await expect(size).not.toHaveText(implementation);
-  await page.reload();
+  const authored = await size.innerText();
+  await size.click();
+  await expect(size).toHaveAttribute("data-counts", "all");
   await expect(page.getByTestId("change-size-mark")).toHaveCount(0);
+  await expect(size).not.toHaveText(authored);
+  await page.reload();
+  await expect(size).toHaveAttribute("data-counts", "all");
 });
 
 test("the overview's Size section breaks the lines down by type", async ({ page }) => {

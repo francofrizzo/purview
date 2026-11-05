@@ -373,8 +373,12 @@ const UnitRow = memo(function UnitRow({
   onToggleViewed?: (unit: ReviewUnit, viewed: boolean) => void;
   marking?: boolean;
 }) {
+  const { settings } = useSettings();
   const p = unitProgress(detail, unit);
-  const lines = unitFiles(detail, unit).reduce(
+  // Generated files left out when the setting says so; not in the unit
+  // made of them, which would read as empty.
+  const omit = settings.omitGeneratedLines && !isGeneratedUnit(unit);
+  const lines = unitFiles(detail, unit).filter((f) => !(omit && f.generated)).reduce(
     (n, f) => ({ added: n.added + f.added, removed: n.removed + f.removed }),
     { added: 0, removed: 0 },
   );

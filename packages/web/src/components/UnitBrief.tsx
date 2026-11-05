@@ -35,6 +35,7 @@ export interface UnitFile {
   viewed: number;
   added: number;
   removed: number;
+  generated: boolean;
 }
 
 /**
@@ -59,6 +60,7 @@ export function unitFiles(detail: PrDetail, unit: ReviewUnit): UnitFile[] {
       viewed: toRead.filter((h) => detail.state.hunks[h.id]?.viewed).length,
       added: hs.reduce((n, h) => n + added(h), 0),
       removed: hs.reduce((n, h) => n + removed(h), 0),
+      generated: Boolean(file.generated),
     };
   });
 }

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { FileEntry } from "../api/types";
 import { changeMix, formatShare, type ChangeKind, type ChangeMix as Mix } from "../lib/changeMix";
-import { useSettings } from "../lib/settings";
+import { LINE_COUNTS, useSettings, type LineCounts } from "../lib/settings";
 import { DiffSizeStat } from "./Chips";
 import { IconChevron } from "./icons";
 import { UiText } from "./UiText";
@@ -19,11 +19,27 @@ export const CHANGE_LOOK: Record<ChangeKind, { label: string; short: string; col
 
 const CARD_WIDTH = 248;
 
+/** What each count adds up, for the card; any count short of every line carries the mark. */
+const COUNTS_LOOK: Record<LineCounts, { counts: string; mark: string | null }> = {
+  implementation: { counts: "implementation lines", mark: "✱" },
+  authored: { counts: "all lines but generated ones", mark: "✱" },
+  all: { counts: "all lines", mark: null },
+};
+
+/** The kinds each count adds up. */
+const COUNTED: Record<LineCounts, ReadonlySet<ChangeKind>> = {
+  implementation: new Set(["implementation"]),
+  authored: new Set(["implementation", "tests", "docs"]),
+  all: new Set(["implementation", "tests", "docs", "generated"]),
+};
+
 /**
  * The PR's size in the header. A diff is often mostly tests and generated
  * files, so it counts the implementation's lines by default, marked as such;
- * hovering shows the rest, a click counts everything. A PR of one kind has
- * nothing to tell apart and reads as the plain stat.
+ * hovering shows the rest, a click moves on to every line but generated ones,
+ * then to every line. A count that would read the same as the one before it
+ * is passed over. A PR of one kind has nothing to tell apart and reads as the
+ * plain stat.
  */
 export function ChangeSize({ files }: { files: FileEntry[] }) {
   const { settings, update } = useSettings();
@@ -32,8 +48,20 @@ export function ChangeSize({ files }: { files: FileEntry[] }) {
   const total = { files: files.length, additions: mix.added, deletions: mix.removed };
   const implementation = mix.rows.find((r) => r.kind === "implementation");
   if (mix.rows.length < 2 || !implementation) return <DiffSizeStat size={total} />;
-  const all = settings.allLineCounts;
-  const size = all ? total : { ...total, additions: implementation.added, deletions: implementation.removed };
+  const sum = (mode: LineCounts) => {
+    const rows = mix.rows.filter((r) => COUNTED[mode].has(r.kind));
+    return { ...total, additions: rows.reduce((n, r) => n + r.added, 0), deletions: rows.reduce((n, r) => n + r.removed, 0) };
+  };
+  // The counts that say something different, in order.
+  const modes = LINE_COUNTS.filter((m, i) => {
+    if (i === 0) return true;
+    const prev = mix.rows.filter((r) => COUNTED[LINE_COUNTS[i - 1]].has(r.kind)).length;
+    return mix.rows.filter((r) => COUNTED[m].has(r.kind)).length !== prev;
+  });
+  const mode = modes.includes(settings.lineCounts) ? settings.lineCounts : modes[modes.length - 1];
+  const nextMode = modes[(modes.indexOf(mode) + 1) % modes.length];
+  const size = sum(mode);
+  const mark = COUNTS_LOOK[mode].mark;
   const show = (e: { currentTarget: HTMLElement }) => setAnchor(e.currentTarget.getBoundingClientRect());
   const hide = () => setAnchor(null);
   return (
@@ -41,22 +69,22 @@ export function ChangeSize({ files }: { files: FileEntry[] }) {
       <button
         type="button"
         className="inline-flex flex-none items-center gap-1 rounded transition-opacity hover:opacity-80"
-        aria-pressed={all}
+        data-counts={mode}
         data-testid="change-size"
         onMouseEnter={show}
         onMouseLeave={hide}
         onFocus={show}
         onBlur={hide}
-        onClick={() => update({ allLineCounts: !all })}
+        onClick={() => update({ lineCounts: nextMode })}
       >
         <DiffSizeStat size={size} tip={false} />
-        {all ? null : (
-          <span aria-label="implementation lines only" style={{ color: "var(--fg-faint)" }} data-testid="change-size-mark">
-            ✱
+        {mark ? (
+          <span aria-label={`${COUNTS_LOOK[mode].counts} only`} style={{ color: "var(--fg-faint)" }} data-testid="change-size-mark">
+            {mark}
           </span>
-        )}
+        ) : null}
       </button>
-      {anchor ? createPortal(<ChangeCard mix={mix} all={all} anchor={anchor} />, document.body) : null}
+      {anchor ? createPortal(<ChangeCard mix={mix} mode={mode} next={nextMode} anchor={anchor} />, document.body) : null}
     </>
   );
 }
@@ -68,8 +96,11 @@ export function ChangeSize({ files }: { files: FileEntry[] }) {
 function ChangeTable({
   mix,
   expand,
+  counted,
 }: {
   mix: Mix;
+  /** the kinds the header counts; the others recede */
+  counted?: ReadonlySet<ChangeKind>;
   expand?: { open: ReadonlySet<ChangeKind>; toggle: (kind: ChangeKind) => void; onOpenFile?: (path: string) => void };
 }) {
   const dot = (kind: ChangeKind) => <span className="h-2 w-2 flex-none rounded-full" style={{ background: CHANGE_LOOK[kind].color }} />;
@@ -78,7 +109,11 @@ function ChangeTable({
       {mix.rows.map((r) => {
         const open = expand?.open.has(r.kind) ?? false;
         return (
-          <div key={r.kind} className="contents" data-testid={`change-row-${r.kind}`}>
+          <div
+            key={r.kind}
+            className={`contents${counted && !counted.has(r.kind) ? " [&>*]:opacity-50" : ""}`}
+            data-testid={`change-row-${r.kind}`}
+          >
             {expand ? (
               <button
                 type="button"
@@ -177,7 +212,7 @@ export function ChangeBreakdown({ mix, onOpenFile }: { mix: Mix; onOpenFile?: (p
   );
 }
 
-function ChangeCard({ mix, all, anchor }: { mix: Mix; all: boolean; anchor: DOMRect }) {
+function ChangeCard({ mix, mode, next, anchor }: { mix: Mix; mode: LineCounts; next: LineCounts; anchor: DOMRect }) {
   const left = Math.max(8, Math.min(anchor.left, window.innerWidth - CARD_WIDTH - 8));
   return (
     <div
@@ -186,9 +221,9 @@ function ChangeCard({ mix, all, anchor }: { mix: Mix; all: boolean; anchor: DOMR
       style={{ top: anchor.bottom + 6, left, width: CARD_WIDTH }}
       data-testid="change-card"
     >
-      <ChangeTable mix={mix} />
+      <ChangeTable mix={mix} counted={COUNTED[mode]} />
       <p className="mt-1.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
-        <UiText>{all ? "Click to count implementation lines" : "Click to count all lines"}</UiText>
+        <UiText>{`Counting ${COUNTS_LOOK[mode].counts}. Click to count ${COUNTS_LOOK[next].counts}`}</UiText>
       </p>
     </div>
   );

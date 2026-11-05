@@ -165,7 +165,7 @@ import { localOnlyGuard, loopbackOnly } from "./security.js";
 import { LAN_WARNING, lanQrSvg, lanUrl } from "./lan.js";
 import { checkStaleness, clearStalenessCache, needsUpdate } from "./staleness.js";
 import { reviewEffort } from "./effort.js";
-import { diffSize } from "./diff-size.js";
+import { diffSize, withGenerated } from "./diff-size.js";
 import { compareVersions, entriesSince, headSha, readChangelog } from "./changelog.js";
 import { createUpdateChecker, noUpdateChecker, type UpdateChecker } from "./updates.js";
 import { TagSchema, setTagFor } from "./tag.js";
@@ -539,7 +539,8 @@ export function createApp(opts: AppOptions = {}): Hono {
         // whole list down.
         effort: safeEffort(key, state),
         // GitHub's "+120 −34" for the row; null until the revision's files exist.
-        diffSize: diffSize(key, state.currentRevision, root),
+        // The generated files' share rides along, for a list that leaves them out.
+        diffSize: withGenerated(diffSize(key, state.currentRevision, root), state.generated),
       };
     });
     // Nothing else re-reads every tracked PR, so the list load is the trigger

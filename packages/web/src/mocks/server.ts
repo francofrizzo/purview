@@ -69,6 +69,7 @@ import type {
   SkillManifest,
   CommentAudience,
   PublishCommentResult,
+  DiffSize,
 } from "../api/types";
 import {
   mockConversation,
@@ -84,6 +85,12 @@ import { buildGeneratedUnit } from "./generated";
 import { loginListed } from "../lib/threads";
 import { isForAgent } from "../lib/comments";
 import { diffTotals } from "../lib/prList";
+
+/** The server's list size: the totals, and the generated files' share of them. */
+function mockDiffSize(files: PrDetail["files"]["files"]): DiffSize {
+  const generated = files.filter((f) => f.generated);
+  return { ...diffTotals(files), ...(generated.length ? { generated: diffTotals(generated) } : {}) };
+}
 
 /** In-memory mutable copy so the UI behaves like a real backend under VITE_MOCK=1. */
 const detail: PrDetail = structuredClone(mockDetail);
@@ -807,7 +814,7 @@ export const mockApi = {
         authoredByYou: p.authoredByYou || loginListed(p.meta?.author, globalConfig.extraAuthors),
         repoArchived: archivedRepos.has(repoKeyOfPr(p.key)),
         // As the server: summed from the PR's files when it has them.
-        diffSize: details[p.key] ? diffTotals(details[p.key].files.files) : (p.diffSize ?? null),
+        diffSize: details[p.key] ? mockDiffSize(details[p.key].files.files) : (p.diffSize ?? null),
       })),
     );
   },

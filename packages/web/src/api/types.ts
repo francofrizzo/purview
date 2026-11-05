@@ -572,6 +572,8 @@ export interface DiffSize {
   files: number;
   additions: number;
   deletions: number;
+  /** the part of it in generated files, when there are any */
+  generated?: DiffSize;
 }
 
 export type PrListMeta = Pick<PrMeta,

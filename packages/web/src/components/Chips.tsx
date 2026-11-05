@@ -593,6 +593,7 @@ export function DiffSizeStat({
   files = true,
   tip = true,
   quiet = false,
+  omitGenerated = false,
 }: {
   size: DiffSize | null | undefined;
   files?: boolean;
@@ -600,14 +601,20 @@ export function DiffSizeStat({
   tip?: boolean;
   /** faint until the pointer is on the row around it (a `group`): the home list */
   quiet?: boolean;
+  /** count without the generated files (Settings → Line counts) */
+  omitGenerated?: boolean;
 }) {
   if (!size || size.files === 0) return null;
-  const { files: n, additions, deletions } = size;
+  const g = omitGenerated ? size.generated : undefined;
+  const n = size.files - (g?.files ?? 0);
+  const additions = size.additions - (g?.additions ?? 0);
+  const deletions = size.deletions - (g?.deletions ?? 0);
+  const left = g?.files ? `; ${g.files} generated ${g.files === 1 ? "file" : "files"} left out` : "";
   return (
     <span
       className="inline-flex flex-none items-center gap-1 text-2xs tabular-nums"
       data-testid="diff-size"
-      data-tip={tip ? `${n} ${n === 1 ? "file" : "files"} changed: ${additions} ${additions === 1 ? "line" : "lines"} added, ${deletions} removed` : undefined}
+      data-tip={tip ? `${n} ${n === 1 ? "file" : "files"} changed: ${additions} ${additions === 1 ? "line" : "lines"} added, ${deletions} removed${left}` : undefined}
     >
       {files ? (
         <UiText>{`${n} ${n === 1 ? "file" : "files"}`}</UiText>

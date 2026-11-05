@@ -169,6 +169,27 @@ export function SettingsModal() {
               onChange={(v) => update({ foldSkippableHunks: v === "fold" })}
             />
           </Field>
+          <Field label="Line counts">
+            <Segmented
+              value={settings.omitGeneratedLines ? "omit" : "all"}
+              options={[
+                { value: "all", label: "every file" },
+                { value: "omit", label: "leave out generated" },
+              ]}
+              // The PR header's own count follows: "all" and "all but
+              // generated" trade places, the implementation's stays.
+              onChange={(v) => {
+                const omit = v === "omit";
+                const lineCounts =
+                  omit && settings.lineCounts === "all"
+                    ? "authored"
+                    : !omit && settings.lineCounts === "authored"
+                      ? "all"
+                      : settings.lineCounts;
+                update({ omitGeneratedLines: omit, lineCounts });
+              }}
+            />
+          </Field>
           <Field label="Moved blocks">
             <Segmented
               value={settings.foldMovedBlocks ? "fold" : "open"}

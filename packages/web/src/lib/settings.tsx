@@ -37,6 +37,9 @@ export interface ChatFloatRect {
 }
 
 export const UNIT_DETAILS = ["heart", "files", "findings"] as const;
+export const LINE_COUNTS = ["implementation", "authored", "all"] as const;
+/** What the PR header's size counts: the implementation, everything but generated files, or every line. */
+export type LineCounts = (typeof LINE_COUNTS)[number];
 export type UnitDetail = (typeof UNIT_DETAILS)[number];
 
 export interface Settings {
@@ -72,8 +75,10 @@ export interface Settings {
   flatWorkspace: boolean;
   /** Which list under the open unit's line of counts is open; it stays open from unit to unit. */
   unitDetail: UnitDetail | null;
-  /** the PR header counts every line, not only the implementation's */
-  allLineCounts: boolean;
+  /** which lines the PR header counts */
+  lineCounts: LineCounts;
+  /** Line counts leave generated files out: the PR list, the units, the header's starting point. */
+  omitGeneratedLines: boolean;
   /** Width of the review chat panel in px (clamped to the range below). */
   chatPanelWidth: number;
   /** The chat as a tab of the right dock, or a window floating over the page. */
@@ -144,7 +149,8 @@ export const DEFAULT_SETTINGS: Settings = {
   composerFormatting: false,
   flatWorkspace: false,
   unitDetail: null,
-  allLineCounts: false,
+  lineCounts: "implementation",
+  omitGeneratedLines: false,
   chatPanelWidth: DEFAULT_CHAT_PANEL_WIDTH,
   chatMode: "dock",
   chatFloat: null,
@@ -218,7 +224,10 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
     out.unitDetail = r.unitDetail as UnitDetail;
   } else if (r.unitDetail === null) out.unitDetail = null;
   else if (r.unitFilesOpen === true) out.unitDetail = "files";
-  if (typeof r.allLineCounts === "boolean") out.allLineCounts = r.allLineCounts;
+  if (typeof r.lineCounts === "string" && (LINE_COUNTS as readonly string[]).includes(r.lineCounts)) {
+    out.lineCounts = r.lineCounts as LineCounts;
+  } else if (r.allLineCounts === true) out.lineCounts = "all";
+  if (typeof r.omitGeneratedLines === "boolean") out.omitGeneratedLines = r.omitGeneratedLines;
   if (typeof r.composerFormatting === "boolean") out.composerFormatting = r.composerFormatting;
   if (typeof r.flatWorkspace === "boolean") out.flatWorkspace = r.flatWorkspace;
   if (typeof r.sidebarColumnWidth === "number" && Number.isFinite(r.sidebarColumnWidth)) {

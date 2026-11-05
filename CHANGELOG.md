@@ -5,11 +5,13 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.5.1
 
+- **Leave generated files out of line counts.** Settings → Diff defaults → Line counts takes them out of the PR list's sizes, the units' counts and the PR header's count.
+- **All but generated in the header's size.** A click on the PR header's line count goes from implementation lines to all lines but generated ones, then to all lines.
 - **Review shortcuts.** In the Review panel, Ctrl+1, Ctrl+2 and Ctrl+3 pick Comment, Approve or Request changes, and Cmd+Enter in the summary submits.
-- **Archive from the diff.** A comment in the code has the archive icon too, next to edit and delete on hover.
 - **Search matches in folded hunks.** A folded hunk's header shows how many matches of the find bar's search it holds.
+- **Archive from the diff.** A comment in the code has the archive icon too, next to edit and delete on hover.
 - **Fix:** Enter in the find bar's whole-diff search no longer jumps back and forth between units; matches go in the sidebar's order, units or files.
 - **Fix:** opening another unit or file while searching no longer sends the next Enter back to the old match; it goes to the first match from where you are.
 - **Fix:** a new search no longer takes you to another unit when the one you are reading has a match.
