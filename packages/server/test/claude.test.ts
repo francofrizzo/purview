@@ -47,7 +47,7 @@ import type { ChatMessage } from "../src/chat.js";
 import { ownerRepoFromRemote } from "../src/repo-path.js";
 import { HttpError } from "../src/http-error.js";
 import { writeConfig } from "../src/config.js";
-import { buildFixture, key, DOD_REV1, DOD_REV2, REV1_PATCH } from "./fixtures.js";
+import { buildFixture, key, DOD_REV1, DOD_REV1_SHIFTED, DOD_REV2, REV1_PATCH } from "./fixtures.js";
 import { fakeClaude, scriptedRun, type FakeClaude } from "./fake-claude.js";
 import { analysisToolFlags, chatToolFlags } from "./claude-policies.js";
 import { addWorktree, makeRepo } from "./git-fixtures.js";
@@ -765,10 +765,19 @@ describe("automatic triggers", () => {
     expect(claude.runs).toHaveLength(0);
   });
 
+  it("moves the revision, and does not re-analyze, when new commits bring the same diff", async () => {
+    buildFixture(root, DOD_REV1);
+    setGhRunner(ghFor([DOD_REV1], "2"));
+    const body = await (await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" })).json();
+    expect(body).toMatchObject({ added: false, revision: 1 });
+    expect(body.analysisJob).toBeNull();
+    expect(claude.runs).toHaveLength(0);
+  });
+
   it("does not re-analyze when a refresh changed nothing an analysis must account for", async () => {
     buildFixture(root, DOD_REV1);
-    // Same hunk content under new shas: everything carries over identically.
-    setGhRunner(ghFor([DOD_REV1], "2"));
+    // The same hunks, one lower in the file: everything carries over identically.
+    setGhRunner(ghFor([DOD_REV1_SHIFTED], "2"));
     const quiet = await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" });
     const quietBody = await quiet.json();
     expect(quietBody.added).toBe(true);
@@ -946,8 +955,8 @@ index 0000000..4444444
   it("a later revision that leaves no work clears the note", async () => {
     buildFixture(root, DOD_REV1);
     updateMeta(key, { archived: true, analysisPending: { revision: 1, reason: "archived" } }, root);
-    // Same hunks under new shas: nothing for an analysis to do.
-    setGhRunner(ghFor([DOD_REV1], "2"));
+    // The same hunks, one lower in the file: nothing for an analysis to do.
+    setGhRunner(ghFor([DOD_REV1_SHIFTED], "2"));
     const body = await (await app.request(`/api/prs/${encodedKey}/refresh`, { method: "POST" })).json();
     expect(body.added).toBe(true);
     expect(body.analysisSkipped).toBeNull();

@@ -247,6 +247,18 @@ function TimelineRow({
           <UiText>The PR as first fetched.</UiText>
         </span>
       ) : null}
+      {info.advances ? (
+        <span
+          className="mt-0.5 block text-2xs leading-4"
+          style={{ color: "var(--fg-faint)" }}
+          data-testid={`revision-advances-${info.revision}`}
+          data-tip={info.advancedAt ? `last ${formatFullTimestamp(info.advancedAt)}` : undefined}
+        >
+          <UiText>
+            {`Pushed again ${info.advances === 1 ? "once" : `${info.advances}×`} with the same diff${info.advancedAt ? `, last ${formatAddedAt(info.advancedAt)}` : ""}.`}
+          </UiText>
+        </span>
+      ) : null}
     </>
   );
   const box = "relative block w-full rounded-md py-1.5 pl-7 pr-2 text-left";

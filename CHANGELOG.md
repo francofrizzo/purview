@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Pushes that change no line.** A push that leaves every line of the PR as it was moves the current revision to the new commits instead of adding one. The rev menu shows how many such pushes it took.
 - **Revision timeline.** The rev menu in the PR header lists every revision on a timeline with its head, age and summary; click one to light up what it changed.
 - **Check states in the CI list.** Each check in the header's CI popover has an icon in its state's color, a spinner while it runs, and failures are listed first.
 

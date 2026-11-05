@@ -617,7 +617,11 @@ export function createApp(opts: AppOptions = {}): Hono {
       log.error("review", `${shortKey(key)}  refresh failed`, { reason: err instanceof Error ? err.message : String(err), cause });
       throw err;
     }
-    log.info("review", `${shortKey(key)}  ${result.added ? "refresh finished" : "nothing changed"}`, { revision: result.revision });
+    log.info(
+      "review",
+      `${shortKey(key)}  ${result.added ? "refresh finished" : result.advanced ? "new commits, same diff: revision moved to them" : "nothing changed"}`,
+      { revision: result.revision },
+    );
     // Every new revision can move comment anchors, even without an analysis migration.
     // Mapping is best effort and must never fail the refresh.
     if (result.added) {

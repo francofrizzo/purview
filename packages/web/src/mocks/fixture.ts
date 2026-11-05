@@ -1029,6 +1029,9 @@ const state: PrState = {
       revision: 3,
       headSha: "c7d2e8b4a9f1360e",
       addedAt: "2026-05-13T10:05:00.000Z",
+      // Rebased twice since without a line of the PR changing: a fast-forward each time.
+      advances: 2,
+      advancedAt: "2026-05-13T16:20:00.000Z",
       summary: "Charges are keyed by (orderId, amount, currency) and a nightly reconciliation replaces the retention job.",
     },
   ],

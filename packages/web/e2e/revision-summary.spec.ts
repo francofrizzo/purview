@@ -19,6 +19,9 @@ test("the rev menu shows what each revision changed, under its row", async ({ pa
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText("r3");
   await expect(rows.nth(0).getByTestId("highlight-revision-3").getByTestId("revision-summary-3")).toBeVisible();
+  // A revision moved to new commits with the same diff says so (fixture: r3, twice).
+  await expect(page.getByTestId("revision-advances-3")).toContainText("Pushed again 2× with the same diff");
+  await expect(page.getByTestId("revision-advances-2")).toHaveCount(0);
   // The first revision is on the timeline too, with nothing to light up.
   await expect(page.getByTestId("revision-first")).toContainText("r1");
   await expect(page.getByTestId("highlight-revision-1")).toHaveCount(0);

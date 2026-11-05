@@ -658,6 +658,19 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
       // Consumed by `withoutDiscarded` before the fold reaches the reducer.
       break;
 
+    case "revision-advanced": {
+      // Only the revision in force moves; its hunks, units and reading stay.
+      if (event.revision !== state.currentRevision) break;
+      const rev = state.revisions.find((r) => r.revision === event.revision);
+      if (!rev) break;
+      rev.baseSha = event.baseSha;
+      rev.headSha = event.headSha;
+      rev.mergeBase = event.mergeBase;
+      rev.advances = (rev.advances ?? 0) + 1;
+      rev.advancedAt = event.ts;
+      break;
+    }
+
     case "revision-summarized": {
       // A summary for a revision the (filtered) log never added is dropped:
       // there is no entry to hang it on.

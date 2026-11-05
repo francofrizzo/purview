@@ -1383,6 +1383,23 @@ export const RevisionDiscardedEventSchema = z.object({
 });
 
 /**
+ * A refresh found new commits whose diff is the current revision's, line for
+ * line (an empty commit, the same tree force-pushed, a rebase that left the
+ * PR's lines alone): the revision moves to them instead of a new one being
+ * added, a fast-forward. Only the commits change; what the reader has read,
+ * the analysis and every anchor stay as they are. A no-op when `revision` is
+ * not the current one.
+ */
+export const RevisionAdvancedEventSchema = z.object({
+  ...base,
+  type: z.literal("revision-advanced"),
+  revision: z.number().int(),
+  baseSha: z.string(),
+  headSha: z.string(),
+  mergeBase: z.string(),
+});
+
+/**
  * The current revision's generated files were classified again: a repo
  * setting changed (the UI's "Not generated" / "Treat as generated", the
  * settings page), or a revision recorded before classification existed was
@@ -1436,6 +1453,7 @@ export const EventSchema = z.discriminatedUnion("type", [
   AnalysisStartedEventSchema,
   AnalysisFinishedEventSchema,
   RevisionDiscardedEventSchema,
+  RevisionAdvancedEventSchema,
   GeneratedClassifiedEventSchema,
   RevisionSummarizedEventSchema,
   PrRetitledEventSchema,
@@ -1463,6 +1481,10 @@ export const RevisionInfoSchema = z.object({
   addedAt: z.string(),
   /** what this revision changed across the PR, from `revision-summarized`; absent until written */
   summary: z.string().optional(),
+  /** how many times it was fast-forwarded to new commits with the same diff (`revision-advanced`) */
+  advances: z.number().int().optional(),
+  /** when it last was */
+  advancedAt: z.string().optional(),
 });
 export type RevisionInfo = z.infer<typeof RevisionInfoSchema>;
 

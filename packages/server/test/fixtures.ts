@@ -52,7 +52,7 @@ index 1111111..3333333 100644
  * threshold (Jaccard is over the *set* of added+removed lines, so a two-line
  * hunk with one line edited scores only 0.33 and would be archived instead).
  */
-const bigHunk = (line5: string) => `diff --git a/src/foo.ts b/src/foo.ts
+const bigHunk = (line5: string, at = 20) => `diff --git a/src/foo.ts b/src/foo.ts
 index 1111111..2222222 100644
 --- a/src/foo.ts
 +++ b/src/foo.ts
@@ -67,7 +67,7 @@ index 1111111..2222222 100644
 +new4
 +${line5}
  line9
-@@ -20,3 +20,3 @@
+@@ -${at},3 +${at},3 @@
  line20
 -old21
 +new21
@@ -79,12 +79,15 @@ export const DOD_REV1 = bigHunk("new5");
 /** revision 2: one line of that hunk changes -> fuzzy match, changedSinceViewed. */
 export const DOD_REV2 = bigHunk("newer5");
 /**
- * revision 3: identical content to REV2, only the shas move — so the hunk
- * carries over *identically* here. Diffing r3 against r2 would show nothing,
+ * revision 3: REV2's hunks, the second one lower in the file — so every hunk
+ * carries over *identically* here (the same diff outright would only
+ * fast-forward revision 2). Diffing r3 against r2 would show nothing,
  * which is what makes this the regression case for baselining diff-of-diffs
  * on the revision the reader actually viewed.
  */
-export const DOD_REV3 = bigHunk("newer5");
+export const DOD_REV3 = bigHunk("newer5", 30);
+/** REV1's hunks, the second one lower in the file: a new revision with nothing new in it. */
+export const DOD_REV1_SHIFTED = bigHunk("new5", 30);
 
 /**
  * Build a PR state dir directly through @reviewer/core's store functions

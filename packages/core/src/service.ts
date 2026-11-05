@@ -38,7 +38,9 @@ import {
   prExists,
   readEvents,
   readFilesJson,
+  readDiff,
   readMeta,
+  rewriteFilesJson,
   updateMeta,
   writeGeneratedFacts,
   writeMeta,
@@ -260,10 +262,46 @@ export function initPr(key: PrKey, root = stateRoot(), opts: RefreshSyncOptions 
   return { key, state: res.state, revision: res.revision, created };
 }
 
+/** A diff's text without its `index` lines: blob ids, which a re-commit can change with no line moving. */
+function diffBody(patch: string): string {
+  return patch
+    .split("\n")
+    .filter((l) => !l.startsWith("index "))
+    .join("\n")
+    .trimEnd();
+}
+
+/**
+ * New commits whose diff is the current revision's, line for line: move the
+ * revision to them (a `revision-advanced`, and its files.json's commits)
+ * instead of adding one, so the reader is not handed a revision with nothing
+ * in it. Null when the diffs differ, or the current one cannot be read: then
+ * a revision is added as always.
+ */
+function advanceIfSameDiff(
+  key: PrKey,
+  current: { revision: number },
+  shas: { baseSha: string; headSha: string; mergeBase: string },
+  patch: string,
+  root: string,
+): State | null {
+  let previous: string;
+  try {
+    previous = readDiff(key, current.revision, root);
+  } catch {
+    return null;
+  }
+  if (diffBody(previous) !== diffBody(patch)) return null;
+  rewriteFilesJson(key, { ...readFilesJson(key, current.revision, root), ...shas }, root);
+  return appendEvent(key, { type: "revision-advanced", revision: current.revision, ...shas }, root);
+}
+
 export interface RefreshResult {
   state: State;
   revision: number;
   added: boolean;
+  /** new commits with the current revision's diff: the revision moved to them (see `advanceIfSameDiff`) */
+  advanced?: boolean;
   baseOnly: boolean;
   report?: MigrationReport;
 }
@@ -409,6 +447,11 @@ export function refreshPr(key: PrKey, root = stateRoot(), opts: RefreshSyncOptio
   }
 
   const patch = fetchRevisionDiff(key, { baseSha: pr.baseSha, headSha: pr.headSha, mergeBase }, opts);
+  if (current && advanceIfSameDiff(key, current, { baseSha: pr.baseSha, headSha: pr.headSha, mergeBase }, patch, root)) {
+    // The new head may read its generated files differently (.gitattributes).
+    const re = reclassifyGenerated(key, root, { fetch: true });
+    return { state: re.state, revision: current.revision, added: false, advanced: true, baseOnly: current.baseOnly };
+  }
   const parsed = parseDiff(patch);
   // Not current + 1: a discarded revision's number is never handed out again.
   // The migration below still diffs against `current`, the revision in force.
@@ -1302,6 +1345,11 @@ export async function refreshPrAsync(
   }
 
   const patch = await fetchRevisionDiffAsync(key, { baseSha: pr.baseSha, headSha: pr.headSha, mergeBase }, opts);
+  if (current && advanceIfSameDiff(key, current, { baseSha: pr.baseSha, headSha: pr.headSha, mergeBase }, patch, root)) {
+    // The new head may read its generated files differently (.gitattributes).
+    const re = await reclassifyGeneratedAsync(key, root, { fetch: true });
+    return { state: re.state, revision: current.revision, added: false, advanced: true, baseOnly: current.baseOnly };
+  }
   const parsed = parseDiff(patch);
   // Not current + 1: a discarded revision's number is never handed out again.
   // The migration below still diffs against `current`, the revision in force.

@@ -410,6 +410,10 @@ export interface RevisionInfo {
   baseOnly?: boolean;
   /** what this revision changed across the PR, written by the refresh analysis; absent until it is */
   summary?: string;
+  /** times it moved to new commits whose diff was the same (a refresh's fast-forward) */
+  advances?: number;
+  /** ISO timestamp of the last of those */
+  advancedAt?: string;
 }
 
 /** POST /api/prs/:key/revisions/:n/discard. */

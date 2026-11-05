@@ -162,7 +162,11 @@ program
     const key = requireExistingKey(keyArg);
     const res = refreshPr(key);
     if (!res.added) {
-      console.log(`No change; still at revision ${res.revision}.`);
+      console.log(
+        res.advanced
+          ? `New commits with the same diff; revision ${res.revision} moved to them.`
+          : `No change; still at revision ${res.revision}.`,
+      );
       return;
     }
     console.log(
