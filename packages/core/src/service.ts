@@ -111,6 +111,10 @@ export function findTrackedPrByHead(
  * one tag the tracked PRs sitting on it share. Untouched when it already has
  * a tag, when no neighbor has one, or when they disagree. Archived PRs are
  * out of the stack, as in the tag editor's "Whole stack".
+ *
+ * A tag it takes goes on up the stack to the untagged PRs sitting on it, and
+ * theirs: a stack added all at once tracks its PRs in no particular order,
+ * and one tracked before the PR under it had its tag found nothing to take.
  */
 export function inheritStackTag(key: PrKey, root = stateRoot()): void {
   const meta = readMeta(key, root);
@@ -128,7 +132,21 @@ export function inheritStackTag(key: PrKey, root = stateRoot()): void {
   const parent = meta.basePr ? neighbors.find((m) => m.number === meta.basePr!.number) : undefined;
   const childTags = new Set(neighbors.filter((m) => m.basePr?.number === key.number && m.tag).map((m) => m.tag!));
   const tag = parent?.tag ?? (childTags.size === 1 ? [...childTags][0] : undefined);
-  if (tag) updateMeta(key, { tag }, root);
+  if (!tag) return;
+  updateMeta(key, { tag }, root);
+  // Up the stack: each untagged PR on one just tagged, once each.
+  const seen = new Set([key.number]);
+  const queue = [key.number];
+  while (queue.length) {
+    const under = queue.shift()!;
+    for (const m of neighbors) {
+      if (m.basePr?.number !== under || seen.has(m.number)) continue;
+      seen.add(m.number);
+      if (m.tag) continue;
+      updateMeta({ host: key.host, owner: key.owner, repo: key.repo, number: m.number }, { tag }, root);
+      queue.push(m.number);
+    }
+  }
 }
 
 const sameBasePr = (a: BasePr | null | undefined, b: BasePr | null | undefined) =>

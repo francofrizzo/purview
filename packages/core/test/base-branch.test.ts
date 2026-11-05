@@ -280,6 +280,26 @@ describe("a new PR joins its stack's tag", () => {
     expect(readMeta(key, root).tag).toBe("ledger");
   });
 
+  it("hands the tag it takes on up to the untagged PRs stacked on it, tracked before it", () => {
+    // A stack added at once: 8510 on 8505, 8520 on 8510, tracked before 8505 found its tag.
+    const child: PrKey = { ...repo, number: 8510 };
+    const grandchild: PrKey = { ...repo, number: 8520 };
+    const tagged: PrKey = { ...repo, number: 8530 };
+    for (const k of [child, grandchild, tagged]) initPr(k, root);
+    updateMeta(child, { basePr: { number: 8505, title: "PR 8505", url: "u" } }, root);
+    updateMeta(grandchild, { basePr: { number: 8510, title: "PR 8510", url: "u" } }, root);
+    // One already tagged otherwise keeps its own, and so does what sits on it.
+    updateMeta(tagged, { tag: "other", basePr: { number: 8505, title: "PR 8505", url: "u" } }, root);
+    expect(readMeta(child, root).tag).toBeUndefined();
+
+    trackParent("payments");
+    initPr(key, root);
+    expect(readMeta(key, root).tag).toBe("payments");
+    expect(readMeta(child, root).tag).toBe("payments");
+    expect(readMeta(grandchild, root).tag).toBe("payments");
+    expect(readMeta(tagged, root).tag).toBe("other");
+  });
+
   it("leaves a PR already tracked alone on refresh", () => {
     initPr(key, root);
     trackParent("payments");

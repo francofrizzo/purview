@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Fix:** adding several stacked PRs at once on a tagged PR no longer leaves all but the lowest one untagged.
+
 ## 2026.11.5.2
 
 - **Revision timeline.** The rev menu lists every revision with its head, age and summary; click one to light up what it changed. A push that changes no line moves the current revision instead of adding one.
