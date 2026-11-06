@@ -1782,7 +1782,6 @@ export function PrView() {
         )}
       </div>
       {sidebarShowing ? analysisBlocks : null}
-      {overview ? null : <ReviewProgressBar progress={readingProgress} onOpenGroup={openNextUnreadOf} />}
       <div className={overview ? "min-h-0 flex-1" : "quiet-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden"}>
         {overview ? (
           <CodeLinkContext.Provider value={textLinks}>
@@ -1825,6 +1824,8 @@ export function PrView() {
           />
         )}
       </div>
+      {/* Where the reading stands, in the sidebar's status spot under the list. */}
+      {overview ? null : <ReviewProgressBar progress={readingProgress} onOpenGroup={openNextUnreadOf} />}
     </>
   );
 

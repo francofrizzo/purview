@@ -21,7 +21,7 @@ const percentOf = (g: GroupProgress) =>
   g.hunksRead === g.hunks ? 100 : Math.min(99, Math.floor((g.read / g.lines) * 100));
 
 /**
- * Where the reading stands, held at the top of the sidebar: one bar in three
+ * Where the reading stands, held at the bottom of the sidebar: one bar in three
  * parts, must read, skim and skip, each as wide as its share of the changed
  * lines and filled as far as it is read. Lines read before a revision changed
  * them are hatched, owed again. The total counts must read and skim; skip is
@@ -38,7 +38,7 @@ export function ReviewProgressBar({
   if (!shown.length) return null;
   return (
     <div
-      className="flex flex-none flex-col gap-1.5 border-b px-3 pb-2 pt-2"
+      className="flex flex-none flex-col gap-1.5 border-t px-3 pb-2 pt-2"
       style={{ borderColor: "var(--border)" }}
       data-testid="review-progress"
       data-done={progress.done || undefined}
