@@ -40,9 +40,6 @@ test("the shortcuts open as a modal from ? , the ⋯ menu and the sidebar", asyn
   await page.getByTestId("topbar-overflow").click();
   await page.getByTestId("menu-shortcuts").click();
   await expect(modal).toBeVisible();
-  await page.keyboard.press("Escape");
-  await page.getByTestId("shortcuts-button").click();
-  await expect(modal).toBeVisible();
 });
 
 test("sync and full screen live in the ⋯ menu; refresh stays and names new commits", async ({ page }) => {

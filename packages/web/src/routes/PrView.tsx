@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
+  Attention,
   AnalysisImportReport,
   ChatRef,
   FileEntry,
@@ -99,7 +100,7 @@ import { isForAgent } from "../lib/comments";
 import { FileTree, fileTreeOrder } from "../components/FileTree";
 import { IconChevron, IconComment, IconFiles, IconOverview, IconSpinner, IconUnit } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
-import { generatedUnitFiles, reviewProgress, workUnits } from "../lib/generated";
+import { generatedUnitFiles, workUnits } from "../lib/generated";
 import {
   AnalysisImportConfirmPanel,
   AnalysisImportResultPanel,
@@ -111,6 +112,8 @@ import {
   SharedAnalysisBanner,
   SyncResultPanel,
 } from "../components/Panels";
+import { reviewProgressByAttention } from "../lib/reviewProgress";
+import { ReviewProgressBar } from "../components/ReviewProgressBar";
 import { useUnsavedDrafts } from "../lib/unsavedDrafts";
 import { Notice, NoticeStack, OfflineNotice } from "../components/Notices";
 import { Overview } from "../components/Overview";
@@ -575,15 +578,25 @@ export function PrView() {
   const sinceUnitIdsRef = useRef(sinceUnitIds);
   sinceUnitIdsRef.current = sinceUnitIds;
 
-  // Whether every unit in the PR is fully viewed — drives the quiet "all units
-  // viewed" indicator next to the units-tab "mark unit viewed" button.
-  const allUnitsViewed = useMemo(() => {
-    if (!detail || analyzedUnits.length === 0) return false;
-    return analyzedUnits.every((u) => {
-      const p = unitProgress(detail, u);
-      return p.total === 0 || p.viewed === p.total;
-    });
-  }, [detail, analyzedUnits]);
+  // A part of the sidebar's progress bar, clicked: the first unit of that
+  // attention with something unread, in reading order; for skim, the hunks
+  // no unit claims once every skim unit is read.
+  const openNextUnreadOf = useCallback(
+    (attention: Attention) => {
+      if (!detail) return;
+      const next = sortUnitsForDisplay(analyzedUnits).find((u) => {
+        if (u.attention !== attention) return false;
+        const p = unitProgress(detail, u);
+        return p.viewed < p.total;
+      });
+      const unplacedUnread = attention === "skim" && unplaced.some((id) => !detail.state.hunks[id]?.viewed);
+      if (!next && !unplacedUnread) return;
+      setOverview(false);
+      setTab("units");
+      setSelectedUnitId(next ? next.id : UNPLACED_ID);
+    },
+    [detail, analyzedUnits, unplaced],
+  );
 
   // After marking a unit viewed (units tab only), advance to the next unit
   // that still has unviewed hunks, in the sidebar's reading order
@@ -642,9 +655,10 @@ export function PrView() {
 
   // Whole-PR reading progress, shown quietly in the footer.
   // Generated files and lockfiles are left out: they are not review work.
-  const overall = useMemo(
-    () => reviewProgress(detail?.files.files ?? [], detail?.state.hunks ?? {}),
-    [detail],
+  // The sidebar's bar: read by changed lines, per attention (lib/reviewProgress.ts).
+  const readingProgress = useMemo(
+    () => reviewProgressByAttention(detail?.files.files ?? [], detail?.state.hunks ?? {}, units),
+    [detail, units],
   );
 
 
@@ -1768,6 +1782,7 @@ export function PrView() {
         )}
       </div>
       {sidebarShowing ? analysisBlocks : null}
+      {overview ? null : <ReviewProgressBar progress={readingProgress} onOpenGroup={openNextUnreadOf} />}
       <div className={overview ? "min-h-0 flex-1" : "quiet-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden"}>
         {overview ? (
           <CodeLinkContext.Provider value={textLinks}>
@@ -1809,25 +1824,6 @@ export function PrView() {
             onlyPaths={sincePaths}
           />
         )}
-      </div>
-      <div
-        className="flex-none border-t px-2.5 py-1.5 text-2xs leading-4"
-        style={{ borderColor: "var(--border)", color: "var(--fg-faint)" }}
-      >
-        {/* The way in to every key, in sight: a list reachable only by a key
-            nobody knows about would never be found. */}
-        <span className="float-right tabular-nums" data-testid={allUnitsViewed ? "all-units-viewed" : "overall-progress"}>
-          <UiText>{allUnitsViewed ? "every unit read" : `${overall.viewed}/${overall.total} viewed`}</UiText>
-        </span>
-        <button
-          type="button"
-          className="flex items-center gap-1.5 rounded transition-colors hover:text-[var(--fg-muted)]"
-          data-testid="shortcuts-button"
-          onClick={() => setShowShortcuts(true)}
-        >
-          <UiText>keyboard shortcuts</UiText>
-          <kbd><UiText>?</UiText></kbd>
-        </button>
       </div>
     </>
   );

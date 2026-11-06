@@ -24,27 +24,6 @@ export function workUnits<U extends Pick<ReviewUnit, "origin">>(units: U[]): U[]
   return units.filter((u) => !isGeneratedUnit(u));
 }
 
-/**
- * The PR's overall "N/M viewed": every hunk except those of generated files,
- * which are not review work (the generated unit's own progress still counts
- * them, so "mark all viewed" there visibly does something).
- */
-export function reviewProgress(
-  files: Pick<FileEntry, "hunks" | "generated">[],
-  hunks: Record<string, { viewed?: boolean } | undefined>,
-): { viewed: number; total: number } {
-  let viewed = 0;
-  let total = 0;
-  for (const f of files) {
-    if (f.generated) continue;
-    for (const h of f.hunks) {
-      total++;
-      if (hunks[h.id]?.viewed) viewed++;
-    }
-  }
-  return { viewed, total };
-}
-
 /** The file tree's small tag: a lockfile reads as "lock", everything else as "gen". */
 export function generatedTag(g: FileGenerated): "lock" | "gen" {
   return g.source === "lockfile" ? "lock" : "gen";

@@ -7,7 +7,6 @@ import {
   generatedToggle,
   generatedUnitFiles,
   parsePatternLines,
-  reviewProgress,
   workUnits,
 } from "./generated";
 
@@ -103,15 +102,3 @@ describe("generatedToggle", () => {
   });
 });
 
-describe("reviewProgress", () => {
-  it("counts every hunk but those of generated files", () => {
-    const files = [
-      file("src/a.ts", ["a1", "a2"]),
-      file("pnpm-lock.yaml", ["l1"], { generated: { source: "lockfile" } }),
-    ];
-    expect(reviewProgress(files, { a1: { viewed: true }, l1: { viewed: true } })).toEqual({
-      viewed: 1,
-      total: 2,
-    });
-  });
-});
