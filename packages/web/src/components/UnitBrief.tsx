@@ -527,7 +527,7 @@ export function UnitEnd({
               : null,
           ];
   return (
-    <div className="flex flex-col items-start gap-2 px-6 pt-10 text-xs" data-testid="unit-end">
+    <div className="flex flex-col items-start gap-2 px-6 pb-10 pt-10 text-xs" data-testid="unit-end">
       <p style={{ color: "var(--fg-faint)" }}><UiText>{number !== undefined ? `End of unit ${number}` : "End of this unit"}</UiText></p>
       <p className="text-sm" style={{ color: "var(--fg)" }} data-testid="unit-end-status">
         <UiText>{status}</UiText>
