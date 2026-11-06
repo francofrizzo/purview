@@ -7,7 +7,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Reading progress bar.** The top of the sidebar shows how much of must read, skim and skip you have read, by changed lines; click a part to open its next unread unit. It replaces the sidebar's footer; keyboard shortcuts are in the ⋯ menu or on `?`.
+- **Reading progress bar.** The top of the sidebar shows how much of must read, skim and skip you have read; click a part to open its next unread unit. Keyboard shortcuts moved from the sidebar footer to the ⋯ menu and `?`.
+- **Attention in accent shades.** Must read, skim and skip are shades of your theme's accent instead of red and amber, which now mean only risks and warnings.
 
 ## 2026.11.6.1
 

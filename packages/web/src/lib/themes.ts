@@ -90,6 +90,12 @@ export const TOKEN_NAMES = [
   "kind-docs-soft",
   "bot",
   "bot-soft",
+  "attn-must",
+  "attn-must-soft",
+  "attn-skim",
+  "attn-skim-soft",
+  "attn-skip",
+  "attn-skip-soft",
   "shadow-1",
   "shadow-2",
   "shadow-3",
@@ -337,6 +343,17 @@ export function deriveTokens(palette: Palette, mode: ThemeMode): ChromeTokens {
     // competing with the accent the reader's own comments use.
     bot: text(mix(palette.purple, fg, 0.2), 3.6),
     "bot-soft": rgba(palette.purple, softAlpha),
+
+    // How much attention a unit asks for: shades of the accent, not the
+    // risk red and warn amber (they mean something is wrong, and must read
+    // only means it matters). Must read is the accent, skim the accent faded
+    // toward the neutrals, skip the neutral; the icons tell them apart too.
+    "attn-must": accent,
+    "attn-must-soft": rgba(accent, softAlpha),
+    "attn-skim": kind(mix(accent, neutral, 0.55)),
+    "attn-skim-soft": rgba(mix(accent, neutral, 0.55), dark ? 0.12 : 0.1),
+    "attn-skip": neutral,
+    "attn-skip-soft": rgba(neutral, dark ? 0.13 : 0.1),
 
     // Elevation. One scale for the whole app: 1 = resting card, 2 = popover /
     // floating pill, 3 = modal / drawer. Dark surfaces need much stronger

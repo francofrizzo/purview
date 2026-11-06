@@ -76,6 +76,12 @@
     --kind-data-soft: rgba(221, 167, 198, 0.14);
     --kind-wiring: #9aa4b4;
     --kind-wiring-soft: rgba(150, 160, 180, 0.13);
+    --attn-must: var(--accent);
+    --attn-must-soft: var(--accent-soft);
+    --attn-skim: #8d9fc4;
+    --attn-skim-soft: rgba(141, 159, 196, 0.12);
+    --attn-skip: var(--kind-wiring);
+    --attn-skip-soft: var(--kind-wiring-soft);
     --kind-ripple: #d8b98a;
     --kind-ripple-soft: rgba(200, 160, 100, 0.13);
     --kind-tests: #8fc99b;

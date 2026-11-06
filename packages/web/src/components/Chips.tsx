@@ -89,22 +89,22 @@ const ATTENTION_STYLE: Record<
 > = {
   "must-read": {
     label: "must-read",
-    color: "var(--risk)",
-    bg: "var(--risk-soft)",
+    color: "var(--attn-must)",
+    bg: "var(--attn-must-soft)",
     icon: IconWarning,
     tip: "Must-read: getting this wrong breaks something, or it encodes a decision you have to validate.",
   },
   skim: {
     label: "skim",
-    color: "var(--warn)",
-    bg: "var(--warn-soft)",
+    color: "var(--attn-skim)",
+    bg: "var(--attn-skim-soft)",
     icon: IconEye,
     tip: "Skim: check the shape is right without tracing the logic.",
   },
   skip: {
     label: "skip",
-    color: "var(--kind-wiring)",
-    bg: "var(--kind-wiring-soft)",
+    color: "var(--attn-skip)",
+    bg: "var(--attn-skip-soft)",
     icon: IconArrowDown,
     tip: "Skip: mechanical and correct by construction.",
   },

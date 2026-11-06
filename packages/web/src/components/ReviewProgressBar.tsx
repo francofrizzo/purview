@@ -5,20 +5,16 @@ import { UiText } from "./UiText";
 
 const LABEL: Record<Attention, string> = { "must-read": "Must read", skim: "Skim", skip: "Skip" };
 
-/**
- * Shades of the accent, not the attention chips' red and amber: this is how
- * far the reading has come, not a warning. Must read is the full accent, skim
- * a lighter one, skip a neutral grey; the labels say which is which.
- */
+/** The attention colors: shades of the accent (see the attn-* theme tokens). */
 const INK: Record<Attention, string> = {
-  "must-read": "var(--accent)",
-  skim: "color-mix(in srgb, var(--accent) 50%, var(--bg-raised))",
-  skip: "var(--fg-faint)",
+  "must-read": "var(--attn-must)",
+  skim: "var(--attn-skim)",
+  skip: "var(--attn-skip)",
 };
 const TRACK: Record<Attention, string> = {
-  "must-read": "color-mix(in srgb, var(--accent) 16%, transparent)",
-  skim: "color-mix(in srgb, var(--accent) 9%, transparent)",
-  skip: "color-mix(in srgb, var(--fg-faint) 14%, transparent)",
+  "must-read": "var(--attn-must-soft)",
+  skim: "var(--attn-skim-soft)",
+  skip: "var(--attn-skip-soft)",
 };
 
 const percentOf = (g: GroupProgress) =>
