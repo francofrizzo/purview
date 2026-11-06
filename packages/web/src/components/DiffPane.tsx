@@ -230,6 +230,8 @@ export interface DiffPaneProps {
   /** close the composer (hiding its thread closes it too, unless it holds text) */
   onCloseComposer?: () => void;
   composerDirty?: boolean;
+  /** comment boxes put away with text in them: their line keeps a pencil that reopens one */
+  unsavedTargets?: readonly CommentTarget[];
   /**
    * Edit / delete / quote / copy for comments read inline. Omitted, the
    * bubbles still expand — they just become read-only.
@@ -400,6 +402,7 @@ export function DiffPane({
   onComposerPlaced,
   onCloseComposer,
   composerDirty = false,
+  unsavedTargets,
   commentActions,
   viewMode = "unified",
   onToggleViewMode,
@@ -2097,8 +2100,28 @@ export function DiffPane({
     onComment(selectionTarget);
     setSelection(null);
   };
+  // Keyed on the line a box sits under: the last line of a range. Replies
+  // and file comments have no line of their own; the drawer lists them.
+  const unsavedByLine = useMemo(() => {
+    const open = composeTarget ? targetKey(composeTarget) : null;
+    const map = new Map<string, CommentTarget>();
+    for (const t of unsavedTargets ?? []) {
+      if (t.subjectType !== "line" || t.inReplyTo || targetKey(t) === open) continue;
+      map.set(lineAnchor(t.file, t.line, t.side), t);
+    }
+    return map;
+  }, [unsavedTargets, composeTarget]);
   /** The `+` on a selected line comments on the whole selection, not just that line. */
   const lineCommentProps = (path: string, side: "LEFT" | "RIGHT", line: number) => {
+    const kept = unsavedByLine.get(lineAnchor(path, line, side));
+    if (kept) {
+      return {
+        onComment: () => onComment(kept),
+        commentLabel: "Unsaved comment: keep writing",
+        commentVisible: false,
+        commentUnsaved: true,
+      };
+    }
     const sel =
       selectionTarget && selectionTarget.file === path && selectionTarget.side === side && selectionTarget.startLine !== undefined
         ? selectionTarget
@@ -3654,6 +3677,8 @@ export function DiffPane({
           commentLabelRight={rightNo === undefined ? undefined : lineCommentProps(path, "RIGHT", rightNo).commentLabel}
           commentVisibleLeft={leftNo === undefined ? undefined : lineCommentProps(path, "LEFT", leftNo).commentVisible}
           commentVisibleRight={rightNo === undefined ? undefined : lineCommentProps(path, "RIGHT", rightNo).commentVisible}
+          commentUnsavedLeft={leftNo === undefined ? undefined : lineCommentProps(path, "LEFT", leftNo).commentUnsaved}
+          commentUnsavedRight={rightNo === undefined ? undefined : lineCommentProps(path, "RIGHT", rightNo).commentUnsaved}
           coveredLeft={isCovered(path, "LEFT", leftNo)}
           coveredRight={isCovered(path, "RIGHT", rightNo)}
           selectedLeft={inSelection(selection, path, "old", left?.row.oldNumber)}

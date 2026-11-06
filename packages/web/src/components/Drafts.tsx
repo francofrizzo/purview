@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import type { UnsavedDraft } from "../lib/unsavedDrafts";
 import { errorText, isConfirmRequired } from "../api/errors";
 import { useAgentName } from "../api/hooks";
 import {
@@ -38,7 +39,7 @@ import {
 } from "../lib/comments";
 import { AUDIENCE_HINT, AudienceSwitch } from "./AudienceSwitch";
 import { CopyBundleControls, CopyForAgentButton, type BundleSource } from "./CopyForAgent";
-import { IconArchive, IconChat, IconCheck, IconChevron, IconClose, IconGithub, IconReact, IconReply, IconSend, IconSparkles, IconTrash } from "./icons";
+import { IconArchive, IconChat, IconCheck, IconChevron, IconClose, IconEdit, IconGithub, IconReact, IconReply, IconSend, IconSparkles, IconTrash } from "./icons";
 import { ReactionError, ReactionPicker, REACTION_EMOJI, type ReactionActions } from "./Reactions";
 import { BotChip } from "./Threads";
 import { AttachmentContext, Markdown, SuggestionContext } from "./Markdown";
@@ -130,6 +131,7 @@ export function CommentComposer({
   error,
   exportCtx,
   onCancel,
+  onClose,
   onSubmit,
   onSendToChat,
   chatBusy = false,
@@ -148,7 +150,10 @@ export function CommentComposer({
   onAudienceChange?: (next: CommentAudience) => void;
   /** enables "copy for agent" straight from the composer, before saving */
   exportCtx?: DiffContext;
+  /** the × : the text goes */
   onCancel: () => void;
+  /** Escape: the box closes and its text is put away for later; the × without one */
+  onClose?: () => void;
   onSubmit: (body: string) => void;
   /** ask the review chat instead of drafting: the text goes out with this line attached */
   onSendToChat?: (body: string) => void;
@@ -229,7 +234,8 @@ export function CommentComposer({
         if (wp.onKeyDown(e)) return;
         if (e.key === "Escape") {
           e.stopPropagation();
-          cancel();
+          if (onClose) onClose();
+          else cancel();
         }
         if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey) || !body.trim()) return;
         e.preventDefault();
@@ -817,8 +823,15 @@ export function DraftsDrawer({
   onSendToChat,
   chatBusy,
   onFinishReview,
+  unsaved = [],
+  onResumeUnsaved,
+  onDiscardUnsaved,
 }: {
   drafts: DraftComment[];
+  /** comment boxes put away with text in them (lib/unsavedDrafts.ts) */
+  unsaved?: readonly UnsavedDraft[];
+  onResumeUnsaved?: (u: UnsavedDraft) => void;
+  onDiscardUnsaved?: (u: UnsavedDraft) => void;
   /** the PR's GitHub review threads, with the reader's filters */
   github?: DrawerThreads;
   /** the server's trash; drafts the chat deleted get a restore notice */
@@ -965,12 +978,15 @@ export function DraftsDrawer({
         </ul>
       ) : null}
       <div className="quiet-scroll flex-1 overflow-auto">
-        {drafts.length === 0 && threadCount === 0 && archived.length === 0 ? (
+        {drafts.length === 0 && threadCount === 0 && archived.length === 0 && unsaved.length === 0 ? (
           <p className="p-3 text-xs leading-5" style={{ color: "var(--fg-faint)" }}>
             <UiText>No comments yet. Hover a diff line and press the + button to write one, or use the file header to comment on a whole file.</UiText>
           </p>
         ) : (
           <div className="flex flex-col gap-4 p-2.5">
+            {unsaved.length && onResumeUnsaved ? (
+              <UnsavedSection unsaved={unsaved} onResume={onResumeUnsaved} onDiscard={onDiscardUnsaved} />
+            ) : null}
             {forGithub.length ? (
               <section data-testid="drawer-section-github" className="flex flex-col gap-2.5">
                 <DrawerSectionTitle
@@ -1071,6 +1087,66 @@ export function DraftsDrawer({
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Boxes put away mid-sentence, newest first: not drafts yet, only in this
+ * browser. A row reopens its box where it was; the × lets the text go.
+ */
+function UnsavedSection({
+  unsaved,
+  onResume,
+  onDiscard,
+}: {
+  unsaved: readonly UnsavedDraft[];
+  onResume: (u: UnsavedDraft) => void;
+  onDiscard?: (u: UnsavedDraft) => void;
+}) {
+  return (
+    <section data-testid="drawer-section-unsaved" className="flex flex-col gap-1.5">
+      <DrawerSectionTitle
+        ink="var(--fg-muted)"
+        icon={<IconEdit width={12} height={12} />}
+        title="Unsaved"
+        count={unsaved.length}
+        hint="Started and not saved: only in this browser until you save them"
+      />
+      <ul className="flex flex-col gap-1">
+        {unsaved.map((u) => {
+          const key = targetKey(u.target);
+          const where = commentAnchorLabel(u.target);
+          return (
+            <li
+              key={key}
+              data-testid="unsaved-draft"
+              className="group flex items-start gap-1.5 rounded-md border border-dashed px-2 py-1.5 text-2xs hover:bg-[var(--bg-hover)]"
+              style={{ borderColor: "var(--border-strong)" }}
+            >
+              <button
+                type="button"
+                className="min-w-0 flex-1 text-left"
+                data-tip="Keep writing"
+                onClick={() => onResume(u)}
+              >
+                <span className="block truncate font-mono" style={{ color: "var(--fg-faint)" }}>
+                  {where}
+                  {u.target.inReplyTo ? <UiText>{` · reply to ${u.target.replyTo ?? "a thread"}`}</UiText> : null}
+                </span>
+                <span className="line-clamp-2 block text-xs leading-4" style={{ color: "var(--fg)" }}>
+                  {u.body}
+                </span>
+              </button>
+              {onDiscard ? (
+                <RowAction tip="Discard" testId="unsaved-discard" onClick={() => onDiscard(u)}>
+                  <IconTrash width={11} height={11} />
+                </RowAction>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

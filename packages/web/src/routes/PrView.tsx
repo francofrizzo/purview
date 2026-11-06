@@ -111,6 +111,7 @@ import {
   SharedAnalysisBanner,
   SyncResultPanel,
 } from "../components/Panels";
+import { useUnsavedDrafts } from "../lib/unsavedDrafts";
 import { Notice, NoticeStack, OfflineNotice } from "../components/Notices";
 import { Overview } from "../components/Overview";
 import { visibleDescription } from "../lib/summaryText";
@@ -356,9 +357,16 @@ export function PrView() {
   // virtualized row and unmounts when scrolled away.
   const [composerBody, setComposerBody] = useState("");
   const [composerPlaced, setComposerPlaced] = useState(false);
+  // Opening another place puts the box's text away rather than losing it;
+  // opening a place with text put away brings it back (lib/unsavedDrafts.ts).
+  const unsaved = useUnsavedDrafts(prKey);
+  const unsavedBodyFor = useRef(unsaved.bodyFor);
+  unsavedBodyFor.current = unsaved.bodyFor;
+  const unsavedTargets = useMemo(() => unsaved.list.map((u) => u.target), [unsaved.list]);
   const commentTargetKey = commentTarget ? targetKey(commentTarget) : null;
   useEffect(() => {
-    setComposerBody("");
+    setComposerBody(commentTarget ? unsavedBodyFor.current(commentTarget) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [commentTargetKey]);
   /** Open the composer, assuming it goes inline; the diff says otherwise before paint. */
   const openComposer = useCallback(
@@ -1849,11 +1857,18 @@ export function PrView() {
         target={commentTarget}
         variant={variant}
         value={composerBody}
-        onChange={setComposerBody}
+        onChange={(body) => {
+          setComposerBody(body);
+          unsaved.keep(commentTarget, body);
+        }}
         pending={addComment.isPending}
         error={addComment.error ? errorText(addComment.error) : null}
         exportCtx={exportCtx}
-        onCancel={() => setCommentTarget(null)}
+        onCancel={() => {
+          unsaved.drop(commentTarget);
+          setCommentTarget(null);
+        }}
+        onClose={() => setCommentTarget(null)}
         audience={audienceSwitch.audience}
         onAudienceChange={audienceSwitch.set}
         onSubmit={(body) =>
@@ -1863,13 +1878,19 @@ export function PrView() {
               // A reply joins its GitHub thread whatever the switch says.
               audience: commentTarget.inReplyTo ? "github" : audienceSwitch.audience,
             },
-            { onSuccess: () => setCommentTarget(null) },
+            {
+              onSuccess: () => {
+                unsaved.drop(commentTarget);
+                setCommentTarget(null);
+              },
+            },
           )
         }
         chatBusy={chat.busy}
         onSendToChat={(body) => {
           chat.send(body, [targetRef(commentTarget)]);
           chat.openChat();
+          unsaved.drop(commentTarget);
           setCommentTarget(null);
         }}
       />
@@ -2293,6 +2314,7 @@ export function PrView() {
               onComposerPlaced={setComposerPlaced}
               onCloseComposer={() => setCommentTarget(null)}
               composerDirty={composerBody.trim() !== ""}
+              unsavedTargets={unsavedTargets}
               commentActions={commentActions}
               viewMode={viewMode}
               onToggleViewMode={toggleViewMode}
@@ -2354,6 +2376,20 @@ export function PrView() {
             deleting={deleteComment.isPending ? (deleteComment.variables ?? null) : null}
             bundle={bundle}
             onJump={(d) => jumpToComment(d)}
+            unsaved={unsaved.list}
+            onResumeUnsaved={(u) => {
+              const t = u.target;
+              jumpToComment(
+                t.subjectType === "file"
+                  ? { file: t.file, threadId: t.inReplyTo }
+                  : { file: t.file, line: t.line, side: t.side, threadId: t.inReplyTo },
+              );
+              openComposer(t);
+            }}
+            onDiscardUnsaved={(u) => {
+              unsaved.drop(u.target);
+              if (commentTargetKey === targetKey(u.target)) setCommentTarget(null);
+            }}
             onDelete={(d) => deleteComment.mutate(d.id)}
             onArchiveMany={(ids) => archiveComments.mutateAsync(ids)}
             archived={archivedComments.data}

@@ -4,7 +4,7 @@ import type { Tok } from "../lib/highlight";
 import type { CharRange, DiffRow } from "../lib/diffModel";
 import { identifierAtPoint } from "../lib/identifierAt";
 import { CommentBubble } from "./InlineComments";
-import { IconPlus, IconWarning } from "./icons";
+import { IconEdit, IconPlus, IconWarning } from "./icons";
 
 /**
  * Cmd/ctrl+click "go to definition": resolve the identifier under the click
@@ -234,6 +234,8 @@ export interface LineCommentProps {
    */
   commentLabel?: string;
   commentVisible?: boolean;
+  /** text typed here and not saved yet: the button stays, as a pencil, and reopens it */
+  commentUnsaved?: boolean;
   /**
    * Inside an open (or hovered) multi-line comment's range: a bar down the
    * row's left edge ties the covered lines to the marker on the last one.
@@ -249,6 +251,7 @@ function CommentColumn({
   onMarkerHover,
   commentLabel,
   commentVisible,
+  commentUnsaved,
 }: { onComment?: () => void } & Omit<LineCommentProps, "covered">) {
   const has = Boolean(comments && comments.length);
   const label = commentLabel ?? (has ? "Add another comment on this line" : "Comment on this line");
@@ -269,7 +272,7 @@ function CommentColumn({
       {onComment ? (
         <button
           type="button"
-          data-testid={commentVisible ? "comment-selection" : undefined}
+          data-testid={commentUnsaved ? "comment-unsaved" : commentVisible ? "comment-selection" : undefined}
           onClick={(e) => {
             e.stopPropagation();
             onComment();
@@ -279,14 +282,16 @@ function CommentColumn({
           // Hover-only, the same 18px rounded square as the marker: in the
           // marker's slot on a line without comments, just left of it on one
           // with. Accent and outlined, so it never reads as the diff's green +.
-          className={`diff-comment-affordance absolute ${has ? "right-[23px]" : "right-[3px]"} top-px z-10 inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[4px] ${commentVisible ? "opacity-100" : "opacity-0"} transition-opacity hover:!bg-[var(--accent)] hover:!text-[var(--bg)] group-hover:opacity-100 group-hover/half:opacity-100`}
+          className={`diff-comment-affordance absolute ${has ? "right-[23px]" : "right-[3px]"} top-px z-10 inline-flex h-[18px] w-[18px] flex-none items-center justify-center rounded-[4px] ${commentVisible || commentUnsaved ? "opacity-100" : "opacity-0"} transition-opacity hover:!bg-[var(--accent)] hover:!text-[var(--bg)] group-hover:opacity-100 group-hover/half:opacity-100`}
           style={{
             background: "var(--bg-raised)",
-            boxShadow: "inset 0 0 0 1px var(--border-strong)",
+            // Unsaved text: dashed, like something not written down yet.
+            boxShadow: commentUnsaved ? undefined : "inset 0 0 0 1px var(--border-strong)",
+            border: commentUnsaved ? "1px dashed var(--accent)" : undefined,
             color: "var(--accent)",
           }}
         >
-          <IconPlus width={11} height={11} />
+          {commentUnsaved ? <IconEdit width={10} height={10} /> : <IconPlus width={11} height={11} />}
         </button>
       ) : null}
     </span>
@@ -422,6 +427,7 @@ export const DiffLine = memo(function DiffLine({
   onMarkerHover,
   commentLabel,
   commentVisible,
+  commentUnsaved,
   covered,
   marks,
   onSelectDown,
@@ -485,6 +491,7 @@ export const DiffLine = memo(function DiffLine({
           onMarkerHover={onMarkerHover}
           commentLabel={commentLabel}
           commentVisible={commentVisible}
+          commentUnsaved={commentUnsaved}
         />
         <span className="diff-marker" data-moved={moved ? "true" : undefined} style={{ color: markerColor(row.type) }}>
           {marker}
@@ -538,6 +545,7 @@ function SplitHalf({
   onMarkerHover,
   commentLabel,
   commentVisible,
+  commentUnsaved,
   covered,
   marks,
   selected,
@@ -602,6 +610,7 @@ function SplitHalf({
           onMarkerHover={onMarkerHover}
           commentLabel={commentLabel}
           commentVisible={commentVisible}
+          commentUnsaved={commentUnsaved}
         />
         <span className="diff-marker" data-moved={moved ? "true" : undefined} style={{ color: markerColor(row.type) }}>
           {marker}
@@ -639,6 +648,8 @@ export interface SplitDiffLineProps {
   commentLabelRight?: string;
   commentVisibleLeft?: boolean;
   commentVisibleRight?: boolean;
+  commentUnsavedLeft?: boolean;
+  commentUnsavedRight?: boolean;
   /** inside an open multi-line comment's range, per half */
   coveredLeft?: boolean;
   coveredRight?: boolean;
@@ -691,6 +702,8 @@ export const SplitDiffLine = memo(function SplitDiffLine({
   commentLabelRight,
   commentVisibleLeft,
   commentVisibleRight,
+  commentUnsavedLeft,
+  commentUnsavedRight,
   coveredLeft,
   coveredRight,
   marksLeft,
@@ -722,6 +735,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onMarkerHover={onMarkerHoverLeft}
         commentLabel={commentLabelLeft}
         commentVisible={commentVisibleLeft}
+        commentUnsaved={commentUnsavedLeft}
         covered={coveredLeft}
         marks={marksLeft}
         selected={selectedLeft}
@@ -748,6 +762,7 @@ export const SplitDiffLine = memo(function SplitDiffLine({
         onMarkerHover={onMarkerHoverRight}
         commentLabel={commentLabelRight}
         commentVisible={commentVisibleRight}
+        commentUnsaved={commentUnsavedRight}
         covered={coveredRight}
         marks={marksRight}
         selected={selectedRight}
