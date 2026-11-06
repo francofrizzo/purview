@@ -55,3 +55,9 @@ test("from the summary, Ctrl+1, 2, 3 pick the verdict and Cmd+Enter submits it",
   await summary.press("ControlOrMeta+Enter");
   await expect(panel.getByRole("button", { name: /^yes, approve/ })).toBeVisible();
 });
+
+test("opening the panel puts the caret in the summary", async ({ page }) => {
+  await openPr(page);
+  await page.getByTestId("topbar-finish-review").click();
+  await expect(page.getByTestId("finish-review-panel").getByTestId("review-summary")).toBeFocused();
+});

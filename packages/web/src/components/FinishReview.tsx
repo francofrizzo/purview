@@ -148,6 +148,19 @@ export function FinishReviewPanel({
     }
   }, [result]);
 
+  // Opening the panel is opening it to write: the summary takes focus once
+  // the review is in, caret at the end of what was kept.
+  const summaryRef = useRef<HTMLTextAreaElement>(null);
+  const focusedOnce = useRef(false);
+  useEffect(() => {
+    const el = summaryRef.current;
+    if (!seeded || focusedOnce.current || !el) return;
+    focusedOnce.current = true;
+    el.focus({ preventScroll: true });
+    el.setSelectionRange(el.value.length, el.value.length);
+    el.scrollIntoView({ block: "nearest" });
+  }, [seeded]);
+
   const readiness = review?.readiness;
   const unviewed = readiness?.mustRead.unviewed ?? 0;
   // The submit button, and Cmd+Enter in the summary: the picked verdict, through
@@ -184,6 +197,20 @@ export function FinishReviewPanel({
             style={submitting ? { opacity: 0.45, pointerEvents: "none" } : undefined}
             aria-busy={submitting}
           >
+            {/* Who reviews the PR is not part of this review: it sits above
+                it, ruled off. */}
+            {reviewers ? (
+              <section
+                data-testid="review-panel-reviewers"
+                className="border-b px-4 py-4"
+                style={{ borderColor: "var(--border)" }}
+              >
+                <SectionTitle>Reviewers</SectionTitle>
+                <div className="mt-1.5">
+                  <ReviewersPanel prKey={reviewers.prKey} reviewers={reviewers.list ?? []} embedded />
+                </div>
+              </section>
+            ) : null}
             {result && !submitting ? <SubmittedNotice result={result} /> : null}
             {submitError ? <Notice tone="error">{errorText(submitError)}</Notice> : null}
 
@@ -201,14 +228,6 @@ export function FinishReviewPanel({
 
             <div className="flex flex-col gap-5 px-4 py-4">
               {readiness ? <Readiness readiness={readiness} /> : null}
-              {reviewers ? (
-                <section data-testid="review-panel-reviewers">
-                  <SectionTitle>Reviewers</SectionTitle>
-                  <div className="mt-1.5">
-                    <ReviewersPanel prKey={reviewers.prKey} reviewers={reviewers.list ?? []} embedded />
-                  </div>
-                </section>
-              ) : null}
               {verdicts.length || unresolvedThreads ? (
                 <section data-testid="previous-reviews">
                   <SectionTitle>On GitHub so far</SectionTitle>
@@ -226,6 +245,8 @@ export function FinishReviewPanel({
               <section>
                 <SectionTitle>Summary</SectionTitle>
                 <textarea
+                  ref={summaryRef}
+                  data-testid="review-summary"
                   className="input mt-1.5 h-28 resize-none text-xs leading-5"
                   placeholder="What should the author take away? (optional)"
                   data-tip="Kept on this machine until you submit. ⌘↵ submits; ⌃1, ⌃2, ⌃3 pick Comment, Approve, Request changes"

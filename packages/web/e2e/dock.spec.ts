@@ -30,8 +30,10 @@ test("one dock on the right: comments, chat and review are its tabs, one at a ti
   await expect(page.getByTestId("finish-review-panel")).toBeVisible();
   await expect(page.getByTestId("chat-panel")).toHaveCount(0);
 
-  // The same key on the open tab closes the dock; the X too.
-  await page.keyboard.press("r");
+  // The summary takes the focus, like the chat's input, so keys are typed
+  // there; the top bar's button closes the tab.
+  await expect(page.getByTestId("review-summary")).toBeFocused();
+  await page.getByTestId("topbar-finish-review").click();
   await expect(page.getByTestId("right-dock")).toHaveCount(0);
   // The top bar's toggle reopens the last tab (review), then closes it.
   await page.getByTestId("topbar-comments").click();

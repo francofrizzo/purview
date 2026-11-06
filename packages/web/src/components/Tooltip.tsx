@@ -85,7 +85,10 @@ export function TooltipLayer() {
     const onFocusIn = (e: FocusEvent) => {
       const found = tipOf(e.target);
       // Keyboard focus only: a click focuses too, and that one just hid it.
-      if (found && found.el.matches(":focus-visible")) show(found.el, found.tip);
+      // A field you type into always counts as keyboard focus, and its tip
+      // would sit over what you are writing: those show on hover only.
+      if (!found || found.el.matches("textarea, input:not([type=checkbox]):not([type=radio]), [contenteditable]")) return;
+      if (found.el.matches(":focus-visible")) show(found.el, found.tip);
     };
     const onFocusOut = () => hide();
     const onKey = (e: KeyboardEvent) => {
