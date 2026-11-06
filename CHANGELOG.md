@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.6.3
 
 - **Behavior changes.** The overview shows a before and after table of what the PR changes in the running system; click a row to open the unit that makes it. Analyses write it from the next run on.
 - **Skip in progress counts.** The home card, the Review panel and the progress bar leave skip units and skipped hunks out of their totals, so "all read" means must read and skim are done.
