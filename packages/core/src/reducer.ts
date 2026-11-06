@@ -836,6 +836,26 @@ export function skippedHunkIds(state: Pick<State, "units">): Set<string> {
 }
 
 /**
+ * Hunks no progress total owes: generated ones, ones a unit marks skip, and
+ * the hunks of skip units. Skip, a hunk or a whole unit, is never owed; it
+ * keeps its own `viewed` flag and shows where it lives (the Skip group, the
+ * progress bar's skip part). A hunk a must-read or skim unit also claims
+ * unmarked is owed.
+ */
+export function unowedHunkIds(state: Pick<State, "units">): Set<string> {
+  const out = generatedHunkIds(state);
+  const owed = new Set<string>();
+  for (const u of analysisUnits(state)) {
+    for (const h of u.hunks) {
+      if (h.skip || u.attention === "skip") out.add(h.id);
+      else owed.add(h.id);
+    }
+  }
+  for (const id of owed) out.delete(id);
+  return out;
+}
+
+/**
  * Per-unit progress over the analysis's units; husks count toward nothing,
  * and neither does the generated unit (it is not reading work, and a PR
  * whose only unit it is has not been analyzed). Skipped hunks are left out of
@@ -883,12 +903,10 @@ export interface ReadinessSummary {
 export function readiness(state: State): ReadinessSummary {
   const progress = unitProgress(state);
   const mustRead = progress.filter((u) => u.attention === "must-read");
-  // Generated files and lockfiles are not part of the read; neither are the
-  // hunks the analysis marked skippable.
-  const generated = generatedHunkIds(state);
-  const skipped = skippedHunkIds(state);
+  // Generated files and lockfiles are not part of the read; neither is skip.
+  const unowed = unowedHunkIds(state);
   const hunkStates = Object.entries(state.hunks)
-    .filter(([id]) => !generated.has(id) && !skipped.has(id))
+    .filter(([id]) => !unowed.has(id))
     .map(([, h]) => h);
   const mustReadUnviewed = mustRead.filter((u) => !u.complete).length;
   return {

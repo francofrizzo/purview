@@ -1,7 +1,7 @@
 import { hydrateFiles, type WireFile } from "../lib/hunkBodies";
 import { GITHUB_OFFLINE_HEADER, noteGithubOffline } from "../lib/offline";
 import type { mockApi as MockApi } from "../mocks/server";
-import { skippedHunkIds } from "../lib/diffModel";
+import { unowedHunkIds } from "../lib/diffModel";
 import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
 import { isGeneratedUnit, isRemovedUnit, TOOL_KINDS } from "./types";
@@ -510,8 +510,8 @@ export const api = {
       summary: state.summary,
       // The fixed generated-files unit exists before any analysis; it is not one.
       unitCount: state.units.filter((u) => !isGeneratedUnit(u)).length,
-      totalHunks: Object.keys(state.hunks).filter((id) => !skippedHunkIds(state.units).has(id)).length,
-      viewedHunks: Object.entries(state.hunks).filter(([id, h]) => h.viewed && !skippedHunkIds(state.units).has(id)).length,
+      totalHunks: Object.keys(state.hunks).filter((id) => !unowedHunkIds(state.units).has(id)).length,
+      viewedHunks: Object.entries(state.hunks).filter(([id, h]) => h.viewed && !unowedHunkIds(state.units).has(id)).length,
       // POST /prs answers with the freshly created state, not a list row; the
       // list refetch that follows replaces these placeholders.
       state: "open",

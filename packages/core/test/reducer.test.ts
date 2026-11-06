@@ -221,7 +221,8 @@ describe("fold", () => {
         ]),
       );
       expect(r.mustRead).toEqual({ complete: 1, total: 1, unviewed: 0 });
-      expect(r.hunks).toEqual({ viewed: 2, total: 3 });
+      // The third hunk is the skip unit's: skip is never owed.
+      expect(r.hunks).toEqual({ viewed: 2, total: 2 });
       expect(r.ready).toBe(true);
     });
   });

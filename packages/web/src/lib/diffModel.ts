@@ -1,6 +1,6 @@
 import { diffWordsWithSpace } from "diff";
 import { unitDisplayOrder } from "./unitOrder";
-import { type FileEntry, type FilesJson, type Hunk, type HunkEntry, type PrDetail, type ReviewUnit } from "../api/types";
+import { isGeneratedUnit, type FileEntry, type FilesJson, type Hunk, type HunkEntry, type PrDetail, type ReviewUnit } from "../api/types";
 import { hunkIdsOf, skipOf } from "./units";
 
 export type LineType = "add" | "del" | "context" | "meta";
@@ -358,6 +358,24 @@ export function skippedIds(unit: Pick<ReviewUnit, "hunks">): Set<string> {
 /** Every skipped hunk across the analysis's units, as the server counts them. */
 export function skippedHunkIds(units: Pick<ReviewUnit, "hunks">[]): Set<string> {
   return new Set(units.flatMap((u) => skipOf(u).map((h) => h.id)));
+}
+
+/**
+ * Hunks no progress total owes, as the server counts them: the generated
+ * unit's, ones a unit marks skip, and skip units'. A hunk a must-read or skim
+ * unit also claims unmarked is owed.
+ */
+export function unowedHunkIds(units: Pick<ReviewUnit, "id" | "origin" | "attention" | "hunks">[]): Set<string> {
+  const out = new Set<string>();
+  const owed = new Set<string>();
+  for (const u of units) {
+    for (const h of u.hunks) {
+      if (isGeneratedUnit(u) || h.skip || u.attention === "skip") out.add(h.id);
+      else owed.add(h.id);
+    }
+  }
+  for (const id of owed) out.delete(id);
+  return out;
 }
 
 /**

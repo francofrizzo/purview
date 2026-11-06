@@ -82,7 +82,7 @@ function Segment({ group: g, onOpen }: { group: GroupProgress; onOpen?: (attenti
   }, []);
   const label = width >= 84 ? `${LABEL[g.attention]} ${percent}%` : width >= 30 ? `${percent}%` : "";
   const tip =
-    `${LABEL[g.attention]}${g.attention === "skip" ? " (not counted)" : ""}: ${g.read} of ${g.lines} lines` +
+    `${LABEL[g.attention]}${g.attention === "skip" ? " (doesn't count toward the total)" : ""}: ${g.read} of ${g.lines} lines` +
     (g.units ? `, ${g.unitsDone} of ${g.units} ${g.units === 1 ? "unit" : "units"}` : "") +
     (g.reread ? `, ${g.reread} changed since read` : "");
   return (

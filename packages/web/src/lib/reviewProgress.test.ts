@@ -48,12 +48,13 @@ describe("reviewProgressByAttention", () => {
   });
 });
 
-it("a hunk its unit marks skip counts with skip, out of the unit's done", () => {
+it("a hunk its unit marks skip counts nowhere: nothing ever marks it read", () => {
   const p = reviewProgressByAttention([{ hunks: [hunk("a", 4), hunk("b", 6)] }], { a: { viewed: true, changedSinceViewed: false } }, [
     { id: "u", attention: "must-read", hunks: [{ id: "a" }, { id: "b", skip: true }] },
   ]);
   expect(p.groups[0]).toMatchObject({ lines: 4, unitsDone: 1 });
-  expect(p.groups[2]).toMatchObject({ lines: 6 });
+  expect(p.groups[2]).toMatchObject({ lines: 0 });
+  expect(p.groups[1]).toMatchObject({ lines: 0 });
   expect(p.done).toBe(true);
 });
 

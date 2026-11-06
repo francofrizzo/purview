@@ -5,7 +5,8 @@ import { isGeneratedUnit, isRemovedUnit, type Attention, type FileEntry, type Hu
  * and an 80-line function are not the same amount of reading. Hunks of
  * generated files are not review work and count nowhere. A hunk no unit
  * claims reads as skim: it still wants a look, nothing said it matters. A
- * unit's own skipped hunks read as skip.
+ * hunk its unit marks skip counts nowhere, as everywhere else (the unit's
+ * ring, "mark unit viewed", Space): nothing ever marks it read.
  */
 export interface GroupProgress {
   attention: Attention;
@@ -43,9 +44,12 @@ export function reviewProgressByAttention(
 ): ReviewProgress {
   const live = units.filter((u) => !isGeneratedUnit(u) && !isRemovedUnit(u));
   const attentionOf = new Map<string, Attention>();
-  // A hunk the unit marks skip reads as skip, whatever the unit's attention.
+  const skipped = new Set<string>();
   for (const u of live) {
-    for (const e of u.hunks) if (!attentionOf.has(e.id)) attentionOf.set(e.id, e.skip ? "skip" : u.attention);
+    for (const e of u.hunks) {
+      if (e.skip) skipped.add(e.id);
+      else if (!attentionOf.has(e.id)) attentionOf.set(e.id, u.attention);
+    }
   }
 
   const blank = (attention: Attention): GroupProgress => ({
@@ -60,6 +64,7 @@ export function reviewProgressByAttention(
   for (const f of files) {
     if (f.generated) continue;
     for (const h of f.hunks) {
+      if (skipped.has(h.id) && !attentionOf.has(h.id)) continue;
       counted.add(h.id);
       const g = groups[attentionOf.get(h.id) ?? "skim"];
       const weight = changedLines(h);

@@ -51,9 +51,8 @@ import {
   stateRoot,
   syncPrAsync,
   unitProgress,
-  generatedHunkIds,
+  unowedHunkIds,
   hunkIdsOf,
-  skippedHunkIds,
   updateMeta,
   writeLocalChatInstructions,
   writeLocalRubric,
@@ -307,11 +306,10 @@ async function readJsonBody(c: { req: { json(): Promise<unknown> } }): Promise<u
 function progressOf(state: State) {
   // The generated unit and its hunks are left out: they are not reading
   // work, and a PR whose only unit is that one is still "not analyzed".
-  // Neither are the hunks the analysis marked skippable (`skip: true`).
+  // Neither is skip, a marked hunk or a skip unit's (see `unowedHunkIds`).
   const units = unitProgress(state);
-  const generated = generatedHunkIds(state);
-  const skipped = skippedHunkIds(state);
-  const hunks = Object.entries(state.hunks).filter(([id]) => !generated.has(id) && !skipped.has(id));
+  const unowed = unowedHunkIds(state);
+  const hunks = Object.entries(state.hunks).filter(([id]) => !unowed.has(id));
   const hunkTotal = hunks.length;
   const hunkViewed = hunks.filter(([, h]) => h.viewed).length;
   const genPaths = new Set(state.generated.map((g) => g.path));

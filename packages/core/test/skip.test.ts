@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fold, skippedHunkIds, readiness, unitProgress } from "../src/reducer.js";
+import { fold, skippedHunkIds, readiness, unitProgress, unowedHunkIds } from "../src/reducer.js";
 import { heartOf, hunkIdsOf, labelOf, normalizeHunks, skipOf } from "../src/units.js";
 import { setAnalysis, setUnit, setUnits } from "../src/service.js";
 import { appendEvent, writeMeta, writeRevision } from "../src/store.js";
@@ -238,6 +238,27 @@ describe("skip through the reducer", () => {
     const after = readiness(fold([rev(1), analysis(), view("h2"), view("h1")]));
     expect(after.hunks).toEqual({ viewed: 1, total: 1 });
     expect(after.ready).toBe(true);
+  });
+
+  it("leaves a skip unit's hunks out of readiness, like a skipped hunk", () => {
+    const events: ReviewerEvent[] = [
+      rev(1),
+      {
+        ts,
+        type: "analysis-set",
+        revision: 1,
+        summary: "s",
+        units: [
+          unit({ hunks: ["h1"] }),
+          unit({ id: "u2", attention: "skip", hunks: ["h2", "h3"], order: 2 }),
+        ],
+        unassigned: [],
+      },
+      view("h2"),
+    ];
+    expect([...unowedHunkIds(fold(events))].sort()).toEqual(["h2", "h3"]);
+    expect(readiness(fold(events)).hunks).toEqual({ viewed: 0, total: 1 });
+    expect(readiness(fold([...events, view("h1")])).hunks).toEqual({ viewed: 1, total: 1 });
   });
 
   it("leaves skipped hunks out of the file rollups, and a file of only skips has nothing to view", () => {

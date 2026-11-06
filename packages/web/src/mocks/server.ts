@@ -2,8 +2,8 @@ import { hydrateFiles } from "../lib/hunkBodies";
 import { stackOf } from "../lib/prList";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
 import { noteGithubOffline } from "../lib/offline";
-import { isFileComment, isGeneratedUnit } from "../api/types";
-import { skippedHunkIds } from "../lib/diffModel";
+import { isFileComment, isGeneratedUnit, isRemovedUnit } from "../api/types";
+import { skippedHunkIds, unowedHunkIds } from "../lib/diffModel";
 import type {
   AgentSelection,
   Reviewer,
@@ -561,7 +561,7 @@ function applyAnalysisResult(key: string) {
   const entry = list.find((p) => p.key === key);
   if (entry) {
     entry.unitCount = target.state.units.length;
-    entry.totalHunks = Object.keys(target.state.hunks).filter((id) => !skippedHunkIds(target.state.units).has(id)).length;
+    entry.totalHunks = Object.keys(target.state.hunks).filter((id) => !unowedHunkIds(target.state.units).has(id)).length;
     entry.viewedHunks = 0;
     entry.summary = target.state.summary;
   }
@@ -1776,8 +1776,10 @@ export const mockApi = {
       return counted.length > 0 && counted.every((id) => detail.state.hunks[id]?.viewed);
     };
     const mustRead = units.filter((u) => u.attention === "must-read");
+    // Nor is skip ever owed: a skip unit's hunks count toward no total.
+    const unowed = unowedHunkIds(units.filter((u) => !isRemovedUnit(u)));
     const hunks = Object.entries(detail.state.hunks)
-      .filter(([id]) => !skip.has(id))
+      .filter(([id]) => !unowed.has(id))
       .map(([, h]) => h);
     const mustReadUnviewed = mustRead.filter((u) => !complete(u)).length;
     return {
