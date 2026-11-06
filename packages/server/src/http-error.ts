@@ -25,6 +25,11 @@ export function classifyError(err: unknown): HttpError {
     const e = err as { code: string; message: string };
     return new HttpError(409, e.code, e.message);
   }
+  // gh could not reach GitHub at all (see core's github.ts): the machine is
+  // offline, which the app says once in its own banner.
+  if ((err as { name?: string } | null)?.name === "GithubOfflineError") {
+    return new HttpError(503, "github_offline", "GitHub can't be reached. Purview works offline; this needs GitHub.");
+  }
   // GitHub would not render the PR diff: the plain sentence, not gh's stderr.
   if ((err as { name?: string } | null)?.name === "DiffUnavailableError") {
     return new HttpError(502, "gh_failed", (err as Error).message);

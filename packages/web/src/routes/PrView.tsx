@@ -111,7 +111,7 @@ import {
   SharedAnalysisBanner,
   SyncResultPanel,
 } from "../components/Panels";
-import { Notice, NoticeStack } from "../components/Notices";
+import { Notice, NoticeStack, OfflineNotice } from "../components/Notices";
 import { Overview } from "../components/Overview";
 import { visibleDescription } from "../lib/summaryText";
 import { TopBar } from "../components/TopBar";
@@ -1644,6 +1644,7 @@ export function PrView() {
   );
   const notices = (
     <NoticeStack>
+      <OfflineNotice />
       {refresh.error ? (
         <ActionFailed
           key="refresh"

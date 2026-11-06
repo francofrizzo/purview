@@ -1,4 +1,5 @@
 import { hydrateFiles, type WireFile } from "../lib/hunkBodies";
+import { GITHUB_OFFLINE_HEADER, noteGithubOffline } from "../lib/offline";
 import type { mockApi as MockApi } from "../mocks/server";
 import { skippedHunkIds } from "../lib/diffModel";
 import { frameJson, readSseStream } from "../lib/sse";
@@ -103,6 +104,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
+  noteGithubOffline(res.headers.get(GITHUB_OFFLINE_HEADER));
   const text = await res.text();
   let body: unknown = undefined;
   if (text) {

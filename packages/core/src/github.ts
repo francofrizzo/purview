@@ -16,17 +16,109 @@ import type { BasePr, Ci, PrState, ReviewDecision, ReviewRequest, Reviewer } fro
  */
 export type GhRunner = (args: string[], input?: string) => string;
 
+/**
+ * How long one `gh` call may run. Offline behind a Wi-Fi that answers
+ * nothing, gh waits on its connection for minutes; every request waiting on
+ * it holds one of the browser's few connections to the server, and enough of
+ * them block the requests that never needed GitHub (saving a note).
+ */
+let ghTimeoutMs = 30_000;
+
+/**
+ * Sooner than the timeout: when nothing from GitHub has answered for a while
+ * and a call is still waiting after this long, GitHub counts as offline while
+ * the call goes on, so the calls after it fail at once instead of piling up.
+ * Its answer, if one comes, brings GitHub back.
+ */
+let ghSuspectMs = 8_000;
+const QUIET_MS = 60_000;
+let lastAnswerAt = 0;
+
+/** Tests shorten them. */
+export function setGhTimeout(ms: number, suspectMs = 8_000): void {
+  ghTimeoutMs = ms;
+  ghSuspectMs = suspectMs;
+}
+
+/**
+ * gh could not reach GitHub at all: no network, DNS, a dead proxy, or no
+ * answer before the timeout. An HTTP status from GitHub means it is online.
+ */
+const UNREACHABLE =
+  /error connecting to|dial tcp|no such host|i\/o timeout|TLS handshake timeout|network is unreachable|connection refused|connection reset|proxyconnect|context deadline exceeded|timed out/i;
+
+/** How long, once offline, calls fail at once before one tries GitHub again. */
+const OFFLINE_RETRY_MS = 20_000;
+
+/** Thrown instead of running gh while GitHub is known to be unreachable. */
+export class GithubOfflineError extends Error {
+  constructor(args: string[], detail = "GitHub can't be reached (offline)") {
+    super(`gh ${args.join(" ")} failed: ${detail}`);
+    this.name = "GithubOfflineError";
+  }
+}
+
+let offline: { since: number; triedAt: number } | null = null;
+
+/** Async calls still waiting on gh, cut together once GitHub counts as offline. */
+const inFlight = new Set<ReturnType<typeof execFile>>();
+
+/**
+ * When GitHub stopped answering, or null while it answers. Process-wide: one
+ * failed call is enough to know the machine is offline, and one that works
+ * again clears it.
+ */
+export function githubOfflineSince(): string | null {
+  return offline ? new Date(offline.since).toISOString() : null;
+}
+
+/** Tests start online. */
+export function resetGithubOffline(): void {
+  offline = null;
+  lastAnswerAt = 0;
+}
+
+/** Fail at once while offline, except for one call per retry window. */
+function gate(args: string[]): void {
+  if (!offline) return;
+  const now = Date.now();
+  if (now - offline.triedAt < OFFLINE_RETRY_MS) throw new GithubOfflineError(args);
+  offline.triedAt = now;
+}
+
+/** Records what a call's outcome says about GitHub; the error to throw, if it failed. */
+function settled(args: string[], detail: string | null): Error | null {
+  if (detail === null || !UNREACHABLE.test(detail)) {
+    offline = null;
+    lastAnswerAt = Date.now();
+    return detail === null ? null : new Error(`gh ${args.join(" ")} failed: ${detail}`);
+  }
+  if (!offline) {
+    const now = Date.now();
+    offline = { since: now, triedAt: now };
+  }
+  return new GithubOfflineError(args, detail);
+}
+
+function failureDetail(err: unknown, stdout?: unknown, stderr?: unknown): string {
+  const e = err as { stderr?: unknown; stdout?: unknown; message?: string; killed?: boolean; code?: unknown };
+  if (e.killed || e.code === "ETIMEDOUT") return "timed out waiting for GitHub";
+  return (stderr || e.stderr || stdout || e.stdout || e.message || "").toString().trim();
+}
+
 const defaultRunner: GhRunner = (args, input) => {
+  gate(args);
   try {
-    return execFileSync("gh", args, {
+    const out = execFileSync("gh", args, {
       encoding: "utf8",
       input,
       maxBuffer: 128 * 1024 * 1024,
+      timeout: ghTimeoutMs,
     });
+    settled(args, null);
+    return out;
   } catch (err) {
-    const e = err as { stderr?: string; stdout?: string; message: string };
-    const detail = (e.stderr || e.stdout || e.message || "").toString().trim();
-    throw new Error(`gh ${args.join(" ")} failed: ${detail}`);
+    throw settled(args, failureDetail(err));
   }
 };
 
@@ -59,20 +151,39 @@ export function ghAsync(args: string[], input?: string): Promise<string> {
     const injected = runner;
     return Promise.resolve().then(() => injected(args, input));
   }
+  try {
+    gate(args);
+  } catch (err) {
+    return Promise.reject(err);
+  }
   return new Promise((resolve, reject) => {
+    const suspect =
+      Date.now() - lastAnswerAt > QUIET_MS
+        ? setTimeout(() => {
+            if (!offline) {
+              const now = Date.now();
+              offline = { since: now, triedAt: now };
+            }
+            for (const waiting of inFlight) waiting.kill();
+          }, ghSuspectMs)
+        : null;
+    suspect?.unref?.();
     const child = execFile(
       "gh",
       args,
-      { encoding: "utf8", maxBuffer: 128 * 1024 * 1024 },
+      { encoding: "utf8", maxBuffer: 128 * 1024 * 1024, timeout: ghTimeoutMs },
       (err, stdout, stderr) => {
+        inFlight.delete(child);
+        if (suspect) clearTimeout(suspect);
         if (err) {
-          const detail = (stderr || stdout || err.message || "").toString().trim();
-          reject(new Error(`gh ${args.join(" ")} failed: ${detail}`));
+          reject(settled(args, failureDetail(err, stdout, stderr)));
         } else {
+          settled(args, null);
           resolve(stdout);
         }
       },
     );
+    inFlight.add(child);
     if (input !== undefined) child.stdin?.end(input);
     else child.stdin?.end();
   });

@@ -27,6 +27,7 @@ import {
 } from "../components/Chips";
 import { useModalBackground } from "../components/Modal";
 import { UpdateAvailable } from "../components/UpdateAvailable";
+import { NoticeStack, OfflineNotice } from "../components/Notices";
 import { WhatsNew } from "../components/WhatsNew";
 import {
   IconArchive,
@@ -396,6 +397,9 @@ export function PrList() {
             onClose={() => setTagEditor(null)}
           />
         ) : null}
+        <NoticeStack fixed>
+          <OfflineNotice />
+        </NoticeStack>
       </TagContext.Provider>
     </ArchiveContext.Provider>
   );

@@ -8,16 +8,17 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { IconCheck, IconClose, IconWarning } from "./icons";
 import { UiText } from "./UiText";
+import { useOfflineSince } from "../lib/offline";
 
 export type NoticeTone = "neutral" | "warn" | "error";
 
 /** How long a result stays when nobody is looking at it. */
 export const NOTICE_FADE_MS = 8000;
 
-export function NoticeStack({ children }: { children: ReactNode }) {
+export function NoticeStack({ children, fixed = false }: { children: ReactNode; fixed?: boolean }) {
   return (
     <div
-      className="pointer-events-none absolute inset-x-0 bottom-3 z-40 flex flex-col items-center gap-2 px-4"
+      className={`pointer-events-none ${fixed ? "fixed" : "absolute"} inset-x-0 bottom-3 z-40 flex flex-col items-center gap-2 px-4`}
       data-testid="notices"
       aria-live="polite"
     >
@@ -85,5 +86,21 @@ export function Notice({
         <IconClose width={10} height={10} />
       </button>
     </div>
+  );
+}
+
+/**
+ * GitHub can't be reached. A warning, never a block: the server is local, so
+ * reading, viewed marks, notes and drafts keep saving, and what needs GitHub
+ * says so when you try it. Closing it holds until the next time GitHub drops.
+ */
+export function OfflineNotice() {
+  const since = useOfflineSince();
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  if (!since || dismissed === since) return null;
+  return (
+    <Notice tone="warn" title="Offline: GitHub can't be reached" onDismiss={() => setDismissed(since)} testId="offline-notice">
+      <UiText>Reading, notes and drafts still save here. Refresh, publishing and reactions wait until GitHub answers.</UiText>
+    </Notice>
   );
 }

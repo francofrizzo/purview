@@ -1,6 +1,7 @@
 import { hydrateFiles } from "../lib/hunkBodies";
 import { stackOf } from "../lib/prList";
 import { ApiError, CONFIRM_REQUIRED_PUBLIC_EDIT } from "../api/errors";
+import { noteGithubOffline } from "../lib/offline";
 import { isFileComment, isGeneratedUnit } from "../api/types";
 import { skippedHunkIds } from "../lib/diffModel";
 import type {
@@ -1279,6 +1280,13 @@ export const mockApi = {
     // reviewer.mockOffline "1": the request gets no answer, as when the
     // server restarts mid-refresh (the browser's own TypeError).
     if (localStorage.getItem("reviewer.mockOffline") === "1") throw new TypeError("Failed to fetch");
+    // reviewer.mockGithubOffline "1": the server answers but gh can't reach
+    // GitHub, so the answer carries the offline header (see lib/offline.ts).
+    if (localStorage.getItem("reviewer.mockGithubOffline") === "1") {
+      noteGithubOffline(new Date().toISOString());
+      throw new ApiError("GitHub can't be reached. Purview works offline; this needs GitHub.", 503, { error: "github_offline" });
+    }
+    noteGithubOffline(null);
     // Mirrors the server: a refresh that lands new hunks on a PR with no
     // analysis auto-queues one, and the UI picks that up over /events.
     // An archived PR never auto-analyzes; the server records the skip instead

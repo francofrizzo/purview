@@ -68,6 +68,7 @@ import {
   type MigrationReport,
   type RepoKey,
   type State,
+  githubOfflineSince,
 } from "@reviewer/core";
 import {
   addComment,
@@ -251,6 +252,8 @@ export { authoredByYou };
  * `you` otherwise); the web sends nothing, which is the reader.
  */
 export const ACTOR_HEADER = "x-purview-actor";
+/** Set on every API answer while GitHub is unreachable: when it stopped answering. */
+export const GITHUB_OFFLINE_HEADER = "x-purview-github-offline";
 /** Which harness a chat actor runs on (PURVIEW_AGENT in the chat's env). */
 export const AGENT_HEADER = "x-purview-agent";
 
@@ -450,6 +453,13 @@ export function createApp(opts: AppOptions = {}): Hono {
   // the token check has to apply to the app shell and its assets too — a
   // device without the cookie must not get the page either.
   app.use("/api/*", requestLog());
+  // Whether gh can reach GitHub, on every answer: the app's offline banner
+  // follows it without a request of its own (see core's github.ts).
+  app.use("/api/*", async (c, next) => {
+    await next();
+    const since = githubOfflineSince();
+    if (since) c.header(GITHUB_OFFLINE_HEADER, since);
+  });
   app.use(lan ? "/*" : "/api/*", localOnlyGuard({ port, devOrigins: opts.devOrigins, lan }));
 
   /**
