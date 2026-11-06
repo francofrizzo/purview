@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.6.1
 
 - **Unsaved comments.** Opening another line or pressing Escape keeps a half-written comment; a pencil on its line or the drawer's Unsaved group reopens it. The × in the box discards it.
 - **Working offline.** Without a connection Purview keeps saving notes, drafts and viewed marks, and a notice at the bottom says GitHub can't be reached until it answers again.
