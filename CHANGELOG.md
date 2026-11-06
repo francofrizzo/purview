@@ -8,6 +8,7 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **Changed hunks to read again.** A hunk you viewed that a later revision changed has a faintly striped header and a hatched amber checkbox until you mark it viewed again.
+- **"None" in Behavior changes.** The overview's Behavior changes section says so when the analysis finds the PR changes no behavior, as in a refactor. Analyses write it from the next run on.
 
 ## 2026.11.6.3
 

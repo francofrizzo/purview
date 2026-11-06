@@ -505,7 +505,8 @@ export const BehaviorChangeSchema = z.object({
 });
 export type BehaviorChange = z.infer<typeof BehaviorChangeSchema>;
 export const MAX_BEHAVIOR_CHANGES = 10;
-export const BehaviorChangesSchema = z.array(BehaviorChangeSchema).min(1).max(MAX_BEHAVIOR_CHANGES);
+/** Empty: the analysis checked and the PR changes no behavior (a refactor). */
+export const BehaviorChangesSchema = z.array(BehaviorChangeSchema).max(MAX_BEHAVIOR_CHANGES);
 
 /**
  * Payload of `set-shape`: each key present replaces that view; `null` drops

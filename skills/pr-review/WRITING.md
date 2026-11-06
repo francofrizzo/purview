@@ -131,8 +131,8 @@ write the data.
   read it with.
 - **`fileNotes`** (write it on every analysis): where the change lands, as a shallow tree
   of the folders and files that carry it.
-- **`behaviorChanges`** (when the PR changes what the running system does): each
-  behavior, before and after.
+- **`behaviorChanges`** (write it on every analysis): each behavior the running system
+  changes, before and after; `[]` when it changes none.
 
 Each view costs the reader attention. Draw what this PR needs, not what the format allows.
 
@@ -171,8 +171,9 @@ would not know: the fewest that let them follow the summary and the units. Leave
 What the running system does differently once the PR merges, one row per behavior, each
 with how it behaved and how it behaves. Purview shows them as a table under the summary:
 the reviewer checks each row against the code, and notices the change nobody asked for.
-Leave `behaviorChanges` off for a PR that changes no behavior (a refactor, tests, docs,
-tooling); a refactor with one row saying "nothing changes" is noise.
+A PR that changes no behavior (a refactor, tests, docs, tooling) writes `"behaviorChanges": []`:
+Purview says so, and that tells the reviewer it is a refactor. Never a row saying "nothing
+changes".
 
 ```json
 "behaviorChanges": [

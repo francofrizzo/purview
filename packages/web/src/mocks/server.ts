@@ -100,6 +100,8 @@ try {
   if (localStorage.getItem("reviewer.mockUnread") === "1") {
     for (const hunk of Object.values(detail.state.hunks)) hunk.viewed = false;
   }
+  // reviewer.mockNoBehavior "1": the analysis found no behavior changes (a refactor).
+  if (localStorage.getItem("reviewer.mockNoBehavior") === "1") detail.state.behaviorChanges = [];
 } catch {
   // No storage: the fixture stays as it is.
 }

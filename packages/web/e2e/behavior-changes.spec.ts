@@ -13,3 +13,12 @@ test("the overview's behavior changes show without an experiment; a row opens th
   await table.getByTestId("behavior-change").filter({ hasText: "Client retries a charge" }).getByRole("button").click();
   await expect(page.getByTestId("unit-header")).toContainText(UNITS.charge.slice(0, 30));
 });
+
+test("an analysis that found no behavior changes says so, which reads as a refactor", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("reviewer.mockNoBehavior", "1"));
+  await openPr(page);
+  await page.getByTestId("sidebar-tab-overview").click();
+  const section = page.getByTestId("overview-behavior");
+  await expect(section.getByTestId("behavior-none")).toContainText("behaves the same");
+  await expect(section.getByTestId("behavior-change")).toHaveCount(0);
+});

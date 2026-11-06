@@ -14,8 +14,9 @@ const SAME = /^\s*=\s*$/;
  * What behaves differently once the PR merges, a row per behavior: before on
  * the diff's removed tint, after on its added tint, so it reads like the diff
  * the reader is about to open. A behavior that stays the same (`after` is
- * "=") is one neutral cell across both,, after the ones that change. A row
- * whose code lives in one unit opens it.
+ * "=") is one neutral cell across both, after the ones that change. A row
+ * whose code lives in one unit opens it. No rows is the analysis saying the
+ * PR changes no behavior, which is worth a line: it reads as a refactor.
  */
 export function BehaviorTable({
   changes,
@@ -28,6 +29,16 @@ export function BehaviorTable({
   units: Set<string>;
   onOpenUnit: (unitId: string) => void;
 }) {
+  if (!changes.length) {
+    return (
+      <section data-testid="overview-behavior" data-section="behavior">
+        <SectionHead title="Behavior changes" />
+        <p className="text-[13px] leading-5" style={{ color: "var(--fg-muted)" }} data-testid="behavior-none">
+          <UiText>None: the running system behaves the same before and after this PR.</UiText>
+        </p>
+      </section>
+    );
+  }
   // Room for a behavior's name on a line or two; before and after share the rest evenly.
   const cols = "sm:grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_minmax(0,1fr)_1.25rem]";
   return (

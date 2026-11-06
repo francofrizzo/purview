@@ -73,7 +73,8 @@ export function Overview({
     descriptionFirst ? { id: "description", label: "Description" } : null,
     summary ? { id: "summary", label: "Summary" } : null,
     state.concepts?.length ? { id: "concepts", label: "Concepts" } : null,
-    behaviorChanges?.length ? { id: "behavior", label: "Behavior" } : null,
+    // Empty is the analysis saying nothing changes: a refactor, worth the section.
+    behaviorChanges ? { id: "behavior", label: "Behavior" } : null,
     state.fileNotes ? { id: "files", label: "Where it lands" } : null,
     mix.rows.length ? { id: "size", label: "Size" } : null,
     ordered.length ? { id: "reading", label: "Must read" } : null,
@@ -181,7 +182,7 @@ export function Overview({
 
           {state.concepts?.length ? <ConceptList concepts={state.concepts} /> : null}
 
-          {behaviorChanges?.length ? (
+          {behaviorChanges ? (
             <BehaviorTable
               changes={behaviorChanges}
               numbers={numbers}
@@ -274,7 +275,7 @@ export function Overview({
     </>
   );
   const purviewShows = Boolean(
-    summary || behaviorChanges?.length || state.concepts?.length || state.fileNotes || mix.rows.length || ordered.length,
+    summary || behaviorChanges || state.concepts?.length || state.fileNotes || mix.rows.length || ordered.length,
   );
   const reviewsSection = (
     <>
