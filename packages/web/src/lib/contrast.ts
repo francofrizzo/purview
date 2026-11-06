@@ -195,6 +195,8 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("divider", "Code and prose", "border on bg (divider)", "border", 1.25, ["bg"], "", { kind: "swatch" }),
     s("checkbox-on-hunk-header", "Diff rows", "viewed checkbox outline on a hunk header", "fg-muted", 3.0, ["bg", "bg-hover"], "", { kind: "swatch" }),
     s("checkbox-on-focused-hunk-header", "Diff rows", "viewed checkbox outline on the focused hunk header", "fg-muted", 3.0, ["bg", "bg-hover", "accent-soft"], "", { kind: "swatch" }),
+    s("checkbox-reread-on-hunk-header", "Diff rows", "changed-since-viewed checkbox outline (warn) on a hunk header", "warn", 3.0, ["bg", "bg-hover", "warn@0.09"], "", { kind: "swatch" }),
+    s("text-on-reread-hunk-header", "Diff rows", "header text on a changed-since-viewed hunk header's stripes", "fg-muted", 3.2, ["bg", "bg-hover", "warn@0.09"], "@@ -14,4 +22,13 @@"),
     s("checkbox-some-on-focused-hunk-header", "Diff rows", "part-viewed checkbox (ok) on the focused hunk header", "ok", 3.0, ["bg", "bg-hover", "accent-soft"], "", { kind: "swatch" }),
     s("outline", "Code and prose", "border-strong on bg-raised (control outline)", "border-strong", 1.5, ["bg-raised"], "", { kind: "swatch" }),
   ];

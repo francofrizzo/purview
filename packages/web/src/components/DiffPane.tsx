@@ -3358,6 +3358,14 @@ export function DiffPane({
       // The header stays untinted even on a heart hunk: the tint and bar mark
       // the segments below, which may be a few lines of a long hunk.
       const ground = "var(--bg-hover)";
+      // Read before a revision changed it: owed again, hatched like the
+      // progress bar's re-read lines, faintly, so the header stays a header.
+      // The migration unsets viewed on such a hunk, so the checkbox's hatch
+      // shows until it is read again.
+      const reread = st.changedSinceViewed && !st.viewed;
+      const stripes = st.changedSinceViewed
+        ? "repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 9%, transparent) 0 4px, transparent 4px 9px), "
+        : "";
       return (
         <div
           data-testid={`hunk-header-${row.hunkId}`}
@@ -3368,7 +3376,7 @@ export function DiffPane({
             // A step lighter than the code, so a file's hunks read as
             // separate blocks. accent-soft is translucent; composite it over
             // that ground so a pinned focused header stays opaque.
-            background: focused ? `linear-gradient(var(--accent-soft), var(--accent-soft)), ${ground}` : ground,
+            background: `${stripes}${focused ? "linear-gradient(var(--accent-soft), var(--accent-soft)), " : ""}${ground}`,
             borderLeft: `2px solid ${focused ? "var(--accent)" : "transparent"}`,
             // A drawn line, not a border: row heights stay what was measured.
             boxShadow: row.seam ? "inset 0 1px 0 var(--border-strong)" : undefined,
@@ -3411,13 +3419,18 @@ export function DiffPane({
               pendingScrollRef.current = { anchor: foldAnchor(row.hunkId), at: performance.now() };
               onToggleViewed(row.hunkId, !st.viewed);
             }}
-            data-tip={st.viewed ? "Mark as not viewed" : "Mark as viewed"}
+            data-tip={st.viewed ? "Mark as not viewed" : reread ? "Changed since you viewed it: mark as viewed again" : "Mark as viewed"}
             data-tip-key="v"
-            aria-label={st.viewed ? "Mark as not viewed" : "Mark as viewed"}
+            aria-label={st.viewed ? "Mark as not viewed" : reread ? "Changed since viewed: mark as viewed again" : "Mark as viewed"}
+            data-reread={reread || undefined}
             className="flex h-4 w-4 flex-none items-center justify-center rounded-sm border transition-colors"
             style={{
-              borderColor: st.viewed ? "var(--ok)" : "var(--fg-muted)",
-              background: st.viewed ? "var(--ok)" : "transparent",
+              borderColor: st.viewed ? "var(--ok)" : reread ? "var(--warn)" : "var(--fg-muted)",
+              background: st.viewed
+                ? "var(--ok)"
+                : reread
+                  ? "repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 35%, transparent) 0 1.5px, transparent 1.5px 3.5px)"
+                  : "transparent",
               color: "var(--bg)",
             }}
           >
