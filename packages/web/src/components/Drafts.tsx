@@ -222,8 +222,8 @@ export function CommentComposer({
       data-variant={variant}
       className={
         floating
-          ? "absolute bottom-3 right-4 z-40 w-[28rem] rounded-md elev-3"
-          : "relative w-full max-w-[46rem] rounded-md"
+          ? "absolute bottom-3 right-4 z-40 w-[40rem] max-w-[calc(100%-2rem)] rounded-md elev-3"
+          : "relative w-full max-w-[46rem] rounded-md elev-2"
       }
       data-audience={forAgent ? "agent" : "github"}
       // The frame takes the audience's colour, quietly: a ring, not a bar.
@@ -308,7 +308,7 @@ export function CommentComposer({
       <EditorTools fmt={fmt} wp={wp} attach={attach} prKey={prKey} formatId="composer-format" attachId="composer-attach">
           {/* Who it is for, in words, beside the button that saves it. */}
           {onAudienceChange && !reply ? (
-            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="composer-audience" compact={floating} />
+            <AudienceSwitch value={audience} onChange={onAudienceChange} testId="composer-audience" />
           ) : null}
           {exportCtx ? (
             <CopyForAgentButton
