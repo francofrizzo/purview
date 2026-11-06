@@ -27,10 +27,11 @@ describe("the analysis prompt with every experiment off", () => {
   for (const incremental of [false, true]) {
     it(`never mentions an experiment (${incremental ? "refresh" : "first analysis"})`, () => {
       const off = analysisSystemPrompt({ incremental });
-      expect(off).not.toMatch(/behaviorChanges|Behavior changes|Unit diagrams|"diagram"/);
+      expect(off).not.toMatch(/Unit diagrams|"diagram"/);
+      // Graduated: behavior changes are asked for with every experiment off.
+      expect(off).toContain("### Behavior changes");
       expect(off).not.toContain("<!-- experiment:");
-      const on = analysisSystemPrompt({ incremental, experiments: { behaviorChanges: true, unitDiagrams: true } });
-      expect(on).toContain("### Behavior changes");
+      const on = analysisSystemPrompt({ incremental, experiments: { unitDiagrams: true } });
       expect(on).toContain("### Unit diagrams");
       expect(on).not.toContain("<!-- experiment:");
     });

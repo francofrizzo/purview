@@ -1,8 +1,9 @@
-import type { BehaviorChange } from "../../api/types";
-import { UnitNumber } from "../Chips";
-import { InlineMarkdown } from "../Markdown";
-import { SectionHead } from "../SectionHead";
-import { UiText } from "../UiText";
+import type { BehaviorChange } from "../api/types";
+import { UnitNumber } from "./Chips";
+import { IconUnit } from "./icons";
+import { InlineMarkdown } from "./Markdown";
+import { SectionHead } from "./SectionHead";
+import { UiText } from "./UiText";
 
 /** A cell the analysis left empty: the behavior did not exist, or no longer does. */
 const NONE = /^\s*[—–-]?\s*$/;
@@ -38,7 +39,10 @@ export function BehaviorTable({
         <span />
         <UiText className="px-2">Before</UiText>
         <UiText className="px-2">After</UiText>
-        <span />
+        {/* The unit column: the Guide tab's icon, over the unit numbers. */}
+        <span className="flex items-center justify-center" data-testid="behavior-unit-head" data-tip="The unit that makes the change">
+          <IconUnit width={11} height={11} />
+        </span>
       </div>
       <ul className="flex flex-col gap-1">
         {[...changes.filter((c) => !SAME.test(c.after)), ...changes.filter((c) => SAME.test(c.after))].map((c, i) => {

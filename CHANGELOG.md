@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Behavior changes.** The overview shows a before and after table of what the PR changes in the running system; click a row to open the unit that makes it. Analyses write it from the next run on.
+
 ## 2026.11.6.2
 
 - **Reading progress bar.** The top of the sidebar shows how much of must read, skim and skip you have read; click a part to open its next unread unit. Keyboard shortcuts moved from the sidebar footer to the ⋯ menu and `?`.

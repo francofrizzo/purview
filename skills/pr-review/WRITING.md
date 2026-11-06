@@ -131,10 +131,8 @@ write the data.
   read it with.
 - **`fileNotes`** (write it on every analysis): where the change lands, as a shallow tree
   of the folders and files that carry it.
-<!-- experiment:behaviorChanges -->
 - **`behaviorChanges`** (when the PR changes what the running system does): each
   behavior, before and after.
-<!-- /experiment:behaviorChanges -->
 
 Each view costs the reader attention. Draw what this PR needs, not what the format allows.
 
@@ -168,7 +166,6 @@ would not know: the fewest that let them follow the summary and the units. Leave
 - Not general programming terms (cache, migration, retry), and not something only one unit
   mentions: explain that in the unit.
 
-<!-- experiment:behaviorChanges -->
 ### Behavior changes
 
 What the running system does differently once the PR merges, one row per behavior, each
@@ -197,7 +194,6 @@ tooling); a refactor with one row saying "nothing changes" is noise.
 - `unit`: the id of the unit whose code makes the change, so the row opens it. Leave it
   out when the change spreads across several.
 - Two to six rows, ten at most. Order by what a user would notice first.
-<!-- /experiment:behaviorChanges -->
 
 ### File notes
 

@@ -771,7 +771,7 @@ export interface GlobalConfig {
   /** ask origin once a day for a newer release and show it on the home page */
   updateCheck?: boolean;
   /** features being tried, all off by default (lib/experiments.ts). Absent on a server that predates them. */
-  experiments?: Partial<Record<"behaviorChanges" | "unitDiagrams", boolean>>;
+  experiments?: Partial<Record<"unitDiagrams", boolean>>;
   /** what this layer resolves to on its own — the end of the chain */
   effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }

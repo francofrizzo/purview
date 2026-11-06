@@ -1,8 +1,7 @@
 import { Fragment, useMemo, useRef, useState } from "react";
 import type { Concept, PrDetail, RemoteConversationComment, RemoteReview, RemoteThread, ReviewUnit } from "../api/types";
 import { changeMix } from "../lib/changeMix";
-import { useExperiment } from "../lib/experiments";
-import { BehaviorTable } from "./experiments/BehaviorTable";
+import { BehaviorTable } from "./BehaviorTable";
 import { unitProgress } from "../lib/diffModel";
 import { workUnits } from "../lib/generated";
 import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/reviews";
@@ -69,8 +68,7 @@ export function Overview({
   const mix = useMemo(() => changeMix(detail.files.files), [detail.files.files]);
   const { settings, update } = useSettings();
   const descriptionFirst = settings.descriptionFirst && Boolean(description);
-  const behaviorOn = useExperiment("behaviorChanges");
-  const behaviorChanges = behaviorOn ? state.behaviorChanges : undefined;
+  const behaviorChanges = state.behaviorChanges;
   const sections = [
     descriptionFirst ? { id: "description", label: "Description" } : null,
     summary ? { id: "summary", label: "Summary" } : null,

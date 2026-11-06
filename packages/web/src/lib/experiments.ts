@@ -8,11 +8,6 @@ import { useGlobalConfig } from "../api/hooks";
 
 export const EXPERIMENTS = [
   {
-    id: "behaviorChanges",
-    title: "Behavior changes",
-    hint: "A before and after table under the overview's summary. Analyses write it once this is on.",
-  },
-  {
     id: "unitDiagrams",
     title: "Unit diagrams",
     hint: "A sequence, state or data diagram beside a unit when one helps. Analyses draw them once this is on.",

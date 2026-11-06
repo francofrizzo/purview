@@ -587,11 +587,9 @@ export function analysisPrompt(
           state.fileNotes || state.concepts
             ? "The PR has a shape (concepts, file notes; WRITING.md, 'The shape of the change'). Only if this revision changes something one of them shows (a new concept, a new file or a folder taking a new role) or makes what one says untrue, redraw that view with `set-shape` after `set-units`; otherwise leave it."
             : "",
-          experimentOn("behaviorChanges", root)
-            ? state.behaviorChanges
-              ? "The PR has behavior changes (WRITING.md, 'Behavior changes'). If this revision changes a behavior a row shows or makes a row untrue, redraw them with `set-shape` after `set-units`; otherwise leave them."
-              : "This PR has no `behaviorChanges` yet: if it changes what the system does, write them with `set-shape` (WRITING.md, 'Behavior changes')."
-            : "",
+          state.behaviorChanges
+            ? "The PR has behavior changes (WRITING.md, 'Behavior changes'). If this revision changes a behavior a row shows or makes a row untrue, redraw them with `set-shape` after `set-units`; otherwise leave them."
+            : "This PR has no `behaviorChanges` yet: if it changes what the system does, write them with `set-shape` (WRITING.md, 'Behavior changes').",
           experimentOn("unitDiagrams", root)
             ? "A patched unit may carry a `diagram` (WRITING.md, 'Unit diagrams'): send one in its patch when this revision makes it a sequence, state machine or data model prose struggles with, redraw one this revision makes wrong, and `\"diagram\": null` drops one that no longer earns its place."
             : "",
@@ -602,9 +600,7 @@ export function analysisPrompt(
           "This PR has no analysis yet. Produce the full analysis and write it with",
           `\`${cmd} set-analysis ${keyStr} --file <analysis.json>\`.`,
           "Lead the reader in from broad to narrow (WRITING.md): a plain `summary` with no code, then the shape ('The shape of the change'): `concepts` as that section says, and `fileNotes` always: a shallow tree, one note per folder where its files share a role and per file only where one has its own.",
-          experimentOn("behaviorChanges", root)
-            ? "Write `behaviorChanges` when the PR changes what the system does (WRITING.md, 'Behavior changes')."
-            : "",
+          "Write `behaviorChanges` when the PR changes what the system does (WRITING.md, 'Behavior changes').",
           experimentOn("unitDiagrams", root)
             ? "Give a unit a `diagram` only where its logic is a sequence across components, a state machine or data relationships prose struggles with (WRITING.md, 'Unit diagrams'): most units none, a few per PR at most."
             : "",
