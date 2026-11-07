@@ -5,10 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.6.4
 
-- **Changed hunks to read again.** A hunk you viewed that a later revision changed has a faintly striped header and a hatched amber checkbox until you mark it viewed again.
-- **"None" in Behavior changes.** The overview's Behavior changes section says so when the analysis finds the PR changes no behavior, as in a refactor. Analyses write it from the next run on.
+- **Changed hunks to read again.** A viewed hunk that a new revision changed shows a striped header and an amber checkbox.
+- **"None" in Behavior changes.** The overview says so when a PR changes no behavior, as in a refactor.
 
 ## 2026.11.6.3
 
