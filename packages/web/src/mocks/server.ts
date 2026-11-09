@@ -679,7 +679,7 @@ Three things I would push on:
 
 - \`idempotencyKey(order.id, order.total, order.currency)\` concatenates fields
   with a separator that can itself appear in an id. Two different orders can
-  collide.
+  collide (hunk \`a1b2c3d4e5f60003\`).
 - The retry wrapper's jitter is applied *after* the attempt counter check, so
   the final attempt has no backoff at all (see \`transient-retry-backoff\`).
 - \`charge_ledger\` (created in \`idempotency.ts:3\`) has no index on \`key\`, and the replay lookup is on the hot

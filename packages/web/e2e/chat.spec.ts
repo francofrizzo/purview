@@ -196,3 +196,13 @@ test("a file and line in a reply open in the unit that holds the nearest hunk wh
   await expect(page.getByTestId("sidebar-tab-units")).toHaveAttribute("aria-selected", "true");
   await expect(hunkHeader(page, "a1b2c3d4e5f60005")).toBeInViewport();
 });
+
+test("a hunk id in a reply reads as its file and line and opens that hunk", async ({ page }) => {
+  await page.getByTestId("chat-input").fill("What is risky here?");
+  await page.getByTestId("chat-send").click();
+  await expect(page.getByTestId("chat-stop")).toHaveCount(0, { timeout: 20_000 });
+  const transcript = page.getByTestId("chat-transcript");
+  await expect(transcript).not.toContainText("a1b2c3d4e5f60003");
+  await transcript.getByRole("button", { name: "idempotency.ts:1", exact: true }).click();
+  await expect(hunkHeader(page, "a1b2c3d4e5f60003")).toBeInViewport();
+});

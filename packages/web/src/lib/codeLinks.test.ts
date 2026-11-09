@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { evidenceParts, hunkAtLine, nearestHunk, resolveCodeTarget, resolveDiffPath, warningLines } from "./codeLinks";
+import type { PrDetail } from "../api/types";
+import { codeLinker, evidenceParts, hunkAtLine, nearestHunk, resolveCodeTarget, resolveDiffPath, warningLines } from "./codeLinks";
 
 const files = [
   { path: "pkg/openairesponses/rollout.go" },
@@ -118,5 +119,22 @@ describe("warningLines", () => {
       files,
     );
     expect([...out]).toEqual([["src/api/pay.ts:9", ["a", "b"]]]);
+  });
+});
+
+describe("hunk ids", () => {
+  const detail = {
+    state: { units: [] },
+    files: { files: [{ path: "cmd/main.go", hunks: [{ id: "33f3566ed5be27f2", newStart: 18 }, { id: "33f3566ed5be27f2#2", newStart: 40 }] }] },
+  } as unknown as PrDetail;
+
+  it("reads a current hunk's id as its file and line, and opens it there", () => {
+    const opened: [string, number?][] = [];
+    const link = codeLinker(detail, { onOpenFile: (p, l) => opened.push([p, l]) })!;
+    expect(link("33f3566ed5be27f2")).toMatchObject({ code: "main.go:18", title: "Hunk at cmd/main.go, line 18" });
+    expect(link("33f3566ed5be27f2#2")).toMatchObject({ code: "main.go:40" });
+    link("33f3566ed5be27f2")!.onOpen();
+    expect(opened).toEqual([["cmd/main.go", 18]]);
+    expect(link("0000000000000000")).toBeNull();
   });
 });

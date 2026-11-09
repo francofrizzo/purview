@@ -55,6 +55,8 @@ export interface CodeLink {
   onOpen: () => void;
   /** shown instead of the span's own text (a unit's number and title, not its id) */
   label?: { number?: number; text: string };
+  /** shown as code instead of the span's own text (a hunk's place, not its id) */
+  code?: string;
 }
 
 /**
@@ -256,7 +258,7 @@ function Inline({ nodes, marked: shared }: { nodes: MdInline[]; marked?: Set<Con
               data-tip={link.title}
               onClick={link.onOpen}
             >
-              {node.type === "code" ? node.text : null}
+              {link.code ?? (node.type === "code" ? node.text : null)}
             </button>
           );
         }

@@ -1,8 +1,9 @@
 /**
  * What a code span in a chat reply points at, if anything the PR view can
- * open. The model already writes units as `unit-id` and places as
- * `path/to/file.go:23` (or `file.go:~551-567`, `file.go`), so these are read
- * straight from what it writes rather than taught a link syntax.
+ * open. The model already writes units as `unit-id`, places as
+ * `path/to/file.go:23` (or `file.go:~551-567`, `file.go`) and hunks by the id
+ * the review tools gave it (`33f3566ed5be27f2`), so these are read straight
+ * from what it writes rather than taught a link syntax.
  */
 
 import type { FileEntry, Hunk, PrDetail, ReviewUnit } from "../api/types";
@@ -113,10 +114,18 @@ export function nearestHunk(hunks: Pick<Hunk, "id" | "newStart" | "newLines">[],
 /** Unit ids, for the linker's exact-match lookup. */
 export const unitIdSet = (units: Pick<ReviewUnit, "id">[]) => new Set(units.map((u) => u.id));
 
+/** A hunk id of the current revision, to the file and first new-side line it opens at. */
+export function hunkPlaces(files: Pick<FileEntry, "path" | "hunks">[]): Map<string, { path: string; line: number }> {
+  const out = new Map<string, { path: string; line: number }>();
+  for (const f of files) for (const h of f.hunks) out.set(h.id, { path: f.path, line: h.newStart });
+  return out;
+}
+
 /**
  * The CodeLinkContext provider for one PR: code spans naming a unit id open
  * that unit and read as its number and title; spans naming a diff file (with
- * an optional line) open the file. Used by the chat and by the brief and
+ * an optional line) open the file; a hunk id reads as `file.go:18` and opens
+ * that hunk. Used by the chat and by the brief and
  * sidebar, where a ripple unit's summary names its driving unit by id.
  */
 export function codeLinker(
@@ -128,7 +137,17 @@ export function codeLinker(
   const units = new Map(detail.state.units.map((u) => [u.id, u]));
   const numbers = unitDisplayNumbers(detail.state.units);
   const ctx = { unitIds: onOpenUnit ? unitIdSet(detail.state.units) : new Set<string>(), files: detail.files.files };
+  const hunks = onOpenFile ? hunkPlaces(detail.files.files) : new Map<string, { path: string; line: number }>();
   return (text: string): CodeLink | null => {
+    const hunk = hunks.get(text.trim());
+    if (hunk && onOpenFile) {
+      const at = `${hunk.path.split("/").pop()}:${hunk.line}`;
+      return {
+        title: `Hunk at ${hunk.path}, line ${hunk.line}`,
+        code: at,
+        onOpen: () => onOpenFile(hunk.path, hunk.line),
+      };
+    }
     const target = resolveCodeTarget(text, ctx);
     if (target?.kind === "unit" && onOpenUnit) {
       const unit = units.get(target.unitId)!;

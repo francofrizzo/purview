@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Hunk links in the chat.** A hunk id in a reply reads as its file and line; click it to open that hunk.
+
 ## 2026.11.6.4
 
 - **Changed hunks to read again.** A viewed hunk that a new revision changed shows a striped header and an amber checkbox.
