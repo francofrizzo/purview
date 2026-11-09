@@ -1411,7 +1411,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const revision = loadState(key, root).currentRevision;
     const pending = pendingAgentNotes(readComments(key, root));
     const files = readFilesJson(key, revision, root).files;
-    return c.json({ pending, markdown: formatAgentNotes(pending, { meta, revision, files }) });
+    return c.json({ pending, markdown: formatAgentNotes(pending, { meta, revision, headSha: headShaOf(key, root), files }) });
   });
 
   app.post("/api/prs/:key/agent-notes/pickup", async (c) => {
@@ -1427,7 +1427,7 @@ export function createApp(opts: AppOptions = {}): Hono {
     const revision = loadState(key, root).currentRevision;
     const pending = pendingAgentNotes(readComments(key, root));
     const files = readFilesJson(key, revision, root).files;
-    const markdown = formatAgentNotes(pending, { meta, revision, files });
+    const markdown = formatAgentNotes(pending, { meta, revision, headSha: headShaOf(key, root), files });
     const marked = markPickedUp(key, pending.map((n) => n.id), agent, root);
     const notes = pending.map((n) => marked.find((m) => m.id === n.id)!);
     return c.json({ notes, markdown, revision });

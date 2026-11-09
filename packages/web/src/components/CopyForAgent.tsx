@@ -145,6 +145,7 @@ export interface BundleSource {
   ctx: DiffContext;
   repoLabel?: string;
   revision?: number;
+  commit?: string;
   reviewBody?: string;
 }
 
@@ -192,6 +193,7 @@ export function CopyBundleControls({
     formatBundle(source.comments, source.ctx, {
       repoLabel: source.repoLabel,
       revision: source.revision,
+      commit: source.commit,
       reviewBody: source.reviewBody,
       includeSubmitted,
     });

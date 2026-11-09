@@ -43,6 +43,9 @@ export interface BundleOptions {
   /** e.g. "acme/billing#482"; omitted → the bundle gets a generic heading */
   repoLabel?: string;
   revision?: number;
+  /** the revision's head commit: what the agent can find in its checkout,
+   *  where a revision number means nothing to it */
+  commit?: string;
   /** the review body draft, used as a plain preamble paragraph */
   reviewBody?: string;
   /** include already-submitted comments (default: draft + pushed only) */
@@ -186,7 +189,11 @@ export function formatBundle(
   if (selected.length === 0) return "";
 
   const target = options.repoLabel ? ` for ${options.repoLabel}` : "";
-  const rev = options.revision === undefined ? "" : ` (rev ${options.revision})`;
+  const at = [
+    options.revision === undefined ? "" : `rev ${options.revision}`,
+    options.commit ? `commit ${shortSha(options.commit)}` : "",
+  ].filter(Boolean);
+  const rev = at.length ? ` (${at.join(", ")})` : "";
   const blocks: string[] = [`## Review feedback${target}${rev}`];
 
   const preamble = (options.reviewBody ?? "").trim();
@@ -195,6 +202,9 @@ export function formatBundle(
   selected.forEach((c, i) => blocks.push(formatComment(c, ctx, i + 1)));
   return blocks.join("\n\n") + "\n";
 }
+
+/** A commit as an agent can pass it to git: 12 characters, unique in any repo it will meet. */
+export const shortSha = (sha: string) => sha.slice(0, 12);
 
 /** "acme/billing#482" from the PR meta the view already holds. */
 export function repoLabel(meta: { owner: string; repo: string; number: number }): string {

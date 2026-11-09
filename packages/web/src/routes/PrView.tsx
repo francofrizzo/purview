@@ -1431,6 +1431,7 @@ export function PrView() {
     ctx: exportCtx,
     repoLabel: repoLabel(detail.meta),
     revision: detail.state.revision,
+    commit: detail.state.revisions?.find((r) => r.revision === detail.state.revision)?.headSha,
   };
 
   // The optimistic actions: the diff or the header already moved when one of

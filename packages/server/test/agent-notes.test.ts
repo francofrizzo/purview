@@ -30,6 +30,8 @@ it("formats ranges, side-specific context, file notes, replies and missing ancho
   const missing = add({ line: 999 });
   const md = format([parent, left, reply, file, missing]);
   expect(md).toContain("# Notes from the reviewer — acme/widgets#7 (revision 1)");
+  const withCommit = formatAgentNotes([parent], { meta: readMeta(key, root), revision: 1, headSha: "1a2b3c4d5e6f7a8b9c0d", files: readFilesJson(key, 1, root).files });
+  expect(withCommit).toContain("# Notes from the reviewer — acme/widgets#7 (revision 1, commit 1a2b3c4d5e6f)");
   expect(md).toContain("5 notes.");
   expect(md).toContain("## 1. src/foo.ts:1-2\n\n```ts\nline1\nnew2\nline3\n```");
   expect(md).toContain("> Please fix\n> this\n\n### reply\n\n> Reply\n> words\n\n## 2.");

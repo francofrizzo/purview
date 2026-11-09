@@ -4,11 +4,13 @@ import { anchoringHunkOf, commentEvents, pendingAgentNotes, readComments, type C
 
 const languages: Record<string, string> = { ts: "ts", tsx: "tsx", js: "js", jsx: "jsx", py: "python", rb: "ruby", rs: "rust", go: "go", json: "json", css: "css", sh: "sh", md: "markdown", yml: "yaml", yaml: "yaml" };
 
-export function formatAgentNotes(notes: Comment[], { meta, revision, files }: {
-  meta: Pick<Meta, "owner" | "repo" | "number">; revision: number; files: FileDiff[];
+/** `headSha`: the revision's head commit, which the agent can find in its checkout (a revision number means nothing to it). */
+export function formatAgentNotes(notes: Comment[], { meta, revision, headSha, files }: {
+  meta: Pick<Meta, "owner" | "repo" | "number">; revision: number; headSha?: string; files: FileDiff[];
 }): string {
   if (!notes.length) return "";
-  const parts = [`# Notes from the reviewer — ${meta.owner}/${meta.repo}#${meta.number} (revision ${revision})`,
+  const at = headSha ? `revision ${revision}, commit ${headSha.slice(0, 12)}` : `revision ${revision}`;
+  const parts = [`# Notes from the reviewer — ${meta.owner}/${meta.repo}#${meta.number} (${at})`,
     `${notes.length} notes. Each one names the file and line and quotes the reviewer. Act on them in the code.`];
   const emitted = new Set<string>();
   let number = 0;

@@ -296,6 +296,8 @@ describe("formatBundle", () => {
   it("heads the bundle with the repo and revision, and numbers in file order", () => {
     const out = formatBundle(comments, ctx, { repoLabel: "acme/billing#482", revision: 3 });
     expect(out.startsWith("## Review feedback for acme/billing#482 (rev 3)\n")).toBe(true);
+    const withCommit = formatBundle(comments, ctx, { repoLabel: "acme/billing#482", revision: 3, commit: "1a2b3c4d5e6f7a8b9c0d" });
+    expect(withCommit.startsWith("## Review feedback for acme/billing#482 (rev 3, commit 1a2b3c4d5e6f)\n")).toBe(true);
     expect(out).toContain("### 1. `src/a.ts:2` (new side)");
     expect(out).toContain("### 2. `src/z.ts:1` (new side)");
     expect(out).not.toContain("public");
