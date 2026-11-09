@@ -15,7 +15,7 @@ import { conceptTip, type Glossary } from "../lib/glossary";
 import type { Concept } from "../api/types";
 import { useSettings } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
-import { IconCheck, IconChevron, IconCopy, IconExpand, IconWrap } from "./icons";
+import { IconCheck, IconChevron, IconCopy, IconExpand, IconFile, IconHunk, IconUnit, IconWrap } from "./icons";
 import { DiagramViewer } from "./DiagramViewer";
 import { UiText } from "./UiText";
 
@@ -50,6 +50,8 @@ const LANG_ALIASES: Record<string, string> = {
 
 /** What a code span links to, when its text names something the page can open. */
 export interface CodeLink {
+  /** what it opens, shown as an icon before the text */
+  kind?: "unit" | "file" | "hunk";
   /** hover text, e.g. "Unit 3: Extract shared rollout selector" */
   title: string;
   onOpen: () => void;
@@ -234,6 +236,7 @@ function Inline({ nodes, marked: shared }: { nodes: MdInline[]; marked?: Set<Con
               data-tip={link.title}
               onClick={link.onOpen}
             >
+              <LinkKindIcon kind={link.kind} />
               {link.label.number !== undefined ? (
                 <span className="mr-1 tabular-nums" style={{ opacity: 0.65 }}>
                   {link.label.number}
@@ -258,6 +261,7 @@ function Inline({ nodes, marked: shared }: { nodes: MdInline[]; marked?: Set<Con
               data-tip={link.title}
               onClick={link.onOpen}
             >
+              <LinkKindIcon kind={link.kind} />
               {link.code ?? (node.type === "code" ? node.text : null)}
             </button>
           );
@@ -830,3 +834,21 @@ export const Markdown = memo(function Markdown({
     </div>
   );
 });
+
+const LINK_KIND_ICON = { unit: IconUnit, file: IconFile, hunk: IconHunk } as const;
+
+/** What a code link opens, as the icon the app uses for it, sized to the text.
+ *  Hidden from assistive tech: the link's tip already names the kind. */
+function LinkKindIcon({ kind }: { kind?: CodeLink["kind"] }) {
+  if (!kind) return null;
+  const Icon = LINK_KIND_ICON[kind];
+  return (
+    <Icon
+      width="0.95em"
+      height="0.95em"
+      className="mr-[0.25em] inline-block align-[-0.12em]"
+      style={{ opacity: 0.7 }}
+      aria-hidden
+    />
+  );
+}

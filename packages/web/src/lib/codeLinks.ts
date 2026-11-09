@@ -143,6 +143,7 @@ export function codeLinker(
     if (hunk && onOpenFile) {
       const at = `${hunk.path.split("/").pop()}:${hunk.line}`;
       return {
+        kind: "hunk",
         title: `Hunk at ${hunk.path}, line ${hunk.line}`,
         code: at,
         onOpen: () => onOpenFile(hunk.path, hunk.line),
@@ -154,6 +155,7 @@ export function codeLinker(
       const n = numbers.get(unit.id);
       const title = unit.title.replace(/`/g, "");
       return {
+        kind: "unit",
         title: `${n !== undefined ? `Unit ${n}` : "Unit"}: ${title}`,
         label: { number: n, text: title },
         onOpen: () => onOpenUnit(unit.id),
@@ -161,6 +163,7 @@ export function codeLinker(
     }
     if (target?.kind === "file" && onOpenFile) {
       return {
+        kind: "file",
         title: target.line !== undefined ? `${target.path}, line ${target.line}` : target.path,
         onOpen: () => onOpenFile(target.path, target.line),
       };

@@ -7,6 +7,7 @@ import {
   IconArrowLeft as TablerArrowLeft,
   IconArrowsExchange,
   IconArrowsRightLeft,
+  IconBracketsContain,
   IconBrandGithub as TablerBrandGithub,
   IconSparkles as TablerSparkles,
   IconTag as TablerTag,
@@ -291,6 +292,8 @@ export const IconTag = wrap(TablerTag);
 /** Angle brackets — open the code in an editor. */
 export const IconCode = wrap(TablerCode);
 export const IconUnit = wrap(IconStack2);
+/** A hunk: a stretch of a file's lines the diff changes. */
+export const IconHunk = wrap(IconBracketsContain);
 /** The PR view's sidebar tabs: the overview, and the files tree (Guide uses IconUnit). */
 export const IconOverview = wrap(IconLayoutDashboard);
 export const IconFiles = wrap(TablerFiles);

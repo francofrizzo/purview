@@ -8,6 +8,7 @@ app, not for git: say what changed in the review, not which file moved.
 ## Unreleased
 
 - **Hunk links in the chat.** A hunk id in a reply reads as its file and line; click it to open that hunk.
+- **Link icons.** A link in a chat reply or a brief shows an icon for what it opens: a unit, a file or a hunk.
 
 ## 2026.11.6.4
 
