@@ -5,11 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.9.1
 
-- **Hunk links in the chat.** A hunk id in a reply reads as its file and line; click it to open that hunk.
-- **Commit in feedback for agents.** Copied feedback and the notes an agent picks up name the commit they were written against, next to the revision.
-- **Link icons.** A link in a chat reply or a brief shows an icon for what it opens: a unit, a file or a hunk.
+- **Hunk links in the chat.** A hunk id in a reply shows as file:line; click it to open the hunk.
+- **Link icons.** Links in chat replies and briefs show whether they open a unit, a file or a hunk.
+- **Commit in feedback for agents.** Copied feedback and agent notes name the commit next to the revision.
 
 ## 2026.11.6.4
 
