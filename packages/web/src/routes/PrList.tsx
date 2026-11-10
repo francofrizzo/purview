@@ -1,10 +1,11 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { TagPopover } from "../components/TagPopover";
 import { arrangeBlock, type ArrangedRow } from "../lib/prList";
 import { MOCK } from "../api/client";
 import {
   useAddPr,
+  useArchiveMany,
   useImportCandidates,
   useImportReviews,
   useMarkVersionSeen,
@@ -32,12 +33,15 @@ import { WhatsNew } from "../components/WhatsNew";
 import {
   IconArchive,
   IconBranch,
+  IconCheck,
   IconChevron,
+  IconClose,
   IconDensity,
   IconHourglass,
   IconPlus,
   IconRefresh,
   IconSearch,
+  IconSelect,
   IconSettings,
   IconSpinner,
   IconTag,
@@ -83,6 +87,18 @@ const ArchiveContext = createContext<ReturnType<typeof useSetArchived> | null>(
   null,
 );
 
+/**
+ * The rows picked for an action on several PRs at once (tag, archive). While
+ * any is picked the list is in selection mode: every row shows its checkbox
+ * and a click on a row picks it instead of opening it; shift-click picks the
+ * rows between it and the last one clicked, as they appear on the page.
+ */
+interface Selection {
+  keys: Set<string>;
+  toggle: (key: string, range: boolean) => void;
+}
+const SelectionContext = createContext<Selection>({ keys: new Set(), toggle: () => {} });
+
 /** The header's bare icon buttons: no fill or border, a hover tint only. */
 const ICON_BUTTON =
   "inline-flex h-7 w-7 flex-none items-center justify-center rounded text-[var(--fg-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]";
@@ -104,9 +120,15 @@ export function PrList() {
   const background = useModalBackground();
   const addPr = useAddPr();
   const setArchived = useSetArchived();
+  const archiveMany = useArchiveMany();
+  const tagMany = useRef<HTMLButtonElement>(null);
+  const [tagManyOpen, setTagManyOpen] = useState(false);
   const archiveError = rollbackMessage([
     { label: "archiving the PR", error: setArchived.error },
+    { label: "archiving the PRs", error: archiveMany.error },
   ]);
+  const [picked, setPicked] = useState<string[]>([]);
+  const lastPicked = useRef<string | null>(null);
   const navigate = useNavigate();
   const { settings, update } = useSettings();
   const compact = settings.compactRows;
@@ -138,6 +160,48 @@ export function PrList() {
     for (const r of repos) map.set(`${r.host}/${r.owner}/${r.repo}`, r);
     return map;
   }, [repos]);
+
+  // A PR that left the list (removed elsewhere) drops out of the selection.
+  const selected = useMemo(() => {
+    const live = new Set(prs.map((pr) => pr.key));
+    return picked.filter((key) => live.has(key));
+  }, [picked, prs]);
+  const toggle = useCallback((key: string, range: boolean) => {
+    const from = lastPicked.current;
+    lastPicked.current = key;
+    setPicked((current) => {
+      if (range && from && from !== key) {
+        const order = [...document.querySelectorAll<HTMLElement>("[data-pr-key]")].map((el) => el.dataset.prKey!);
+        const [a, b] = [order.indexOf(from), order.indexOf(key)].sort((x, y) => x - y);
+        if (a >= 0) return [...new Set([...current, ...order.slice(a, b + 1)])];
+      }
+      return current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
+    });
+  }, []);
+  const clearSelection = useCallback(() => {
+    setPicked([]);
+    setTagManyOpen(false);
+    lastPicked.current = null;
+  }, []);
+  const selection = useMemo<Selection>(() => ({ keys: new Set(selected), toggle }), [selected, toggle]);
+  const selectedPrs = prs.filter((pr) => selection.keys.has(pr.key));
+  const selectedTags = new Set(selectedPrs.map((pr) => pr.meta.tag));
+  const toArchive = selectedPrs.filter((pr) => !pr.archived).map((pr) => pr.key);
+  const toUnarchive = selectedPrs.filter((pr) => pr.archived).map((pr) => pr.key);
+
+  // Escape lets go of the selection, unless a text box or a panel has it.
+  useEffect(() => {
+    if (!selected.length) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if (document.querySelector('[aria-modal="true"]')) return;
+      clearSelection();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [selected.length, clearSelection]);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 0);
@@ -183,6 +247,7 @@ export function PrList() {
   return (
     <ArchiveContext.Provider value={setArchived}>
       <TagContext.Provider value={setTagEditor}>
+      <SelectionContext.Provider value={selection}>
         <div className="mx-auto flex min-h-full max-w-3xl flex-col px-6 2xl:max-w-[49rem]">
           {unseen.length && version.data?.version && !markSeen.isPending ? (
             <WhatsNew
@@ -339,7 +404,7 @@ export function PrList() {
                 <UiText>{`No PR matches "${query}". Paste a PR URL to add it.`}</UiText>
               </p>
             ) : (
-              <div className="flex flex-col gap-[22px] pb-6">
+              <div className={`flex flex-col gap-[22px] ${selectedPrs.length ? "pb-20" : "pb-6"}`}>
                 {shown.active.map(({ group, full }) => (
                   <RepoSection
                     key={group.key}
@@ -397,11 +462,113 @@ export function PrList() {
             onClose={() => setTagEditor(null)}
           />
         ) : null}
+        {selectedPrs.length ? (
+          <div
+            className="surface elev-2 fixed bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-md py-1 pl-3 pr-1 text-xs"
+            role="toolbar"
+            aria-label="Selected PRs"
+            data-testid="selection-bar"
+          >
+            <span className="mr-2 whitespace-nowrap tabular-nums" style={{ color: "var(--fg-muted)" }} data-testid="selection-count">
+              <UiText>{`${selectedPrs.length} selected`}</UiText>
+            </span>
+            <SelectionAction
+              buttonRef={tagMany}
+              testId="selection-tag"
+              icon={<IconTag width={13} height={13} />}
+              label="Tag"
+              tip={`Tag the ${selectedPrs.length === 1 ? "selected PR" : `${selectedPrs.length} selected PRs`}`}
+              onClick={() => setTagManyOpen((v) => !v)}
+            />
+            {toArchive.length ? (
+              <SelectionAction
+                testId="selection-archive"
+                icon={<IconArchive width={13} height={13} />}
+                label={toUnarchive.length ? `Archive ${toArchive.length}` : "Archive"}
+                tip={`Archive ${toArchive.length === 1 ? "it" : `the ${toArchive.length}`}; ${ARCHIVE_HINT}`}
+                disabled={archiveMany.isPending}
+                onClick={() => {
+                  archiveMany.mutate({ keys: toArchive, archived: true });
+                  clearSelection();
+                }}
+              />
+            ) : null}
+            {toUnarchive.length ? (
+              <SelectionAction
+                testId="selection-unarchive"
+                icon={<IconArchive out width={13} height={13} />}
+                label={toArchive.length ? `Unarchive ${toUnarchive.length}` : "Unarchive"}
+                tip={`Unarchive ${toUnarchive.length === 1 ? "it" : `the ${toUnarchive.length}`}; ${ARCHIVE_HINT}`}
+                disabled={archiveMany.isPending}
+                onClick={() => {
+                  archiveMany.mutate({ keys: toUnarchive, archived: false });
+                  clearSelection();
+                }}
+              />
+            ) : null}
+            <span className="mx-1 h-4 w-px" style={{ background: "var(--border)" }} aria-hidden />
+            <button
+              type="button"
+              className={ICON_BUTTON}
+              data-testid="selection-clear"
+              aria-label="Clear the selection"
+              data-tip="Clear the selection"
+              data-tip-key="Esc"
+              onClick={clearSelection}
+            >
+              <IconClose width={14} height={14} />
+            </button>
+          </div>
+        ) : null}
+        {tagManyOpen && selectedPrs.length ? (
+          <TagPopover
+            prKey={selectedPrs[0].key}
+            prKeys={selectedPrs.map((pr) => pr.key)}
+            current={selectedTags.size === 1 ? [...selectedTags][0] : undefined}
+            anchorRef={tagMany}
+            onClose={() => setTagManyOpen(false)}
+          />
+        ) : null}
         <NoticeStack fixed>
           <OfflineNotice />
         </NoticeStack>
+      </SelectionContext.Provider>
       </TagContext.Provider>
     </ArchiveContext.Provider>
+  );
+}
+
+/** A labeled action in the selection bar. */
+function SelectionAction({
+  buttonRef,
+  testId,
+  icon,
+  label,
+  tip,
+  disabled,
+  onClick,
+}: {
+  buttonRef?: React.Ref<HTMLButtonElement>;
+  testId: string;
+  icon: ReactNode;
+  label: string;
+  tip: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      className="inline-flex h-7 items-center gap-1.5 rounded px-2 text-[var(--fg-muted)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--fg)] disabled:opacity-50"
+      data-testid={testId}
+      data-tip={tip}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {icon}
+      <UiText>{label}</UiText>
+    </button>
   );
 }
 
@@ -1056,9 +1223,11 @@ const HOVER_ONLY =
   "opacity-0 transition-opacity duration-150 ease-in-out group-focus-within:opacity-100 group-hover:opacity-100 max-sm:hidden";
 
 /** The stack tree's lines: quieter than faint text. */
-/** The room tag and archive take after the number (two 20px buttons, their
- *  6px margin), plus a gap; GitHub's side takes it as `pl-[52px]` the same way. */
-const ACTIONS_ROOM = "group-hover:pr-[52px] group-focus-within:pr-[52px]";
+/** The room tag, archive and select take after the number (three 20px
+ *  buttons, their 6px margin), plus a gap; GitHub's side takes it as
+ *  `pl-[72px]` the same way. Nothing shows there in selection mode. */
+const ACTIONS_ROOM = "group-hover:pr-[72px] group-focus-within:pr-[72px]";
+const ACTIONS_ROOM_LEFT = "group-hover:pl-[72px] group-focus-within:pl-[72px]";
 
 const STACK_LINE_COLOR = "color-mix(in srgb, var(--fg-faint) 45%, transparent)";
 
@@ -1071,10 +1240,14 @@ const STACK_LINE_COLOR = "color-mix(in srgb, var(--fg-faint) 45%, transparent)";
  * added and a passing CI) with the analysis at its right end. A title only
  * gives way to what shares its own line. Compact rows put it all on one
  * line: the title, the request, then GitHub's side and the analysis. At
- * phone width GitHub's side moves down beside the analysis.
+ * phone width GitHub's side moves down beside the analysis. In selection
+ * mode the row is a checkbox: its box leads the title and a click picks it.
  */
 function PrRow({ row }: { row: ArrangedRow }) {
   const { pr, depth, joinsNext } = row;
+  const selection = useContext(SelectionContext);
+  const selecting = selection.keys.size > 0;
+  const picked = selection.keys.has(pr.key);
   const { settings } = useSettings();
   const compact = settings.compactRows;
   const archived = pr.archived;
@@ -1083,7 +1256,8 @@ function PrRow({ row }: { row: ArrangedRow }) {
   const title = (
     // While tag and archive show, what follows the number keeps clear of them:
     // the title gives way when the line is full, nothing moves when it is not.
-    <div className={`flex min-w-0 items-baseline gap-2 ${compact ? `flex-auto ${ACTIONS_ROOM}` : ""}`}>
+    <div className={`flex min-w-0 items-baseline gap-2 ${compact ? `flex-auto ${selecting ? "" : ACTIONS_ROOM}` : ""}`}>
+      {selecting ? <SelectBox checked={picked} /> : null}
       <span className="truncate text-[13px] font-medium">
         {pr.title ?? meta?.title ?? pr.key}
       </span>
@@ -1092,10 +1266,10 @@ function PrRow({ row }: { row: ArrangedRow }) {
         style={{ color: "var(--fg-faint)" }}
       >
         #{meta?.number}
-        <RowActions pr={pr} />
+        {selecting ? null : <RowActions pr={pr} />}
       </span>
       {compact ? null : (
-        <span className={`${SIDE_LINE} ml-auto self-center pl-4 max-sm:hidden group-hover:pl-[52px] group-focus-within:pl-[52px]`}>
+        <span className={`${SIDE_LINE} ml-auto self-center pl-4 max-sm:hidden ${selecting ? "" : ACTIONS_ROOM_LEFT}`}>
           <GithubSide pr={pr} />
         </span>
       )}
@@ -1108,11 +1282,13 @@ function PrRow({ row }: { row: ArrangedRow }) {
       style={{
         borderColor: "var(--border)",
         opacity: archived ? 0.55 : 1,
+        ...(picked ? { background: "var(--accent-soft)" } : {}),
         paddingLeft: depth * STACK_INDENT,
         // A base and its stack read as one block: the tree joins them, no rule between.
         ...(joinsNext ? { borderBottomWidth: 0 } : {}),
       }}
       data-testid={`pr-row-${pr.key}`}
+      data-pr-key={pr.key}
       data-depth={depth || undefined}
     >
       {depth > 0 ? (
@@ -1129,7 +1305,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
         />
       ) : null}
       {compact ? (
-        <Link to={`/pr/${pr.key}`} className="flex min-w-0 items-center gap-3.5 py-[7px] pl-4 pr-4">
+        <RowTarget pr={pr} className="flex min-w-0 items-center gap-3.5 py-[7px] pl-4 pr-4">
           {title}
           <span className="flex flex-none text-2xs leading-normal max-sm:hidden">
             <ReviewRequestWait request={pr.reviewRequest} state={pr.state} />
@@ -1138,9 +1314,9 @@ function PrRow({ row }: { row: ArrangedRow }) {
             <GithubSide pr={pr} />
             <AnalysisSide pr={pr} />
           </span>
-        </Link>
+        </RowTarget>
       ) : (
-        <Link to={`/pr/${pr.key}`} className="flex min-w-0 flex-col gap-[5px] py-3 pl-4 pr-4">
+        <RowTarget pr={pr} className="flex min-w-0 flex-col gap-[5px] py-3 pl-4 pr-4">
           {title}
           <div
             className="flex min-h-4 flex-wrap items-center gap-x-3.5 gap-y-1 text-2xs leading-normal"
@@ -1190,14 +1366,65 @@ function PrRow({ row }: { row: ArrangedRow }) {
               <AnalysisSide pr={pr} />
             </span>
           </div>
-        </Link>
+        </RowTarget>
       )}
     </li>
   );
 }
 
 /**
- * Tag and archive, right after the number: hidden until the row is hovered or
+ * What a row's click lands on: the link to the PR, or in selection mode a
+ * checkbox that picks it (Space too; shift picks the run from the last one).
+ */
+function RowTarget({ pr, className, children }: { pr: PrListEntry; className: string; children: ReactNode }) {
+  const selection = useContext(SelectionContext);
+  const picked = selection.keys.has(pr.key);
+  if (!selection.keys.size) {
+    return (
+      <Link to={`/pr/${pr.key}`} className={className}>
+        {children}
+      </Link>
+    );
+  }
+  return (
+    <div
+      role="checkbox"
+      aria-checked={picked}
+      aria-label={`Select ${pr.title ?? pr.meta?.title ?? pr.key}`}
+      tabIndex={0}
+      className={`${className} cursor-pointer select-none outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[var(--accent)]`}
+      data-testid={`select-${pr.key}`}
+      onClick={(e) => selection.toggle(pr.key, e.shiftKey)}
+      onKeyDown={(e) => {
+        if (e.key !== " " && e.key !== "Enter") return;
+        e.preventDefault();
+        selection.toggle(pr.key, e.shiftKey);
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A row's box in selection mode, in the accent: ticked when the row is picked. */
+function SelectBox({ checked }: { checked: boolean }) {
+  return (
+    <span
+      className="flex h-3.5 w-3.5 flex-none items-center justify-center self-center rounded-sm border transition-colors"
+      style={{
+        borderColor: checked ? "var(--accent)" : "var(--fg-muted)",
+        background: checked ? "var(--accent)" : "transparent",
+        color: "var(--bg)",
+      }}
+      aria-hidden
+    >
+      {checked ? <IconCheck width={10} height={10} /> : null}
+    </span>
+  );
+}
+
+/**
+ * Tag, archive and select, right after the number: hidden until the row is hovered or
  * one of them has focus, and taking no clicks while hidden, so the title line
  * stays a plain link. They float over what is to the right of the number
  * (on the row's hover tint) instead of holding room the title could use. They
@@ -1205,6 +1432,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
  */
 function RowActions({ pr }: { pr: PrListEntry }) {
   const openTag = useContext(TagContext);
+  const selection = useContext(SelectionContext);
   const tagButtonRef = useRef<HTMLButtonElement>(null);
   const setArchived = useContext(ArchiveContext)!;
   const archived = pr.archived;
@@ -1245,6 +1473,20 @@ function RowActions({ pr }: { pr: PrListEntry }) {
         }}
       >
         <IconArchive out={archived} width={13} height={13} />
+      </button>
+      <button
+        type="button"
+        className={button}
+        data-testid={`select-start-${pr.key}`}
+        data-tip="Select, to tag or archive several PRs at once"
+        aria-label="Select"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          selection.toggle(pr.key, false);
+        }}
+      >
+        <IconSelect width={13} height={13} />
       </button>
     </span>
   );

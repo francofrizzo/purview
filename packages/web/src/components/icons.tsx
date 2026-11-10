@@ -85,6 +85,7 @@ import {
   IconUpload as TablerUpload,
   IconWorld,
   IconX,
+  IconSquareCheck,
   type IconProps,
 } from "@tabler/icons-react";
 import type { ComponentType, SVGProps } from "react";
@@ -129,6 +130,8 @@ export const IconClose = wrap(IconX);
 export const IconArrowLeft = wrap(TablerArrowLeft);
 export const IconWarning = wrap(IconAlertTriangle);
 export const IconCheck = wrap(TablerCheck);
+/** Selecting a row for an action on several at once (the home list). */
+export const IconSelect = wrap(IconSquareCheck);
 export const IconClock = wrap(TablerClock);
 export const IconDownload = wrap(TablerDownload);
 export const IconFileImport = wrap(TablerFileImport);

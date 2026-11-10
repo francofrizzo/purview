@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Selecting several PRs on the home.** Hover a row, click its select button, then click other rows to tag or archive them together from the bar at the bottom. Shift-click picks a run; Esc lets go.
+
 ## 2026.11.9.1
 
 - **Hunk links in the chat.** A hunk id in a reply shows as file:line; click it to open the hunk.

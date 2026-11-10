@@ -180,23 +180,23 @@ export function useSetArchived() {
 }
 
 /**
- * Archive many PRs at once (a repo's merged and closed ones). Optimistic like
- * the single archive: every row moves at once, and all of them roll back if
- * any request fails.
+ * Archive or unarchive many PRs at once (a repo's merged and closed ones, or
+ * the home list's selection). Optimistic like the single archive: every row
+ * moves at once, and all of them roll back if any request fails.
  */
 export function useArchiveMany() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (keys: string[]) => {
-      await Promise.all(keys.map((key) => api.setArchived(key, true)));
+    mutationFn: async ({ keys, archived = true }: { keys: string[]; archived?: boolean }) => {
+      await Promise.all(keys.map((key) => api.setArchived(key, archived)));
     },
-    onMutate: async (keys) => {
+    onMutate: async ({ keys, archived = true }) => {
       await qc.cancelQueries({ queryKey: qk.prs });
       const previous = qc.getQueryData<PrListEntry[]>(qk.prs);
       if (previous) {
         qc.setQueryData(
           qk.prs,
-          keys.reduce((list, key) => applyArchive(list, key, true), previous),
+          keys.reduce((list, key) => applyArchive(list, key, archived), previous),
         );
       }
       return { previous };
@@ -204,7 +204,7 @@ export function useArchiveMany() {
     onError: (_e, _v, ctx) => {
       if (ctx?.previous) qc.setQueryData(qk.prs, ctx.previous);
     },
-    onSettled: (_d, _e, keys) => {
+    onSettled: (_d, _e, { keys }) => {
       void qc.invalidateQueries({ queryKey: qk.prs });
       void qc.invalidateQueries({ queryKey: qk.repos });
       for (const key of keys) void qc.invalidateQueries({ queryKey: qk.pr(key) });
@@ -1374,6 +1374,40 @@ export function useSetPrTag(key: string) {
       if (ctx?.detail) qc.setQueryData<PrDetail>(qk.pr(key), (d) => (d ? { ...d, meta: { ...d.meta, tag: ctx.detail!.meta.tag } } : d));
     },
     onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: qk.prs }), qc.invalidateQueries({ queryKey: qk.pr(key) })]),
+  });
+}
+
+/** One tag (or none) on many PRs at once: the home list's selection. Optimistic, all rolled back if any request fails. */
+export function useSetPrTags() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ keys, tag }: { keys: string[]; tag: string | null }) => {
+      await Promise.all(keys.map((key) => api.setPrTag(key, tag)));
+    },
+    onMutate: async ({ keys, tag }) => {
+      await qc.cancelQueries({ queryKey: qk.prs });
+      const list = qc.getQueryData<PrListEntry[]>(qk.prs);
+      const touched = new Set(keys);
+      if (list) {
+        qc.setQueryData(
+          qk.prs,
+          list.map((p) => {
+            if (!touched.has(p.key)) return p;
+            const { tag: _drop, ...rest } = p.meta;
+            return { ...p, meta: tag === null ? rest : { ...rest, tag } };
+          }),
+        );
+      }
+      return { list, touched };
+    },
+    onError: (_error, _vars, ctx) => {
+      const before = new Map(ctx?.list?.map((p) => [p.key, p.meta.tag]) ?? []);
+      qc.setQueryData<PrListEntry[]>(qk.prs, (list) =>
+        list?.map((p) => (ctx?.touched.has(p.key) ? { ...p, meta: { ...p.meta, tag: before.get(p.key) } } : p)),
+      );
+    },
+    onSettled: (_d, _e, { keys }) =>
+      Promise.all([qc.invalidateQueries({ queryKey: qk.prs }), ...keys.map((key) => qc.invalidateQueries({ queryKey: qk.pr(key) }))]),
   });
 }
 

@@ -75,8 +75,8 @@ const TAG_KINDS = ["core", "glue", "refactor", "data", "wiring", "ripple", "test
 
 /**
  * The right column's state words (merged, closed, draft, changes requested,
- * approved, new commits) and the hovered row's size, on the row at rest and
- * under the pointer.
+ * approved, new commits) and the hovered row's size, on the row at rest,
+ * under the pointer, and picked in selection mode.
  */
 const homeStates = (): Surface[] =>
   (
@@ -89,8 +89,8 @@ const homeStates = (): Surface[] =>
       ["accent", "new commits"],
     ] as const
   ).flatMap(([fg, sample]) =>
-    (["bg-raised", "bg-hover"] as const).map((on) =>
-      s(`home-state-${fg}-on-${on}`, "Home list", `${sample.split(" · ")[0]} on a row${on === "bg-hover" ? " under the pointer" : ""} (${fg} on ${on})`, fg, fg === "fg-muted" ? 3.2 : 3.0, on === "bg-hover" ? ["bg-raised", "bg-hover"] : ["bg-raised"], sample),
+    (["bg-raised", "bg-hover", "accent-soft"] as const).map((on) =>
+      s(`home-state-${fg}-on-${on}`, "Home list", `${sample.split(" · ")[0]} on a row${on === "bg-hover" ? " under the pointer" : on === "accent-soft" ? " picked in selection mode" : ""} (${fg} on ${on})`, fg, fg === "fg-muted" ? 3.2 : 3.0, on === "bg-raised" ? ["bg-raised"] : ["bg-raised", on], sample),
     ),
   );
 

@@ -133,7 +133,7 @@ export function AutoArchiveButton({
       data-testid={`repo-auto-archive-${rkey}`}
       disabled={archiveMany.isPending}
       data-tip={`Move ${tip} to this repo's archived list; local only.${r ? " A new review request brings one back." : ""}`}
-      onClick={() => archiveMany.mutate([...finishedKeys, ...reviewedKeys])}
+      onClick={() => archiveMany.mutate({ keys: [...finishedKeys, ...reviewedKeys] })}
       className="flex flex-none items-center gap-1 rounded px-2 py-1 text-2xs transition-colors hover:bg-[var(--bg-hover)] disabled:opacity-50"
       style={{ color: "var(--fg-muted)" }}
     >

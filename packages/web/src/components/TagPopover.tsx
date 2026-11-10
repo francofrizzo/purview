@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { usePrs, useSetPrTag } from "../api/hooks";
+import { usePrs, useSetPrTag, useSetPrTags } from "../api/hooks";
 import { errorText } from "../api/errors";
 import { stackOf } from "../lib/prList";
 import { normalizeTag, TAG_COLORS, tagSlot } from "../lib/tags";
@@ -24,15 +24,19 @@ export function TagChip({ tag, className = "" }: { tag: string; className?: stri
  * The tag editor, drawn under whatever opened it: one box with the current
  * tag, the tags already in use as chips under it (click one to take it),
  * Enter saves, Escape closes, an empty box or "Remove tag" clears. Like the
- * emoji picker, it is a panel over the page, not a form.
+ * emoji picker, it is a panel over the page, not a form. Given `prKeys`
+ * (the home list's selection) it tags those PRs, just them, not their stacks.
  */
 export function TagPopover({
   prKey,
+  prKeys,
   current,
   anchorRef,
   onClose,
 }: {
   prKey: string;
+  /** several PRs at once; `prKey` is then any one of them */
+  prKeys?: string[];
   current?: string;
   anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
@@ -40,19 +44,24 @@ export function TagPopover({
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState(current ?? "");
   const { data: prs = [] } = usePrs();
-  const save = useSetPrTag(prKey);
+  const one = useSetPrTag(prKey);
+  const many = useSetPrTags();
+  const save = prKeys ? many : one;
   const used = [...new Set(prs.flatMap((pr) => (pr.meta.tag ? [pr.meta.tag] : [])))].sort();
   // A PR in a stack tags the whole stack unless told otherwise: a stack is
   // one piece of work, and a tag that split it would also split the tree.
-  const stack = stackOf(prs, prKey);
+  const stack = prKeys ? [] : stackOf(prs, prKey);
+  const removable = prKeys ? prs.some((pr) => pr.meta.tag && prKeys.includes(pr.key)) : Boolean(current);
   const [wholeStack, setWholeStack] = useState(true);
   const normalized = normalizeTag(value);
   const tooLong = normalized.length > 24;
   const submit = (tag: string | null) => {
     if (save.isPending) return;
     const applyToStack = stack.length > 1 && wholeStack;
-    if ((tag ?? undefined) === current && !applyToStack) return onClose();
-    save.mutate({ tag, stack: applyToStack }, { onSuccess: onClose });
+    // Several PRs without one shared tag always save: some have another, or none.
+    if ((tag ?? undefined) === current && !applyToStack && (!prKeys || current)) return onClose();
+    if (prKeys) many.mutate({ keys: prKeys, tag }, { onSuccess: onClose });
+    else one.mutate({ tag, stack: applyToStack }, { onSuccess: onClose });
   };
 
   useEffect(() => {
@@ -78,7 +87,7 @@ export function TagPopover({
           color: "var(--fg)",
           border: `1px solid ${tooLong ? "var(--risk)" : "var(--border)"}`,
         }}
-        placeholder="Tag this PR…"
+        placeholder={prKeys ? `Tag ${prKeys.length} PRs…` : "Tag this PR…"}
         value={value}
         disabled={save.isPending}
         onChange={(e) => setValue(e.target.value)}
@@ -134,7 +143,7 @@ export function TagPopover({
       ) : null}
       <div className="mt-2 flex items-center justify-between px-0.5 text-2xs" style={{ color: "var(--fg-faint)" }}>
         <UiText>{save.isPending ? "Saving…" : "Enter saves"}</UiText>
-        {current ? (
+        {removable ? (
           <button
             type="button"
             data-testid="tag-remove"

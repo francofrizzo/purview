@@ -132,3 +132,53 @@ test("tag and archive show on hover right after the number, and act without open
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("needs-review-github.com/acme/billing").getByTestId(`pr-row-${CHARGE}`)).toHaveCount(0);
 });
+
+test("select starts from a row's hover actions; then rows pick on click, and the bar tags and archives them together", async ({ page }) => {
+  await home(page);
+  const charge = page.getByTestId(`pr-row-${CHARGE}`);
+  await charge.hover();
+  await charge.getByTestId(`select-start-${CHARGE}`).click();
+  const bar = page.getByTestId("selection-bar");
+  await expect(bar.getByTestId("selection-count")).toHaveText("1 selected");
+  await expect(page.getByTestId(`select-${CHARGE}`)).toHaveAttribute("aria-checked", "true");
+
+  // A click on another row picks it, without opening it.
+  await page.getByTestId(`select-${PLATFORM}`).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(bar.getByTestId("selection-count")).toHaveText("2 selected");
+
+  // Esc lets go of all of it; the rows are links again.
+  await page.keyboard.press("Escape");
+  await expect(bar).toHaveCount(0);
+  await expect(charge.getByRole("link")).toHaveCount(1);
+
+  await charge.hover();
+  await charge.getByTestId(`select-start-${CHARGE}`).click();
+  await page.getByTestId(`select-${PLATFORM}`).click();
+  await bar.getByTestId("selection-tag").click();
+  await page.getByTestId("tag-input").fill("q4");
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("tag-input")).toHaveCount(0);
+  for (const key of [CHARGE, PLATFORM]) {
+    await expect(page.locator(`[data-testid="pr-tag-group"][data-tag="q4"] [data-pr-key="${key}"]`)).toHaveCount(1);
+  }
+  // Tagging keeps the selection, so archive can follow.
+  await expect(bar.getByTestId("selection-count")).toHaveText("2 selected");
+  await bar.getByTestId("selection-archive").click();
+  await expect(bar).toHaveCount(0);
+  await expect(page.getByTestId("needs-review-github.com/acme/billing").getByTestId(`pr-row-${CHARGE}`)).toHaveCount(0);
+  await expect(page.locator(`[data-pr-key="${PLATFORM}"]`)).toHaveCount(0);
+});
+
+test("shift-click picks every row between it and the last one picked", async ({ page }) => {
+  await home(page);
+  const first = page.locator("[data-pr-key]").first();
+  const key = (await first.getAttribute("data-pr-key"))!;
+  await first.hover();
+  await first.getByTestId(`select-start-${key}`).click();
+  const rows = page.locator('[data-pr-key] [role="checkbox"]');
+  const n = await rows.count();
+  await rows.nth(2).click({ modifiers: ["Shift"] });
+  await expect(page.getByTestId("selection-count")).toHaveText("3 selected");
+  expect(n).toBeGreaterThan(3);
+});

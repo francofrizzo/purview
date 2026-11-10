@@ -24,13 +24,17 @@ export function FloatingPanel({
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
-  // Measured before paint: under the anchor, kept 8px inside the window.
+  // Measured before paint: under the anchor, kept 8px inside the window;
+  // above it when there is no room below (a bar pinned to the bottom).
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
     if (!anchor) return;
     const r = anchor.getBoundingClientRect();
     const width = panelRef.current?.offsetWidth ?? 0;
-    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) });
+    const height = panelRef.current?.offsetHeight ?? 0;
+    const below = r.bottom + 6;
+    const top = below + height > window.innerHeight - 8 && r.top - height - 6 >= 8 ? r.top - height - 6 : below;
+    setPos({ top, left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) });
   }, [anchorRef]);
 
   useEffect(() => {
