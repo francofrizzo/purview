@@ -41,7 +41,6 @@ import {
   IconPlus,
   IconRefresh,
   IconSearch,
-  IconSelect,
   IconSettings,
   IconSpinner,
   IconTag,
@@ -1223,11 +1222,11 @@ const HOVER_ONLY =
   "opacity-0 transition-opacity duration-150 ease-in-out group-focus-within:opacity-100 group-hover:opacity-100 max-sm:hidden";
 
 /** The stack tree's lines: quieter than faint text. */
-/** The room tag, archive and select take after the number (three 20px
- *  buttons, their 6px margin), plus a gap; GitHub's side takes it as
- *  `pl-[72px]` the same way. Nothing shows there in selection mode. */
-const ACTIONS_ROOM = "group-hover:pr-[72px] group-focus-within:pr-[72px]";
-const ACTIONS_ROOM_LEFT = "group-hover:pl-[72px] group-focus-within:pl-[72px]";
+/** The room tag and archive take after the number (two 20px buttons, their
+ *  6px margin), plus a gap; GitHub's side takes it as `pl-[52px]` the same
+ *  way. Nothing shows there in selection mode. */
+const ACTIONS_ROOM = "group-hover:pr-[52px] group-focus-within:pr-[52px]";
+const ACTIONS_ROOM_LEFT = "group-hover:pl-[52px] group-focus-within:pl-[52px]";
 
 const STACK_LINE_COLOR = "color-mix(in srgb, var(--fg-faint) 45%, transparent)";
 
@@ -1240,8 +1239,9 @@ const STACK_LINE_COLOR = "color-mix(in srgb, var(--fg-faint) 45%, transparent)";
  * added and a passing CI) with the analysis at its right end. A title only
  * gives way to what shares its own line. Compact rows put it all on one
  * line: the title, the request, then GitHub's side and the analysis. At
- * phone width GitHub's side moves down beside the analysis. In selection
- * mode the row is a checkbox: its box leads the title and a click picks it.
+ * phone width GitHub's side moves down beside the analysis. The row's left
+ * edge holds its select box, shown on hover and throughout selection mode,
+ * when the whole row is a checkbox and a click picks it.
  */
 function PrRow({ row }: { row: ArrangedRow }) {
   const { pr, depth, joinsNext } = row;
@@ -1257,7 +1257,6 @@ function PrRow({ row }: { row: ArrangedRow }) {
     // While tag and archive show, what follows the number keeps clear of them:
     // the title gives way when the line is full, nothing moves when it is not.
     <div className={`flex min-w-0 items-baseline gap-2 ${compact ? `flex-auto ${selecting ? "" : ACTIONS_ROOM}` : ""}`}>
-      {selecting ? <SelectBox checked={picked} /> : null}
       <span className="truncate text-[13px] font-medium">
         {pr.title ?? meta?.title ?? pr.key}
       </span>
@@ -1291,6 +1290,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
       data-pr-key={pr.key}
       data-depth={depth || undefined}
     >
+      <SelectBox prKey={pr.key} checked={picked} selecting={selecting} compact={compact} />
       {depth > 0 ? (
         <TreeLines
           depth={depth}
@@ -1305,7 +1305,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
         />
       ) : null}
       {compact ? (
-        <RowTarget pr={pr} className="flex min-w-0 items-center gap-3.5 py-[7px] pl-4 pr-4">
+        <RowTarget pr={pr} className="flex min-w-0 items-center gap-3.5 py-[7px] pl-8 pr-4">
           {title}
           <span className="flex flex-none text-2xs leading-normal max-sm:hidden">
             <ReviewRequestWait request={pr.reviewRequest} state={pr.state} />
@@ -1316,7 +1316,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
           </span>
         </RowTarget>
       ) : (
-        <RowTarget pr={pr} className="flex min-w-0 flex-col gap-[5px] py-3 pl-4 pr-4">
+        <RowTarget pr={pr} className="flex min-w-0 flex-col gap-[5px] py-3 pl-8 pr-4">
           {title}
           <div
             className="flex min-h-4 flex-wrap items-center gap-x-3.5 gap-y-1 text-2xs leading-normal"
@@ -1406,25 +1406,42 @@ function RowTarget({ pr, className, children }: { pr: PrListEntry; className: st
   );
 }
 
-/** A row's box in selection mode, in the accent: ticked when the row is picked. */
-function SelectBox({ checked }: { checked: boolean }) {
+/**
+ * A row's select box, in the column at the card's left edge whatever the
+ * row's depth in a stack. At rest it shows on hover and starts selection
+ * mode; in that mode it shows on every row and the row itself is the
+ * checkbox, so the box is only something to click.
+ */
+function SelectBox({ prKey, checked, selecting, compact }: { prKey: string; checked: boolean; selecting: boolean; compact: boolean }) {
+  const selection = useContext(SelectionContext);
   return (
-    <span
-      className="flex h-3.5 w-3.5 flex-none items-center justify-center self-center rounded-sm border transition-colors"
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label="Select"
+      aria-hidden={selecting || undefined}
+      tabIndex={selecting ? -1 : undefined}
+      data-testid={`select-start-${prKey}`}
+      data-tip={selecting ? undefined : "Select, to tag or archive several PRs at once"}
+      className={`absolute left-2.5 z-[1] flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-[opacity,background-color,border-color] duration-150 ease-in-out max-sm:hidden ${
+        selecting ? "" : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
+      }`}
       style={{
+        top: compact ? 9 : 15,
         borderColor: checked ? "var(--accent)" : "var(--fg-muted)",
         background: checked ? "var(--accent)" : "transparent",
         color: "var(--bg)",
       }}
-      aria-hidden
+      onClick={(e) => selection.toggle(prKey, e.shiftKey)}
     >
       {checked ? <IconCheck width={10} height={10} /> : null}
-    </span>
+    </button>
   );
 }
 
 /**
- * Tag, archive and select, right after the number: hidden until the row is hovered or
+ * Tag and archive, right after the number: hidden until the row is hovered or
  * one of them has focus, and taking no clicks while hidden, so the title line
  * stays a plain link. They float over what is to the right of the number
  * (on the row's hover tint) instead of holding room the title could use. They
@@ -1432,7 +1449,6 @@ function SelectBox({ checked }: { checked: boolean }) {
  */
 function RowActions({ pr }: { pr: PrListEntry }) {
   const openTag = useContext(TagContext);
-  const selection = useContext(SelectionContext);
   const tagButtonRef = useRef<HTMLButtonElement>(null);
   const setArchived = useContext(ArchiveContext)!;
   const archived = pr.archived;
@@ -1474,28 +1490,15 @@ function RowActions({ pr }: { pr: PrListEntry }) {
       >
         <IconArchive out={archived} width={13} height={13} />
       </button>
-      <button
-        type="button"
-        className={button}
-        data-testid={`select-start-${pr.key}`}
-        data-tip="Select, to tag or archive several PRs at once"
-        aria-label="Select"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          selection.toggle(pr.key, false);
-        }}
-      >
-        <IconSelect width={13} height={13} />
-      </button>
     </span>
   );
 }
 
 /** How far each level of a stack steps in, in px. */
 const STACK_INDENT = 20;
-/** Where a level's guide line sits inside its indent: just inside the base title's first letter. */
-const STACK_LINE = 18;
+/** Where a level's guide line sits inside its indent: just inside the base
+ *  title's first letter, past the select box's column. */
+const STACK_LINE = 34;
 /** The elbow's reach into the row it joins. */
 const STACK_ELBOW_WIDTH = 8;
 /** The elbow meets the row at its title line, not the row's middle. */

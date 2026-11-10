@@ -176,7 +176,8 @@ test("shift-click picks every row between it and the last one picked", async ({ 
   const key = (await first.getAttribute("data-pr-key"))!;
   await first.hover();
   await first.getByTestId(`select-start-${key}`).click();
-  const rows = page.locator('[data-pr-key] [role="checkbox"]');
+  // The rows themselves, not their select boxes.
+  const rows = page.locator('[data-pr-key] > [role="checkbox"]:not(button)');
   const n = await rows.count();
   await rows.nth(2).click({ modifiers: ["Shift"] });
   await expect(page.getByTestId("selection-count")).toHaveText("3 selected");

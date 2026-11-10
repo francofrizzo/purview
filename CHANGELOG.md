@@ -7,7 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
-- **Selecting several PRs on the home.** Hover a row, click its select button, then click other rows to tag or archive them together from the bar at the bottom. Shift-click picks a run; Esc lets go.
+- **Selecting several PRs on the home.** Hover a row, click the box at its left edge, then click other rows to tag or archive them together from the bar at the bottom. Shift-click picks a run; Esc lets go.
 
 ## 2026.11.9.1
 
