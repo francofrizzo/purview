@@ -397,7 +397,7 @@ function FontSection({
       ) : null}
 
       <div className="flex flex-col gap-1.5">
-        <span className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
+        <span className="text-xs font-semibold" style={{ color: "var(--fg-muted)" }}>
           Common monospace families
         </span>
         <div className="flex flex-wrap gap-1.5">
@@ -481,7 +481,7 @@ function ThemeSection({
 
 function GroupLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
+    <span className="text-xs font-semibold" style={{ color: "var(--fg-muted)" }}>
       {children}
     </span>
   );
@@ -672,10 +672,7 @@ function NetworkSection() {
               />
             ) : null}
             <div className="flex min-w-0 flex-col gap-2">
-              <span
-                className="text-2xs uppercase tracking-wider"
-                style={{ color: "var(--fg-faint)" }}
-              >
+              <span className="text-xs font-semibold" style={{ color: "var(--fg-muted)" }}>
                 Scan, or open this address
               </span>
               <code
@@ -996,7 +993,7 @@ function ReviewThreadsSection({
           </Field>
           {settings.hiddenBots.length ? (
             <div className="flex flex-col gap-1">
-              <span className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
+              <span className="text-xs font-semibold" style={{ color: "var(--fg-muted)" }}>
                 Hidden one by one
               </span>
               <span className="flex flex-wrap items-center gap-1">
@@ -1393,7 +1390,7 @@ function AboutSection() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
+      <span className="text-xs font-semibold" style={{ color: "var(--fg-muted)" }}>
         {label}
       </span>
       {children}

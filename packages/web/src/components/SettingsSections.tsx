@@ -100,7 +100,7 @@ export function SettingsLayout({ groups, children }: { groups: SettingsNavGroup[
       <nav className="sticky top-0 hidden w-36 flex-none flex-col gap-3 pt-1 md:flex" aria-label="Sections" data-testid="settings-nav">
         {groups.map((g) => (
           <div key={g.label}>
-            <div className="mb-1 px-2 text-2xs font-medium" style={{ color: "var(--fg-faint)" }}>
+            <div className="mb-1 px-2 text-2xs font-semibold uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
               {g.label}
             </div>
             {g.items.map((item) => {

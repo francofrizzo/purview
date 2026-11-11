@@ -436,7 +436,7 @@ function RubricSection({ config, save }: { config: RepoConfig; save: Save }) {
       <div className="flex flex-col gap-4">
         <div>
           <PaneLabel>
-            team rubric (committed)
+            Team rubric (committed)
             {committed ? (
               <span className="ml-1.5 font-normal" style={{ color: "var(--fg-faint)" }}>
                 read-only · <span className="font-mono">.purview/rubric.md</span>
@@ -477,7 +477,7 @@ function RubricSection({ config, save }: { config: RepoConfig; save: Save }) {
         </div>
 
         <div>
-          <PaneLabel>local rubric overlay</PaneLabel>
+          <PaneLabel>Local rubric overlay</PaneLabel>
           <Autosize
             value={rubric}
             rows={12}
@@ -523,7 +523,7 @@ function ChatInstructionsSection({ config, save }: { config: RepoConfig; save: S
       <div className="flex flex-col gap-4">
         <div>
           <PaneLabel>
-            team chat instructions (committed)
+            Team chat instructions (committed)
             {committed ? (
               <span className="ml-1.5 font-normal" style={{ color: "var(--fg-faint)" }}>
                 read-only · <span className="font-mono">.purview/CHAT.md</span>
@@ -564,7 +564,7 @@ function ChatInstructionsSection({ config, save }: { config: RepoConfig; save: S
         </div>
 
         <div>
-          <PaneLabel>local chat instructions overlay</PaneLabel>
+          <PaneLabel>Local chat instructions overlay</PaneLabel>
           <Autosize
             value={chatInstructions}
             rows={12}
@@ -624,7 +624,7 @@ function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) 
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <PaneLabel>always treat as generated</PaneLabel>
+          <PaneLabel>Always treat as generated</PaneLabel>
           <Autosize
             value={include}
             rows={4}
@@ -634,7 +634,7 @@ function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) 
           />
         </div>
         <div>
-          <PaneLabel>never treat as generated</PaneLabel>
+          <PaneLabel>Never treat as generated</PaneLabel>
           <Autosize
             value={exclude}
             rows={4}
@@ -707,7 +707,7 @@ function Autosize({
 
 function PaneLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-2xs font-medium uppercase tracking-wider" style={{ color: "var(--fg-muted)" }}>
+    <span className="text-xs font-semibold" style={{ color: "var(--fg-muted)" }}>
       {children}
     </span>
   );
@@ -716,7 +716,7 @@ function PaneLabel({ children }: { children: React.ReactNode }) {
 function Stat({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <dt className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
+      <dt className="text-xs font-semibold" style={{ color: "var(--fg-muted)" }}>
         {label}
       </dt>
       <dd className="flex items-baseline">{children}</dd>
@@ -861,7 +861,7 @@ export function AgentFields<T extends AgentSelection>({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-2xs uppercase tracking-wider" style={{ color: "var(--fg-faint)" }}>
+      <span className="text-xs font-semibold" style={{ color: "var(--fg-muted)" }}>
         {label}
       </span>
       {children}
