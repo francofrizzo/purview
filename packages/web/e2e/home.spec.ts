@@ -194,3 +194,30 @@ test("the select box takes clicks anywhere in the empty strip left of the title"
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("selection-count")).toHaveText("1 selected");
 });
+
+test("a repo's + opens a slot for a PR number that says what Enter will do: add it, or open it when it is on the list", async ({ page }) => {
+  await home(page);
+  await page.getByTestId("repo-add-pr-github.com/acme/billing").click();
+  const slot = page.getByTestId("add-by-number-github.com/acme/billing");
+  const field = slot.getByRole("textbox");
+  await expect(field).toBeFocused();
+  const hint = slot.getByTestId("add-by-number-hint");
+
+  await field.fill("#999");
+  await expect(field).toHaveValue("999");
+  await expect(hint).toContainText("adds #999");
+  await field.fill("abc");
+  await expect(hint).toContainText("a number, like 123");
+
+  await field.fill("482");
+  await expect(slot.getByTestId("add-by-number-tracked")).toContainText("#482 is on the list");
+  await field.press("Enter");
+  await expect(page).toHaveURL(/\/pr\/github\.com\/acme\/billing\/482/);
+});
+
+test("the add slot closes on Escape", async ({ page }) => {
+  await home(page);
+  await page.getByTestId("repo-add-pr-github.com/acme/billing").click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("add-by-number-github.com/acme/billing")).toHaveCount(0);
+});

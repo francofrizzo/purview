@@ -934,7 +934,14 @@ function GroupLabel({
   );
 }
 
-/** "#[123] add" under a repo's header: the PR URL is built from the repo. */
+/**
+ * The slot a new PR lands in, under a repo's header: drawn like the row it
+ * will become, with the + in the select boxes' column and the number typed
+ * where a title goes. It takes a number (the URL is built from the repo) or
+ * a pasted PR URL. What Enter will do shows at the right before it happens:
+ * add the PR, or, when it is on the list already, open it. Escape or the ×
+ * closes it.
+ */
 function AddByNumberForm({
   repo,
   onClose,
@@ -945,11 +952,21 @@ function AddByNumberForm({
   const [value, setValue] = useState("");
   const addPr = useAddPr();
   const navigate = useNavigate();
-  const url = prUrlForNumber(repo, value);
+  const { data: prs = [] } = usePrs();
+  const url = isPrUrl(value) ? value.trim() : prUrlForNumber(repo, value);
+  const target = url ? /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pulls?\/(\d+)/.exec(url) : null;
+  const key = target ? `${target[1]}/${target[2]}/${target[3]}/${target[4]}` : null;
+  const tracked = key ? prs.find((pr) => pr.key === key) : undefined;
+  const label = target ? (key?.startsWith(`${repo.key}/`) ? `#${target[4]}` : `${target[2]}/${target[3]}#${target[4]}`) : null;
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!url || addPr.isPending) return;
+    if (tracked) {
+      onClose();
+      navigate(`/pr/${tracked.key}`);
+      return;
+    }
     addPr.mutate(url, {
       onSuccess: (entry) => {
         onClose();
@@ -963,48 +980,75 @@ function AddByNumberForm({
     });
   };
 
+  const hint = addPr.isPending ? (
+    <span className="flex items-center gap-1.5" style={{ color: "var(--fg-muted)" }}>
+      <IconSpinner width={11} height={11} />
+      <UiText>{`fetching ${label} from GitHub…`}</UiText>
+    </span>
+  ) : addPr.error ? (
+    <span role="alert" style={{ color: "var(--risk)" }}>{errorText(addPr.error)}</span>
+  ) : tracked ? (
+    <span className="flex items-center gap-1.5" style={{ color: "var(--fg-muted)" }} data-testid="add-by-number-tracked">
+      <UiText>{`${label} is ${tracked.archived ? "archived" : "on the list"}:`}</UiText>
+      <kbd>↵</kbd>
+      <UiText>opens it</UiText>
+    </span>
+  ) : url ? (
+    <span className="flex items-center gap-1.5" style={{ color: "var(--fg-muted)" }}>
+      <kbd>↵</kbd>
+      <UiText>{`adds ${label}`}</UiText>
+    </span>
+  ) : value.trim() ? (
+    <span style={{ color: "var(--fg-faint)" }}><UiText>a number, like 123, or a PR URL</UiText></span>
+  ) : (
+    <span className="flex items-center gap-1.5" style={{ color: "var(--fg-faint)" }}>
+      <kbd>esc</kbd>
+      <UiText>closes</UiText>
+    </span>
+  );
+
   return (
     <form
       onSubmit={submit}
-      className="flex flex-wrap items-center gap-2 border-t px-3 py-2 text-2xs"
-      style={{ borderColor: "var(--border)" }}
+      className="relative flex min-h-11 items-center gap-2 border-t py-2 pl-8 pr-2 text-2xs"
+      style={{ borderColor: "var(--border)", boxShadow: "inset 2px 0 0 var(--accent)" }}
       data-testid={`add-by-number-${repo.key}`}
     >
-      <label
-        className="flex items-center gap-1"
-        style={{ color: "var(--fg-faint)" }}
-      >
-        #
+      <span className="absolute left-2.5 flex" style={{ color: "var(--accent)" }} aria-hidden>
+        <IconPlus width={13} height={13} />
+      </span>
+      <label className="flex min-w-0 flex-1 items-baseline gap-0.5 text-[13px] font-medium">
+        <span style={{ color: "var(--fg-faint)" }} aria-hidden>
+          #
+        </span>
         <input
           autoFocus
-          inputMode="numeric"
-          className="input w-24 px-1.5 py-0.5 text-2xs tabular-nums"
-          placeholder="PR number"
-          aria-label={`PR number in ${repo.owner}/${repo.repo}`}
+          className="min-w-0 flex-1 border-0 bg-transparent p-0 tabular-nums outline-none placeholder:font-normal placeholder:text-[var(--fg-faint)]"
+          style={{ color: "var(--fg)" }}
+          placeholder={`PR number in ${repo.repo}, or paste a PR URL`}
+          aria-label={`PR number in ${repo.owner}/${repo.repo}, or a PR URL`}
           value={value}
           disabled={addPr.isPending}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => setValue(e.target.value.replace(/^#/, ""))}
           onKeyDown={(e) => {
             if (e.key === "Escape") onClose();
           }}
         />
       </label>
-      <button type="submit" className="btn" disabled={!url || addPr.isPending}>
-        <UiText>{addPr.isPending ? "fetching…" : "add"}</UiText>
-      </button>
+      <span className="flex-none" data-testid="add-by-number-hint">
+        {hint}
+      </span>
       <button
         type="button"
-        className="btn"
+        className={ICON_BUTTON}
+        aria-label="Close"
+        data-tip="Close"
+        data-tip-key="Esc"
         disabled={addPr.isPending}
         onClick={onClose}
       >
-        <UiText>cancel</UiText>
+        <IconClose width={13} height={13} />
       </button>
-      {addPr.error ? (
-        <span style={{ color: "var(--risk)" }}>{errorText(addPr.error)}</span>
-      ) : value.trim() && !url ? (
-        <span style={{ color: "var(--fg-faint)" }}><UiText>a number, like 123</UiText></span>
-      ) : null}
     </form>
   );
 }
