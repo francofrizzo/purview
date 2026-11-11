@@ -3801,9 +3801,9 @@ export function CommentIndicatorLegend() {
 /**
  * Copies a file's path. Shows a check for a moment once the path is really on
  * the clipboard; a refused write (insecure origin, denied permission) just
- * leaves the icon as it was.
+ * leaves the icon as it was. `full`: what a ⌘/Ctrl-click copies instead.
  */
-export function CopyPathButton({ path, what = "path", label }: { path: string; what?: string; label?: string }) {
+export function CopyPathButton({ path, what = "path", label, full }: { path: string; what?: string; label?: string; full?: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<number | null>(null);
   useEffect(() => () => {
@@ -3814,13 +3814,13 @@ export function CopyPathButton({ path, what = "path", label }: { path: string; w
       type="button"
       data-testid={`copy-path-${path}`}
       aria-label={label ?? `Copy ${path}`}
-      data-tip={copied ? "Copied" : `Copy ${what}`}
+      data-tip={copied ? "Copied" : `Copy ${what}${full ? ` (⌘-click: ${full})` : ""}`}
       className="inline-flex flex-none items-center gap-1 hover:!text-[var(--fg)]"
       style={{ color: copied ? "var(--ok)" : "var(--fg-faint)" }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => {
         e.stopPropagation();
-        void navigator.clipboard?.writeText(path).then(
+        void navigator.clipboard?.writeText(full && (e.metaKey || e.ctrlKey) ? full : path).then(
           () => {
             setCopied(true);
             if (timer.current) window.clearTimeout(timer.current);

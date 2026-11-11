@@ -15,6 +15,16 @@ test("the view options hold the layout, wrapping, folding, read units and thread
   await expect(page.getByTestId("layout-split")).toHaveCount(0);
 });
 
+test("the PR number's copy button copies the number, and with ⌘ the repo and number", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openPr(page);
+  const copy = page.getByTestId("topbar-repo").getByTestId("copy-path-482");
+  await copy.click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("482");
+  await copy.click({ modifiers: ["ControlOrMeta"] });
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("acme/billing#482");
+});
+
 test("the branches open under their icon, each with a copy button", async ({ page }) => {
   await openPr(page);
   await expect(page.getByTestId("topbar-repo")).toContainText("acme/billing#482");

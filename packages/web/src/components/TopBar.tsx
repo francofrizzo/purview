@@ -227,7 +227,11 @@ export function TopBar({
             <span className="flex-none font-mono" style={{ color: "var(--fg-muted)" }}>
               #{meta.number}
             </span>
-            <CopyPathButton path={String(meta.number)} what="PR number" />
+            <CopyPathButton
+              path={String(meta.number)}
+              what="PR number"
+              full={`${meta.owner}/${meta.repo}#${meta.number}`}
+            />
             {meta.headRef ? <BranchesButton head={meta.headRef} base={meta.baseRef} /> : null}
           </span>
         </div>
