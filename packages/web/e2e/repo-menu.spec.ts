@@ -36,11 +36,10 @@ test("import PRs: its header button looks at once, the searches and span re-look
   await expect(page.getByTestId("import-candidate-507")).toBeVisible();
   await page.getByTestId("import-source-requests").click();
 
-  // New ones start ticked; one already on the list is shown, not pickable.
+  // New ones start ticked; one already on the list does not show.
   await expect(page.getByTestId("import-candidate-505")).toContainText("wants your review");
   await expect(page.getByTestId("import-candidate-507")).toContainText("yours");
-  await expect(page.getByTestId("import-candidate-482")).toContainText("already on the list");
-  await expect(page.getByTestId("import-candidate-482")).not.toHaveAttribute("role", "checkbox");
+  await expect(page.getByTestId("import-candidate-482")).toHaveCount(0);
   await expect(page.getByTestId("import-submit")).toHaveText("import 2");
 
   // Leave #507 out: the whole row toggles it.
@@ -50,6 +49,14 @@ test("import PRs: its header button looks at once, the searches and span re-look
   await expect(page.getByTestId("import-result")).toHaveText("imported 1");
   await expect(page.getByTestId("pr-row-github.com/acme/billing/505")).toBeVisible();
   await expect(page.getByTestId("pr-row-github.com/acme/billing/507")).toHaveCount(0);
+  // #505 left the found PRs; #507 is still there to pick.
+  await expect(page.getByTestId("import-candidate-505")).toHaveCount(0);
+  await expect(page.getByTestId("import-candidate-507")).toBeVisible();
+
+  // With nothing left to bring, it says so, and what the import just did.
+  await page.getByTestId("import-candidate-507").click();
+  await page.getByTestId("import-submit").click();
+  await expect(page.getByTestId("import-none")).toContainText(/imported 1\.\s*Nothing new/);
 
   // Escape closes it; the add slot and the import slot take turns.
   await page.getByTestId("import-days-14").focus();

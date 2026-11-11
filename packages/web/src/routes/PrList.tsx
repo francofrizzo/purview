@@ -1074,9 +1074,10 @@ const IMPORT_SPANS = [3, 7, 14, 30] as const;
  * in the select column, the searches as toggles (PRs that want your review,
  * PRs you opened; they start as the repo's watch settings) and how far back,
  * and under them the PRs found, as rows like the list's. It looks as soon as
- * it opens and again on every change. New PRs start ticked, an archived one
- * can be ticked to bring it back, and one already on the list shows, dimmed,
- * without a box. Escape or the × closes it.
+ * it opens and again on every change. Only what it can bring shows: new PRs,
+ * ticked to start, and archived ones, which a tick brings back. With none,
+ * it says whether nothing turned up or all of it is on the list already.
+ * Escape or the × closes it.
  */
 function ImportReviewsForm({
   rkey,
@@ -1094,11 +1095,11 @@ function ImportReviewsForm({
   const find = useImportCandidates(rkey);
   const importReviews = useImportReviews(rkey);
   const busy = find.isPending || importReviews.isPending;
-  // The ones to pick from first; those already on the list after, for reference.
-  const candidates = find.data?.candidates
-    .slice()
-    .sort((x, y) => Number(x.tracked && !x.archived) - Number(y.tracked && !y.archived));
-  const pickable = candidates?.filter((c) => !c.tracked || c.archived) ?? [];
+  // Only what the import can bring: PRs not on the list, or archived ones.
+  const found = find.data?.candidates;
+  const candidates = found?.filter((c) => !c.tracked || c.archived);
+  const onList = (found?.length ?? 0) - (candidates?.length ?? 0);
+  const pickable = candidates ?? [];
   const sourcesKey = [...sources].sort().join(",");
 
   const { mutate: look } = find;
@@ -1219,8 +1220,20 @@ function ImportReviewsForm({
           {errorText(find.error)}
         </p>
       ) : candidates && !candidates.length ? (
-        <p className="pb-3 pl-8 pr-4" style={{ color: "var(--fg-faint)" }} data-testid="import-none">
-          <UiText>{`No open PRs in the last ${days} days.`}</UiText>
+        <p className="flex gap-1 pb-3 pl-8 pr-4" style={{ color: "var(--fg-faint)" }} data-testid="import-none">
+          {importReviews.data ? (
+            <span
+              data-testid="import-result"
+              style={{ color: importReviews.data.failed.length ? "var(--risk)" : "var(--ok)" }}
+            >
+              <UiText>{`${formatImportResult(importReviews.data)}.`}</UiText>
+            </span>
+          ) : null}
+          <UiText>
+            {onList
+              ? `Nothing new: the ${onList === 1 ? "PR" : `${onList} PRs`} from the last ${days} days ${onList === 1 ? "is" : "are"} on the list already.`
+              : `No open PRs in the last ${days} days.`}
+          </UiText>
         </p>
       ) : candidates ? (
         <>
@@ -1293,9 +1306,8 @@ function defaultImportSources(repo: RepoSummary | undefined): ImportSource[] {
 }
 
 /**
- * A PR the import found, as a row like the list's: its box in the select
+ * A PR the import can bring, as a row like the list's: its box in the select
  * column, the title and number, then who and why. The whole row picks it.
- * One already on the list is dimmed and has no box.
  */
 function ImportCandidateRow({
   candidate: c,
@@ -1308,11 +1320,19 @@ function ImportCandidateRow({
   disabled: boolean;
   onToggle: () => void;
 }) {
-  const onList = c.tracked && !c.archived;
   const why = c.sources.map((s) => (s === "requests" ? "wants your review" : "yours")).join(", ");
-  const body = (
-    <>
-      {onList ? null : (
+  return (
+    <li>
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={checked}
+        disabled={disabled}
+        className="relative flex w-full flex-col gap-0.5 border-t py-2 pl-8 pr-4 text-left transition-colors hover:bg-[var(--bg-hover)]"
+        style={{ borderColor: "var(--border)" }}
+        data-testid={`import-candidate-${c.number}`}
+        onClick={onToggle}
+      >
         <span
           className="absolute left-2.5 top-[11px] flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-colors"
           style={{
@@ -1324,44 +1344,21 @@ function ImportCandidateRow({
         >
           {checked ? <IconCheck width={10} height={10} /> : null}
         </span>
-      )}
-      <span className="flex min-w-0 items-baseline gap-2">
-        <span className="truncate text-[13px] font-medium" style={{ color: "var(--fg)" }}>
-          {c.title}
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="truncate text-[13px] font-medium" style={{ color: "var(--fg)" }}>
+            {c.title}
+          </span>
+          <span className="flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
+            #{c.number}
+          </span>
         </span>
-        <span className="flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
-          #{c.number}
+        <span className="flex flex-wrap gap-x-3" style={{ color: "var(--fg-faint)" }}>
+          {c.author ? <span>{c.author}</span> : null}
+          <UiText>{why}</UiText>
+          {c.updatedAt ? <UiText>{`updated ${formatAddedAt(c.updatedAt)}`}</UiText> : null}
+          {c.archived ? <UiText>archived, brings it back</UiText> : null}
         </span>
-      </span>
-      <span className="flex flex-wrap gap-x-3" style={{ color: "var(--fg-faint)" }}>
-        {c.author ? <span>{c.author}</span> : null}
-        <UiText>{why}</UiText>
-        {c.updatedAt ? <UiText>{`updated ${formatAddedAt(c.updatedAt)}`}</UiText> : null}
-        {onList ? <UiText>already on the list</UiText> : c.archived ? <UiText>archived, brings it back</UiText> : null}
-      </span>
-    </>
-  );
-  const row = "relative flex w-full flex-col gap-0.5 border-t py-2 pl-8 pr-4 text-left";
-  return (
-    <li>
-      {onList ? (
-        <div className={row} style={{ borderColor: "var(--border)", opacity: 0.55 }} data-testid={`import-candidate-${c.number}`}>
-          {body}
-        </div>
-      ) : (
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={checked}
-          disabled={disabled}
-          className={`${row} transition-colors hover:bg-[var(--bg-hover)]`}
-          style={{ borderColor: "var(--border)" }}
-          data-testid={`import-candidate-${c.number}`}
-          onClick={onToggle}
-        >
-          {body}
-        </button>
-      )}
+      </button>
     </li>
   );
 }
