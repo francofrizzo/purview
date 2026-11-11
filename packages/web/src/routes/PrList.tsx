@@ -1024,7 +1024,7 @@ function AddByNumberForm({
     <form
       onSubmit={submit}
       className="relative flex min-h-11 items-center gap-2 border-t py-2 pl-8 pr-2 text-2xs"
-      style={{ borderColor: "var(--border)", boxShadow: "inset 2px 0 0 var(--accent)" }}
+      style={{ borderColor: "var(--border)" }}
       data-testid={`add-by-number-${repo.key}`}
     >
       <span className="absolute left-2.5 flex" style={{ color: "var(--accent)" }} aria-hidden>
@@ -1142,7 +1142,7 @@ function ImportReviewsForm({
   return (
     <div
       className="relative border-t text-2xs"
-      style={{ borderColor: "var(--border)", boxShadow: "inset 2px 0 0 var(--accent)" }}
+      style={{ borderColor: "var(--border)" }}
       data-testid={`import-form-${rkey}`}
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
