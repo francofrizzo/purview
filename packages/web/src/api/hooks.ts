@@ -10,6 +10,7 @@ import { api } from "./client";
 import { skippedHunkIds } from "../lib/diffModel";
 import { applyArchive, applyRepoArchive, stackOf } from "../lib/prList";
 import { stalenessPollInterval } from "../lib/staleness";
+import { normalizeTag } from "../lib/tags";
 import type {
   AnalysisImportReport,
   AnalysisJob,
@@ -1374,6 +1375,28 @@ export function useSetPrTag(key: string) {
       if (ctx?.detail) qc.setQueryData<PrDetail>(qk.pr(key), (d) => (d ? { ...d, meta: { ...d.meta, tag: ctx.detail!.meta.tag } } : d));
     },
     onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: qk.prs }), qc.invalidateQueries({ queryKey: qk.pr(key) })]),
+  });
+}
+
+/**
+ * Rename a tag on every PR that has it. Optimistic on the list; every PR's
+ * detail is refetched after, since any of them may carry it.
+ */
+export function useRenameTag() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ from, to }: { from: string; to: string }) => api.renameTag(from, to),
+    onMutate: async ({ from, to }) => {
+      await qc.cancelQueries({ queryKey: qk.prs });
+      const list = qc.getQueryData<PrListEntry[]>(qk.prs);
+      const tag = normalizeTag(to);
+      if (list) qc.setQueryData(qk.prs, list.map((p) => (p.meta.tag === from ? { ...p, meta: { ...p.meta, tag } } : p)));
+      return { list };
+    },
+    onError: (_error, _vars, ctx) => {
+      if (ctx?.list) qc.setQueryData(qk.prs, ctx.list);
+    },
+    onSettled: () => Promise.all([qc.invalidateQueries({ queryKey: qk.prs }), qc.invalidateQueries({ queryKey: ["pr"] })]),
   });
 }
 

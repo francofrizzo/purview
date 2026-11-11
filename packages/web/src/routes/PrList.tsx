@@ -11,6 +11,7 @@ import {
   useMarkVersionSeen,
   usePrs,
   useRefresh,
+  useRenameTag,
   useRepos,
   useSetArchived,
   useVersion,
@@ -37,6 +38,7 @@ import {
   IconChevron,
   IconClose,
   IconDensity,
+  IconEdit,
   IconHourglass,
   IconInbox,
   IconPlus,
@@ -53,7 +55,7 @@ import { errorText } from "../api/errors";
 import { rollbackMessage } from "../lib/rollback";
 import { formatImportResult } from "../lib/reviewImport";
 import { useSettings } from "../lib/settings";
-import { TAG_COLORS, tagSlot } from "../lib/tags";
+import { normalizeTag, TAG_COLORS, tagSlot } from "../lib/tags";
 import {
   filterRepoGroup,
   finishedPrs,
@@ -869,7 +871,9 @@ function PrBlock({
  * A tag's heading: a full-width band that folds the group, with the tag icon
  * in the tag's color. A faint tint and a rule above and below; it overlaps
  * the rule over it by a pixel, and folded it leaves the rule under it to
- * whatever comes next, so two rules never stack.
+ * whatever comes next, so two rules never stack. A tagged band shows a pencil
+ * on hover that turns the chip into a box: the new name goes to every PR with
+ * the tag, in every repo (to a tag in use, the two merge).
  */
 function TagBand({
   tag,
@@ -882,38 +886,157 @@ function TagBand({
   open: boolean;
   onToggle: () => void;
 }) {
+  const [renaming, setRenaming] = useState(false);
   const kind = tag ? TAG_COLORS[tagSlot(tag)] : null;
+  const band = `relative -mt-px flex w-full items-center gap-1.5 border-t px-4 py-1.5 text-left text-2xs leading-[normal] text-[var(--fg-muted)] ${open ? "border-b" : ""}`;
+  const bandStyle = { borderColor: "var(--border)", background: "color-mix(in srgb, var(--fg) 2.5%, transparent)" };
+  if (tag && renaming) {
+    return <TagRename tag={tag} className={band} style={bandStyle} open={open} onDone={() => setRenaming(false)} />;
+  }
   return (
-    <button
-      type="button"
-      data-testid="pr-tag-heading"
-      aria-expanded={open}
-      onClick={onToggle}
-      data-tip={`${open ? "Fold" : "Unfold"} ${tag ? `the ${tag} PRs` : "the untagged PRs"}`}
-      className={`relative -mt-px flex w-full items-center gap-1.5 border-t px-4 py-1.5 text-left text-2xs leading-[normal] text-[var(--fg-muted)] transition-colors hover:text-[var(--fg)] ${open ? "border-b" : ""}`}
-      style={{
-        borderColor: "var(--border)",
-        background: "color-mix(in srgb, var(--fg) 2.5%, transparent)",
-      }}
-    >
-      <IconChevron open={open} width={10} height={10} className="flex-none" style={{ color: "var(--fg-faint)" }} />
-      {/* The tag as the chip it is everywhere else; "untagged" stays plain. */}
-      <span
-        className="chip gap-1"
-        style={
-          kind
-            ? { color: `var(--kind-${kind})`, background: `var(--kind-${kind}-soft)` }
-            : { color: "var(--fg-muted)", background: "transparent", paddingLeft: 0 }
-        }
-        data-testid={tag ? "pr-tag" : undefined}
+    <div className="group/band relative">
+      <button
+        type="button"
+        data-testid="pr-tag-heading"
+        aria-expanded={open}
+        onClick={onToggle}
+        data-tip={`${open ? "Fold" : "Unfold"} ${tag ? `the ${tag} PRs` : "the untagged PRs"}`}
+        className={`${band} transition-colors hover:text-[var(--fg)]`}
+        style={bandStyle}
       >
+        <IconChevron open={open} width={10} height={10} className="flex-none" style={{ color: "var(--fg-faint)" }} />
+        {/* The tag as the chip it is everywhere else; "untagged" stays plain. */}
+        <span
+          className="chip gap-1"
+          style={
+            kind
+              ? { color: `var(--kind-${kind})`, background: `var(--kind-${kind}-soft)` }
+              : { color: "var(--fg-muted)", background: "transparent", paddingLeft: 0 }
+          }
+          data-testid={tag ? "pr-tag" : undefined}
+        >
+          <IconTag width={11} height={11} className="flex-none" />
+          {tag ?? <UiText>untagged</UiText>}
+        </span>
+        <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
+          {count}
+        </span>
+      </button>
+      {tag ? (
+        <button
+          type="button"
+          data-testid={`tag-rename-${tag}`}
+          aria-label={`Rename ${tag}`}
+          data-tip="Rename this tag on every PR"
+          className="absolute inset-y-0 right-4 my-auto flex h-5 w-5 items-center justify-center rounded opacity-0 transition-opacity hover:bg-[var(--bg-hover)] hover:!text-[var(--fg)] focus-visible:opacity-100 group-hover/band:opacity-100"
+          style={{ color: "var(--fg-faint)" }}
+          onClick={() => setRenaming(true)}
+        >
+          <IconEdit width={12} height={12} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The band while its tag is renamed: the chip becomes a box holding the name,
+ * and the right side says what Enter will do. Enter saves, Escape or leaving
+ * the box puts the band back. A folded group stays folded under its new name.
+ */
+function TagRename({
+  tag,
+  className,
+  style,
+  open,
+  onDone,
+}: {
+  tag: string;
+  className: string;
+  style: React.CSSProperties;
+  open: boolean;
+  onDone: () => void;
+}) {
+  const [value, setValue] = useState(tag);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const rename = useRenameTag();
+  const { settings, update } = useSettings();
+  const { data: prs = [] } = usePrs();
+  const next = normalizeTag(value);
+  const tooLong = next.length > 24;
+  const carrying = prs.filter((pr) => pr.meta.tag === tag).length;
+  const merges = next !== tag && prs.some((pr) => pr.meta.tag === next);
+  const kind = TAG_COLORS[tagSlot(next || tag)];
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+  const submit = () => {
+    if (rename.isPending || tooLong) return;
+    if (!next || next === tag) return onDone();
+    rename.mutate(
+      { from: tag, to: next },
+      {
+        onSuccess: () => {
+          // Fold keys end in the tag: carry the folded ones over to the new name.
+          const suffix = `|${tag}`;
+          const moved = settings.foldedTagGroups.map((k) => (k.endsWith(suffix) ? `${k.slice(0, -suffix.length)}|${next}` : k));
+          if (moved.some((k, i) => k !== settings.foldedTagGroups[i])) update({ foldedTagGroups: [...new Set(moved)] });
+          onDone();
+        },
+      },
+    );
+  };
+  const hint = rename.error
+    ? errorText(rename.error)
+    : rename.isPending
+      ? "Renaming…"
+      : tooLong
+        ? "At most 24 characters"
+        : !next || next === tag
+          ? "esc keeps it"
+          : merges
+            ? `↵ merges it into ${next}`
+            : `↵ renames it on ${carrying} ${carrying === 1 ? "PR" : "PRs"}`;
+  return (
+    <div className={className} style={style} data-testid="tag-rename-form">
+      <IconChevron open={open} width={10} height={10} className="flex-none" style={{ color: "var(--fg-faint)" }} />
+      <span className="chip gap-1" style={{ color: `var(--kind-${kind})`, background: `var(--kind-${kind}-soft)` }}>
         <IconTag width={11} height={11} className="flex-none" />
-        {tag ?? <UiText>untagged</UiText>}
+        <input
+          ref={inputRef}
+          type="text"
+          data-testid="tag-rename-input"
+          aria-label={`New name for ${tag}`}
+          aria-invalid={tooLong || undefined}
+          className="min-w-0 bg-transparent outline-none"
+          style={{ color: "inherit", width: `${Math.max(value.length, 4) + 1}ch` }}
+          value={value}
+          disabled={rename.isPending}
+          onChange={(e) => setValue(e.target.value)}
+          onBlur={() => {
+            if (!rename.isPending) onDone();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.stopPropagation();
+              onDone();
+            } else if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            }
+          }}
+        />
       </span>
-      <span className="tabular-nums" style={{ color: "var(--fg-faint)" }}>
-        {count}
+      <span
+        className="ml-auto truncate"
+        data-testid="tag-rename-hint"
+        role={rename.error || tooLong ? "alert" : undefined}
+        style={{ color: rename.error || tooLong ? "var(--risk)" : "var(--fg-faint)" }}
+      >
+        <UiText>{hint}</UiText>
       </span>
-    </button>
+    </div>
   );
 }
 

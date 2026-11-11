@@ -529,6 +529,11 @@ export const api = {
     return post(`/prs/${encodeKey(key)}/tag`, { tag, stack });
   },
 
+  async renameTag(from: string, to: string): Promise<{ tag: string; renamed: number }> {
+    if (MOCK) return mockApi.renameTag(from, to);
+    return post(`/tags/rename`, { from, to });
+  },
+
   async setPrCommentAudience(
     key: string,
     audience: CommentAudience | null,

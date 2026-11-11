@@ -78,3 +78,35 @@ test("tags group rows, stacks hang under their base, and edits persist", async (
   await expect(untagged.getByTestId("pr-tag-heading")).toHaveText(/untagged\s*1/);
   await expect(untagged.getByTestId(`pr-row-${childKey}`)).toBeVisible();
 });
+
+test("a tag's heading renames it on every PR, says what Enter will do, and merges into a tag in use", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("whats-new-close").click().catch(() => {});
+  const block = page.getByTestId("mine-github.com/acme/billing");
+  const heading = block.getByTestId("pr-tag-heading").filter({ hasText: "payments" });
+  await heading.hover();
+  await block.getByTestId("tag-rename-payments").click();
+  const input = page.getByTestId("tag-rename-input");
+  await expect(input).toBeFocused();
+  await expect(page.getByTestId("tag-rename-hint")).toHaveText("esc keeps it");
+  // Escape puts the band back unchanged.
+  await input.press("Escape");
+  await expect(page.getByTestId("tag-rename-form")).toHaveCount(0);
+
+  await heading.hover();
+  await block.getByTestId("tag-rename-payments").click();
+  await input.fill("Billing Core");
+  await expect(page.getByTestId("tag-rename-hint")).toHaveText(/↵ renames it on \d+ PRs/);
+  await input.press("Enter");
+  await expect(page.getByTestId("tag-rename-form")).toHaveCount(0);
+  await expect(page.getByTestId("pr-tag-heading").getByTestId("pr-tag").filter({ hasText: "payments" })).toHaveCount(0);
+  await expect(block.getByTestId("pr-tag-heading").getByTestId("pr-tag").filter({ hasText: "billing core" })).toHaveCount(1);
+
+  // Into a tag in use: the two merge.
+  await block.getByTestId("pr-tag-heading").filter({ hasText: "billing core" }).hover();
+  await block.getByTestId("tag-rename-billing core").click();
+  await input.fill("cleanup");
+  await expect(page.getByTestId("tag-rename-hint")).toHaveText("↵ merges it into cleanup");
+  await input.press("Enter");
+  await expect(page.getByTestId("pr-tag-heading").getByTestId("pr-tag").filter({ hasText: "billing core" })).toHaveCount(0);
+});

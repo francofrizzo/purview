@@ -885,6 +885,21 @@ export const mockApi = {
     return { ...structuredClone(entry.meta), stack: keys };
   },
 
+  async renameTag(from: string, to: string) {
+    await delay(80);
+    const norm = (t: string) => t.trim().toLowerCase().replace(/\s+/g, " ");
+    const old = norm(from);
+    const tag = norm(to);
+    if (!tag.length || tag.length > 24) throw new Error("Tag must be 1–24 characters");
+    let renamed = 0;
+    for (const row of list) {
+      if (row.meta.tag !== old || old === tag) continue;
+      for (const meta of [row.meta, details[row.key]?.meta].filter(Boolean)) meta!.tag = tag;
+      renamed++;
+    }
+    return { tag, renamed };
+  },
+
   async reviewerCandidates(key: string, q: string): Promise<ReviewerCandidate[]> {
     await delay(120);
     const entry = list.find((p) => p.key === key);

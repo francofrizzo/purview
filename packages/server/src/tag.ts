@@ -35,6 +35,24 @@ export function stackOf(key: PrKey, root = stateRoot()): PrKey[] {
   return sameRepo.filter((k) => seen.has(k.number));
 }
 
+/**
+ * Renames a tag on every tracked PR that has it, in every repo, archived ones
+ * included: a tag is one name across the list. Renaming to a tag in use
+ * merges the two. Returns how many PRs changed.
+ */
+export function renameTag(from: string, to: string, root = stateRoot()) {
+  const old = TagSchema.parse(from);
+  const tag = TagSchema.parse(to);
+  let renamed = 0;
+  for (const k of listPrs(root)) {
+    const meta = readMeta(k, root);
+    if (meta.tag !== old || old === tag) continue;
+    writeMeta(k, { ...meta, tag }, root);
+    renamed++;
+  }
+  return { tag, renamed };
+}
+
 /** Sets (or with `null` clears) the tag on one PR; with `stack`, on its whole stack. Returns the PR's new meta and every key touched. */
 export function setTagFor(key: PrKey, tag: string | null, root = stateRoot(), opts: { stack?: boolean } = {}) {
   const keys = opts.stack ? stackOf(key, root) : [key];

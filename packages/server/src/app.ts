@@ -170,7 +170,7 @@ import { reviewEffort } from "./effort.js";
 import { diffSize, withGenerated } from "./diff-size.js";
 import { compareVersions, entriesSince, headSha, readChangelog } from "./changelog.js";
 import { createUpdateChecker, noUpdateChecker, type UpdateChecker } from "./updates.js";
-import { TagSchema, setTagFor } from "./tag.js";
+import { TagSchema, renameTag, setTagFor } from "./tag.js";
 import { authoredByYou, commentAudienceFor, reviewedByYou, setCommentAudienceFor } from "./comment-audience.js";
 import {
   autoAnalyzeAllowed,
@@ -917,6 +917,13 @@ export function createApp(opts: AppOptions = {}): Hono {
     const parsed = TagSchema.nullable().safeParse(body?.tag);
     if (!parsed.success) throw new HttpError(400, "invalid_body", "Tag must be null or 1–24 characters after normalization");
     return c.json(setTagFor(key, parsed.data, root, { stack: body?.stack === true }));
+  });
+
+  /** Rename a tag on every PR that has it (see renameTag). */
+  app.post("/api/tags/rename", async (c) => {
+    const parsed = z.object({ from: TagSchema, to: TagSchema }).safeParse(await readJsonBody(c));
+    if (!parsed.success) throw new HttpError(400, "invalid_body", "Send { from, to }, each 1–24 characters after normalization");
+    return c.json(renameTag(parsed.data.from, parsed.data.to, root));
   });
 
   /**

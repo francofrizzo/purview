@@ -47,3 +47,18 @@ it("with stack: true tags every PR linked through bases, skipping archived ones"
   await post({ tag: "alone" });
   expect(readMeta({ ...key, number: 8 }, root).tag).toBe("stacked");
 });
+it("renames a tag on every PR that has it, archived ones too, and merges into a tag in use", async () => {
+  const base = readMeta(key, root);
+  const other = { ...base, number: 8, url: base.url.replace(/\d+$/, "8"), tag: "old", archived: true };
+  const kept = { ...base, number: 9, url: base.url.replace(/\d+$/, "9"), tag: "keep" };
+  writeMeta(key, { ...base, tag: "old" }, root);
+  for (const m of [other, kept]) writeMeta({ ...key, number: m.number }, m, root);
+  const rename = (body: unknown) => app.request("/api/tags/rename", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await rename({ from: "Old", to: "  New  Name " });
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual({ tag: "new name", renamed: 2 });
+  for (const n of [key.number, 8]) expect(readMeta({ ...key, number: n }, root).tag).toBe("new name");
+  expect(readMeta({ ...key, number: 9 }, root)).toEqual(kept);
+  expect(await (await rename({ from: "new name", to: "keep" })).json()).toEqual({ tag: "keep", renamed: 2 });
+  for (const body of [{}, { from: "keep" }, { from: "keep", to: " " }, { from: "keep", to: "x".repeat(25) }]) expect((await rename(body)).status).toBe(400);
+});
