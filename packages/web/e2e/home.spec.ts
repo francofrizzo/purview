@@ -183,3 +183,14 @@ test("shift-click picks every row between it and the last one picked", async ({ 
   await expect(page.getByTestId("selection-count")).toHaveText("3 selected");
   expect(n).toBeGreaterThan(3);
 });
+
+test("the select box takes clicks anywhere in the empty strip left of the title", async ({ page }) => {
+  await home(page);
+  const row = page.getByTestId(`pr-row-${CHARGE}`);
+  await row.hover();
+  const r = (await row.boundingBox())!;
+  // The strip's lower end, well away from the box drawn at the title's height.
+  await page.mouse.click(r.x + 20, r.y + r.height - 6);
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByTestId("selection-count")).toHaveText("1 selected");
+});

@@ -1290,7 +1290,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
       data-pr-key={pr.key}
       data-depth={depth || undefined}
     >
-      <SelectBox prKey={pr.key} checked={picked} selecting={selecting} compact={compact} />
+      <SelectBox prKey={pr.key} checked={picked} selecting={selecting} compact={compact} depth={depth} />
       {depth > 0 ? (
         <TreeLines
           depth={depth}
@@ -1408,11 +1408,25 @@ function RowTarget({ pr, className, children }: { pr: PrListEntry; className: st
 
 /**
  * A row's select box, in the column at the card's left edge whatever the
- * row's depth in a stack. At rest it shows on hover and starts selection
- * mode; in that mode it shows on every row and the row itself is the
- * checkbox, so the box is only something to click.
+ * row's depth in a stack. What takes the click is the whole empty strip left
+ * of the title, the box's column and a stacked row's indent, top to bottom.
+ * At rest it shows on hover and starts selection mode; in that mode it shows
+ * on every row and the row itself is the checkbox, so the box is only
+ * something to click.
  */
-function SelectBox({ prKey, checked, selecting, compact }: { prKey: string; checked: boolean; selecting: boolean; compact: boolean }) {
+function SelectBox({
+  prKey,
+  checked,
+  selecting,
+  compact,
+  depth,
+}: {
+  prKey: string;
+  checked: boolean;
+  selecting: boolean;
+  compact: boolean;
+  depth: number;
+}) {
   const selection = useContext(SelectionContext);
   return (
     <button
@@ -1424,18 +1438,24 @@ function SelectBox({ prKey, checked, selecting, compact }: { prKey: string; chec
       tabIndex={selecting ? -1 : undefined}
       data-testid={`select-start-${prKey}`}
       data-tip={selecting ? undefined : "Select, to tag or archive several PRs at once"}
-      className={`absolute left-2.5 z-[1] flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-[opacity,background-color,border-color] duration-150 ease-in-out max-sm:hidden ${
+      className={`group/select absolute inset-y-0 left-0 z-[1] cursor-pointer outline-none transition-opacity duration-150 ease-in-out max-sm:hidden ${
         selecting ? "" : "opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
       }`}
-      style={{
-        top: compact ? 9 : 15,
-        borderColor: checked ? "var(--accent)" : "var(--fg-muted)",
-        background: checked ? "var(--accent)" : "transparent",
-        color: "var(--bg)",
-      }}
+      // Up to 4px short of the title, so the title's own click still opens the PR.
+      style={{ width: depth * STACK_INDENT + 28 }}
       onClick={(e) => selection.toggle(prKey, e.shiftKey)}
     >
-      {checked ? <IconCheck width={10} height={10} /> : null}
+      <span
+        className="absolute left-2.5 flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-colors group-focus-visible/select:ring-1 group-focus-visible/select:ring-[var(--accent)]"
+        style={{
+          top: compact ? 9 : 15,
+          borderColor: checked ? "var(--accent)" : "var(--fg-muted)",
+          background: checked ? "var(--accent)" : "transparent",
+          color: "var(--bg)",
+        }}
+      >
+        {checked ? <IconCheck width={10} height={10} /> : null}
+      </span>
     </button>
   );
 }
