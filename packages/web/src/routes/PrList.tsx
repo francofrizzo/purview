@@ -1305,7 +1305,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
         />
       ) : null}
       {compact ? (
-        <RowTarget pr={pr} className="flex min-w-0 items-center gap-3.5 py-[7px] pl-8 pr-8">
+        <RowTarget pr={pr} className="flex min-w-0 items-center gap-3.5 py-[7px] pl-8 pr-4">
           {title}
           <span className="flex flex-none text-2xs leading-normal max-sm:hidden">
             <ReviewRequestWait request={pr.reviewRequest} state={pr.state} />
@@ -1316,7 +1316,7 @@ function PrRow({ row }: { row: ArrangedRow }) {
           </span>
         </RowTarget>
       ) : (
-        <RowTarget pr={pr} className="flex min-w-0 flex-col gap-[5px] py-3 pl-8 pr-8">
+        <RowTarget pr={pr} className="flex min-w-0 flex-col gap-[5px] py-3 pl-8 pr-4">
           {title}
           <div
             className="flex min-h-4 flex-wrap items-center gap-x-3.5 gap-y-1 text-2xs leading-normal"
