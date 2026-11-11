@@ -26,8 +26,8 @@ export async function runNotesCommand(args: string[], options: {
       });
       if (res.status === 404) { print(`PR is not tracked in Purview: ${pr}`); return 1; }
       if (!res.ok) { print(`Purview returned ${res.status}: ${await res.text()}`); return 1; }
-      const result = await res.json() as { markdown: string; notes?: unknown[]; pending?: unknown[] };
-      if ((result.notes ?? result.pending ?? []).length) { print(result.markdown); return 0; }
+      const result = await res.json() as { markdown: string; notes?: unknown[]; pending?: unknown[]; withdrawn?: unknown[] };
+      if ((result.notes ?? result.pending ?? []).length || result.withdrawn?.length) { print(result.markdown); return 0; }
       if (peek || !wait) { print("No new notes for the agent."); return 0; }
       await (options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(100);
     }

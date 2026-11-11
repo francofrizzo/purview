@@ -96,8 +96,16 @@ export const COMMENT_HISTORY_CAP = 5;
  * stay available (a refined schema is a ZodEffects and loses them). Everything
  * that validates rather than merely types goes through `subjectInvariant`.
  */
-export const PickedUpSchema = z.object({ at: z.string().datetime(), by: z.string().min(1) });
+export const PickedUpSchema = z.object({
+  at: z.string().datetime(),
+  by: z.string().min(1),
+  /** the body the agent received; absent on marks from before it was kept (read as the comment's body) */
+  body: z.string().optional(),
+});
 export type PickedUp = z.infer<typeof PickedUpSchema>;
+/** A delivery the agent still holds but the note no longer matches: what it was handed, and when. */
+export const PreviousPickupSchema = PickedUpSchema.extend({ body: z.string() });
+export type PreviousPickup = z.infer<typeof PreviousPickupSchema>;
 export const commentEvents = new EventEmitter();
 commentEvents.setMaxListeners(0);
 
@@ -128,6 +136,12 @@ const CommentObjectSchema = z.object({
   /** Absent in files from before audiences: read as "github" (see `normalize`). */
   audience: CommentAudienceSchema.optional(),
   pickedUp: PickedUpSchema.optional(),
+  /**
+   * Set when a picked-up note changed under the agent: edited (still for the
+   * agent, delivered next as an edit of this body) or moved to GitHub
+   * (delivered next as a withdrawal). Cleared once that is delivered.
+   */
+  previousPickup: PreviousPickupSchema.optional(),
   /**
    * REST id (databaseId) of the review comment on GitHub. Used by the REST
    * delete endpoint (`DELETE /pulls/comments/{id}`), which takes databaseId.
@@ -510,6 +524,8 @@ export const DELETED_COMMENT_CAP = 20;
 export const DeletedCommentSchema = CommentObjectSchema.extend({
   deletedAt: z.string(),
   deletedBy: CommentActorSchema,
+  /** when the agent was told this note it had picked up is withdrawn */
+  withdrawnAt: z.string().optional(),
 });
 export type DeletedComment = z.infer<typeof DeletedCommentSchema>;
 
@@ -556,8 +572,11 @@ export function restoreDeletedComment(
   const trash = readDeletedComments(key, root);
   const entry = trash.find((e) => e.id === id);
   if (!entry) return undefined;
-  const { deletedAt: _at, deletedBy: _by, ...comment } = entry;
-  const restored: Comment = { ...comment, status: "draft" };
+  const { deletedAt: _at, deletedBy: _by, withdrawnAt, ...comment } = entry;
+  // Once the agent was told to drop it, a restored note is a new one to it.
+  const restored: Comment = withdrawnAt
+    ? { ...comment, status: "draft", pickedUp: undefined, previousPickup: undefined }
+    : { ...comment, status: "draft" };
   const comments = readComments(key, root);
   if (!comments.some((c) => c.id === id)) comments.push(restored);
   writeComments(key, comments, root);
@@ -689,7 +708,7 @@ export function updateCommentBody(
     ...(target.history ?? []),
     { body: target.body, replacedAt: now, replacedBy: actor },
   ].slice(-COMMENT_HISTORY_CAP);
-  const updated: Comment = { ...target, pickedUp: undefined, body, updatedAt: now, lastEditedBy: actor, history };
+  const updated = settlePickup(target, { ...target, body, updatedAt: now, lastEditedBy: actor, history });
   const next = [...comments];
   next[idx] = updated;
   writeComments(key, next, root);
@@ -717,8 +736,8 @@ export function undoCommentEdit(key: PrKey, id: string, root = stateRoot()): Und
   if (!last) return { ok: false, reason: "no_history" };
   const rest = history.slice(0, -1);
   const prev = rest[rest.length - 1];
-  const { history: _h, lastEditedBy: _l, pickedUp: _pickup, ...base } = target;
-  const updated: Comment = {
+  const { history: _h, lastEditedBy: _l, ...base } = target;
+  const updated = settlePickup(target, {
     ...base,
     body: last.body,
     ...(last.audience ? { audience: last.audience } : {}),
@@ -726,7 +745,7 @@ export function undoCommentEdit(key: PrKey, id: string, root = stateRoot()): Und
     // Whoever made the edit before the one undone is now the latest editor.
     ...(prev ? { lastEditedBy: prev.replacedBy } : {}),
     ...(rest.length ? { history: rest } : {}),
-  };
+  });
   const next = [...comments];
   next[idx] = updated;
   writeComments(key, next, root);
@@ -934,7 +953,7 @@ export function setCommentAudience(
   if (target.audience === audience) return target;
   if (target.status !== "draft") throw new CommentNotDraftError(target);
   const next = [...comments];
-  next[idx] = { ...target, audience, pickedUp: audience === "github" ? undefined : target.pickedUp };
+  next[idx] = settlePickup(target, { ...target, audience });
   if (actor !== "you") {
     const now = new Date().toISOString();
     next[idx] = {
@@ -1191,14 +1210,87 @@ export function pendingAgentNotes(comments: Comment[]): Comment[] {
 
 export function markPickedUp(key: PrKey, ids: string[], by: string, root = stateRoot()): Comment[] {
   const selected = new Set(ids);
-  const pickedUp = PickedUpSchema.parse({ at: new Date().toISOString(), by });
+  const at = new Date().toISOString();
   const notes: Comment[] = [];
   const comments = readComments(key, root).map((c) => {
     if (c.audience !== "agent" || c.pickedUp || !selected.has(c.id)) return c;
-    const note = { ...c, pickedUp };
+    const { previousPickup: _previous, ...rest } = c;
+    const note = { ...rest, pickedUp: PickedUpSchema.parse({ at, by, body: c.body }) };
     notes.push(note);
     return note;
   });
   if (notes.length) writeComments(key, comments, root);
   return notes;
+}
+
+/**
+ * What the agent last received of this comment and still holds: a pending
+ * edit or withdrawal, else the current delivery. A mark from before bodies
+ * were kept means the current body: every edit used to clear the mark.
+ */
+function heldByAgent(c: Comment): PreviousPickup | undefined {
+  if (c.previousPickup) return c.previousPickup;
+  if (c.audience === "agent" && c.pickedUp) return { ...c.pickedUp, body: c.pickedUp.body ?? c.body };
+  return undefined;
+}
+
+/**
+ * The delivery fields of `after`, a change to `before`. A note the agent
+ * holds that no longer matches keeps what it was handed (`previousPickup`),
+ * so the next pickup says it changed; back to the text it was handed (an
+ * undo, a move back), it is delivered again as it was.
+ */
+function settlePickup(before: Comment, after: Comment): Comment {
+  const { pickedUp: _p, previousPickup: _pp, ...rest } = after;
+  const held = heldByAgent(before);
+  if (!held) return rest;
+  if (after.audience === "agent" && held.body === after.body) return { ...rest, pickedUp: held };
+  return { ...rest, previousPickup: held };
+}
+
+/** A note the agent picked up that it should now ignore: deleted, or moved to the GitHub review. */
+export interface AgentNoteWithdrawal {
+  id: string;
+  reason: "deleted" | "moved-to-github";
+  file: string;
+  subjectType: CommentSubjectType;
+  line?: number;
+  startLine?: number;
+  side?: CommentSide;
+  inReplyTo?: string;
+  /** the body the agent had */
+  body: string;
+}
+
+/** Withdrawals not yet delivered, from the comments and the trash, in note order. */
+export function pendingAgentWithdrawals(comments: Comment[], trash: DeletedComment[]): AgentNoteWithdrawal[] {
+  const of = (c: Comment, reason: AgentNoteWithdrawal["reason"], held: PreviousPickup): AgentNoteWithdrawal => ({
+    id: c.id, reason, file: c.file, subjectType: c.subjectType, line: c.line, startLine: c.startLine, side: c.side,
+    inReplyTo: c.inReplyTo, body: held.body,
+  });
+  const moved = comments.flatMap((c) => c.audience !== "agent" && c.previousPickup ? [of(c, "moved-to-github", c.previousPickup)] : []);
+  const deleted = trash.flatMap((e) => {
+    const held = e.withdrawnAt ? undefined : heldByAgent(e);
+    return held && !comments.some((c) => c.id === e.id) ? [of(e, "deleted", held)] : [];
+  });
+  return [...moved, ...deleted].sort((a, b) => a.file.localeCompare(b.file) || (a.line ?? 0) - (b.line ?? 0));
+}
+
+/** The agent was told: moved notes drop what it held, trashed ones are stamped so they go once. */
+export function markWithdrawalsDelivered(key: PrKey, ids: string[], root = stateRoot()): void {
+  const selected = new Set(ids);
+  if (!selected.size) return;
+  const comments = readComments(key, root);
+  if (comments.some((c) => selected.has(c.id) && c.audience !== "agent" && c.previousPickup)) {
+    writeComments(key, comments.map((c) => {
+      if (!selected.has(c.id) || c.audience === "agent" || !c.previousPickup) return c;
+      const { previousPickup: _previous, ...rest } = c;
+      return rest;
+    }), root);
+  }
+  const trash = readDeletedComments(key, root);
+  const at = new Date().toISOString();
+  if (trash.some((e) => selected.has(e.id) && !e.withdrawnAt)) {
+    writeDeletedComments(key, trash.map((e) => selected.has(e.id) && !e.withdrawnAt ? { ...e, withdrawnAt: at } : e), root);
+  }
 }

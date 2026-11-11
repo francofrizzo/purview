@@ -78,7 +78,9 @@ import {
   readComments,
   commentEvents,
   pendingAgentNotes,
+  pendingAgentWithdrawals,
   markPickedUp,
+  markWithdrawalsDelivered,
   readDeletedComments,
   restoreDeletedComment,
   archiveComments,
@@ -100,7 +102,7 @@ import {
   markPublished,
   setCommentAudience,
 } from "./comments.js";
-import { formatAgentNotes, waitForAgentNotes } from "./agent-notes.js";
+import { deliveredNote, formatAgentNotes, waitForAgentNotes } from "./agent-notes.js";
 import { headShaOf, recoverCommentNodeId, syncCommentsToGithub } from "./comment-sync.js";
 import {
   assertAttachmentRefsExist,
@@ -1409,9 +1411,12 @@ export function createApp(opts: AppOptions = {}): Hono {
     const key = keyParam(c);
     const meta = readMeta(key, root);
     const revision = loadState(key, root).currentRevision;
-    const pending = pendingAgentNotes(readComments(key, root));
+    const comments = readComments(key, root);
+    const pending = pendingAgentNotes(comments);
+    const withdrawn = pendingAgentWithdrawals(comments, readDeletedComments(key, root));
     const files = readFilesJson(key, revision, root).files;
-    return c.json({ pending, markdown: formatAgentNotes(pending, { meta, revision, headSha: headShaOf(key, root), files }) });
+    const markdown = formatAgentNotes(pending, { meta, revision, headSha: headShaOf(key, root), files, withdrawn });
+    return c.json({ pending: pending.map((n) => deliveredNote(n)), withdrawn, markdown });
   });
 
   app.post("/api/prs/:key/agent-notes/pickup", async (c) => {
@@ -1425,12 +1430,15 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (c.req.raw.signal.aborted) throw new HttpError(499, "request_aborted");
     const meta = readMeta(key, root);
     const revision = loadState(key, root).currentRevision;
-    const pending = pendingAgentNotes(readComments(key, root));
+    const comments = readComments(key, root);
+    const pending = pendingAgentNotes(comments);
+    const withdrawn = pendingAgentWithdrawals(comments, readDeletedComments(key, root));
     const files = readFilesJson(key, revision, root).files;
-    const markdown = formatAgentNotes(pending, { meta, revision, headSha: headShaOf(key, root), files });
+    const markdown = formatAgentNotes(pending, { meta, revision, headSha: headShaOf(key, root), files, withdrawn });
     const marked = markPickedUp(key, pending.map((n) => n.id), agent, root);
-    const notes = pending.map((n) => marked.find((m) => m.id === n.id)!);
-    return c.json({ notes, markdown, revision });
+    markWithdrawalsDelivered(key, withdrawn.map((w) => w.id), root);
+    const notes = pending.map((n) => deliveredNote(marked.find((m) => m.id === n.id)!, n));
+    return c.json({ notes, withdrawn, markdown, revision });
   });
 
   /* ------------------------------------------------------------ comments */

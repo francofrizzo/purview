@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { keyToString, parseDiff, readFilesJson, readMeta } from "@reviewer/core";
 import { createApp } from "../src/app.js";
 import { formatAgentNotes } from "../src/agent-notes.js";
-import { addComment, commentEvents, markPickedUp, pendingAgentNotes, readComments, setCommentAudience, updateCommentBody, type Comment } from "../src/comments.js";
+import { addComment, commentEvents, deleteComment, markPickedUp, pendingAgentNotes, readComments, readDeletedComments, restoreDeletedComment, setCommentAudience, undoCommentEdit, updateCommentBody, writeComments, type Comment } from "../src/comments.js";
 import { runNotesCommand } from "../src/notes-command.js";
 import { buildFixture, key } from "./fixtures.js";
 
@@ -50,7 +50,7 @@ it("sorts pending notes by file, file-level then line, excluding github and pick
   expect(pendingAgentNotes(readComments(key, root)).map((n) => n.id)).toEqual([file.id, line.id]);
 });
 
-it("peek never marks; pickup marks once; editing and audience changes clear delivery", async () => {
+it("peek never marks; pickup marks once; an edit is redelivered, a move to GitHub withdrawn", async () => {
   const note = add();
   add({ audience: "github" });
   const peek = await (await app.request(url)).json();
@@ -58,15 +58,140 @@ it("peek never marks; pickup marks once; editing and audience changes clear deli
   expect(readComments(key, root)[0].pickedUp).toBeUndefined();
   const result = await (await pickup()).json();
   expect(result.notes).toHaveLength(1);
-  expect(result.notes[0].pickedUp.by).toBe("Codex");
+  expect(result.notes[0]).toMatchObject({ kind: "new", pickedUp: { by: "Codex", body: "Please fix\nthis" } });
+  expect(result.withdrawn).toEqual([]);
   expect(result.revision).toBe(1);
-  expect(await (await pickup()).json()).toEqual({ notes: [], markdown: "", revision: 1 });
+  expect(await (await pickup()).json()).toEqual({ notes: [], withdrawn: [], markdown: "", revision: 1 });
   updateCommentBody(key, note.id, "changed", root);
   expect(readComments(key, root)[0].pickedUp).toBeUndefined();
   expect((await (await pickup()).json()).notes).toHaveLength(1);
   setCommentAudience(key, note.id, "github", root);
   expect(readComments(key, root)[0].pickedUp).toBeUndefined();
+  const moved = await (await pickup()).json();
+  expect(moved.notes).toEqual([]);
+  expect(moved.withdrawn).toEqual([expect.objectContaining({ id: note.id, reason: "moved-to-github", body: "changed" })]);
+});
+
+it("an edit after pickup is delivered once, as an edit, quoting what the agent was handed", async () => {
+  const note = add();
+  await pickup();
+  updateCommentBody(key, note.id, "Fix it differently", root);
+  updateCommentBody(key, note.id, "Fix it like this", root);
+  const peek = await (await app.request(url)).json();
+  expect(peek.pending).toEqual([expect.objectContaining({ id: note.id, kind: "edited", previousBody: "Please fix\nthis" })]);
+  expect(peek.pending[0]).not.toHaveProperty("previousPickup");
+  const result = await (await pickup()).json();
+  expect(result.notes).toEqual([expect.objectContaining({ kind: "edited", previousBody: "Please fix\nthis", body: "Fix it like this" })]);
+  expect(result.markdown).toContain("1 of them edit a note you picked up earlier");
+  expect(result.markdown).toContain("Edited: replaces the note on `src/foo.ts:2` you picked up earlier. It said:\n\n> Please fix\n> this\n\nIt now says:\n\n> Fix it like this");
+  expect(readComments(key, root)[0]).toMatchObject({ pickedUp: { body: "Fix it like this" } });
+  expect(readComments(key, root)[0].previousPickup).toBeUndefined();
   expect((await (await pickup()).json()).notes).toEqual([]);
+});
+
+it("an undo after pickup is an edit; undone back to the text picked up, nothing is redelivered", async () => {
+  const note = add();
+  updateCommentBody(key, note.id, "second", root);
+  await pickup();
+  expect(undoCommentEdit(key, note.id, root).ok).toBe(true);
+  const result = await (await pickup()).json();
+  expect(result.notes).toEqual([expect.objectContaining({ kind: "edited", previousBody: "second", body: "Please fix\nthis" })]);
+  updateCommentBody(key, note.id, "third", root);
+  undoCommentEdit(key, note.id, root);
+  expect(readComments(key, root)[0].pickedUp?.body).toBe("Please fix\nthis");
+  expect((await (await pickup()).json()).notes).toEqual([]);
+});
+
+it("a mark from before bodies were kept reads the current body as the one picked up", async () => {
+  const note = add();
+  const comments = readComments(key, root);
+  comments[0] = { ...comments[0], pickedUp: { at: new Date().toISOString(), by: "Codex" } };
+  writeComments(key, comments, root);
+  updateCommentBody(key, note.id, "new text", root);
+  expect((await (await pickup()).json()).notes).toEqual([expect.objectContaining({ kind: "edited", previousBody: "Please fix\nthis" })]);
+});
+
+it("a delete after pickup is withdrawn once; restoring it afterwards delivers it as a new note", async () => {
+  const note = add();
+  await pickup();
+  updateCommentBody(key, note.id, "edited, not yet delivered", root);
+  await deleteComment(key, note.id, root);
+  const result = await (await pickup()).json();
+  expect(result.notes).toEqual([]);
+  expect(result.withdrawn).toEqual([{ id: note.id, reason: "deleted", file: "src/foo.ts", subjectType: "line", line: 2, side: "RIGHT", body: "Please fix\nthis" }]);
+  expect(result.markdown).toContain("1 withdrawn:");
+  expect(result.markdown).toContain("## 1. Withdrawn: src/foo.ts:2\n\nWithdrawn: ignore the note on `src/foo.ts:2` you picked up earlier (the reviewer deleted it). It said:\n\n> Please fix\n> this");
+  expect(readDeletedComments(key, root)[0].withdrawnAt).toBeDefined();
+  expect(await (await pickup()).json()).toMatchObject({ notes: [], withdrawn: [], markdown: "" });
+  restoreDeletedComment(key, note.id, root);
+  expect((await (await pickup()).json()).notes).toEqual([expect.objectContaining({ id: note.id, kind: "new", body: "edited, not yet delivered" })]);
+});
+
+it("restoring a deleted note before its withdrawal went out leaves the agent's copy standing", async () => {
+  const note = add();
+  await pickup();
+  await deleteComment(key, note.id, root);
+  restoreDeletedComment(key, note.id, root);
+  expect(await (await pickup()).json()).toMatchObject({ notes: [], withdrawn: [] });
+});
+
+it("a move to GitHub after pickup is withdrawn once; moved back unchanged, nothing is sent", async () => {
+  const note = add();
+  await pickup();
+  setCommentAudience(key, note.id, "github", root);
+  setCommentAudience(key, note.id, "agent", root);
+  expect(readComments(key, root)[0].pickedUp?.by).toBe("Codex");
+  expect(await (await pickup()).json()).toMatchObject({ notes: [], withdrawn: [] });
+  setCommentAudience(key, note.id, "github", root);
+  const result = await (await pickup()).json();
+  expect(result.withdrawn).toEqual([expect.objectContaining({ id: note.id, reason: "moved-to-github" })]);
+  expect(result.markdown).toContain("(the reviewer moved it to the GitHub review)");
+  expect(readComments(key, root)[0].previousPickup).toBeUndefined();
+  expect((await (await pickup()).json()).withdrawn).toEqual([]);
+  setCommentAudience(key, note.id, "agent", root);
+  expect((await (await pickup()).json()).notes).toEqual([expect.objectContaining({ kind: "new" })]);
+});
+
+it("edits and deletes before pickup deliver the latest text or nothing", async () => {
+  const edited = add();
+  const gone = add({ line: 1 });
+  updateCommentBody(key, edited.id, "latest", root);
+  await deleteComment(key, gone.id, root);
+  setCommentAudience(key, add({ line: 3 }).id, "github", root);
+  const result = await (await pickup()).json();
+  expect(result.notes).toEqual([expect.objectContaining({ id: edited.id, kind: "new", body: "latest" })]);
+  expect(result.notes[0]).not.toHaveProperty("previousBody");
+  expect(result.withdrawn).toEqual([]);
+  expect(result.markdown).not.toContain("Edited:");
+});
+
+it("peek shows edits and withdrawals without marking them", async () => {
+  const kept = add();
+  const gone = add({ line: 1 });
+  await pickup();
+  updateCommentBody(key, kept.id, "changed", root);
+  await deleteComment(key, gone.id, root);
+  for (let i = 0; i < 2; i++) {
+    const peek = await (await app.request(url)).json();
+    expect(peek.pending).toEqual([expect.objectContaining({ kind: "edited" })]);
+    expect(peek.withdrawn).toEqual([expect.objectContaining({ id: gone.id })]);
+  }
+  const run = cli([keyToString(key), "--peek"]);
+  expect(await run.result).toBe(0);
+  expect(run.print).toHaveBeenCalledWith(expect.stringContaining("Withdrawn:"));
+  expect(readDeletedComments(key, root)[0].withdrawnAt).toBeUndefined();
+  expect(readComments(key, root)[0].previousPickup).toBeDefined();
+});
+
+it("waits for a withdrawal of a picked-up note", async () => {
+  const note = add();
+  await pickup();
+  const baseline = commentEvents.listenerCount("comments");
+  const response = pickup(30);
+  await vi.waitFor(() => expect(commentEvents.listenerCount("comments")).toBe(baseline + 1));
+  await deleteComment(key, note.id, root);
+  expect((await (await response).json()).withdrawn).toHaveLength(1);
+  expect(commentEvents.listenerCount("comments")).toBe(baseline);
 });
 
 it("waits for an addComment wake and removes its listener", async () => {

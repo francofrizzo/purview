@@ -139,20 +139,38 @@ hasLocalConfig, watchReviews, watchOwn }] }`.
 
 ## Notes for the coding agent
 
-`GET /api/prs/<key>/agent-notes` returns `{pending: Comment[], markdown: string}`.
-This is a read-only peek at agent-audience notes without a pickup mark. No notes
-means an empty array and empty markdown. GitHub-audience comments are excluded.
+`GET /api/prs/<key>/agent-notes` returns `{pending: Note[], withdrawn: Withdrawal[], markdown: string}`.
+This is a read-only peek at what the next pickup would deliver, without marking it.
+Nothing pending means empty arrays and empty markdown. GitHub-audience comments are
+excluded.
 
 `POST /api/prs/<key>/agent-notes/pickup` takes `{"agent":"<your name>","wait":30}`.
-`wait` is optional (default 0 seconds, capped at 30). It waits for pending notes,
-marks them delivered, then returns `{notes: Comment[], markdown: string, revision: number}`.
-On timeout it returns 200 with `notes: []`, `markdown: ""` and the current revision.
-Loop until notes arrive, or use `purview notes <key> --wait`. Both routes return 404
-for an untracked PR. The CLI takes the key or the PR URL.
+`wait` is optional (default 0 seconds, capped at 30). It waits until there is
+something to deliver, marks it delivered, then returns
+`{notes: Note[], withdrawn: Withdrawal[], markdown: string, revision: number}`.
+On timeout it returns 200 with `notes: []`, `withdrawn: []`, `markdown: ""` and the
+current revision. Loop until something arrives, or use `purview notes <key> --wait`.
+Both routes return 404 for an untracked PR. The CLI takes the key or the PR URL.
 
-Each delivered comment carries `pickedUp: {at: "<ISO timestamp>", by: "<agent name>"}`.
-Editing its body clears that mark, making it pending again; moving it to GitHub
-also clears the mark. `purview notes <key> --peek` reads without marking.
+A `Note` is a Comment plus `kind`:
+
+- `"new"`: a note you have not seen.
+- `"edited"`: the reviewer changed a note you already picked up. `previousBody` is
+  the text you were handed before; `body` replaces it. Act on the new text only,
+  and revise what you did for the old one where they differ.
+
+A `Withdrawal` is `{id, reason, file, subjectType, line?, startLine?, side?,
+inReplyTo?, body}`: a note you picked up that the reviewer deleted
+(`reason: "deleted"`) or moved to their GitHub review (`"moved-to-github"`). `body`
+is the text you had. Stop acting on it, and undo what you changed for it unless
+the change still stands on its own. The markdown says the same: an edit reads
+"Edited: replaces the note on `file:line` you picked up earlier. It said:" with the
+old and new text, a withdrawal "Withdrawn: ignore the note on `file:line`".
+
+Each edit and withdrawal is delivered once. A delivered note carries
+`pickedUp: {at, by, body}`, the time, your name and the text you received. Changes
+before you pick a note up are not reported: you get the latest text, or nothing if
+it was deleted. `purview notes <key> --peek` reads without marking.
 
 ## Comments and drafts for the coding agent
 
