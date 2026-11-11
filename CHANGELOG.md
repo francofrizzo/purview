@@ -5,9 +5,9 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.10.1
 
-- **Selecting several PRs on the home.** Hover a row, click the box at its left edge, then click other rows to tag or archive them together from the bar at the bottom. Shift-click picks a run; Esc lets go.
+- **Selecting several PRs on the home.** Click the box at a row's left edge, then other rows, to tag or archive them together from the bar at the bottom. Shift-click picks a run.
 - **Import button on each repo.** The inbox icon in a repo's header lists recent PRs to import, and searches again as you change the filters.
 
 ## 2026.11.9.1
