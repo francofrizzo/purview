@@ -2,6 +2,7 @@ import { CHANGELOG_TEXT_MAX, STATE_SHAPE_VERSION, isRemovedUnit } from "./schema
 import { GENERATED_UNIT_ID, buildGeneratedUnit, isGeneratedUnit } from "./generated.js";
 import { hunkIdsOf, normalizeHunks, skipOf, toHunkEntry, upsertHunks } from "./units.js";
 import { upcastEvent } from "./upcast.js";
+import type { Architecture } from "./architecture.js";
 import type {
   BehaviorChange,
   Concept,
@@ -190,7 +191,8 @@ function fromAnalysis<T extends { origin?: unknown }>(unit: T): Omit<T, "origin"
  */
 function applyShape(
   state: State,
-  shape: { summary?: string; fileNotes?: FileNotes | null; concepts?: Concept[] | null; behaviorChanges?: BehaviorChange[] | null },
+  shape: { summary?: string; fileNotes?: FileNotes | null; concepts?: Concept[] | null; behaviorChanges?: BehaviorChange[] | null;
+    architecture?: Architecture | null },
   revision: number,
 ): void {
   if (shape.summary !== undefined) state.summary = shape.summary;
@@ -206,7 +208,11 @@ function applyShape(
     if (shape.behaviorChanges) state.behaviorChanges = shape.behaviorChanges;
     else delete state.behaviorChanges;
   }
-  if (state.fileNotes || state.concepts || state.behaviorChanges) state.shapeRevision = revision;
+  if (shape.architecture !== undefined) {
+    if (shape.architecture) state.architecture = shape.architecture;
+    else delete state.architecture;
+  }
+  if (state.fileNotes || state.concepts || state.behaviorChanges || state.architecture) state.shapeRevision = revision;
   else delete state.shapeRevision;
 }
 
@@ -520,6 +526,7 @@ function applyEventInPlace(state: State, event: ReviewerEvent): State {
           fileNotes: event.fileNotes ?? null,
           concepts: event.concepts ?? null,
           behaviorChanges: event.behaviorChanges ?? null,
+          architecture: event.architecture ?? null,
         },
         event.revision,
       );

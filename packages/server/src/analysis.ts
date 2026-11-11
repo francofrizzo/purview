@@ -36,6 +36,7 @@ import type { AgentAction, AgentRun, HarnessManifest, ReviewerCommand } from "./
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 import { readConfig } from "./config.js";
 import { withExperiments } from "./experiment-docs.js";
+import { architecturePrompt } from "./architecture-prompt.js";
 import { effectiveAnalysisAgent, type AgentChoice } from "./repo-config.js";
 import { languageRule, rubricSection } from "./rubric.js";
 import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
@@ -606,6 +607,7 @@ export function analysisPrompt(
           "Generated files and lockfiles (triage's GENERATED line) are already in Purview's own",
           `\`${GENERATED_UNIT_ID}\` unit: leave their hunks out, don't read them, and don't use that unit id.`,
         ].join(" "),
+    architecturePrompt(key, root, { incremental: opts.incremental, hasCheckout: Boolean(opts.checkout?.path && !opts.checkout.error), flow: "cli" }),
     "",
     // Above ~200 hunks the failure mode changes: the session fills its
     // context narrating per-hunk detail and pays for a mid-run compaction.
@@ -1137,7 +1139,8 @@ async function runOne(slot: Slot, opts: AnalyzeOptions): Promise<void> {
     instructions,
     review: harness.manifest.reviewTools ? { root, key, revision, checkout: checkout.error ? undefined : checkout.path || undefined,
       analysisMode: incremental ? "incremental" : "initial" } : undefined,
-    environment: cliEnvironment(harness.manifest),
+    // The CLI checks `architecture` quotes in the checkout this run reads.
+    environment: { ...cliEnvironment(harness.manifest), ...(checkout.path && !checkout.error ? { PURVIEW_CHECKOUT: checkout.path } : {}) },
     prompt: harness.manifest.reviewTools ? reviewRunPrompt(key, root, checkout, incremental) : analysisPrompt(key, root, {
       incremental,
       checkout,

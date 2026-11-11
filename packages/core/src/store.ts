@@ -382,6 +382,7 @@ export function readRepoConfig(key: RepoKey, root = stateRoot()): RepoConfig {
     watchOwn: typeof obj.watchOwn === "boolean" ? obj.watchOwn : null,
     archived: typeof obj.archived === "boolean" ? obj.archived : null,
     generated: GeneratedPatternsSchema.safeParse(obj.generated).data ?? { include: [], exclude: [] },
+    architectureDocs: RepoConfigSchema.shape.architectureDocs.safeParse(obj.architectureDocs).data ?? [],
     agentsVersion: AGENT_SETTINGS_VERSION,
   };
 }

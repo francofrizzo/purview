@@ -26,6 +26,7 @@ import { migrate, toRevisionFiles } from "./migration.js";
 import { GENERATED_UNIT_ID, generatedFilesOf, isGeneratedUnit } from "./generated.js";
 import { classifyFiles, gatherGeneratedFacts, gatherGeneratedFactsAsync, reclassifyGenerated, reclassifyGeneratedAsync } from "./generated-io.js";
 import { parseDiff } from "./parse-diff.js";
+import { architectureQuoteProblems, type Architecture } from "./architecture.js";
 import { analysisJobPath, commentsPath, repoKeyOf, stateRoot, type PrKey } from "./paths.js";
 import { nextRevisionNumber, priorRevisions } from "./reducer.js";
 import { planUnitPatches, remainingWork, resolveHunkRef, type RemainingWork, type UnitPatchRequest } from "./unit-patch.js";
@@ -829,8 +830,8 @@ export function fileNoteProblems(notes: FileNotes, paths: ReadonlySet<string>, g
 }
 
 function assertShape(
-  shape: { fileNotes?: FileNotes | null; behaviorChanges?: { unit?: string }[] | null },
-  ctx: { paths: ReadonlySet<string>; generated: ReadonlySet<string>; unitIds: ReadonlySet<string> },
+  shape: { fileNotes?: FileNotes | null; behaviorChanges?: { unit?: string }[] | null; architecture?: Architecture | null },
+  ctx: { paths: ReadonlySet<string>; generated: ReadonlySet<string>; unitIds: ReadonlySet<string>; checkout?: string },
 ): void {
   const problems = shape.fileNotes
     ? fileNoteProblems(shape.fileNotes, ctx.paths, ctx.generated).map((p) => `fileNotes: ${p}`)
@@ -840,9 +841,30 @@ function assertShape(
       problems.push(`behaviorChanges[${i}]: unit "${c.unit}" is not a unit of this analysis`);
     }
   });
+  if (shape.architecture) problems.push(...architectureProblems(shape.architecture, ctx));
   if (problems.length > 0) {
     throw new Error(`The shape of the change does not hold together:\n  ${problems.join("\n  ")}`);
   }
+}
+
+/**
+ * What is wrong with an `architecture` view: the units and files its rows
+ * point at must be this analysis's and this revision's, and every rule must
+ * be quoted from its source as written (checked in the checkout).
+ */
+function architectureProblems(
+  arch: Architecture,
+  ctx: { paths: ReadonlySet<string>; unitIds: ReadonlySet<string>; checkout?: string },
+): string[] {
+  const problems: string[] = [];
+  arch.deviations.forEach((d, i) => {
+    if (!ctx.unitIds.has(d.code.unit)) problems.push(`architecture.deviations[${i}].code: unit "${d.code.unit}" is not a unit of this analysis`);
+    if (!ctx.paths.has(d.code.file)) problems.push(`architecture.deviations[${i}].code: "${d.code.file}" is not a file of this revision`);
+  });
+  arch.decisions.forEach((d, i) => {
+    if (d.unit !== undefined && !ctx.unitIds.has(d.unit)) problems.push(`architecture.decisions[${i}]: unit "${d.unit}" is not a unit of this analysis`);
+  });
+  return [...problems, ...architectureQuoteProblems(arch, ctx.checkout)];
 }
 
 /** The revision's file paths, and which of them are generated. */
@@ -859,10 +881,16 @@ function revisionPaths(key: PrKey, state: State, root: string) {
  * re-sending the analysis (a refresh redraws them this way). Each key present
  * replaces that view; `null` drops a view.
  */
-export function setShape(key: PrKey, input: unknown, root = stateRoot()): State {
+export function setShape(
+  key: PrKey,
+  input: unknown,
+  root = stateRoot(),
+  /** `checkout`: the PR's checkout, where an `architecture` view's quotes are checked */
+  opts: { checkout?: string } = {},
+): State {
   const shape = ShapeSchema.parse(input);
   const state = loadState(key, root);
-  assertShape(shape, { ...revisionPaths(key, state, root), unitIds: new Set(state.units.map((u) => u.id)) });
+  assertShape(shape, { ...revisionPaths(key, state, root), unitIds: new Set(state.units.map((u) => u.id)), checkout: opts.checkout });
   return appendEvent(key, { type: "shape-set", revision: state.currentRevision, ...shape }, root);
 }
 
@@ -870,6 +898,8 @@ export interface SetAnalysisOptions {
   /** Provenance: set to "import" when the units came from another reader's
    *  exported analysis (see analysis-share.ts) rather than a fresh Claude run. */
   origin?: "import";
+  /** the PR's checkout, where an `architecture` view's quotes are checked */
+  checkout?: string;
 }
 
 /** Validates coverage, then emits `analysis-set`. Throws on gaps. */
@@ -936,7 +966,7 @@ export function setAnalysis(
           dupes.map((d) => `${d.hunkId}: ${d.owners.join(", ")}`).join("\n  "),
       );
     }
-    assertShape(analysis, { ...revisionPaths(key, state, root), unitIds: new Set(analysis.units.map((u) => u.id)) });
+    assertShape(analysis, { ...revisionPaths(key, state, root), unitIds: new Set(analysis.units.map((u) => u.id)), checkout: opts.checkout });
   }
   // Imports are a fact, not a judgment: Purview skips them where the run
   // did not (a third of them, in practice).
@@ -956,6 +986,7 @@ export function setAnalysis(
       fileNotes: analysis.fileNotes,
       concepts: analysis.concepts,
       behaviorChanges: analysis.behaviorChanges,
+      architecture: analysis.architecture ?? undefined,
     },
     root,
   );

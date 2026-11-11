@@ -1048,6 +1048,47 @@ const state: PrState = {
     { what: "Nightly ledger reconciliation", before: "—", after: "Each night, ledger rows are matched against the gateway's settlements.", unit: "ledger-reconciliation" },
     { what: "Ledger retention job", before: "Deletes ledger rows older than 30 days.", after: "—" },
   ],
+  // The architecture experiment: the PR against docs/architecture.md (read
+  // at the head, not in the PR) and docs/billing.md (in it). One rule broken,
+  // one decision the docs miss; reviewer.mockArchitecture "empty" clears both.
+  architecture: {
+    sources: ["docs/architecture.md", "docs/billing.md"],
+    checked: [
+      { source: "docs/architecture.md", rule: "Only `src/billing/ledger.ts` reads or writes `charge_ledger`; everything else goes through `Ledger`." },
+      { source: "docs/architecture.md", rule: "Jobs get their dependencies from the container; they never construct a client." },
+      { source: "docs/architecture.md", rule: "Routes never import from `src/jobs`." },
+      { source: "docs/billing.md", rule: "Charges go through the gateway adapter." },
+    ],
+    deviations: [
+      {
+        what: "Reconciler queries the ledger table itself",
+        rule: {
+          source: "docs/architecture.md",
+          heading: "Persistence",
+          quote: "Only `src/billing/ledger.ts` reads or writes `charge_ledger`; everything else goes through `Ledger`.",
+        },
+        code: {
+          unit: "ledger-reconciliation",
+          file: "src/billing/reconcile.ts",
+          line: 114,
+          excerpt: "const { rows } = await this.pool.query<LedgerRow>(\n  `SELECT key, order_id, result\n     FROM charge_ledger",
+        },
+        why: "`Ledger` has no paged read, so the reconciler pages the table with its own SQL.",
+      },
+    ],
+    decisions: [
+      {
+        what: "Jobs read the gateway in batches",
+        means: "The nightly job fetches gateway charges by key, a page at a time; the docs do not say which layers may call the gateway.",
+        unit: "ledger-reconciliation",
+        docLine: {
+          target: "docs/architecture.md",
+          heading: "Gateway",
+          text: "Jobs may read the gateway in batches (`chargesByKeys`); request paths call it one charge at a time.",
+        },
+      },
+    ],
+  },
   hunks: {
     a1b2c3d4e5f60001: { viewed: true, viewedAtRevision: 2, changedSinceViewed: true, migration: "fuzzy", predecessorId: "a1b2c3d4e5f6ff01" },
     a1b2c3d4e5f60002: { viewed: true, viewedAtRevision: 3, changedSinceViewed: false, migration: "identical" },

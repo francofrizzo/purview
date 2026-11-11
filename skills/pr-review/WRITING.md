@@ -194,6 +194,70 @@ changes".
   out when the change spreads across several.
 - Two to six rows, ten at most. Order by what a user would notice first.
 
+<!-- experiment:architecture -->
+### Architecture
+
+The PR held against the repo's documented architecture. Write `architecture` only when the
+repo documents one: the docs the run prompt names (the repo's settings), or, when it names
+none, what you find: `ARCHITECTURE.md`, `docs/architecture*`, `docs/adr/**`, the rule
+sections of `AGENTS.md` or `CLAUDE.md`, and any doc the repo rubric names as its
+architecture. With no such doc, leave `architecture` out: Purview shows no section. Purview
+shows it after the behavior changes: the rules that break first, then the decisions the
+docs miss. Most PRs follow their docs, and the right answer is empty deviations and
+decisions: Purview says "Follows the documented architecture." Keep it as high-signal as
+the concepts and the behavior changes: a row a reviewer would shrug at costs them the
+rows that matter.
+
+```json
+"architecture": {
+  "sources": ["docs/architecture.md"],
+  "checked": [
+    { "source": "docs/architecture.md", "rule": "Only `src/billing/ledger.ts` reads or writes `charge_ledger`; everything else goes through `Ledger`." },
+    { "source": "docs/architecture.md", "rule": "Jobs get their dependencies from the container; they never construct a client." }
+  ],
+  "deviations": [
+    {
+      "what": "Reconciler queries the ledger table itself",
+      "rule": { "source": "docs/architecture.md", "heading": "Persistence", "quote": "Only `src/billing/ledger.ts` reads or writes `charge_ledger`; everything else goes through `Ledger`." },
+      "code": { "unit": "ledger-reconciliation", "file": "src/billing/reconcile.ts", "line": 114, "excerpt": "const { rows } = await this.pool.query<LedgerRow>(\n  `SELECT key, order_id, result\n     FROM charge_ledger" }
+    }
+  ],
+  "decisions": [
+    {
+      "what": "Jobs read the gateway in batches",
+      "means": "The nightly job fetches gateway charges by key, a page at a time; the docs do not say which layers may call the gateway.",
+      "unit": "ledger-reconciliation",
+      "docLine": { "target": "docs/architecture.md", "heading": "Gateway", "text": "Jobs may read the gateway in batches (`chargesByKeys`); request paths call it one charge at a time." }
+    }
+  ]
+}
+```
+
+- `sources`: the docs you read, repo paths.
+- `checked`: the rules the diff's files could break, twelve at most, each quoted from its
+  source; not every rule the docs hold. This is what the empty answer stands on.
+- A rule is normative: it says what must, must not, may only, or goes where ("never
+  imports", "only through", "lives in"). Descriptive prose ("the ledger records each
+  charge") is not a rule; leave it out of `checked`, and never build a deviation on it.
+- Every `quote` and `rule` is copied from its source as written; Purview checks each one
+  against the checkout and refuses the view when one is not there. No quote, no deviation.
+- A deviation is one place the PR does what a rule says not to: one per rule, at its
+  clearest site. `what` is the situation in the reader's words, under 60 characters;
+  `code` is that site: its unit, file and line in this revision, and an `excerpt` of at
+  most three lines copied from it. `why` (under 160 characters) only when the link between
+  the quote and the code is not obvious from the two side by side. Five at most.
+- A decision is something the PR decides that the docs say nothing about, and that a later
+  PR would have to follow or undo: a new dependency direction, a new persisted file or
+  location, a new pattern others will copy. Not a local helper, a new file in an existing
+  layer, a dependency bump. Four at most.
+- A decision's `what` is a noun phrase under 60 characters; `means` is one sentence on what
+  the PR decides and that the docs are silent on it, with no judgment ("should",
+  "violates", "risky").
+- `docLine`, when the decision belongs in the docs: the line the author could paste,
+  written in the doc's own voice, under an existing `heading` of the `target` doc.
+- On a refresh, `set-shape` replaces the view whole (`{"architecture": …}`); `null` drops it.
+
+<!-- /experiment:architecture -->
 ### File notes
 
 `fileNotes` is where the change lands, as a shallow tree: it maps a folder or a file of

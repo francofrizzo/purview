@@ -709,6 +709,7 @@ describe("init and refresh capture", () => {
       watchOwn: null,
       archived: null,
       generated: { include: [], exclude: [] },
+      architectureDocs: [],
       agentsVersion: 2,
     });
   });
@@ -971,6 +972,7 @@ describe("/api/repos/:rkey/config", () => {
       watchReviews: null,
       watchOwn: null,
       generated: { include: [], exclude: [] },
+      architectureDocs: [],
       rubric: "",
       chatInstructions: "",
     });
@@ -1021,6 +1023,7 @@ describe("/api/repos/:rkey/config", () => {
       watchReviews: null,
       watchOwn: null,
       generated: { include: [], exclude: [] },
+      architectureDocs: [],
       rubric: "# Local\n",
       chatInstructions: "# Local chat\n",
     });
@@ -1164,7 +1167,7 @@ describe("/api/config", () => {
       editor: null,
       editorConfirmed: false,
       updateCheck: true,
-      experiments: {},
+      experiments: { architecture: false },
       effective: {
         // Medium is the harness's default now, not a value every config.json pins.
         analysisAgent: {
@@ -1199,8 +1202,9 @@ describe("/api/config", () => {
 
   it("drops the flag of an experiment that has graduated, keeping the rest of the file", async () => {
     fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ autoAnalyze: false, experiments: { unitDiagrams: true } }));
-    expect(readConfig(root)).toMatchObject({ autoAnalyze: false, experiments: {} });
-    expect((await (await app.request("/api/config")).json()).experiments).toEqual({});
+    expect(readConfig(root).autoAnalyze).toBe(false);
+    expect(readConfig(root).experiments).not.toHaveProperty("unitDiagrams");
+    expect((await (await app.request("/api/config")).json()).experiments).not.toHaveProperty("unitDiagrams");
   });
 
   it("rejects a model or effort the harness does not offer, naming the choices", async () => {

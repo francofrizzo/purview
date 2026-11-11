@@ -22,6 +22,7 @@ import {
   offersHarnessChoice,
 } from "../lib/agentSelection";
 import { parsePatternLines } from "../lib/generated";
+import { useExperiment } from "../lib/experiments";
 import { Markdown } from "../components/Markdown";
 import { Modal, useCloseModal, useModalBackground } from "../components/Modal";
 import { RepoDangerZone } from "../components/RepoActions";
@@ -118,9 +119,18 @@ function RepoSettingsBody({
   confirmRemove: boolean;
 }) {
   const save = useSaveRepoConfig(rkey);
+  // The `architecture` experiment's docs, only while it is on.
+  const architectureOn = useExperiment("architecture");
+  const nav = architectureOn
+    ? REPO_SETTINGS_NAV.map((g) =>
+        g.label === "Review"
+          ? { ...g, items: [...g.items.slice(0, 2), { id: "architecture", title: "Architecture docs" }, ...g.items.slice(2)] }
+          : g,
+      )
+    : REPO_SETTINGS_NAV;
 
   return (
-    <SettingsLayout groups={REPO_SETTINGS_NAV}>
+    <SettingsLayout groups={nav}>
       <Section id="overview" title="Overview">
         <dl className="flex flex-wrap gap-x-8 gap-y-2">
           <Stat label="Repository">
@@ -170,6 +180,7 @@ function RepoSettingsBody({
 
       <AnalysisSection config={config} save={save} />
       <RubricSection config={config} save={save} />
+      {architectureOn ? <ArchitectureDocsSection config={config} save={save} /> : null}
       <GeneratedSection config={config} save={save} />
       <ChatInstructionsSection config={config} save={save} />
       <WatchSection config={config} save={save} />
@@ -658,6 +669,49 @@ function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) 
           onClick={() => save.mutate({ generated: next }, { onSuccess: () => setFlash() })}
         >
           {save.isPending ? "saving…" : "save patterns"}
+        </button>
+        <SavedFlash shown={flash} error={save.error} />
+      </div>
+    </Section>
+  );
+}
+
+/* ---------------------------------------------------- architecture docs */
+
+/**
+ * Where this repo documents its architecture (the `architecture` experiment).
+ * Set, an analysis reads these docs and looks for no others; empty, it looks
+ * for them itself. Saved whole.
+ */
+function ArchitectureDocsSection({ config, save }: { config: RepoConfig; save: Save }) {
+  const [flash, setFlash] = useFlash();
+  const saved = (config.local.architectureDocs ?? []).join("\n");
+  const [text, setText] = useState(saved);
+  useEffect(() => setText(saved), [saved]);
+  const next = parsePatternLines(text);
+  const dirty = next.join("\n") !== saved;
+  return (
+    <Section
+      id="architecture"
+      title="Architecture docs"
+      hint="The docs an analysis holds this repo's PRs against, one repo path per line. Empty, it looks for them: ARCHITECTURE.md, docs/architecture*, docs/adr/, the rule sections of AGENTS.md or CLAUDE.md, or the docs the rubric names."
+    >
+      <Autosize
+        value={text}
+        rows={3}
+        testId="architecture-docs"
+        onChange={setText}
+        placeholder={"docs/ARCHITECTURE.md\ndocs/adr/"}
+      />
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          className="btn"
+          data-testid="architecture-docs-save"
+          disabled={!dirty || save.isPending}
+          onClick={() => save.mutate({ architectureDocs: next }, { onSuccess: () => setFlash() })}
+        >
+          {save.isPending ? "saving…" : "save docs"}
         </button>
         <SavedFlash shown={flash} error={save.error} />
       </div>

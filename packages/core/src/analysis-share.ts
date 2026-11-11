@@ -136,6 +136,7 @@ export function buildAnalysisExport(key: PrKey, root: string): AnalysisExport {
     ...(state.fileNotes ? { fileNotes: state.fileNotes } : {}),
     ...(state.concepts ? { concepts: state.concepts } : {}),
     ...(state.behaviorChanges ? { behaviorChanges: state.behaviorChanges } : {}),
+    ...(state.architecture ? { architecture: state.architecture } : {}),
   });
 }
 
@@ -208,7 +209,9 @@ export function applyAnalysisImport(
   const { state: next } = setAnalysis(
     key,
     // The concepts name no unit or file: they travel as they are.
-    { summary: envelope.summary, units, unassigned, fileNotes, concepts: envelope.concepts, behaviorChanges: envelope.behaviorChanges },
+    { summary: envelope.summary, units, unassigned, fileNotes, concepts: envelope.concepts, behaviorChanges: envelope.behaviorChanges,
+      // Its quotes were checked where it was written; an import takes it as it is.
+      architecture: envelope.architecture },
     { origin: "import" },
     root,
   );

@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   Attention,
+  ArchitectureDeviation,
   AnalysisImportReport,
   ChatRef,
   FileEntry,
@@ -117,6 +118,7 @@ import { ReviewProgressBar } from "../components/ReviewProgressBar";
 import { useUnsavedDrafts } from "../lib/unsavedDrafts";
 import { Notice, NoticeStack, OfflineNotice } from "../components/Notices";
 import { Overview } from "../components/Overview";
+import { ruleCommentBody } from "../components/experiments/Architecture";
 import { visibleDescription } from "../lib/summaryText";
 import { TopBar } from "../components/TopBar";
 import { UNPLACED_TITLE, UnitSidebar } from "../components/UnitSidebar";
@@ -1279,6 +1281,31 @@ export function PrView() {
     },
     [selectUnitFromSidebar],
   );
+  // The architecture section's rows: the unit, landed on the line. A line
+  // outside every hunk opens the unit at its top.
+  const openCodeAt = useCallback(
+    (unitId: string, file: string, line: number) => {
+      const hunkId = detail ? hunkForLine(detail.files, file, line, "RIGHT") : null;
+      setOverview(false);
+      setTab("units");
+      selectUnitFromSidebar(unitId);
+      // Sent once the unit's diff is up: a jump set in the same render as
+      // leaving the overview does not land.
+      if (hunkId) window.setTimeout(() => setJumpToHunk({ hunkId, nonce: Date.now(), line, side: "RIGHT" }), 0);
+    },
+    [detail, selectUnitFromSidebar],
+  );
+  // "Comment with the rule": a draft on the deviation's line holding only the
+  // rule's quote. Text the reader already put away there wins.
+  const commentWithRule = useCallback(
+    (d: ArchitectureDeviation) => {
+      const target: CommentTarget = { subjectType: "line", file: d.code.file, line: d.code.line, side: "RIGHT" };
+      if (!unsavedBodyFor.current(target).trim()) unsaved.keep(target, ruleCommentBody(d));
+      openCodeAt(d.code.unit, d.code.file, d.code.line);
+      openComposer(target);
+    },
+    [openCodeAt, openComposer, unsaved.keep],
+  );
   const openFileFromText = useCallback(
     (path: string, line?: number) => {
       // A link with a line lands in the diff: on its hunk, or the file's
@@ -1798,6 +1825,8 @@ export function PrView() {
               onOpenUnit={openUnitFromText}
               onOpenFile={openFileFromText}
               onJumpToThread={(t) => jumpToComment({ file: t.path, line: t.line, side: t.side, threadId: t.id })}
+              onOpenCode={openCodeAt}
+              onCommentWithRule={commentWithRule}
             />
           </CodeLinkContext.Provider>
         ) : tab === "units" ? (

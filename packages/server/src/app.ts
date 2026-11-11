@@ -2338,6 +2338,7 @@ export function createApp(opts: AppOptions = {}): Hono {
         watchReviews: local.watchReviews,
         watchOwn: local.watchOwn,
         generated: local.generated,
+        architectureDocs: local.architectureDocs,
         rubric: readLocalRubric(repo, root),
         chatInstructions: readLocalChatInstructions(repo, root),
       },
@@ -2724,6 +2725,16 @@ export function createApp(opts: AppOptions = {}): Hono {
         .optional(),
       rubric: z.string().optional(),
       chatInstructions: z.string().optional(),
+      /** the `architecture` experiment's docs, repo-relative paths; written whole, blanks dropped */
+      architectureDocs: z
+        .array(
+          z
+            .string()
+            .max(200)
+            .refine((p) => !p.trim().startsWith("/") && !p.split(/[\\/]/).includes(".."), "a path inside the repo"),
+        )
+        .max(8)
+        .optional(),
     })
     .strict();
 
@@ -2748,6 +2759,9 @@ export function createApp(opts: AppOptions = {}): Hono {
     if (body.chatAgent !== undefined) patch.chatAgent = checkAgentSelection(body.chatAgent, "chatAgent");
     if ("watchReviews" in body) patch.watchReviews = body.watchReviews ?? null;
     if ("watchOwn" in body) patch.watchOwn = body.watchOwn ?? null;
+    if (body.architectureDocs) {
+      patch.architectureDocs = [...new Set(body.architectureDocs.map((p) => p.trim().replace(/^\.\//, "")).filter((p) => p !== ""))];
+    }
     let generatedChanged = false;
     if (body.generated) {
       const current = readRepoConfig(repo, root).generated;

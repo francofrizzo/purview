@@ -10,10 +10,3 @@ test("a unit's diagram shows under its brief without an experiment and opens in 
   await expect(page.getByTestId("mermaid-modal")).toBeVisible();
   await expect(page.getByTestId("diagram-canvas").locator("svg")).toBeVisible();
 });
-
-test("Settings has no Experiments section while there is none to try", async ({ page }) => {
-  await page.goto("/settings");
-  await expect(page.getByTestId("settings-nav-about")).toBeVisible();
-  await expect(page.getByTestId("settings-nav-experiments")).toHaveCount(0);
-  await expect(page.locator("#settings-experiments")).toHaveCount(0);
-});

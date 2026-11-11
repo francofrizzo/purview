@@ -547,6 +547,18 @@ program
     }
   });
 
+/**
+ * The PR's checkout, where `architecture` quotes are checked: the one the
+ * server ran this analysis against (PURVIEW_CHECKOUT), else Purview's own
+ * managed checkout when there is one.
+ */
+function quoteCheckout(key: PrKey): string | undefined {
+  const fromRun = process.env.PURVIEW_CHECKOUT;
+  if (fromRun) return fromRun;
+  const dir = prCheckoutPath(key);
+  return fs.existsSync(dir) ? dir : undefined;
+}
+
 program
   .command("set-analysis")
   .argument("<key>")
@@ -555,7 +567,7 @@ program
   .action((keyArg: string, opts: { file: string }) => {
     const key = requireExistingKey(keyArg);
     const { payload, warnings } = truncateFindings(readJsonFile(opts.file));
-    const { state, coverage } = setAnalysis(key, payload);
+    const { state, coverage } = setAnalysis(key, payload, { checkout: quoteCheckout(key) });
     for (const w of warnings) console.log(w);
     console.log(
       `Analysis set for revision ${state.currentRevision}: ` +
@@ -570,17 +582,20 @@ program
 program
   .command("set-shape")
   .argument("<key>")
-  .requiredOption("--file <json>", 'JSON file with {summary?, fileNotes?, concepts?, behaviorChanges?} ("-" for stdin)')
+  .requiredOption("--file <json>", 'JSON file with {summary?, fileNotes?, concepts?, behaviorChanges?, architecture?} ("-" for stdin)')
   .description(
     "replace the summary, the file notes, the concepts or the behavior changes (a key present replaces that view, null drops a view); set-analysis takes them too",
   )
   .action((keyArg: string, opts: { file: string }) => {
     const key = requireExistingKey(keyArg);
-    const state = setShape(key, readJsonFile(opts.file));
+    const state = setShape(key, readJsonFile(opts.file), undefined, { checkout: quoteCheckout(key) });
     const parts = [
       state.fileNotes ? `${Object.keys(state.fileNotes).length} file notes` : "no file notes",
       state.concepts ? `${state.concepts.length} concepts` : "no concepts",
       state.behaviorChanges ? `${state.behaviorChanges.length} behavior changes` : "no behavior changes",
+      ...(state.architecture
+        ? [`architecture: ${state.architecture.deviations.length} deviations, ${state.architecture.decisions.length} decisions`]
+        : []),
     ];
     console.log(`Shape for revision ${state.currentRevision}: ${parts.join(", ")}`);
   });

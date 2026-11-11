@@ -1,7 +1,10 @@
 import { Fragment, useMemo, useRef, useState } from "react";
-import type { Concept, PrDetail, RemoteConversationComment, RemoteReview, RemoteThread, ReviewUnit } from "../api/types";
+import type { ArchitectureDeviation, Concept, PrDetail, RemoteConversationComment, RemoteReview, RemoteThread, ReviewUnit } from "../api/types";
 import { changeMix } from "../lib/changeMix";
 import { BehaviorTable } from "./BehaviorTable";
+import { ArchitectureSection } from "./experiments/Architecture";
+import { useExperiment } from "../lib/experiments";
+import { isLineInDiff } from "../lib/comments";
 import { unitProgress } from "../lib/diffModel";
 import { workUnits } from "../lib/generated";
 import { buildTimeline, latestVerdicts, type RevisionContext } from "../lib/reviews";
@@ -41,6 +44,8 @@ export function Overview({
   onOpenUnit,
   onOpenFile,
   onJumpToThread,
+  onOpenCode,
+  onCommentWithRule,
 }: {
   detail: PrDetail;
   summary: string;
@@ -54,6 +59,10 @@ export function Overview({
   /** a file in the tree opens in the Files view */
   onOpenFile: (path: string) => void;
   onJumpToThread: (thread: RemoteThread) => void;
+  /** a unit, scrolled to a line of it (the architecture section's rows) */
+  onOpenCode?: (unitId: string, file: string, line: number) => void;
+  /** a draft on a deviation's line quoting its rule; absent, the section offers none */
+  onCommentWithRule?: (deviation: ArchitectureDeviation) => void;
 }) {
   const { meta, state } = detail;
   const ordered = useMemo(() => unitDisplayOrder(state.units), [state.units]);
@@ -69,12 +78,15 @@ export function Overview({
   const { settings, update } = useSettings();
   const descriptionFirst = settings.descriptionFirst && Boolean(description);
   const behaviorChanges = state.behaviorChanges;
+  // The analysis writes one only where the repo documents its architecture.
+  const architecture = useExperiment("architecture") ? state.architecture : undefined;
   const sections = [
     descriptionFirst ? { id: "description", label: "Description" } : null,
     summary ? { id: "summary", label: "Summary" } : null,
     state.concepts?.length ? { id: "concepts", label: "Concepts" } : null,
     // Empty is the analysis saying nothing changes: a refactor, worth the section.
     behaviorChanges ? { id: "behavior", label: "Behavior" } : null,
+    architecture ? { id: "architecture", label: "Architecture" } : null,
     state.fileNotes ? { id: "files", label: "Where it lands" } : null,
     mix.rows.length ? { id: "size", label: "Size" } : null,
     ordered.length ? { id: "reading", label: "Must read" } : null,
@@ -191,6 +203,18 @@ export function Overview({
             />
           ) : null}
 
+          <ArchitectureSection
+            architecture={architecture}
+            numbers={numbers}
+            units={new Set(ordered.map((u) => u.id))}
+            paths={new Set(detail.files.files.map((f) => f.path))}
+            inDiff={(file, line) => isLineInDiff(detail.files, file, line, "RIGHT")}
+            onOpenUnit={onOpenUnit}
+            onOpenFile={onOpenFile}
+            onOpenCode={onOpenCode ?? ((unitId) => onOpenUnit(unitId))}
+            onCommentWithRule={onCommentWithRule}
+          />
+
           {/* Where the change lands, in the code: the shallow tree the analysis
               noted, before the units that read it. */}
           {state.fileNotes ? (
@@ -275,7 +299,7 @@ export function Overview({
     </>
   );
   const purviewShows = Boolean(
-    summary || behaviorChanges || state.concepts?.length || state.fileNotes || mix.rows.length || ordered.length,
+    summary || behaviorChanges || architecture || state.concepts?.length || state.fileNotes || mix.rows.length || ordered.length,
   );
   const reviewsSection = (
     <>

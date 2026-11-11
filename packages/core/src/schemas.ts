@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { UnitDiagramSchema } from "./diagram.js";
+import { ArchitectureSchema } from "./architecture.js";
 
 /* ---------------------------------------------------------------- taxonomy */
 
@@ -517,6 +518,8 @@ export const ShapeSchema = z.object({
   fileNotes: FileNotesSchema.nullable().optional(),
   concepts: ConceptsSchema.nullable().optional(),
   behaviorChanges: BehaviorChangesSchema.nullable().optional(),
+  /** an experiment (`architecture`, see architecture.ts) */
+  architecture: ArchitectureSchema.nullable().optional(),
 });
 export type Shape = z.infer<typeof ShapeSchema>;
 
@@ -532,6 +535,8 @@ export const AnalysisSchema = z.object({
   concepts: ConceptsSchema.optional(),
   /** optional: what behaves differently once it merges (see BehaviorChangeSchema) */
   behaviorChanges: BehaviorChangesSchema.optional(),
+  /** optional, an experiment: the PR against the repo's documented architecture (see architecture.ts); null when it documents none */
+  architecture: ArchitectureSchema.nullable().optional(),
 });
 export type Analysis = z.infer<typeof AnalysisSchema>;
 
@@ -565,6 +570,7 @@ export const AnalysisExportSchema = z.object({
   fileNotes: FileNotesSchema.optional(),
   concepts: ConceptsSchema.optional(),
   behaviorChanges: BehaviorChangesSchema.optional(),
+  architecture: ArchitectureSchema.optional(),
 });
 export type AnalysisExport = z.infer<typeof AnalysisExportSchema>;
 
@@ -912,6 +918,12 @@ export const RepoConfigSchema = z.object({
    * Machine-local, never layered.
    */
   generated: GeneratedPatternsSchema.default({ include: [], exclude: [] }),
+  /**
+   * The docs that hold this repo's architecture, repo-relative paths (the
+   * `architecture` experiment). Set, an analysis reads these and looks for no
+   * others; empty, it looks for them itself. Machine-local, never layered.
+   */
+  architectureDocs: z.array(z.string().min(1).max(200)).max(8).default([]),
   /** See `migrateHarnessDefault`. */
   agentsVersion: z.number().int().default(AGENT_SETTINGS_VERSION),
 });
@@ -1267,6 +1279,7 @@ export const AnalysisSetEventSchema = z.object({
   fileNotes: FileNotesSchema.optional(),
   concepts: ConceptsSchema.optional(),
   behaviorChanges: BehaviorChangesSchema.optional(),
+  architecture: ArchitectureSchema.optional(),
 });
 
 /**
@@ -1283,6 +1296,7 @@ export const ShapeSetEventSchema = z.object({
   fileNotes: FileNotesSchema.nullable().optional(),
   concepts: ConceptsSchema.nullable().optional(),
   behaviorChanges: BehaviorChangesSchema.nullable().optional(),
+  architecture: ArchitectureSchema.nullable().optional(),
 });
 
 export const UnitUpdatedEventSchema = z.object({
@@ -1555,6 +1569,8 @@ export const StateSchema = z.object({
   concepts: ConceptsSchema.optional(),
   /** what behaves differently once the PR merges */
   behaviorChanges: BehaviorChangesSchema.optional(),
+  /** the PR against the repo's documented architecture (an experiment; see architecture.ts) */
+  architecture: ArchitectureSchema.optional(),
   /** the revision the shape was last drawn for */
   shapeRevision: z.number().int().optional(),
   units: z.array(ReviewUnitSchema).default([]),

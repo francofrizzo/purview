@@ -166,6 +166,45 @@ export interface BehaviorChange {
   unit?: string;
 }
 
+/** A rule as the docs say it (core's ArchitectureRuleSchema). */
+export interface ArchitectureRule {
+  /** the doc it is quoted from, a repo path */
+  source: string;
+  /** verbatim; Purview checked it is in the source */
+  quote: string;
+  heading?: string;
+}
+
+/** One place the PR does what a documented rule says not to. */
+export interface ArchitectureDeviation {
+  /** the situation, in the reader's words */
+  what: string;
+  rule: ArchitectureRule;
+  /** the code that breaks it: at most three lines of `excerpt` */
+  code: { unit: string; file: string; line: number; excerpt: string };
+  /** the link between rule and code, when it is not obvious */
+  why?: string;
+}
+
+/** A decision the PR makes that the docs say nothing about. */
+export interface ArchitectureDecision {
+  what: string;
+  means: string;
+  unit?: string;
+  /** a line the author could paste into the doc, in its own voice */
+  docLine?: { target: string; heading?: string; text: string };
+}
+
+/** The PR against the repo's documented architecture (core's ArchitectureSchema; the `architecture` experiment). */
+export interface Architecture {
+  /** the docs read */
+  sources: string[];
+  /** the rules the diff's files could break, verbatim */
+  checked: { source: string; rule: string }[];
+  deviations: ArchitectureDeviation[];
+  decisions: ArchitectureDecision[];
+}
+
 export interface HunkEntry {
   id: string;
   /** inline markdown */
@@ -429,6 +468,8 @@ export interface PrState {
   fileNotes?: FileNotes;
   /** what behaves differently once the PR merges, before and after */
   behaviorChanges?: BehaviorChange[];
+  /** the PR against the repo's documented architecture (the `architecture` experiment) */
+  architecture?: Architecture;
   /** the mock's spelling of the revision in force; the server sends `currentRevision` */
   revision: number;
   /** the revision in force, as the server names it */
@@ -696,6 +737,8 @@ export interface RepoConfig {
     chatInstructions: string;
     /** absent from a server predating it; read as two empty lists */
     generated?: GeneratedPatterns;
+    /** the docs that hold the repo's architecture (the `architecture` experiment); absent on an older server */
+    architectureDocs?: string[];
   };
   committed: {
     present: boolean;
@@ -728,6 +771,8 @@ export interface RepoConfigPatch {
   chatInstructions?: string;
   /** written whole */
   generated?: GeneratedPatterns;
+  /** written whole */
+  architectureDocs?: string[];
 }
 
 /**

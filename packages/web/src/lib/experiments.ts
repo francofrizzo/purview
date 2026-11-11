@@ -13,7 +13,13 @@ export interface Experiment {
   hint: string;
 }
 
-export const EXPERIMENTS = [] as const satisfies readonly Experiment[];
+export const EXPERIMENTS = [
+  {
+    id: "architecture",
+    title: "Architecture",
+    hint: "An Overview section holding the PR against the repo's documented architecture: the rules it breaks, the decisions the docs miss. Analyses write it once this is on.",
+  },
+] as const satisfies readonly Experiment[];
 
 export type ExperimentId = (typeof EXPERIMENTS)[number]["id"];
 export type Experiments = Partial<Record<ExperimentId, boolean>>;

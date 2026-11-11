@@ -102,6 +102,10 @@ try {
   }
   // reviewer.mockNoBehavior "1": the analysis found no behavior changes (a refactor).
   if (localStorage.getItem("reviewer.mockNoBehavior") === "1") detail.state.behaviorChanges = [];
+  // reviewer.mockArchitecture "empty": the PR follows its documented architecture.
+  if (localStorage.getItem("reviewer.mockArchitecture") === "empty" && detail.state.architecture) {
+    detail.state.architecture = { ...detail.state.architecture, deviations: [], decisions: [] };
+  }
 } catch {
   // No storage: the fixture stays as it is.
 }
@@ -231,7 +235,15 @@ const globalConfig: {
   // The fixture's bot-opened PR (billing #502) lands under "Your PRs" through this.
   extraAuthors: ["acme-agent[bot]"],
   updateCheck: true,
-  experiments: {},
+  // reviewer.mockExperiments: a comma list of experiments that start on.
+  experiments: (() => {
+    try {
+      const on = (localStorage.getItem("reviewer.mockExperiments") ?? "").split(",").filter(Boolean);
+      return Object.fromEntries(on.map((id) => [id, true]));
+    } catch {
+      return {};
+    }
+  })(),
 };
 
 /**
@@ -1086,6 +1098,7 @@ export const mockApi = {
     if (patch.rubric !== undefined) config.local.rubric = patch.rubric;
     if (patch.chatInstructions !== undefined) config.local.chatInstructions = patch.chatInstructions;
     if (patch.generated !== undefined) config.local.generated = structuredClone(patch.generated);
+    if (patch.architectureDocs !== undefined) config.local.architectureDocs = [...patch.architectureDocs];
     relayer(rkey);
     const summary = repos.find((r) => `${r.host}/${r.owner}/${r.repo}` === rkey);
     if (summary) {

@@ -9,6 +9,7 @@ import { skillDir } from "../../skill-paths.js";
 import { rubricSection } from "../../rubric.js";
 import { chatInstructionsSection } from "../../chat-instructions.js";
 import { baseNote } from "../../base-note.js";
+import { architecturePrompt } from "../../architecture-prompt.js";
 import type { CheckoutResolution } from "../../worktree.js";
 import type { CommittedConfig } from "../../team-config.js";
 import { summarizeMoves, readFilesJson } from "@reviewer/core";
@@ -71,6 +72,7 @@ export function reviewRunPrompt(key: PrKey, root: string, checkout: CheckoutReso
     languageNote(state, { incremental, language: readConfig(root).analysisLanguage }),
     correctionsNote(state),
     movedNote(summarizeMoves(files.filter(f => !f.generated))),
+    architecturePrompt(key, root, { incremental, hasCheckout: Boolean(checkout.path && !checkout.error), flow: "tools" }),
   ].filter(Boolean).join("\n\n");
 }
 

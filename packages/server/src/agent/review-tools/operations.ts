@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import * as core from "@reviewer/core";
 import { readThreadsCache } from "../../github-threads.js";
+import { experimentOn } from "../../config.js";
 import { agentChangeRefusal, readComments } from "../../comments.js";
 import type { AgentAction, AgentRunRequest } from "../types.js";
 
@@ -109,6 +110,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   const serverUrl = context.serverUrl;
   if (!path.isAbsolute(root) || !Number.isInteger(revision) || revision < 1) throw new Error("Invalid review authority");
   const checkout = context.checkout ? fs.realpathSync(context.checkout) : undefined;
+  const architectureOn = experimentOn("architecture", root);
   let active = true;
   let queue: Promise<unknown> = Promise.resolve();
   const current = () => core.loadState(key, root);
@@ -161,7 +163,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
     return { pr: { key, title: meta.title, url: meta.url }, revision, task: request.task.kind, analysisMode: context.analysisMode,
       checkoutAvailable: !!checkout,
       ...(fromScratch ? {} : { summary: state.summary, concepts: state.concepts, fileNotes: state.fileNotes,
-        behaviorChanges: state.behaviorChanges }),
+        behaviorChanges: state.behaviorChanges, ...(architectureOn ? { architecture: state.architecture } : {}) }),
       generatedFiles: files.filter(f => f.generated).map(f => f.path),
       corrections: state.corrections,
       files: page("review_context", args, files.filter(f => !f.generated).flatMap(f => f.hunks.map(h => ({
@@ -235,14 +237,17 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   add("list_comments", "Comments with author, audience, status and anchors. Never publishes.", z.object(pageArgs).strict(), args => page("list_comments", args, readComments(key, root)));
 
   if (request.task.kind === "analysis") {
+    // An experiment that is off leaves no trace in what the run is shown:
+    // its fields are dropped from the tool schemas (core still validates the
+    // whole payload on save, so the stripped schema checks nothing less).
     const tools = {
-      analysis: core.AnalysisSchema,
+      analysis: architectureOn ? core.AnalysisSchema : core.AnalysisSchema.omit({ architecture: true }),
       patch: core.ReviewUnitPatchSchema,
-      shape: core.ShapeSchema,
+      shape: architectureOn ? core.ShapeSchema : core.ShapeSchema.omit({ architecture: true }),
     };
     if (context.analysisMode === "initial") add("set_analysis", "Save a complete analysis; core validates coverage, hunk ownership and findings. Evidence max 200 chars; finding text max 300.", tools.analysis,
       args => {
-        const result = validated(() => core.setAnalysis(key, args, {}, root));
+        const result = validated(() => core.setAnalysis(key, args, { checkout }, root));
         const warnings = renameWarnings(result.state.units);
         return { coverage: result.coverage, ...(warnings.length ? { warnings } : {}), remaining: core.remainingWorkFor(key, root) };
       }, false);
@@ -256,9 +261,10 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
         return { unitIds: result.unitIds, warnings, remaining: core.remainingWorkFor(key, root) };
       }, false);
       add("set_shape", "Replace the PR summary, the concepts, the file notes or the behavior changes without re-sending the analysis. A key present replaces that view whole; null drops concepts, file notes or behavior changes; an absent key leaves it.", tools.shape, args => {
-        const state = validated(() => core.setShape(key, args, root));
+        const state = validated(() => core.setShape(key, args, root, { checkout }));
         return { concepts: state.concepts?.length ?? 0, fileNotes: Object.keys(state.fileNotes ?? {}).length,
-          behaviorChanges: state.behaviorChanges?.length ?? 0 };
+          behaviorChanges: state.behaviorChanges?.length ?? 0,
+          ...(architectureOn ? { architecture: state.architecture ? { deviations: state.architecture.deviations.length, decisions: state.architecture.decisions.length } : null } : {}) };
       }, false);
       add("set_revision_summary", "Save a nonempty summary of what this revision changed.", z.object({ text: z.string().min(1) }).strict(), args => validated(() => core.setRevisionSummary(key, args.text, revision, root)), false);
     } else throw new Error("Analysis mode required");

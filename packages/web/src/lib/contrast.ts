@@ -150,6 +150,13 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     s("behavior-before", "Overview", "a behavior change's before (fg on the removed tint)", "fg", 4.5, ["bg", "del-bg"], "Debt month is the batch's month"),
     s("behavior-after", "Overview", "a behavior change's after (fg on the added tint)", "fg", 4.5, ["bg", "add-bg"], "Debt month is the month before"),
     s("behavior-same", "Overview", "a behavior that stays the same (fg on bg-hover; a step deeper under the pointer)", "fg", 4.5, ["bg-raised", "bg-hover"], "Two charges: the key includes the order id"),
+    s("architecture-rule", "Overview", "a broken rule's quote (fg on bg-hover, like a behavior that stays)", "fg", 4.5, ["bg-raised", "bg-hover"], "“Only ledger.ts reads or writes charge_ledger”"),
+    s("architecture-rule-source", "Overview", "a broken rule's source (fg-faint on bg-hover)", "fg-faint", 2.4, ["bg-raised", "bg-hover"], "docs/architecture.md · Persistence", mono),
+    s("architecture-code", "Overview", "the code that breaks a rule (fg on bg-inset)", "fg", 4.5, ["bg-raised", "bg-inset"], "await this.pool.query<LedgerRow>(", mono),
+    s("architecture-code-where", "Overview", "where that code is (fg-faint on bg-inset)", "fg-faint", 2.4, ["bg-raised", "bg-inset"], "src/billing/reconcile.ts:114", mono),
+    ...["bg-raised", "bg-hover"].map((on) =>
+      s(`architecture-mark-${on}`, "Overview", `a deviation's dot (risk on ${on === "bg-hover" ? "its row under the pointer" : "bg-raised"})`, "risk", 3.0, on === "bg-raised" ? ["bg-raised"] : ["bg-raised", on], "●", { kind: "swatch" }),
+    ),
     s("diff-add", "Diff rows", "added line", "fg", 4.5, ["bg", "add-bg"], '+  return createHash("sha256")', mono),
     s("diff-del", "Diff rows", "removed line", "fg", 4.5, ["bg", "del-bg"], "-  return md5(orderId)", mono),
     s("diff-add-strong", "Diff rows", "added, strong (word highlight)", "fg", 4.0, ["bg", "add-bg", "add-bg-strong"], "createHash", mono),

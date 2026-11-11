@@ -54,7 +54,7 @@ export const AnalysisLanguageSchema = z
  * it on in Settings. One flag gates both what the analysis is asked to write
  * and what the app shows, so an experiment that is off costs nothing.
  */
-export const EXPERIMENT_IDS = [] as const;
+export const EXPERIMENT_IDS = ["architecture"] as const;
 export type ExperimentId = (typeof EXPERIMENT_IDS)[number];
 export const ExperimentsSchema = z
   .object(Object.fromEntries(EXPERIMENT_IDS.map((id) => [id, z.boolean().default(false)])) as Record<ExperimentId, z.ZodDefault<z.ZodBoolean>>)
