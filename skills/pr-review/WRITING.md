@@ -84,7 +84,6 @@ snapshot brings its ingestion ids, incremental its key" under a summary that say
 that). Say what these lines do that the summary leaves out: the condition, the order, the
 edge case.
 
-<!-- experiment:unitDiagrams -->
 ### Unit diagrams
 
 A small Mermaid diagram on a unit, shown under its summary, for logic that prose struggles
@@ -118,7 +117,6 @@ what the summary already says is noise.
   itself.
 - On a refresh, a patch that sends `diagram` replaces it whole; `"diagram": null` drops it.
   Redraw or drop a diagram the revision made wrong.
-<!-- /experiment:unitDiagrams -->
 
 ## The shape of the change
 

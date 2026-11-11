@@ -1,9 +1,9 @@
 /**
  * Skill docs carry the guidance for experiments between markers:
  *
- *   <!-- experiment:unitDiagrams -->
+ *   <!-- experiment:someId -->
  *   ...
- *   <!-- /experiment:unitDiagrams -->
+ *   <!-- /experiment:someId -->
  *
  * A run is shown a block only while its experiment is on, so with the flag
  * off the prompt is the one it was before the experiment existed. The

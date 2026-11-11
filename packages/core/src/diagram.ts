@@ -3,7 +3,7 @@ import { z } from "zod";
 /* ------------------------------------------------------------ unit diagrams */
 
 /**
- * An experiment (`unitDiagrams`): a small Mermaid diagram beside a unit whose
+ * A small Mermaid diagram beside a unit whose
  * logic is a sequence across components, a state machine or data
  * relationships that prose struggles with. Most units have none.
  *

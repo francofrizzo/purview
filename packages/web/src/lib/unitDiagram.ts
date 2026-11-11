@@ -1,5 +1,5 @@
 /**
- * Unit diagrams (the `unitDiagrams` experiment): the analysis's Mermaid
+ * Unit diagrams: the analysis's Mermaid
  * source is untrusted text. The server refuses the directives below
  * (core's diagram.ts); the app checks again before rendering, so a state
  * written by an older or hand-edited payload still never reaches mermaid

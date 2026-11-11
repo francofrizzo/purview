@@ -836,7 +836,7 @@ const units: ReviewUnit[] = [
       },
       { id: "a1b2c3d4e5f60005", label: "ledger table and its writes" },
     ],
-    // The unitDiagrams experiment: how a retried charge comes back once.
+    // A unit diagram: how a retried charge comes back once.
     diagram: {
       kind: "sequence",
       title: "A retried charge",

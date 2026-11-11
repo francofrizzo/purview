@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analysisSystemPrompt } from "../src/analysis.js";
 import { withExperiments } from "../src/experiment-docs.js";
+import { EXPERIMENT_IDS } from "../src/config.js";
 
 describe("withExperiments", () => {
   const doc = [
@@ -27,13 +28,15 @@ describe("the analysis prompt with every experiment off", () => {
   for (const incremental of [false, true]) {
     it(`never mentions an experiment (${incremental ? "refresh" : "first analysis"})`, () => {
       const off = analysisSystemPrompt({ incremental });
-      expect(off).not.toMatch(/Unit diagrams|"diagram"/);
-      // Graduated: behavior changes are asked for with every experiment off.
+      // Graduated: behavior changes and unit diagrams are asked for with every experiment off.
       expect(off).toContain("### Behavior changes");
+      expect(off).toContain("### Unit diagrams");
       expect(off).not.toContain("<!-- experiment:");
-      const on = analysisSystemPrompt({ incremental, experiments: { unitDiagrams: true } });
-      expect(on).toContain("### Unit diagrams");
-      expect(on).not.toContain("<!-- experiment:");
+      // An experiment that is on never leaks its markers; with none, nothing to check.
+      for (const id of EXPERIMENT_IDS as readonly string[]) {
+        const on = analysisSystemPrompt({ incremental, experiments: { [id]: true } });
+        expect(on).not.toContain("<!-- experiment:");
+      }
     });
   }
 });

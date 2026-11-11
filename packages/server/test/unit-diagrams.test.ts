@@ -6,10 +6,9 @@ import { fileURLToPath } from "node:url";
 import { setGhRunner, UnitDiagramSchema } from "@reviewer/core";
 import { analysisPrompt } from "../src/analysis.js";
 import { reviewSystemPrompt } from "../src/agent/review-tools/prompts.js";
-import { writeConfig } from "../src/config.js";
 import { buildFixture, key } from "./fixtures.js";
 
-/** The unitDiagrams experiment: the prompts ask for diagrams only while it is on. */
+/** Unit diagrams: the prompts ask for a diagram where one helps, in both flows. */
 
 let root: string;
 
@@ -29,15 +28,7 @@ afterEach(() => {
 });
 
 describe("unit diagram prompt lines", () => {
-  it("are absent while the experiment is off", () => {
-    for (const incremental of [false, true]) {
-      expect(analysisPrompt(key, root, { incremental })).not.toContain("Unit diagrams");
-      expect(reviewSystemPrompt(key, root, { task: "analysis", incremental }).split("===== WRITING GUIDE =====")[0]).not.toContain("Unit diagrams");
-    }
-  });
-
   it("ask for a diagram on an initial run and let a refresh patch or drop one, in both flows", () => {
-    writeConfig({ experiments: { unitDiagrams: true } as never }, root);
     expect(analysisPrompt(key, root, { incremental: false })).toContain("Give a unit a `diagram` only where");
     expect(analysisPrompt(key, root, { incremental: true })).toContain("`\"diagram\": null` drops one");
     expect(reviewSystemPrompt(key, root, { task: "analysis", incremental: false })).toContain("Give a unit a diagram only where");

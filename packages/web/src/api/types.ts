@@ -175,7 +175,7 @@ export interface HunkEntry {
   risks?: RiskMark[];
 }
 
-/** A small Mermaid diagram of a unit's logic (core's UnitDiagramSchema; the `unitDiagrams` experiment). */
+/** A small Mermaid diagram of a unit's logic (core's UnitDiagramSchema). */
 export interface UnitDiagram {
   kind: "sequence" | "state" | "flow" | "er";
   /** a short caption */
@@ -771,7 +771,7 @@ export interface GlobalConfig {
   /** ask origin once a day for a newer release and show it on the home page */
   updateCheck?: boolean;
   /** features being tried, all off by default (lib/experiments.ts). Absent on a server that predates them. */
-  experiments?: Partial<Record<"unitDiagrams", boolean>>;
+  experiments?: Partial<Record<string, boolean>>;
   /** what this layer resolves to on its own — the end of the chain */
   effective: { analysisAgent: ResolvedAgent; chatAgent: ResolvedAgent };
 }

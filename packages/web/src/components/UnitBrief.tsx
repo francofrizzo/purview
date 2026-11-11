@@ -13,7 +13,7 @@ import { FindingList } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
 import { OverflowMenu } from "./OverflowMenu";
 import { UnitChangelog } from "./UnitChangelog";
-import { UnitDiagram } from "./experiments/UnitDiagram";
+import { UnitDiagram } from "./UnitDiagram";
 import { IconCheck, IconClose, IconEyeOff, IconFile, IconHeart, IconHistory, IconQuote, IconWarning } from "./icons";
 import { UiText } from "./UiText";
 

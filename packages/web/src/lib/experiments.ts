@@ -6,13 +6,14 @@
  */
 import { useGlobalConfig } from "../api/hooks";
 
-export const EXPERIMENTS = [
-  {
-    id: "unitDiagrams",
-    title: "Unit diagrams",
-    hint: "A sequence, state or data diagram beside a unit when one helps. Analyses draw them once this is on.",
-  },
-] as const;
+export interface Experiment {
+  /** also in the server's EXPERIMENT_IDS */
+  id: string;
+  title: string;
+  hint: string;
+}
+
+export const EXPERIMENTS = [] as const satisfies readonly Experiment[];
 
 export type ExperimentId = (typeof EXPERIMENTS)[number]["id"];
 export type Experiments = Partial<Record<ExperimentId, boolean>>;

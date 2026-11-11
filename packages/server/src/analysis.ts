@@ -34,7 +34,7 @@ import { cliEnvironment, getHarness } from "./agent/registry.js";
 import { actionGerund, actionLabel } from "./agent/types.js";
 import type { AgentAction, AgentRun, HarnessManifest, ReviewerCommand } from "./agent/types.js";
 import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
-import { experimentOn, readConfig } from "./config.js";
+import { readConfig } from "./config.js";
 import { withExperiments } from "./experiment-docs.js";
 import { effectiveAnalysisAgent, type AgentChoice } from "./repo-config.js";
 import { languageRule, rubricSection } from "./rubric.js";
@@ -592,9 +592,7 @@ export function analysisPrompt(
             : state.behaviorChanges
               ? "The analysis found no behavior changes (`behaviorChanges: []`). If this revision changes what the system does, write them with `set-shape` after `set-units` (WRITING.md, 'Behavior changes'); otherwise leave it."
               : "This PR has no `behaviorChanges` yet: write them with `set-shape` (WRITING.md, 'Behavior changes'), `[]` if it changes no behavior.",
-          experimentOn("unitDiagrams", root)
-            ? "A patched unit may carry a `diagram` (WRITING.md, 'Unit diagrams'): send one in its patch when this revision makes it a sequence, state machine or data model prose struggles with, redraw one this revision makes wrong, and `\"diagram\": null` drops one that no longer earns its place."
-            : "",
+          "A patched unit may carry a `diagram` (WRITING.md, 'Unit diagrams'): send one in its patch when this revision makes it a sequence, state machine or data model prose struggles with, redraw one this revision makes wrong, and `\"diagram\": null` drops one that no longer earns its place.",
         ].join(" ") +
         "\n\n" +
         changesBlock(cmd, keyStr)
@@ -603,9 +601,7 @@ export function analysisPrompt(
           `\`${cmd} set-analysis ${keyStr} --file <analysis.json>\`.`,
           "Lead the reader in from broad to narrow (WRITING.md): a plain `summary` with no code, then the shape ('The shape of the change'): `concepts` as that section says, and `fileNotes` always: a shallow tree, one note per folder where its files share a role and per file only where one has its own.",
           "Write `behaviorChanges` always (WRITING.md, 'Behavior changes'): the behaviors the PR changes, or `[]` when it changes none.",
-          experimentOn("unitDiagrams", root)
-            ? "Give a unit a `diagram` only where its logic is a sequence across components, a state machine or data relationships prose struggles with (WRITING.md, 'Unit diagrams'): most units none, a few per PR at most."
-            : "",
+          "Give a unit a `diagram` only where its logic is a sequence across components, a state machine or data relationships prose struggles with (WRITING.md, 'Unit diagrams'): most units none, a few per PR at most.",
           "Every hunk id the triage lists must be covered by a unit or listed in \"unassigned\".",
           "Generated files and lockfiles (triage's GENERATED line) are already in Purview's own",
           `\`${GENERATED_UNIT_ID}\` unit: leave their hunks out, don't read them, and don't use that unit id.`,

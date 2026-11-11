@@ -10,7 +10,7 @@ import { ReviewUnitPatchSchema, ReviewUnitSchema } from "../src/schemas.js";
 import { UNIT_DIAGRAM_MERMAID_MAX, UnitDiagramSchema, unitDiagramProblems } from "../src/diagram.js";
 import type { FileDiff, PrKey } from "../src/index.js";
 
-/** Unit diagrams (the `unitDiagrams` experiment): an optional Mermaid diagram on a unit. */
+/** Unit diagrams: an optional Mermaid diagram on a unit. */
 
 const ts = "2026-01-01T00:00:00.000Z";
 

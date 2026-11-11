@@ -48,7 +48,7 @@ import {
   type Settings as SettingsShape,
 } from "../lib/settings";
 import { parseLoginList } from "../lib/threads";
-import { EXPERIMENTS } from "../lib/experiments";
+import { EXPERIMENTS, type Experiment } from "../lib/experiments";
 import { MONOKAI_PRO_NOTE, THEMES, previewColors, shikiThemeFor } from "../lib/themes";
 
 /** App-wide appearance settings, floating over whatever route is underneath. */
@@ -78,7 +78,8 @@ const APP_SETTINGS_NAV: SettingsNavGroup[] = [
       { id: "network", title: "Network access" },
       { id: "coding-agents", title: "Coding agents" },
       { id: "editor", title: "Editor" },
-      { id: "experiments", title: "Experiments" },
+      // Only while there is something to try.
+      ...(EXPERIMENTS.length ? [{ id: "experiments", title: "Experiments" }] : []),
       { id: "about", title: "About" },
     ],
   },
@@ -234,7 +235,7 @@ export function SettingsModal() {
       <NetworkSection />
       <CodingAgentsSection />
       <EditorSection />
-      <ExperimentsSection />
+      {EXPERIMENTS.length ? <ExperimentsSection /> : null}
       <AboutSection />
       <p className="text-2xs" style={{ color: "var(--fg-faint)" }}>
         Stored under <span className="font-mono">reviewer.settings</span> in localStorage · active
@@ -813,7 +814,7 @@ function ExperimentsSection() {
     <Section id="experiments" title="Experiments" hint="Features still being tried. Each is off until you turn it on.">
       {!config.data ? null : (
         <div className="flex flex-col gap-3">
-          {EXPERIMENTS.map((x) => (
+          {EXPERIMENTS.map((x: Experiment) => (
             <label key={x.id} className="flex items-start gap-2">
               <input
                 type="checkbox"

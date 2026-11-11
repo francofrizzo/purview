@@ -1,11 +1,10 @@
 import { useState } from "react";
-import type { UnitDiagram as UnitDiagramData } from "../../api/types";
-import { useExperiment } from "../../lib/experiments";
-import { isSafeDiagram } from "../../lib/unitDiagram";
-import { DiagramViewer } from "../DiagramViewer";
-import { useMermaid } from "../Markdown";
-import { IconDiagram } from "../icons";
-import { UiText } from "../UiText";
+import type { UnitDiagram as UnitDiagramData } from "../api/types";
+import { isSafeDiagram } from "../lib/unitDiagram";
+import { DiagramViewer } from "./DiagramViewer";
+import { useMermaid } from "./Markdown";
+import { IconDiagram } from "./icons";
+import { UiText } from "./UiText";
 
 const KIND_WORD: Record<UnitDiagramData["kind"], string> = {
   sequence: "Sequence",
@@ -15,16 +14,14 @@ const KIND_WORD: Record<UnitDiagramData["kind"], string> = {
 };
 
 /**
- * A unit's diagram (the `unitDiagrams` experiment), under its brief: one
+ * A unit's diagram, under its brief: one
  * line, the diagram icon and its caption, that opens it in the diagram viewer. Nothing
  * is drawn until then. Source the app refuses, or Mermaid cannot parse, is
- * one faint line, never a crash. Renders nothing while the experiment is off
- * or the unit has none.
+ * one faint line, never a crash. Renders nothing when the unit has none.
  */
 export function UnitDiagram({ diagram }: { diagram?: UnitDiagramData }) {
-  const on = useExperiment("unitDiagrams");
   const [opened, setOpened] = useState(false);
-  if (!on || !diagram) return null;
+  if (!diagram) return null;
   const caption = diagram.title ?? `${KIND_WORD[diagram.kind]} diagram`;
   if (!isSafeDiagram(diagram.mermaid)) return <Failed />;
   return (

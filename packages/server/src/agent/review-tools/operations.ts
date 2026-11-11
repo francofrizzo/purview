@@ -5,7 +5,6 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import * as core from "@reviewer/core";
 import { readThreadsCache } from "../../github-threads.js";
-import { experimentOn } from "../../config.js";
 import { agentChangeRefusal, readComments } from "../../comments.js";
 import type { AgentAction, AgentRunRequest } from "../types.js";
 
@@ -236,15 +235,9 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   add("list_comments", "Comments with author, audience, status and anchors. Never publishes.", z.object(pageArgs).strict(), args => page("list_comments", args, readComments(key, root)));
 
   if (request.task.kind === "analysis") {
-    // An experiment that is off leaves no trace in what the run is shown:
-    // its fields are dropped from the tool schemas (core still validates the
-    // whole payload on save, so the stripped schema checks nothing less).
-    const diagramsOn = experimentOn("unitDiagrams", root);
     const tools = {
-      analysis: core.AnalysisSchema.extend(
-        diagramsOn ? {} : { units: z.array(core.ReviewUnitBaseSchema.omit({ diagram: true })) },
-      ),
-      patch: diagramsOn ? core.ReviewUnitPatchSchema : core.ReviewUnitPatchObject.omit({ diagram: true }),
+      analysis: core.AnalysisSchema,
+      patch: core.ReviewUnitPatchSchema,
       shape: core.ShapeSchema,
     };
     if (context.analysisMode === "initial") add("set_analysis", "Save a complete analysis; core validates coverage, hunk ownership and findings. Evidence max 200 chars; finding text max 300.", tools.analysis,

@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Unit diagrams.** A unit whose logic is easier to see than read shows a small sequence, state or data diagram under its brief; click its caption to open it. Analyses draw them from the next run on.
 - **Fix:** an agent watching your notes no longer misses it when you edit, delete or move to GitHub a note it already picked up; it gets the change with the old text.
 
 ## 2026.11.10.1

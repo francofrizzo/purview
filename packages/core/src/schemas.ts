@@ -366,7 +366,7 @@ export const ReviewUnitBaseSchema = z.object({
    */
   changelog: z.array(UnitChangelogEntrySchema).optional(),
   /**
-   * Optional, an experiment (`unitDiagrams`): one small Mermaid diagram of
+   * Optional: one small Mermaid diagram of
    * the unit's logic where prose struggles (see diagram.ts). A unit patch
    * replaces it whole, and `null` there drops it.
    */

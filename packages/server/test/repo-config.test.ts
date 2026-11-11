@@ -1164,7 +1164,7 @@ describe("/api/config", () => {
       editor: null,
       editorConfirmed: false,
       updateCheck: true,
-      experiments: { unitDiagrams: false },
+      experiments: {},
       effective: {
         // Medium is the harness's default now, not a value every config.json pins.
         analysisAgent: {
@@ -1195,6 +1195,12 @@ describe("/api/config", () => {
     });
     // Existing installs keep resolving effort from the global layer, as before.
     expect(effectiveConfig(key, root).analysisAgent.effort).toEqual({ value: "medium", source: "global" });
+  });
+
+  it("drops the flag of an experiment that has graduated, keeping the rest of the file", async () => {
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ autoAnalyze: false, experiments: { unitDiagrams: true } }));
+    expect(readConfig(root)).toMatchObject({ autoAnalyze: false, experiments: {} });
+    expect((await (await app.request("/api/config")).json()).experiments).toEqual({});
   });
 
   it("rejects a model or effort the harness does not offer, naming the choices", async () => {
