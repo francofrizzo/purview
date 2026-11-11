@@ -38,6 +38,7 @@ import {
   IconClose,
   IconDensity,
   IconHourglass,
+  IconInbox,
   IconPlus,
   IconRefresh,
   IconSearch,
@@ -594,8 +595,10 @@ function RepoSection({
   const [archivedShown, setArchivedShown] = useState(ARCHIVED_PAGE);
   const finished = finishedPrs(full);
   const reviewedKeys = reviewedPrKeys(full);
-  const [importOpen, setImportOpen] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
+  // One slot under the header at a time: adding a PR by number, or importing.
+  const [slot, setSlot] = useState<"add" | "import" | null>(null);
+  const addOpen = slot === "add";
+  const importOpen = slot === "import";
   const background = useModalBackground();
   const settingsHref = `/repo/${group.host}/${group.owner}/${group.repo}/settings`;
   const repoArchived = group.repoArchived;
@@ -666,10 +669,24 @@ function RepoSection({
             aria-label={`Add a PR from ${group.owner}/${group.repo} by number`}
             aria-expanded={addOpen}
             data-testid={`repo-add-pr-${group.key}`}
-            onClick={() => setAddOpen((v) => !v)}
+            onClick={() => setSlot(addOpen ? null : "add")}
             style={{ color: addOpen ? "var(--accent)" : "var(--fg-faint)" }}
           >
             <IconPlus width={12} height={12} />
+          </button>
+        )}
+        {repoArchived ? null : (
+          <button
+            type="button"
+            className="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
+            data-tip="Import recent PRs that want your review or that you opened"
+            aria-label={`Import recent PRs from ${group.owner}/${group.repo}`}
+            aria-expanded={importOpen}
+            data-testid={`import-reviews-toggle-${group.key}`}
+            onClick={() => setSlot(importOpen ? null : "import")}
+            style={{ color: importOpen ? "var(--accent)" : "var(--fg-faint)" }}
+          >
+            <IconInbox width={12} height={12} />
           </button>
         )}
         <Link
@@ -683,22 +700,18 @@ function RepoSection({
         >
           <IconSettings width={12} height={12} />
         </Link>
-        <RepoMenu
-          repo={group}
-          archived={repoArchived}
-          onImport={repoArchived ? undefined : () => setImportOpen(true)}
-        />
+        <RepoMenu repo={group} archived={repoArchived} />
       </header>
 
       {addOpen && !repoArchived ? (
-        <AddByNumberForm repo={group} onClose={() => setAddOpen(false)} />
+        <AddByNumberForm repo={group} onClose={() => setSlot(null)} />
       ) : null}
 
       {importOpen && !repoArchived ? (
         <ImportReviewsForm
           rkey={group.key}
           repo={repo}
-          onClose={() => setImportOpen(false)}
+          onClose={() => setSlot(null)}
         />
       ) : null}
 
@@ -1053,12 +1066,17 @@ function AddByNumberForm({
   );
 }
 
+/** How far back an import looks, in days. */
+const IMPORT_SPANS = [3, 7, 14, 30] as const;
+
 /**
- * Inline "import PRs…" form, in two steps. First what to look for: how many
- * days back, and which searches (PRs that want your review, PRs you opened;
- * they start as the repo's watch settings). Then the PRs found, each with a
- * checkbox: new ones start ticked, an archived one can be ticked to bring it
- * back, and one already on the list is shown but cannot be picked.
+ * The import slot under a repo's header, drawn like the add slot: the inbox
+ * in the select column, the searches as toggles (PRs that want your review,
+ * PRs you opened; they start as the repo's watch settings) and how far back,
+ * and under them the PRs found, as rows like the list's. It looks as soon as
+ * it opens and again on every change. New PRs start ticked, an archived one
+ * can be ticked to bring it back, and one already on the list shows, dimmed,
+ * without a box. Escape or the × closes it.
  */
 function ImportReviewsForm({
   rkey,
@@ -1069,141 +1087,199 @@ function ImportReviewsForm({
   repo?: RepoSummary;
   onClose: () => void;
 }) {
-  const [days, setDays] = useState(7);
+  const [days, setDays] = useState<number>(7);
   const [picked, setPicked] = useState<ImportSource[] | null>(null);
   const sources: ImportSource[] = picked ?? defaultImportSources(repo);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const find = useImportCandidates(rkey);
   const importReviews = useImportReviews(rkey);
   const busy = find.isPending || importReviews.isPending;
-  const candidates = find.data?.candidates;
+  // The ones to pick from first; those already on the list after, for reference.
+  const candidates = find.data?.candidates
+    .slice()
+    .sort((x, y) => Number(x.tracked && !x.archived) - Number(y.tracked && !y.archived));
+  const pickable = candidates?.filter((c) => !c.tracked || c.archived) ?? [];
+  const sourcesKey = [...sources].sort().join(",");
 
-  const toggleSource = (source: ImportSource, on: boolean) => {
-    const next = on ? [...new Set([...sources, source])] : sources.filter((s) => s !== source);
-    setPicked(next);
-    find.reset();
-  };
-  const search = () => {
-    importReviews.reset();
-    find.mutate(
-      { days, sources },
+  const { mutate: look } = find;
+  useEffect(() => {
+    if (!sourcesKey) return;
+    look(
+      { days, sources: sourcesKey.split(",") as ImportSource[] },
       {
         onSuccess: (data) =>
           setSelected(new Set(data.candidates.filter((c) => !c.tracked).map((c) => c.number))),
       },
     );
+  }, [days, sourcesKey, look]);
+
+  const toggleSource = (source: ImportSource) => {
+    importReviews.reset();
+    setPicked(sources.includes(source) ? sources.filter((s) => s !== source) : [...sources, source]);
   };
   const submit = () => {
     importReviews.mutate(
       { days, numbers: [...selected] },
-      { onSuccess: () => find.reset() },
+      {
+        onSuccess: () => {
+          setSelected(new Set());
+          look({ days, sources });
+        },
+      },
     );
   };
-  const toggle = (n: number, on: boolean) =>
+  const toggle = (n: number) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (on) next.add(n);
-      else next.delete(n);
+      if (next.has(n)) next.delete(n);
+      else next.add(n);
       return next;
     });
 
+  const toggleClass =
+    "inline-flex h-6 items-center rounded px-2 transition-colors disabled:opacity-50 aria-[checked=true]:bg-[var(--accent-soft)] aria-[checked=true]:text-[var(--accent)] aria-[checked=false]:text-[var(--fg-muted)] aria-[checked=false]:hover:bg-[var(--bg-hover)]";
+
   return (
     <div
-      className="border-t px-3 py-2 text-2xs"
-      style={{ borderColor: "var(--border)" }}
+      className="relative border-t text-2xs"
+      style={{ borderColor: "var(--border)", boxShadow: "inset 2px 0 0 var(--accent)" }}
       data-testid={`import-form-${rkey}`}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <span style={{ color: "var(--fg-faint)" }}><UiText>last</UiText></span>
-        <input
-          type="number"
-          min={1}
-          max={90}
-          className="input w-14 px-1.5 py-0.5 text-2xs"
-          value={days}
-          disabled={busy}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            if (Number.isFinite(n)) setDays(Math.min(90, Math.max(1, Math.round(n))));
-            find.reset();
-          }}
-        />
-        <span style={{ color: "var(--fg-faint)" }}><UiText>days:</UiText></span>
+      <div className="relative flex min-h-11 flex-wrap items-center gap-1 py-2 pl-8 pr-2">
+        <span className="absolute left-2.5 top-1/2 flex -translate-y-1/2" style={{ color: "var(--accent)" }} aria-hidden>
+          <IconInbox width={13} height={13} />
+        </span>
+        <span className="mr-1 text-[13px] font-medium" style={{ color: "var(--fg)" }}>
+          <UiText>Import</UiText>
+        </span>
         {(
           [
-            ["requests", "review requests"],
-            ["own", "your PRs"],
+            ["requests", "wanting your review"],
+            ["own", "you opened"],
           ] as const
         ).map(([source, label]) => (
-          <label key={source} className="flex items-center gap-1">
-            <input
-              type="checkbox"
-              data-testid={`import-source-${source}`}
-              checked={sources.includes(source)}
-              disabled={busy}
-              onChange={(e) => toggleSource(source, e.target.checked)}
-            />
-            <UiText>{label}</UiText>
-          </label>
-        ))}
-        <button
-          type="button"
-          className="btn"
-          data-testid="import-find"
-          disabled={busy || !sources.length}
-          onClick={search}
-        >
-          <UiText>{find.isPending ? "looking…" : "find PRs"}</UiText>
-        </button>
-        <button type="button" className="btn" disabled={busy} onClick={onClose}>
-          <UiText>{importReviews.data ? "close" : "cancel"}</UiText>
-        </button>
-        {find.error ? (
-          <span style={{ color: "var(--risk)" }}>{errorText(find.error)}</span>
-        ) : importReviews.error ? (
-          <span style={{ color: "var(--risk)" }}>{errorText(importReviews.error)}</span>
-        ) : importReviews.data ? (
-          <span
-            data-testid="import-result"
-            style={{ color: importReviews.data.failed.length ? "var(--risk)" : "var(--fg-faint)" }}
+          <button
+            key={source}
+            type="button"
+            role="checkbox"
+            aria-checked={sources.includes(source)}
+            className={toggleClass}
+            data-testid={`import-source-${source}`}
+            disabled={importReviews.isPending}
+            onClick={() => toggleSource(source)}
           >
-            <UiText>{formatImportResult(importReviews.data)}</UiText>
-          </span>
-        ) : null}
+            <UiText>{label}</UiText>
+          </button>
+        ))}
+        <span className="mx-1.5 h-4 w-px" style={{ background: "var(--border)" }} aria-hidden />
+        <span role="radiogroup" aria-label="How far back" className="flex items-center gap-0.5">
+          {IMPORT_SPANS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              role="radio"
+              aria-checked={days === n}
+              className={`${toggleClass} tabular-nums`}
+              data-testid={`import-days-${n}`}
+              disabled={importReviews.isPending}
+              onClick={() => {
+                importReviews.reset();
+                setDays(n);
+              }}
+            >
+              {`${n}d`}
+            </button>
+          ))}
+        </span>
+        <span className="ml-auto flex items-center gap-1">
+          {find.isPending ? <IconSpinner width={11} height={11} style={{ color: "var(--fg-faint)" }} /> : null}
+          <button
+            type="button"
+            className={ICON_BUTTON}
+            aria-label="Close"
+            data-tip="Close"
+            data-tip-key="Esc"
+            disabled={importReviews.isPending}
+            onClick={onClose}
+          >
+            <IconClose width={13} height={13} />
+          </button>
+        </span>
       </div>
 
-      {candidates ? (
-        candidates.length ? (
-          <div className="mt-2">
-            <ul className="flex flex-col" data-testid="import-candidates">
-              {candidates.map((c) => (
-                <ImportCandidateRow
-                  key={c.number}
-                  candidate={c}
-                  checked={selected.has(c.number)}
-                  disabled={busy}
-                  onChange={(on) => toggle(c.number, on)}
-                />
-              ))}
-            </ul>
-            <div className="mt-2 flex items-center gap-2">
+      {!sources.length ? (
+        <p className="pb-3 pl-8 pr-4" style={{ color: "var(--fg-faint)" }}>
+          <UiText>Pick at least one: PRs wanting your review, or PRs you opened.</UiText>
+        </p>
+      ) : find.error ? (
+        <p role="alert" className="pb-3 pl-8 pr-4" style={{ color: "var(--risk)" }}>
+          {errorText(find.error)}
+        </p>
+      ) : candidates && !candidates.length ? (
+        <p className="pb-3 pl-8 pr-4" style={{ color: "var(--fg-faint)" }} data-testid="import-none">
+          <UiText>{`No open PRs in the last ${days} days.`}</UiText>
+        </p>
+      ) : candidates ? (
+        <>
+          <ul className="flex flex-col" data-testid="import-candidates" style={{ opacity: find.isPending ? 0.6 : 1 }}>
+            {candidates.map((c) => (
+              <ImportCandidateRow
+                key={c.number}
+                candidate={c}
+                checked={selected.has(c.number)}
+                disabled={busy}
+                onToggle={() => toggle(c.number)}
+              />
+            ))}
+          </ul>
+          <div className="flex min-h-11 items-center gap-3 py-2 pl-8 pr-4">
+            <button
+              type="button"
+              className="btn btn-primary"
+              data-testid="import-submit"
+              disabled={busy || !selected.size}
+              onClick={submit}
+            >
+              <UiText>
+                {importReviews.isPending
+                  ? "importing…"
+                  : `import ${selected.size || ""}`.trim()}
+              </UiText>
+            </button>
+            {pickable.length > 1 ? (
               <button
                 type="button"
-                className="btn"
-                data-testid="import-submit"
-                disabled={busy || !selected.size}
-                onClick={submit}
+                className="rounded hover:underline disabled:opacity-50"
+                style={{ color: "var(--fg-muted)" }}
+                data-testid="import-pick-all"
+                disabled={busy}
+                onClick={() =>
+                  setSelected(selected.size === pickable.length ? new Set() : new Set(pickable.map((c) => c.number)))
+                }
               >
-                <UiText>{importReviews.isPending ? "importing…" : `import ${selected.size}`}</UiText>
+                <UiText>{selected.size === pickable.length ? "pick none" : "pick all"}</UiText>
               </button>
-            </div>
+            ) : null}
+            {importReviews.error ? (
+              <span role="alert" style={{ color: "var(--risk)" }}>{errorText(importReviews.error)}</span>
+            ) : importReviews.data ? (
+              <span
+                data-testid="import-result"
+                style={{ color: importReviews.data.failed.length ? "var(--risk)" : "var(--ok)" }}
+              >
+                <UiText>{formatImportResult(importReviews.data)}</UiText>
+              </span>
+            ) : null}
           </div>
-        ) : (
-          <p className="mt-2" style={{ color: "var(--fg-faint)" }} data-testid="import-none">
-            <UiText>{`No open PRs found in the last ${days} day${days === 1 ? "" : "s"}.`}</UiText>
-          </p>
-        )
-      ) : null}
+        </>
+      ) : (
+        <p className="flex items-center gap-1.5 pb-3 pl-8 pr-4" style={{ color: "var(--fg-faint)" }}>
+          <UiText>Looking on GitHub…</UiText>
+        </p>
+      )}
     </div>
   );
 }
@@ -1216,43 +1292,76 @@ function defaultImportSources(repo: RepoSummary | undefined): ImportSource[] {
   return out.length ? out : ["requests"];
 }
 
+/**
+ * A PR the import found, as a row like the list's: its box in the select
+ * column, the title and number, then who and why. The whole row picks it.
+ * One already on the list is dimmed and has no box.
+ */
 function ImportCandidateRow({
   candidate: c,
   checked,
   disabled,
-  onChange,
+  onToggle,
 }: {
   candidate: ImportCandidate;
   checked: boolean;
   disabled: boolean;
-  onChange: (on: boolean) => void;
+  onToggle: () => void;
 }) {
   const onList = c.tracked && !c.archived;
   const why = c.sources.map((s) => (s === "requests" ? "wants your review" : "yours")).join(", ");
-  return (
-    <li>
-      <label
-        className="flex items-baseline gap-2 rounded px-1 py-0.5 hover:bg-[var(--bg-hover)]"
-        style={{ opacity: onList ? 0.55 : 1 }}
-        data-testid={`import-candidate-${c.number}`}
-      >
-        <input
-          type="checkbox"
-          checked={onList || checked}
-          disabled={disabled || onList}
-          onChange={(e) => onChange(e.target.checked)}
-        />
+  const body = (
+    <>
+      {onList ? null : (
+        <span
+          className="absolute left-2.5 top-[11px] flex h-3.5 w-3.5 items-center justify-center rounded-sm border transition-colors"
+          style={{
+            borderColor: checked ? "var(--accent)" : "var(--fg-muted)",
+            background: checked ? "var(--accent)" : "transparent",
+            color: "var(--bg)",
+          }}
+          aria-hidden
+        >
+          {checked ? <IconCheck width={10} height={10} /> : null}
+        </span>
+      )}
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="truncate text-[13px] font-medium" style={{ color: "var(--fg)" }}>
+          {c.title}
+        </span>
         <span className="flex-none tabular-nums" style={{ color: "var(--fg-faint)" }}>
           #{c.number}
         </span>
-        <span className="min-w-0 truncate" style={{ color: "var(--fg)" }}>
-          {c.title}
-        </span>
-        <span className="flex-none" style={{ color: "var(--fg-faint)" }}>
-          {c.author ? `${c.author} · ` : ""}
-          <UiText>{`${why}${onList ? " · already on the list" : c.archived ? " · archived, brings it back" : ""}`}</UiText>
-        </span>
-      </label>
+      </span>
+      <span className="flex flex-wrap gap-x-3" style={{ color: "var(--fg-faint)" }}>
+        {c.author ? <span>{c.author}</span> : null}
+        <UiText>{why}</UiText>
+        {c.updatedAt ? <UiText>{`updated ${formatAddedAt(c.updatedAt)}`}</UiText> : null}
+        {onList ? <UiText>already on the list</UiText> : c.archived ? <UiText>archived, brings it back</UiText> : null}
+      </span>
+    </>
+  );
+  const row = "relative flex w-full flex-col gap-0.5 border-t py-2 pl-8 pr-4 text-left";
+  return (
+    <li>
+      {onList ? (
+        <div className={row} style={{ borderColor: "var(--border)", opacity: 0.55 }} data-testid={`import-candidate-${c.number}`}>
+          {body}
+        </div>
+      ) : (
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={checked}
+          disabled={disabled}
+          className={`${row} transition-colors hover:bg-[var(--bg-hover)]`}
+          style={{ borderColor: "var(--border)" }}
+          data-testid={`import-candidate-${c.number}`}
+          onClick={onToggle}
+        >
+          {body}
+        </button>
+      )}
     </li>
   );
 }

@@ -12,7 +12,7 @@ import type { PrListEntry } from "../api/types";
 import { sweepLabel } from "../lib/prList";
 import { useModalBackground } from "./Modal";
 import { OverflowMenu } from "./TopBar";
-import { IconArchive, IconInbox, IconTrash } from "./icons";
+import { IconArchive, IconTrash } from "./icons";
 import { UiText } from "./UiText";
 
 /**
@@ -39,17 +39,14 @@ const settingsPath = (r: RepoRef) => `/repo/${r.host}/${r.owner}/${r.repo}/setti
 /**
  * The repo header's ⋯. "Remove from Purview…" does not act here: it opens the
  * repo settings with the removal confirm already expanded, where the reader
- * sees what goes and types the repo's name. `onImport`, when given, adds the
- * entry that opens the list's inline "import review requests" form.
+ * sees what goes and types the repo's name.
  */
 export function RepoMenu({
   repo,
   archived,
-  onImport,
 }: {
   repo: RepoRef;
   archived: boolean;
-  onImport?: () => void;
 }) {
   const setRepoArchived = useSetRepoArchived();
   const navigate = useNavigate();
@@ -64,17 +61,6 @@ export function RepoMenu({
       buttonClassName="flex-none rounded p-1 transition-colors hover:bg-[var(--bg-hover)]"
       buttonStyle={{ color: "var(--fg-faint)" }}
       items={[
-        ...(onImport
-          ? [
-              {
-                label: "import PRs…",
-                icon: <IconInbox width={12} height={12} />,
-                testId: `import-reviews-toggle-${rkey}`,
-                hint: "Pick from the recent PRs that want your review or that you opened.",
-                onClick: onImport,
-              },
-            ]
-          : []),
         {
           label: archived ? "unarchive repo" : "archive repo",
           icon: <IconArchive out={archived} width={12} height={12} />,
