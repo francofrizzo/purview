@@ -199,9 +199,10 @@ changes".
 
 The PR held against the repo's documented architecture. Write `architecture` only when the
 repo documents one: the docs the run prompt names (the repo's settings), or, when it names
-none, what you find: `ARCHITECTURE.md`, `docs/architecture*`, `docs/adr/**`, the rule
-sections of `AGENTS.md` or `CLAUDE.md`, and any doc the repo rubric names as its
-architecture. With no such doc, leave `architecture` out: Purview shows no section. Purview
+none, what you find: `ARCHITECTURE.md`, an architecture doc anywhere under `docs/`
+(`docs/**/architecture*`), `docs/**/adr/**`, the rule sections of `AGENTS.md` or `CLAUDE.md`
+and the docs they send you to for architecture, package boundaries or code patterns
+(follow an index they name), and any doc the repo rubric names as its architecture. With no such doc, leave `architecture` out: Purview shows no section. Purview
 shows it after the behavior changes: the rules that break first, then the decisions the
 docs miss. Most PRs follow their docs, and the right answer is empty deviations and
 decisions: Purview says "Follows the documented architecture." Keep it as high-signal as

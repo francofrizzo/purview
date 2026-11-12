@@ -25,7 +25,7 @@ export function architecturePrompt(
   const docs = readRepoConfig(repoKeyOf(key), root).architectureDocs;
   const where = docs.length
     ? `This repo's architecture is documented in ${docs.map((d) => `\`${d}\``).join(", ")} (its repo settings): read those, and look for no other docs.`
-    : "Look for the repo's documented architecture: ARCHITECTURE.md, docs/architecture*, docs/adr/**, the rule sections of AGENTS.md or CLAUDE.md, and any doc the repo rubric names as its architecture.";
+    : "Look for the repo's documented architecture: ARCHITECTURE.md or an architecture doc anywhere under docs/ (find it by name: docs/**/architecture*), docs/**/adr/**, the rule sections of AGENTS.md or CLAUDE.md and the docs they send you to for architecture, package boundaries or code patterns (follow an index they name), and any doc the repo rubric names as its architecture.";
   return [
     `ARCHITECTURE (${guide}, 'Architecture'): ${where}`,
     "Hold the diff against the rules its files could break, then write `architecture`: the rules you checked, the deviations, and the decisions the docs do not cover. Most PRs follow the docs: empty deviations and decisions.",
