@@ -18,16 +18,21 @@ describe("adaptState", () => {
       wire({
         fileNotes: { "a.ts": "note" },
         concepts: [{ term: "Charge key", means: "What makes two charges one.", aka: ["idempotencyKey"] }],
+        behaviorChanges: [],
+        architecture: { sources: ["docs/architecture.md"], checked: [], deviations: [], decisions: [] },
       }),
     );
     expect(state.fileNotes).toEqual({ "a.ts": "note" });
     expect(state.concepts?.[0].term).toBe("Charge key");
+    expect(state.behaviorChanges).toEqual([]);
+    expect(state.architecture?.sources).toEqual(["docs/architecture.md"]);
   });
 
   it("leaves a view out when the analysis drew none", () => {
     const state = adaptState(wire());
     expect("concepts" in state).toBe(false);
     expect("fileNotes" in state).toBe(false);
+    expect("architecture" in adaptState(wire({ architecture: null }))).toBe(false);
   });
 });
 

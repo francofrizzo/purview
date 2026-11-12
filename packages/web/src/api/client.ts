@@ -6,6 +6,7 @@ import { frameJson, readSseStream } from "../lib/sse";
 import { ApiError } from "./errors";
 import { isGeneratedUnit, isRemovedUnit, TOOL_KINDS } from "./types";
 import type {
+  Architecture,
   SubmitStep,
   AddCommentInput,
   Reviewer,
@@ -225,6 +226,7 @@ export interface WireState {
   fileNotes?: FileNotes;
   concepts?: Concept[];
   behaviorChanges?: BehaviorChange[];
+  architecture?: Architecture | null;
 }
 
 export interface WirePrDetail {
@@ -342,6 +344,7 @@ export function adaptState(s: WireState): PrState {
     ...(s.fileNotes ? { fileNotes: s.fileNotes } : {}),
     ...(s.concepts ? { concepts: s.concepts } : {}),
     ...(s.behaviorChanges ? { behaviorChanges: s.behaviorChanges } : {}),
+    ...(s.architecture ? { architecture: s.architecture } : {}),
     hunks: s.hunks ?? {},
     files,
     baseOnly: s.revisions?.find((r) => r.revision === s.currentRevision)?.baseOnly ?? false,
