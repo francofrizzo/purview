@@ -5,12 +5,12 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.12.1
 
-- **Unit diagrams.** A unit whose logic is easier to see than read shows a small sequence, state or data diagram under its brief; click its caption to open it. Analyses draw them from the next run on.
-- **Renaming a tag.** The pencil on a tag's heading in the home list renames it on every PR that has it. A name already in use merges the two.
-- **Fix:** side by side without wrapping, a sideways scroll moves the diff from anywhere in it, not only over the lines that run past the edge.
-- **Fix:** an agent watching your notes no longer misses it when you edit, delete or move to GitHub a note it already picked up; it gets the change with the old text.
+- **Unit diagrams.** A unit whose logic is easier to see than read shows a small diagram under its brief; click it to open it.
+- **Renaming a tag.** The pencil on a tag's heading in the home list renames it on every PR. A name already in use merges the two.
+- **Fix:** side by side without wrapping, a sideways scroll moves the diff from anywhere in it, not only over the long lines.
+- **Fix:** an agent watching your notes hears when you edit, delete or move to GitHub a note it already picked up.
 
 ## 2026.11.10.1
 
