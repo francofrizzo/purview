@@ -2004,8 +2004,27 @@ export function DiffPane({
       splitScrollLeft.current = left;
       syncHalves(el, left, target);
     };
+    // A sideways wheel moves every half from anywhere in the pane: left to the
+    // browser it only scrolls the half under the pointer, and over one that
+    // does not overflow (a new file's empty side, a short line) nothing moves.
+    const onWheel = (e: WheelEvent) => {
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientWidth : 1;
+      const dx = (e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX) * unit;
+      if (!dx || Math.abs(dx) < Math.abs(e.shiftKey ? 0 : e.deltaY * unit)) return;
+      const max = Math.max(0, ...[...el.querySelectorAll<HTMLElement>(".diff-half")].map((h) => h.scrollWidth - h.clientWidth));
+      if (!max) return;
+      e.preventDefault();
+      const left = Math.min(max, Math.max(0, splitScrollLeft.current + dx));
+      if (left === splitScrollLeft.current) return;
+      splitScrollLeft.current = left;
+      syncHalves(el, left);
+    };
     el.addEventListener("scroll", onScroll, true);
-    return () => el.removeEventListener("scroll", onScroll, true);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("scroll", onScroll, true);
+      el.removeEventListener("wheel", onWheel);
+    };
   }, [wrap, mode, syncHalves]);
 
   // Halves scrolled into view by the virtualizer mount at scrollLeft 0.

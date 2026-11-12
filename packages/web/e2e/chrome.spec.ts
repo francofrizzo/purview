@@ -300,3 +300,24 @@ test("the find bar wraps in a narrow diff pane instead of running under the pane
     expect(box.x + box.width).toBeLessThanOrEqual(pane.x + pane.width + 1);
   }
 });
+
+test("side by side without wrapping, a sideways scroll anywhere in the diff moves both halves", async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 800 });
+  await openPr(page);
+  await page.getByTestId("view-options").click();
+  await page.getByTestId("layout-split").click();
+  const wrap = page.getByTestId("toggle-wrap");
+  if (await wrap.isChecked()) await wrap.uncheck();
+  await page.keyboard.press("Escape");
+  const halves = page.locator(".diff-half");
+  await expect(halves.first()).toBeVisible();
+  // A half with nothing to scroll: a sideways wheel over it still moves the others.
+  const flat = await halves.evaluateAll((els) => els.findIndex((h) => h.scrollWidth <= h.clientWidth && h.getBoundingClientRect().top > 0 && h.getBoundingClientRect().bottom < innerHeight));
+  const wide = await halves.evaluateAll((els) => els.findIndex((h) => h.scrollWidth > h.clientWidth));
+  expect(flat).toBeGreaterThanOrEqual(0);
+  expect(wide).toBeGreaterThanOrEqual(0);
+  await halves.nth(flat).hover();
+  await page.mouse.wheel(120, 0);
+  await expect.poll(() => halves.nth(wide).evaluate((h) => h.scrollLeft)).toBeGreaterThan(0);
+  await expect.poll(() => halves.nth(flat).evaluate((h) => h.scrollLeft)).toBe(0);
+});
