@@ -10,6 +10,9 @@ app, not for git: say what changed in the review, not which file moved.
 - **Review progress by kind.** "by kind" at the top of the sidebar's progress bar splits it by unit kind (core, glue, tests…) instead of by attention. A part opens the next unread unit of that kind.
 - **Fix:** opening a PR that can't be shown no longer gives a blank page saying "not_found". It says what went wrong and offers to try again, or to add the PR if Purview doesn't track it.
 - **Fix:** a PR added while GitHub didn't return its diff no longer gets stuck with no diff and no analysis. Opening it fetches the diff.
+- **Fix:** `d` (or `w`) no longer sends you to the top of the diff; the line you were reading stays where it was.
+- **Fix:** an outdated comment clicked in the Comments panel opens its file with the comment shown, instead of the file's first line.
+- **Fix:** side by side without wrapping, a sideways scroll moves every line, not only the long ones.
 
 ## 2026.11.12.1
 

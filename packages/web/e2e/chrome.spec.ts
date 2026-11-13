@@ -301,7 +301,7 @@ test("the find bar wraps in a narrow diff pane instead of running under the pane
   }
 });
 
-test("side by side without wrapping, a sideways scroll anywhere in the diff moves both halves", async ({ page }) => {
+test("side by side without wrapping, a sideways scroll anywhere in the diff moves every line, short ones too", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 800 });
   await openPr(page);
   await page.getByTestId("view-options").click();
@@ -309,15 +309,44 @@ test("side by side without wrapping, a sideways scroll anywhere in the diff move
   const wrap = page.getByTestId("toggle-wrap");
   if (await wrap.isChecked()) await wrap.uncheck();
   await page.keyboard.press("Escape");
-  const halves = page.locator(".diff-half");
+  const halves = page.locator(".diff-half:has(.diff-code)");
   await expect(halves.first()).toBeVisible();
-  // A half with nothing to scroll: a sideways wheel over it still moves the others.
-  const flat = await halves.evaluateAll((els) => els.findIndex((h) => h.scrollWidth <= h.clientWidth && h.getBoundingClientRect().top > 0 && h.getBoundingClientRect().bottom < innerHeight));
-  const wide = await halves.evaluateAll((els) => els.findIndex((h) => h.scrollWidth > h.clientWidth));
-  expect(flat).toBeGreaterThanOrEqual(0);
-  expect(wide).toBeGreaterThanOrEqual(0);
-  await halves.nth(flat).hover();
+  // Over a short line: the whole diff moves, that line with it.
+  const short = await halves.evaluateAll((els) =>
+    els.findIndex((h) => h.querySelector(".diff-code")!.textContent!.trim().length < 20 && h.getBoundingClientRect().top > 0 && h.getBoundingClientRect().bottom < innerHeight),
+  );
+  expect(short).toBeGreaterThanOrEqual(0);
+  await halves.nth(short).hover();
   await page.mouse.wheel(120, 0);
-  await expect.poll(() => halves.nth(wide).evaluate((h) => h.scrollLeft)).toBeGreaterThan(0);
-  await expect.poll(() => halves.nth(flat).evaluate((h) => h.scrollLeft)).toBe(0);
+  await expect.poll(() => halves.nth(short).evaluate((h) => h.scrollLeft)).toBeGreaterThan(0);
+  const offsets = await halves.evaluateAll((els) => [...new Set(els.map((h) => h.scrollLeft))]);
+  expect(offsets).toHaveLength(1);
+});
+
+test("d keeps the line at the top of the view where it was, both ways", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 700 });
+  await openPr(page);
+  await openUnit(page, UNITS.reconcile);
+  const topLine = () =>
+    page.evaluate(() => {
+      const sc = document.querySelector("[data-diff-scroller]") as HTMLElement;
+      const top = sc.getBoundingClientRect().top + 60;
+      const line = [...sc.querySelectorAll<HTMLElement>(".diff-line")]
+        .map((e) => ({ text: e.textContent!.replace(/\s+/g, " ").slice(0, 60), y: e.getBoundingClientRect().top }))
+        .find((l) => l.y >= top);
+      return { ...line!, scrollTop: sc.scrollTop };
+    });
+  await scroller(page).evaluate((el) => (el.scrollTop = 1200));
+  await page.waitForTimeout(150);
+  const before = await topLine();
+  await page.mouse.move(800, 300);
+  await page.keyboard.press("d");
+  await expect(page.locator(".diff-half").first()).toBeVisible();
+  // Not the top: where the reader was.
+  await page.waitForTimeout(100);
+  expect(await scroller(page).evaluate((el) => el.scrollTop)).toBeGreaterThan(600);
+  await page.keyboard.press("d");
+  await expect(page.locator(".diff-half")).toHaveCount(0);
+  await expect.poll(async () => (await topLine()).text).toBe(before.text);
+  expect(Math.abs((await topLine()).y - before.y)).toBeLessThan(4);
 });

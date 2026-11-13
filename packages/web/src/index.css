@@ -650,6 +650,11 @@
     flex: none;
     min-width: max-content;
   }
+  /* Short lines get the widest line's width (see DiffPane), so every half
+     scrolls as far and the split moves as one. */
+  .diff-nowrap .diff-half .diff-code {
+    width: var(--split-code-w, auto);
+  }
   .diff-nowrap .diff-half {
     overflow-x: auto;
     scrollbar-width: none;

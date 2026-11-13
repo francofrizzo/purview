@@ -1952,9 +1952,35 @@ export function DiffPane({
   }, [foldSkippableHunks]);
 
   // Row heights change wholesale on a mode switch, so pixel scroll position is
-  // meaningless afterwards: re-anchor on the focused hunk instead.
+  // meaningless afterwards: put back the line that was at the top of the
+  // view, at the same height. A line is named the same way in both modes:
+  // its hunk and its index among the hunk's unified rows (a split row by
+  // the first of its cells). Noted as the reader scrolls, since by the time
+  // the switch renders the old rows are gone.
   const focusedRef = useRef(focusedHunkId);
   focusedRef.current = focusedHunkId;
+  const topLine = useRef<{ hunkId: string; line: number | null; offset: number } | null>(null);
+  const noteTopLine = useCallback(() => {
+    const el = scrollRef.current;
+    const v = virtualizerRef.current;
+    if (!el || !v) return;
+    const top = el.scrollTop + fileHeaderHeightRef.current;
+    const item = v.getVirtualItems().find((i) => i.end > top);
+    const row = item && rowsRef.current[item.index];
+    if (!item || !row || !("hunkId" in row)) {
+      topLine.current = null;
+      return;
+    }
+    let line: number | null = null;
+    if (row.type === "line") line = row.lineIdx;
+    else if (row.type === "split") {
+      const pair = buildSplitRows(row.entry.hunk, detail.diff)[row.rowIdx];
+      line = pair?.left?.index ?? pair?.right?.index ?? null;
+    }
+    topLine.current = { hunkId: row.hunkId, line, offset: item.start - el.scrollTop };
+  }, [detail.diff]);
+  const noteTopLineRef = useRef(noteTopLine);
+  noteTopLineRef.current = noteTopLine;
   const lastMode = useRef<string | null>(null);
   useEffect(() => {
     const signature = `${mode}:${wrap}`;
@@ -1964,10 +1990,42 @@ export function DiffPane({
     // Horizontal offset is meaningless once wrapping is back on.
     if (wrap && scrollRef.current) scrollRef.current.scrollLeft = 0;
     splitScrollLeft.current = 0;
-    const id = focusedRef.current;
-    if (!id) return;
-    const raf = requestAnimationFrame(() => scrollToHunk(id));
+    const at = topLine.current;
+    const el = scrollRef.current;
+    if (!at || !el || el.scrollTop === 0) {
+      const id = focusedRef.current;
+      if (!id || !el || el.scrollTop > 0) return;
+      const raf = requestAnimationFrame(() => scrollToHunk(id));
+      return () => cancelAnimationFrame(raf);
+    }
+    const indexOf = () => {
+      const list = rowsRef.current;
+      let hunkRow = -1;
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i];
+        if (!("hunkId" in r) || r.hunkId !== at.hunkId) continue;
+        if (r.type === "hunk") hunkRow = i;
+        if (at.line === null) continue;
+        if (r.type === "line" && r.lineIdx >= at.line) return i;
+        if (r.type === "split") {
+          const pair = buildSplitRows(r.entry.hunk, detail.diff)[r.rowIdx];
+          if ((pair?.left?.index ?? -1) >= at.line || (pair?.right?.index ?? -1) >= at.line) return i;
+        }
+      }
+      return hunkRow;
+    };
+    // Twice: the first pass lands on estimated heights, the second on measured ones.
+    let raf = 0;
+    const place = (again: boolean) => {
+      const i = indexOf();
+      const m = i < 0 ? undefined : virtualizerRef.current?.measurementsCache[i];
+      if (m) el.scrollTop = m.start - at.offset;
+      if (again) raf = requestAnimationFrame(() => place(false));
+      else noteTopLine();
+    };
+    raf = requestAnimationFrame(() => place(true));
     return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, wrap, scrollToHunk]);
 
   // --- split + wrap off: the two halves scroll in lockstep ---
@@ -2026,6 +2084,29 @@ export function DiffPane({
       el.removeEventListener("wheel", onWheel);
     };
   }, [wrap, mode, syncHalves]);
+
+  // Every half's code as wide as the widest line seen so far (the
+  // --split-code-w width under .diff-half): a half holding a short line can
+  // then scroll as far as the long ones, so the whole diff moves sideways,
+  // not only the lines that overflow. Grows as rows mount; starts over on a
+  // new mode or set of hunks.
+  const splitCodeWidth = useRef(0);
+  const resetSplitCodeWidth = () => {
+    splitCodeWidth.current = 0;
+    scrollRef.current?.style.removeProperty("--split-code-w");
+  };
+  const splitWidthKey = `${mode}:${wrap}:${entries.map((e) => e.hunk.id).join(",")}`;
+  useLayoutEffect(resetSplitCodeWidth, [splitWidthKey]);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || wrap || mode !== "split") return;
+    let widest = splitCodeWidth.current;
+    for (const code of el.querySelectorAll<HTMLElement>(".diff-half .diff-code")) widest = Math.max(widest, code.scrollWidth);
+    if (widest > splitCodeWidth.current) {
+      splitCodeWidth.current = widest;
+      el.style.setProperty("--split-code-w", `${widest}px`);
+    }
+  });
 
   // Halves scrolled into view by the virtualizer mount at scrollLeft 0.
   useLayoutEffect(() => {
@@ -2791,6 +2872,9 @@ export function DiffPane({
       <div
         ref={scrollRef}
         data-diff-scroller=""
+        // Only on a scroll, never on a commit: the commit can be the mode
+        // switch itself, new rows under the old offset.
+        onScroll={() => noteTopLineRef.current()}
         data-scrolled={(virtualizer.scrollOffset ?? 0) > 0 ? "true" : undefined}
         // Focusable (not tabbable) so the keyboard has somewhere to land
         // when the composer closes; see the composeKey effect above.

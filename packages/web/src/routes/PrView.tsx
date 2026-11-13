@@ -699,8 +699,11 @@ export function PrView() {
     setSelectedPath((cur) => cur ?? detail.files.files[0]?.path ?? null);
   }, [detail, units]);
 
+  // A jump to a thread kept in the file's block opens it with the file.
+  const openFileCommentsFor = useRef<string | null>(null);
   useEffect(() => {
-    setFileCommentsOpen(false);
+    setFileCommentsOpen(openFileCommentsFor.current !== null && openFileCommentsFor.current === selectedPath);
+    openFileCommentsFor.current = null;
   }, [selectedPath]);
 
   // An analysis just placed the last of them: the pseudo-unit is gone, so
@@ -987,9 +990,12 @@ export function PrView() {
    * level, or on a line outside every hunk) opens the file instead.
    */
   const jumpToComment = useCallback(
-    (c: { file: string; line?: number | null; side?: "LEFT" | "RIGHT" | null; threadId?: string }) => {
+    (c: { file: string; line?: number | null; side?: "LEFT" | "RIGHT" | null; threadId?: string; outdated?: unknown }) => {
       const side = c.side ?? "RIGHT";
-      const hunkId = detail && c.line != null ? hunkForLine(detail.files, c.file, c.line, side) : null;
+      // An outdated comment's line is the one it was written on, at an older
+      // revision: in this diff it is other code, and the comment sits in the
+      // file's block.
+      const hunkId = detail && c.line != null && !c.outdated ? hunkForLine(detail.files, c.file, c.line, side) : null;
       if (hunkId) {
         jumpToDiffHunk(hunkId, c.file, { line: c.line!, side, showComments: true, threadId: c.threadId });
         return;
@@ -1008,11 +1014,14 @@ export function PrView() {
         jumpToDiffHunk(fileHunk.id, c.file, { fileComments: true, threadId: c.threadId });
         return;
       }
+      // In the files tab the file's block hangs off the pane's header: open it.
       setOverview(false);
       setTab("files");
+      if (selectedPath === c.file) setFileCommentsOpen(true);
+      else openFileCommentsFor.current = c.file;
       setSelectedPath(c.file);
     },
-    [detail, jumpToDiffHunk, tab, units, unplacedSet],
+    [detail, jumpToDiffHunk, tab, units, unplacedSet, selectedPath],
   );
 
   /**
