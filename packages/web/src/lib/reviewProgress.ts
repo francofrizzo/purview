@@ -1,4 +1,5 @@
-import { isGeneratedUnit, isRemovedUnit, type Attention, type FileEntry, type HunkState, type Kind, type ReviewUnit } from "../api/types";
+import { isGeneratedUnit, isRemovedUnit, type Attention, type FileEntry, type HunkState, type ReviewUnit } from "../api/types";
+import { CHANGE_KINDS, changeKindOf, type ChangeKind } from "./changeMix";
 
 /**
  * How far the reading has come, weighed by changed lines: a one-line import
@@ -98,48 +99,40 @@ export function reviewProgressByAttention(
   };
 }
 
-export interface KindProgress extends Omit<GroupProgress, "attention"> {
-  /** null: hunks no unit claims */
-  kind: Kind | null;
+export interface KindProgress {
+  kind: ChangeKind;
+  /** changed lines of the kind, and of those: read, and read before a revision changed them */
+  lines: number;
+  read: number;
+  reread: number;
+  hunks: number;
+  hunksRead: number;
+  /** its hunks still to read, in diff order */
+  unread: { id: string; path: string }[];
 }
 
-const KIND_ORDER: Kind[] = ["core-logic", "connective-tissue", "refactor", "data", "wiring", "ripple", "tests", "docs"];
-
 /**
- * The same lines as by attention, split by the kind of the unit that claims
- * each hunk (its first claim, as for attention), in the chips' order; hunks
- * no unit claims go last. Kinds with no lines are left out.
+ * The same reading split by what the lines are, as the change mix sorts
+ * them: implementation, tests, docs, generated. Generated files are shown
+ * here (they are read like any other), never owed; skipped hunks count
+ * nowhere, as by attention. Kinds with no lines are left out.
  */
 export function reviewProgressByKind(
-  files: { generated?: FileEntry["generated"]; hunks: { id: string; lines?: string[] }[] }[],
+  files: FileEntry[],
   hunks: Record<string, Pick<HunkState, "viewed" | "changedSinceViewed"> | undefined>,
-  units: Pick<ReviewUnit, "id" | "kind" | "hunks" | "origin" | "removedAtRevision">[],
+  units: Pick<ReviewUnit, "id" | "hunks" | "origin" | "removedAtRevision">[],
 ): KindProgress[] {
   const live = units.filter((u) => !isGeneratedUnit(u) && !isRemovedUnit(u));
-  const kindOf = new Map<string, Kind>();
+  const claimed = new Set<string>();
   const skipped = new Set<string>();
-  for (const u of live) {
-    for (const e of u.hunks) {
-      if (e.skip) skipped.add(e.id);
-      else if (!kindOf.has(e.id)) kindOf.set(e.id, u.kind);
-    }
-  }
-  const groups = new Map<Kind | null, KindProgress>();
-  const groupOf = (kind: Kind | null) => {
-    let g = groups.get(kind);
-    if (!g) {
-      g = { kind, lines: 0, read: 0, reread: 0, hunks: 0, hunksRead: 0, units: 0, unitsDone: 0 };
-      groups.set(kind, g);
-    }
-    return g;
-  };
-  const counted = new Set<string>();
+  for (const u of live) for (const e of u.hunks) (e.skip ? skipped : claimed).add(e.id);
+  const groups = new Map<ChangeKind, KindProgress>(
+    CHANGE_KINDS.map((kind) => [kind, { kind, lines: 0, read: 0, reread: 0, hunks: 0, hunksRead: 0, unread: [] }]),
+  );
   for (const f of files) {
-    if (f.generated) continue;
     for (const h of f.hunks) {
-      if (skipped.has(h.id) && !kindOf.has(h.id)) continue;
-      counted.add(h.id);
-      const g = groupOf(kindOf.get(h.id) ?? null);
+      if (!f.generated && skipped.has(h.id) && !claimed.has(h.id)) continue;
+      const g = groups.get(f.generated ? "generated" : changeKindOf(f, h))!;
       const weight = changedLines(h);
       const state = hunks[h.id];
       g.lines += weight;
@@ -147,17 +140,11 @@ export function reviewProgressByKind(
       if (state?.viewed) {
         g.read += weight;
         g.hunksRead++;
-      } else if (state?.changedSinceViewed) {
-        g.reread += weight;
+      } else {
+        if (state?.changedSinceViewed) g.reread += weight;
+        g.unread.push({ id: h.id, path: f.path });
       }
     }
   }
-  for (const u of live) {
-    const own = u.hunks.filter((e) => !e.skip && counted.has(e.id)).map((e) => e.id);
-    if (!own.length) continue;
-    const g = groupOf(u.kind);
-    g.units++;
-    if (own.every((id) => hunks[id]?.viewed)) g.unitsDone++;
-  }
-  return [...KIND_ORDER, null].map((k) => groups.get(k)).filter((g): g is KindProgress => !!g && g.lines > 0);
+  return [...groups.values()].filter((g) => g.lines > 0);
 }

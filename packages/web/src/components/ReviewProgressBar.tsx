@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import type { Attention, Kind } from "../api/types";
-import type { GroupProgress, KindProgress, ReviewProgress } from "../lib/reviewProgress";
-import { KIND_STYLE } from "./Chips";
+import type { Attention } from "../api/types";
+import type { ChangeKind } from "../lib/changeMix";
+import type { KindProgress, ReviewProgress } from "../lib/reviewProgress";
+import { CHANGE_LOOK } from "./ChangeMix";
 import { UiText } from "./UiText";
 
 const LABEL: Record<Attention, string> = { "must-read": "Must read", skim: "Skim", skip: "Skip" };
@@ -18,7 +19,15 @@ const TRACK: Record<Attention, string> = {
   skip: "var(--attn-skip-soft)",
 };
 
-type Counts = Omit<GroupProgress, "attention">;
+interface Counts {
+  lines: number;
+  read: number;
+  reread: number;
+  hunks: number;
+  hunksRead: number;
+  units?: number;
+  unitsDone?: number;
+}
 
 const percentOf = (g: Counts) =>
   g.hunksRead === g.hunks ? 100 : Math.min(99, Math.floor((g.read / g.lines) * 100));
@@ -28,10 +37,11 @@ export type ProgressSplit = "attention" | "kind";
 /**
  * Where the reading stands, held at the bottom of the sidebar: one bar in
  * parts, each as wide as its share of the changed lines and filled as far as
- * it is read. Split by attention (must read, skim, skip) or by the kind of
- * the unit that claims the lines; the header's switch flips it. Lines read
- * before a revision changed them are hatched, owed again. The total counts
- * must read and skim either way; skip is shown, never owed. A part opens the
+ * it is read. Split by attention (must read, skim, skip) or by what the
+ * lines are (implementation, tests, docs, generated, in the change mix's
+ * colors); a click on the title flips it. Lines read before a revision
+ * changed them are hatched, owed again. The total counts must read and skim
+ * either way; skip and generated are shown, never owed. A part opens the
  * first unread unit of its attention or kind.
  */
 export function ReviewProgressBar({
@@ -47,11 +57,22 @@ export function ReviewProgressBar({
   split?: ProgressSplit;
   onSplit?: (split: ProgressSplit) => void;
   onOpenGroup?: (attention: Attention) => void;
-  onOpenKind?: (kind: Kind | null) => void;
+  onOpenKind?: (kind: ChangeKind) => void;
 }) {
   const shown = progress.groups.filter((g) => g.lines > 0);
   if (!shown.length) return null;
   const kindView = split === "kind" && !!byKind?.length;
+  const canSplit = !!onSplit && !!byKind?.length;
+  const title = (
+    <>
+      <UiText>Review progress</UiText>
+      {kindView ? (
+        <span className="font-normal" style={{ color: "var(--fg-faint)" }}>
+          <UiText> by kind</UiText>
+        </span>
+      ) : null}
+    </>
+  );
   return (
     <div
       className="flex flex-none flex-col gap-1.5 border-t px-3 pb-2 pt-2"
@@ -61,32 +82,22 @@ export function ReviewProgressBar({
       data-done={progress.done || undefined}
     >
       <div className="flex items-baseline justify-between gap-2 text-2xs">
-        <span className="flex min-w-0 items-baseline gap-2">
+        {canSplit ? (
+          <button
+            type="button"
+            className="min-w-0 truncate text-left font-medium transition-colors hover:text-[var(--fg)]"
+            style={{ color: "var(--fg-muted)" }}
+            data-testid="review-progress-split"
+            data-tip={kindView ? "Split by attention" : "Split by kind: implementation, tests, docs, generated"}
+            onClick={() => onSplit!(kindView ? "attention" : "kind")}
+          >
+            {title}
+          </button>
+        ) : (
           <span className="font-medium" style={{ color: "var(--fg-muted)" }}>
-            <UiText>Review progress</UiText>
+            {title}
           </span>
-          {onSplit && byKind?.length ? (
-            <span className="flex items-baseline gap-1.5" role="group" aria-label="Split the bar by">
-              {(["attention", "kind"] as const).map((s) => {
-                const on = (s === "kind") === kindView;
-                return (
-                  <button
-                    key={s}
-                    type="button"
-                    className="hover:text-[var(--fg-muted)]"
-                    style={{ color: on ? "var(--fg-muted)" : "var(--fg-faint)", textDecoration: on ? "underline" : undefined, textUnderlineOffset: 3 }}
-                    aria-pressed={on}
-                    data-testid={`review-progress-split-${s}`}
-                    data-tip={s === "kind" ? "Split by the kind of unit" : "Split by attention"}
-                    onClick={() => onSplit(s)}
-                  >
-                    <UiText>{s === "kind" ? "by kind" : "by attention"}</UiText>
-                  </button>
-                );
-              })}
-            </span>
-          ) : null}
-        </span>
+        )}
         <span
           className="flex-none font-medium tabular-nums"
           style={{ color: progress.done ? "var(--ok)" : "var(--fg-muted)" }}
@@ -99,15 +110,17 @@ export function ReviewProgressBar({
       <div className="flex min-w-0 items-start gap-[3px]">
         {kindView
           ? byKind!.map((g) => {
-              const style = g.kind ? KIND_STYLE[g.kind] : null;
-              const name = style ? style.label[0].toUpperCase() + style.label.slice(1) : "No unit";
+              const look = CHANGE_LOOK[g.kind];
               return (
                 <Segment
-                  key={g.kind ?? "none"}
-                  id={g.kind ?? "none"}
-                  name={name}
-                  ink={style?.color ?? "var(--fg-faint)"}
-                  track={style?.bg ?? "var(--border)"}
+                  key={g.kind}
+                  id={g.kind}
+                  name={g.kind === "docs" ? "Docs" : look.label}
+                  note={g.kind === "generated" ? " (doesn't count toward the total)" : ""}
+                  ink={look.color}
+                  // A soft tint of the kind's color: what is still unread
+                  // shows its kind too.
+                  track={`color-mix(in srgb, ${look.color} 24%, transparent)`}
                   counts={g}
                   onOpen={onOpenKind && (() => onOpenKind(g.kind))}
                 />

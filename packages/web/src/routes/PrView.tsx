@@ -7,7 +7,6 @@ import type {
   AnalysisImportReport,
   ChatRef,
   FileEntry,
-  Kind,
   MigrationReport,
   PrDetail,
   ReviewEvent,
@@ -116,6 +115,7 @@ import {
   SyncResultPanel,
 } from "../components/Panels";
 import { reviewProgressByAttention, reviewProgressByKind } from "../lib/reviewProgress";
+import type { ChangeKind } from "../lib/changeMix";
 import { ReviewProgressBar } from "../components/ReviewProgressBar";
 import { useUnsavedDrafts } from "../lib/unsavedDrafts";
 import { Notice, NoticeStack, OfflineNotice } from "../components/Notices";
@@ -601,25 +601,6 @@ export function PrView() {
     },
     [detail, analyzedUnits, unplaced],
   );
-  // The same, for a part of the bar split by kind; null is the lines no unit claims.
-  const openNextUnreadOfKind = useCallback(
-    (kind: Kind | null) => {
-      if (!detail) return;
-      const next = kind
-        ? sortUnitsForDisplay(analyzedUnits).find((u) => {
-            if (u.kind !== kind) return false;
-            const p = unitProgress(detail, u);
-            return p.viewed < p.total;
-          })
-        : null;
-      if (!next && (kind || !unplaced.some((id) => !detail.state.hunks[id]?.viewed))) return;
-      setOverview(false);
-      setTab("units");
-      setSelectedUnitId(next ? next.id : UNPLACED_ID);
-    },
-    [detail, analyzedUnits, unplaced],
-  );
-
   // After marking a unit viewed (units tab only), advance to the next unit
   // that still has unviewed hunks, in the sidebar's reading order
   // (must-read → skim → skip, each by `order`), wrapping around the top.
@@ -981,6 +962,24 @@ export function PrView() {
       setJumpToHunk({ hunkId, nonce: Date.now(), ...target });
     },
     [tab, units, unplacedSet, selectedUnitId, selectedPath],
+  );
+
+  // The same, for a part of the bar split by kind: the first unit, in
+  // reading order, holding an unread hunk of that kind; a hunk no unit
+  // holds (a generated file's) opens where the diff shows it.
+  const openNextUnreadOfKind = useCallback(
+    (kind: ChangeKind) => {
+      const unread = progressByKind.find((g) => g.kind === kind)?.unread ?? [];
+      if (!unread.length) return;
+      const ids = new Set(unread.map((h) => h.id));
+      const next = sortUnitsForDisplay(analyzedUnits).find((u) => u.hunks.some((e) => ids.has(e.id)));
+      setOverview(false);
+      if (next) {
+        setTab("units");
+        setSelectedUnitId(next.id);
+      } else jumpToDiffHunk(unread[0].id, unread[0].path);
+    },
+    [progressByKind, analyzedUnits, jumpToDiffHunk],
   );
 
   /**

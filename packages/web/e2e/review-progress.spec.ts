@@ -28,17 +28,19 @@ test("the sidebar's bar shows reading by attention; a part opens its next unread
   await expect(bar).toHaveCount(0);
 });
 
-test("the bar splits by kind instead, and stays that way", async ({ page }) => {
+test("a click on the title splits the bar by kind of change instead, and it stays that way", async ({ page }) => {
   await openPr(page);
   await openUnit(page, UNITS.charge);
   const bar = page.getByTestId("review-progress");
-  await page.getByTestId("review-progress-split-kind").click();
+  const title = page.getByTestId("review-progress-split");
+  await expect(title).toHaveText("Review progress");
+  await title.click();
   await expect(bar).toHaveAttribute("data-split", "kind");
+  await expect(title).toHaveText("Review progress by kind");
   await expect(page.getByTestId("review-progress-must-read")).toHaveCount(0);
-  const core = page.getByTestId("review-progress-core-logic");
-  await expect(core).toBeVisible();
+  await expect(page.getByTestId("review-progress-implementation")).toBeVisible();
   await page.reload();
   await expect(page.getByTestId("review-progress")).toHaveAttribute("data-split", "kind");
-  await page.getByTestId("review-progress-split-attention").click();
+  await page.getByTestId("review-progress-split").click();
   await expect(page.getByTestId("review-progress-must-read")).toBeVisible();
 });

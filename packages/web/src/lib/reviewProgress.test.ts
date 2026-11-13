@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { FileEntry } from "../api/types";
 import { changedLines, reviewProgressByAttention, reviewProgressByKind } from "./reviewProgress";
 
 const hunk = (id: string, changed: number) => ({ id, lines: [" ctx", ...Array.from({ length: changed }, () => "+x")] });
@@ -63,21 +64,22 @@ it("changedLines counts + and - lines", () => {
 });
 
 describe("reviewProgressByKind", () => {
-  it("splits the same lines by the claiming unit's kind, in chip order, unclaimed last and generated out", () => {
+  const file = (path: string, hunks: ReturnType<typeof hunk>[], generated?: boolean) =>
+    ({ path, status: "modified", hunks: hunks.map((h) => ({ ...h, file: path, header: "@@ -1 +1 @@" })), ...(generated ? { generated: { source: "lockfile" } } : {}) }) as unknown as FileEntry;
+
+  it("splits the lines by what they are, generated shown, skipped hunks nowhere, in mix order", () => {
     const files = [
-      { hunks: [hunk("a", 10), hunk("b", 30)] },
-      { hunks: [hunk("c", 20), hunk("d", 5)] },
-      { generated: { source: "lockfile" as const }, hunks: [hunk("g", 500)] },
+      file("src/a.ts", [hunk("a", 10), hunk("s", 3)]),
+      file("src/a.test.ts", [hunk("t", 20)]),
+      file("README.md", [hunk("d", 5)]),
+      file("pnpm-lock.yaml", [hunk("g", 50)], true),
     ];
-    const units = [
-      { id: "u1", kind: "tests" as const, hunks: [{ id: "a" }] },
-      { id: "u2", kind: "core-logic" as const, hunks: [{ id: "b" }, { id: "c" }] },
-      { id: "gen", kind: "data" as const, hunks: [{ id: "g" }], origin: "generated" as const },
-    ];
-    const groups = reviewProgressByKind(files, { a: { viewed: true, changedSinceViewed: false } }, units);
-    expect(groups.map((g) => g.kind)).toEqual(["core-logic", "tests", null]);
-    expect(groups[0]).toMatchObject({ lines: 50, read: 0, units: 1, unitsDone: 0 });
-    expect(groups[1]).toMatchObject({ lines: 10, read: 10, units: 1, unitsDone: 1 });
-    expect(groups[2]).toMatchObject({ lines: 5, units: 0 });
+    const units = [{ id: "u1", hunks: [{ id: "a" }, { id: "t" }, { id: "d" }, { id: "s", skip: true as const }] }];
+    const groups = reviewProgressByKind(files, { t: { viewed: true, changedSinceViewed: false } }, units);
+    expect(groups.map((g) => g.kind)).toEqual(["implementation", "tests", "docs", "generated"]);
+    expect(groups[0]).toMatchObject({ lines: 10, read: 0, hunks: 1 });
+    expect(groups[0].unread).toEqual([{ id: "a", path: "src/a.ts" }]);
+    expect(groups[1]).toMatchObject({ lines: 20, read: 20, hunksRead: 1, unread: [] });
+    expect(groups[3]).toMatchObject({ lines: 50 });
   });
 });
