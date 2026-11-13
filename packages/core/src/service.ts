@@ -27,7 +27,7 @@ import { GENERATED_UNIT_ID, generatedFilesOf, isGeneratedUnit } from "./generate
 import { classifyFiles, gatherGeneratedFacts, gatherGeneratedFactsAsync, reclassifyGenerated, reclassifyGeneratedAsync } from "./generated-io.js";
 import { parseDiff } from "./parse-diff.js";
 import { architectureQuoteProblems, type Architecture } from "./architecture.js";
-import { analysisJobPath, commentsPath, repoKeyOf, stateRoot, type PrKey } from "./paths.js";
+import { analysisJobPath, commentsPath, prDir, repoKeyOf, stateRoot, type PrKey } from "./paths.js";
 import { nextRevisionNumber, priorRevisions } from "./reducer.js";
 import { planUnitPatches, remainingWork, resolveHunkRef, type RemainingWork, type UnitPatchRequest } from "./unit-patch.js";
 import {
@@ -228,6 +228,15 @@ export interface InitResult {
   created: boolean;
 }
 
+/**
+ * A PR whose first fetch failed has a meta and no revision: nothing would ever
+ * fetch it again (the importer skips PRs it already has) and its view has no
+ * diff to show. Dropping it lets the add fail as a whole and be retried.
+ */
+function forgetUnfetchedPr(key: PrKey, root: string): void {
+  fs.rmSync(prDir(key, root), { recursive: true, force: true });
+}
+
 /** Fetch PR meta + diff from GitHub and create the state dir (idempotent). */
 export function initPr(key: PrKey, root = stateRoot(), opts: RefreshSyncOptions = {}): InitResult {
   const created = !prExists(key, root);
@@ -275,7 +284,13 @@ export function initPr(key: PrKey, root = stateRoot(), opts: RefreshSyncOptions 
     );
   }
 
-  const res = refreshPr(key, root, opts);
+  let res: RefreshResult;
+  try {
+    res = refreshPr(key, root, opts);
+  } catch (err) {
+    if (created) forgetUnfetchedPr(key, root);
+    throw err;
+  }
   // After the refresh: it is what finds the PR this one sits on.
   if (created) inheritStackTag(key, root);
   return { key, state: res.state, revision: res.revision, created };
@@ -1323,7 +1338,13 @@ export async function initPrAsync(key: PrKey, root = stateRoot(), opts: RefreshO
     );
   }
 
-  const res = await refreshPrAsync(key, root, opts);
+  let res: RefreshResult;
+  try {
+    res = await refreshPrAsync(key, root, opts);
+  } catch (err) {
+    if (created) forgetUnfetchedPr(key, root);
+    throw err;
+  }
   if (created) inheritStackTag(key, root);
   return { key, state: res.state, revision: res.revision, created };
 }

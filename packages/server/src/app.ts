@@ -709,8 +709,13 @@ export function createApp(opts: AppOptions = {}): Hono {
 
   app.get("/api/prs/:key", async (c) => {
     const key = keyParam(c);
+    let state = loadState(key, root);
+    // Added while its first fetch failed (before adds undid themselves on
+    // that): no revision, so no diff to show. Fetch it now.
+    if (state.revisions.length === 0) {
+      state = (await refreshPrAsync(key, root, { localDiff: localDiffSource(root) })).state;
+    }
     const meta = readMeta(key, root);
-    const state = loadState(key, root);
     const filesJson = readFilesJson(key, state.currentRevision, root);
     const diff = readDiff(key, state.currentRevision, root);
     // Resolving here is what makes a stale checkout visible in the UI without
