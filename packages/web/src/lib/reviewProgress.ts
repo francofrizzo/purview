@@ -1,4 +1,4 @@
-import { isGeneratedUnit, isRemovedUnit, type Attention, type FileEntry, type HunkState, type ReviewUnit } from "../api/types";
+import { isGeneratedUnit, isRemovedUnit, type Attention, type FileEntry, type HunkState, type Kind, type ReviewUnit } from "../api/types";
 
 /**
  * How far the reading has come, weighed by changed lines: a one-line import
@@ -96,4 +96,68 @@ export function reviewProgressByAttention(
     percent: owed ? (done ? 100 : Math.min(99, Math.floor((read / owed) * 100))) : 100,
     done,
   };
+}
+
+export interface KindProgress extends Omit<GroupProgress, "attention"> {
+  /** null: hunks no unit claims */
+  kind: Kind | null;
+}
+
+const KIND_ORDER: Kind[] = ["core-logic", "connective-tissue", "refactor", "data", "wiring", "ripple", "tests", "docs"];
+
+/**
+ * The same lines as by attention, split by the kind of the unit that claims
+ * each hunk (its first claim, as for attention), in the chips' order; hunks
+ * no unit claims go last. Kinds with no lines are left out.
+ */
+export function reviewProgressByKind(
+  files: { generated?: FileEntry["generated"]; hunks: { id: string; lines?: string[] }[] }[],
+  hunks: Record<string, Pick<HunkState, "viewed" | "changedSinceViewed"> | undefined>,
+  units: Pick<ReviewUnit, "id" | "kind" | "hunks" | "origin" | "removedAtRevision">[],
+): KindProgress[] {
+  const live = units.filter((u) => !isGeneratedUnit(u) && !isRemovedUnit(u));
+  const kindOf = new Map<string, Kind>();
+  const skipped = new Set<string>();
+  for (const u of live) {
+    for (const e of u.hunks) {
+      if (e.skip) skipped.add(e.id);
+      else if (!kindOf.has(e.id)) kindOf.set(e.id, u.kind);
+    }
+  }
+  const groups = new Map<Kind | null, KindProgress>();
+  const groupOf = (kind: Kind | null) => {
+    let g = groups.get(kind);
+    if (!g) {
+      g = { kind, lines: 0, read: 0, reread: 0, hunks: 0, hunksRead: 0, units: 0, unitsDone: 0 };
+      groups.set(kind, g);
+    }
+    return g;
+  };
+  const counted = new Set<string>();
+  for (const f of files) {
+    if (f.generated) continue;
+    for (const h of f.hunks) {
+      if (skipped.has(h.id) && !kindOf.has(h.id)) continue;
+      counted.add(h.id);
+      const g = groupOf(kindOf.get(h.id) ?? null);
+      const weight = changedLines(h);
+      const state = hunks[h.id];
+      g.lines += weight;
+      g.hunks++;
+      if (state?.viewed) {
+        g.read += weight;
+        g.hunksRead++;
+      } else if (state?.changedSinceViewed) {
+        g.reread += weight;
+      }
+    }
+  }
+  for (const u of live) {
+    const own = u.hunks.filter((e) => !e.skip && counted.has(e.id)).map((e) => e.id);
+    if (!own.length) continue;
+    const g = groupOf(u.kind);
+    g.units++;
+    if (own.every((id) => hunks[id]?.viewed)) g.unitsDone++;
+  }
+  return [...KIND_ORDER, null].map((k) => groups.get(k)).filter((g): g is KindProgress => !!g && g.lines > 0);
 }

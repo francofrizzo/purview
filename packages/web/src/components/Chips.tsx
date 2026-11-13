@@ -42,7 +42,7 @@ import { UiText } from "./UiText";
 
 // Colors come from the active theme (see src/lib/themes.ts), so the chips stay
 // distinguishable — and coherent with the syntax colors — on every theme.
-const KIND_STYLE: Record<Kind, { label: string; color: string; bg: string; tip: string }> = {
+export const KIND_STYLE: Record<Kind, { label: string; color: string; bg: string; tip: string }> = {
   "core-logic": {
     label: "core",
     color: "var(--kind-core)",

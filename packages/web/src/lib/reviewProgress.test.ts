@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedLines, reviewProgressByAttention } from "./reviewProgress";
+import { changedLines, reviewProgressByAttention, reviewProgressByKind } from "./reviewProgress";
 
 const hunk = (id: string, changed: number) => ({ id, lines: [" ctx", ...Array.from({ length: changed }, () => "+x")] });
 
@@ -60,4 +60,24 @@ it("a hunk its unit marks skip counts nowhere: nothing ever marks it read", () =
 
 it("changedLines counts + and - lines", () => {
   expect(changedLines({ lines: [" a", "+b", "-c", "+d"] })).toBe(3);
+});
+
+describe("reviewProgressByKind", () => {
+  it("splits the same lines by the claiming unit's kind, in chip order, unclaimed last and generated out", () => {
+    const files = [
+      { hunks: [hunk("a", 10), hunk("b", 30)] },
+      { hunks: [hunk("c", 20), hunk("d", 5)] },
+      { generated: { source: "lockfile" as const }, hunks: [hunk("g", 500)] },
+    ];
+    const units = [
+      { id: "u1", kind: "tests" as const, hunks: [{ id: "a" }] },
+      { id: "u2", kind: "core-logic" as const, hunks: [{ id: "b" }, { id: "c" }] },
+      { id: "gen", kind: "data" as const, hunks: [{ id: "g" }], origin: "generated" as const },
+    ];
+    const groups = reviewProgressByKind(files, { a: { viewed: true, changedSinceViewed: false } }, units);
+    expect(groups.map((g) => g.kind)).toEqual(["core-logic", "tests", null]);
+    expect(groups[0]).toMatchObject({ lines: 50, read: 0, units: 1, unitsDone: 0 });
+    expect(groups[1]).toMatchObject({ lines: 10, read: 10, units: 1, unitsDone: 1 });
+    expect(groups[2]).toMatchObject({ lines: 5, units: 0 });
+  });
 });

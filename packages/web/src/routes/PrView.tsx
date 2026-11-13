@@ -7,6 +7,7 @@ import type {
   AnalysisImportReport,
   ChatRef,
   FileEntry,
+  Kind,
   MigrationReport,
   PrDetail,
   ReviewEvent,
@@ -114,7 +115,7 @@ import {
   SharedAnalysisBanner,
   SyncResultPanel,
 } from "../components/Panels";
-import { reviewProgressByAttention } from "../lib/reviewProgress";
+import { reviewProgressByAttention, reviewProgressByKind } from "../lib/reviewProgress";
 import { ReviewProgressBar } from "../components/ReviewProgressBar";
 import { useUnsavedDrafts } from "../lib/unsavedDrafts";
 import { Notice, NoticeStack, OfflineNotice } from "../components/Notices";
@@ -600,6 +601,24 @@ export function PrView() {
     },
     [detail, analyzedUnits, unplaced],
   );
+  // The same, for a part of the bar split by kind; null is the lines no unit claims.
+  const openNextUnreadOfKind = useCallback(
+    (kind: Kind | null) => {
+      if (!detail) return;
+      const next = kind
+        ? sortUnitsForDisplay(analyzedUnits).find((u) => {
+            if (u.kind !== kind) return false;
+            const p = unitProgress(detail, u);
+            return p.viewed < p.total;
+          })
+        : null;
+      if (!next && (kind || !unplaced.some((id) => !detail.state.hunks[id]?.viewed))) return;
+      setOverview(false);
+      setTab("units");
+      setSelectedUnitId(next ? next.id : UNPLACED_ID);
+    },
+    [detail, analyzedUnits, unplaced],
+  );
 
   // After marking a unit viewed (units tab only), advance to the next unit
   // that still has unviewed hunks, in the sidebar's reading order
@@ -661,6 +680,10 @@ export function PrView() {
   // The sidebar's bar: read by changed lines, per attention (lib/reviewProgress.ts).
   const readingProgress = useMemo(
     () => reviewProgressByAttention(detail?.files.files ?? [], detail?.state.hunks ?? {}, units),
+    [detail, units],
+  );
+  const progressByKind = useMemo(
+    () => reviewProgressByKind(detail?.files.files ?? [], detail?.state.hunks ?? {}, units),
     [detail, units],
   );
 
@@ -1850,7 +1873,16 @@ export function PrView() {
         )}
       </div>
       {/* Where the reading stands, in the sidebar's status spot under the list. */}
-      {overview ? null : <ReviewProgressBar progress={readingProgress} onOpenGroup={openNextUnreadOf} />}
+      {overview ? null : (
+        <ReviewProgressBar
+          progress={readingProgress}
+          byKind={progressByKind}
+          split={settings.progressSplit}
+          onSplit={(progressSplit) => updateSettings({ progressSplit })}
+          onOpenGroup={openNextUnreadOf}
+          onOpenKind={openNextUnreadOfKind}
+        />
+      )}
     </>
   );
 

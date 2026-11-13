@@ -69,6 +69,8 @@ export interface Settings {
   foldMovedBlocks: boolean;
   /** Drop fully-viewed units out of the sidebar (except the selected one). */
   hideReviewedUnits: boolean;
+  /** How the sidebar's review progress bar is split: by attention or by unit kind. */
+  progressSplit: "attention" | "kind";
   /** The comment box's formatting row is open; `Aa` flips it and it stays. */
   composerFormatting: boolean;
   /** The PR view's panes sit edge to edge instead of as cards on a desk. */
@@ -146,6 +148,7 @@ export const DEFAULT_SETTINGS: Settings = {
   landsLineCounts: false,
   foldMovedBlocks: false,
   hideReviewedUnits: false,
+  progressSplit: "attention",
   composerFormatting: false,
   flatWorkspace: false,
   unitDetail: null,
@@ -207,6 +210,7 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   if (r.copyBundleMode === "copy" || r.copyBundleMode === "archive") out.copyBundleMode = r.copyBundleMode;
   if (typeof r.foldMovedBlocks === "boolean") out.foldMovedBlocks = r.foldMovedBlocks;
   if (typeof r.hideReviewedUnits === "boolean") out.hideReviewedUnits = r.hideReviewedUnits;
+  if (r.progressSplit === "attention" || r.progressSplit === "kind") out.progressSplit = r.progressSplit;
   if (typeof r.chatPanelWidth === "number" && Number.isFinite(r.chatPanelWidth)) {
     out.chatPanelWidth = clampChatPanelWidth(r.chatPanelWidth);
   }

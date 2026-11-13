@@ -27,3 +27,18 @@ test("the sidebar's bar shows reading by attention; a part opens its next unread
   await page.getByTestId("sidebar-tab-overview").click();
   await expect(bar).toHaveCount(0);
 });
+
+test("the bar splits by kind instead, and stays that way", async ({ page }) => {
+  await openPr(page);
+  await openUnit(page, UNITS.charge);
+  const bar = page.getByTestId("review-progress");
+  await page.getByTestId("review-progress-split-kind").click();
+  await expect(bar).toHaveAttribute("data-split", "kind");
+  await expect(page.getByTestId("review-progress-must-read")).toHaveCount(0);
+  const core = page.getByTestId("review-progress-core-logic");
+  await expect(core).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("review-progress")).toHaveAttribute("data-split", "kind");
+  await page.getByTestId("review-progress-split-attention").click();
+  await expect(page.getByTestId("review-progress-must-read")).toBeVisible();
+});

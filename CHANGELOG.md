@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Review progress by kind.** "by kind" at the top of the sidebar's progress bar splits it by unit kind (core, glue, tests…) instead of by attention. A part opens the next unread unit of that kind.
 - **Fix:** opening a PR that can't be shown no longer gives a blank page saying "not_found". It says what went wrong and offers to try again, or to add the PR if Purview doesn't track it.
 - **Fix:** a PR added while GitHub didn't return its diff no longer gets stuck with no diff and no analysis. Opening it fetches the diff.
 
