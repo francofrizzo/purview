@@ -72,6 +72,8 @@ import { useTokensForHunks } from "../lib/useHunkTokens";
 import { useSettings, type DiffViewMode } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 import { attentionColor, ChangedBadge, FileStatusBadge } from "./Chips";
+import { CHANGE_LOOK } from "./ChangeMix";
+import { fileChangeKind } from "../lib/changeMix";
 import { QuoteButton } from "./ChatPanel";
 import {
   COMMENT_COL_WIDTH,
@@ -3177,6 +3179,7 @@ export function DiffPane({
   ) {
     if (row.type === "file") {
       const rollup = detail.state.files?.[row.path];
+      const kind = fileChangeKind(row.file);
       const fileComments = grouped.byFile.get(row.path);
       // The checkbox covers the hunks of this file that this pane shows: in a
       // unit, the unit's hunks of it; in the files view, all of them.
@@ -3198,11 +3201,15 @@ export function DiffPane({
           // file with a chip in its header used to be 2px taller than one
           // without — enough to leave the previous (folded) hunk as current.
           data-testid={`file-header-${row.path}`}
+          data-kind={kind}
           className="group/file box-border flex h-8 items-center gap-2 border-y px-3 font-mono text-xs"
           style={{
             background: "var(--bg-raised)",
             borderColor: "var(--border)",
             color: "var(--fg)",
+            // What the file is (implementation, tests, docs, generated), in the
+            // change mix's colors: an edge, so the height stays the same.
+            boxShadow: `inset 3px 0 0 ${CHANGE_LOOK[kind].color}`,
           }}
         >
           <span className="row-head-fixed flex min-w-0 items-center gap-2">

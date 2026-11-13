@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openPr, openUnit, UNITS } from "./helpers";
 
 test("leaving generated files out of line counts shrinks the list's size and moves the header's 'all' to 'all but generated'", async ({ page }) => {
   await page.goto("/");
@@ -21,4 +22,13 @@ test("leaving generated files out of line counts shrinks the list's size and mov
 
   await page.getByText("Charge retries: idempotency keys + backoff").click();
   await expect(header).toHaveAttribute("data-counts", "authored");
+});
+
+test("a file header carries its file's kind, in the change mix's colors", async ({ page }) => {
+  await openPr(page);
+  await openUnit(page, UNITS.wiring);
+  await expect(page.getByTestId("file-header-docs/billing.md")).toHaveAttribute("data-kind", "docs");
+  await expect(page.getByTestId("file-header-src/container.ts")).toHaveAttribute("data-kind", "implementation");
+  await openUnit(page, UNITS.retry);
+  await expect(page.getByTestId("file-header-test/billing/charge.test.ts")).toHaveAttribute("data-kind", "tests");
 });

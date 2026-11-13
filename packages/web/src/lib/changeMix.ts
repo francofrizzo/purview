@@ -42,6 +42,8 @@ const kindOf = (hint: HunkHint | null): ChangeKind => (hint ? KIND_OF_HINT[hint]
 
 /** The kind of one hunk's lines, as the mix counts them. */
 export const changeKindOf = (file: FileEntry, hunk: Hunk): ChangeKind => kindOf(hunkHint(file, hunk));
+/** What a file is, as the mix counts the lines no hunk holds. */
+export const fileChangeKind = (file: Pick<FileEntry, "path" | "generated">): ChangeKind => kindOf(fileHint(file));
 const addedIn = (h: Hunk) => h.addedLines?.length ?? (h.lines ?? []).filter((l) => l.startsWith("+")).length;
 const removedIn = (h: Hunk) => h.removedLines?.length ?? (h.lines ?? []).filter((l) => l.startsWith("-")).length;
 
