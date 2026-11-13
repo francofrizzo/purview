@@ -3,10 +3,27 @@ import type { Architecture as ArchitectureData, ArchitectureDeviation } from "..
 import { useExperiment } from "../../lib/experiments";
 import { UnitNumber } from "../Chips";
 import { CopyPathButton } from "../DiffPane";
-import { IconComment, IconUnit } from "../icons";
+import { IconCheck, IconComment, IconFile, IconUnit } from "../icons";
 import { InlineMarkdown } from "../Markdown";
 import { SectionHead } from "../SectionHead";
 import { UiText } from "../UiText";
+
+const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+
+/** A doc as a file: its folder faint, its name plain. */
+function DocName({ path }: { path: string }) {
+  const name = baseName(path);
+  const dir = path.slice(0, path.length - name.length);
+  return (
+    <span className="inline-flex items-center gap-1 font-mono">
+      <IconFile width={11} height={11} />
+      <span>
+        {dir ? <span style={{ color: "var(--fg-faint)" }}>{dir}</span> : null}
+        {name}
+      </span>
+    </span>
+  );
+}
 
 /** Room for the situation on a line or two; the rule and the code share the rest. */
 const COLS = "sm:grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_minmax(0,1fr)_1.25rem]";
@@ -59,21 +76,21 @@ export function ArchitectureSection({
               <button
                 key={src}
                 type="button"
-                className="font-mono transition-colors hover:text-[var(--fg)]"
+                className="transition-colors hover:text-[var(--fg)]"
                 style={{ color: "var(--fg-muted)" }}
                 data-testid="architecture-source"
                 data-tip="Open in Files: this PR changes it"
                 onClick={() => onOpenFile(src)}
               >
-                {src}
+                <DocName path={src} />
               </button>
             ) : (
-              <span key={src} className="font-mono" style={{ color: "var(--fg-muted)" }} data-testid="architecture-source" data-tip="Read at the PR's head; this PR does not change it">
-                {src}
+              <span key={src} style={{ color: "var(--fg-muted)" }} data-testid="architecture-source" data-tip={`${src}, read at the PR's head; this PR does not change it`}>
+                <DocName path={src} />
               </span>
             ),
           )}
-          {checked.length ? (
+          {checked.length && !empty ? (
             <button
               type="button"
               className="transition-colors hover:text-[var(--fg-muted)]"
@@ -89,7 +106,7 @@ export function ArchitectureSection({
         </span>
       </SectionHead>
 
-      {rulesOpen ? (
+      {rulesOpen && !empty ? (
         <ul className="mb-4 flex flex-col gap-1.5" data-testid="architecture-checked">
           {checked.map((c, i) => (
             <li key={i} className="text-xs leading-[18px]" style={{ color: "var(--fg-muted)" }} data-testid="architecture-checked-rule">
@@ -103,9 +120,46 @@ export function ArchitectureSection({
       ) : null}
 
       {empty ? (
-        <p className="text-[13px] leading-5" style={{ color: "var(--fg-muted)" }} data-testid="architecture-none">
-          <UiText>Follows the documented architecture.</UiText>
-        </p>
+        <div className="flex gap-3" data-testid="architecture-clear">
+          <span
+            className="mt-px flex h-5 w-5 flex-none items-center justify-center rounded-full"
+            style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
+            aria-hidden
+          >
+            <IconCheck width={12} height={12} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-medium leading-5" style={{ color: "var(--fg)" }} data-testid="architecture-none">
+              <UiText>Follows the documented architecture.</UiText>
+            </p>
+            {checked.length ? (
+              <>
+                <p className="mt-0.5 text-xs leading-[18px]" style={{ color: "var(--fg-faint)" }}>
+                  <UiText>{`Checked against the ${checked.length === 1 ? "rule" : `${checked.length} rules`} these files could break:`}</UiText>
+                </p>
+                <ul className="mt-2 flex flex-col gap-1.5" data-testid="architecture-checked">
+                  {checked.map((c, i) => (
+                    <li key={i} className="flex gap-2 text-xs leading-[18px]" data-testid="architecture-checked-rule">
+                      <span className="mt-[3px] flex-none" style={{ color: "var(--ok)" }} aria-hidden>
+                        <IconCheck width={11} height={11} />
+                      </span>
+                      <span className="min-w-0" style={{ color: "var(--fg-muted)" }}>
+                        <InlineMarkdown text={`“${c.rule}”`} />
+                        <span className="ml-1.5 whitespace-nowrap text-2xs" style={{ color: "var(--fg-faint)" }} data-tip={c.source}>
+                          {baseName(c.source)}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="mt-0.5 text-xs leading-[18px]" style={{ color: "var(--fg-faint)" }}>
+                <UiText>No rule in these docs touches the files this PR changes.</UiText>
+              </p>
+            )}
+          </div>
+        </div>
       ) : null}
 
       {deviations.length ? (

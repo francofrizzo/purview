@@ -107,14 +107,15 @@ test("comment with the rule opens a draft on the line holding only the quoted ru
   expect(body).not.toContain("no paged read");
 });
 
-test("a PR that follows its docs says so, with the sources and the rules still in the header", async ({ page }) => {
+test("a PR that follows its docs says so, with the sources in the header and the rules it was checked against", async ({ page }) => {
   await openOverview(page, { empty: true });
   const section = page.getByTestId("overview-architecture");
   await expect(section.getByTestId("architecture-none")).toHaveText("Follows the documented architecture.");
   await expect(section.getByTestId("architecture-deviation")).toHaveCount(0);
   await expect(section.getByTestId("architecture-decisions")).toHaveCount(0);
   await expect(section.getByTestId("architecture-source")).toHaveCount(2);
-  await expect(section.getByTestId("architecture-checked-toggle")).toHaveText("checked 4 rules");
+  await expect(section.getByTestId("architecture-checked-toggle")).toHaveCount(0);
+  await expect(section.getByTestId("architecture-checked-rule")).toHaveCount(4);
 });
 
 test("the repo's architecture docs are a repo setting only while the experiment is on", async ({ page }) => {
