@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Fix:** a PR added while GitHub didn't return its diff no longer gets stuck with no diff and no analysis. Opening it fetches the diff.
+
 ## 2026.11.12.1
 
 - **Unit diagrams.** A unit whose logic is easier to see than read shows a small diagram under its brief; click it to open it.
