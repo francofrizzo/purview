@@ -5,7 +5,7 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.13.2
 
 - **Archive and go home.** The archive button in a PR's top bar, or `e`, archives it and takes you to the home list.
 - **Fix:** after you submit a review with ⌘↵, shortcuts work again; Enter answers the "submit to GitHub?" confirm.
