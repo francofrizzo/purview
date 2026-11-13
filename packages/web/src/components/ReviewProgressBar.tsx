@@ -3,6 +3,7 @@ import type { Attention } from "../api/types";
 import type { ChangeKind } from "../lib/changeMix";
 import type { KindProgress, ReviewProgress } from "../lib/reviewProgress";
 import { CHANGE_LOOK } from "./ChangeMix";
+import { IconCycle } from "./icons";
 import { UiText } from "./UiText";
 
 const LABEL: Record<Attention, string> = { "must-read": "Must read", skim: "Skim", skip: "Skip" };
@@ -66,9 +67,13 @@ export function ReviewProgressBar({
   const title = (
     <>
       <UiText>Review progress</UiText>
-      {kindView ? (
-        <span className="font-normal" style={{ color: "var(--fg-faint)" }}>
-          <UiText> by kind</UiText>
+      {canSplit ? (
+        <span
+          className="ml-1.5 inline-flex items-center gap-0.5 font-normal transition-colors group-hover/split:text-[var(--fg-muted)]"
+          style={{ color: "var(--fg-faint)" }}
+        >
+          <UiText>{kindView ? "by kind" : "by attention"}</UiText>
+          <IconCycle width={10} height={10} />
         </span>
       ) : null}
     </>
@@ -85,7 +90,7 @@ export function ReviewProgressBar({
         {canSplit ? (
           <button
             type="button"
-            className="min-w-0 truncate text-left font-medium transition-colors hover:text-[var(--fg)]"
+            className="group/split min-w-0 truncate text-left font-medium"
             style={{ color: "var(--fg-muted)" }}
             data-testid="review-progress-split"
             data-tip={kindView ? "Split by attention" : "Split by kind: implementation, tests, docs, generated"}
@@ -122,6 +127,9 @@ export function ReviewProgressBar({
                   // shows its kind too.
                   track={`color-mix(in srgb, ${look.color} 24%, transparent)`}
                   counts={g}
+                  // Never owed, so its size says little: a lockfile must not
+                  // squeeze the parts that count.
+                  maxWidth={g.kind === "generated" ? "12%" : undefined}
                   onOpen={onOpenKind && (() => onOpenKind(g.kind))}
                 />
               );
@@ -150,8 +158,11 @@ function Segment({
   ink,
   track,
   counts: g,
+  maxWidth,
   onOpen,
 }: {
+  /** a cap on the part's share of the bar, whatever its lines */
+  maxWidth?: string;
   id: string;
   name: string;
   note?: string;
@@ -185,7 +196,7 @@ function Segment({
       type="button"
       className="group/seg flex min-w-[10px] flex-col items-stretch gap-1 text-left disabled:cursor-default"
       // Each part as wide as its share of the lines; a small one still shows.
-      style={{ flexGrow: g.lines, flexBasis: 0 }}
+      style={{ flexGrow: g.lines, flexBasis: 0, maxWidth }}
       data-testid={`review-progress-${id}`}
       data-read={g.read}
       data-lines={g.lines}

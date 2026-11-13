@@ -304,4 +304,6 @@ export const IconZoomIn = wrap(TablerZoomIn);
 export const IconZoomOut = wrap(TablerZoomOut);
 /** Up-and-down chevrons: open every hidden line of a gap in the diff. */
 export const IconUnfold = wrap(IconSelector);
+/** A control that cycles between views: the up/down mark of a select. */
+export const IconCycle = wrap(IconSelector);
 export const IconConcept = wrap(IconBook2);

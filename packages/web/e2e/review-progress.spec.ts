@@ -33,12 +33,18 @@ test("a click on the title splits the bar by kind of change instead, and it stay
   await openUnit(page, UNITS.charge);
   const bar = page.getByTestId("review-progress");
   const title = page.getByTestId("review-progress-split");
-  await expect(title).toHaveText("Review progress");
+  await expect(title).toHaveText(/^Review progress\s*by attention$/);
   await title.click();
   await expect(bar).toHaveAttribute("data-split", "kind");
-  await expect(title).toHaveText("Review progress by kind");
+  await expect(title).toHaveText(/^Review progress\s*by kind$/);
   await expect(page.getByTestId("review-progress-must-read")).toHaveCount(0);
   await expect(page.getByTestId("review-progress-implementation")).toBeVisible();
+  // Generated is never owed: however many its lines, it takes little of the bar.
+  const generated = page.getByTestId("review-progress-generated");
+  if (await generated.count()) {
+    const [part, whole] = await Promise.all([generated.boundingBox(), bar.boundingBox()]);
+    expect(part!.width).toBeLessThanOrEqual(whole!.width * 0.13);
+  }
   await page.reload();
   await expect(page.getByTestId("review-progress")).toHaveAttribute("data-split", "kind");
   await page.getByTestId("review-progress-split").click();
