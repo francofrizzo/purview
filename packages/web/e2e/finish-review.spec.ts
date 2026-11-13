@@ -61,3 +61,19 @@ test("opening the panel puts the caret in the summary", async ({ page }) => {
   await page.getByTestId("topbar-finish-review").click();
   await expect(page.getByTestId("finish-review-panel").getByTestId("review-summary")).toBeFocused();
 });
+
+test("sent from the keyboard, the review lets go of it: Enter confirms, then shortcuts work again", async ({ page }) => {
+  await openPr(page);
+  await page.getByTestId("topbar-finish-review").click();
+  const panel = page.getByTestId("finish-review-panel");
+  const summary = panel.getByTestId("review-summary");
+  await summary.fill("Looks right.");
+  await summary.press("ControlOrMeta+Enter");
+  const yes = panel.getByRole("button", { name: /^yes, comment/ });
+  await expect(yes).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(summary).not.toBeFocused();
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).not.toBe("TEXTAREA");
+  await page.keyboard.press("?");
+  await expect(page.getByTestId("shortcuts-popover")).toBeVisible();
+});

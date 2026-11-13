@@ -1135,6 +1135,11 @@ export function PrView() {
         e.preventDefault();
         setOverview(false);
         setTab("files");
+      } else if (e.key === "e") {
+        // Archive and go home, as the top bar's button; an archived PR stays.
+        if (!detail || detail.meta.archived || detail.repoArchived || setArchived.isPending) return;
+        e.preventDefault();
+        setArchived.mutate({ key: prKey, archived: true }, { onSuccess: () => navigate("/") });
       } else if (e.key === "?") {
         e.preventDefault();
         setShowShortcuts((v) => !v);
@@ -1217,6 +1222,9 @@ export function PrView() {
     commentTarget,
     settings.foldSkippableHunks,
     updateSettings,
+    setArchived,
+    prKey,
+    navigate,
   ]);
 
   // First visit to an analyzed PR with nothing read: start on the overview.
@@ -2621,6 +2629,7 @@ export function PrView() {
               [["f"], "files"],
               [["m", "c", "r"], "comments, chat, review"],
               [["b"], "sidebar"],
+              [["e"], "archive and go home"],
               [["/"], "search"],
               [["⌘F"], "find in the diff; again, or over a panel: the browser's find"],
                 [["?"], "this list"],

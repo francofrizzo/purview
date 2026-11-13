@@ -139,18 +139,21 @@ export function FinishReviewPanel({
     }
   }, [review, seeded]);
 
+  const summaryRef = useRef<HTMLTextAreaElement>(null);
   // A submitted review took its summary with it (the server clears the
   // saved copy too), so the box starts empty for the next one.
+  // And the keyboard leaves it: sent with ⌘↵, the caret would stay in the
+  // box and swallow every shortcut that comes next.
   useEffect(() => {
     if (result) {
       setBody("");
       setArming(null);
+      if (summaryRef.current && document.activeElement === summaryRef.current) summaryRef.current.blur();
     }
   }, [result]);
 
   // Opening the panel is opening it to write: the summary takes focus once
   // the review is in, caret at the end of what was kept.
-  const summaryRef = useRef<HTMLTextAreaElement>(null);
   const focusedOnce = useRef(false);
   useEffect(() => {
     const el = summaryRef.current;
@@ -575,6 +578,9 @@ function ConfirmStep({
           style={verdictFill(event)}
           onClick={onConfirm}
           disabled={submitting}
+          // Reached with ⌘↵ from the summary, Enter answers it: the whole
+          // send stays on the keyboard, and the caret is out of the box after.
+          autoFocus
         >
           {submitting ? (
             <span className="inline-flex items-center gap-1.5" data-testid="finish-review-submitting">

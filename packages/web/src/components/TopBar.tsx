@@ -400,6 +400,22 @@ export function TopBar({
           <IconRefresh width={12} height={12} className={refreshing ? "animate-spin" : undefined} />
           {stale ? <UiText className="hidden md:inline">new commits</UiText> : null}
         </button>
+        {/* Done with it: put it away and go home. Shown while it is not
+            archived; once it is, the chip by the title brings it back. */}
+        {onSetArchived && !meta.archived && !detail.repoArchived ? (
+          <button
+            type="button"
+            className="btn"
+            data-testid="topbar-archive"
+            data-tip={archiving ? "Archiving…" : "Archive and go home"}
+            data-tip-key="e"
+            aria-label="Archive and go home"
+            disabled={archiving}
+            onClick={() => onSetArchived(true)}
+          >
+            <IconArchive width={12} height={12} />
+          </button>
+        ) : null}
         <input
           ref={importInputRef}
           type="file"
