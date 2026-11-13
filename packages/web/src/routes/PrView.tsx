@@ -66,8 +66,9 @@ import {
   useThreads,
   useResolveThread,
   useReact,
+  useAddPr,
 } from "../api/hooks";
-import { errorText, isNetworkError } from "../api/errors";
+import { ApiError, errorText, isNetworkError } from "../api/errors";
 import { AnalysisBanner, ArchivedSkipBanner } from "../components/Analysis";
 import { ChatPanel } from "../components/ChatPanel";
 import { FloatingChat } from "../components/FloatingChat";
@@ -99,7 +100,7 @@ import { FinishReviewPanel } from "../components/FinishReview";
 import { RightDock, type DockTab } from "../components/RightDock";
 import { isForAgent } from "../lib/comments";
 import { FileTree, fileTreeOrder } from "../components/FileTree";
-import { IconChevron, IconComment, IconFiles, IconOverview, IconSpinner, IconUnit } from "../components/icons";
+import { IconArrowLeft, IconChevron, IconComment, IconExternal, IconFiles, IconOverview, IconRefresh, IconSpinner, IconUnit } from "../components/icons";
 import { GeneratedFileMenu, GeneratedTag, GeneratedUnitFileList } from "../components/Generated";
 import { generatedUnitFiles, workUnits } from "../lib/generated";
 import {
@@ -1341,13 +1342,7 @@ export function PrView() {
       </Centered>
     );
   }
-  if (error || !detail) {
-    return (
-      <Centered>
-        <div style={{ color: "var(--risk)" }}>{(error as Error)?.message ?? <UiText>PR not found</UiText>}</div>
-      </Centered>
-    );
-  }
+  if (error || !detail) return <PrLoadError prKey={prKey} error={error} />;
 
   const summary = detail.state.summary?.trim() ?? "";
   const description = visibleDescription(detail.meta.body);
@@ -2689,6 +2684,76 @@ function UnplacedHeader({
   );
 }
 
+
+/**
+ * The PR could not be shown: either Purview does not track it (offer to add
+ * it) or the server failed to read it (say why, offer to try again).
+ */
+function PrLoadError({ prKey, error }: { prKey: string; error: unknown }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const addPr = useAddPr();
+  const [retrying, setRetrying] = useState(false);
+  const [host, owner, repo, number] = prKey.split("/");
+  const githubUrl = number ? `https://${host}/${owner}/${repo}/pull/${number}` : null;
+  const untracked =
+    error instanceof ApiError && error.status === 404 && /^No PR state/.test(errorText(error));
+  const name = number ? `${owner}/${repo}#${number}` : prKey;
+  const retry = async () => {
+    setRetrying(true);
+    try {
+      await qc.refetchQueries({ queryKey: qk.pr(prKey) });
+    } finally {
+      setRetrying(false);
+    }
+  };
+  const reason = error ? errorText(error) : "The server sent nothing for it.";
+  return (
+    <Centered>
+      <div className="flex max-w-md flex-col items-start gap-3 px-4" data-testid="pr-load-error">
+        <h1 className="text-base font-semibold" style={{ color: "var(--fg)" }}>
+          <UiText>{untracked ? `${name} isn't in Purview` : `Couldn't open ${name}`}</UiText>
+        </h1>
+        <p className="text-sm" style={{ color: "var(--fg-muted)" }}>
+          <UiText>{untracked ? "Add it to fetch its diff and start an analysis." : reason}</UiText>
+        </p>
+        {addPr.error ? (
+          <p className="text-sm" style={{ color: "var(--risk)" }}>
+            <UiText>{errorText(addPr.error)}</UiText>
+          </p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {untracked && githubUrl ? (
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={addPr.isPending}
+              onClick={() => addPr.mutate(githubUrl, { onSuccess: () => void retry() })}
+            >
+              {addPr.isPending ? <IconSpinner width={12} height={12} /> : null}
+              <UiText>{addPr.isPending ? "Adding…" : "Add it"}</UiText>
+            </button>
+          ) : (
+            <button type="button" className="btn btn-primary" disabled={retrying} onClick={() => void retry()}>
+              {retrying ? <IconSpinner width={12} height={12} /> : <IconRefresh width={12} height={12} />}
+              <UiText>Try again</UiText>
+            </button>
+          )}
+          <button type="button" className="btn" onClick={() => navigate("/")}>
+            <IconArrowLeft width={12} height={12} />
+            <UiText>All PRs</UiText>
+          </button>
+          {githubUrl ? (
+            <a className="btn" href={githubUrl} target="_blank" rel="noreferrer">
+              <IconExternal width={12} height={12} />
+              <UiText>Open on GitHub</UiText>
+            </a>
+          ) : null}
+        </div>
+      </div>
+    </Centered>
+  );
+}
 
 function Centered({ children }: { children: ReactNode }) {
   return (

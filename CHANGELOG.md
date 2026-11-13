@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Fix:** opening a PR that can't be shown no longer gives a blank page saying "not_found". It says what went wrong and offers to try again, or to add the PR if Purview doesn't track it.
 - **Fix:** a PR added while GitHub didn't return its diff no longer gets stuck with no diff and no analysis. Opening it fetches the diff.
 
 ## 2026.11.12.1

@@ -1191,7 +1191,7 @@ export const mockApi = {
     let target = details[key];
     if (!target) {
       const entry = list.find((p) => p.key === key);
-      if (!entry) throw new Error(`No PR "${key}" in the fixture.`);
+      if (!entry) throw new ApiError("not_found", 404, { error: "not_found", detail: `No PR state at ~/.purview/${key}` });
       // The extra fixture rows exist to populate the home screen's groups; they
       // get an empty detail so opening one is a no-op rather than an error.
       target = details[key] = {

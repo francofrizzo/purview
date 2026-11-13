@@ -355,3 +355,15 @@ test("a hunk and a file offer to comment and to cite in chat on hover, with thei
   await expect(page.getByTestId("chat-panel")).toBeVisible();
   await expect(page.getByTestId("chat-stop")).toHaveCount(0);
 });
+
+test("a PR Purview doesn't track says so and adds it from there", async ({ page }) => {
+  await page.goto("/pr/github.com/acme/billing/9999");
+  const error = page.getByTestId("pr-load-error");
+  await expect(error).toContainText("acme/billing#9999 isn't in Purview");
+  await expect(error.getByRole("link", { name: "Open on GitHub" })).toHaveAttribute(
+    "href",
+    "https://github.com/acme/billing/pull/9999",
+  );
+  await error.getByRole("button", { name: "Add it" }).click();
+  await expect(error).toHaveCount(0);
+});
