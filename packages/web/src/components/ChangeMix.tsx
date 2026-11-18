@@ -19,11 +19,15 @@ export const CHANGE_LOOK: Record<ChangeKind, { label: string; short: string; col
   generated: { label: "Generated", short: "generated", color: "var(--fg-faint)", Icon: IconGenerated },
 };
 
-/** What a file is, as an icon in its kind's color, beside its status badge. */
+/**
+ * What a file is, as an icon in its kind's color, beside its status badge.
+ * Pulled 2px toward the badge: the badge's faint outline puts its weight on
+ * the letter, and from there an even gap reads wider than the one after.
+ */
 export function FileKindIcon({ kind, size = 12 }: { kind: ChangeKind; size?: number }) {
   const { label, color, Icon } = CHANGE_LOOK[kind];
   return (
-    <span className="inline-flex flex-none self-center" style={{ color }} data-tip={label} aria-label={label} data-kind-icon={kind}>
+    <span className="-ml-0.5 inline-flex flex-none self-center" style={{ color }} data-tip={label} aria-label={label} data-kind-icon={kind}>
       <Icon width={size} height={size} />
     </span>
   );
