@@ -38,6 +38,7 @@ test("off, the analysis's architecture shows nowhere; turned on in Settings, the
 test("a deviation quotes the rule beside the code and opens its unit at the line", async ({ page }) => {
   await openOverview(page);
   const section = page.getByTestId("overview-architecture");
+  await expect(section.getByTestId("architecture-deviations")).toContainText("Possible deviations");
   const row = section.getByTestId("architecture-deviation");
   await expect(row).toHaveCount(1);
   await expect(row.getByTestId("architecture-deviation-mark")).toBeVisible();

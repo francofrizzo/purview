@@ -163,11 +163,16 @@ export function ArchitectureSection({
       ) : null}
 
       {deviations.length ? (
-        <>
+        <div data-testid="architecture-deviations">
+          {/* Its title heads the column labels' first cell; on a narrow
+              screen, where they hide, it stands alone. */}
+          <p className="mb-1 text-2xs font-medium sm:hidden" style={{ color: "var(--fg-faint)" }}>
+            <UiText>Possible deviations</UiText>
+          </p>
           {/* No padding of its own: the rows' cancels their negative margin, so the
               labels start where the cells' text does. */}
-          <div className={`mb-1 hidden gap-x-2 text-2xs font-medium sm:grid ${COLS}`} style={{ color: "var(--fg-faint)" }} aria-hidden>
-            <span />
+          <div className={`mb-1 hidden gap-x-2 text-2xs font-medium sm:grid ${COLS}`} style={{ color: "var(--fg-faint)" }}>
+            <UiText>Possible deviations</UiText>
             <UiText className="px-2">Rule</UiText>
             <UiText className="px-2">This PR</UiText>
             <span className="flex items-center justify-center" data-tip="The unit that holds the code">
@@ -185,7 +190,7 @@ export function ArchitectureSection({
               />
             ))}
           </ul>
-        </>
+        </div>
       ) : null}
 
       {decisions.length ? (
