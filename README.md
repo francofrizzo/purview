@@ -296,7 +296,7 @@ Settings live in four layers, most specific first:
 | --- | --- | --- |
 | PR | `meta.json` | `repoPath` only — the per-PR checkout override |
 | Repo (local) | `~/.purview/<host>/<owner>/<repo>/repo.json` | `autoAnalyze`, `repoPath`, `analysisAgent`, `chatAgent` |
-| Team (committed) | `.purview/config.json` in the reviewed repo | `autoAnalyze`, `analysisAgent`, `chatAgent` |
+| Team (committed) | `.purview/config.json` in the reviewed repo | `autoAnalyze`, `analysisAgent`, `chatAgent`, `generated`, `architectureDocs` |
 | Global | `~/.purview/config.json` | `autoAnalyze`, `analysisAgent`, `chatAgent`, `devOrigins` |
 
 Anything left `null` inherits from the layer below, down to the built-in defaults
@@ -324,6 +324,10 @@ The committed layer is the one your team shares. Put it in the repo you review:
 .purview/RUBRIC.md      # rubric refinements for this codebase
 .purview/CHAT.md        # chat-only instructions for this codebase
 ```
+
+`"generated": {"include": [...], "exclude": [...]}` there shares the generated-file
+patterns: read at the PR head with `.gitattributes`, they decide what your local lists leave
+open.
 
 With the `architecture` experiment on, `"architectureDocs": ["docs/architecture.md"]` in
 `.purview/config.json` names the docs an analysis holds the PR against; a list in the repo's

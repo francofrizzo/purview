@@ -951,10 +951,12 @@ export const TeamConfigSchema = z
     analysisEffort: AnalysisEffortSchema.optional(),
     /** The docs that hold the repo's architecture (the `architecture` experiment); a local list replaces them. */
     architectureDocs: z.array(z.string().min(1).max(200)).max(8).optional(),
+    /** Generated-file patterns the team shares; the local ones take precedence (generated.ts). */
+    generated: GeneratedPatternsSchema.optional(),
     /** See `migrateHarnessDefault`: a team pins Legacy by also writing 2 here. */
     agentsVersion: z.number().int().optional(),
   })
-  .transform(({ autoAnalyze, analysisAgent, chatAgent, analysisModel, chatModel, analysisEffort, architectureDocs, agentsVersion }) => {
+  .transform(({ autoAnalyze, analysisAgent, chatAgent, analysisModel, chatModel, analysisEffort, architectureDocs, generated, agentsVersion }) => {
     const lifted = migrateHarnessDefault({
       analysisAgent: analysisAgent ?? legacyAgentSelection(analysisModel, analysisEffort),
       chatAgent: chatAgent ?? legacyAgentSelection(chatModel),
@@ -967,6 +969,7 @@ export const TeamConfigSchema = z
       ...(analysis ? { analysisAgent: analysis } : {}),
       ...(chat ? { chatAgent: { harness: chat.harness, ...(chat.model ? { model: chat.model } : {}) } } : {}),
       ...(architectureDocs?.length ? { architectureDocs } : {}),
+      ...(generated && (generated.include.length || generated.exclude.length) ? { generated } : {}),
     };
   });
 export type TeamConfig = z.infer<typeof TeamConfigSchema>;

@@ -1527,6 +1527,7 @@ export const mockRepoConfigs: Record<string, RepoConfig> = {
         analysisAgent: { harness: "claude-shared", model: "opus" },
         chatAgent: { harness: "claude-shared", model: "haiku" },
         architectureDocs: ["docs/architecture.md", "docs/adr/"],
+        generated: { include: ["modules/**/README.md"], exclude: [".terraform.lock.hcl"] },
       },
       rubric: MOCK_COMMITTED_RUBRIC,
       chat: MOCK_COMMITTED_CHAT_INSTRUCTIONS,

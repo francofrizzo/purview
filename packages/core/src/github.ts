@@ -1483,10 +1483,11 @@ export function fetchRepoFile(
  * the read failed for any reason other than "there is none", so the caller
  * can tell "no signal" from "no answer" and try again later.
  */
-export function fetchGitattributes(key: PrKey, sha: string): { text: string | null; ok: boolean } {
+/** A file at `sha` (`.gitattributes` by default); `ok: false` only when the read failed, not when it is absent. */
+export function fetchGitattributes(key: PrKey, sha: string, filePath = ".gitattributes"): { text: string | null; ok: boolean } {
   try {
     const raw = JSON.parse(
-      gh(["api", ...hostArgs(key.host), `repos/${key.owner}/${key.repo}/contents/.gitattributes?ref=${encodeURIComponent(sha)}`]),
+      gh(["api", ...hostArgs(key.host), `repos/${key.owner}/${key.repo}/contents/${filePath}?ref=${encodeURIComponent(sha)}`]),
     ) as RawContents;
     if (!raw || raw.type === "dir" || typeof raw.content !== "string") return { text: null, ok: true };
     const text = raw.encoding && raw.encoding !== "base64" ? raw.content : Buffer.from(raw.content, "base64").toString("utf8");
@@ -1809,10 +1810,10 @@ export async function fetchRepoFileAsync(
   }
 }
 
-export async function fetchGitattributesAsync(key: PrKey, sha: string): Promise<{ text: string | null; ok: boolean }> {
+export async function fetchGitattributesAsync(key: PrKey, sha: string, filePath = ".gitattributes"): Promise<{ text: string | null; ok: boolean }> {
   try {
     const raw = JSON.parse(
-      await ghAsync(["api", ...hostArgs(key.host), `repos/${key.owner}/${key.repo}/contents/.gitattributes?ref=${encodeURIComponent(sha)}`]),
+      await ghAsync(["api", ...hostArgs(key.host), `repos/${key.owner}/${key.repo}/contents/${filePath}?ref=${encodeURIComponent(sha)}`]),
     ) as RawContents;
     if (!raw || raw.type === "dir" || typeof raw.content !== "string") return { text: null, ok: true };
     const text = raw.encoding && raw.encoding !== "base64" ? raw.content : Buffer.from(raw.content, "base64").toString("utf8");

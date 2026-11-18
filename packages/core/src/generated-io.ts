@@ -26,7 +26,20 @@ import {
   writeGeneratedFacts,
   writeRepoConfig,
 } from "./store.js";
-import type { FileDiff, GeneratedFile, State } from "./schemas.js";
+import { TeamConfigSchema, type FileDiff, type GeneratedFile, type State } from "./schemas.js";
+
+/** Where a repo commits its team config (see the server's team-config.ts). */
+const TEAM_CONFIG_PATH = ".purview/config.json";
+
+/** The committed `generated` lists, null when the file or the field is absent or malformed. */
+function teamPatterns(text: string | null): GeneratedFacts["team"] {
+  if (!text) return null;
+  try {
+    return TeamConfigSchema.safeParse(JSON.parse(text)).data?.generated ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The I/O half of generated-file detection (see generated.ts): reading the
@@ -109,6 +122,7 @@ export function gatherGeneratedFacts(
     gitattributes: null,
     markers: markersFromHunks(files),
     partial: false,
+    team: null,
   };
   if (opts.network === false || !headSha) {
     facts.partial = true;
@@ -117,8 +131,10 @@ export function gatherGeneratedFacts(
   const local = localRepoWith(key, headSha, root);
   if (local) {
     try {
-      const attrs = catFiles(local, headSha, [".gitattributes"]).get(".gitattributes");
+      const read = catFiles(local, headSha, [".gitattributes", TEAM_CONFIG_PATH]);
+      const attrs = read.get(".gitattributes");
       facts.gitattributes = attrs ? attrs.toString("utf8") : null;
+      facts.team = teamPatterns(read.get(TEAM_CONFIG_PATH)?.toString("utf8") ?? null);
       const candidates = markerCandidates(files, facts.gitattributes).map((f) => f.path);
       for (const [p, buf] of catFiles(local, headSha, candidates)) {
         const m = buf.length <= 2 * 1024 * 1024 ? markerIn(headLines(buf) ?? []) : undefined;
@@ -132,6 +148,9 @@ export function gatherGeneratedFacts(
   const attrs = fetchGitattributes(key, headSha);
   facts.gitattributes = attrs.text;
   if (!attrs.ok) facts.partial = true;
+  const team = fetchGitattributes(key, headSha, TEAM_CONFIG_PATH);
+  facts.team = teamPatterns(team.text);
+  if (!team.ok) facts.partial = true;
   const candidates = markerCandidates(files, facts.gitattributes).map((f) => f.path);
   if (candidates.length > MAX_MARKER_READS) facts.partial = true;
   const heads = fetchFileHeads(key, headSha, candidates.slice(0, MAX_MARKER_READS), MARKER_LINES);
@@ -182,7 +201,7 @@ export function reclassifyGenerated(
     return { state, generated: current(state), changed: false };
   }
   let facts = readGeneratedFacts(key, revision, root);
-  if (opts.fetch && (!facts || facts.partial)) {
+  if (opts.fetch && (!facts || facts.partial || facts.team === undefined)) {
     const headSha = filesJson.headSha ?? state.revisions.find((r) => r.revision === revision)?.headSha;
     facts = gatherGeneratedFacts(key, filesJson.files, headSha, root);
     writeGeneratedFacts(key, revision, facts, root);
@@ -302,6 +321,7 @@ export async function gatherGeneratedFactsAsync(
     gitattributes: null,
     markers: markersFromHunks(files),
     partial: false,
+    team: null,
   };
   if (opts.network === false || !headSha) {
     facts.partial = true;
@@ -310,8 +330,10 @@ export async function gatherGeneratedFactsAsync(
   const local = await localRepoWithAsync(key, headSha, root);
   if (local) {
     try {
-      const attrs = (await catFilesAsync(local, headSha, [".gitattributes"])).get(".gitattributes");
+      const read = await catFilesAsync(local, headSha, [".gitattributes", TEAM_CONFIG_PATH]);
+      const attrs = read.get(".gitattributes");
       facts.gitattributes = attrs ? attrs.toString("utf8") : null;
+      facts.team = teamPatterns(read.get(TEAM_CONFIG_PATH)?.toString("utf8") ?? null);
       const candidates = markerCandidates(files, facts.gitattributes).map((f) => f.path);
       for (const [p, buf] of await catFilesAsync(local, headSha, candidates)) {
         const m = buf.length <= 2 * 1024 * 1024 ? markerIn(headLines(buf) ?? []) : undefined;
@@ -325,6 +347,9 @@ export async function gatherGeneratedFactsAsync(
   const attrs = await fetchGitattributesAsync(key, headSha);
   facts.gitattributes = attrs.text;
   if (!attrs.ok) facts.partial = true;
+  const team = await fetchGitattributesAsync(key, headSha, TEAM_CONFIG_PATH);
+  facts.team = teamPatterns(team.text);
+  if (!team.ok) facts.partial = true;
   const candidates = markerCandidates(files, facts.gitattributes).map((f) => f.path);
   if (candidates.length > MAX_MARKER_READS) facts.partial = true;
   const heads = await fetchFileHeadsAsync(key, headSha, candidates.slice(0, MAX_MARKER_READS), MARKER_LINES);
@@ -351,7 +376,7 @@ export async function reclassifyGeneratedAsync(
     return { state, generated: current(state), changed: false };
   }
   let facts = readGeneratedFacts(key, revision, root);
-  if (opts.fetch && (!facts || facts.partial)) {
+  if (opts.fetch && (!facts || facts.partial || facts.team === undefined)) {
     const headSha = filesJson.headSha ?? state.revisions.find((r) => r.revision === revision)?.headSha;
     facts = await gatherGeneratedFactsAsync(key, filesJson.files, headSha, root);
     writeGeneratedFacts(key, revision, facts, root);

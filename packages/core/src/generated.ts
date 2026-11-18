@@ -17,6 +17,8 @@ import type {
  *
  *   repo          `generated.exclude` in repo.json un-marks (beats everything),
  *                 `generated.include` marks; an exact path beats a glob;
+ *   team          the same lists committed in `.purview/config.json` at the
+ *                 PR head, for whatever the local ones leave undecided;
  *   gitattributes the repo's root `.gitattributes` at the PR head:
  *                 `linguist-generated` / `linguist-vendored` mark,
  *                 `-linguist-generated` / `linguist-generated=false` un-mark;
@@ -206,6 +208,14 @@ export const GeneratedFactsSchema = z.object({
   markers: z.record(z.string(), z.string()).default({}),
   /** some read failed (not just "absent"): the next refresh reads again */
   partial: z.boolean().default(false),
+  /**
+   * `generated` from `.purview/config.json` at the head; null = none.
+   * Absent on facts read before it was: a fetching re-classify reads again.
+   */
+  team: z
+    .object({ include: z.array(z.string()).default([]), exclude: z.array(z.string()).default([]) })
+    .nullable()
+    .optional(),
 });
 export type GeneratedFacts = z.infer<typeof GeneratedFactsSchema>;
 
@@ -277,7 +287,7 @@ export function withGeneratedOverride(
 /** Each file's verdict; files absent from the map are not generated. */
 export function classifyGenerated(
   files: FileDiff[],
-  facts: Pick<GeneratedFacts, "gitattributes" | "markers">,
+  facts: Pick<GeneratedFacts, "gitattributes" | "markers" | "team">,
   patterns: GeneratedPatterns = { include: [], exclude: [] },
 ): Map<string, GeneratedInfo> {
   const rules = facts.gitattributes ? parseGitattributes(facts.gitattributes) : [];
@@ -285,7 +295,9 @@ export function classifyGenerated(
   for (const f of files) {
     if (f.binary) continue;
     const p = f.path;
-    const repo = repoVerdict(patterns, p);
+    // Local first: it overrides what the team committed, either way.
+    const local = repoVerdict(patterns, p);
+    const repo = local !== undefined ? local : facts.team ? repoVerdict(facts.team, p) : undefined;
     if (repo === false) continue;
     if (repo !== undefined) {
       out.set(p, { source: "repo", detail: repo });

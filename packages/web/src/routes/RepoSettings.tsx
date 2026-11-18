@@ -614,6 +614,8 @@ function ChatInstructionsSection({ config, save }: { config: RepoConfig; save: S
 function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) {
   const [flash, setFlash] = useFlash();
   const saved = config.local.generated ?? { include: [], exclude: [] };
+  // The team's lists in `.purview/config.json`: they decide what these leave open.
+  const team = (config.committed.config as { generated?: { include?: string[]; exclude?: string[] } } | null)?.generated;
   const savedInclude = saved.include.join("\n");
   const savedExclude = saved.exclude.join("\n");
   const [include, setInclude] = useState(savedInclude);
@@ -631,7 +633,7 @@ function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) 
     <Section
       id="generated"
       title="Generated files"
-      hint="Generated files and lockfiles go to one skip unit the analysis never reads. Lockfiles, generated-code paths and “Code generated … DO NOT EDIT” markers are detected on their own; these lists adjust that for this repo. One glob per line."
+      hint="Generated files and lockfiles go to one skip unit the analysis never reads. Lockfiles, generated-code paths and “Code generated … DO NOT EDIT” markers are detected on their own; these lists adjust that for this repo. One glob per line. A team can commit the same lists in .purview/config.json as generated.include and generated.exclude; these win over them."
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -643,6 +645,7 @@ function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) 
             onChange={setInclude}
             placeholder={"src/api/__generated__/**\n*.snap"}
           />
+          <CommittedPatterns patterns={team?.include} testId="committed-generated-include" />
         </div>
         <div>
           <PaneLabel>Never treat as generated</PaneLabel>
@@ -653,6 +656,7 @@ function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) 
             onChange={setExclude}
             placeholder={"gen/handwritten/**"}
           />
+          <CommittedPatterns patterns={team?.exclude} testId="committed-generated-exclude" />
         </div>
       </div>
       <p className="mt-1.5 text-2xs leading-4" style={{ color: "var(--fg-faint)" }}>
@@ -673,6 +677,22 @@ function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) 
         <SavedFlash shown={flash} error={save.error} />
       </div>
     </Section>
+  );
+}
+
+/** A list the team committed in `.purview/config.json`, under the local one it yields to. */
+function CommittedPatterns({ patterns, testId }: { patterns?: string[]; testId: string }) {
+  if (!patterns?.length) return null;
+  return (
+    <p className="mt-1 text-xs leading-[18px]" style={{ color: "var(--fg-muted)" }} data-testid={testId}>
+      Committed in <span className="font-mono">.purview/config.json</span>:{" "}
+      {patterns.map((g, i) => (
+        <span key={g}>
+          {i ? ", " : null}
+          <span className="font-mono">{g}</span>
+        </span>
+      ))}
+    </p>
   );
 }
 

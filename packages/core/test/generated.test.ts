@@ -82,6 +82,16 @@ describe("classification (pure)", () => {
     expect(v.get("schema/out.graphql")?.detail).toBe("schema/*.graphql linguist-generated");
   });
 
+  it("the team's committed patterns decide what the local ones leave open, and the local ones win", () => {
+    const facts = { gitattributes: null, markers: {}, team: { include: ["src/**"], exclude: ["pnpm-lock.yaml"] } };
+    const team = classifyGenerated(files, facts);
+    expect(team.get("src/app.ts")).toEqual({ source: "repo", detail: "src/**" });
+    expect(team.has("pnpm-lock.yaml")).toBe(false);
+    const local = classifyGenerated(files, facts, { include: ["pnpm-lock.yaml"], exclude: ["src/app.ts"] });
+    expect(local.has("src/app.ts")).toBe(false);
+    expect(local.get("pnpm-lock.yaml")).toEqual({ source: "repo", detail: "pnpm-lock.yaml" });
+  });
+
   it("an exact path beats a glob, in either direction", () => {
     expect(repoVerdict({ include: ["src/app.ts"], exclude: ["src/**"] }, "src/app.ts")).toBe("src/app.ts");
     expect(repoVerdict({ include: ["*.ts"], exclude: ["src/app.ts"] }, "src/app.ts")).toBe(false);
@@ -124,7 +134,7 @@ describe("classification (pure)", () => {
 /* ------------------------------------------------------------- lifecycle */
 
 const key: PrKey = { host: "github.com", owner: "acme", repo: "widgets", number: 7 };
-const remote = { headSha: "head1", diff: REV1, attrs: "schema/** linguist-generated\n" as string | null };
+const remote = { headSha: "head1", diff: REV1, attrs: "schema/** linguist-generated\n" as string | null, team: null as string | null };
 let root: string;
 let graphqlCalls = 0;
 
@@ -132,6 +142,7 @@ beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), "purview-generated-test-"));
   remote.headSha = "head1";
   remote.diff = REV1;
+  remote.team = null;
   graphqlCalls = 0;
   setGhRunner((args) => {
     if (args[0] !== "api") throw new Error(`unexpected gh ${args.join(" ")}`);
@@ -157,6 +168,10 @@ beforeEach(() => {
     if (endpoint.includes("/contents/.gitattributes")) {
       if (remote.attrs === null) throw new Error("gh: Not Found (HTTP 404)");
       return JSON.stringify({ type: "file", encoding: "base64", content: Buffer.from(remote.attrs).toString("base64") });
+    }
+    if (endpoint.includes("/contents/.purview/config.json")) {
+      if (remote.team === null) throw new Error("gh: Not Found (HTTP 404)");
+      return JSON.stringify({ type: "file", encoding: "base64", content: Buffer.from(remote.team).toString("base64") });
     }
     if (endpoint.includes("/compare/")) return JSON.stringify({ merge_base_commit: { sha: "mb1" } });
     if (/\/pulls\/\d+$/.test(endpoint))
@@ -266,6 +281,14 @@ describe("generated unit across the PR's life", () => {
     expect(() => setUnits(key, [{ unitId: "core", payload: { addHunks: hunksOf("pnpm-lock.yaml") } }], root)).toThrow(
       /belong to generated files/,
     );
+  });
+
+  it("reads the patterns the repo commits in .purview/config.json at the head", () => {
+    remote.team = JSON.stringify({ generated: { include: ["src/app.ts"], exclude: ["schema/**"] } });
+    lastState = initPr(key, root).state;
+    expect(pathsOf(lastState)).toContain("src/app.ts");
+    expect(pathsOf(lastState)).not.toContain("schema/out.graphql");
+    expect(readGeneratedFacts(key, 1, root)?.team).toEqual({ include: ["src/app.ts"], exclude: ["schema/**"] });
   });
 
   it("is rebuilt on a new revision; viewed state follows hunk ids; no husk", () => {
