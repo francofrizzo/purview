@@ -3204,11 +3204,12 @@ export function DiffPane({
           data-kind={kind}
           className="group/file box-border flex h-8 items-center gap-2 border-y px-3 font-mono text-xs"
           style={{
-            background: "var(--bg-raised)",
+            // What the file is (implementation, tests, docs, generated), in the
+            // change mix's colors: an edge, so the height stays the same, and
+            // a soft light from it over the start of the header.
+            background: `linear-gradient(90deg, color-mix(in srgb, ${CHANGE_LOOK[kind].color} 20%, transparent), transparent 220px), var(--bg-raised)`,
             borderColor: "var(--border)",
             color: "var(--fg)",
-            // What the file is (implementation, tests, docs, generated), in the
-            // change mix's colors: an edge, so the height stays the same.
             boxShadow: `inset 3px 0 0 ${CHANGE_LOOK[kind].color}`,
           }}
         >
