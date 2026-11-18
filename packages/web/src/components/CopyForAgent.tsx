@@ -338,7 +338,7 @@ export function CopyBundleControls({
 }
 
 /** Last resort when the clipboard API is unavailable: select it yourself. */
-function CopyFallback({ text, onClose }: { text: string; onClose: () => void }) {
+export function CopyFallback({ text, onClose }: { text: string; onClose: () => void }) {
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {

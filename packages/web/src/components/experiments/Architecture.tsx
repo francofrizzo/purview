@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type { Architecture as ArchitectureData, ArchitectureDeviation } from "../../api/types";
+import { architectureForAgent, deviationForAgent } from "../../lib/architectureForAgent";
 import { useExperiment } from "../../lib/experiments";
+import { CopyFallback, useCopyForAgent } from "../CopyForAgent";
 import { UnitNumber } from "../Chips";
 import { CopyPathButton } from "../DiffPane";
-import { IconCheck, IconComment, IconFile, IconUnit } from "../icons";
+import { IconBot, IconCheck, IconComment, IconFile, IconUnit } from "../icons";
 import { InlineMarkdown } from "../Markdown";
 import { SectionHead } from "../SectionHead";
 import { UiText } from "../UiText";
@@ -103,6 +105,14 @@ export function ArchitectureSection({
               <UiText>{`checked ${checked.length} ${checked.length === 1 ? "rule" : "rules"}`}</UiText>
             </button>
           ) : null}
+          {empty ? null : (
+            <CopyLink
+              text={() => architectureForAgent(architecture)}
+              label="copy for an agent"
+              tip={`Copy ${[deviations.length && "the deviations", decisions.length && "what is worth documenting"].filter(Boolean).join(" and ")} as a task for an agent`}
+              testId="architecture-copy-all"
+            />
+          )}
         </span>
       </SectionHead>
 
@@ -318,34 +328,77 @@ function DeviationRow({
         </span>
         <span className="hidden justify-center pt-1.5 sm:flex">{number !== undefined ? <UnitNumber number={number} /> : null}</span>
       </button>
-      {d.why || onComment ? (
-        <div className={`grid grid-cols-1 gap-x-2 ${COLS}`}>
-          <span className="hidden sm:block" />
-          <div className="flex items-start gap-3 px-2 pb-1 sm:col-span-2">
-            {d.why ? (
-              <span className="min-w-0 flex-1 text-xs leading-[18px]" style={{ color: "var(--fg-faint)" }} data-testid="architecture-why">
-                <InlineMarkdown text={d.why} />
-              </span>
-            ) : (
-              <span className="flex-1" />
-            )}
-            {onComment ? (
-              <button
-                type="button"
-                className="inline-flex flex-none items-center gap-1 text-2xs opacity-0 transition-opacity hover:!text-[var(--fg)] focus-visible:opacity-100 group-hover/arch:opacity-100"
-                style={{ color: "var(--fg-faint)" }}
-                data-testid="architecture-comment"
-                data-tip="A draft on this line, quoting the rule"
-                onClick={onComment}
-              >
-                <IconComment width={12} height={12} />
-                <UiText>Comment with the rule</UiText>
-              </button>
-            ) : null}
-          </div>
+      <div className={`grid grid-cols-1 gap-x-2 ${COLS}`}>
+        <span className="hidden sm:block" />
+        <div className="flex items-start gap-3 px-2 pb-1 sm:col-span-2">
+          {d.why ? (
+            <span className="min-w-0 flex-1 text-xs leading-[18px]" style={{ color: "var(--fg-faint)" }} data-testid="architecture-why">
+              <InlineMarkdown text={d.why} />
+            </span>
+          ) : (
+            <span className="flex-1" />
+          )}
+          {onComment ? (
+            <button
+              type="button"
+              className="inline-flex flex-none items-center gap-1 text-2xs opacity-0 transition-opacity hover:!text-[var(--fg)] focus-visible:opacity-100 group-hover/arch:opacity-100"
+              style={{ color: "var(--fg-faint)" }}
+              data-testid="architecture-comment"
+              data-tip="A draft on this line, quoting the rule"
+              onClick={onComment}
+            >
+              <IconComment width={12} height={12} />
+              <UiText>Comment with the rule</UiText>
+            </button>
+          ) : null}
+          <CopyLink
+            className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover/arch:opacity-100"
+            text={() => deviationForAgent(d)}
+            label="Copy for an agent"
+            tip="Copy the rule, the place and the code as a task for an agent"
+            testId="architecture-copy-deviation"
+          />
         </div>
-      ) : null}
+      </div>
     </li>
+  );
+}
+
+/** A faint text action that copies agent-facing markdown, and says so. */
+function CopyLink({
+  text,
+  label,
+  tip,
+  testId,
+  className = "",
+}: {
+  text: () => string;
+  label: string;
+  tip: string;
+  testId: string;
+  className?: string;
+}) {
+  const { state, copy, fallback, dismissFallback } = useCopyForAgent();
+  const copied = state === "copied";
+  return (
+    <>
+      <button
+        type="button"
+        className={`inline-flex flex-none items-center gap-1 text-2xs hover:!text-[var(--fg)] ${className} ${copied ? "!opacity-100" : ""}`}
+        style={{ color: copied ? "var(--ok)" : "var(--fg-faint)" }}
+        data-testid={testId}
+        data-copied={copied ? "1" : undefined}
+        data-tip={copied ? "Copied" : tip}
+        onClick={(e) => {
+          e.stopPropagation();
+          void copy(text());
+        }}
+      >
+        {copied ? <IconCheck width={12} height={12} /> : <IconBot width={12} height={12} />}
+        <UiText>{copied ? "Copied" : label}</UiText>
+      </button>
+      {fallback !== null ? <CopyFallback text={fallback} onClose={dismissFallback} /> : null}
+    </>
   );
 }
 

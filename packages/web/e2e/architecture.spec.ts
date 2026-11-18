@@ -142,3 +142,23 @@ test("a repo's committed architecture docs show in its settings, and a local lis
   await page.getByTestId("architecture-docs").fill("docs/rules.md");
   await expect(committed).toContainText("The list below replaces it.");
 });
+
+test("a deviation, or the whole view, copies as a task for an agent", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openOverview(page);
+  const row = page.getByTestId("architecture-deviation");
+  await row.hover();
+  await row.getByTestId("architecture-copy-deviation").click();
+  await expect(row.getByTestId("architecture-copy-deviation")).toHaveAttribute("data-copied", "1");
+  const one = await page.evaluate(() => navigator.clipboard.readText());
+  expect(one).toContain("### Reconciler queries the ledger table itself");
+  expect(one).toContain("`src/billing/reconcile.ts:114` may break this rule from `docs/architecture.md` (Persistence):");
+  expect(one).toContain("FROM charge_ledger");
+  expect(one).not.toContain("Worth documenting");
+
+  await page.getByTestId("architecture-copy-all").click();
+  const all = await page.evaluate(() => navigator.clipboard.readText());
+  expect(all).toContain("## Possible architecture deviations");
+  expect(all).toContain("## Worth documenting");
+  expect(all).toContain("**Jobs read the gateway in batches**");
+});
