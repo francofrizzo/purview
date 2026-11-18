@@ -221,3 +221,20 @@ test("the add slot closes on Escape", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("add-by-number-github.com/acme/billing")).toHaveCount(0);
 });
+
+test("a repo's blocks fold from their headings and stay folded", async ({ page }) => {
+  await home(page);
+  const waiting = page.getByTestId("needs-review-github.com/acme/billing");
+  const heading = waiting.getByTestId("pr-block-heading");
+  await expect(heading).toHaveAttribute("aria-expanded", "true");
+  await heading.click();
+  await expect(heading).toHaveAttribute("aria-expanded", "false");
+  await expect(waiting.getByTestId(`pr-row-${CHARGE}`)).toHaveCount(0);
+  // The other blocks keep their own fold.
+  await expect(page.getByTestId("mine-github.com/acme/billing").locator("[data-testid^=pr-row-]").first()).toBeVisible();
+
+  await page.reload();
+  await expect(heading).toHaveAttribute("aria-expanded", "false");
+  await heading.click();
+  await expect(waiting.getByTestId(`pr-row-${CHARGE}`)).toBeVisible();
+});

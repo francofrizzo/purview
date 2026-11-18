@@ -105,6 +105,8 @@ export interface Settings {
   compactRows: boolean;
   /** The home list's folded tag groups, as `repo|block|tag` (lib/prList.ts `tagFoldKey`). */
   foldedTagGroups: string[];
+  /** The home list's folded blocks (waiting on your review, your PRs, other PRs), as `repo|block`. */
+  foldedPrBlocks: string[];
 }
 
 export type RequestAgeDays = [number, number, number];
@@ -165,6 +167,7 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenBots: [],
   compactRows: false,
   foldedTagGroups: [],
+  foldedPrBlocks: [],
 };
 
 export function clampSidebarWidth(width: number): number {
@@ -258,6 +261,9 @@ function pickValid(raw: Record<string, unknown> | Partial<Settings>): Partial<Se
   if (typeof r.compactRows === "boolean") out.compactRows = r.compactRows;
   if (Array.isArray(r.foldedTagGroups)) {
     out.foldedTagGroups = [...new Set(r.foldedTagGroups.filter((k): k is string => typeof k === "string" && k !== ""))];
+  }
+  if (Array.isArray(r.foldedPrBlocks)) {
+    out.foldedPrBlocks = [...new Set(r.foldedPrBlocks.filter((k): k is string => typeof k === "string" && k !== ""))];
   }
   return out;
 }

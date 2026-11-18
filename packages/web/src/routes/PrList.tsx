@@ -736,6 +736,7 @@ function RepoSection({
       ) : null}
       {group.prs.length ? (
         <PrBlock
+          testId={`other-${group.key}`}
           label={labeled ? "Other PRs" : null}
           prs={group.prs}
           foldPrefix={`${group.key}|other`}
@@ -824,14 +825,22 @@ function PrBlock({
   const { settings, update } = useSettings();
   const groups = arrangeBlock(prs);
   const [repoKey, block] = foldPrefix.split("|");
+  // A labeled block folds under its label, remembered per repo and block.
+  const folded = Boolean(label) && settings.foldedPrBlocks.includes(foldPrefix);
+  const toggleBlock = () =>
+    update({
+      foldedPrBlocks: folded
+        ? settings.foldedPrBlocks.filter((k) => k !== foldPrefix)
+        : [...settings.foldedPrBlocks, foldPrefix],
+    });
   return (
-    <div data-testid={testId}>
+    <div data-testid={testId} data-folded={folded || undefined}>
       {label ? (
-        <GroupLabel color={color} count={prs.length}>
+        <GroupLabel color={color} count={prs.length} open={!folded} label={label} onToggle={toggleBlock}>
           <UiText>{label}</UiText>
         </GroupLabel>
       ) : null}
-      {groups.map((group, i) => {
+      {folded ? null : groups.map((group, i) => {
         const headed = Boolean(group.tag) || groups.length > 1;
         const foldKey = tagFoldKey(repoKey, block, group.tag);
         const open = !headed || !settings.foldedTagGroups.includes(foldKey);
@@ -1045,20 +1054,33 @@ function GroupLabel({
   children,
   count,
   color = "var(--fg-muted)",
+  open,
+  label,
+  onToggle,
 }: {
   children: React.ReactNode;
   count: number;
   color?: string;
+  open: boolean;
+  label: string;
+  onToggle: () => void;
 }) {
   return (
-    <div
-      className="flex items-baseline gap-1.5 border-y px-4 py-[7px] text-xs font-medium"
+    <button
+      type="button"
+      data-testid="pr-block-heading"
+      aria-expanded={open}
+      onClick={onToggle}
+      data-tip={`${open ? "Fold" : "Unfold"} ${label.toLowerCase()}`}
+      // Over the rule above it by a pixel: a folded block above leaves one rule, not two.
+      className="relative -mt-px flex w-full items-center gap-1.5 border-y px-4 py-[7px] text-left text-xs font-medium"
       style={{
         borderColor: "var(--border)",
         background: "var(--bg-inset)",
         color,
       }}
     >
+      <IconChevron open={open} width={10} height={10} className="flex-none" style={{ color: "var(--fg-faint)" }} />
       {children}
       <span
         className="text-2xs tabular-nums"
@@ -1066,7 +1088,7 @@ function GroupLabel({
       >
         {count}
       </span>
-    </div>
+    </button>
   );
 }
 
