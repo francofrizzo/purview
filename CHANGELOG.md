@@ -5,12 +5,11 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.18.1
 
-- **Committed generated-file patterns.** A repo's `.purview/config.json` can list `generated.include` and `generated.exclude` for everyone; the lists in its repo settings win over them.
-- **Folding PR blocks.** Click "Waiting on your review", "Your PRs" or "Other PRs" in a repo on the home list to fold it; it stays folded.
-- **File kind on file headers.** Each file header in the diff glows from its left edge in its kind's color: implementation, tests, docs or generated.
-- **File-kind icons.** Beside each file's status badge, in the diff, the Files tree and a unit's file list, an icon says its kind: code, flask, book or cog.
+- **File kinds in the diff.** File headers glow in their kind's color, and an icon beside the status badge names the kind.
+- **Folding PR blocks.** Click a block's heading on the home list to fold it.
+- **Shared generated-file patterns.** Put `generated.include` and `generated.exclude` in `.purview/config.json`; your repo settings win.
 
 ## 2026.11.13.2
 
