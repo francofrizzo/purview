@@ -3207,7 +3207,18 @@ export function DiffPane({
             // What the file is (implementation, tests, docs, generated), in the
             // change mix's colors: an edge, so the height stays the same, and
             // a soft light from it over the start of the header.
-            background: `linear-gradient(90deg, color-mix(in srgb, ${CHANGE_LOOK[kind].color} 20%, transparent), transparent 220px), var(--bg-raised)`,
+            // Eased, not linear: bright at the edge, faint by the time the
+            // name starts (contrast.ts holds the tint under it to 8%).
+            background: `linear-gradient(90deg, ${[
+              [26, 0],
+              [15, 10],
+              [8, 32],
+              [4, 70],
+              [1.5, 130],
+              [0, 220],
+            ]
+              .map(([pct, px]) => `color-mix(in srgb, ${CHANGE_LOOK[kind].color} ${pct}%, transparent) ${px}px`)
+              .join(", ")}), var(--bg-raised)`,
             borderColor: "var(--border)",
             color: "var(--fg)",
             boxShadow: `inset 3px 0 0 ${CHANGE_LOOK[kind].color}`,

@@ -170,10 +170,11 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     ...["gutter", "add-gutter"].map((g) => s(`line-warning-${g}`, "Diff rows", `warning mark in the ${g === "gutter" ? "context" : "add"} gutter`, "warn", 3.0, g === "gutter" ? ["bg"] : ["bg", "add-gutter"], "⚠", { kind: "swatch" })),
     s("gutter-moved-in", "Diff rows", "line number on a moved-in gutter", "fg-faint", 2.4, ["bg", "moved-add-gutter"], "509", mono),
     s("gutter-moved-out", "Diff rows", "line number on a moved-out gutter", "fg-faint", 2.4, ["bg", "moved-del-gutter"], "502", mono),
-    // A file header's light: its kind's color at 20% where the header starts (DiffPane).
+    // A file header's light: its kind's color fading from the edge (DiffPane);
+    // the name starts where it is down to 8%, the folder where it is under 4%.
     ...["kind-core", "kind-tests", "warn", "fg-faint"].flatMap((k) => [
-      s(`file-header-light-${k}`, "Diff rows", `file name under the ${k} light`, "fg", 4.5, ["bg-raised", `${k}@0.2`], "reconcile.ts", mono),
-      s(`file-header-light-dir-${k}`, "Diff rows", `file's folder under the ${k} light`, "fg-faint", 2.4, ["bg-raised", `${k}@0.2`], "src/billing", mono),
+      s(`file-header-light-${k}`, "Diff rows", `file name under the ${k} light`, "fg", 4.5, ["bg-raised", `${k}@0.08`], "reconcile.ts", mono),
+      s(`file-header-light-dir-${k}`, "Diff rows", `file's folder under the ${k} light`, "fg-faint", 2.4, ["bg-raised", `${k}@0.04`], "src/billing", mono),
     ]),
     s("moved-band-link", "Diff rows", "fold band \"go to\" and hint (fg-muted on the faded tint)", "fg-muted", 3.2, ["bg", "moved-add-bg"], "go to report.ts ←", mono),
     s("search-on-add", "Diff rows", "search match over an added line", "fg", 4.0, ["bg", "add-bg", "search-match"], "idempotencyKey", mono),
