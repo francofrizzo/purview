@@ -325,6 +325,10 @@ The committed layer is the one your team shares. Put it in the repo you review:
 .purview/CHAT.md        # chat-only instructions for this codebase
 ```
 
+With the `architecture` experiment on, `"architectureDocs": ["docs/architecture.md"]` in
+`.purview/config.json` names the docs an analysis holds the PR against; a list in the repo's
+local settings replaces it.
+
 It is read from your local checkout when one is configured, and otherwise fetched with
 `gh api repos/{owner}/{repo}/contents/.purview/...` at the PR's head sha. Either way the
 result is cached per revision (`revisions/<n>/team-config.json`), so it costs one read per

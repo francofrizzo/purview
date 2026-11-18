@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { ArchitectureSchema, loadState, repoKeyOf, repoKeyToString, setGhRunner, writeRepoConfig } from "@reviewer/core";
+import { ArchitectureSchema, loadState, repoKeyOf, repoKeyToString, setGhRunner, TeamConfigSchema, writeRepoConfig, writeTeamConfigCache } from "@reviewer/core";
 import { analysisPrompt, analysisSystemPrompt } from "../src/analysis.js";
 import { reviewRunPrompt, reviewSystemPrompt } from "../src/agent/review-tools/prompts.js";
 import { createReviewOperations } from "../src/agent/review-tools/operations.js";
@@ -99,6 +99,20 @@ describe("with the experiment on", () => {
     expect(told).not.toContain("Look for the repo's documented architecture");
     // Nothing to check quotes in: left out.
     expect(analysisPrompt(key, root, { incremental: false })).toContain("there is no checkout to check rule quotes against");
+  });
+
+  it("takes the docs the repo commits in .purview/config.json, and the repo setting replaces them", () => {
+    const state = loadState(key, root);
+    const ref = state.revisions.find((r) => r.revision === state.currentRevision)?.headSha ?? "";
+    // What loadCommittedConfig leaves for the prompt, read before it is built.
+    writeTeamConfigCache(key, state.currentRevision, {
+      ref, fetchedAt: new Date().toISOString(), source: "checkout", present: true,
+      config: TeamConfigSchema.parse({ architectureDocs: ["docs/architecture.md", "docs/database.md"] }),
+      rubric: null, chatInstructions: null,
+    }, root);
+    expect(analysisPrompt(key, root, { incremental: false, checkout: checkoutOf() })).toContain("documented in `docs/architecture.md`, `docs/database.md` (its .purview/config.json): read those");
+    writeRepoConfig(repoKeyOf(key), { architectureDocs: ["docs/adr"] }, root);
+    expect(analysisPrompt(key, root, { incremental: false, checkout: checkoutOf() })).toContain("documented in `docs/adr` (its repo settings)");
   });
 
   it("a refresh redraws a view the PR has, and does not search again for one it has not", async () => {

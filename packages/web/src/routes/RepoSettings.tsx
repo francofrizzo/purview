@@ -685,6 +685,8 @@ function GeneratedSection({ config, save }: { config: RepoConfig; save: Save }) 
  */
 function ArchitectureDocsSection({ config, save }: { config: RepoConfig; save: Save }) {
   const [flash, setFlash] = useFlash();
+  // The team's list in `.purview/config.json`; a list saved here replaces it.
+  const committed = (config.committed.config as { architectureDocs?: string[] } | null)?.architectureDocs ?? [];
   const saved = (config.local.architectureDocs ?? []).join("\n");
   const [text, setText] = useState(saved);
   useEffect(() => setText(saved), [saved]);
@@ -694,14 +696,26 @@ function ArchitectureDocsSection({ config, save }: { config: RepoConfig; save: S
     <Section
       id="architecture"
       title="Architecture docs"
-      hint="The docs an analysis holds this repo's PRs against, one repo path per line. Empty, it looks for them: ARCHITECTURE.md, docs/architecture*, docs/adr/, the rule sections of AGENTS.md or CLAUDE.md, or the docs the rubric names."
+      hint="The docs an analysis holds this repo's PRs against, one repo path per line. Empty, it takes the list committed in .purview/config.json as architectureDocs, or else looks for them: ARCHITECTURE.md, docs/architecture*, docs/adr/, the rule sections of AGENTS.md or CLAUDE.md, or the docs the rubric names."
     >
+      {committed.length ? (
+        <p className="mt-1 text-xs leading-[18px]" style={{ color: "var(--fg-muted)" }} data-testid="committed-architecture-docs">
+          Committed in <span className="font-mono">.purview/config.json</span>:{" "}
+          {committed.map((d, i) => (
+            <span key={d}>
+              {i ? ", " : null}
+              <span className="font-mono">{d}</span>
+            </span>
+          ))}
+          . {next.length ? "The list below replaces it." : "A list saved below replaces it."}
+        </p>
+      ) : null}
       <Autosize
         value={text}
         rows={3}
         testId="architecture-docs"
         onChange={setText}
-        placeholder={"docs/ARCHITECTURE.md\ndocs/adr/"}
+        placeholder={committed.length ? committed.join("\n") : "docs/ARCHITECTURE.md\ndocs/adr/"}
       />
       <div className="mt-2 flex items-center gap-2">
         <button

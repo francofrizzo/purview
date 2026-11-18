@@ -132,3 +132,13 @@ test("the repo's architecture docs are a repo setting only while the experiment 
   await expect(page.getByTestId("architecture-docs-save")).toBeDisabled();
   await expect(page.getByTestId("architecture-docs")).toHaveValue("docs/architecture.md\ndocs/adr/");
 });
+
+test("a repo's committed architecture docs show in its settings, and a local list replaces them", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("reviewer.mockExperiments", "architecture"));
+  await page.goto("/repo/git.acme.dev/infra/terraform-modules/settings");
+  const committed = page.getByTestId("committed-architecture-docs");
+  await expect(committed).toContainText("docs/architecture.md, docs/adr/");
+  await expect(committed).toContainText("A list saved below replaces it.");
+  await page.getByTestId("architecture-docs").fill("docs/rules.md");
+  await expect(committed).toContainText("The list below replaces it.");
+});
