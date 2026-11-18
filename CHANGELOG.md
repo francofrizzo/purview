@@ -9,7 +9,8 @@ app, not for git: say what changed in the review, not which file moved.
 
 - **Committed generated-file patterns.** A repo's `.purview/config.json` can list `generated.include` and `generated.exclude` for everyone; the lists in its repo settings win over them.
 - **Folding PR blocks.** Click "Waiting on your review", "Your PRs" or "Other PRs" in a repo on the home list to fold it; it stays folded.
-- **File kind on file headers.** Each file header in the diff has a left edge in its kind's color from the change mix: implementation, tests, docs or generated.
+- **File kind on file headers.** Each file header in the diff glows from its left edge in its kind's color: implementation, tests, docs or generated.
+- **File-kind icons.** Beside each file's status badge, in the diff, the Files tree and a unit's file list, an icon says its kind: code, flask, book or cog.
 
 ## 2026.11.13.2
 

@@ -115,7 +115,8 @@ import {
   SyncResultPanel,
 } from "../components/Panels";
 import { reviewProgressByAttention, reviewProgressByKind } from "../lib/reviewProgress";
-import type { ChangeKind } from "../lib/changeMix";
+import { fileChangeKind, type ChangeKind } from "../lib/changeMix";
+import { FileKindIcon } from "../components/ChangeMix";
 import { ReviewProgressBar } from "../components/ReviewProgressBar";
 import { useUnsavedDrafts } from "../lib/unsavedDrafts";
 import { Notice, NoticeStack, OfflineNotice } from "../components/Notices";
@@ -2291,6 +2292,7 @@ export function PrView() {
               }`}
             >
               <FileStatusBadge status={selectedFile?.status} />
+              {selectedFile ? <FileKindIcon kind={fileChangeKind(selectedFile)} /> : null}
               <MiddleTruncate text={selectedPath} tail={20} />
               <CopyPathButton path={selectedPath} />
               {selectedFile?.generated ? <GeneratedTag generated={selectedFile.generated} /> : null}

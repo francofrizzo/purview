@@ -12,6 +12,8 @@ import {
   IconSparkles as TablerSparkles,
   IconTag as TablerTag,
   IconCode as TablerCode,
+  IconFlask,
+  IconBook,
   IconStack2,
   IconBook2,
   IconLayoutSidebarRight,
@@ -212,6 +214,11 @@ export const IconArchive = ({ out, ...p }: P & { out?: boolean }) =>
 /** Lightning bolt — the "fast" effort badge. */
 export const IconBolt = wrap(TablerBolt);
 export const IconHeart = wrap(TablerHeartFilled);
+
+/** A flask — test files (the change mix's "tests"). */
+export const IconTests = wrap(IconFlask);
+/** A book — documentation files. */
+export const IconDocs = wrap(IconBook);
 
 /** A cog with a play mark — machine output: the generated-files & lockfiles unit. */
 export const IconGenerated = wrap(IconSettingsAutomation);

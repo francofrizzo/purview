@@ -170,6 +170,12 @@ export function contrastSurfaces(syntax: SyntaxColors = {}): Surface[] {
     ...["gutter", "add-gutter"].map((g) => s(`line-warning-${g}`, "Diff rows", `warning mark in the ${g === "gutter" ? "context" : "add"} gutter`, "warn", 3.0, g === "gutter" ? ["bg"] : ["bg", "add-gutter"], "⚠", { kind: "swatch" })),
     s("gutter-moved-in", "Diff rows", "line number on a moved-in gutter", "fg-faint", 2.4, ["bg", "moved-add-gutter"], "509", mono),
     s("gutter-moved-out", "Diff rows", "line number on a moved-out gutter", "fg-faint", 2.4, ["bg", "moved-del-gutter"], "502", mono),
+    // A file's kind icon (ChangeMix FileKindIcon), on the file header and in the sidebar.
+    ...["kind-core", "kind-tests", "warn", "fg-faint"].flatMap((k) =>
+      ["bg-raised", "bg"].map((bg) =>
+        s(`file-kind-icon-${k}-${bg}`, "Diff rows", `${k} file-kind icon on ${bg}`, k, k === "fg-faint" ? 2.4 : 3.0, [bg], "◆", { kind: "swatch" }),
+      ),
+    ),
     // A file header's light: its kind's color fading from the edge (DiffPane);
     // the name starts where it is down to 8%, the folder where it is under 4%.
     ...["kind-core", "kind-tests", "warn", "fg-faint"].flatMap((k) => [

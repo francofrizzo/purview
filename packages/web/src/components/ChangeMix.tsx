@@ -1,21 +1,33 @@
-import { useState } from "react";
+import { useState, type ComponentType } from "react";
 import { createPortal } from "react-dom";
 import type { FileEntry } from "../api/types";
 import { changeMix, formatShare, type ChangeKind, type ChangeMix as Mix } from "../lib/changeMix";
 import { LINE_COUNTS, useSettings, type LineCounts } from "../lib/settings";
 import { DiffSizeStat } from "./Chips";
-import { IconChevron } from "./icons";
+import { IconChevron, IconCode, IconDocs, IconGenerated, IconTests } from "./icons";
 import { UiText } from "./UiText";
 
 /** `short` is for the unit's one line, where "documentation" alone would wrap it. */
-export const CHANGE_LOOK: Record<ChangeKind, { label: string; short: string; color: string }> = {
-  implementation: { label: "Implementation", short: "implementation", color: "var(--kind-core)" },
-  tests: { label: "Tests", short: "tests", color: "var(--kind-tests)" },
+type KindIcon = ComponentType<{ width?: number; height?: number; className?: string; style?: React.CSSProperties }>;
+
+export const CHANGE_LOOK: Record<ChangeKind, { label: string; short: string; color: string; Icon: KindIcon }> = {
+  implementation: { label: "Implementation", short: "implementation", color: "var(--kind-core)", Icon: IconCode },
+  tests: { label: "Tests", short: "tests", color: "var(--kind-tests)", Icon: IconTests },
   // Yellow, not the docs chip's grey: two greys side by side in a thin bar
   // read as one. The theme's yellow, which turns orange where yellow is faint.
-  docs: { label: "Documentation", short: "docs", color: "var(--warn)" },
-  generated: { label: "Generated", short: "generated", color: "var(--fg-faint)" },
+  docs: { label: "Documentation", short: "docs", color: "var(--warn)", Icon: IconDocs },
+  generated: { label: "Generated", short: "generated", color: "var(--fg-faint)", Icon: IconGenerated },
 };
+
+/** What a file is, as an icon in its kind's color, beside its status badge. */
+export function FileKindIcon({ kind, size = 12 }: { kind: ChangeKind; size?: number }) {
+  const { label, color, Icon } = CHANGE_LOOK[kind];
+  return (
+    <span className="inline-flex flex-none self-center" style={{ color }} data-tip={label} aria-label={label} data-kind-icon={kind}>
+      <Icon width={size} height={size} />
+    </span>
+  );
+}
 
 const CARD_WIDTH = 248;
 
@@ -103,7 +115,7 @@ function ChangeTable({
   counted?: ReadonlySet<ChangeKind>;
   expand?: { open: ReadonlySet<ChangeKind>; toggle: (kind: ChangeKind) => void; onOpenFile?: (path: string) => void };
 }) {
-  const dot = (kind: ChangeKind) => <span className="h-2 w-2 flex-none rounded-full" style={{ background: CHANGE_LOOK[kind].color }} />;
+  const dot = (kind: ChangeKind) => <FileKindIcon kind={kind} />;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-baseline gap-x-2 gap-y-1">
       {mix.rows.map((r) => {

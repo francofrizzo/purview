@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import type { ChatRef, FileEntry, FileGenerated, PrDetail } from "../api/types";
 import { QuoteButton } from "./ChatPanel";
 import { FileStatusBadge } from "./Chips";
+import { FileKindIcon } from "./ChangeMix";
+import { fileChangeKind } from "../lib/changeMix";
 import { GeneratedTag } from "./Generated";
 import { IconChevron, IconFile } from "./icons";
 import { MiddleTruncate } from "./Truncate";
@@ -155,6 +157,7 @@ export function FileTree({
             ) : (
               <IconFile width={10} height={10} style={{ opacity: generated ? 0.4 : 0.6, flex: "none" }} />
             )}
+            <FileKindIcon kind={fileChangeKind(kid.file)} size={11} />
             <MiddleTruncate text={kid.name} tail={13} tip={fileTip(kid.file.path, noteFor(detail.state.fileNotes, kid.file.path))} />
             {generated ? <GeneratedTag generated={generated} /> : null}
             {matchCounts?.get(kid.file.path) ? (

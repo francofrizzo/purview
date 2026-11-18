@@ -31,4 +31,6 @@ test("a file header carries its file's kind, in the change mix's colors", async 
   await expect(page.getByTestId("file-header-src/container.ts")).toHaveAttribute("data-kind", "implementation");
   await openUnit(page, UNITS.retry);
   await expect(page.getByTestId("file-header-test/billing/charge.test.ts")).toHaveAttribute("data-kind", "tests");
+  // Its icon too, beside the status badge.
+  await expect(page.getByTestId("file-header-test/billing/charge.test.ts").locator("[data-kind-icon=tests]")).toBeVisible();
 });

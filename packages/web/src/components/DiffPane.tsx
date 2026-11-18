@@ -72,8 +72,8 @@ import { useTokensForHunks } from "../lib/useHunkTokens";
 import { useSettings, type DiffViewMode } from "../lib/settings";
 import { shikiThemeFor } from "../lib/themes";
 import { attentionColor, ChangedBadge, FileStatusBadge } from "./Chips";
-import { CHANGE_LOOK } from "./ChangeMix";
-import { fileChangeKind } from "../lib/changeMix";
+import { CHANGE_LOOK, FileKindIcon } from "./ChangeMix";
+import { fileChangeKind, type ChangeKind } from "../lib/changeMix";
 import { QuoteButton } from "./ChatPanel";
 import {
   COMMENT_COL_WIDTH,
@@ -3257,7 +3257,7 @@ export function DiffPane({
             ) : null}
             {/* The name is what the eye looks for; the folder only places it.
                 New files read green, deleted ones red, as on the guide's list. */}
-            <FileName path={row.path} oldPath={row.file.oldPath} status={row.file.status} done={rollup?.viewed === true} />
+            <FileName path={row.path} oldPath={row.file.oldPath} status={row.file.status} kind={kind} done={rollup?.viewed === true} />
             <span className="hidden flex-none group-hover/file:inline-flex">
               <CopyPathButton path={row.path} />
             </span>
@@ -3881,11 +3881,13 @@ function FileName({
   path,
   oldPath,
   status,
+  kind,
   done,
 }: {
   path: string;
   oldPath?: string;
   status?: FileEntry["status"];
+  kind?: ChangeKind;
   done?: boolean;
 }) {
   const slash = path.lastIndexOf("/");
@@ -3896,6 +3898,7 @@ function FileName({
   return (
     <span className="flex min-w-0 items-baseline gap-2" data-tip={path}>
       <FileStatusBadge status={status} tip={status === "renamed" && oldPath ? `Renamed from ${oldPath}` : undefined} />
+      {kind ? <FileKindIcon kind={kind} /> : null}
       <span
         className="flex-none font-medium"
         style={{ color, textDecoration: status === "removed" ? "line-through" : undefined }}

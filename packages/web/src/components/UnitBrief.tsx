@@ -3,11 +3,11 @@ import type { FileEntry, HeartSegment, Hunk, PrDetail, ReviewUnit } from "../api
 import { isGeneratedUnit } from "../api/types";
 import { orderUnitHunks, shownFindings, skippedIds } from "../lib/diffModel";
 import { changelogView } from "../lib/changelog";
-import { changeMix, formatShare } from "../lib/changeMix";
+import { changeMix, fileChangeKind, formatShare } from "../lib/changeMix";
 import { useSettings, type UnitDetail } from "../lib/settings";
 import { noteFor } from "../lib/shape";
 import { heartOf, heartSegments, hunkIdsOf } from "../lib/units";
-import { CHANGE_LOOK, ChangeBar } from "./ChangeMix";
+import { CHANGE_LOOK, ChangeBar, FileKindIcon } from "./ChangeMix";
 import { AttentionIcon, FileStatusBadge } from "./Chips";
 import { FindingList } from "./Findings";
 import { InlineMarkdown } from "./Markdown";
@@ -105,6 +105,7 @@ export function UnitFileList({
             >
               <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
                 <FileStatusBadge status={f.status} />
+                <FileKindIcon kind={f.generated ? "generated" : fileChangeKind({ path: f.path })} size={11} />
                 {/* The name gives way last: the folder truncates first, then the
                     name, so neither runs into the counts. */}
                 <span
