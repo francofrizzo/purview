@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Architecture as ArchitectureData, ArchitectureDeviation } from "../../api/types";
 import { architectureForAgent, deviationForAgent } from "../../lib/architectureForAgent";
 import { useExperiment } from "../../lib/experiments";
 import { CopyFallback, useCopyForAgent } from "../CopyForAgent";
 import { UnitNumber } from "../Chips";
 import { CopyPathButton } from "../DiffPane";
+import { FloatingPanel } from "../FloatingPanel";
 import { IconBot, IconCheck, IconComment, IconFile, IconUnit } from "../icons";
 import { InlineMarkdown } from "../Markdown";
 import { SectionHead } from "../SectionHead";
@@ -23,6 +24,75 @@ function DocName({ path }: { path: string }) {
         {dir ? <span style={{ color: "var(--fg-faint)" }}>{dir}</span> : null}
         {name}
       </span>
+    </span>
+  );
+}
+
+/**
+ * The docs read, as a count: the paths in a panel that stays while the
+ * pointer is on it, a doc the PR changes opening in Files. A press opens it
+ * too, for touch and the keyboard.
+ */
+function SourcesButton({ sources, paths, onOpenFile }: { sources: string[]; paths: Set<string>; onOpenFile: (path: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const leaving = useRef<number | null>(null);
+  const close = useCallback(() => setOpen(false), []);
+  const stay = () => {
+    if (leaving.current !== null) window.clearTimeout(leaving.current);
+    leaving.current = null;
+  };
+  const leave = () => {
+    stay();
+    leaving.current = window.setTimeout(close, 160);
+  };
+  return (
+    <span ref={anchorRef} className="inline-flex" onMouseLeave={leave}>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 transition-colors hover:text-[var(--fg)]"
+        style={{ color: open ? "var(--fg)" : "var(--fg-muted)" }}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        data-testid="architecture-sources"
+        onMouseEnter={() => {
+          stay();
+          setOpen(true);
+        }}
+        onClick={() => setOpen(true)}
+      >
+        <IconFile width={11} height={11} />
+        <UiText>{`${sources.length} ${sources.length === 1 ? "source" : "sources"}`}</UiText>
+      </button>
+      {open ? (
+        <FloatingPanel anchorRef={anchorRef} onClose={close} label="Architecture sources" className="text-2xs">
+          <ul className="flex max-w-[32rem] flex-col gap-1 p-2" data-testid="architecture-sources-panel" onMouseEnter={stay} onMouseLeave={leave}>
+            {sources.map((src) => (
+              <li key={src} className="min-w-0 truncate">
+                {paths.has(src) ? (
+                  <button
+                    type="button"
+                    className="transition-colors hover:text-[var(--fg)]"
+                    style={{ color: "var(--fg-muted)" }}
+                    data-testid="architecture-source"
+                    data-tip="Open in Files: this PR changes it"
+                    onClick={() => {
+                      close();
+                      onOpenFile(src);
+                    }}
+                  >
+                    <DocName path={src} />
+                  </button>
+                ) : (
+                  <span style={{ color: "var(--fg-muted)" }} data-testid="architecture-source" data-tip="Read at the PR's head; this PR does not change it">
+                    <DocName path={src} />
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </FloatingPanel>
+      ) : null}
     </span>
   );
 }
@@ -73,25 +143,7 @@ export function ArchitectureSection({
     <section data-testid="overview-architecture" data-section="architecture">
       <SectionHead title="Architecture">
         <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-2xs">
-          {sources.map((src) =>
-            paths.has(src) ? (
-              <button
-                key={src}
-                type="button"
-                className="transition-colors hover:text-[var(--fg)]"
-                style={{ color: "var(--fg-muted)" }}
-                data-testid="architecture-source"
-                data-tip="Open in Files: this PR changes it"
-                onClick={() => onOpenFile(src)}
-              >
-                <DocName path={src} />
-              </button>
-            ) : (
-              <span key={src} style={{ color: "var(--fg-muted)" }} data-testid="architecture-source" data-tip={`${src}, read at the PR's head; this PR does not change it`}>
-                <DocName path={src} />
-              </span>
-            ),
-          )}
+          {sources.length ? <SourcesButton sources={sources} paths={paths} onOpenFile={onOpenFile} /> : null}
           {checked.length && !empty ? (
             <button
               type="button"

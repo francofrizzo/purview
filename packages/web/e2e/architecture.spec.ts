@@ -56,7 +56,11 @@ test("a deviation quotes the rule beside the code and opens its unit at the line
 test("the sources and the rules checked sit in the header; a doc the PR changes opens in Files", async ({ page }) => {
   await openOverview(page);
   const section = page.getByTestId("overview-architecture");
-  const sources = section.getByTestId("architecture-source");
+  // A count; the paths on hover.
+  await expect(section.getByTestId("architecture-sources")).toHaveText("2 sources");
+  await expect(page.getByTestId("architecture-source")).toHaveCount(0);
+  await section.getByTestId("architecture-sources").hover();
+  const sources = page.getByTestId("architecture-sources-panel").getByTestId("architecture-source");
   await expect(sources).toHaveText(["docs/architecture.md", "docs/billing.md"]);
   // Not in the PR: a path, not a button.
   await expect(sources.first()).toHaveAttribute("data-tip", /does not change it/);
@@ -71,6 +75,7 @@ test("the sources and the rules checked sit in the header; a doc the PR changes 
   await toggle.click();
   await expect(section.getByTestId("architecture-checked")).toHaveCount(0);
 
+  await section.getByTestId("architecture-sources").hover();
   await sources.getByText("docs/billing.md").click();
   await expect(page.getByTestId("overview")).toHaveCount(0);
   await expect(page.locator('[data-testid^="hunk-header-a1b2c3d4e5f60009"]')).toBeVisible();
@@ -114,7 +119,7 @@ test("a PR that follows its docs says so, with the sources in the header and the
   await expect(section.getByTestId("architecture-none")).toHaveText("Follows the documented architecture.");
   await expect(section.getByTestId("architecture-deviation")).toHaveCount(0);
   await expect(section.getByTestId("architecture-decisions")).toHaveCount(0);
-  await expect(section.getByTestId("architecture-source")).toHaveCount(2);
+  await expect(section.getByTestId("architecture-sources")).toHaveText("2 sources");
   await expect(section.getByTestId("architecture-checked-toggle")).toHaveCount(0);
   await expect(section.getByTestId("architecture-checked-rule")).toHaveCount(4);
 });
