@@ -38,3 +38,18 @@ test("a warning marks the line it cites in the gutter, with its text on hover", 
   await expect(mark).toHaveCount(1);
   await expect(mark).toHaveAttribute("data-tip", /refundCharge\(\) still keys off the raw orderId/);
 });
+
+test("a finding copies as a task for an agent", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openPr(page);
+  await openUnit(page, UNITS.charge);
+  await page.getByTestId("findings-toggle").click();
+  const finding = page.getByTestId("unit-finding").first();
+  await finding.hover();
+  await finding.getByTestId("finding-copy").click();
+  await expect(finding.getByTestId("finding-copy")).toHaveAttribute("data-copied", "1");
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  expect(text).toContain("Check it: fix it if it holds");
+  expect(text).toContain("Where: ");
+  expect(text).toContain("src/billing/ledger.ts:17");
+});

@@ -5,6 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
+## Unreleased
+
+- **Copy a finding for an agent.** Hover a warning in a unit's findings and click the bot icon to copy it as a task.
+
 ## 2026.11.18.1
 
 - **File kinds in the diff.** File headers glow in their kind's color, and an icon beside the status badge names the kind.

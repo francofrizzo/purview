@@ -2,11 +2,11 @@ import { useCallback, useRef, useState } from "react";
 import type { Architecture as ArchitectureData, ArchitectureDeviation } from "../../api/types";
 import { architectureForAgent, deviationForAgent } from "../../lib/architectureForAgent";
 import { useExperiment } from "../../lib/experiments";
-import { CopyFallback, useCopyForAgent } from "../CopyForAgent";
+import { CopyLink } from "../CopyForAgent";
 import { UnitNumber } from "../Chips";
 import { CopyPathButton } from "../DiffPane";
 import { FloatingPanel } from "../FloatingPanel";
-import { IconBot, IconCheck, IconComment, IconFile, IconUnit } from "../icons";
+import { IconCheck, IconComment, IconFile, IconUnit } from "../icons";
 import { InlineMarkdown } from "../Markdown";
 import { SectionHead } from "../SectionHead";
 import { UiText } from "../UiText";
@@ -413,44 +413,6 @@ function DeviationRow({
         </div>
       </div>
     </li>
-  );
-}
-
-/** A faint text action that copies agent-facing markdown, and says so. */
-function CopyLink({
-  text,
-  label,
-  tip,
-  testId,
-  className = "",
-}: {
-  text: () => string;
-  label: string;
-  tip: string;
-  testId: string;
-  className?: string;
-}) {
-  const { state, copy, fallback, dismissFallback } = useCopyForAgent();
-  const copied = state === "copied";
-  return (
-    <>
-      <button
-        type="button"
-        className={`inline-flex flex-none items-center gap-1 text-2xs hover:!text-[var(--fg)] ${className} ${copied ? "!opacity-100" : ""}`}
-        style={{ color: copied ? "var(--ok)" : "var(--fg-faint)" }}
-        data-testid={testId}
-        data-copied={copied ? "1" : undefined}
-        data-tip={copied ? "Copied" : tip}
-        onClick={(e) => {
-          e.stopPropagation();
-          void copy(text());
-        }}
-      >
-        {copied ? <IconCheck width={12} height={12} /> : <IconBot width={12} height={12} />}
-        <UiText>{copied ? "Copied" : label}</UiText>
-      </button>
-      {fallback !== null ? <CopyFallback text={fallback} onClose={dismissFallback} /> : null}
-    </>
   );
 }
 

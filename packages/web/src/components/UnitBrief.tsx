@@ -277,7 +277,7 @@ export function UnitBrief({
             <UnitFileList detail={detail} unit={unit} onJump={onJumpHunk} />
           </div>
         ) : null}
-        {open === "findings" ? <FindingList findings={unit.findings ?? []} /> : null}
+        {open === "findings" ? <FindingList findings={unit.findings ?? []} unitTitle={unit.title} /> : null}
       </div>
 
       {/* The last row: the unit's history on the left, the unit's two

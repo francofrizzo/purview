@@ -2,6 +2,8 @@ import { useContext } from "react";
 import type { Finding } from "../api/types";
 import { evidenceParts } from "../lib/codeLinks";
 import { shownFindings } from "../lib/diffModel";
+import { findingForAgent } from "../lib/findingForAgent";
+import { CopyLink } from "./CopyForAgent";
 import { IconWarning } from "./icons";
 import { CodeLinkContext, InlineMarkdown } from "./Markdown";
 
@@ -13,12 +15,12 @@ import { CodeLinkContext, InlineMarkdown } from "./Markdown";
  * warnings show (see shownFindings).
  */
 
-/** The unit's warnings, each with where it was verified. */
-export function FindingList({ findings }: { findings: Finding[] }) {
+/** The unit's warnings, each with where it was verified; on hover, a copy for an agent. */
+export function FindingList({ findings, unitTitle }: { findings: Finding[]; unitTitle: string }) {
   return (
     <ul className="space-y-1.5" data-testid="unit-findings">
       {shownFindings(findings).map((f, i) => (
-        <li key={`${i}-${f.evidence}`} className="flex items-start gap-1.5 text-2xs leading-4">
+        <li key={`${i}-${f.evidence}`} className="group/finding flex items-start gap-1.5 text-2xs leading-4" data-testid="unit-finding">
           <span className="flex-none pt-[3px]" style={{ color: "var(--warn)" }} data-tip="warning" aria-label="warning">
             <IconWarning width={10} height={10} />
           </span>
@@ -28,6 +30,13 @@ export function FindingList({ findings }: { findings: Finding[] }) {
             </span>
             <Evidence text={f.evidence} />
           </span>
+          <CopyLink
+            text={() => findingForAgent(f, unitTitle)}
+            label=""
+            tip="Copy as a task for an agent"
+            testId="finding-copy"
+            className="ml-auto opacity-0 transition-opacity focus-visible:opacity-100 group-hover/finding:opacity-100"
+          />
         </li>
       ))}
     </ul>

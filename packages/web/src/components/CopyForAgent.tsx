@@ -5,7 +5,7 @@ import {
   type DiffContext,
   type ExportableComment,
 } from "../lib/agentExport";
-import { IconCheck, IconChevron, IconClose, IconCopy } from "./icons";
+import { IconBot, IconCheck, IconChevron, IconClose, IconCopy } from "./icons";
 import { OverflowMenu } from "./OverflowMenu";
 import { useSettings } from "../lib/settings";
 import { UiText } from "./UiText";
@@ -377,5 +377,44 @@ export function CopyFallback({ text, onClose }: { text: string; onClose: () => v
         />
       </div>
     </div>
+  );
+}
+
+/** A faint text action that copies agent-facing markdown, and says so. */
+export function CopyLink({
+  text,
+  label,
+  tip,
+  testId,
+  className = "",
+}: {
+  text: () => string;
+  /** empty: the icon alone, the tip saying what it copies */
+  label: string;
+  tip: string;
+  testId: string;
+  className?: string;
+}) {
+  const { state, copy, fallback, dismissFallback } = useCopyForAgent();
+  const copied = state === "copied";
+  return (
+    <>
+      <button
+        type="button"
+        className={`inline-flex flex-none items-center gap-1 text-2xs hover:!text-[var(--fg)] ${className} ${copied ? "!opacity-100" : ""}`}
+        style={{ color: copied ? "var(--ok)" : "var(--fg-faint)" }}
+        data-testid={testId}
+        data-copied={copied ? "1" : undefined}
+        data-tip={copied ? "Copied" : tip}
+        onClick={(e) => {
+          e.stopPropagation();
+          void copy(text());
+        }}
+      >
+        {copied ? <IconCheck width={12} height={12} /> : <IconBot width={12} height={12} />}
+        {copied || label ? <UiText>{copied ? "Copied" : label}</UiText> : null}
+      </button>
+      {fallback !== null ? <CopyFallback text={fallback} onClose={dismissFallback} /> : null}
+    </>
   );
 }
