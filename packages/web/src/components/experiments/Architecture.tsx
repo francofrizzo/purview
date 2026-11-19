@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Architecture as ArchitectureData, ArchitectureDeviation } from "../../api/types";
 import { architectureForAgent, deviationForAgent } from "../../lib/architectureForAgent";
 import { useExperiment } from "../../lib/experiments";
@@ -119,6 +119,7 @@ export function ArchitectureSection({
   onOpenFile,
   onOpenCode,
   onCommentWithRule,
+  focus,
 }: {
   architecture?: ArchitectureData;
   numbers: Map<string, number>;
@@ -133,6 +134,8 @@ export function ArchitectureSection({
   onOpenCode: (unitId: string, file: string, line: number) => void;
   /** a draft on the line, holding only the rule's quote; absent where the line is outside the diff */
   onCommentWithRule?: (deviation: ArchitectureDeviation) => void;
+  /** a deviation a unit opened: scrolled to and marked for a moment */
+  focus?: { index: number; nonce: number } | null;
 }) {
   const on = useExperiment("architecture");
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -249,6 +252,7 @@ export function ArchitectureSection({
                 number={units.has(d.code.unit) ? numbers.get(d.code.unit) : undefined}
                 onOpen={() => (units.has(d.code.unit) ? onOpenCode(d.code.unit, d.code.file, d.code.line) : onOpenFile(d.code.file))}
                 onComment={onCommentWithRule && units.has(d.code.unit) && inDiff(d.code.file, d.code.line) ? () => onCommentWithRule(d) : undefined}
+                focused={focus?.index === i ? focus.nonce : undefined}
               />
             ))}
           </ul>
@@ -331,15 +335,33 @@ function DeviationRow({
   number,
   onOpen,
   onComment,
+  focused,
 }: {
   deviation: ArchitectureDeviation;
   number?: number;
   onOpen: () => void;
   onComment?: () => void;
+  /** set (to a fresh value each time) when a unit opened this row */
+  focused?: number;
 }) {
   const where = `${d.code.file}:${d.code.line}`;
+  const ref = useRef<HTMLLIElement>(null);
+  const [marked, setMarked] = useState(false);
+  useEffect(() => {
+    if (focused === undefined) return;
+    ref.current?.scrollIntoView({ block: "center" });
+    setMarked(true);
+    const t = window.setTimeout(() => setMarked(false), 1600);
+    return () => window.clearTimeout(t);
+  }, [focused]);
   return (
-    <li className="group/arch" data-testid="architecture-deviation">
+    <li
+      ref={ref}
+      className="group/arch -mx-1 rounded-lg px-1 transition-colors duration-500"
+      style={{ background: marked ? "var(--accent-soft)" : undefined }}
+      data-testid="architecture-deviation"
+      data-focused={marked || undefined}
+    >
       <button
         type="button"
         className={`grid grid-cols-1 gap-x-2 gap-y-1 rounded-md px-2 py-1 text-left ${COLS} -mx-2 w-[calc(100%+1rem)] transition-colors hover:bg-[var(--bg-hover)]`}

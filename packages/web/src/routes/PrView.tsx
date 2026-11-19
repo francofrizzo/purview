@@ -352,6 +352,13 @@ export function PrView() {
   // It opens by itself on a PR with nothing read yet, unless the link named a
   // view or a unit.
   const [overview, setOverview] = useState(() => viewFromSearch(location.search) === "overview");
+  // A unit's deviation opens the Overview at its row; the nonce lets the same
+  // one be opened again.
+  const [deviationFocus, setDeviationFocus] = useState<{ index: number; nonce: number } | null>(null);
+  const openDeviation = useCallback((index: number) => {
+    setOverview(true);
+    setDeviationFocus({ index, nonce: Date.now() });
+  }, []);
   // The PR whose first view is picked; state, not a ref, so the URL follows that pick.
   const [viewDecidedFor, setViewDecidedFor] = useState<string | null>(null);
   // The right dock: comments, chat or review, one at a time. The chat's own
@@ -1428,6 +1435,7 @@ export function PrView() {
       onJumpHunk={jumpToUnitHunk}
       onCite={() => quote({ kind: "unit", id: u.id })}
       onMove={(attention) => reclassifyUnit(u.id, { attention })}
+      onOpenDeviation={openDeviation}
       changelog={{ activeRevisions: highlightRevisions, onSelectRevision: toggleHighlight }}
       extra={
         isGeneratedUnit(u) ? (
@@ -1862,6 +1870,7 @@ export function PrView() {
               onJumpToThread={(t) => jumpToComment({ file: t.path, line: t.line, side: t.side, threadId: t.id })}
               onOpenCode={openCodeAt}
               onCommentWithRule={commentWithRule}
+              deviationFocus={deviationFocus}
             />
           </CodeLinkContext.Provider>
         ) : tab === "units" ? (

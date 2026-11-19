@@ -111,6 +111,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   if (!path.isAbsolute(root) || !Number.isInteger(revision) || revision < 1) throw new Error("Invalid review authority");
   const checkout = context.checkout ? fs.realpathSync(context.checkout) : undefined;
   const architectureOn = experimentOn("architecture", root);
+  const findingKindsOn = experimentOn("findingKinds", root);
   let active = true;
   let queue: Promise<unknown> = Promise.resolve();
   const current = () => core.loadState(key, root);
@@ -147,9 +148,12 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
   }
   const paths = () => git(["ls-files", "-z"]).split("\0").filter(Boolean).sort();
   const linesOf = (text: string) => text.split("\n").map((text, i) => ({ line: i + 1, text: text.slice(0, 2000), truncated: text.length > 2000 }));
-  const operations = new Map<string, { name: string; description: string; schema: z.ZodTypeAny; readOnly: boolean; handler: (args: any) => unknown }>();
-  function add<S extends z.ZodTypeAny>(name: string, description: string, schema: S, handler: (args: z.infer<S>) => unknown, readOnly = true) {
-    operations.set(name, { name, description, schema, handler, readOnly });
+  // `wire` rewrites the JSON schema a tool is shown with, for a field nested
+  // too deep to omit from the zod schema (a finding's kind).
+  type Wire = (json: Record<string, unknown>) => Record<string, unknown>;
+  const operations = new Map<string, { name: string; description: string; schema: z.ZodTypeAny; readOnly: boolean; wire?: Wire; handler: (args: any) => unknown }>();
+  function add<S extends z.ZodTypeAny>(name: string, description: string, schema: S, handler: (args: z.infer<S>) => unknown, readOnly = true, wire?: Wire) {
+    operations.set(name, { name, description, schema, handler, readOnly, ...(wire ? { wire } : {}) });
   }
   const fileArgs = { path: relativePath, start: z.number().int().positive().default(1), ...pageArgs };
   add("review_context", "PR metadata, bound revision, checkout availability, generated files and paginated non-generated hunk overview. Start here; follow every page for full analysis.", z.object(pageArgs).strict(), args => {
@@ -240,6 +244,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
     // An experiment that is off leaves no trace in what the run is shown:
     // its fields are dropped from the tool schemas (core still validates the
     // whole payload on save, so the stripped schema checks nothing less).
+    const hideFindingKind = findingKindsOn ? undefined : dropFindingKind;
     const tools = {
       analysis: architectureOn ? core.AnalysisSchema : core.AnalysisSchema.omit({ architecture: true }),
       patch: core.ReviewUnitPatchSchema,
@@ -250,7 +255,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
         const result = validated(() => core.setAnalysis(key, args, { checkout }, root));
         const warnings = renameWarnings(result.state.units);
         return { coverage: result.coverage, ...(warnings.length ? { warnings } : {}), remaining: core.remainingWorkFor(key, root) };
-      }, false);
+      }, false, hideFindingKind);
     else if (context.analysisMode === "incremental") {
       add("patch_units", "Atomically apply unit patches. Existing units accept partial fields; new units need full shape. changelogEntry records this revision's change. Evidence max 200 chars; finding text max 300.", z.object({
         units: z.array(z.object({ id: z.string().min(1), patch: tools.patch }).strict()).min(1).max(100),
@@ -259,7 +264,7 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
         const touched = new Set(result.unitIds);
         const warnings = [...result.warnings, ...renameWarnings(result.state.units.filter(u => touched.has(u.id)))];
         return { unitIds: result.unitIds, warnings, remaining: core.remainingWorkFor(key, root) };
-      }, false);
+      }, false, hideFindingKind);
       add("set_shape", "Replace the PR summary, the concepts, the file notes or the behavior changes without re-sending the analysis. A key present replaces that view whole; null drops concepts, file notes or behavior changes; an absent key leaves it.", tools.shape, args => {
         const state = validated(() => core.setShape(key, args, root, { checkout }));
         return { concepts: state.concepts?.length ?? 0, fileNotes: Object.keys(state.fileNotes ?? {}).length,
@@ -368,4 +373,26 @@ export function createReviewOperations(request: AgentRunRequest, harness: string
       return result;
     },
   };
+}
+
+/**
+ * A tool's JSON schema without the `kind` of its findings: what an analysis
+ * is shown while the `findingKinds` experiment is off. A finding is the
+ * object whose properties hold `severity` and `evidence`.
+ */
+export function dropFindingKind(json: Record<string, unknown>): Record<string, unknown> {
+  const walk = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(walk);
+    if (!node || typeof node !== "object") return node;
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(node)) out[k] = walk(v);
+    const props = out.properties as Record<string, unknown> | undefined;
+    if (props && "severity" in props && "evidence" in props && "kind" in props) {
+      const { kind: _kind, ...rest } = props;
+      out.properties = rest;
+      if (Array.isArray(out.required)) out.required = out.required.filter((r) => r !== "kind");
+    }
+    return out;
+  };
+  return walk(json) as Record<string, unknown>;
 }

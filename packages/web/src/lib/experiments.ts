@@ -19,6 +19,11 @@ export const EXPERIMENTS = [
     title: "Architecture",
     hint: "An Overview section holding the PR against the repo's documented architecture: the rules it breaks, the decisions the docs miss. Analyses write it once this is on.",
   },
+  {
+    id: "findingKinds",
+    title: "Finding kinds",
+    hint: "Each warning on a unit says what it is: a possible bug, a contract break or untested behavior; with Architecture on, the unit's deviations show beside them. Analyses write kinds once this is on.",
+  },
 ] as const satisfies readonly Experiment[];
 
 export type ExperimentId = (typeof EXPERIMENTS)[number]["id"];

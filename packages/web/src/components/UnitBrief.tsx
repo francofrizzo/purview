@@ -4,6 +4,7 @@ import { isGeneratedUnit } from "../api/types";
 import { orderUnitHunks, shownFindings, skippedIds } from "../lib/diffModel";
 import { changelogView } from "../lib/changelog";
 import { changeMix, fileChangeKind, formatShare } from "../lib/changeMix";
+import { useExperiment } from "../lib/experiments";
 import { useSettings, type UnitDetail } from "../lib/settings";
 import { noteFor } from "../lib/shape";
 import { heartOf, heartSegments, hunkIdsOf } from "../lib/units";
@@ -147,6 +148,7 @@ export function UnitBrief({
   onJumpHunk,
   onCite,
   onMove,
+  onOpenDeviation,
   changelog,
   extra,
   highlight,
@@ -157,6 +159,8 @@ export function UnitBrief({
   onJumpHunk: (hunkId: string, line?: number) => void;
   /** add this unit to the chat's next message */
   onCite?: () => void;
+  /** the Overview, at its architecture deviation with this index */
+  onOpenDeviation?: (index: number) => void;
   /** a correction of the analysis: the unit belongs in another group */
   onMove?: (attention: ReviewUnit["attention"]) => void;
   changelog?: { activeRevisions: readonly number[]; onSelectRevision: (r: number) => void };
@@ -172,6 +176,17 @@ export function UnitBrief({
   const files = generated ? [] : unitFiles(detail, unit);
   const mix = generated ? null : changeMix(detail.files.files, new Set(hunkIdsOf(unit)));
   const warnings = shownFindings(unit.findings).length;
+  // With finding kinds on, the unit's architecture deviations (written once,
+  // in the Overview) count and show among its findings.
+  const kinds = useExperiment("findingKinds");
+  const architectureOn = useExperiment("architecture");
+  const deviations =
+    kinds && architectureOn
+      ? (detail.state.architecture?.deviations ?? [])
+          .map((deviation, index) => ({ index, deviation }))
+          .filter(({ deviation }) => deviation.code.unit === unit.id)
+      : [];
+  const flagged = warnings + deviations.length;
   // Entries are written by refreshes (r2 on): each says what that revision changed here.
   const revisions = changelogView(unit.changelog);
   const revisionCount = revisions ? 1 + revisions.earlier.length : 0;
@@ -179,7 +194,7 @@ export function UnitBrief({
   const available: Record<UnitDetail, boolean> = {
     heart: heart.length > 0,
     files: files.length > 0,
-    findings: warnings > 0,
+    findings: flagged > 0,
   };
   const open = settings.unitDetail && available[settings.unitDetail] ? settings.unitDetail : null;
   const toggle = (d: UnitDetail) => update({ unitDetail: open === d ? null : d });
@@ -243,10 +258,13 @@ export function UnitBrief({
               open={open === "findings"}
               onClick={() => toggle("findings")}
               testId="findings-toggle"
-              tip={`${warnings} warning${warnings === 1 ? "" : "s"}`}
+              tip={[
+                warnings ? `${warnings} warning${warnings === 1 ? "" : "s"}` : "",
+                deviations.length ? `${deviations.length} architecture deviation${deviations.length === 1 ? "" : "s"}` : "",
+              ].filter(Boolean).join(", ")}
             >
               <IconWarning width={12} height={12} className="flex-none" style={{ color: "var(--warn)" }} />
-              {warnings}
+              {flagged}
             </Count>
           ) : null}
           {skipped > 0 ? (
@@ -277,7 +295,7 @@ export function UnitBrief({
             <UnitFileList detail={detail} unit={unit} onJump={onJumpHunk} />
           </div>
         ) : null}
-        {open === "findings" ? <FindingList findings={unit.findings ?? []} unitTitle={unit.title} /> : null}
+        {open === "findings" ? <FindingList findings={unit.findings ?? []} unitTitle={unit.title} deviations={deviations} onOpenDeviation={onOpenDeviation} /> : null}
       </div>
 
       {/* The last row: the unit's history on the left, the unit's two

@@ -46,6 +46,7 @@ export function Overview({
   onJumpToThread,
   onOpenCode,
   onCommentWithRule,
+  deviationFocus,
 }: {
   detail: PrDetail;
   summary: string;
@@ -63,6 +64,8 @@ export function Overview({
   onOpenCode?: (unitId: string, file: string, line: number) => void;
   /** a draft on a deviation's line quoting its rule; absent, the section offers none */
   onCommentWithRule?: (deviation: ArchitectureDeviation) => void;
+  /** the architecture deviation a unit opened, to scroll to and mark */
+  deviationFocus?: { index: number; nonce: number } | null;
 }) {
   const { meta, state } = detail;
   const ordered = useMemo(() => unitDisplayOrder(state.units), [state.units]);
@@ -213,6 +216,7 @@ export function Overview({
             onOpenFile={onOpenFile}
             onOpenCode={onOpenCode ?? ((unitId) => onOpenUnit(unitId))}
             onCommentWithRule={onCommentWithRule}
+            focus={deviationFocus}
           />
 
           {/* Where the change lands, in the code: the shallow tree the analysis

@@ -38,7 +38,7 @@ export async function startReviewTools(request: AgentRunRequest, harness: string
     transports.add(transport);
     res.on("close", () => { transports.delete(transport); void transport.close(); void mcp.close(); });
     mcp.setRequestHandler(ListToolsRequestSchema, () => ({ tools: operations.tools.map(tool => ({
-      name: tool.name, description: tool.description, inputSchema: wireSchema(toJsonSchemaCompat(tool.schema)),
+      name: tool.name, description: tool.description, inputSchema: wireSchema(tool.wire ? tool.wire(toJsonSchemaCompat(tool.schema) as Record<string, unknown>) : toJsonSchemaCompat(tool.schema)),
       annotations: { readOnlyHint: tool.readOnly, destructiveHint: !tool.readOnly },
     })) }));
     mcp.setRequestHandler(CallToolRequestSchema, async call => {

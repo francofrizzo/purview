@@ -132,8 +132,22 @@ export type FindingSeverity = z.infer<typeof FindingSeveritySchema>;
 export const FINDING_TEXT_MAX = 300;
 export const FINDING_EVIDENCE_MAX = 200;
 
+/**
+ * What a warning says is wrong (the `findingKinds` experiment; absent on
+ * every warning written without it):
+ *  - `bug` — the code does the wrong thing: a mishandled path, a missed site.
+ *  - `contract` — it may be right here and still break what relies on it: a
+ *    caller of a changed signature, a stored or published shape.
+ *  - `untested` — a behavior it changes that no test covers.
+ * A break with the documented architecture is not a finding: it is a
+ * deviation in `architecture`, which the unit shows beside its warnings.
+ */
+export const FindingKindSchema = z.enum(["bug", "contract", "untested"]);
+export type FindingKind = z.infer<typeof FindingKindSchema>;
+
 export const FindingSchema = z.object({
   severity: FindingSeveritySchema,
+  kind: FindingKindSchema.optional(),
   text: z.string().min(1).max(FINDING_TEXT_MAX),
   /** concrete location(s) checked, e.g. `internal/api/handler.go:88, internal/vep/client.go:41` */
   evidence: z.string().min(1).max(FINDING_EVIDENCE_MAX),

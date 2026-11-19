@@ -53,3 +53,34 @@ test("a finding copies as a task for an agent", async ({ page, context }) => {
   expect(text).toContain("Where: ");
   expect(text).toContain("src/billing/ledger.ts:17");
 });
+
+test("with finding kinds on, a warning says its kind, and a unit's architecture deviation opens its Overview row", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("reviewer.mockExperiments", "architecture,findingKinds"));
+  await openPr(page);
+  await openUnit(page, UNITS.charge);
+  await page.getByTestId("findings-toggle").click();
+  const finding = page.getByTestId("unit-finding").first();
+  await expect(finding).toHaveAttribute("data-kind", "bug");
+  await expect(finding).toContainText("Possible bug");
+
+  await openUnit(page, UNITS.reconcile);
+  const toggle = page.getByTestId("findings-toggle");
+  if ((await toggle.getAttribute("aria-expanded")) === "false") await toggle.click();
+  const deviation = page.getByTestId("unit-deviation");
+  await expect(deviation).toContainText("Reconciler queries the ledger table itself");
+  await expect(deviation).toContainText("docs/architecture.md");
+  await deviation.getByTestId("unit-deviation-open").click();
+  const row = page.getByTestId("overview-architecture").getByTestId("architecture-deviation");
+  await expect(row).toHaveAttribute("data-focused", "true");
+  await expect(row).toBeInViewport();
+});
+
+test("with finding kinds off, a warning shows no kind and a unit no deviation", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("reviewer.mockExperiments", "architecture"));
+  await openPr(page);
+  await openUnit(page, UNITS.charge);
+  await page.getByTestId("findings-toggle").click();
+  await expect(page.getByTestId("unit-finding").first()).not.toHaveAttribute("data-kind", /.+/);
+  await expect(page.getByTestId("unit-finding").first()).not.toContainText("Possible bug");
+  await expect(page.getByTestId("unit-deviation")).toHaveCount(0);
+});

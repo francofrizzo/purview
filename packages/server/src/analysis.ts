@@ -37,6 +37,7 @@ import { cliCommand, cliPath, skillDir } from "./skill-paths.js";
 import { readConfig } from "./config.js";
 import { withExperiments } from "./experiment-docs.js";
 import { architecturePrompt } from "./architecture-prompt.js";
+import { findingKindsPrompt } from "./finding-kinds-prompt.js";
 import { effectiveAnalysisAgent, type AgentChoice } from "./repo-config.js";
 import { languageRule, rubricSection } from "./rubric.js";
 import { loadCommittedConfig, type CommittedConfig } from "./team-config.js";
@@ -608,6 +609,7 @@ export function analysisPrompt(
           `\`${GENERATED_UNIT_ID}\` unit: leave their hunks out, don't read them, and don't use that unit id.`,
         ].join(" "),
     architecturePrompt(key, root, { incremental: opts.incremental, hasCheckout: Boolean(opts.checkout?.path && !opts.checkout.error), flow: "cli" }),
+    findingKindsPrompt(root, { hasCheckout: Boolean(opts.checkout?.path && !opts.checkout.error) }),
     "",
     // Above ~200 hunks the failure mode changes: the session fills its
     // context narrating per-hunk detail and pays for a mid-run compaction.

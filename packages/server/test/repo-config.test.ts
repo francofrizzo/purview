@@ -1167,7 +1167,7 @@ describe("/api/config", () => {
       editor: null,
       editorConfirmed: false,
       updateCheck: true,
-      experiments: { architecture: false },
+      experiments: { architecture: false, findingKinds: false },
       effective: {
         // Medium is the harness's default now, not a value every config.json pins.
         analysisAgent: {

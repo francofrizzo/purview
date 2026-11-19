@@ -10,6 +10,7 @@ import { rubricSection } from "../../rubric.js";
 import { chatInstructionsSection } from "../../chat-instructions.js";
 import { baseNote } from "../../base-note.js";
 import { architecturePrompt } from "../../architecture-prompt.js";
+import { findingKindsPrompt } from "../../finding-kinds-prompt.js";
 import type { CheckoutResolution } from "../../worktree.js";
 import type { CommittedConfig } from "../../team-config.js";
 import { summarizeMoves, readFilesJson } from "@reviewer/core";
@@ -73,6 +74,7 @@ export function reviewRunPrompt(key: PrKey, root: string, checkout: CheckoutReso
     correctionsNote(state),
     movedNote(summarizeMoves(files.filter(f => !f.generated))),
     architecturePrompt(key, root, { incremental, hasCheckout: Boolean(checkout.path && !checkout.error), flow: "tools" }),
+    findingKindsPrompt(root, { hasCheckout: Boolean(checkout.path && !checkout.error) }),
   ].filter(Boolean).join("\n\n");
 }
 

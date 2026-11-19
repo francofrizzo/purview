@@ -96,6 +96,8 @@ export interface FilesJson {
 }
 
 export type FindingSeverity = "warning" | "note";
+/** what a warning says is wrong (the `findingKinds` experiment) */
+export type FindingKind = "bug" | "contract" | "untested";
 
 /**
  * A claim the analysis verified in the local checkout: `warning` = something
@@ -105,6 +107,7 @@ export type FindingSeverity = "warning" | "note";
  */
 export interface Finding {
   severity: FindingSeverity;
+  kind?: FindingKind;
   text: string;
   evidence: string;
 }

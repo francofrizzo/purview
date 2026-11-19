@@ -13,6 +13,10 @@ import {
   IconTag as TablerTag,
   IconCode as TablerCode,
   IconFlask,
+  IconFlaskOff,
+  IconBug,
+  IconPlugConnectedX,
+  IconHierarchyOff,
   IconBook,
   IconStack2,
   IconBook2,
@@ -217,6 +221,10 @@ export const IconHeart = wrap(TablerHeartFilled);
 
 /** A flask — test files (the change mix's "tests"). */
 export const IconTests = wrap(IconFlask);
+export const IconFindingBug = wrap(IconBug);
+export const IconFindingContract = wrap(IconPlugConnectedX);
+export const IconFindingUntested = wrap(IconFlaskOff);
+export const IconDeviation = wrap(IconHierarchyOff);
 /** A book — documentation files. */
 export const IconDocs = wrap(IconBook);
 
