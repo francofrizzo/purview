@@ -5,10 +5,10 @@ heading is the version Purview reports, and the entries above the last one you
 saw are what "What's new" shows after an update. Written for the reader of the
 app, not for git: say what changed in the review, not which file moved.
 
-## Unreleased
+## 2026.11.19.1
 
-- **Delete a PR from an agent.** Ask an agent with the Purview skill to delete a PR; everything Purview keeps for it goes.
 - **Copy a finding for an agent.** Hover a warning in a unit's findings and click the bot icon to copy it as a task.
+- **Deleting PRs from an agent.** Ask an agent with the Purview skill to delete a PR; Purview drops all it keeps for it.
 
 ## 2026.11.18.1
 
