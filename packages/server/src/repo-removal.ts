@@ -3,6 +3,8 @@ import {
   deleteRepoState,
   keyToString,
   listPrs,
+  prDir,
+  prExists,
   repoDir,
   repoKeyToString,
   stateRoot,
@@ -13,12 +15,12 @@ import { isBusy } from "./analysis.js";
 import { chatBusy } from "./chat-session.js";
 import { readComments } from "./comments.js";
 import { HttpError } from "./http-error.js";
-import { removeRepoCheckouts } from "./pr-checkout.js";
+import { pruneCheckouts, removeRepoCheckouts } from "./pr-checkout.js";
 import { forgetWatchStatus } from "./review-watch.js";
 import { clearStalenessCache } from "./staleness.js";
 
 /**
- * Removing a repo from Purview: the destructive counterpart of archiving it.
+ * Removing a repo, or one PR, from Purview: the destructive counterpart of archiving it.
  * Everything Purview keeps locally for the repo goes — its PR directories,
  * `repo.json` and the local rubric/chat overlays, and its managed checkouts
  * (unregistered from the reader's clones one by one, see pr-checkout.ts).
@@ -111,4 +113,45 @@ export async function removeRepo(repo: RepoKey, root = stateRoot()): Promise<Rep
     root,
   );
   return { ...summary, removedCheckouts };
+}
+
+export interface PrRemovalResult {
+  /** `host/owner/repo/number` */
+  key: string;
+  /** local-only drafts: lost with the PR */
+  draftComments: number;
+  /** in a pending review on GitHub: they stay there, only Purview's copy goes */
+  pushedComments: number;
+}
+
+/**
+ * Delete one PR's local state, the way `removeRepo` does for a whole repo:
+ * 404 when it is not tracked, 409 while an analysis is queued or running or a
+ * chat reply is streaming for it. Its managed checkout goes in the background
+ * (a checkout whose PR is no longer tracked is what the prune removes).
+ * Nothing on GitHub changes, and the review watcher may import the PR again
+ * when it is next updated; archiving is what keeps it out.
+ */
+export function removePr(key: PrKey, root = stateRoot()): PrRemovalResult {
+  if (!prExists(key, root)) throw new HttpError(404, "not_found", `${keyToString(key)} is not tracked in Purview`);
+  if (isBusy(key)) {
+    throw new HttpError(409, "pr_busy", `An analysis is queued or running for ${keyToString(key)}; cancel it or let it finish first.`);
+  }
+  if (chatBusy(key)) {
+    throw new HttpError(409, "pr_busy", `A chat reply is still streaming for ${keyToString(key)}; wait for it to finish.`);
+  }
+  let draftComments = 0;
+  let pushedComments = 0;
+  try {
+    for (const c of readComments(key, root)) {
+      if (c.status === "draft") draftComments++;
+      else if (c.status === "pushed") pushedComments++;
+    }
+  } catch {
+    /* an unreadable comments file still goes; it just can't be counted */
+  }
+  fs.rmSync(prDir(key, root), { recursive: true, force: true });
+  clearStalenessCache(key, root);
+  void pruneCheckouts(root).catch(() => undefined);
+  return { key: keyToString(key), draftComments, pushedComments };
 }

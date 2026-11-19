@@ -7,6 +7,7 @@ app, not for git: say what changed in the review, not which file moved.
 
 ## Unreleased
 
+- **Delete a PR from an agent.** Ask an agent with the Purview skill to delete a PR; everything Purview keeps for it goes.
 - **Copy a finding for an agent.** Hover a warning in a unit's findings and click the bot icon to copy it as a task.
 
 ## 2026.11.18.1

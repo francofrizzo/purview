@@ -72,6 +72,13 @@ recorded), baseOnly, report (what moved between revisions, or null), analysisJob
 `{ ok, archived }`. Archiving keeps everything readable; it leaves the active list
 and stops automatic runs. Adding an archived PR again unarchives it.
 
+## `DELETE /prs/<key>`
+
+`{ ok, key, draftComments, pushedComments }`: the PR's local state is gone, and the
+counts say which comments went with it (pushed ones stay in the pending review on
+GitHub). 404 `not_found` when it is not tracked; 409 `pr_busy` while an analysis is
+queued or running or a chat reply is streaming. Loopback only.
+
 ## `POST /prs/<key>/analyze`  body `{}` or `{ "fresh": true }`
 
 `{ job }`. Without `fresh` the run is incremental (keeps units, classifies new

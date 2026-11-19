@@ -195,7 +195,7 @@ import {
 import { getWatchStatus } from "./review-watch.js";
 import { reanchorComments } from "./comment-anchors.js";
 import { ensurePrCheckout, localDiffSource, pruneCheckouts } from "./pr-checkout.js";
-import { removeRepo, repoRemovalSummary } from "./repo-removal.js";
+import { removePr, removeRepo, repoRemovalSummary } from "./repo-removal.js";
 import { scheduleReviewRequestRefresh, type RefreshDeps } from "./review-request-refresh.js";
 import { fileLinesAtHead } from "./file-content.js";
 import { agentSkillRoutes } from "./agent-skill.js";
@@ -949,6 +949,19 @@ export function createApp(opts: AppOptions = {}): Hono {
       throw new HttpError(400, "invalid_body", 'Body must include { audience: "github" | "agent" | null }');
     }
     return c.json(setCommentAudienceFor(key, parsed.data, root));
+  });
+
+  /**
+   * Stop tracking a PR and delete its local state: analysis, progress,
+   * comments and drafts, and its managed checkout. Nothing on GitHub changes.
+   * Loopback-only like removing a repo, and 409 while it is busy.
+   */
+  app.delete("/api/prs/:key", loopbackOnly({ port }), (c) => {
+    const key = keyParam(c);
+    const result = removePr(key, root);
+    const prefix = `v2|${keyToString(key)}|`;
+    for (const k of [...lineChangesCache.keys()]) if (k.startsWith(prefix)) lineChangesCache.delete(k);
+    return c.json({ ok: true, ...result });
   });
 
   app.post("/api/prs/:key/archive", async (c) => {

@@ -360,3 +360,52 @@ describe("reviewer-state remove-repo", () => {
     expect(fs.existsSync(repoDir(repo, root))).toBe(true);
   });
 });
+
+describe("DELETE /api/prs/:key", () => {
+  it("deletes the PR's state and nothing else, and reports the comments lost", async () => {
+    const sibling: PrKey = { ...key, number: 8 };
+    track(sibling);
+    await addComment("draft");
+    await addComment("in a pending review", "pushed");
+    const res = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, key: keyToString(key), draftComments: 1, pushedComments: 1 });
+    expect(listPrs(root).map(keyToString).sort()).toEqual([keyToString(otherRepoPr), keyToString(sibling)].sort());
+    expect(fs.existsSync(repoDir(repo, root))).toBe(true);
+    expect((await app.request(`/api/prs/${encodedKey}`)).status).toBe(404);
+    expect((await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" })).status).toBe(404);
+  });
+
+  it("refuses while an analysis is queued or running, and deletes nothing", async () => {
+    claude.restore();
+    claude = fakeClaude({ hang: true, lines: scriptedRun() });
+    claude.install();
+    expect((await app.request(`/api/prs/${encodedKey}/analyze`, { method: "POST" })).status).toBe(200);
+    const res = await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" });
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toBe("pr_busy");
+    expect(listPrs(root).map(keyToString)).toContain(keyToString(key));
+
+    await app.request(`/api/prs/${encodedKey}/analyze`, { method: "DELETE" });
+    await analysisIdle();
+    expect((await app.request(`/api/prs/${encodedKey}`, { method: "DELETE" })).status).toBe(200);
+  });
+
+  it("is loopback-only, even for a LAN device holding the token", async () => {
+    const TOKEN = "t0ken-abcdefghijklmnopqrstuv";
+    const lanApp = createApp({
+      stateDir: root,
+      webDist: path.join(root, "__no-web-dist__"),
+      port: 4779,
+      lan: { token: TOKEN, hosts: ["192.168.1.24"] },
+      reviewRequestRefresh: false,
+    });
+    const res = await lanApp.request(`http://192.168.1.24:4779/api/prs/${encodedKey}`, {
+      method: "DELETE",
+      headers: { Cookie: `purview_token=${TOKEN}`, Origin: "http://192.168.1.24:4779" },
+    });
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe("loopback_only");
+    expect(listPrs(root).map(keyToString)).toContain(keyToString(key));
+  });
+});
